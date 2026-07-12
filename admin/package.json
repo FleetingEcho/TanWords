@@ -1,0 +1,35 @@
+{
+  "name": "tanwords-admin",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Local admin tool for the TanWords SQLite database — table CRUD, batch generation via a local/OpenAI-compatible model, import/export. Not part of the TanWords app; runs standalone.",
+  "scripts": {
+    "server": "tsx watch server/index.ts",
+    "web": "vite web --port 5199",
+    "dev": "concurrently -n server,web -c blue,green \"npm:server\" \"npm:web\"",
+    "build": "vite build web",
+    "generate": "node server/generate-cli.mjs"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11",
+    "hono": "^4",
+    "@hono/node-server": "^1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7",
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "@vitejs/plugin-react": "^4",
+    "autoprefixer": "^10",
+    "concurrently": "^9",
+    "postcss": "^8",
+    "react": "^18",
+    "react-dom": "^18",
+    "tailwindcss": "^3",
+    "tsx": "^4",
+    "typescript": "^5",
+    "vite": "^5"
+  }
+}

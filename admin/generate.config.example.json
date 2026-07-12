@@ -1,0 +1,7 @@
+{
+  "baseUrl": "http://localhost:1234/v1",
+  "apiKey": "",
+  "model": "qwen2.5-14b-instruct",
+  "targetLevel": "C1",
+  "_comment": "Copy this file to generate.config.json (gitignored) and fill in your local model's OpenAI-compatible endpoint. baseUrl is everything before /chat/completions — e.g. Ollama: http://localhost:11434/v1, LM Studio: http://localhost:1234/v1, vLLM/llama.cpp: whatever you bound it to. apiKey can stay empty for local servers that don't check it."
+}

@@ -1,0 +1,32 @@
+import type { Dict } from "../types";
+
+export const dashboard: Dict = {
+    "dash.greeting.morning": "早上好",
+    "dash.greeting.afternoon": "下午好",
+    "dash.greeting.evening": "晚上好",
+    "dash.stat.words": "词库单词",
+    "dash.stat.week": "本周新增",
+    "dash.stat.articles": "已析文章",
+    "dash.stat.docs": "文档",
+    "dash.resume.eyebrow": "继续学习",
+    "dash.resume.progress": "{done}/{total} 词条已处理",
+    "dash.resume.cta": "继续这一课",
+    "dash.start.eyebrow": "开始新一课",
+    "dash.start.title": "粘贴一篇文章，收获今天的生词",
+    "dash.start.sub": "AI 会按 C1 水平提取值得学的词汇与表达",
+    "dash.start.cta": "去阅读课",
+    "dash.recentWords": "最新词汇",
+    "dash.recentDocs": "最近文档",
+    "dash.empty.words": "词库还是空的——从一篇文章开始收集",
+    "dash.empty.docs": "还没有文档",
+    "dash.viewAll": "查看全部",
+    "dash.quick.title": "快捷入口",
+    "dash.quick.reading": "粘贴文章学习",
+    "dash.quick.hn": "逛 HN 热点",
+    "dash.quick.chat": "问 AI 导师",
+
+    // 句式
+    "dash.recentPatterns": "最近句式",
+    "dash.stat.patterns": "句式",
+    "dash.empty.patterns": "阅读课里收藏的句式会出现在这里。",
+};
