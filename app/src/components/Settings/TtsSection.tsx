@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { open as openShell } from "@tauri-apps/plugin-shell";
 import { toast } from "sonner";
 import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -120,14 +119,6 @@ export function TtsSection() {
     }
   };
 
-  const openModelsDir = async () => {
-    try {
-      await openShell(defaultModelsDir);
-    } catch {
-      toast.error(t("tts.openFolderFailed"));
-    }
-  };
-
   const preview = async () => {
     setPreviewing(true);
     try {
@@ -230,7 +221,6 @@ export function TtsSection() {
           progress={progress}
           onDownload={downloadModel}
           onDeleteRequest={setPendingDelete}
-          onOpenFolder={openModelsDir}
         />
       </SettingRow>
 

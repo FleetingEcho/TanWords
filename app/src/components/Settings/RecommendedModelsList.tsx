@@ -26,7 +26,6 @@ interface Props {
   progress: TtsDownloadProgress | null;
   onDownload: (model: RecommendedTtsModel) => void;
   onDeleteRequest: (info: TtsModelInfo) => void;
-  onOpenFolder: () => void;
 }
 
 /** Compact, grouped list of recommended voice downloads — each row is a
@@ -40,13 +39,24 @@ export function RecommendedModelsList({
   progress,
   onDownload,
   onDeleteRequest,
-  onOpenFolder,
 }: Props) {
   const t = useT();
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [pathCopied, setPathCopied] = useState(false);
 
   const findDownloaded = (model: RecommendedTtsModel) =>
     scannedModels.find((m) => m.path.endsWith(model.id)) ?? null;
+
+  // Opening the models dir directly often fails (sandboxing / the dir may
+  // not exist yet before the first download), so let the user copy the path
+  // and navigate to it themselves instead.
+  const copyModelsDir = async () => {
+    try {
+      await navigator.clipboard.writeText(defaultModelsDir);
+      setPathCopied(true);
+      setTimeout(() => setPathCopied(false), 1500);
+    } catch {}
+  };
 
   return (
     <div className="flex flex-col gap-2 w-full max-w-md">
@@ -55,8 +65,8 @@ export function RecommendedModelsList({
           <p className="text-[11px] text-muted-foreground min-w-0 truncate">
             {t("tts.modelsDir")}: <span className="font-mono">{defaultModelsDir}</span>
           </p>
-          <button onClick={onOpenFolder} className="text-[11px] font-semibold text-primary hover:underline shrink-0">
-            {t("tts.openFolder")}
+          <button onClick={copyModelsDir} className="text-[11px] font-semibold text-primary hover:underline shrink-0">
+            {pathCopied ? t("tts.pathCopied") : t("tts.copyPath")}
           </button>
         </div>
       )}
