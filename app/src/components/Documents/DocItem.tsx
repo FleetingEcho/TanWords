@@ -3,6 +3,7 @@ import { EllipsisVerticalIcon, PencilIcon, MapPinIcon, DocumentDuplicateIcon, Tr
 import { DocumentListItem } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { PinIcon, DocIcon } from "@/components/ui/icons";
+import { Button } from "@/components/ui/button";
 
 interface Props {
   doc: DocumentListItem;
@@ -99,14 +100,15 @@ export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, o
               ) : (
                 <p className="flex-1 min-w-0 text-sm font-medium truncate leading-tight">{doc.title || t("doc.untitled")}</p>
               )}
-              <button
+              <Button
                 ref={menuBtnRef}
+                variant="ghost"
                 onClick={openMenu}
                 title={t("doc.moreActions")}
-                className="shrink-0 w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                className="shrink-0 w-5 h-5 p-0 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
               >
                 <EllipsisVerticalIcon className="w-3.5 h-3.5" />
-              </button>
+              </Button>
             </div>
             <div className="flex items-center gap-2 mt-0.5">
               <span className="text-[10px] text-muted-foreground">{formatDate(doc.updated_at)}</span>
@@ -137,31 +139,35 @@ export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, o
           className="bg-popover border border-border rounded-xl shadow-lg py-1 min-w-[160px] animate-fade-in"
           onClick={(e) => e.stopPropagation()}
         >
-          <button
+          <Button
+            variant="ghost"
             onClick={() => { setMenu(null); setRenaming(true); setRenameVal(doc.title); }}
-            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm hover:bg-muted text-left"
+            className="h-auto w-full rounded-none flex items-center justify-start gap-2.5 px-3 py-2 text-sm hover:bg-muted text-left"
           >
             <PencilIcon className="w-4 h-4 shrink-0" /> {t("doc.rename")}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
             onClick={() => { setMenu(null); onPin(doc.id); }}
-            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm hover:bg-muted text-left"
+            className="h-auto w-full rounded-none flex items-center justify-start gap-2.5 px-3 py-2 text-sm hover:bg-muted text-left"
           >
             <MapPinIcon className="w-4 h-4 shrink-0" /> {doc.pinned ? t("doc.unpin") : t("doc.pin")}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
             onClick={() => { setMenu(null); onDuplicate(doc.id); }}
-            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm hover:bg-muted text-left"
+            className="h-auto w-full rounded-none flex items-center justify-start gap-2.5 px-3 py-2 text-sm hover:bg-muted text-left"
           >
             <DocumentDuplicateIcon className="w-4 h-4 shrink-0" /> {t("doc.duplicate")}
-          </button>
+          </Button>
           <div className="border-t border-border my-1" />
-          <button
+          <Button
+            variant="ghost"
             onClick={() => { setMenu(null); onDelete(doc.id); }}
-            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm hover:bg-destructive/10 text-destructive text-left"
+            className="h-auto w-full rounded-none flex items-center justify-start gap-2.5 px-3 py-2 text-sm hover:bg-destructive/10 text-destructive text-left"
           >
             <TrashIcon className="w-4 h-4 shrink-0" /> {t("doc.delete")}
-          </button>
+          </Button>
         </div>
       )}
     </>

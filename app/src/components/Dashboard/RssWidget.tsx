@@ -4,6 +4,7 @@ import { useDB } from "@/hooks/useDB";
 import { useNavStore } from "@/store/navStore";
 import { FeedIcon, PlayIcon } from "@/components/ui/icons";
 import type { RssEntryRow, RssFeed } from "@/hooks/useDB.types";
+import { Button } from "@/components/ui/button";
 
 const PREVIEW_COUNT = 3;
 
@@ -52,23 +53,24 @@ export function RssWidget() {
             </span>
           )}
         </h2>
-        <button
+        <Button
+          variant="link"
           onClick={() => navigate("feeds")}
-          className="text-[11px] font-semibold text-primary hover:underline"
+          className="h-auto p-0 text-[11px] font-semibold text-primary hover:underline"
         >
           {t("dash.viewAll")}
-        </button>
+        </Button>
       </div>
 
       {feeds.length === 0 ? (
         <div className="px-4 py-5 text-center">
           <p className="text-xs text-muted-foreground">{t("dash.rss.empty")}</p>
-          <button
+          <Button
             onClick={() => navigate("feeds")}
             className="mt-2.5 h-8 px-3.5 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
           >
             {t("dash.rss.open")}
-          </button>
+          </Button>
         </div>
       ) : (
         <>
@@ -79,10 +81,11 @@ export function RssWidget() {
             {latest.map((e) => {
               const feed = feedsById.get(e.feed_id);
               return (
-                <button
+                <Button
                   key={e.id}
+                  variant="ghost"
                   onClick={() => navigate("feeds")}
-                  className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-muted/40 transition-colors text-left"
+                  className="h-auto w-full rounded-none flex items-center justify-start gap-2.5 px-4 py-2.5 hover:bg-muted/40 transition-colors text-left"
                 >
                   {e.audio_url ? (
                     <span className="shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center">
@@ -102,7 +105,7 @@ export function RssWidget() {
                     </span>
                   </span>
                   {!e.is_read && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
-                </button>
+                </Button>
               );
             })}
             {latest.length === 0 && (

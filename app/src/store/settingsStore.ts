@@ -30,10 +30,28 @@ interface SettingsState {
   loadFromDB: () => Promise<void>;
 }
 
+/** Cached synchronously so the first render uses the right language instead
+ * of flashing "zh" before the async DB round-trip in loadFromDB() resolves. */
+function cachedUiLanguage(): string {
+  try {
+    return localStorage.getItem("tanwords_language_cache") || "zh";
+  } catch {
+    return "zh";
+  }
+}
+
+function cacheUiLanguage(lang: string) {
+  try {
+    localStorage.setItem("tanwords_language_cache", lang);
+  } catch {
+    // localStorage unavailable — the DB-driven value still applies, just without the fast-path cache
+  }
+}
+
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   theme: "system",
   defaultAiProvider: "openai",
-  uiLanguage: "zh",
+  uiLanguage: cachedUiLanguage(),
   vocabBilingual: false,
   targetLevels: ["C1"],
   ttsModelPath: "",
@@ -57,6 +75,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setUiLanguage: (lang) => {
     set({ uiLanguage: lang });
     saveSetting("ui_language", JSON.stringify(lang));
+    cacheUiLanguage(lang);
   },
 
   setVocabBilingual: (v) => {
@@ -119,10 +138,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         }
       }
 
+      const resolvedUiLanguage = values.ui_language || "zh";
+      cacheUiLanguage(resolvedUiLanguage);
+
       set({
         theme: (values.theme as Theme) || "system",
         defaultAiProvider: values.default_ai_provider || "openai",
-        uiLanguage: values.ui_language || "zh",
+        uiLanguage: resolvedUiLanguage,
         vocabBilingual: values.vocab_bilingual === "true",
         // Legacy installs stored a single string ("C1"); newer ones an array.
         targetLevels: Array.isArray(values.target_level)

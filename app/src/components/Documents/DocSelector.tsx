@@ -4,6 +4,8 @@ import { useT } from "@/hooks/useT";
 import { DocItem } from "./DocItem";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 
 const PAGE_SIZE = 20;
@@ -93,12 +95,12 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey }: Props)
       <div className="px-3 pt-4 pb-2 space-y-2 shrink-0">
         <div className="flex items-center justify-between">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Documents</p>
-          <button
+          <Button
             onClick={onNewDoc}
             className="h-6 px-2.5 rounded-lg bg-primary text-white text-[11px] font-semibold hover:bg-primary/90 transition-colors"
           >
             + {t("doc.newDoc")}
-          </button>
+          </Button>
         </div>
 
         {/* Search */}
@@ -118,26 +120,28 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey }: Props)
 
         {/* Sort + tag filter */}
         <div className="flex gap-1.5">
-          <select
-            value={sort}
-            onChange={(e) => setSort(e.target.value)}
-            className="flex-1 h-6 text-[11px] rounded-lg border border-border bg-card text-foreground focus:outline-none px-1.5"
-          >
-            <option value="modified">{t("doc.sortModified")}</option>
-            <option value="created">{t("doc.sortCreated")}</option>
-            <option value="title">{t("doc.sortTitle")}</option>
-          </select>
+          <Select value={sort} onValueChange={setSort}>
+            <SelectTrigger className="flex-1 h-6 text-[11px] rounded-lg border border-border bg-card text-foreground focus:outline-none px-1.5 gap-1 [&_svg]:h-3 [&_svg]:w-3">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="modified">{t("doc.sortModified")}</SelectItem>
+              <SelectItem value="created">{t("doc.sortCreated")}</SelectItem>
+              <SelectItem value="title">{t("doc.sortTitle")}</SelectItem>
+            </SelectContent>
+          </Select>
           {allTags.length > 0 && (
-            <select
-              value={tagFilter}
-              onChange={(e) => setTagFilter(e.target.value)}
-              className="flex-1 h-6 text-[11px] rounded-lg border border-border bg-card text-foreground focus:outline-none px-1.5"
-            >
-              <option value="">{t("doc.allTags")}</option>
-              {allTags.map((tag) => (
-                <option key={tag} value={tag}>{tag}</option>
-              ))}
-            </select>
+            <Select value={tagFilter || "__all__"} onValueChange={(v) => setTagFilter(v === "__all__" ? "" : v)}>
+              <SelectTrigger className="flex-1 h-6 text-[11px] rounded-lg border border-border bg-card text-foreground focus:outline-none px-1.5 gap-1 [&_svg]:h-3 [&_svg]:w-3">
+                <SelectValue placeholder={t("doc.allTags")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">{t("doc.allTags")}</SelectItem>
+                {allTags.map((tag) => (
+                  <SelectItem key={tag} value={tag}>{tag}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
         </div>
 
@@ -179,24 +183,26 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey }: Props)
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="px-3 py-2.5 border-t border-border flex items-center justify-between shrink-0">
-          <button
+          <Button
+            variant="ghost"
             disabled={page === 0}
             onClick={() => setPage((p) => Math.max(0, p - 1))}
-            className="text-xs px-2 py-1 rounded border border-border disabled:opacity-30 hover:bg-muted transition-colors"
+            className="h-auto text-xs px-2 py-1 rounded border border-border disabled:opacity-30 hover:bg-muted transition-colors"
           >
             ←
-          </button>
+          </Button>
           <span className="text-[10px] text-muted-foreground">
             {t("doc.page", { n: page + 1 })} / {totalPages}
             <span className="ml-1 opacity-60">({t("doc.total", { n: total })})</span>
           </span>
-          <button
+          <Button
+            variant="ghost"
             disabled={page >= totalPages - 1}
             onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-            className="text-xs px-2 py-1 rounded border border-border disabled:opacity-30 hover:bg-muted transition-colors"
+            className="h-auto text-xs px-2 py-1 rounded border border-border disabled:opacity-30 hover:bg-muted transition-colors"
           >
             →
-          </button>
+          </Button>
         </div>
       )}
 

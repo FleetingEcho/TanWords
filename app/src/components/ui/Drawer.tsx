@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 interface DrawerProps {
   open: boolean;
@@ -40,12 +41,13 @@ export function Drawer({ open, onClose, width = 560, panelClassName, children }:
 
 export function DrawerCloseButton({ onClose, title }: { onClose: () => void; title?: string }) {
   return (
-    <button
+    <Button
+      variant="ghost"
       onClick={onClose}
       title={title}
-      className="w-7 h-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors text-lg"
+      className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors text-lg"
     >
       ×
-    </button>
+    </Button>
   );
 }

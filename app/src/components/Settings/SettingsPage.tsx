@@ -8,6 +8,7 @@ import { ProviderSection } from "./ProviderSection";
 import { TtsSection } from "./TtsSection";
 import { getTotalTokens, clearUsage } from "@/store/usageStore";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { Button } from "@/components/ui/button";
 
 const LEVELS = ["A2", "B1", "B2", "C1", "C2"] as const;
 
@@ -27,15 +28,16 @@ function ToggleGroup({ options, value, onChange }: { options: { id: string; labe
   return (
     <div className="flex items-center gap-1 bg-muted p-0.5 rounded-lg">
       {options.map((o) => (
-        <button
+        <Button
           key={o.id}
+          variant="ghost"
           onClick={() => onChange(o.id)}
-          className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+          className={`h-auto px-3 py-1 rounded-md text-xs font-medium transition-colors hover:bg-transparent ${
             value === o.id ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
           }`}
         >
           {o.label}
-        </button>
+        </Button>
       ))}
     </div>
   );
@@ -131,8 +133,9 @@ export function SettingsPage() {
                   {LEVELS.map((lvl) => {
                     const selected = settings.targetLevels.includes(lvl);
                     return (
-                      <button
+                      <Button
                         key={lvl}
+                        variant="ghost"
                         onClick={() =>
                           settings.setTargetLevels(
                             selected
@@ -140,12 +143,12 @@ export function SettingsPage() {
                               : [...LEVELS.filter((l) => settings.targetLevels.includes(l) || l === lvl)]
                           )
                         }
-                        className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                          selected ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                        className={`h-auto px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                          selected ? "bg-primary text-primary-foreground shadow-sm hover:bg-primary" : "text-muted-foreground hover:text-foreground hover:bg-transparent"
                         }`}
                       >
                         {lvl}
-                      </button>
+                      </Button>
                     );
                   })}
                 </div>
@@ -247,34 +250,37 @@ function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: ReturnType<ty
         </SettingRow>
         <SettingRow label={t("settings.switchDB")} sub={t("settings.switchDBSub")}>
           <div className="flex items-center gap-2">
-            <button
+            <Button
+              variant="outline"
               onClick={handleOpenExisting}
               className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted transition-colors"
             >
               {t("settings.switchDBOpenExisting")}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="outline"
               onClick={handleNewLocation}
               className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted transition-colors"
             >
               {t("settings.switchDBNewLocation")}
-            </button>
+            </Button>
           </div>
         </SettingRow>
         <SettingRow label={t("settings.exportDB")} sub={t("settings.exportDBSub")}>
-          <button
+          <Button
             onClick={handleExport}
             disabled={exporting}
             className="h-8 px-4 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
           >
             {exporting ? t("settings.exporting") : t("settings.exportDB")}
-          </button>
+          </Button>
         </SettingRow>
       </div>
 
       <div className="bg-destructive/5 border border-destructive/20 rounded-xl px-5">
         <SettingRow label={t("settings.dangerClearTranslations")} sub={t("settings.dangerClearTranslationsSub")}>
-          <button
+          <Button
+            variant="ghost"
             onClick={handleClearTranslations}
             className={`h-8 px-4 rounded-lg text-xs font-semibold transition-colors ${
               confirmClear
@@ -283,7 +289,7 @@ function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: ReturnType<ty
             }`}
           >
             {confirmClear ? t("settings.dangerConfirm") : t("settings.dangerClear")}
-          </button>
+          </Button>
         </SettingRow>
       </div>
 
@@ -328,7 +334,7 @@ function AiUsageCard() {
           <span className="text-xs text-muted-foreground">{t("settings.outputTokens")}: <span className="font-mono font-semibold text-foreground">{fmt(totals.output)}</span></span>
           <span className="text-xs text-muted-foreground">{t("settings.totalTokens")}: <span className="font-mono font-semibold text-foreground">{fmt(totals.total)}</span></span>
         </div>
-        <button onClick={handleClear} className="text-xs text-muted-foreground hover:text-destructive transition-colors">{t("settings.clearUsage")}</button>
+        <Button variant="link" onClick={handleClear} className="h-auto p-0 text-xs text-muted-foreground hover:text-destructive transition-colors">{t("settings.clearUsage")}</Button>
       </div>
     </div>
   );

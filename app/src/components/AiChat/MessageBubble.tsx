@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { toast } from "sonner";
 import { useT } from "@/hooks/useT";
 import { Markdown } from "./Markdown";
+import { Button } from "@/components/ui/button";
 
 export interface AiMessage {
   role: "user" | "assistant";
@@ -72,31 +73,34 @@ export function MessageBubble({ msg, compact = false, isTyping = false }: Props)
         ) : isLongUserMsg && !expanded ? (
           <>
             <p className="whitespace-pre-wrap">{msg.content.slice(0, COLLAPSE_PREVIEW)}…</p>
-            <button
+            <Button
+              variant="link"
               onClick={() => setExpanded(true)}
-              className="mt-1.5 text-[11px] font-semibold underline underline-offset-2 opacity-80 hover:opacity-100"
+              className="h-auto p-0 mt-1.5 text-[11px] font-semibold underline underline-offset-2 opacity-80 hover:opacity-100"
             >
               {t("aichat.expand", { n: msg.content.length })}
-            </button>
+            </Button>
           </>
         ) : (
           <>
             <p className="whitespace-pre-wrap">{msg.content}</p>
             {isLongUserMsg && (
-              <button
+              <Button
+                variant="link"
                 onClick={() => setExpanded(false)}
-                className="mt-1.5 text-[11px] font-semibold underline underline-offset-2 opacity-80 hover:opacity-100"
+                className="h-auto p-0 mt-1.5 text-[11px] font-semibold underline underline-offset-2 opacity-80 hover:opacity-100"
               >
                 {t("aichat.collapse")}
-              </button>
+              </Button>
             )}
           </>
         )}
 
         {!isTyping && msg.content && (
-          <button
+          <Button
+            variant="ghost"
             onClick={copy}
-            className={`absolute -top-2 ${msg.role === "user" ? "-left-2" : "-right-2"} w-5 h-5 rounded-full bg-background border border-border flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm`}
+            className={`absolute -top-2 ${msg.role === "user" ? "-left-2" : "-right-2"} w-5 h-5 p-0 rounded-full bg-background border border-border flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-background`}
             title={t("chat.copy")}
           >
             {copied ? (
@@ -109,7 +113,7 @@ export function MessageBubble({ msg, compact = false, isTyping = false }: Props)
                 <path d="M3 8H2a1 1 0 01-1-1V2a1 1 0 011-1h5a1 1 0 011 1v1" stroke="currentColor" strokeWidth="1" fill="none" />
               </svg>
             )}
-          </button>
+          </Button>
         )}
       </div>
 

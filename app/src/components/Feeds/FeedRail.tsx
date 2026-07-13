@@ -4,6 +4,7 @@ import { CloseIcon } from "@/components/ui/icons";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import type { RssFeed } from "@/hooks/useDB.types";
 import { domainOf } from "./feedUtils";
+import { Button } from "@/components/ui/button";
 
 interface Props {
   feeds: RssFeed[];
@@ -43,10 +44,11 @@ export function FeedRail({ feeds, unreadByFeed, failedFeeds, selected, onSelect,
 
   const renderFeed = (f: RssFeed) => (
     <div key={f.id} className="group relative">
-      <button
+      <Button
+        variant="ghost"
         onClick={() => onSelect(f.id)}
-        className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left transition-colors ${
-          selected === f.id ? "bg-primary/10 text-primary" : "hover:bg-muted"
+        className={`h-auto w-full flex items-center justify-start gap-2 px-2.5 py-2 rounded-lg text-left transition-colors ${
+          selected === f.id ? "bg-primary/10 text-primary hover:bg-primary/10" : "hover:bg-muted"
         }`}
       >
         <span className="flex-1 min-w-0">
@@ -63,14 +65,15 @@ export function FeedRail({ feeds, unreadByFeed, failedFeeds, selected, onSelect,
         <span className="group-hover:hidden">
           <UnreadBadge n={unreadByFeed.get(f.id) ?? 0} />
         </span>
-      </button>
-      <button
+      </Button>
+      <Button
+        variant="ghost"
         onClick={(e) => { e.stopPropagation(); setPendingDelete(f); }}
         title={t("feeds.deleteFeed")}
-        className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 hidden group-hover:flex items-center justify-center rounded text-muted-foreground hover:text-destructive"
+        className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 p-0 hidden group-hover:flex items-center justify-center rounded text-muted-foreground hover:text-destructive"
       >
         <CloseIcon className="w-3 h-3" />
-      </button>
+      </Button>
     </div>
   );
 
@@ -81,15 +84,16 @@ export function FeedRail({ feeds, unreadByFeed, failedFeeds, selected, onSelect,
       </div>
 
       <div className="flex-1 overflow-y-auto py-1.5 px-2">
-        <button
+        <Button
+          variant="ghost"
           onClick={() => onSelect("all")}
-          className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-sm text-left transition-colors ${
-            selected === "all" ? "bg-primary/10 text-primary font-semibold" : "hover:bg-muted"
+          className={`h-auto w-full flex items-center justify-start gap-2 px-2.5 py-2 rounded-lg text-sm text-left transition-colors ${
+            selected === "all" ? "bg-primary/10 text-primary font-semibold hover:bg-primary/10" : "hover:bg-muted"
           }`}
         >
           <span className="flex-1 truncate">{t("feeds.all")}</span>
           <UnreadBadge n={totalUnread} />
-        </button>
+        </Button>
 
         {podcastFeeds.length === 0 ? (
           articleFeeds.map(renderFeed)
@@ -108,12 +112,13 @@ export function FeedRail({ feeds, unreadByFeed, failedFeeds, selected, onSelect,
       </div>
 
       <div className="p-3 border-t border-border">
-        <button
+        <Button
+          variant="outline"
           onClick={onAdd}
           className="w-full h-8 rounded-lg text-xs font-semibold border border-input hover:bg-muted hover:border-primary/30 transition-colors"
         >
           + {t("feeds.addFeed")}
-        </button>
+        </Button>
       </div>
 
       <ConfirmModal

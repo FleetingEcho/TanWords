@@ -5,6 +5,7 @@ import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
 import { usePlayerOriginStore } from "@/store/playerOriginStore";
 import { useLayoutStore, SIDEBAR_WIDTH, SIDEBAR_WIDTH_COLLAPSED } from "@/store/layoutStore";
 import { PlayIcon, PauseIcon, CloseIcon, RefreshIcon } from "@/components/ui/icons";
+import { Button } from "@/components/ui/button";
 
 const SPEEDS = [0.75, 1, 1.25, 1.5];
 
@@ -47,22 +48,24 @@ export function PodcastPlayerBar() {
       className="fixed bottom-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-sm px-4 py-2.5 flex items-center gap-3 animate-fade-in transition-[left] duration-200"
       style={{ left: sidebarCollapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH }}
     >
-      <button
+      <Button
+        variant="ghost"
         onClick={() => seekBy(-15)}
         className="h-8 px-2 rounded-md flex items-center justify-center text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
         title={t("podcast.back15")}
       >
         -15s
-      </button>
+      </Button>
 
       {isError ? (
-        <button
+        <Button
+          variant="ghost"
           onClick={toggle}
-          className="w-9 h-9 rounded-full flex items-center justify-center bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors shrink-0"
+          className="w-9 h-9 p-0 rounded-full flex items-center justify-center bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors shrink-0"
           title={t("podcast.retry")}
         >
           <RefreshIcon className="w-4 h-4" />
-        </button>
+        </Button>
       ) : isLoading ? (
         <div
           className="w-9 h-9 rounded-full flex items-center justify-center bg-primary/10 shrink-0"
@@ -71,22 +74,24 @@ export function PodcastPlayerBar() {
           <div className="w-4 h-4 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
         </div>
       ) : (
-        <button
+        <Button
+          variant="ghost"
           onClick={toggle}
-          className="w-9 h-9 rounded-full flex items-center justify-center bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shrink-0"
+          className="w-9 h-9 p-0 rounded-full flex items-center justify-center bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shrink-0"
           title={isPlaying ? t("podcast.pause") : t("podcast.play")}
         >
           {isPlaying ? <PauseIcon className="w-4 h-4" /> : <PlayIcon className="w-4 h-4" />}
-        </button>
+        </Button>
       )}
 
-      <button
+      <Button
+        variant="ghost"
         onClick={() => seekBy(15)}
         className="h-8 px-2 rounded-md flex items-center justify-center text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
         title={t("podcast.forward15")}
       >
         +15s
-      </button>
+      </Button>
 
       <span className="text-xs font-mono tabular-nums text-muted-foreground shrink-0">
         {formatTime(position)} / {formatTime(duration)}
@@ -105,38 +110,41 @@ export function PodcastPlayerBar() {
         style={{ accentColor: "hsl(var(--primary))" }}
       />
 
-      <button
+      <Button
+        variant="ghost"
         onClick={goToOrigin}
         title={t("tts.backToSource")}
-        className="w-56 min-w-0 hidden md:flex flex-col shrink-0 text-left hover:opacity-80 transition-opacity"
+        className="h-auto w-56 min-w-0 hidden md:flex flex-col items-start shrink-0 text-left hover:opacity-80 hover:bg-transparent transition-opacity"
       >
         <span className="truncate text-xs font-medium text-foreground">{track.title}</span>
         <span className="truncate text-[10px] text-muted-foreground">
           {isError ? t("podcast.error") : track.feedTitle}
         </span>
-      </button>
+      </Button>
 
       <div className="flex items-center gap-1 bg-muted p-0.5 rounded-lg shrink-0">
         {SPEEDS.map((s) => (
-          <button
+          <Button
             key={s}
+            variant="ghost"
             onClick={() => setSpeed(s)}
-            className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
-              speed === s ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+            className={`h-auto px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
+              speed === s ? "bg-card shadow-sm text-foreground hover:bg-card" : "text-muted-foreground hover:text-foreground"
             }`}
           >
             {s}x
-          </button>
+          </Button>
         ))}
       </div>
 
-      <button
+      <Button
+        variant="ghost"
         onClick={stop}
-        className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+        className="w-8 h-8 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
         title={t("podcast.close")}
       >
         <CloseIcon className="w-4 h-4" />
-      </button>
+      </Button>
     </div>
   );
 }

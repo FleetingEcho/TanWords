@@ -6,6 +6,7 @@ import { useReadingStore } from "@/store/readingStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { ReadingIcon, ChatIcon, FeedIcon } from "@/components/ui/icons";
 import { RssWidget } from "./RssWidget";
+import { Button } from "@/components/ui/button";
 
 const LEVEL_COLORS: Record<string, string> = {
   C2: "#a855f7", C1: "#3b82f6", B2: "#14b8a6", B1: "#22c55e", A2: "#f59e0b", A1: "#f59e0b",
@@ -89,9 +90,10 @@ export function DashboardPage() {
 
       {/* Hero: resume the unfinished lesson, or start a new one */}
       {resume ? (
-        <button
+        <Button
+          variant="ghost"
           onClick={() => resumeLesson(resume.article_id)}
-          className="group w-full text-left bg-gradient-to-br from-primary to-indigo-700 text-primary-foreground rounded-2xl p-6 relative overflow-hidden transition-transform hover:scale-[1.005] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          className="h-auto group w-full block text-left bg-gradient-to-br from-primary to-indigo-700 text-primary-foreground rounded-2xl p-6 relative overflow-hidden transition-transform hover:scale-[1.005] hover:bg-gradient-to-br hover:from-primary hover:to-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
         >
           <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest opacity-80">
             {resume.origin === "hackernews" && (
@@ -119,11 +121,12 @@ export function DashboardPage() {
           <span className="absolute right-6 bottom-6 inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-white/15 backdrop-blur text-sm font-semibold group-hover:bg-white/25 transition-colors">
             {t("dash.resume.cta")} →
           </span>
-        </button>
+        </Button>
       ) : (
-        <button
+        <Button
+          variant="ghost"
           onClick={() => navigate("reading")}
-          className="group w-full text-left bg-gradient-to-br from-primary to-indigo-700 text-primary-foreground rounded-2xl p-6 relative overflow-hidden transition-transform hover:scale-[1.005] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          className="h-auto group w-full block text-left bg-gradient-to-br from-primary to-indigo-700 text-primary-foreground rounded-2xl p-6 relative overflow-hidden transition-transform hover:scale-[1.005] hover:bg-gradient-to-br hover:from-primary hover:to-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
         >
           <p className="text-[11px] font-bold uppercase tracking-widest opacity-80">{t("dash.start.eyebrow")}</p>
           <p className="text-xl font-bold leading-snug mt-2">{t("dash.start.title")}</p>
@@ -131,7 +134,7 @@ export function DashboardPage() {
           <span className="absolute right-6 bottom-6 inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-white/15 backdrop-blur text-sm font-semibold group-hover:bg-white/25 transition-colors">
             {t("dash.start.cta")} →
           </span>
-        </button>
+        </Button>
       )}
 
       {/* Stat tiles: what has been collected, not how diligently */}
@@ -152,14 +155,15 @@ export function DashboardPage() {
                 { icon: FeedIcon, label: t("dash.quick.feeds"), go: () => navigate("feeds") },
                 { icon: ChatIcon, label: t("dash.quick.chat"), go: () => navigate("chat") },
               ].map((a) => (
-                <button
+                <Button
                   key={a.label}
+                  variant="ghost"
                   onClick={a.go}
-                  className="group flex flex-col items-center gap-1.5 py-3 rounded-xl border border-border hover:bg-muted/60 hover:border-primary/30 transition-colors"
+                  className="h-auto group flex flex-col items-center gap-1.5 py-3 rounded-xl border border-border hover:bg-muted/60 hover:border-primary/30 transition-colors"
                 >
                   <a.icon className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
                   <span className="text-[11px] font-medium text-muted-foreground">{a.label}</span>
-                </button>
+                </Button>
               ))}
             </div>
           </div>
@@ -173,27 +177,29 @@ export function DashboardPage() {
           <div className="bg-card border border-border rounded-2xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
               <h2 className="text-sm font-semibold">{t("dash.recentWords")}</h2>
-              <button
+              <Button
+                variant="link"
                 onClick={() => navigate("vocabulary")}
-                className="text-[11px] font-semibold text-primary hover:underline"
+                className="h-auto p-0 text-[11px] font-semibold text-primary hover:underline"
               >
                 {t("dash.viewAll")}
-              </button>
+              </Button>
             </div>
             {stats && stats.recent_words.length === 0 ? (
               <p className="px-4 py-6 text-xs text-muted-foreground leading-relaxed">{t("dash.empty.words")}</p>
             ) : (
               <div className="divide-y divide-border">
                 {(stats?.recent_words ?? []).map((w) => (
-                  <button
+                  <Button
                     key={w.id}
+                    variant="ghost"
                     onClick={() => navigate("vocabulary", w.id)}
-                    className="w-full flex items-center gap-2 px-4 py-2.5 hover:bg-muted/40 transition-colors text-left"
+                    className="h-auto w-full rounded-none flex items-center justify-start gap-2 px-4 py-2.5 hover:bg-muted/40 transition-colors text-left"
                   >
                     <span className="text-sm font-semibold text-foreground">{w.word}</span>
                     <LevelDot level={w.level} />
                     <span className="flex-1 min-w-0 text-xs text-muted-foreground truncate text-right">{w.zh}</span>
-                  </button>
+                  </Button>
                 ))}
               </div>
             )}
@@ -203,28 +209,30 @@ export function DashboardPage() {
           <div className="bg-card border border-border rounded-2xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
               <h2 className="text-sm font-semibold">{t("dash.recentDocs")}</h2>
-              <button
+              <Button
+                variant="link"
                 onClick={() => navigate("documents")}
-                className="text-[11px] font-semibold text-primary hover:underline"
+                className="h-auto p-0 text-[11px] font-semibold text-primary hover:underline"
               >
                 {t("dash.viewAll")}
-              </button>
+              </Button>
             </div>
             {stats && stats.recent_docs.length === 0 ? (
               <p className="px-4 py-6 text-xs text-muted-foreground">{t("dash.empty.docs")}</p>
             ) : (
               <div className="divide-y divide-border">
                 {(stats?.recent_docs ?? []).map((d) => (
-                  <button
+                  <Button
                     key={d.id}
+                    variant="ghost"
                     onClick={() => navigate("documents")}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors text-left"
+                    className="h-auto w-full rounded-none flex items-center justify-start gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors text-left"
                   >
                     <span className="flex-1 min-w-0 text-sm font-medium truncate">{d.title}</span>
                     <span className="text-[10px] font-mono text-muted-foreground/70 shrink-0">
                       {d.updated_at.slice(0, 10)}
                     </span>
-                  </button>
+                  </Button>
                 ))}
               </div>
             )}

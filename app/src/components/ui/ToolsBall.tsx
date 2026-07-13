@@ -5,6 +5,7 @@ import { useToolsBallStore } from "@/store/toolsBallStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
 import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
+import { Button } from "@/components/ui/button";
 
 const SIZE = 44;
 const DRAG_THRESHOLD = 5;
@@ -69,7 +70,8 @@ export function ToolsBall() {
   const y = playerBarVisible ? Math.min(ballPos.y, window.innerHeight - SIZE - 72) : ballPos.y;
 
   return (
-    <button
+    <Button
+      variant="ghost"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -83,11 +85,11 @@ export function ToolsBall() {
         transition: dragging ? "none" : "left 0.3s cubic-bezier(0.22, 1, 0.36, 1), top 0.3s cubic-bezier(0.22, 1, 0.36, 1), transform 0.15s",
         touchAction: "none",
       }}
-      className={`fixed z-30 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25
+      className={`fixed z-30 p-0 rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/25
         flex items-center justify-center select-none
-        ${dragging ? "scale-110 cursor-grabbing shadow-xl" : "hover:bg-primary/90 hover:scale-105 active:scale-95 cursor-grab"}`}
+        ${dragging ? "scale-110 cursor-grabbing shadow-xl hover:bg-primary" : "hover:bg-primary/90 hover:scale-105 active:scale-95 cursor-grab"}`}
     >
       <SquaresPlusIcon className="w-[19px] h-[19px] pointer-events-none" />
-    </button>
+    </Button>
   );
 }

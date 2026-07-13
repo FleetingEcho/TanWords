@@ -6,6 +6,8 @@ import { VocabExtractionCard, ExtractedVocabItem } from "./VocabExtractionCard";
 import { AiChatSidebar } from "./AiChatSidebar";
 import { AiChatComposer } from "./AiChatComposer";
 import { useAiChatSession, PRESET_IDS } from "./useAiChatSession";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export function AiChatPage() {
   const t = useT();
@@ -30,27 +32,28 @@ export function AiChatPage() {
           <span className="flex-1 min-w-0 text-sm font-semibold text-foreground truncate">
             {s.isNewSession ? t("aichat.newChat") : s.activeTitle}
           </span>
-          <select
-            value={s.selectedPreset}
-            onChange={(e) => s.setSelectedPreset(e.target.value)}
-            className="h-8 px-2 text-xs rounded-lg border border-input bg-card focus:outline-none focus:ring-2 focus:ring-primary/30 shrink-0"
-          >
-            {PRESET_IDS.map((id) => (
-              <option key={id} value={id}>{t(`aichat.preset.${id}`)}</option>
-            ))}
-          </select>
-          <select
-            value={s.selectedProviderId}
-            onChange={(e) => s.setSelectedProviderId(e.target.value)}
-            className="h-8 px-2 text-xs rounded-lg border border-input bg-card focus:outline-none focus:ring-2 focus:ring-primary/30 shrink-0 max-w-[180px]"
-          >
-            {s.providers.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.modelId}</option>)}
-            {s.providers.length === 0 && <option disabled>{t("aichat.noProvider")}</option>}
-          </select>
+          <Select value={s.selectedPreset} onValueChange={(v) => s.setSelectedPreset(v)}>
+            <SelectTrigger className="h-8 w-auto gap-1 px-2 text-xs rounded-lg border border-input bg-card focus:outline-none focus:ring-2 focus:ring-primary/30 shrink-0">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PRESET_IDS.map((id) => (
+                <SelectItem key={id} value={id}>{t(`aichat.preset.${id}`)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={s.selectedProviderId} onValueChange={(v) => s.setSelectedProviderId(v)} disabled={s.providers.length === 0}>
+            <SelectTrigger className="h-8 w-auto gap-1 px-2 text-xs rounded-lg border border-input bg-card focus:outline-none focus:ring-2 focus:ring-primary/30 shrink-0 max-w-[180px]">
+              <SelectValue placeholder={t("aichat.noProvider")} />
+            </SelectTrigger>
+            <SelectContent>
+              {s.providers.map((p) => <SelectItem key={p.id} value={p.id}>{p.name} · {p.modelId}</SelectItem>)}
+            </SelectContent>
+          </Select>
           {s.displayItems.length > 0 && (
-            <button onClick={s.clearMessages} className="px-3 h-8 text-xs text-muted-foreground hover:text-destructive hover:bg-muted rounded-lg transition-colors shrink-0">
+            <Button variant="ghost" onClick={s.clearMessages} className="px-3 h-8 text-xs text-muted-foreground hover:text-destructive hover:bg-muted rounded-lg transition-colors shrink-0">
               {t("aichat.clear")}
-            </button>
+            </Button>
           )}
         </div>
 
@@ -77,14 +80,15 @@ export function AiChatPage() {
               </div>
               <div className="grid grid-cols-2 gap-2.5 w-full max-w-md">
                 {s.QUICK_CARDS.map((c) => (
-                  <button
+                  <Button
                     key={c.titleKey}
+                    variant="ghost"
                     onClick={() => s.applyQuickCard(c.prefillKey)}
-                    className="flex items-center gap-2.5 px-4 py-3 rounded-xl border border-border bg-card text-left hover:border-primary/40 hover:bg-muted/40 transition-colors"
+                    className="h-auto flex items-center justify-start gap-2.5 px-4 py-3 rounded-xl border border-border bg-card text-left hover:border-primary/40 hover:bg-muted/40 transition-colors"
                   >
                     <c.icon className="w-4 h-4 text-primary" />
                     <span className="text-xs font-medium">{t(c.titleKey)}</span>
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>

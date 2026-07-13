@@ -3,6 +3,7 @@ import { useT } from "@/hooks/useT";
 import { RECOMMENDED_TTS_MODELS, RecommendedTtsModel } from "@/lib/recommendedTtsModels";
 import { TtsModelInfo, TtsDownloadProgress } from "@/lib/ttsTypes";
 import { ChevronIcon } from "@/components/ui/icons";
+import { Button } from "@/components/ui/button";
 
 function progressLabel(progress: TtsDownloadProgress | null, t: ReturnType<typeof useT>): string {
   if (!progress) return t("tts.downloadingUnknown");
@@ -65,9 +66,9 @@ export function RecommendedModelsList({
           <p className="text-[11px] text-muted-foreground min-w-0 truncate">
             {t("tts.modelsDir")}: <span className="font-mono">{defaultModelsDir}</span>
           </p>
-          <button onClick={copyModelsDir} className="text-[11px] font-semibold text-primary hover:underline shrink-0">
+          <Button variant="link" onClick={copyModelsDir} className="h-auto p-0 text-[11px] font-semibold text-primary hover:underline shrink-0">
             {pathCopied ? t("tts.pathCopied") : t("tts.copyPath")}
-          </button>
+          </Button>
         </div>
       )}
 
@@ -91,9 +92,10 @@ export function RecommendedModelsList({
                   return (
                     <div key={model.id} className="rounded-lg border border-border overflow-hidden">
                       <div className="flex items-center gap-2 px-2.5 py-1.5">
-                        <button
+                        <Button
+                          variant="ghost"
                           onClick={() => setExpandedId(expanded ? null : model.id)}
-                          className="flex items-center gap-1.5 min-w-0 flex-1 text-left"
+                          className="h-auto flex items-center justify-start gap-1.5 min-w-0 flex-1 text-left"
                         >
                           <ChevronIcon
                             direction="right"
@@ -105,17 +107,19 @@ export function RecommendedModelsList({
                               {t(model.descriptionKey)} · ~{model.sizeMb}MB
                             </span>
                           </span>
-                        </button>
+                        </Button>
                         <div className="flex items-center gap-1.5 shrink-0">
                           {downloaded && (
-                            <button
+                            <Button
+                              variant="ghost"
                               onClick={() => onDeleteRequest(downloadedInfo)}
                               className="h-6 px-2 rounded-md text-[10.5px] font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                             >
                               {t("tts.delete")}
-                            </button>
+                            </Button>
                           )}
-                          <button
+                          <Button
+                            variant="outline"
                             onClick={() => onDownload(model)}
                             disabled={downloadingId !== null || downloaded}
                             className="h-6 px-2 rounded-md text-[10.5px] font-medium border border-input hover:bg-muted disabled:opacity-50 transition-colors"
@@ -125,7 +129,7 @@ export function RecommendedModelsList({
                               : isThisDownloading
                                 ? progressLabel(progress, t)
                                 : t("tts.download")}
-                          </button>
+                          </Button>
                         </div>
                       </div>
                       {expanded && (

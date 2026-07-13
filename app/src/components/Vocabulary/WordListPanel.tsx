@@ -5,6 +5,8 @@ import { LevelBadge } from "@/components/shared/LevelBadge";
 import { SpeakButton } from "@/components/ui/SpeakButton";
 import { SparkIcon } from "@/components/ui/icons";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PencilIcon, ChatBubbleLeftIcon, RectangleStackIcon, LightBulbIcon, StarIcon } from "@heroicons/react/24/outline";
 
 type LevelFilter = "all" | "C2" | "C1" | "B2" | "B1-";
@@ -70,24 +72,26 @@ export function WordListPanel({
         <div className="flex items-baseline gap-2">
           <h2 className="text-lg font-bold">{t("vocab.title")}</h2>
           <span className="text-sm text-muted-foreground">{t("vocab.wordCount", { n: words.length })}</span>
-          <button
+          <Button
+            variant="ghost"
             onClick={onOpenGenerate}
             title={t("vocab.generateBtn")}
-            className="ml-auto w-6 h-6 rounded-md flex items-center justify-center text-primary hover:bg-primary/10 transition-colors shrink-0"
+            className="ml-auto w-6 h-6 p-0 rounded-md flex items-center justify-center text-primary hover:bg-primary/10 transition-colors shrink-0"
           >
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3.5 h-3.5">
               <path d="M10 4v12M4 10h12" strokeLinecap="round" />
             </svg>
-          </button>
-          <select
-            value={sortBy}
-            onChange={(e) => onSortChange(e.target.value as SortBy)}
-            className="h-6 px-1.5 rounded-md border border-input bg-background text-[11px] text-muted-foreground focus:outline-none"
-          >
-            <option value="recent">{t("vocab.sortRecent")}</option>
-            <option value="freq">{t("vocab.sortFreq")}</option>
-            <option value="alpha">{t("vocab.sortAlpha")}</option>
-          </select>
+          </Button>
+          <Select value={sortBy} onValueChange={(v) => onSortChange(v as SortBy)}>
+            <SelectTrigger className="h-6 w-auto gap-1 px-1.5 py-0 rounded-md border border-input bg-background text-[11px] text-muted-foreground focus:outline-none [&_svg]:h-3 [&_svg]:w-3">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="recent">{t("vocab.sortRecent")}</SelectItem>
+              <SelectItem value="freq">{t("vocab.sortFreq")}</SelectItem>
+              <SelectItem value="alpha">{t("vocab.sortAlpha")}</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Dictionary search — hits the vocabulary first, AI lookup as fallback */}
@@ -110,45 +114,48 @@ export function WordListPanel({
         {/* Level chips */}
         <div className="flex gap-1 flex-wrap">
           {LEVEL_CHIPS.map((lv) => (
-            <button
+            <Button
               key={lv}
+              variant="ghost"
               onClick={() => onFilterChange(lv)}
-              className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border transition-colors ${
+              className={`h-auto px-2 py-0.5 rounded-full text-[10px] font-semibold border transition-colors ${
                 levelFilter === lv
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "border-border text-muted-foreground hover:border-primary/40"
+                  ? "bg-primary text-primary-foreground border-primary hover:bg-primary/90"
+                  : "border-border text-muted-foreground hover:border-primary/40 hover:bg-transparent"
               }`}
             >
               {lv === "all" ? t("vocab.levelAll") : lv === "B1-" ? t("vocab.levelB1minus") : lv}
-            </button>
+            </Button>
           ))}
         </div>
 
         {/* Source chips — only when the vocabulary has more than one origin */}
         {sources.length > 1 && (
           <div className="flex gap-1 flex-wrap">
-            <button
+            <Button
+              variant="ghost"
               onClick={() => onSourceFilterChange("all")}
-              className={`px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors ${
+              className={`h-auto px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors ${
                 sourceFilter === "all"
-                  ? "bg-muted text-foreground border-transparent"
-                  : "border-border text-muted-foreground hover:border-primary/40"
+                  ? "bg-muted text-foreground border-transparent hover:bg-muted"
+                  : "border-border text-muted-foreground hover:border-primary/40 hover:bg-transparent"
               }`}
             >
               {t("vocab.source.all")}
-            </button>
+            </Button>
             {sources.map((s) => (
-              <button
+              <Button
                 key={s}
+                variant="ghost"
                 onClick={() => onSourceFilterChange(s)}
-                className={`px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors ${
+                className={`h-auto px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors ${
                   sourceFilter === s
-                    ? "bg-muted text-foreground border-transparent"
-                    : "border-border text-muted-foreground hover:border-primary/40"
+                    ? "bg-muted text-foreground border-transparent hover:bg-muted"
+                    : "border-border text-muted-foreground hover:border-primary/40 hover:bg-transparent"
                 }`}
               >
                 {SOURCE_ICONS[s] ? React.createElement(SOURCE_ICONS[s], { className: "w-2.5 h-2.5 inline" }) : "·"} {t(`vocab.source.${s}`)}
-              </button>
+              </Button>
             ))}
           </div>
         )}
@@ -157,15 +164,16 @@ export function WordListPanel({
         <div className="flex items-center gap-1.5">
           <div className="flex items-center gap-0.5 bg-muted p-0.5 rounded-lg shrink-0">
             {(["created", "updated"] as DateField[]).map((f) => (
-              <button
+              <Button
                 key={f}
+                variant="ghost"
                 onClick={() => onDateFieldChange(f)}
-                className={`px-2 py-0.5 rounded-md text-[10px] font-medium transition-colors ${
+                className={`h-auto px-2 py-0.5 rounded-md text-[10px] font-medium transition-colors hover:bg-transparent ${
                   dateField === f ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 {f === "created" ? t("vocab.dateAdded") : t("vocab.dateUpdated")}
-              </button>
+              </Button>
             ))}
           </div>
           <DateRangePicker
@@ -180,10 +188,11 @@ export function WordListPanel({
       <div className="flex-1 overflow-y-auto divide-y divide-border">
         {/* AI dictionary lookup entry for words not in the vocabulary */}
         {showAiLookup && search.trim() && (
-          <button
+          <Button
+            variant="ghost"
             onClick={() => onAiLookup(search.trim())}
-            className={`w-full px-4 py-3 text-left transition-colors ${
-              lookupActive ? "bg-accent/50" : "hover:bg-muted/50"
+            className={`h-auto w-full px-4 py-3 text-left justify-start block rounded-none transition-colors ${
+              lookupActive ? "bg-accent/50 hover:bg-accent/50" : "hover:bg-muted/50"
             }`}
           >
             <div className="flex items-center gap-2">
@@ -191,7 +200,7 @@ export function WordListPanel({
               <span className="text-sm font-semibold text-primary truncate">{search.trim()}</span>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">{t("vocab.aiLookupHint")}</p>
-          </button>
+          </Button>
         )}
 
         {paged.length === 0 && !showAiLookup && (
@@ -224,27 +233,29 @@ export function WordListPanel({
 
       {totalPages > 1 && (
         <div className="shrink-0 border-t border-border px-3 py-2 flex items-center justify-between gap-1">
-          <button
+          <Button
+            variant="ghost"
             onClick={() => onPageChange(Math.max(0, page - 1))}
             disabled={page === 0}
-            className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted disabled:opacity-30 transition-colors"
+            className="w-7 h-7 p-0 flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted disabled:opacity-30 transition-colors"
           >
             <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
               <path fillRule="evenodd" d="M9.78 12.78a.75.75 0 01-1.06 0L4.47 8.53a.75.75 0 010-1.06l4.25-4.25a.75.75 0 011.06 1.06L6.06 8l3.72 3.72a.75.75 0 010 1.06z" clipRule="evenodd" />
             </svg>
-          </button>
+          </Button>
           <span className="text-[11px] text-muted-foreground">
             {page * pageSize + 1}–{Math.min((page + 1) * pageSize, words.length)} / {words.length}
           </span>
-          <button
+          <Button
+            variant="ghost"
             onClick={() => onPageChange(Math.min(totalPages - 1, page + 1))}
             disabled={(page + 1) * pageSize >= words.length}
-            className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted disabled:opacity-30 transition-colors"
+            className="w-7 h-7 p-0 flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted disabled:opacity-30 transition-colors"
           >
             <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
               <path fillRule="evenodd" d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z" clipRule="evenodd" />
             </svg>
-          </button>
+          </Button>
         </div>
       )}
     </div>

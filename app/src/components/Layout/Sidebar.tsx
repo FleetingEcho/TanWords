@@ -6,6 +6,7 @@ import {
   GridIcon, BookIcon, DocIcon, ChatIcon, SlidersIcon,
   FeedIcon, ReadingIcon, ChevronIcon,
 } from "@/components/ui/icons";
+import { Button } from "@/components/ui/button";
 
 interface NavItemDef {
   id: NavPage;
@@ -58,13 +59,14 @@ export function MainLayout({
               {t("nav.workspace")}
             </p>
           )}
-          <button
+          <Button
+            variant="ghost"
             onClick={toggleCollapsed}
             title={collapsed ? t("nav.expand") : t("nav.collapse")}
-            className="w-6 h-6 flex items-center justify-center rounded-md text-[hsl(var(--sidebar-muted))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--sidebar-foreground))] transition-colors shrink-0"
+            className="w-6 h-6 p-0 flex items-center justify-center rounded-md text-[hsl(var(--sidebar-muted))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--sidebar-foreground))] transition-colors shrink-0"
           >
             <ChevronIcon direction={collapsed ? "right" : "left"} className="w-3.5 h-3.5" />
-          </button>
+          </Button>
         </div>
 
         <nav className="flex-1 px-2 py-1 space-y-0.5 overflow-y-auto overflow-x-hidden">
@@ -72,15 +74,16 @@ export function MainLayout({
             const active = activeNav === item.id;
             const count = item.showCount === "word" ? wordCount : 0;
             return (
-              <button
+              <Button
                 key={item.id}
+                variant="ghost"
                 onClick={() => onNavigate(item.id)}
                 title={collapsed ? item.label : undefined}
-                className={`w-full flex items-center rounded-lg text-sm font-medium transition-colors duration-100 ${
+                className={`h-auto w-full flex items-center rounded-lg text-sm font-medium transition-colors duration-100 ${
                   collapsed ? "justify-center px-0 py-[9px]" : "gap-2.5 px-3 py-[7px]"
                 } ${
                   active
-                    ? "bg-[hsl(var(--sidebar-active-bg))] text-[hsl(var(--sidebar-active-fg))]"
+                    ? "bg-[hsl(var(--sidebar-active-bg))] text-[hsl(var(--sidebar-active-fg))] hover:bg-[hsl(var(--sidebar-active-bg))]"
                     : "text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--muted))]"
                 }`}
               >
@@ -105,7 +108,7 @@ export function MainLayout({
                     )}
                   </>
                 )}
-              </button>
+              </Button>
             );
           })}
         </nav>
@@ -115,20 +118,21 @@ export function MainLayout({
             used elsewhere (e.g. FeedRail's "+ Add feed"), so the sidebar's
             bottom border lines up with the page content's footer border. */}
         <div className="h-14 px-2 flex items-center border-t border-[hsl(var(--sidebar-border))]">
-          <button
+          <Button
+            variant="ghost"
             onClick={() => onNavigate("settings")}
             title={collapsed ? t("nav.settings") : undefined}
-            className={`w-full flex items-center rounded-lg text-sm font-medium transition-colors duration-100 ${
+            className={`h-auto w-full flex items-center rounded-lg text-sm font-medium transition-colors duration-100 ${
               collapsed ? "justify-center px-0 py-[9px]" : "gap-2.5 px-3 py-[7px]"
             } ${
               activeNav === "settings"
-                ? "bg-[hsl(var(--sidebar-active-bg))] text-[hsl(var(--sidebar-active-fg))]"
+                ? "bg-[hsl(var(--sidebar-active-bg))] text-[hsl(var(--sidebar-active-fg))] hover:bg-[hsl(var(--sidebar-active-bg))]"
                 : "text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--muted))]"
             }`}
           >
             <SlidersIcon className="w-[18px] h-[18px] shrink-0" />
             {!collapsed && <span className="flex-1 text-left">{t("nav.settings")}</span>}
-          </button>
+          </Button>
         </div>
 
       </aside>

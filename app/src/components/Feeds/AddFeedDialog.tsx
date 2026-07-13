@@ -4,6 +4,7 @@ import { useDB } from "@/hooks/useDB";
 import { CloseIcon } from "@/components/ui/icons";
 import type { RssFeedMeta } from "@/hooks/useDB.types";
 import { DEFAULT_FEEDS } from "./defaultFeeds";
+import { Button } from "@/components/ui/button";
 
 interface Props {
   open: boolean;
@@ -69,9 +70,9 @@ export function AddFeedDialog({ open, onClose, onAdded, subscribedUrls }: Props)
       >
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-bold">{t("feeds.addTitle")}</h3>
-          <button onClick={onClose} className="w-6 h-6 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+          <Button variant="ghost" onClick={onClose} className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
             <CloseIcon className="w-3.5 h-3.5" />
-          </button>
+          </Button>
         </div>
 
         <div className="flex gap-2">
@@ -83,13 +84,14 @@ export function AddFeedDialog({ open, onClose, onAdded, subscribedUrls }: Props)
             placeholder={t("feeds.urlPlaceholder")}
             className="flex-1 h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
           />
-          <button
+          <Button
+            variant="outline"
             onClick={() => fetchPreview()}
             disabled={loading || !url.trim()}
             className="h-9 px-3.5 rounded-lg text-xs font-semibold border border-input hover:bg-muted disabled:opacity-50 transition-colors shrink-0"
           >
             {loading ? t("feeds.fetching") : t("feeds.fetch")}
-          </button>
+          </Button>
         </div>
         {error && <p className="text-xs text-destructive mt-2">{error}</p>}
 
@@ -102,12 +104,12 @@ export function AddFeedDialog({ open, onClose, onAdded, subscribedUrls }: Props)
             <p className="text-[10px] text-muted-foreground mt-1">
               {t("feeds.previewCount", { count: preview.entries.length })}
             </p>
-            <button
+            <Button
               onClick={subscribe}
               className="mt-3 h-8 px-4 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
             >
               {t("feeds.subscribe")}
-            </button>
+            </Button>
           </div>
         )}
 
@@ -118,15 +120,16 @@ export function AddFeedDialog({ open, onClose, onAdded, subscribedUrls }: Props)
             </p>
             <div className="space-y-1">
               {DEFAULT_FEEDS.filter((p) => !subscribedUrls.has(p.url)).map((p) => (
-                <button
+                <Button
                   key={p.url}
+                  variant="ghost"
                   onClick={() => fetchPreview(p.url)}
                   disabled={loading}
-                  className="w-full text-left px-3 py-2 rounded-lg hover:bg-muted disabled:opacity-50 transition-colors"
+                  className="h-auto w-full block text-left px-3 py-2 rounded-lg hover:bg-muted disabled:opacity-50 transition-colors"
                 >
                   <p className="text-xs font-semibold">{p.title}</p>
                   <p className="text-[10px] text-muted-foreground line-clamp-1">{p.desc}</p>
-                </button>
+                </Button>
               ))}
             </div>
           </div>

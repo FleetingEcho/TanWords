@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { CheckIcon } from "@heroicons/react/24/solid";
+import { Button } from "@/components/ui/button";
 
 /**
  * Minimal markdown → React renderer for chat messages.
@@ -77,9 +78,9 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
     <div className="relative group/code my-2 rounded-lg overflow-hidden border border-black/10 dark:border-white/10">
       <div className="flex items-center justify-between px-3 py-1 bg-black/10 dark:bg-white/5 text-[10px] font-mono text-muted-foreground">
         <span>{lang || "code"}</span>
-        <button onClick={copy} className="hover:text-foreground transition-colors">
+        <Button variant="link" onClick={copy} className="h-auto p-0 text-[10px] font-mono text-muted-foreground hover:text-foreground transition-colors">
           {copied ? <CheckIcon className="w-3 h-3 inline" /> : "copy"}
-        </button>
+        </Button>
       </div>
       <pre className="px-3 py-2 overflow-x-auto bg-black/5 dark:bg-black/30 text-[0.86em] font-mono leading-relaxed">
         <code>{code}</code>

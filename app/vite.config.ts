@@ -12,6 +12,9 @@ export default defineConfig({
     },
   },
   clearScreen: false,
+  build: {
+    chunkSizeWarningLimit: 1600,
+  },
   server: {
     port: 1420,
     strictPort: true,

@@ -9,6 +9,7 @@ import { LazyWordNotesEditor } from "@/components/LazyWordNotesEditor";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { SparkIcon } from "@/components/ui/icons";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
+import { Button } from "@/components/ui/button";
 
 interface SelectedInfo {
   word: string;
@@ -59,7 +60,7 @@ export function WordDetailPanel({
       {!enriching && enrichError && !enriched && (
         <div className="flex items-center gap-2 px-6 pt-4 pb-0">
           <span className="text-xs text-destructive inline-flex items-center gap-1"><ExclamationTriangleIcon className="w-3.5 h-3.5" /> {enrichError}</span>
-          <button onClick={onRetry} className="text-xs text-primary hover:underline">{t("vocab.retry")}</button>
+          <Button variant="link" onClick={onRetry} className="h-auto p-0 text-xs text-primary hover:underline">{t("vocab.retry")}</Button>
         </div>
       )}
 
@@ -76,23 +77,24 @@ export function WordDetailPanel({
             )}
             <div className="ml-auto flex items-center gap-3">
               {lookupMode ? (
-                <button
+                <Button
+                  variant="ghost"
                   onClick={onAddToVocab}
                   disabled={lookupAdded || enriching || !enriched}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                  className={`h-auto px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                     lookupAdded
-                      ? "bg-muted text-muted-foreground"
+                      ? "bg-muted text-muted-foreground hover:bg-muted"
                       : "bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                   }`}
                 >
                   {lookupAdded ? t("search.added") : t("search.addToVocab")}
-                </button>
+                </Button>
               ) : (
                 <>
                   {enriched && !enriching && (
-                    <button onClick={onReenrich} className="text-xs text-muted-foreground hover:text-primary transition-colors">{t("vocab.reenrich")}</button>
+                    <Button variant="link" onClick={onReenrich} className="h-auto p-0 text-xs text-muted-foreground hover:text-primary transition-colors">{t("vocab.reenrich")}</Button>
                   )}
-                  <button onClick={() => openWordModal(selected.word)} className="text-xs font-medium text-primary hover:underline">{t("vocab.aiDetail")}</button>
+                  <Button variant="link" onClick={() => openWordModal(selected.word)} className="h-auto p-0 text-xs font-medium text-primary hover:underline">{t("vocab.aiDetail")}</Button>
                 </>
               )}
             </div>
@@ -103,9 +105,9 @@ export function WordDetailPanel({
         {!lookupMode && legacy && !enriching && (
           <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl border border-amber-500/25 bg-amber-500/5 text-xs">
             <span className="text-amber-600 dark:text-amber-400">{t("vocab.legacyEnrichment")}</span>
-            <button onClick={onReenrich} className="font-semibold text-primary hover:underline inline-flex items-center gap-1">
+            <Button variant="link" onClick={onReenrich} className="h-auto p-0 font-semibold text-primary hover:underline inline-flex items-center gap-1">
               <SparkIcon className="w-3 h-3" /> {t("vocab.reenrich")}
-            </button>
+            </Button>
           </div>
         )}
 
@@ -117,7 +119,7 @@ export function WordDetailPanel({
           <div className="flex items-center justify-between mb-2">
             <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t("vocab.myNotes")}</p>
             {notes && (
-              <button onClick={() => setConfirmClearOpen(true)} className="text-[11px] text-muted-foreground hover:text-destructive transition-colors">{t("vocab.clear")}</button>
+              <Button variant="link" onClick={() => setConfirmClearOpen(true)} className="h-auto p-0 text-[11px] text-muted-foreground hover:text-destructive transition-colors">{t("vocab.clear")}</Button>
             )}
           </div>
           <div className="rounded-xl border border-border bg-muted/20 h-40">
@@ -138,7 +140,7 @@ export function WordDetailPanel({
         {!enriched && !enriching && enrichError && (
           <div className="py-4 text-center space-y-2">
             <p className="text-sm text-destructive inline-flex items-center gap-1.5"><ExclamationTriangleIcon className="w-4 h-4" /> {enrichError}</p>
-            <button onClick={onRetry} className="text-xs font-semibold text-primary hover:underline">{t("vocab.retry")}</button>
+            <Button variant="link" onClick={onRetry} className="h-auto p-0 text-xs font-semibold text-primary hover:underline">{t("vocab.retry")}</Button>
           </div>
         )}
 
@@ -146,7 +148,7 @@ export function WordDetailPanel({
         {!enriched && !legacy && !enriching && !enrichError && (
           <div className="py-4 text-center">
             <p className="text-sm text-muted-foreground mb-2">{t("vocab.noData")}</p>
-            <button onClick={onRetry} className="text-xs font-semibold text-primary hover:underline">{t("vocab.aiEnrich")}</button>
+            <Button variant="link" onClick={onRetry} className="h-auto p-0 text-xs font-semibold text-primary hover:underline">{t("vocab.aiEnrich")}</Button>
           </div>
         )}
       </div>

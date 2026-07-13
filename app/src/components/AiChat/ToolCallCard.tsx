@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { BookIcon, SearchIcon, SparkIcon, ClipboardListIcon, DocIcon, SlidersIcon } from "@/components/ui/icons";
 import { CogIcon, XCircleIcon, CheckCircleIcon } from "@heroicons/react/24/solid";
+import { Button } from "@/components/ui/button";
 
 export interface ToolCallDisplay {
   id: string;
@@ -48,14 +49,15 @@ export function ToolCallCard({ calls }: { calls: ToolCallDisplay[] }) {
 
   return (
     <div className="my-1 mx-0">
-      <button
+      <Button
+        variant="ghost"
         onClick={() => setExpanded((v) => !v)}
-        className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl border text-left transition-colors ${
+        className={`h-auto w-full flex items-center justify-start gap-2 px-3 py-2 rounded-xl border text-left transition-colors ${
           hasError
-            ? "border-destructive/30 bg-destructive/5 text-destructive"
+            ? "border-destructive/30 bg-destructive/5 text-destructive hover:bg-destructive/5"
             : allDone
-            ? "border-border bg-muted/30 text-muted-foreground"
-            : "border-primary/20 bg-primary/5 text-primary animate-pulse"
+            ? "border-border bg-muted/30 text-muted-foreground hover:bg-muted/30"
+            : "border-primary/20 bg-primary/5 text-primary animate-pulse hover:bg-primary/5"
         }`}
       >
         {/* Status icon */}
@@ -83,7 +85,7 @@ export function ToolCallCard({ calls }: { calls: ToolCallDisplay[] }) {
         >
           <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" />
         </svg>
-      </button>
+      </Button>
 
       {expanded && (
         <div className="mt-1 ml-2 space-y-2">

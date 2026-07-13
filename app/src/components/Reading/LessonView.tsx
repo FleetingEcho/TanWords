@@ -14,6 +14,7 @@ import { SpeakButton } from "@/components/ui/SpeakButton";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useAnalyzeArticle } from "@/hooks/useAnalyzeArticle";
 import { WordSearchBox } from "./WordSearchBox";
+import { Button } from "@/components/ui/button";
 
 const PATTERN_HIGHLIGHT_KEY = "tanwords_pattern_highlight";
 
@@ -86,24 +87,27 @@ function ItemCard({
       <div className="flex items-center gap-2 pt-0.5">
         {item.status === "candidate" && (
           <>
-            <button
+            <Button
+              variant="link"
               onClick={() => onAction(item, "accept")}
-              className="text-[11px] font-semibold text-primary hover:underline"
+              className="h-auto p-0 text-[11px] font-semibold text-primary hover:underline"
             >
               {t("reading.addToVocab")}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="link"
               onClick={() => onAction(item, "know")}
-              className="text-[11px] text-muted-foreground hover:text-foreground"
+              className="h-auto p-0 text-[11px] text-muted-foreground hover:text-foreground"
             >
               {t("reading.know")}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="link"
               onClick={() => onAction(item, "dismiss")}
-              className="text-[11px] text-muted-foreground hover:text-foreground"
+              className="h-auto p-0 text-[11px] text-muted-foreground hover:text-foreground"
             >
               {t("reading.dismiss")}
-            </button>
+            </Button>
           </>
         )}
         {item.status === "accepted" && (
@@ -112,22 +116,24 @@ function ItemCard({
           </span>
         )}
         {item.status === "known" && (
-          <button
+          <Button
+            variant="link"
             onClick={() => onAction(item, "reset")}
-            className="text-[11px] text-muted-foreground hover:text-foreground"
+            className="h-auto p-0 text-[11px] text-muted-foreground hover:text-foreground"
             title={t("reading.undo")}
           >
             {t("reading.knownChip")}
-          </button>
+          </Button>
         )}
         {item.status === "dismissed" && (
-          <button
+          <Button
+            variant="link"
             onClick={() => onAction(item, "reset")}
-            className="text-[11px] text-muted-foreground hover:text-foreground"
+            className="h-auto p-0 text-[11px] text-muted-foreground hover:text-foreground"
             title={t("reading.undo")}
           >
             {t("reading.dismissedChip")}
-          </button>
+          </Button>
         )}
       </div>
     </div>
@@ -306,9 +312,9 @@ export function LessonView({ articleId, onBack, onDeleted, onReanalyzed }: Props
     return (
       <div className="py-20 flex flex-col items-center gap-3">
         <p className="text-sm text-muted-foreground">{t("reading.notFound")}</p>
-        <button onClick={onBack} className="text-xs font-semibold text-primary hover:underline">
+        <Button variant="link" onClick={onBack} className="h-auto p-0 text-xs font-semibold text-primary hover:underline">
           ← {t("reading.back")}
-        </button>
+        </Button>
       </div>
     );
   }
@@ -331,12 +337,13 @@ export function LessonView({ articleId, onBack, onDeleted, onReanalyzed }: Props
         * p-6 so the bar spans (and its backdrop covers) the full width. */}
       <div className="sticky top-0 z-20 -mx-6 -mt-6 px-6 pt-4 pb-3 bg-background/95 backdrop-blur-sm border-b border-border flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <button
+          <Button
+            variant="link"
             onClick={onBack}
-            className="text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+            className="h-auto p-0 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
           >
             ← {t("reading.back")}
-          </button>
+          </Button>
           <h2 className="text-xl font-bold leading-snug mt-1 line-clamp-2">{article.title}</h2>
           <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
             {article.origin === "hackernews" && (
@@ -352,57 +359,60 @@ export function LessonView({ articleId, onBack, onDeleted, onReanalyzed }: Props
               </span>
             )}
             {article.source_url && (
-              <button onClick={openSource} className="text-primary hover:underline">
+              <Button variant="link" onClick={openSource} className="h-auto p-0 text-primary hover:underline">
                 {t("reading.openSource")}
-              </button>
+              </Button>
             )}
             <span>{article.created_at.slice(0, 16)}</span>
-            <button onClick={handleDelete} className="text-muted-foreground/60 hover:text-destructive transition-colors">
+            <Button variant="link" onClick={handleDelete} className="h-auto p-0 text-muted-foreground/60 hover:text-destructive transition-colors">
               {t("reading.delete")}
-            </button>
+            </Button>
           </div>
         </div>
         <div className="flex gap-3">
-          <button
+          <Button
+          variant="outline"
           onClick={() => setConfirmReanalyze(true)}
           disabled={isAnalyzing}
           title={t("reading.reanalyze")}
-          className="w-8 h-8 rounded-lg border border-input flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40 transition-colors shrink-0"
+          className="w-8 h-8 p-0 rounded-lg border border-input flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40 transition-colors shrink-0"
         >
           <RefreshIcon className={`w-3.5 h-3.5 ${isAnalyzing ? "animate-spin" : ""}`} />
-        </button>
+        </Button>
         {sentenceItems.length > 0 && (
-          <button
+          <Button
+            variant="ghost"
             onClick={togglePatterns}
             title={t("reading.patternToggleHint")}
             className={`h-8 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 shrink-0 transition-colors ${
               highlightPatterns
-                ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 hover:bg-amber-500/15"
                 : "border border-input text-muted-foreground hover:text-foreground hover:bg-muted"
             }`}
           >
             <SparkIcon className="w-3.5 h-3.5" />
             {t("reading.patternToggle")}
-          </button>
+          </Button>
         )}
-        <button
+        <Button
+          variant="ghost"
           onClick={handleListenToArticle}
           className={`h-8 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 shrink-0 transition-colors ${
             playerActive
-              ? "bg-primary/10 text-primary"
+              ? "bg-primary/10 text-primary hover:bg-primary/10"
               : "border border-input text-muted-foreground hover:text-foreground hover:bg-muted"
           }`}
         >
           <SpeakerIcon className="w-3.5 h-3.5" />
           {t("tts.listenToArticle")}
-        </button>
+        </Button>
         {pendingWords > 0 && (
-          <button
+          <Button
             onClick={handleAddAll}
             className="h-8 px-4 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shrink-0"
           >
             {t("reading.addAll", { n: pendingWords })}
-          </button>
+          </Button>
         )}
         </div>
       </div>

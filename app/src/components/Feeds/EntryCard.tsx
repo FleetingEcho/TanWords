@@ -3,6 +3,7 @@ import { useT } from "@/hooks/useT";
 import { SparkIcon, PlayIcon } from "@/components/ui/icons";
 import type { RssEntryRow } from "@/hooks/useDB.types";
 import { domainOf, relativeTime, placeholderGradient } from "./feedUtils";
+import { Button } from "@/components/ui/button";
 
 interface Props {
   entry: RssEntryRow;
@@ -33,24 +34,26 @@ function Cover({ src, feedTitle, className }: { src: string | null; feedTitle: s
 
 function PlayButton({ onPlay, label }: { onPlay: (e: React.MouseEvent) => void; label: string }) {
   return (
-    <button
+    <Button
+      variant="ghost"
       onClick={onPlay}
-      className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-xs font-semibold shadow-sm transition-all
+      className="h-8 px-3 inline-flex items-center gap-1.5 rounded-full text-xs font-semibold shadow-sm transition-all
         bg-card/90 text-foreground border border-border hover:bg-card
         opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
     >
       <PlayIcon className="w-3.5 h-3.5" />
       {label}
-    </button>
+    </Button>
   );
 }
 
 function LearnButton({ learning, onLearn, label }: { learning: boolean; onLearn: (e: React.MouseEvent) => void; label: string }) {
   return (
-    <button
+    <Button
+      variant="ghost"
       onClick={onLearn}
       disabled={learning}
-      className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-xs font-semibold shadow-sm transition-all
+      className={`h-8 px-3 inline-flex items-center gap-1.5 rounded-full text-xs font-semibold shadow-sm transition-all
         bg-primary text-primary-foreground hover:bg-primary/90
         ${learning ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`}
     >
@@ -60,7 +63,7 @@ function LearnButton({ learning, onLearn, label }: { learning: boolean; onLearn:
         <SparkIcon className="w-3.5 h-3.5" />
       )}
       {label}
-    </button>
+    </Button>
   );
 }
 

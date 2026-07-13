@@ -1,6 +1,7 @@
 import React from "react";
 import { Dialog } from "./dialog";
 import { useT } from "@/hooks/useT";
+import { Button } from "@/components/ui/button";
 
 interface ConfirmModalProps {
   open: boolean;
@@ -27,13 +28,15 @@ export function ConfirmModal({
         <p className="text-xs text-muted-foreground leading-relaxed">{message}</p>
       </div>
       <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border">
-        <button
+        <Button
+          variant="ghost"
           onClick={onCancel}
           className="h-8 px-4 rounded-lg text-xs font-medium text-muted-foreground hover:bg-muted transition-colors"
         >
           {cancelLabel || t("common.cancel")}
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
           onClick={onConfirm}
           disabled={confirmDisabled}
           className={`h-8 px-4 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 ${
@@ -43,7 +46,7 @@ export function ConfirmModal({
           }`}
         >
           {confirmLabel || t("common.delete")}
-        </button>
+        </Button>
       </div>
     </Dialog>
   );

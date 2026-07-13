@@ -5,6 +5,7 @@ import { useSettingsStore } from "@/store/settingsStore";
 import { SpeakerIcon } from "@/components/ui/icons";
 import { claimAudioChannel, releaseAudioChannel } from "@/lib/audioChannel";
 import { consumeFallbackWarning, synthesizeBlob, WebSpeechFallbackRequired } from "@/lib/ttsBackend";
+import { Button } from "@/components/ui/button";
 
 const CACHE_CAPACITY = 50;
 // Insertion order doubles as LRU recency — re-inserting a key on access
@@ -104,15 +105,16 @@ export function SpeakButton({ text, className }: { text: string; className?: str
   };
 
   return (
-    <button
+    <Button
+      variant="ghost"
       onClick={handleClick}
       disabled={status === "loading"}
       title={t("tts.preview")}
-      className={`inline-flex items-center justify-center shrink-0 transition-colors disabled:opacity-40 ${
+      className={`h-auto w-auto p-0 inline-flex items-center justify-center shrink-0 transition-colors hover:bg-transparent disabled:opacity-40 ${
         status === "playing" ? "text-primary" : "text-muted-foreground hover:text-primary"
       } ${className ?? ""}`}
     >
       <SpeakerIcon className="w-full h-full" />
-    </button>
+    </Button>
   );
 }

@@ -117,12 +117,13 @@ export function WordDetailModal() {
                 {added ? t("modal.added") : t("modal.addToVocab")}
               </Button>
             )}
-            <button
+            <Button
+              variant="ghost"
               onClick={closeWordModal}
-              className="w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              className="w-7 h-7 p-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
             >
               <CloseIcon className="w-3.5 h-3.5" />
-            </button>
+            </Button>
           </div>
         </div>
 

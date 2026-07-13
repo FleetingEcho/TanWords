@@ -10,6 +10,8 @@ import { RecommendedTtsModel } from "@/lib/recommendedTtsModels";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { RecommendedModelsList } from "./RecommendedModelsList";
 import { TtsModelInfo, TtsDownloadProgress } from "@/lib/ttsTypes";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const SPEEDS = [0.75, 1, 1.25, 1.5];
 
@@ -149,29 +151,31 @@ export function TtsSection() {
     <div className="bg-card border border-border rounded-xl px-5 divide-y divide-border">
       <SettingRow label={t("tts.model")} sub={t("tts.modelSub")}>
         <div className="flex items-center gap-2">
-          <select
-            value={loadedPath ?? ""}
-            onChange={(e) => e.target.value && selectModel(e.target.value)}
-            disabled={loadingPath !== null}
-            className="h-8 px-2 rounded-lg border border-input bg-background text-xs text-foreground focus:outline-none max-w-[220px]"
+          <Select
+            value={loadedPath ?? undefined}
+            onValueChange={(v) => selectModel(v)}
+            disabled={loadingPath !== null || models.length === 0}
           >
-            <option value="" disabled>
-              {models.length ? t("tts.model") : t("tts.noModels")}
-            </option>
-            {models.map((m) => (
-              <option key={m.path} value={m.path} disabled={m.kind === "unknown"}>
-                {m.name}
-                {m.kind === "unknown" ? ` ${t("tts.unknownModel")}` : ""}
-              </option>
-            ))}
-          </select>
-          <button
+            <SelectTrigger className="h-8 px-2 rounded-lg border border-input bg-background text-xs text-foreground focus:outline-none max-w-[220px]">
+              <SelectValue placeholder={models.length ? t("tts.model") : t("tts.noModels")} />
+            </SelectTrigger>
+            <SelectContent>
+              {models.map((m) => (
+                <SelectItem key={m.path} value={m.path} disabled={m.kind === "unknown"}>
+                  {m.name}
+                  {m.kind === "unknown" ? ` ${t("tts.unknownModel")}` : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
             onClick={rescan}
             disabled={scanning}
             className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted transition-colors disabled:opacity-50"
           >
             {t("tts.rescan")}
-          </button>
+          </Button>
         </div>
       </SettingRow>
 
@@ -190,27 +194,28 @@ export function TtsSection() {
       <SettingRow label={t("tts.speed")}>
         <div className="flex items-center gap-1 bg-muted p-0.5 rounded-lg">
           {SPEEDS.map((s) => (
-            <button
+            <Button
               key={s}
+              variant="ghost"
               onClick={() => settings.setTtsSpeed(s)}
-              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+              className={`h-auto px-2.5 py-1 rounded-md text-xs font-medium transition-colors hover:bg-transparent ${
                 settings.ttsSpeed === s ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {s}x
-            </button>
+            </Button>
           ))}
         </div>
       </SettingRow>
 
       <SettingRow label={t("tts.preview")}>
-        <button
+        <Button
           onClick={preview}
           disabled={previewing || !loadedPath}
           className="h-8 px-4 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
         >
           {previewing ? t("tts.previewing") : t("tts.preview")}
-        </button>
+        </Button>
       </SettingRow>
 
       <SettingRow label={t("tts.recommendedModels")} sub={t("tts.recommendedModelsSub")}>
@@ -225,12 +230,13 @@ export function TtsSection() {
       </SettingRow>
 
       <SettingRow label={t("tts.addDirectory")}>
-        <button
+        <Button
+          variant="outline"
           onClick={addDirectory}
           className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted transition-colors"
         >
           {t("tts.addDirectory")}
-        </button>
+        </Button>
       </SettingRow>
 
       {settings.ttsExtraDirs.length > 0 && (
@@ -241,12 +247,13 @@ export function TtsSection() {
                 <span className="text-[11px] font-mono text-muted-foreground truncate max-w-[200px]" title={dir}>
                   {dir}
                 </span>
-                <button
+                <Button
+                  variant="ghost"
                   onClick={() => removeDirectory(dir)}
-                  className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                  className="h-auto p-0 text-xs text-muted-foreground hover:text-destructive hover:bg-transparent transition-colors"
                 >
                   {t("tts.removeDirectory")}
-                </button>
+                </Button>
               </div>
             ))}
           </div>

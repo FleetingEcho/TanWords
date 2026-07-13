@@ -3,6 +3,7 @@ import { useT } from "@/hooks/useT";
 import { TOOL_GROUPS, ToolGroupKey } from "./tools";
 import { BookIcon, DocIcon, CloseIcon } from "@/components/ui/icons";
 import { CheckIcon } from "@heroicons/react/24/solid";
+import { Button } from "@/components/ui/button";
 
 const GROUP_ICONS: Record<ToolGroupKey, React.FC<{ className?: string }>> = {
   vocabulary: BookIcon,
@@ -44,15 +45,16 @@ export function AiChatComposer({
           <div className="inline-flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-lg bg-muted/60 border border-border text-xs">
             <DocIcon className="w-3.5 h-3.5 text-muted-foreground" />
             <span className="font-medium">{t("aichat.attachment", { n: attachment.length })}</span>
-            <button onClick={onToggleShowAttachment} className="text-primary hover:underline font-semibold">
+            <Button variant="link" onClick={onToggleShowAttachment} className="h-auto p-0 text-primary hover:underline font-semibold">
               {showAttachment ? t("aichat.attachHide") : t("aichat.attachView")}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
               onClick={onRemoveAttachment}
-              className="w-4 h-4 rounded-full flex items-center justify-center text-muted-foreground hover:text-destructive"
+              className="w-4 h-4 p-0 rounded-full flex items-center justify-center text-muted-foreground hover:text-destructive"
             >
               <CloseIcon className="w-3 h-3" />
-            </button>
+            </Button>
           </div>
           {showAttachment && (
             <div className="mt-2 max-h-40 overflow-y-auto px-3 py-2 rounded-lg bg-muted/40 border border-border text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">
@@ -65,12 +67,13 @@ export function AiChatComposer({
       <div className="flex gap-2 items-end">
         {/* Tools popover */}
         <div className="relative shrink-0">
-          <button
+          <Button
+            variant="ghost"
             onClick={onToggleTools}
             title={t("aichat.tools")}
-            className={`w-10 h-10 rounded-xl border flex items-center justify-center transition-colors ${
+            className={`w-10 h-10 p-0 rounded-xl border flex items-center justify-center transition-colors ${
               enabledGroups.size > 0
-                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600"
+                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/10"
                 : "border-border text-muted-foreground hover:text-foreground hover:bg-muted"
             }`}
           >
@@ -78,7 +81,7 @@ export function AiChatComposer({
               <path d="M13.5 3.5l3 3L7 16H4v-3l9.5-9.5z" strokeLinejoin="round" />
               <path d="M11.5 5.5l3 3" />
             </svg>
-          </button>
+          </Button>
           {showTools && (
             <>
               <div className="fixed inset-0 z-10" onClick={onToggleTools} />
@@ -87,19 +90,20 @@ export function AiChatComposer({
                 {(Object.keys(TOOL_GROUPS) as ToolGroupKey[]).map((g) => {
                   const active = enabledGroups.has(g);
                   return (
-                    <button
+                    <Button
                       key={g}
+                      variant="ghost"
                       onClick={() => onToggleGroup(g)}
-                      className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors border ${
+                      className={`h-auto w-full flex items-center justify-start gap-2 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors border ${
                         active
-                          ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600"
-                          : "bg-muted/40 border-border text-muted-foreground"
+                          ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10"
+                          : "bg-muted/40 border-border text-muted-foreground hover:bg-muted/40"
                       }`}
                     >
                       {React.createElement(GROUP_ICONS[g], { className: "w-3.5 h-3.5 shrink-0" })}
                       <span className="flex-1 text-left">{TOOL_GROUPS[g].label}</span>
                       {active && <CheckIcon className="w-3.5 h-3.5 text-emerald-500" />}
-                    </button>
+                    </Button>
                   );
                 })}
                 {enabledGroups.size === 0 && (
@@ -123,22 +127,23 @@ export function AiChatComposer({
         />
 
         {streaming ? (
-          <button
+          <Button
+            variant="ghost"
             onClick={onStop}
-            className="shrink-0 px-4 h-10 rounded-xl text-sm font-semibold bg-destructive/10 text-destructive border border-destructive/30 hover:bg-destructive/20 transition-colors flex items-center gap-2"
+            className="shrink-0 h-10 px-4 rounded-xl text-sm font-semibold bg-destructive/10 text-destructive border border-destructive/30 hover:bg-destructive/20 transition-colors flex items-center gap-2"
           >
             <span className="w-2.5 h-2.5 rounded-[2px] bg-destructive" />
             {t("aichat.stop")}
-          </button>
+          </Button>
         ) : (
-          <button
+          <Button
             onClick={onSend}
             disabled={!input.trim() && !attachment}
-            className="shrink-0 px-4 h-10 rounded-xl text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors flex items-center gap-1.5"
+            className="shrink-0 h-10 px-4 rounded-xl text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors flex items-center gap-1.5"
           >
             {t("aichat.send")}
             <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5"><path d="M1.5 1.5l13 6.5-13 6.5V9.5l9-3-9-3V1.5z" /></svg>
-          </button>
+          </Button>
         )}
       </div>
       <div className="flex items-center justify-between mt-2 px-1">

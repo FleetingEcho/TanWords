@@ -6,6 +6,7 @@ import { useReadingStore } from "@/store/readingStore";
 import { useAnalyzeArticle } from "@/hooks/useAnalyzeArticle";
 import { LessonView } from "./LessonView";
 import { SparkIcon, FeedIcon } from "@/components/ui/icons";
+import { Button } from "@/components/ui/button";
 
 export function ReadingPage() {
   const db = useDB();
@@ -117,7 +118,7 @@ export function ReadingPage() {
           <span className="text-[11px] font-mono tabular-nums text-muted-foreground">
             {t("reading.wordCount", { n: wordCount })}
           </span>
-          <button
+          <Button
             onClick={handleAnalyze}
             disabled={isAnalyzing || !text.trim()}
             className="h-9 px-5 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors inline-flex items-center justify-center gap-1.5"
@@ -127,7 +128,7 @@ export function ReadingPage() {
             ) : (
               <><SparkIcon className="w-3.5 h-3.5" /> {t("reading.analyze")}</>
             )}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -143,10 +144,11 @@ export function ReadingPage() {
         ) : (
           <div className="divide-y divide-border">
             {articles.map((a) => (
-              <button
+              <Button
                 key={a.id}
+                variant="ghost"
                 onClick={() => setOpenArticleId(a.id)}
-                className="w-full flex items-center gap-3 px-5 py-3 hover:bg-muted/40 transition-colors text-left"
+                className="h-auto w-full rounded-none flex items-center justify-start gap-3 px-5 py-3 hover:bg-muted/40 transition-colors text-left"
               >
                 {a.origin === "hackernews" ? (
                   <span className="w-5 h-5 rounded bg-orange-500 text-white text-[10px] font-bold flex items-center justify-center shrink-0">Y</span>
@@ -167,7 +169,7 @@ export function ReadingPage() {
                 <span className="text-[11px] font-mono text-muted-foreground/60 shrink-0 w-20 text-right">
                   {a.created_at.slice(0, 10)}
                 </span>
-              </button>
+              </Button>
             ))}
           </div>
         )}

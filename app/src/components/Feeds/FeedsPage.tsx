@@ -18,6 +18,7 @@ import { AddFeedDialog } from "./AddFeedDialog";
 import { EntryGrid } from "./EntryGrid";
 import { domainOf } from "./feedUtils";
 import { DEFAULT_FEEDS } from "./defaultFeeds";
+import { Button } from "@/components/ui/button";
 
 const STALE_MS = 15 * 60 * 1000;
 const SEEDED_FLAG = "rss_defaults_seeded";
@@ -310,14 +311,15 @@ export function FeedsPage() {
                 {selectedFeed ? selectedFeed.title || domainOf(selectedFeed.url) : t("feeds.all")}
               </h2>
               {syncing && <span className="text-[11px] text-muted-foreground">{t("feeds.refreshing")}</span>}
-              <button
+              <Button
+                variant="ghost"
                 onClick={handleRefresh}
                 disabled={syncing || feeds.length === 0}
                 title={t("feeds.refresh")}
-                className="w-7 h-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40 transition-colors"
+                className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40 transition-colors"
               >
                 <RefreshIcon className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
-              </button>
+              </Button>
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto">
@@ -326,12 +328,12 @@ export function FeedsPage() {
               ) : feeds.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center gap-3 text-center px-6">
                   <p className="text-sm text-muted-foreground max-w-sm">{t("feeds.noFeeds")}</p>
-                  <button
+                  <Button
                     onClick={() => setShowAdd(true)}
                     className="h-9 px-4 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
                   >
                     + {t("feeds.addFeed")}
-                  </button>
+                  </Button>
                 </div>
               ) : entries.length === 0 ? (
                 <div className="h-full flex items-center justify-center">

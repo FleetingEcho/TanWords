@@ -5,6 +5,7 @@ import { useT } from "@/hooks/useT";
 import { toast } from "sonner";
 import { MessageBubble } from "@/components/AiChat/MessageBubble";
 import { LazyWordNotesEditor } from "@/components/LazyWordNotesEditor";
+import { Button } from "@/components/ui/button";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -155,22 +156,24 @@ export function WordChatPanel({ wordId, word, enrichedContext = "" }: PanelProps
     <div className="flex flex-col h-full">
       {/* Tabs */}
       <div className="flex gap-1 mb-3 shrink-0">
-        <button
+        <Button
+          variant="ghost"
           onClick={() => setTab("chat")}
-          className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
-            tab === "chat" ? "bg-primary text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"
+          className={`h-auto flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+            tab === "chat" ? "bg-primary text-white hover:bg-primary" : "bg-muted text-muted-foreground hover:bg-muted/80"
           }`}
         >
           {t("chat.tabChat")}
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
           onClick={() => setTab("notes")}
-          className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
-            tab === "notes" ? "bg-primary text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"
+          className={`h-auto flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+            tab === "notes" ? "bg-primary text-white hover:bg-primary" : "bg-muted text-muted-foreground hover:bg-muted/80"
           }`}
         >
           {t("chat.tabNotes")}
-        </button>
+        </Button>
       </div>
 
       {/* Notes tab — same BlockNote editor chrome as Documents, bound to a plain-text column */}
@@ -219,28 +222,29 @@ export function WordChatPanel({ wordId, word, enrichedContext = "" }: PanelProps
                 className="flex-1 resize-none px-3 py-2.5 text-xs rounded-xl border border-input bg-card placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50 leading-relaxed min-h-[36px]"
               />
               {streaming ? (
-                <button
+                <Button
+                  variant="ghost"
                   onClick={stopStreaming}
-                  className="shrink-0 px-3 h-9 rounded-xl text-xs font-semibold bg-destructive/10 text-destructive border border-destructive/30 hover:bg-destructive/20 transition-colors flex items-center gap-1.5"
+                  className="shrink-0 h-9 px-3 rounded-xl text-xs font-semibold bg-destructive/10 text-destructive border border-destructive/30 hover:bg-destructive/20 transition-colors flex items-center gap-1.5"
                 >
                   <span className="w-2 h-2 rounded-[2px] bg-destructive" />
                   {t("aichat.stop")}
-                </button>
+                </Button>
               ) : (
-                <button
+                <Button
                   onClick={sendMessage}
                   disabled={!input.trim()}
-                  className="shrink-0 px-3 h-9 rounded-xl text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors flex items-center gap-1"
+                  className="shrink-0 h-9 px-3 rounded-xl text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors flex items-center gap-1"
                 >
                   {t("chat.send")}
                   <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3"><path d="M1.5 1.5l13 6.5-13 6.5V9.5l9-3-9-3V1.5z" /></svg>
-                </button>
+                </Button>
               )}
             </div>
             {messages.length > 0 && (
-              <button onClick={clearChat} className="mt-1.5 text-[10px] text-muted-foreground hover:text-destructive transition-colors">
+              <Button variant="link" onClick={clearChat} className="h-auto p-0 mt-1.5 text-[10px] text-muted-foreground hover:text-destructive transition-colors">
                 {t("chat.clear")}
-              </button>
+              </Button>
             )}
           </div>
         </div>

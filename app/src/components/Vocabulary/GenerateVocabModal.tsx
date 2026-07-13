@@ -8,6 +8,7 @@ import { useWordModalStore } from "@/store/wordModalStore";
 import { LevelBadge } from "@/components/shared/LevelBadge";
 import { SpeakButton } from "@/components/ui/SpeakButton";
 import { SparkIcon, CloseIcon } from "@/components/ui/icons";
+import { Button } from "@/components/ui/button";
 
 const COUNTS = [10, 20, 50, 100];
 
@@ -223,32 +224,35 @@ export function GenerateVocabModal({ open, onClose, existingWords, onAdded }: Pr
           <SparkIcon className="w-3.5 h-3.5 text-primary" />
           <h2 className="text-sm font-semibold">{t("discover.generateTitle")}</h2>
         </div>
-        <button
+        <Button
+          variant="ghost"
           onClick={handleClose}
-          className="w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          className="w-7 h-7 p-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
         >
           <CloseIcon className="w-3.5 h-3.5" />
-        </button>
+        </Button>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 px-6 pt-3">
-        <button
+        <Button
+          variant="ghost"
           onClick={() => setMode("topic")}
-          className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
-            mode === "topic" ? "bg-primary text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"
+          className={`h-auto px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+            mode === "topic" ? "bg-primary text-white hover:bg-primary" : "bg-muted text-muted-foreground hover:bg-muted/80"
           }`}
         >
           {t("discover.tabTopic")}
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="ghost"
           onClick={() => setMode("family")}
-          className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
-            mode === "family" ? "bg-primary text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"
+          className={`h-auto px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+            mode === "family" ? "bg-primary text-white hover:bg-primary" : "bg-muted text-muted-foreground hover:bg-muted/80"
           }`}
         >
           {t("discover.tabFamily")}
-        </button>
+        </Button>
       </div>
 
       <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
@@ -265,39 +269,41 @@ export function GenerateVocabModal({ open, onClose, existingWords, onAdded }: Pr
               />
               <div className="flex items-center border border-input rounded-lg overflow-hidden shrink-0">
                 {COUNTS.map((n) => (
-                  <button
+                  <Button
                     key={n}
+                    variant="ghost"
                     onClick={() => setCount(n)}
-                    className={`px-3 h-9 text-xs font-semibold transition-colors ${
-                      count === n ? "bg-primary text-white" : "text-muted-foreground hover:bg-muted"
+                    className={`h-9 px-3 rounded-none text-xs font-semibold transition-colors ${
+                      count === n ? "bg-primary text-white hover:bg-primary" : "text-muted-foreground hover:bg-muted"
                     }`}
                   >
                     {t("discover.wordCount", { n })}
-                  </button>
+                  </Button>
                 ))}
               </div>
-              <button
+              <Button
                 onClick={handleGenerate}
                 disabled={isGenerating}
                 className="h-9 px-5 rounded-lg text-sm font-semibold bg-primary text-white hover:bg-primary/90 disabled:opacity-50 transition-colors shrink-0"
               >
                 {isGenerating ? t("discover.generating") : t("discover.generate")}
-              </button>
+              </Button>
             </div>
 
             <div className={`flex flex-wrap gap-1.5 transition-opacity ${chipsLoading ? "opacity-50" : ""}`}>
               {topicChips.map((topic_item) => (
-                <button
+                <Button
                   key={topic_item}
+                  variant="ghost"
                   onClick={() => { setSelectedTopic(topic_item); setTopic(""); }}
-                  className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                  className={`h-auto px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
                     selectedTopic === topic_item && !topic
-                      ? "bg-primary text-white border-primary"
-                      : "border-border text-foreground hover:border-primary/50"
+                      ? "bg-primary text-white border-primary hover:bg-primary"
+                      : "border-border text-foreground hover:border-primary/50 hover:bg-transparent"
                   }`}
                 >
                   {topic_item}
-                </button>
+                </Button>
               ))}
             </div>
 
@@ -318,13 +324,14 @@ export function GenerateVocabModal({ open, onClose, existingWords, onAdded }: Pr
                     <span className="text-sm font-semibold">{t("discover.results", { n: generated.length })}</span>
                     <span className="text-xs text-muted-foreground">{t("discover.selected", { n: selectedGen.size })}</span>
                   </div>
-                  <button
+                  <Button
+                    variant="link"
                     onClick={saveSelected}
                     disabled={selectedGen.size === 0 || saving}
-                    className="text-xs font-semibold text-primary disabled:text-muted-foreground hover:underline"
+                    className="h-auto p-0 text-xs font-semibold text-primary disabled:text-muted-foreground hover:underline"
                   >
                     {saving ? t("discover.saving") : t("discover.addToVocab")}
-                  </button>
+                  </Button>
                 </div>
                 <div className="divide-y divide-border max-h-96 overflow-y-auto">
                   {generated.map((w, i) => {
@@ -345,12 +352,13 @@ export function GenerateVocabModal({ open, onClose, existingWords, onAdded }: Pr
                           className="rounded shrink-0"
                         />
                         <div className="w-28 shrink-0 flex items-center gap-1">
-                          <button
+                          <Button
+                            variant="link"
                             onClick={() => openWordModal(w.word)}
-                            className="font-semibold text-sm text-primary hover:underline"
+                            className="h-auto p-0 font-semibold text-sm text-primary hover:underline"
                           >
                             {w.word}
-                          </button>
+                          </Button>
                           <SpeakButton text={w.word} className="w-3 h-3" />
                         </div>
                         <LevelBadge level={w.level} />
@@ -379,24 +387,25 @@ export function GenerateVocabModal({ open, onClose, existingWords, onAdded }: Pr
                 placeholder={t("discover.family.placeholder")}
                 className="flex-1 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 placeholder:text-muted-foreground font-mono"
               />
-              <button
+              <Button
                 onClick={() => exploreRoot(rootInput)}
                 disabled={isGeneratingFamily || !rootInput.trim()}
                 className="h-9 px-5 rounded-lg text-sm font-semibold bg-primary text-white hover:bg-primary/90 disabled:opacity-50 transition-colors shrink-0"
               >
                 {isGeneratingFamily ? t("discover.family.loadingBtn") : t("discover.family.explore")}
-              </button>
+              </Button>
             </div>
             <div className={`flex flex-wrap gap-1.5 transition-opacity ${chipsLoading ? "opacity-50" : ""}`}>
               {rootChips.map((r) => (
-                <button
+                <Button
                   key={r}
+                  variant="ghost"
                   onClick={() => exploreRoot(r)}
                   disabled={isGeneratingFamily}
-                  className="px-3 py-1 rounded-full text-xs font-mono border border-border text-foreground hover:border-primary/50 disabled:opacity-50 transition-colors"
+                  className="h-auto px-3 py-1 rounded-full text-xs font-mono border border-border text-foreground hover:border-primary/50 hover:bg-transparent disabled:opacity-50 transition-colors"
                 >
                   {r}
-                </button>
+                </Button>
               ))}
             </div>
 
@@ -405,13 +414,14 @@ export function GenerateVocabModal({ open, onClose, existingWords, onAdded }: Pr
                 <div className="flex items-center gap-3 px-4 py-3 bg-muted/30 border-b border-border">
                   <span className="font-mono font-bold text-primary">{family.root}</span>
                   <span className="text-sm text-muted-foreground flex-1">{family.meaning}</span>
-                  <button
+                  <Button
+                    variant="link"
                     onClick={addAllFamilyWords}
                     disabled={savingFamily || family.words.every((w) => isFamilyWordKnown(w.word))}
-                    className="text-xs font-semibold text-primary disabled:text-muted-foreground hover:underline shrink-0"
+                    className="h-auto p-0 text-xs font-semibold text-primary disabled:text-muted-foreground hover:underline shrink-0"
                   >
                     {savingFamily ? t("discover.saving") : t("discover.family.addAll")}
-                  </button>
+                  </Button>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 max-h-96 overflow-y-auto">
                   {family.words.map((w, i) => {
@@ -419,12 +429,13 @@ export function GenerateVocabModal({ open, onClose, existingWords, onAdded }: Pr
                     return (
                       <div key={i} className={`px-4 py-3 space-y-1 border-t border-border first:border-t-0 sm:[&:nth-child(2)]:border-t-0 ${i % 2 === 0 ? "sm:border-r sm:border-border" : ""} ${known ? "opacity-45" : ""}`}>
                         <div className="flex items-center gap-2">
-                          <button
+                          <Button
+                            variant="link"
                             onClick={() => openWordModal(w.word)}
-                            className="font-semibold text-sm text-primary hover:underline"
+                            className="h-auto p-0 font-semibold text-sm text-primary hover:underline"
                           >
                             {w.word}
-                          </button>
+                          </Button>
                           <SpeakButton text={w.word} className="w-3 h-3" />
                           <LevelBadge level={w.level} />
                           <span className="text-xs text-muted-foreground truncate flex-1">{w.zh}</span>
@@ -433,12 +444,13 @@ export function GenerateVocabModal({ open, onClose, existingWords, onAdded }: Pr
                               {t("discover.inVocab")}
                             </span>
                           ) : (
-                            <button
+                            <Button
+                              variant="link"
                               onClick={() => addFamilyWord(w)}
-                              className="text-[11px] font-semibold text-primary hover:underline shrink-0"
+                              className="h-auto p-0 text-[11px] font-semibold text-primary hover:underline shrink-0"
                             >
                               + {t("discover.addOne")}
-                            </button>
+                            </Button>
                           )}
                         </div>
                         <p className="text-[11px] font-mono text-muted-foreground/70">{w.breakdown}</p>

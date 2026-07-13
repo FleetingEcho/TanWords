@@ -1,5 +1,6 @@
 import React from "react";
 import { ExtractedItem } from "@/hooks/useDB";
+import { Button } from "@/components/ui/button";
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -48,16 +49,17 @@ function renderHighlights(
     );
     if (!match) return part;
     return (
-      <button
+      <Button
         key={i}
+        variant="ghost"
         onClick={(e) => {
           e.stopPropagation();
           onJump(match.id);
         }}
-        className="inline rounded-sm px-0.5 -mx-0.5 transition-colors cursor-pointer bg-primary/10 text-primary border-b border-primary/40 hover:bg-primary/20"
+        className="h-auto inline rounded-sm px-0.5 -mx-0.5 transition-colors cursor-pointer bg-primary/10 text-primary border-b border-primary/40 hover:bg-primary/20"
       >
         {part}
-      </button>
+      </Button>
     );
   });
 }

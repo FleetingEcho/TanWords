@@ -14,6 +14,8 @@ import { useAiChatSession, PRESET_IDS } from "@/components/AiChat/useAiChatSessi
 import { ChatSessionItem } from "@/hooks/useDB";
 import { useDB } from "@/hooks/useDB";
 import { WordChatPanel } from "@/components/WordChatPanel";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const MIN_W = 500;
 const MIN_H = 400;
@@ -220,37 +222,40 @@ export function ToolsModal() {
 
           {/* Tabs */}
           <div className="flex items-center gap-0.5 bg-muted rounded-lg p-0.5">
-            <button
+            <Button
+              variant="ghost"
               onClick={(e) => { e.stopPropagation(); setActiveTab("documents"); }}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+              className={`h-auto px-3 py-1.5 text-xs font-semibold rounded-md transition-colors hover:bg-transparent ${
                 activeTab === "documents"
-                  ? "bg-background text-foreground shadow-sm"
+                  ? "bg-background text-foreground shadow-sm hover:bg-background"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {t("tools.documents")}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
               onClick={(e) => { e.stopPropagation(); setActiveTab("chat"); }}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+              className={`h-auto px-3 py-1.5 text-xs font-semibold rounded-md transition-colors hover:bg-transparent ${
                 activeTab === "chat"
-                  ? "bg-background text-foreground shadow-sm"
+                  ? "bg-background text-foreground shadow-sm hover:bg-background"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {t("tools.chat")}
-            </button>
+            </Button>
             {isVocabPage && (
-              <button
+              <Button
+                variant="ghost"
                 onClick={(e) => { e.stopPropagation(); setActiveTab("word"); }}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                className={`h-auto px-3 py-1.5 text-xs font-semibold rounded-md transition-colors hover:bg-transparent ${
                   activeTab === "word"
-                    ? "bg-background text-foreground shadow-sm"
+                    ? "bg-background text-foreground shadow-sm hover:bg-background"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 {t("tools.word")}
-              </button>
+              </Button>
             )}
           </div>
 
@@ -258,28 +263,32 @@ export function ToolsModal() {
           {activeTab === "chat" && (
             <div className="flex items-center gap-1.5 ml-2" onPointerDown={(e) => e.stopPropagation()}>
               {/* Session selector dropdown */}
-              <select
-                value={chat.activeId ?? ""}
-                onChange={(e) => {
-                  const id = e.target.value;
+              <Select
+                value={chat.activeId ?? undefined}
+                onValueChange={(id) => {
                   if (id && id !== chat.activeId) chat.switchSession(id);
                 }}
-                className="h-7 px-2 text-[10px] rounded-lg border border-input bg-card focus:outline-none focus:ring-1 focus:ring-primary/30 max-w-[130px]"
+                disabled={allSessions.length === 0 && !chat.activeId}
               >
-                {allSessions.length === 0 && <option value="" disabled>{t("aichat.newChat")}</option>}
-                {allSessions.map((s) => (
-                  <option key={s.id} value={s.id}>{s.title || t("aichat.newChat")}</option>
-                ))}
-                {chat.activeId && !allSessions.find((s) => s.id === chat.activeId) && (
-                  <option value={chat.activeId}>{chat.activeTitle || t("aichat.newChat")}</option>
-                )}
-              </select>
-              <button
+                <SelectTrigger className="h-7 w-auto gap-1 px-2 text-[10px] rounded-lg border border-input bg-card focus:outline-none focus:ring-1 focus:ring-primary/30 max-w-[130px] [&_svg]:h-3 [&_svg]:w-3">
+                  <SelectValue placeholder={t("aichat.newChat")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {allSessions.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.title || t("aichat.newChat")}</SelectItem>
+                  ))}
+                  {chat.activeId && !allSessions.find((s) => s.id === chat.activeId) && (
+                    <SelectItem value={chat.activeId}>{chat.activeTitle || t("aichat.newChat")}</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="ghost"
                 onClick={() => chat.startNew()}
                 className="h-7 px-2.5 rounded-lg text-[10px] font-semibold bg-primary/10 text-primary hover:bg-primary/20 transition-colors whitespace-nowrap"
               >
                 {t("tools.newChat")}
-              </button>
+              </Button>
             </div>
           )}
 
@@ -287,16 +296,17 @@ export function ToolsModal() {
           <div className="flex-1" />
 
           {/* Close button */}
-          <button
+          <Button
+            variant="ghost"
             onClick={(e) => { e.stopPropagation(); closeModal(); }}
             title={t("tools.close")}
-            className="w-7 h-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+            className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
             onPointerDown={(e) => e.stopPropagation()}
           >
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5">
               <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
             </svg>
-          </button>
+          </Button>
         </div>
 
         {/* ── Body ────────────────────────────────────────────────────────── */}
@@ -337,27 +347,28 @@ export function ToolsModal() {
           <div style={{ display: activeTab === "chat" ? "flex" : "none", height: "100%" }} className="flex-col overflow-hidden">
             {/* Top bar: preset + provider + settings */}
             <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-border shrink-0" onPointerDown={(e) => e.stopPropagation()}>
-              <select
-                value={chat.selectedPreset}
-                onChange={(e) => chat.setSelectedPreset(e.target.value)}
-                className="h-6 px-1.5 text-[10px] rounded border border-input bg-card focus:outline-none focus:ring-1 focus:ring-primary/30"
-              >
-                {PRESET_IDS.map((id) => (
-                  <option key={id} value={id}>{t(`aichat.preset.${id}`)}</option>
-                ))}
-              </select>
-              <select
-                value={chat.selectedProviderId}
-                onChange={(e) => chat.setSelectedProviderId(e.target.value)}
-                className="h-6 px-1.5 text-[10px] rounded border border-input bg-card focus:outline-none focus:ring-1 focus:ring-primary/30 max-w-[140px]"
-              >
-                {chat.providers.map((p) => <option key={p.id} value={p.id}>{p.name} · {p.modelId}</option>)}
-                {chat.providers.length === 0 && <option disabled>{t("aichat.noProvider")}</option>}
-              </select>
+              <Select value={chat.selectedPreset} onValueChange={(v) => chat.setSelectedPreset(v)}>
+                <SelectTrigger className="h-6 w-auto gap-1 px-1.5 text-[10px] rounded border border-input bg-card focus:outline-none focus:ring-1 focus:ring-primary/30 [&_svg]:h-3 [&_svg]:w-3">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PRESET_IDS.map((id) => (
+                    <SelectItem key={id} value={id}>{t(`aichat.preset.${id}`)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={chat.selectedProviderId} onValueChange={(v) => chat.setSelectedProviderId(v)} disabled={chat.providers.length === 0}>
+                <SelectTrigger className="h-6 w-auto gap-1 px-1.5 text-[10px] rounded border border-input bg-card focus:outline-none focus:ring-1 focus:ring-primary/30 max-w-[140px] [&_svg]:h-3 [&_svg]:w-3">
+                  <SelectValue placeholder={t("aichat.noProvider")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {chat.providers.map((p) => <SelectItem key={p.id} value={p.id}>{p.name} · {p.modelId}</SelectItem>)}
+                </SelectContent>
+              </Select>
               {chat.displayItems.length > 0 && (
-                <button onClick={chat.clearMessages} className="ml-auto px-2 h-6 text-[10px] text-muted-foreground hover:text-destructive hover:bg-muted rounded transition-colors shrink-0">
+                <Button variant="ghost" onClick={chat.clearMessages} className="ml-auto h-6 px-2 text-[10px] text-muted-foreground hover:text-destructive hover:bg-muted rounded transition-colors shrink-0">
                   {t("aichat.clear")}
-                </button>
+                </Button>
               )}
             </div>
 
@@ -384,14 +395,15 @@ export function ToolsModal() {
                   </div>
                   <div className="grid grid-cols-2 gap-2 w-full max-w-[360px]">
                     {chat.QUICK_CARDS.map((c) => (
-                      <button
+                      <Button
                         key={c.titleKey}
+                        variant="ghost"
                         onClick={() => chat.applyQuickCard(c.prefillKey)}
-                        className="flex items-center gap-2 px-3 py-2.5 rounded-xl border border-border bg-card text-left hover:border-primary/40 hover:bg-muted/40 transition-colors"
+                        className="h-auto flex items-center justify-start gap-2 px-3 py-2.5 rounded-xl border border-border bg-card text-left hover:border-primary/40 hover:bg-muted/40 transition-colors"
                       >
                         <c.icon className="w-3.5 h-3.5 text-primary" />
                         <span className="text-[11px] font-medium">{t(c.titleKey)}</span>
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 </div>

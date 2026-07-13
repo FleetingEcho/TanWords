@@ -4,6 +4,7 @@ import { useDB, WordListItem } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { useWordModalStore } from "@/store/wordModalStore";
 import { SearchIcon } from "@/components/ui/icons";
+import { Button } from "@/components/ui/button";
 
 /** Vocabulary lookup box for the lesson panel: type any word from the article
  * (not just the AI's picks) to see whether it's already collected — click
@@ -72,25 +73,27 @@ export function WordSearchBox() {
       {q && searched && (
         <div className="space-y-1">
           {matches.map((w) => (
-            <button
+            <Button
               key={w.id}
+              variant="ghost"
               onClick={() => openWordModal(w.word)}
-              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-muted transition-colors text-left"
+              className="h-auto w-full flex items-center justify-start gap-2 px-2 py-1.5 rounded-lg hover:bg-muted transition-colors text-left"
             >
               <span className="text-xs font-semibold text-foreground">{w.word}</span>
               <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 ml-auto shrink-0">
                 {t("reading.search.inVocab")}
               </span>
-            </button>
+            </Button>
           ))}
           {!exactMatch && (
-            <button
+            <Button
+              variant="ghost"
               onClick={handleAdd}
               disabled={adding}
-              className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-semibold text-primary hover:bg-primary/10 disabled:opacity-50 transition-colors text-left"
+              className="h-auto w-full flex items-center justify-start gap-1.5 px-2 py-1.5 rounded-lg text-xs font-semibold text-primary hover:bg-primary/10 disabled:opacity-50 transition-colors text-left"
             >
               + {adding ? t("reading.search.adding") : t("reading.search.add", { word: q })}
-            </button>
+            </Button>
           )}
         </div>
       )}

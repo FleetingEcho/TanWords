@@ -4,6 +4,7 @@ import { useDB } from "@/hooks/useDB";
 import { SpeakButton } from "@/components/ui/SpeakButton";
 import { SparkIcon } from "@/components/ui/icons";
 import { CheckIcon } from "@heroicons/react/24/solid";
+import { Button } from "@/components/ui/button";
 
 export interface ExtractedVocabItem {
   word: string;
@@ -74,13 +75,13 @@ export function VocabExtractionCard({ items }: { items: ExtractedVocabItem[] }) 
         <SparkIcon className="w-3.5 h-3.5 text-primary" />
         <span className="text-xs font-semibold flex-1">提取到 {items.length} 个词条</span>
         {pendingCount > 0 && (
-          <button
+          <Button
             onClick={addAll}
             disabled={addingAll}
             className="h-7 px-3 rounded-lg text-[11px] font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
           >
             {addingAll ? "添加中…" : `全部加入 (${pendingCount})`}
-          </button>
+          </Button>
         )}
       </div>
       <div className="divide-y divide-border max-h-80 overflow-y-auto">
@@ -102,12 +103,12 @@ export function VocabExtractionCard({ items }: { items: ExtractedVocabItem[] }) 
               <div className="flex items-center gap-2 pt-0.5">
                 {status === "pending" ? (
                   <>
-                    <button onClick={() => addOne(i)} className="text-[11px] font-semibold text-primary hover:underline">
+                    <Button variant="link" onClick={() => addOne(i)} className="h-auto p-0 text-[11px] font-semibold text-primary hover:underline">
                       加入词库
-                    </button>
-                    <button onClick={() => markKnown(i)} className="text-[11px] text-muted-foreground hover:text-foreground">
+                    </Button>
+                    <Button variant="link" onClick={() => markKnown(i)} className="h-auto p-0 text-[11px] text-muted-foreground hover:text-foreground">
                       已认识
-                    </button>
+                    </Button>
                   </>
                 ) : status === "added" ? (
                   <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-0.5"><CheckIcon className="w-3 h-3" /> 已加入</span>

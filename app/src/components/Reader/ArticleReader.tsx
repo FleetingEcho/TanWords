@@ -5,6 +5,7 @@ import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
 import { usePodcastPlayerStore, type PodcastTrack } from "@/store/podcastPlayerStore";
 import { usePlayerOriginStore } from "@/store/playerOriginStore";
 import { SpeakerIcon, SparkIcon } from "@/components/ui/icons";
+import { Button } from "@/components/ui/button";
 
 export interface FetchedArticle {
   title: string;
@@ -105,12 +106,12 @@ export function ArticleReader({ url, domain, onLearn, onOpenExternal, audio }: P
       <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
         <p className="text-sm text-muted-foreground max-w-md">{t("reader.extractFailed")}</p>
         {errorMsg && <p className="text-[11px] font-mono text-muted-foreground/50 max-w-md truncate">{errorMsg}</p>}
-        <button
+        <Button
           onClick={onOpenExternal}
           className="h-9 px-4 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
         >
           {t("hn.reader.external")}
-        </button>
+        </Button>
       </div>
     );
   }
@@ -120,22 +121,24 @@ export function ArticleReader({ url, domain, onLearn, onOpenExternal, audio }: P
       <div className="max-w-[68ch] mx-auto px-6 py-10">
         {/* Font size control */}
         <div className="flex items-center justify-end gap-1 mb-6 -mt-2">
-          <button
+          <Button
+            variant="ghost"
             onClick={() => setFontStep((s) => Math.max(0, s - 1))}
             disabled={fontStep === 0}
-            className="w-7 h-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 transition-colors text-xs font-bold"
+            className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 transition-colors text-xs font-bold"
             title={t("reader.fontSmaller")}
           >
             A-
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
             onClick={() => setFontStep((s) => Math.min(FONT_STEPS.length - 1, s + 1))}
             disabled={fontStep === FONT_STEPS.length - 1}
-            className="w-7 h-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 transition-colors text-sm font-bold"
+            className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 transition-colors text-sm font-bold"
             title={t("reader.fontLarger")}
           >
             A+
-          </button>
+          </Button>
         </div>
 
         <h1 className="font-serif text-[1.9em] font-bold leading-tight text-foreground">{article.title}</h1>
@@ -146,23 +149,24 @@ export function ArticleReader({ url, domain, onLearn, onOpenExternal, audio }: P
         )}
 
         <div className="mt-6 flex items-center gap-2">
-          <button
+          <Button
             onClick={() => onLearn({ title: article.title, text: article.text_content })}
             className="h-9 px-4 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors inline-flex items-center gap-1.5"
           >
             <SparkIcon className="w-3.5 h-3.5" /> {t("hn.learn")}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
             onClick={handleListen}
             className={`h-9 px-4 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-colors ${
               playerActive
-                ? "bg-primary/10 text-primary"
+                ? "bg-primary/10 text-primary hover:bg-primary/10"
                 : "border border-input text-muted-foreground hover:text-foreground hover:bg-muted"
             }`}
           >
             <SpeakerIcon className="w-4 h-4" />
             {audio ? t("podcast.listenEpisode") : t("tts.listenToArticle")}
-          </button>
+          </Button>
         </div>
 
         <div

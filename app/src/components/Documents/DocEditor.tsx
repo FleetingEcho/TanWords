@@ -10,6 +10,7 @@ import { useIsDark } from "@/hooks/useIsDark";
 import { contentToBlocks, editorToStorage } from "@/lib/docFormat";
 import { PinIcon } from "@/components/ui/icons";
 import { CheckIcon } from "@heroicons/react/24/solid";
+import { Button } from "@/components/ui/button";
 
 interface Props {
   doc: DocumentDetail;
@@ -84,17 +85,18 @@ export function DocEditor({ doc, onSave, onTitleChange, onTagsChange, onPinToggl
             placeholder={t("doc.untitled")}
             className="flex-1 text-3xl font-bold tracking-tight bg-transparent border-none outline-none placeholder:text-muted-foreground/30 text-foreground"
           />
-          <button
+          <Button
+            variant="ghost"
             onClick={onPinToggle}
             title={doc.pinned ? t("doc.unpin") : t("doc.pin")}
-            className={`mt-2 w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
+            className={`mt-2 w-8 h-8 p-0 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
               doc.pinned
-                ? "text-amber-500 bg-amber-500/10"
+                ? "text-amber-500 bg-amber-500/10 hover:bg-amber-500/10"
                 : "text-muted-foreground/50 hover:text-foreground hover:bg-muted"
             }`}
           >
             <PinIcon filled={doc.pinned} className="w-4 h-4" />
-          </button>
+          </Button>
         </div>
         <div className="flex items-center gap-2 mt-2">
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3.5 h-3.5 text-muted-foreground/50 shrink-0">

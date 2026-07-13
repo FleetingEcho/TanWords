@@ -5,6 +5,8 @@ import { getSecret, setSecret, secretDelete } from "@/lib/secrets";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useT } from "@/hooks/useT";
 import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/24/solid";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 function TestStatusBadge({ status }: { status: { ok: boolean | null; text: string } }) {
   return (
@@ -290,27 +292,27 @@ export function ProviderSection() {
       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-3">{t("settings.providers")}</p>
       <div className="relative w-full max-w-xs">
         <span
-          className="absolute left-3.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full pointer-events-none"
+          className="absolute left-3.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full pointer-events-none z-10"
           style={{ background: selectedDot }}
         />
-        <select
+        <Select
           value={selectedProvider}
-          onChange={(e) => {
-            const v = e.target.value;
+          onValueChange={(v) => {
             setSelectedProvider(v);
             setShowAddCustom(v === "__new__");
             if (v !== "__new__") useSettingsStore.getState().setDefaultAiProvider(v);
           }}
-          className="w-full h-10 pl-9 pr-8 rounded-xl border border-input bg-card text-sm font-medium appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/30"
         >
-          {allCards.map((p) => (
-            <option key={p.id} value={p.id}>{p.name} · {p.model}</option>
-          ))}
-          <option value="__new__">+ {t("settings.custom")}</option>
-        </select>
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none">
-          <path d="M5 8l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+          <SelectTrigger className="w-full h-10 pl-9 pr-8 rounded-xl border border-input bg-card text-sm font-medium cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/30">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {allCards.map((p) => (
+              <SelectItem key={p.id} value={p.id}>{p.name} · {p.model}</SelectItem>
+            ))}
+            <SelectItem value="__new__">+ {t("settings.custom")}</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {selectedProvider !== "__new__" && (
@@ -333,7 +335,7 @@ export function ProviderSection() {
                 <label className="text-xs text-muted-foreground block mb-1">{t("settings.apiKey")}</label>
                 <input type="password" value={openaiKey} onChange={(e) => handleOpenaiKeyChange(e.target.value)} placeholder="sk-..." className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30" />
               </div>
-              <button onClick={() => testConnection("openai", "https://api.openai.com/v1", openaiKey)} className="text-xs text-primary hover:underline">{t("settings.testConnection")}</button>
+              <Button variant="link" onClick={() => testConnection("openai", "https://api.openai.com/v1", openaiKey)} className="h-auto p-0 text-xs text-primary hover:underline">{t("settings.testConnection")}</Button>
               {testStatus && <TestStatusBadge status={testStatus} />}
             </div>
           )}
@@ -344,7 +346,7 @@ export function ProviderSection() {
                 <label className="text-xs text-muted-foreground block mb-1">{t("settings.apiKey")}</label>
                 <input type="password" value={claudeKey} onChange={(e) => handleClaudeKeyChange(e.target.value)} placeholder="sk-ant-..." className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30" />
               </div>
-              <button onClick={() => testConnection("claude", "https://api.anthropic.com", claudeKey)} className="text-xs text-primary hover:underline">{t("settings.testConnection")}</button>
+              <Button variant="link" onClick={() => testConnection("claude", "https://api.anthropic.com", claudeKey)} className="h-auto p-0 text-xs text-primary hover:underline">{t("settings.testConnection")}</Button>
               {testStatus && <TestStatusBadge status={testStatus} />}
             </div>
           )}
@@ -356,7 +358,7 @@ export function ProviderSection() {
                   <label className="text-xs text-muted-foreground block mb-1">{t("settings.apiKey")}</label>
                   <input type="password" value={presetKeys[preset.id] || ""} onChange={(e) => handlePresetKeyChange(preset.id, e.target.value)} placeholder="API Key" className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30" />
                 </div>
-                <button onClick={() => testConnection(preset.id, preset.apiBase!, presetKeys[preset.id] || "", preset.model)} className="text-xs text-primary hover:underline">{t("settings.testConnection")}</button>
+                <Button variant="link" onClick={() => testConnection(preset.id, preset.apiBase!, presetKeys[preset.id] || "", preset.model)} className="h-auto p-0 text-xs text-primary hover:underline">{t("settings.testConnection")}</Button>
                 {testStatus && <TestStatusBadge status={testStatus} />}
               </div>
             )
@@ -383,8 +385,8 @@ export function ProviderSection() {
                     <input value={editForm.modelId} onChange={(e) => setEditForm((prev) => ({ ...prev, modelId: e.target.value }))} className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none" />
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={saveEdit} className="text-xs text-primary hover:underline">Save</button>
-                    <button onClick={() => setEditingId(null)} className="text-xs text-muted-foreground hover:underline">Cancel</button>
+                    <Button variant="link" onClick={saveEdit} className="h-auto p-0 text-xs text-primary hover:underline">Save</Button>
+                    <Button variant="link" onClick={() => setEditingId(null)} className="h-auto p-0 text-xs text-muted-foreground hover:underline">Cancel</Button>
                   </div>
                 </>
               ) : (
@@ -397,11 +399,11 @@ export function ProviderSection() {
                     <label className="text-xs text-muted-foreground block mb-1">{t("settings.defaultModel")}</label>
                     <p className="text-sm font-mono">{p.modelId}</p>
                   </div>
-                  <button onClick={() => testConnection(p.id, p.apiBase, p.apiKey, p.modelId)} className="text-xs text-primary hover:underline">{t("settings.testConnection")}</button>
+                  <Button variant="link" onClick={() => testConnection(p.id, p.apiBase, p.apiKey, p.modelId)} className="h-auto p-0 text-xs text-primary hover:underline">{t("settings.testConnection")}</Button>
                   {testStatus && <TestStatusBadge status={testStatus} />}
                   <div className="flex gap-2 mt-1">
-                    <button onClick={() => { setEditingId(p.id); setEditForm({ name: p.name, apiBase: p.apiBase, apiKey: p.apiKey, modelId: p.modelId }); }} className="text-xs text-primary hover:underline">Edit</button>
-                    <button onClick={() => removeCustom(p.id)} className="text-xs text-destructive hover:underline">Remove</button>
+                    <Button variant="link" onClick={() => { setEditingId(p.id); setEditForm({ name: p.name, apiBase: p.apiBase, apiKey: p.apiKey, modelId: p.modelId }); }} className="h-auto p-0 text-xs text-primary hover:underline">Edit</Button>
+                    <Button variant="link" onClick={() => removeCustom(p.id)} className="h-auto p-0 text-xs text-destructive hover:underline">Remove</Button>
                   </div>
                 </>
               )}
@@ -431,8 +433,8 @@ export function ProviderSection() {
             <input value={newProvider.modelId} onChange={(e) => setNewProvider((prev) => ({ ...prev, modelId: e.target.value }))} placeholder="gpt-4o-mini" className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none" />
           </div>
           <div className="flex gap-2">
-            <button onClick={addCustom} disabled={!newProvider.name || !newProvider.apiBase || !newProvider.modelId} className="px-4 py-1.5 rounded-lg text-xs font-medium bg-primary text-white hover:bg-primary/90 disabled:opacity-50 transition-colors">{t("settings.add")}</button>
-            <button onClick={() => setShowAddCustom(false)} className="px-4 py-1.5 rounded-lg text-xs font-medium border border-border hover:bg-muted transition-colors">{t("settings.cancel")}</button>
+            <Button onClick={addCustom} disabled={!newProvider.name || !newProvider.apiBase || !newProvider.modelId} className="h-auto px-4 py-1.5 rounded-lg text-xs font-medium bg-primary text-white hover:bg-primary/90 disabled:opacity-50 transition-colors">{t("settings.add")}</Button>
+            <Button variant="outline" onClick={() => setShowAddCustom(false)} className="h-auto px-4 py-1.5 rounded-lg text-xs font-medium border border-border hover:bg-muted transition-colors">{t("settings.cancel")}</Button>
           </div>
         </div>
       )}

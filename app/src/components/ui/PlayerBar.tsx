@@ -5,6 +5,7 @@ import { useArticlePlayer } from "@/hooks/useArticlePlayer";
 import { usePlayerOriginStore } from "@/store/playerOriginStore";
 import { useLayoutStore, SIDEBAR_WIDTH, SIDEBAR_WIDTH_COLLAPSED } from "@/store/layoutStore";
 import { PlayIcon, PauseIcon, SkipPrevIcon, SkipNextIcon, CloseIcon, RefreshIcon } from "@/components/ui/icons";
+import { Button } from "@/components/ui/button";
 
 const SPEEDS = [0.75, 1, 1.25, 1.5];
 
@@ -105,21 +106,23 @@ export function PlayerBar() {
 
       {/* ── Controls row ─────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3">
-        <button
+        <Button
+          variant="ghost"
           onClick={prev}
           disabled={currentIndex <= 0}
-          className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 transition-colors shrink-0"
+          className="w-8 h-8 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 transition-colors shrink-0"
           title={t("tts.prev")}
         >
           <SkipPrevIcon className="w-4 h-4" />
-        </button>
+        </Button>
 
-        {/* Always a <button> — icon/spinner swap inside, never unmounts the element.
+        {/* Always a <Button> — icon/spinner swap inside, never unmounts the element.
             This eliminates the DOM swap flash during sentence transitions. */}
-        <button
+        <Button
+          variant="ghost"
           onClick={isError ? retry : toggle}
           disabled={isLoading}
-          className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-colors ${
+          className={`w-9 h-9 p-0 rounded-full flex items-center justify-center shrink-0 transition-colors ${
             isError
               ? "bg-destructive/10 text-destructive hover:bg-destructive/20"
               : "bg-primary text-primary-foreground hover:bg-primary/90"
@@ -135,47 +138,51 @@ export function PlayerBar() {
           ) : (
             <PlayIcon className="w-4 h-4" />
           )}
-        </button>
+        </Button>
 
-        <button
+        <Button
+          variant="ghost"
           onClick={next}
           disabled={currentIndex >= sentences.length - 1}
-          className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 transition-colors shrink-0"
+          className="w-8 h-8 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 transition-colors shrink-0"
           title={t("tts.next")}
         >
           <SkipNextIcon className="w-4 h-4" />
-        </button>
+        </Button>
 
-        <button
+        <Button
+          variant="ghost"
           onClick={goToOrigin}
           title={t("tts.backToSource")}
-          className="flex-1 min-w-0 truncate text-xs text-muted-foreground px-2 flex items-center gap-1.5 hover:text-foreground transition-colors text-left"
+          className="h-auto flex-1 min-w-0 truncate text-xs text-muted-foreground px-2 flex items-center justify-start gap-1.5 hover:text-foreground hover:bg-transparent transition-colors text-left"
         >
           {isLoading && <span className="shrink-0 text-primary/70 animate-pulse">{t("tts.synthesizing")}</span>}
           <span className="truncate">{sentences[currentIndex]?.text ?? ""}</span>
-        </button>
+        </Button>
 
         <div className="flex items-center gap-1 bg-muted p-0.5 rounded-lg shrink-0">
           {SPEEDS.map((s) => (
-            <button
+            <Button
               key={s}
+              variant="ghost"
               onClick={() => setSpeed(s)}
-              className={`px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
-                speed === s ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+              className={`h-auto px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                speed === s ? "bg-card shadow-sm text-foreground hover:bg-card" : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {s}x
-            </button>
+            </Button>
           ))}
         </div>
 
-        <button
+        <Button
+          variant="ghost"
           onClick={stop}
-          className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+          className="w-8 h-8 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
           title={t("tts.close")}
         >
           <CloseIcon className="w-4 h-4" />
-        </button>
+        </Button>
       </div>
     </div>
   );
