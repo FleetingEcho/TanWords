@@ -89,6 +89,11 @@ admin/   # Standalone local admin tool for the same SQLite DB — table CRUD and
   Downloadable voice models, pluggable model directories, sentence-by-sentence
   article playback, and per-word/example "speak" buttons throughout the app; falls
   back to the browser's `speechSynthesis` if no local model is loaded.
+  Article playback is pipelined rather than batched: the model is preloaded at
+  app startup (not on first use), only the sentence about to play is awaited,
+  and the next couple of sentences are synthesized in the background while it
+  plays. Synthesis itself runs off the async runtime on a dedicated blocking
+  thread, so the UI stays responsive while sentences are generated.
 
 ## Feature pages
 
