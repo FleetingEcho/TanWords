@@ -9,11 +9,16 @@
  *   # edit baseUrl / model to point at your local endpoint
  *
  * Usage:
- *   node server/generate-cli.mjs words     [--topics "AI,climate,economics"] [--count 30]
- *   node server/generate-cli.mjs articles  [--topics "remote work,open source"] [--count 5]
- *   node server/generate-cli.mjs documents [--topics "读书笔记,项目复盘"] [--count 5]
- *   node server/generate-cli.mjs enrich    [--count 50] [--all] [--words "resilient,tenuous"]
+ *   node server/generate-cli.mjs words     [--topics "AI,climate,economics"] [--count 30] [--concurrency 5]
+ *   node server/generate-cli.mjs articles  [--topics "remote work,open source"] [--count 5] [--concurrency 5]
+ *   node server/generate-cli.mjs documents [--topics "读书笔记,项目复盘"] [--count 5] [--concurrency 5]
+ *   node server/generate-cli.mjs enrich    [--count 50] [--all] [--words "resilient,tenuous"] [--concurrency 5]
  *   node server/generate-cli.mjs all       [--count 20]     # runs all four with defaults
+ *
+ * --concurrency (default 5): number of model requests kept in flight at
+ * once, refilled as each completes, instead of one-at-a-time. Tune down if
+ * your endpoint starts erroring/timing out under load, up if it's a
+ * multi-replica server that can actually parallelize.
  *
  * enrich: backfills the freeform AI explanation (words.enrichment_text —
  * same format the app itself generates: a short Chinese gloss plus a free-
@@ -134,6 +139,21 @@ function parseArgs(argv) {
 const [, , mode, ...rest] = process.argv;
 const args = parseArgs(rest);
 const COUNT = parseInt(args.count || "20", 10);
+const CONCURRENCY = parseInt(args.concurrency || "5", 10);
+
+/** Runs `worker` over `items` with at most `concurrency` in flight at once —
+ * each of `concurrency` workers pulls the next item as soon as it finishes
+ * its current one, so the pool stays full until the queue drains. */
+async function runPool(items, worker, concurrency = CONCURRENCY) {
+  let cursor = 0;
+  async function drain() {
+    while (cursor < items.length) {
+      const index = cursor++;
+      await worker(items[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, drain));
+}
 const listArg = (v, fallback) => (v ? v.split(",").map((s) => s.trim()).filter(Boolean) : fallback);
 
 const DEFAULT_WORD_TOPICS = ["software engineering", "business & startups", "science & technology", "everyday abstract reasoning"];
@@ -168,46 +188,131 @@ const insItem = db.prepare("INSERT INTO extracted_items (article_id, kind, text,
 
 const insDoc = db.prepare("INSERT INTO documents (title, content, content_text, tags, pinned, word_count) VALUES (?,?,?,?,0,?)");
 
-// ── words mode ──────────────────────────────────────────────────────────
-async function genWords() {
-  const topics = listArg(args.topics, DEFAULT_WORD_TOPICS);
-  const CHUNK = 10;
-  let added = 0, skipped = 0;
-
-  const system = `You are a lexicographer building a vocabulary database for a ${TARGET_LEVEL}-level Chinese-native English learner. For each request, invent ${CHUNK} DISTINCT, useful ${TARGET_LEVEL}/C2-level English words or short phrases related to the given topic — words a serious learner would actually want to look up, not obscure trivia.
+// ── shared enrichment (word -> zhShort/text/wordType/level) ─────────────
+// Used both to backfill existing bare words and to fill in newly discovered
+// ones (see genWords below) — the model is only ever asked to describe
+// words that already exist as rows, never to invent new ones here.
+const ENRICH_CHUNK = 8;
+const ENRICH_SYSTEM = `You are a lexicographer enriching an EXISTING vocabulary database for a ${TARGET_LEVEL}-level Chinese-native English learner. You will be given a list of words that are ALREADY saved — do NOT invent new words, do NOT skip any, do NOT change their spelling. Return exactly one enrichment entry per given word, using the identical spelling you were given.
 
 Return ONLY a JSON array (no markdown fences, no prose) of objects with EXACTLY these keys:
 {
-  "word": "lowercase dictionary form",
+  "word": "must exactly match one of the given words, lowercase",
   "wordType": "n|v|adj|adv|phrase",
   "level": "B2|C1|C2",
   "zhShort": "10字以内的中文短释义，用于速记卡片",
   "text": "中文讲解正文（markdown），自由组织内容：核心释义、常见用法、易混淆点、词源、记忆方法等，该长则长该短则短，不必覆盖每一类。硬性要求：(1) 至少4-6条例句，覆盖不同词义/词性/语域（日常口语、书面/学术、新闻财经等），每条例句写成 '> ' 开头的 markdown blockquote，可在同一 blockquote 内下一行附中文翻译；(2) 搭配(collocations)、常见句型、近义词细微差别、使用场合等常见用法要讲透，不要一笔带过。"
 }`;
 
-  for (const topic of topics) {
-    const batches = Math.ceil(COUNT / topics.length / CHUNK) || 1;
-    for (let b = 0; b < batches; b++) {
-      const items = await callModelSafe(system, `Topic: ${topic}. Generate ${CHUNK} words now.`, `words[${topic}]`);
-      if (!Array.isArray(items)) continue;
-      const tx = db.transaction((rows) => {
-        for (const w of rows) {
-          if (!w.word) continue;
-          const word = String(w.word).trim().toLowerCase();
-          const result = insWord.run(word, w.wordType ?? null, w.level ?? TARGET_LEVEL, "ai");
-          if (result.changes === 0) { skipped++; continue; }
-          const { id } = findWordId.get(word);
-          seedDefIfMissing(id, w.zhShort);
-          insSrs.run(id);
-          updEnrichText.run(w.text || "", id);
-          added++;
-        }
-      });
-      tx(items);
-      console.log(`[words] ${topic} batch ${b + 1}/${batches}: +${items.length} candidates (added ${added} so far, skipped ${skipped} dupes)`);
+/** Fills in zhShort/text/wordType/level for `rows` (words that already
+ * exist in the DB — either bare-inserted by genWords or missing enrichment
+ * per genEnrichExisting) — chunked and pooled concurrently. */
+async function enrichRows(rows, label) {
+  if (rows.length === 0) return { updated: 0, missing: 0 };
+  let updated = 0, missing = 0;
+
+  const batches = [];
+  for (let i = 0; i < rows.length; i += ENRICH_CHUNK) batches.push(rows.slice(i, i + ENRICH_CHUNK));
+
+  await runPool(batches, async (batch, idx) => {
+    const wordList = batch.map((r) => r.word).join(", ");
+    const items = await callModelSafe(ENRICH_SYSTEM, `Words: ${wordList}`, `${label}[batch ${idx + 1}]`);
+    if (!Array.isArray(items)) { missing += batch.length; return; }
+
+    const byWord = new Map(batch.map((r) => [r.word.toLowerCase(), r]));
+
+    const tx = db.transaction((results) => {
+      for (const w of results) {
+        if (!w.word) continue;
+        const row = byWord.get(String(w.word).trim().toLowerCase());
+        if (!row) continue; // model returned a word we didn't ask for — ignore rather than guess which one it meant
+        byWord.delete(row.word.toLowerCase());
+
+        // Re-enrichment overwrites the old body text — no dedup concern since
+        // it's a single column, not accumulating rows like the old
+        // definitions/etymology tables did.
+        seedDefIfMissing(row.id, w.zhShort);
+        updWordLevel.run(w.level ?? row.level ?? TARGET_LEVEL, row.id);
+        updEnrichText.run(w.text || "", row.id);
+        updated++;
+      }
+    });
+    tx(items);
+    missing += byWord.size; // words the model silently dropped from this batch
+    console.log(`[${label}] batch ${idx + 1}/${batches.length}: ${items.length}/${batch.length} returned (${updated} enriched so far)`);
+  });
+  return { updated, missing };
+}
+
+// ── word discovery (dedup-aware, cheap — word strings only, no analysis) ─
+const MAX_DISCOVERY_ROUNDS = 3;
+
+/** Asks the model for `count` NEW words for `topic`, filtering every
+ * candidate against the shared `known` set (case-insensitive, seeded from
+ * the whole existing vocab) and re-asking — with an updated sample of what
+ * it now knows about — for whatever's still short, up to
+ * MAX_DISCOVERY_ROUNDS times. `known` is mutated in place as words are
+ * accepted so concurrently-running topics see each other's picks too. */
+async function discoverNewWords(topic, count, known) {
+  const found = [];
+  for (let round = 0; found.length < count && round < MAX_DISCOVERY_ROUNDS; round++) {
+    const need = count - found.length;
+    // Cap the "avoid these" sample so the prompt doesn't grow unbounded on
+    // a large existing vocab — exact correctness still comes from the local
+    // `known.has()` filter below, this sample just helps the model aim better.
+    const sample = Array.from(known).slice(-150).join(", ") || "(none yet)";
+    const system = `You are a lexicographer building a vocabulary database for a ${TARGET_LEVEL}-level Chinese-native English learner. Given a topic and a sample of words ALREADY in the database, invent ${Math.min(need * 2, 20)} DISTINCT, useful ${TARGET_LEVEL}/C2-level English words or short phrases related to the topic that are NOT in that sample and aren't trivial rephrasings of anything in it — words a serious learner would actually want to look up, not obscure trivia.
+
+Return ONLY a JSON array of lowercase word/phrase strings, no markdown fences, no prose. Example: ["word one", "word two"]`;
+
+    const items = await callModelSafe(
+      system,
+      `Topic: ${topic}. Already have, avoid these and anything similar: ${sample}. Generate now.`,
+      `discover[${topic}] round ${round + 1}`
+    );
+    if (!Array.isArray(items)) continue;
+
+    for (const raw of items) {
+      if (found.length >= count) break;
+      const word = String(raw ?? "").trim().toLowerCase();
+      if (!word || known.has(word)) continue;
+      known.add(word);
+      found.push(word);
     }
   }
-  console.log(`[words] done: ${added} added, ${skipped} skipped (already in vocab)`);
+  return found;
+}
+
+// ── words mode ──────────────────────────────────────────────────────────
+// Two phases: (1) cheaply discover new, non-duplicate word candidates per
+// topic (word strings only, checked against the full existing vocab before
+// any expensive analysis is requested), (2) bare-insert them and run the
+// full concurrent enrichment pass — so the costly per-word analysis call
+// only ever runs on words we've already confirmed are new.
+async function genWords() {
+  const topics = listArg(args.topics, DEFAULT_WORD_TOPICS);
+  const perTopic = Math.ceil(COUNT / topics.length);
+
+  const known = new Set(db.prepare("SELECT word FROM words").all().map((r) => r.word.toLowerCase()));
+
+  const discovered = await Promise.all(topics.map((topic) => discoverNewWords(topic, perTopic, known)));
+
+  let dupesAtInsert = 0;
+  const newRows = [];
+  const tx = db.transaction((words) => {
+    for (const word of words) {
+      const result = insWord.run(word, null, TARGET_LEVEL, "ai");
+      if (result.changes === 0) { dupesAtInsert++; continue; } // rare: two topics discovered the same brand-new word concurrently
+      const { id } = findWordId.get(word);
+      insSrs.run(id);
+      newRows.push({ id, word, level: TARGET_LEVEL });
+    }
+  });
+  tx(discovered.flat());
+
+  console.log(`[words] discovered ${newRows.length} new words (${dupesAtInsert} collided at insert time) — generating full analysis now...`);
+  const { updated, missing } = await enrichRows(newRows, "words");
+  console.log(`[words] done: ${updated} words fully generated, ${missing} failed enrichment`);
 }
 
 // ── enrich mode ─────────────────────────────────────────────────────────
@@ -232,48 +337,7 @@ async function genEnrichExisting() {
     return;
   }
 
-  const CHUNK = 8;
-  let updated = 0, missing = 0;
-
-  const system = `You are a lexicographer enriching an EXISTING vocabulary database for a ${TARGET_LEVEL}-level Chinese-native English learner. You will be given a list of words that are ALREADY saved — do NOT invent new words, do NOT skip any, do NOT change their spelling. Return exactly one enrichment entry per given word, using the identical spelling you were given.
-
-Return ONLY a JSON array (no markdown fences, no prose) of objects with EXACTLY these keys:
-{
-  "word": "must exactly match one of the given words, lowercase",
-  "wordType": "n|v|adj|adv|phrase",
-  "level": "B2|C1|C2",
-  "zhShort": "10字以内的中文短释义，用于速记卡片",
-  "text": "中文讲解正文（markdown），自由组织内容：核心释义、常见用法、易混淆点、词源、记忆方法等，该长则长该短则短，不必覆盖每一类。硬性要求：(1) 至少4-6条例句，覆盖不同词义/词性/语域（日常口语、书面/学术、新闻财经等），每条例句写成 '> ' 开头的 markdown blockquote，可在同一 blockquote 内下一行附中文翻译；(2) 搭配(collocations)、常见句型、近义词细微差别、使用场合等常见用法要讲透，不要一笔带过。"
-}`;
-
-  for (let i = 0; i < rows.length; i += CHUNK) {
-    const batch = rows.slice(i, i + CHUNK);
-    const wordList = batch.map((r) => r.word).join(", ");
-    const items = await callModelSafe(system, `Words: ${wordList}`, `enrich[batch ${Math.floor(i / CHUNK) + 1}]`);
-    if (!Array.isArray(items)) { missing += batch.length; continue; }
-
-    const byWord = new Map(batch.map((r) => [r.word.toLowerCase(), r]));
-
-    const tx = db.transaction((results) => {
-      for (const w of results) {
-        if (!w.word) continue;
-        const row = byWord.get(String(w.word).trim().toLowerCase());
-        if (!row) continue; // model returned a word we didn't ask for — ignore rather than guess which one it meant
-        byWord.delete(row.word.toLowerCase());
-
-        // Re-enrichment overwrites the old body text — no dedup concern since
-        // it's a single column, not accumulating rows like the old
-        // definitions/etymology tables did.
-        seedDefIfMissing(row.id, w.zhShort);
-        updWordLevel.run(w.level ?? row.level ?? TARGET_LEVEL, row.id);
-        updEnrichText.run(w.text || "", row.id);
-        updated++;
-      }
-    });
-    tx(items);
-    missing += byWord.size; // words the model silently dropped from this batch
-    console.log(`[enrich] batch ${Math.floor(i / CHUNK) + 1}/${Math.ceil(rows.length / CHUNK)}: ${items.length}/${batch.length} returned (${updated} enriched so far)`);
-  }
+  const { updated, missing } = await enrichRows(rows, "enrich");
   console.log(`[enrich] done: ${updated} words enriched, ${missing} words the model dropped/failed`);
 }
 
@@ -297,10 +361,11 @@ Return ONLY JSON (no markdown fences) with this shape:
 }
 Include 4-6 word items.`;
 
-  for (let i = 0; i < n; i++) {
+  const indices = Array.from({ length: n }, (_, i) => i);
+  await runPool(indices, async (i) => {
     const topic = topics[i % topics.length];
     const result = await callModelSafe(system, `Topic: ${topic}. Write the essay and extract items now.`, `article[${topic}]`);
-    if (!result?.content || !Array.isArray(result.items)) continue;
+    if (!result?.content || !Array.isArray(result.items)) return;
 
     const validItems = result.items.filter((it) => {
       const ok = it.text && result.content.toLowerCase().includes(String(it.text).toLowerCase());
@@ -314,7 +379,7 @@ Include 4-6 word items.`;
     }
     added++;
     console.log(`[articles] "${result.title}" — ${validItems.length}/${result.items.length} items kept`);
-  }
+  });
   console.log(`[articles] done: ${added} articles added, ${droppedItems} items dropped (not verbatim in content)`);
 }
 
@@ -337,10 +402,11 @@ Return ONLY JSON (no markdown fences):
   "tags": ["1-3 short Chinese tags"]
 }`;
 
-  for (let i = 0; i < n; i++) {
+  const indices = Array.from({ length: n }, (_, i) => i);
+  await runPool(indices, async (i) => {
     const topic = topics[i % topics.length];
     const result = await callModelSafe(system, `Topic: ${topic}. Write the note now.`, `document[${topic}]`);
-    if (!result?.title || !Array.isArray(result.paragraphs) || result.paragraphs.length === 0) continue;
+    if (!result?.title || !Array.isArray(result.paragraphs) || result.paragraphs.length === 0) return;
 
     const blocks = result.paragraphs.map((p) => ({ type: "paragraph", content: String(p) }));
     const content = JSON.stringify(blocks);
@@ -349,7 +415,7 @@ Return ONLY JSON (no markdown fences):
     insDoc.run(result.title, content, contentText, JSON.stringify(result.tags ?? []), wordCount);
     added++;
     console.log(`[documents] "${result.title}" — ${result.paragraphs.length} paragraphs`);
-  }
+  });
   console.log(`[documents] done: ${added} documents added`);
 }
 
