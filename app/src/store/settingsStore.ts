@@ -166,6 +166,13 @@ export function applyTheme(theme: Theme) {
   } else {
     root.classList.toggle("dark", theme === "dark");
   }
+  // Cached so index.html's pre-paint script can apply it synchronously on
+  // the next launch, before the async DB round-trip resolves.
+  try {
+    localStorage.setItem("tanwords_theme_cache", theme);
+  } catch {
+    // localStorage unavailable — the DB-driven applyTheme() call still runs, just later
+  }
 }
 
 // Listen for system theme changes

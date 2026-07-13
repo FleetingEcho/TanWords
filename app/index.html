@@ -1,6 +1,20 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
   <head>
+    <script>
+      // Apply the last-known theme synchronously, before first paint — avoids
+      // a flash of the wrong theme while the real setting loads from the DB
+      // asynchronously (see settingsStore.loadFromDB / applyTheme).
+      (function () {
+        try {
+          var theme = localStorage.getItem("tanwords_theme_cache") || "system";
+          var isDark =
+            theme === "dark" ||
+            (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          if (isDark) document.documentElement.classList.add("dark");
+        } catch (e) {}
+      })();
+    </script>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />

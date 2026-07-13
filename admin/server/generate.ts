@@ -92,6 +92,20 @@ generate.post("/preview", async (c) => {
   return c.json({ items, skipped });
 });
 
+/** Builds a minimal freeform words.enrichment_text body from this quick-add
+ *  tool's lightweight output — the app's word detail view reads this column
+ *  as the primary explanation, so leaving it blank shows an empty detail
+ *  panel. Not as rich as the CLI's `enrich` mode; use that for real depth. */
+function buildEnrichmentText(row: GeneratedWord): string {
+  const lines = [`**${row.zh}**`];
+  if (row.mnemonic) lines.push("", row.mnemonic);
+  if (row.example_en) {
+    lines.push("", `> ${row.example_en}`);
+    if (row.example_zh) lines[lines.length - 1] += `\n> ${row.example_zh}`;
+  }
+  return lines.join("\n");
+}
+
 // POST /api/generate/commit — accepted rows → written to words + word_definitions
 generate.post("/commit", async (c) => {
   const { items, source } = await c.req.json<{ items: GeneratedWord[]; source?: string }>();
@@ -102,7 +116,7 @@ generate.post("/commit", async (c) => {
   const insertDef = db.prepare(
     "INSERT INTO word_definitions (word_id, pos, zh, example_en, example_zh, sort_order) VALUES (?, ?, ?, ?, ?, 0)"
   );
-  const insertMnemonic = db.prepare("UPDATE words SET mnemonic = ? WHERE id = ?");
+  const insertEnrichmentText = db.prepare("UPDATE words SET enrichment_text = ? WHERE id = ?");
   const findId = db.prepare("SELECT id FROM words WHERE word = ?");
 
   const tx = db.transaction((rows: GeneratedWord[]) => {
@@ -119,7 +133,7 @@ generate.post("/commit", async (c) => {
       added++;
       const { id } = findId.get(word) as { id: number };
       insertDef.run(id, row.word_type || "other", row.zh, row.example_en ?? null, row.example_zh ?? null);
-      if (row.mnemonic) insertMnemonic.run(row.mnemonic, id);
+      insertEnrichmentText.run(buildEnrichmentText(row), id);
     }
     return { added, skipped };
   });

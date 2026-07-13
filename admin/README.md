@@ -91,11 +91,11 @@ npm run generate <mode> [options]
 
 | Mode | What it does | Options |
 |---|---|---|
-| `words` | Invents new vocabulary on given topics, with full enrichment (definitions, synonyms, antonyms, collocations, etymology, mnemonic). Skips words already in the vocab. | `--topics "AI,climate,economics"` `--count 30` |
+| `words` | Invents new vocabulary on given topics, with the same freeform AI explanation the app itself generates (a short Chinese gloss + markdown write-up with 4-6+ example blockquotes, covering usage/collocations/nuance/etymology as needed — no fixed sections). Skips words already in the vocab. | `--topics "AI,climate,economics"` `--count 30` |
 | `articles` | Writes short original essays and extracts learnable words/patterns from them, verified to appear verbatim in the essay text (so in-app highlighting works). | `--topics "remote work,open source"` `--count 5` |
 | `patterns` | Adds entries to the sentence-pattern library — skeleton, meaning, function tag, structural analysis, example sentences. Folds into an existing pattern (appending an example) instead of duplicating if the skeleton already exists. | `--skeletons "not so much X as Y,..."` (specific patterns) or `--count 15` (let the model invent them) |
 | `documents` | Writes study-note documents (BlockNote format, same as the app's Documents page) — reading notes, vocab reviews, project retrospectives. | `--topics "读书笔记,项目复盘"` `--count 5` |
-| `enrich` | **Backfills** full AI analysis onto words that are already in the vocabulary but only have a bare word+translation (e.g. accepted straight from a reading lesson) — never inserts new words. | `--count 50` (words missing enrichment, default) · `--all` (re-enrich every word regardless of current state) · `--words "resilient,tenuous"` (target specific words) |
+| `enrich` | **Backfills** the freeform AI explanation onto words that are already in the vocabulary but only have a bare word+translation (e.g. accepted straight from a reading lesson) — never inserts new words. | `--count 50` (words missing enrichment, default) · `--all` (re-enrich every word regardless of current state) · `--words "resilient,tenuous"` (target specific words) |
 | `all` | Runs `words`, `articles`, `patterns`, `documents`, then `enrich`, in that order, with each mode's defaults. | `--count 20` (applied to each mode) |
 
 Examples:
@@ -133,8 +133,8 @@ not needed when calling `node server/generate-cli.mjs <mode>` directly.)
   logged — this is what makes in-app highlighting work, and it's the one
   correctness rule the model reliably breaks if you don't check for it.
 - **`enrich` replaces, not appends**: re-running it on the same word (e.g.
-  via `--all` twice) swaps out that word's old definitions/etymology rather
-  than accumulating duplicate rows.
+  via `--all` twice) overwrites that word's old explanation text rather
+  than accumulating duplicate content.
 - Retries once per model call on a malformed/unreachable response, then logs
   and moves on to the next batch rather than aborting the whole run.
 
