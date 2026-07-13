@@ -16,6 +16,7 @@ export const settings: Dict = {
     "settings.enrichPromptSub": "词汇页 AI 讲解单词时使用的自定义系统提示词，留空则使用内置默认值。",
     "settings.enrichPromptReset": "恢复默认",
     "settings.enrichPromptPlaceholder": "留空则使用内置默认提示词",
+    "settings.dbFallbackWarning": "无法打开你设置的数据库路径 \"{path}\"（磁盘未连接，或文件已被移动？）。已回退到默认数据库 —— 该路径下的数据并未被删除。重新连接后，可在下方用\"切换数据库\"指回那个文件。",
     "settings.dbLocation": "数据库位置",
     "settings.switchDB": "切换数据库",
     "settings.switchDBSub": "切换到其他位置的数据库文件，或新建一个独立的数据库",

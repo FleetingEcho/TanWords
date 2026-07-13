@@ -20,11 +20,16 @@ pub struct AppState {
     /// `spawn_blocking`, keeping the CPU-bound ONNX inference off the tokio
     /// worker threads that also service other IPC commands.
     pub tts: Arc<Mutex<Option<tts::LoadedEngine>>>,
+    /// Set once at startup if a previously-saved custom DB path (via
+    /// `db_switch_path`) failed to open and the app silently fell back to
+    /// the default location — surfaced once to the frontend so the user
+    /// sees a warning instead of a mysteriously empty vocabulary.
+    pub db_fallback_warning: Option<String>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let db_path = resolve_db_path();
+    let (db_path, db_fallback_warning) = resolve_db_path();
     let conn = Connection::open(&db_path).expect("Failed to open database");
     db::init_db(&conn).expect("Failed to initialize database");
 
@@ -35,6 +40,7 @@ pub fn run() {
             db: Mutex::new(conn),
             db_path: Mutex::new(db_path),
             tts: Arc::new(Mutex::new(None)),
+            db_fallback_warning,
         })
         .invoke_handler(tauri::generate_handler![
             db::db_get_word_count,
@@ -84,6 +90,7 @@ pub fn run() {
             db::db_get_search_history,
             db::db_clear_search_history,
             db::db_switch_path,
+            db::db_get_startup_warning,
             tts::models::tts_scan_models,
             tts::models::tts_default_models_dir,
             tts::engine::tts_load_model,
@@ -123,13 +130,16 @@ fn get_db_path() -> String {
 /// Prefers a user-chosen DB path saved by a previous `db_switch_path` call;
 /// falls back to (and self-heals to) the default location if that path no
 /// longer opens — e.g. the file was on a drive that isn't mounted right now.
-fn resolve_db_path() -> String {
+/// Returns the failed path alongside the fallback so the caller can warn the
+/// user instead of silently swapping to a fresh, seemingly-empty database.
+fn resolve_db_path() -> (String, Option<String>) {
     if let Some(custom_path) = appconfig::load_db_path_override() {
         if Connection::open(&custom_path).is_ok() {
-            return custom_path;
+            return (custom_path, None);
         }
         eprintln!("[tanwords] saved db path '{custom_path}' failed to open, falling back to default");
         appconfig::clear_db_path_override();
+        return (get_db_path(), Some(custom_path));
     }
-    get_db_path()
+    (get_db_path(), None)
 }

@@ -54,6 +54,16 @@ pub fn db_get_db_path(state: State<'_, AppState>) -> Result<String, String> {
     Ok(state.db_path.lock().map_err(|e| e.to_string())?.clone())
 }
 
+/// Returns (and consumes-by-value, since it's a plain startup snapshot) the
+/// path of a previously-saved custom DB location that failed to open this
+/// launch, if that happened — `None` otherwise. The frontend calls this once
+/// at startup to show a warning instead of the app silently falling back to
+/// an empty default database with no explanation.
+#[tauri::command]
+pub fn db_get_startup_warning(state: State<'_, AppState>) -> Option<String> {
+    state.db_fallback_warning.clone()
+}
+
 /// Mounts a different SQLite file as the app's active database — creating it
 /// (and running migrations) if it doesn't exist yet, or opening it as-is if
 /// it does. Swaps the live connection in place so no restart is needed; the

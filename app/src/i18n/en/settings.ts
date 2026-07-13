@@ -16,6 +16,7 @@ export const settings: Dict = {
     "settings.enrichPromptSub": "Custom system prompt for AI word enrichment on the Vocabulary page. Leave empty to use the built-in default.",
     "settings.enrichPromptReset": "Reset to default",
     "settings.enrichPromptPlaceholder": "Leave empty to use the built-in default prompt",
+    "settings.dbFallbackWarning": "Couldn't open your saved database at \"{path}\" (drive unplugged, or the file was moved?). Reverted to the default database — your data at that path has NOT been deleted. Reconnect it and use \"Switch Database\" below to point back at it.",
     "settings.dbLocation": "Database Location",
     "settings.switchDB": "Switch Database",
     "settings.switchDBSub": "Switch to a database file elsewhere, or create a new standalone one",

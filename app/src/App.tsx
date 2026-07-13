@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 import { MainLayout } from "@/components/Layout/Sidebar";
 import { DashboardPage } from "@/components/Dashboard/DashboardPage";
 import { VocabularyPage } from "@/components/Vocabulary/VocabularyPage";
@@ -16,6 +16,7 @@ import { ToolsModal } from "@/components/ui/ToolsModal";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useNavStore } from "@/store/navStore";
 import { useDB } from "@/hooks/useDB";
+import { useT } from "@/hooks/useT";
 import { initProviders } from "@/lib/initProviders";
 import { invoke } from "@tauri-apps/api/core";
 import { ENRICHED_SEED_WORDS, BASIC_SEED_WORDS } from "@/data/seedWords";
@@ -23,6 +24,7 @@ import { ENRICHED_SEED_WORDS, BASIC_SEED_WORDS } from "@/data/seedWords";
 function App() {
   const { loadFromDB, isLoaded, ttsModelPath } = useSettingsStore();
   const db = useDB();
+  const t = useT();
   const { currentPage, currentWordId, navigate } = useNavStore();
 
   const [wordCount, setWordCount] = React.useState(0);
@@ -31,6 +33,18 @@ function App() {
   useEffect(() => {
     initProviders();
     loadFromDB();
+  }, []);
+
+  // If a previously-saved custom DB path failed to open this launch (drive
+  // unplugged, file moved), the backend silently fell back to the default
+  // DB rather than deleting anything — surface that instead of leaving the
+  // user staring at a mysteriously empty vocabulary.
+  useEffect(() => {
+    invoke<string | null>("db_get_startup_warning")
+      .then((path) => {
+        if (path) toast.warning(t("settings.dbFallbackWarning", { path }), { duration: 15000 });
+      })
+      .catch(() => {});
   }, []);
 
   // Preload the on-device TTS model at startup instead of on the first
