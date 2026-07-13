@@ -3,7 +3,7 @@ use tauri::State;
 
 use crate::db;
 use crate::db::words_types::{
-    AddWordResult, BatchAddResult, NewVocabWord, WordEnrichmentInput, WordExtras, WordGraphItem,
+    AddWordResult, BatchAddResult, NewVocabWord, WordEnrichmentInput, WordExtras,
 };
 use crate::AppState;
 
@@ -97,25 +97,32 @@ pub fn db_add_word_enriched(
             .map_err(|e| e.to_string())?
     };
 
-    for (i, def) in enrichment.definitions.iter().enumerate() {
+    // Don't clobber a level a caller (e.g. Reading) already supplied.
+    if !is_new {
         db.execute(
-            "INSERT OR IGNORE INTO word_definitions (word_id, pos, zh, en, example_en, example_zh, sort_order) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![word_id, def.pos, def.zh, def.en, def.example_en, def.example_zh, i as i64],
+            "UPDATE words SET level = COALESCE(level, ?1) WHERE id = ?2",
+            params![enrichment.level, word_id],
         ).map_err(|e| e.to_string())?;
     }
 
-    if let Some(ref ety) = enrichment.etymology {
-        let parts_json = ety.parts.as_ref().map(|p| serde_json::to_string(p).unwrap_or_default());
-        db.execute(
-            "INSERT OR IGNORE INTO word_etymology (word_id, parts, story, origin_lang) VALUES (?1, ?2, ?3, ?4)",
-            params![word_id, parts_json, ety.story, ety.origin_lang],
+    // Only seed a short gloss for quiz cards if this word doesn't have one yet.
+    if let Some(ref zh_short) = enrichment.zh_short {
+        let has_def: bool = db.query_row(
+            "SELECT EXISTS(SELECT 1 FROM word_definitions WHERE word_id = ?1)",
+            params![word_id],
+            |row| row.get(0),
         ).map_err(|e| e.to_string())?;
+        if !has_def {
+            db.execute(
+                "INSERT INTO word_definitions (word_id, pos, zh, sort_order) VALUES (?1, 'other', ?2, 0)",
+                params![word_id, zh_short],
+            ).map_err(|e| e.to_string())?;
+        }
     }
 
-    let json = serde_json::to_string(&enrichment).map_err(|e| e.to_string())?;
     db.execute(
-        "UPDATE words SET enrichment_json = ?1, mnemonic = ?2, updated_at = CURRENT_TIMESTAMP WHERE id = ?3",
-        params![json, enrichment.mnemonic, word_id],
+        "UPDATE words SET enrichment_text = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2",
+        params![enrichment.text, word_id],
     ).map_err(|e| e.to_string())?;
 
     db.execute(
@@ -168,30 +175,6 @@ pub fn db_save_word_notes(
         params![notes, word_id],
     ).map_err(|e| e.to_string())?;
     Ok(())
-}
-
-#[tauri::command]
-pub fn db_get_word_graph(
-    conn: State<'_, AppState>,
-) -> Result<Vec<WordGraphItem>, String> {
-    let db = db::lock_db(&conn)?;
-    let mut stmt = db
-        .prepare("SELECT id, word, level, word_freq, enrichment_json FROM words ORDER BY word_freq DESC")
-        .map_err(|e| e.to_string())?;
-    let items = stmt
-        .query_map([], |row| {
-            Ok(WordGraphItem {
-                id: row.get(0)?,
-                word: row.get(1)?,
-                level: row.get(2)?,
-                word_freq: row.get(3)?,
-                enrichment_json: row.get(4)?,
-            })
-        })
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .collect();
-    Ok(items)
 }
 
 #[tauri::command]

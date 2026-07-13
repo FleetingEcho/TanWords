@@ -2,7 +2,7 @@ use rusqlite::params;
 use tauri::State;
 
 use crate::db;
-use crate::db::words_types::{EtymologyItem, PhoneticItem, WordDefItem, WordDetail, WordListItem};
+use crate::db::words_types::{WordDefItem, WordDetail, WordListItem};
 use crate::AppState;
 
 #[tauri::command]
@@ -46,7 +46,10 @@ pub fn db_get_words(
     match sort_by.as_deref() {
         Some("freq") => sql.push_str(" ORDER BY w.word_freq DESC, w.created_at DESC"),
         Some("alpha") => sql.push_str(" ORDER BY w.word COLLATE NOCASE ASC"),
-        _ => sql.push_str(" ORDER BY w.created_at DESC"),
+        // "recent" — updated_at is initialized to created_at on insert and bumped
+        // on every edit (enrichment, notes), so ordering by it alone surfaces
+        // both newly-added and newly-edited words without a MAX() expression.
+        _ => sql.push_str(" ORDER BY w.updated_at DESC"),
     }
 
     let mut stmt = db.prepare(&sql).map_err(|e| e.to_string())?;
@@ -86,7 +89,7 @@ pub fn db_get_word_detail(
     let word = db
         .query_row(
             "SELECT w.id, w.word, w.word_type, w.level, w.word_freq, w.mnemonic, w.notes, w.source, w.created_at,
-                    COALESCE(sr.srs_level, 0), sr.next_review_at, w.enrichment_json
+                    COALESCE(sr.srs_level, 0), sr.next_review_at, w.enrichment_text, w.enrichment_json
              FROM words w
              LEFT JOIN srs_records sr ON sr.entity_id = w.id AND sr.entity_type = 'word'
              WHERE w.id = ?1",
@@ -104,10 +107,9 @@ pub fn db_get_word_detail(
                     created_at: row.get(8)?,
                     srs_level: row.get(9)?,
                     next_review_at: row.get(10)?,
-                    enrichment_json: row.get(11)?,
+                    enrichment_text: row.get(11)?,
+                    enrichment_json: row.get(12)?,
                     definitions: vec![],
-                    phonetics: vec![],
-                    etymology: None,
                 })
             },
         )
@@ -135,42 +137,5 @@ pub fn db_get_word_detail(
         .filter_map(|r| r.ok())
         .collect();
 
-    // Fetch phonetics
-    let mut stmt = db
-        .prepare("SELECT locale, ipa, accent_label FROM word_phonetics WHERE word_id = ?1")
-        .map_err(|e| e.to_string())?;
-
-    let phonetics: Vec<PhoneticItem> = stmt
-        .query_map(params![word_id], |row| {
-            Ok(PhoneticItem {
-                locale: row.get(0)?,
-                ipa: row.get(1)?,
-                accent_label: row.get(2)?,
-            })
-        })
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .collect();
-
-    // Fetch etymology
-    let etymology = db
-        .query_row(
-            "SELECT parts, story, origin_lang FROM word_etymology WHERE word_id = ?1",
-            params![word_id],
-            |row| {
-                Ok(EtymologyItem {
-                    parts: row.get(0)?,
-                    story: row.get(1)?,
-                    origin_lang: row.get(2)?,
-                })
-            },
-        )
-        .ok();
-
-    Ok(WordDetail {
-        definitions,
-        phonetics,
-        etymology,
-        ..word
-    })
+    Ok(WordDetail { definitions, ..word })
 }

@@ -1,7 +1,20 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { toast } from "sonner";
 import { registerBuiltInProviders, registerCustomProvider, removeProvider } from "@/providers";
 import { getSecret, setSecret, secretDelete } from "@/lib/secrets";
+import { useSettingsStore } from "@/store/settingsStore";
 import { useT } from "@/hooks/useT";
+import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/24/solid";
+
+function TestStatusBadge({ status }: { status: { ok: boolean | null; text: string } }) {
+  return (
+    <span className="text-xs text-muted-foreground ml-2 inline-flex items-center gap-1">
+      {status.ok === true && <CheckCircleIcon className="w-3.5 h-3.5 text-emerald-500" />}
+      {status.ok === false && <XCircleIcon className="w-3.5 h-3.5 text-destructive" />}
+      {status.text}
+    </span>
+  );
+}
 
 interface ProviderDef {
   id: string;
@@ -43,19 +56,23 @@ export function ProviderSection() {
   const [newProvider, setNewProvider] = useState({ name: "", apiBase: "", apiKey: "", modelId: "" });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", apiBase: "", apiKey: "", modelId: "" });
-  const [testStatus, setTestStatus] = useState<string | null>(null);
+  const [testStatus, setTestStatus] = useState<{ ok: boolean | null; text: string } | null>(null);
 
   // Debounce timers for keychain writes (per key)
   const debounceRefs = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
-  /** Debounced write to keychain. */
+  /** Debounced write to keychain. Errors here were previously silent — a
+   * failed write (locked/denied keychain) left the UI looking saved while
+   * nothing actually persisted, so the key vanished on next launch. */
   const debouncedSetSecret = useCallback((key: string, value: string) => {
     if (debounceRefs.current[key]) clearTimeout(debounceRefs.current[key]);
     debounceRefs.current[key] = setTimeout(() => {
-      setSecret(key, value);
+      setSecret(key, value).catch(() => {
+        toast.error(t("settings.keySaveFailed"));
+      });
       delete debounceRefs.current[key];
     }, 500);
-  }, []);
+  }, [t]);
 
   // Cleanup debounce timers on unmount
   useEffect(() => {
@@ -92,15 +109,36 @@ export function ProviderSection() {
       );
       setCustomProviders(loadedCustom);
 
-      // Determine initial selected provider
-      if (loadedOpenai) setSelectedProvider("openai");
-      else if (loadedClaude) setSelectedProvider("claude");
-      else if (loadedCustom.some((p) => p.apiKey)) {
+      // Determine initial selected provider. Only override the persisted
+      // defaultAiProvider if it doesn't actually have a key — otherwise this
+      // effect would silently overwrite the user's real choice on every load.
+      const currentDefault = useSettingsStore.getState().defaultAiProvider;
+      const currentDefaultHasKey =
+        (currentDefault === "openai" && loadedOpenai) ||
+        (currentDefault === "claude" && loadedClaude) ||
+        presetResult[currentDefault] ||
+        loadedCustom.find((p) => p.id === currentDefault)?.apiKey;
+
+      if (currentDefaultHasKey) {
+        setSelectedProvider(currentDefault);
+      } else if (loadedOpenai) {
+        setSelectedProvider("openai");
+        useSettingsStore.getState().setDefaultAiProvider("openai");
+      } else if (loadedClaude) {
+        setSelectedProvider("claude");
+        useSettingsStore.getState().setDefaultAiProvider("claude");
+      } else if (loadedCustom.some((p) => p.apiKey)) {
         const first = loadedCustom.find((p) => p.apiKey);
-        if (first) setSelectedProvider(first.id);
+        if (first) {
+          setSelectedProvider(first.id);
+          useSettingsStore.getState().setDefaultAiProvider(first.id);
+        }
       } else {
         const presetWithKey = Object.entries(presetResult).find(([, v]) => v);
-        if (presetWithKey) setSelectedProvider(presetWithKey[0]);
+        if (presetWithKey) {
+          setSelectedProvider(presetWithKey[0]);
+          useSettingsStore.getState().setDefaultAiProvider(presetWithKey[0]);
+        }
       }
 
       setKeysLoaded(true);
@@ -145,7 +183,7 @@ export function ProviderSection() {
   };
 
   const testConnection = async (providerId: string, apiBase: string, apiKey: string, modelId?: string) => {
-    setTestStatus(t("settings.testing"));
+    setTestStatus({ ok: null, text: t("settings.testing") });
     const model = modelId || "gpt-4o-mini";
 
     try {
@@ -174,9 +212,9 @@ export function ProviderSection() {
           body: JSON.stringify({ model, messages: [{ role: "user", content: "Hi" }], max_tokens: 3 }),
         });
       }
-      setTestStatus(res.ok ? t("settings.testOk") : `❌ ${res.status}`);
+      setTestStatus(res.ok ? { ok: true, text: t("settings.testOk") } : { ok: false, text: String(res.status) });
     } catch (e: any) {
-      setTestStatus(`❌ ${e.message}`);
+      setTestStatus({ ok: false, text: e.message });
     }
     setTimeout(() => setTestStatus(null), 3000);
   };
@@ -188,7 +226,11 @@ export function ProviderSection() {
     setCustomProviders((prev) => [...prev, p]);
     if (p.apiKey) {
       registerCustomProvider(id, p.name, p.apiBase, p.apiKey, p.modelId);
-      await setSecret(`apikey_${id}`, p.apiKey);
+      try {
+        await setSecret(`apikey_${id}`, p.apiKey);
+      } catch {
+        toast.error(t("settings.keySaveFailed"));
+      }
     }
     setNewProvider({ name: "", apiBase: "", apiKey: "", modelId: "" });
     setShowAddCustom(false);
@@ -209,7 +251,11 @@ export function ProviderSection() {
     // Persist key to keychain
     if (editForm.apiKey) {
       registerCustomProvider(editingId, editForm.name, editForm.apiBase, editForm.apiKey, editForm.modelId);
-      await setSecret(`apikey_${editingId}`, editForm.apiKey);
+      try {
+        await setSecret(`apikey_${editingId}`, editForm.apiKey);
+      } catch {
+        toast.error(t("settings.keySaveFailed"));
+      }
     } else {
       registerCustomProvider(editingId, editForm.name, editForm.apiBase, "", editForm.modelId);
     }
@@ -253,6 +299,7 @@ export function ProviderSection() {
             const v = e.target.value;
             setSelectedProvider(v);
             setShowAddCustom(v === "__new__");
+            if (v !== "__new__") useSettingsStore.getState().setDefaultAiProvider(v);
           }}
           className="w-full h-10 pl-9 pr-8 rounded-xl border border-input bg-card text-sm font-medium appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/30"
         >
@@ -287,7 +334,7 @@ export function ProviderSection() {
                 <input type="password" value={openaiKey} onChange={(e) => handleOpenaiKeyChange(e.target.value)} placeholder="sk-..." className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30" />
               </div>
               <button onClick={() => testConnection("openai", "https://api.openai.com/v1", openaiKey)} className="text-xs text-primary hover:underline">{t("settings.testConnection")}</button>
-              {testStatus && <span className="text-xs text-muted-foreground ml-2">{testStatus}</span>}
+              {testStatus && <TestStatusBadge status={testStatus} />}
             </div>
           )}
 
@@ -298,7 +345,7 @@ export function ProviderSection() {
                 <input type="password" value={claudeKey} onChange={(e) => handleClaudeKeyChange(e.target.value)} placeholder="sk-ant-..." className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30" />
               </div>
               <button onClick={() => testConnection("claude", "https://api.anthropic.com", claudeKey)} className="text-xs text-primary hover:underline">{t("settings.testConnection")}</button>
-              {testStatus && <span className="text-xs text-muted-foreground ml-2">{testStatus}</span>}
+              {testStatus && <TestStatusBadge status={testStatus} />}
             </div>
           )}
 
@@ -310,7 +357,7 @@ export function ProviderSection() {
                   <input type="password" value={presetKeys[preset.id] || ""} onChange={(e) => handlePresetKeyChange(preset.id, e.target.value)} placeholder="API Key" className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30" />
                 </div>
                 <button onClick={() => testConnection(preset.id, preset.apiBase!, presetKeys[preset.id] || "", preset.model)} className="text-xs text-primary hover:underline">{t("settings.testConnection")}</button>
-                {testStatus && <span className="text-xs text-muted-foreground ml-2">{testStatus}</span>}
+                {testStatus && <TestStatusBadge status={testStatus} />}
               </div>
             )
           )}
@@ -351,7 +398,7 @@ export function ProviderSection() {
                     <p className="text-sm font-mono">{p.modelId}</p>
                   </div>
                   <button onClick={() => testConnection(p.id, p.apiBase, p.apiKey, p.modelId)} className="text-xs text-primary hover:underline">{t("settings.testConnection")}</button>
-                  {testStatus && <span className="text-xs text-muted-foreground ml-2">{testStatus}</span>}
+                  {testStatus && <TestStatusBadge status={testStatus} />}
                   <div className="flex gap-2 mt-1">
                     <button onClick={() => { setEditingId(p.id); setEditForm({ name: p.name, apiBase: p.apiBase, apiKey: p.apiKey, modelId: p.modelId }); }} className="text-xs text-primary hover:underline">Edit</button>
                     <button onClick={() => removeCustom(p.id)} className="text-xs text-destructive hover:underline">Remove</button>

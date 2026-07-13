@@ -2,6 +2,7 @@ import React from "react";
 import { useT } from "@/hooks/useT";
 import { ArticleReader } from "@/components/Reader/ArticleReader";
 import { ExternalIcon } from "@/components/ui/icons";
+import type { PodcastTrack } from "@/store/podcastPlayerStore";
 
 interface Props {
   url: string;
@@ -10,10 +11,12 @@ interface Props {
   onBack: () => void;
   onOpenExternal: () => void;
   onLearn: (payload: { title: string; text: string }) => void;
+  /** Podcast episodes: the entry's own audio enclosure, passed through to the reader. */
+  audio?: PodcastTrack;
 }
 
 /** In-app reader mode: top bar (back / title / domain / open-external) over the extracted article. */
-export function ReaderView({ url, title, domain, onBack, onOpenExternal, onLearn }: Props) {
+export function ReaderView({ url, title, domain, onBack, onOpenExternal, onLearn, audio }: Props) {
   const t = useT();
 
   return (
@@ -40,7 +43,7 @@ export function ReaderView({ url, title, domain, onBack, onOpenExternal, onLearn
         </button>
       </div>
 
-      <ArticleReader url={url} onOpenExternal={onOpenExternal} onLearn={onLearn} />
+      <ArticleReader url={url} onOpenExternal={onOpenExternal} onLearn={onLearn} audio={audio} />
     </div>
   );
 }

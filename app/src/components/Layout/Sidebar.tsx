@@ -1,10 +1,9 @@
 import React, { useState } from "react";
 import { NavPage } from "@/store/navStore";
 import { useT } from "@/hooks/useT";
-import { useDocDrawerStore } from "@/store/docDrawerStore";
 import {
-  GridIcon, CompassIcon, BookIcon, DocIcon, ChatIcon, SlidersIcon,
-  HNIcon, PatternIcon, ReadingIcon, ChevronIcon,
+  GridIcon, BookIcon, DocIcon, ChatIcon, SlidersIcon,
+  FeedIcon, ReadingIcon, ChevronIcon,
 } from "@/components/ui/icons";
 
 const COLLAPSE_KEY = "tanwords_sidebar_collapsed";
@@ -19,15 +18,11 @@ interface NavItemDef {
 
 const NAV_ITEM_DEFS: Omit<NavItemDef, "label">[] = [
   { id: "dashboard", icon: GridIcon },
-  { id: "discover", icon: CompassIcon },
-  { id: "hackernews", icon: HNIcon },
-  { id: "feeds", icon: HNIcon, badge: "NEW" },
-  { id: "reading", icon: ReadingIcon, badge: "NEW" },
+  { id: "feeds", icon: FeedIcon },
+  { id: "reading", icon: ReadingIcon },
   { id: "vocabulary", icon: BookIcon, showCount: "word" },
-  { id: "patterns", icon: PatternIcon, badge: "NEW" },
   { id: "documents", icon: DocIcon },
   { id: "chat", icon: ChatIcon },
-  { id: "settings", icon: SlidersIcon },
 ];
 
 interface MainLayoutProps {
@@ -44,7 +39,6 @@ export function MainLayout({
   wordCount = 0,
 }: MainLayoutProps) {
   const t = useT();
-  const openDrawer = useDocDrawerStore((s) => s.openDrawer);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === "1");
   const NAV_ITEMS: NavItemDef[] = NAV_ITEM_DEFS.map((d) => ({
     ...d,
@@ -124,20 +118,21 @@ export function MainLayout({
           })}
         </nav>
 
-        {/* Quick-edit drawer trigger */}
+        {/* Settings — pinned to the bottom, always in the same place */}
         <div className="px-2 py-3 border-t border-[hsl(var(--sidebar-border))]">
           <button
-            onClick={openDrawer}
-            title={t("nav.editDoc")}
-            className={`w-full flex items-center rounded-lg text-sm font-medium text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--muted))] transition-colors duration-100 ${
+            onClick={() => onNavigate("settings")}
+            title={collapsed ? t("nav.settings") : undefined}
+            className={`w-full flex items-center rounded-lg text-sm font-medium transition-colors duration-100 ${
               collapsed ? "justify-center px-0 py-[9px]" : "gap-2.5 px-3 py-[7px]"
+            } ${
+              activeNav === "settings"
+                ? "bg-[hsl(var(--sidebar-active-bg))] text-[hsl(var(--sidebar-active-fg))]"
+                : "text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--muted))]"
             }`}
           >
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-[18px] h-[18px] shrink-0">
-              <path d="M4 13.5V16h2.5l7.4-7.4-2.5-2.5L4 13.5z" strokeLinejoin="round" />
-              <path d="M14.5 4.5l1 1a1 1 0 010 1.4l-1 1-2.5-2.5 1-1a1 1 0 011.5 0z" strokeLinejoin="round" />
-            </svg>
-            {!collapsed && <span className="flex-1 text-left">{t("nav.editDoc")}</span>}
+            <SlidersIcon className="w-[18px] h-[18px] shrink-0" />
+            {!collapsed && <span className="flex-1 text-left">{t("nav.settings")}</span>}
           </button>
         </div>
 

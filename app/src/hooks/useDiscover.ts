@@ -36,10 +36,10 @@ function parseModelJson<T>(raw: string, opener: "[" | "{"): T {
 export function useDiscover() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGeneratingFamily, setIsGeneratingFamily] = useState(false);
-  const targetLevel = useSettingsStore((s) => s.targetLevel);
+  const targetLevel = useSettingsStore((s) => s.targetLevels.join("/"));
 
   const generateTopicVocabulary = useCallback(
-    async (topic: string, count: number = 50): Promise<GeneratedWord[]> => {
+    async (topic: string, count: number = 50, excludeWords: string[] = []): Promise<GeneratedWord[]> => {
       setIsGenerating(true);
       try {
         const provider = findBestProvider();
@@ -48,10 +48,16 @@ export function useDiscover() {
         const systemPrompt =
           "You are a vocabulary expert. Output ONLY a valid JSON array, no other text, no markdown, no code fences.";
 
+        // Capped to keep prompt size sane for large vocabularies — a partial
+        // exclude list still meaningfully cuts down repeats from the model.
+        const excludeClause = excludeWords.length > 0
+          ? `\nThe learner already knows these words — do NOT include any of them: ${excludeWords.slice(0, 200).join(", ")}.`
+          : "";
+
         const userPrompt = `Generate ${count} English vocabulary words related to the topic "${topic}".
 Return a JSON array where each element is:
 {"word": "...", "zh": "中文释义", "ipa": "/phonetic/", "level": "B2|C1|C2", "example": "Example sentence using the word in a ${topic} context."}
-
+${excludeClause}
 The learner's level is CEFR ${targetLevel} — pick words at or slightly above that level that are actually used in ${topic} contexts. Return ONLY the JSON array.`;
 
         const chunks: string[] = [];
@@ -103,9 +109,43 @@ Include 6-12 genuinely common words built on this root, ordered from most to lea
     [targetLevel]
   );
 
+  const generateTopicSuggestions = useCallback(
+    async (): Promise<string[]> => {
+      const provider = findBestProvider();
+      if (!provider) throw new Error("未配置 AI 提供商，请在设置 → AI 提供商 中填写");
+
+      const systemPrompt =
+        "You are a vocabulary curriculum designer. Output ONLY a valid JSON array of strings, no other text, no markdown, no code fences.";
+      const userPrompt = `Suggest 9 diverse, useful topic categories for generating English vocabulary batches for a CEFR ${targetLevel} learner. Cover a good mix of technical, business, science, humanities, and everyday-life domains. Return ONLY a JSON array of short topic name strings (English, Title Case, 1-3 words each, e.g. "System Design", "Behavioral Economics"). Pick a genuinely different, varied set each time — do not default to only the most obvious/common categories.`;
+
+      const chunks: string[] = [];
+      for await (const chunk of provider.generate(systemPrompt, userPrompt)) chunks.push(chunk);
+      return parseModelJson<string[]>(chunks.join(""), "[");
+    },
+    [targetLevel]
+  );
+
+  const generateRootSuggestions = useCallback(
+    async (): Promise<string[]> => {
+      const provider = findBestProvider();
+      if (!provider) throw new Error("未配置 AI 提供商，请在设置 → AI 提供商 中填写");
+
+      const systemPrompt =
+        "You are an etymology expert. Output ONLY a valid JSON array of strings, no other text, no markdown, no code fences.";
+      const userPrompt = `Suggest 8 diverse, genuinely useful English roots/prefixes/suffixes for a word-family explorer, in hyphenated notation (e.g. "-spect", "bene-", "trans-"). Mix Latin and Greek origins, and mix prefixes/suffixes/roots. Return ONLY a JSON array of strings. Pick a varied set each time — do not always default to the same most-common handful.`;
+
+      const chunks: string[] = [];
+      for await (const chunk of provider.generate(systemPrompt, userPrompt)) chunks.push(chunk);
+      return parseModelJson<string[]>(chunks.join(""), "[");
+    },
+    [targetLevel]
+  );
+
   return {
     generateTopicVocabulary,
     generateWordFamily,
+    generateTopicSuggestions,
+    generateRootSuggestions,
     isGenerating,
     isGeneratingFamily,
   };

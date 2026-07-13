@@ -33,6 +33,15 @@ fn sanitize(html: &str) -> String {
         .to_string()
 }
 
+/// Strip footnote back-reference arrows (↩ / ↩︎ with variation selectors) that
+/// Readability carries over from footnote sections — they're link glyphs from
+/// the original page's navigation, not prose.
+fn strip_footnote_backrefs(text: &str) -> String {
+    text.replace('\u{21A9}', "")
+        .replace('\u{FE0E}', "")
+        .replace('\u{FE0F}', "")
+}
+
 #[tauri::command]
 pub async fn fetch_article(url: String) -> Result<FetchedArticle, String> {
     let client = reqwest::Client::builder()
@@ -43,6 +52,8 @@ pub async fn fetch_article(url: String) -> Result<FetchedArticle, String> {
 
     let resp = client
         .get(&url)
+        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+        .header("Accept-Language", "en-US,en;q=0.9")
         .send()
         .await
         .map_err(|e| format!("Request failed: {e}"))?;
@@ -71,8 +82,8 @@ pub async fn fetch_article(url: String) -> Result<FetchedArticle, String> {
         title: article.title,
         byline: article.byline,
         site_name: article.site_name,
-        content_html: sanitize(&article.content),
-        text_content: article.text_content.to_string(),
+        content_html: strip_footnote_backrefs(&sanitize(&article.content)),
+        text_content: strip_footnote_backrefs(&article.text_content),
         excerpt: article.excerpt,
     })
 }

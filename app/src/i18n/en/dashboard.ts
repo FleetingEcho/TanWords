@@ -22,11 +22,10 @@ export const dashboard: Dict = {
     "dash.viewAll": "View all",
     "dash.quick.title": "Quick actions",
     "dash.quick.reading": "Paste an article",
-    "dash.quick.hn": "Browse Hacker News",
+    "dash.quick.feeds": "Browse feeds",
     "dash.quick.chat": "Ask the AI tutor",
-
-    // Patterns
-    "dash.recentPatterns": "Recent patterns",
-    "dash.stat.patterns": "Patterns",
-    "dash.empty.patterns": "Patterns you save in reading lessons show up here.",
+    "dash.rss.title": "Feed updates",
+    "dash.rss.summary": "{articles} article feeds · {podcasts} podcasts · {unread} unread",
+    "dash.rss.empty": "No RSS feeds yet",
+    "dash.rss.open": "Open feeds",
 };

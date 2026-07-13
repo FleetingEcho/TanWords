@@ -125,6 +125,16 @@ export function SettingsPage() {
                   onChange={(v) => settings.setVocabBilingual(v === "bilingual")}
                 />
               </SettingRow>
+              <SettingRow label={t("settings.quickDoc")} sub={t("settings.quickDocSub")}>
+                <ToggleGroup
+                  options={[
+                    { id: "on", label: t("settings.on") },
+                    { id: "off", label: t("settings.off") },
+                  ]}
+                  value={settings.showQuickDoc ? "on" : "off"}
+                  onChange={(v) => settings.setShowQuickDoc(v === "on")}
+                />
+              </SettingRow>
             </div>
           </section>
 
@@ -141,28 +151,27 @@ export function SettingsPage() {
             <div className="bg-card border border-border rounded-xl px-5 divide-y divide-border">
               <SettingRow label={t("settings.targetLevel")} sub={t("settings.targetLevelSub")}>
                 <div className="flex items-center gap-1 bg-muted p-0.5 rounded-lg">
-                  {LEVELS.map((lvl) => (
-                    <button
-                      key={lvl}
-                      onClick={() => settings.setTargetLevel(lvl)}
-                      className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                        settings.targetLevel === lvl ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      {lvl}
-                    </button>
-                  ))}
+                  {LEVELS.map((lvl) => {
+                    const selected = settings.targetLevels.includes(lvl);
+                    return (
+                      <button
+                        key={lvl}
+                        onClick={() =>
+                          settings.setTargetLevels(
+                            selected
+                              ? settings.targetLevels.filter((l) => l !== lvl)
+                              : [...LEVELS.filter((l) => settings.targetLevels.includes(l) || l === lvl)]
+                          )
+                        }
+                        className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                          selected ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {lvl}
+                      </button>
+                    );
+                  })}
                 </div>
-              </SettingRow>
-              <SettingRow label={t("settings.dailyGoal")} sub={t("settings.dailyGoalSub")}>
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={settings.dailyGoal}
-                  onChange={(e) => settings.setDailyGoal(Math.max(1, Number(e.target.value) || 1))}
-                  className="w-16 h-8 px-2 rounded-lg border border-input bg-background text-sm text-center focus:outline-none focus:ring-2 focus:ring-primary/30"
-                />
               </SettingRow>
             </div>
           </section>

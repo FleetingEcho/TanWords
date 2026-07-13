@@ -2,19 +2,17 @@ import React, { useEffect } from "react";
 import { Toaster } from "sonner";
 import { MainLayout } from "@/components/Layout/Sidebar";
 import { DashboardPage } from "@/components/Dashboard/DashboardPage";
-import { DiscoverPage } from "@/components/Discover/DiscoverPage";
 import { VocabularyPage } from "@/components/Vocabulary/VocabularyPage";
-import { PatternsPage } from "@/components/Patterns/PatternsPage";
 import { SettingsPage } from "@/components/Settings/SettingsPage";
 import { DocumentsPage } from "@/components/Documents/DocumentsPage";
-import { HackerNewsPage } from "@/components/HackerNews/HackerNewsPage";
 import { FeedsPage } from "@/components/Feeds/FeedsPage";
 import { ReadingPage } from "@/components/Reading/ReadingPage";
 import { AiChatPage } from "@/components/AiChat/AiChatPage";
-import { SaveDocDrawer } from "@/components/Documents/SaveDocDrawer";
-import { useDocDrawerStore } from "@/store/docDrawerStore";
 import { WordDetailModal } from "@/components/WordDetailModal";
 import { PlayerBar } from "@/components/ui/PlayerBar";
+import { PodcastPlayerBar } from "@/components/ui/PodcastPlayerBar";
+import { ToolsBall } from "@/components/ui/ToolsBall";
+import { ToolsModal } from "@/components/ui/ToolsModal";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useNavStore } from "@/store/navStore";
 import { useDB } from "@/hooks/useDB";
@@ -25,7 +23,6 @@ function App() {
   const { loadFromDB } = useSettingsStore();
   const db = useDB();
   const { currentPage, currentWordId, navigate } = useNavStore();
-  const { open: drawerOpen, closeDrawer } = useDocDrawerStore();
 
   const [wordCount, setWordCount] = React.useState(0);
 
@@ -75,18 +72,12 @@ function App() {
     switch (page) {
       case "dashboard":
         return <DashboardPage />;
-      case "discover":
-        return <DiscoverPage />;
-      case "hackernews":
-        return <HackerNewsPage />;
       case "feeds":
         return <FeedsPage />;
       case "reading":
         return <ReadingPage />;
       case "vocabulary":
         return <VocabularyPage initialWordId={wordId} />;
-      case "patterns":
-        return <PatternsPage />;
       case "documents":
         return <DocumentsPage />;
       case "chat":
@@ -94,7 +85,7 @@ function App() {
       case "settings":
         return <SettingsPage />;
       default:
-        return <DashboardPage />;
+        return <FeedsPage />;
     }
   };
 
@@ -108,8 +99,10 @@ function App() {
       {renderPage()}
     </MainLayout>
     <WordDetailModal />
-    <SaveDocDrawer open={drawerOpen} onClose={closeDrawer} />
+    <ToolsModal />
     <PlayerBar />
+    <PodcastPlayerBar />
+    <ToolsBall />
     <Toaster position="bottom-right" richColors closeButton />
     </>
   );

@@ -119,6 +119,12 @@
   font-size: 0.875rem;
   min-height: 100%;
 }
+/* Compact variant — embedded editors (e.g. word notes) with little chrome around them */
+.tanwords-editor.tanwords-editor-compact .bn-editor {
+  padding-inline: 0.75rem;
+  padding-block: 0.5rem;
+  font-size: 0.8125rem;
+}
 /* Reader mode — sanitized article HTML from fetch_article */
 .reader-article-content > * + * {
   margin-top: 1.3em;

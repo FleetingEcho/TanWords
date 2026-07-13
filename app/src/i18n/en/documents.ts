@@ -12,6 +12,7 @@ export const documents: Dict = {
     "doc.allTags": "All Tags",
     "doc.untitled": "Untitled",
     "doc.wordCount": "{n} words",
+    "doc.moreActions": "More actions",
     "doc.rename": "Rename",
     "doc.pin": "Pin to top",
     "doc.unpin": "Unpin",

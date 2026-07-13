@@ -12,119 +12,123 @@ export interface EnrichedWord extends BasicWord {
   enrichment: EnrichmentInput;
 }
 
-/** 20 fully enriched words */
+/** 5 hand-written freeform explanations, in the shape the AI-generated
+ * enrichment now takes (see providers/base.ts buildEnrichSystemPrompt). */
 export const ENRICHED_SEED_WORDS: EnrichedWord[] = [
   {
     word: "resilient", zh: "有韧性的；恢复力强的", level: "C1", word_type: "adj", ipa: "/rɪˈzɪliənt/",
     enrichment: {
-      definitions: [
-        { pos: "adj", zh: "(人) 能从困境中快速恢复的；有适应力的", en: "able to recover quickly from difficulties", exampleEn: "Children are often remarkably resilient.", exampleZh: "孩子们通常有着惊人的适应力。" },
-        { pos: "adj", zh: "(材料) 有弹性的", en: "able to spring back into shape", exampleEn: "A resilient rubber sole that absorbs impact.", exampleZh: "吸收冲击力的弹性橡胶鞋底。" },
-      ],
-      synonyms: [{ word: "tough", note: "更口语，强调硬度" }, { word: "adaptable", note: "侧重适应新环境" }, { word: "hardy", note: "多指体质强壮耐受" }],
-      antonyms: ["fragile", "brittle", "vulnerable"],
-      collocations: ["resilient economy", "emotionally resilient", "resilient supply chain", "remain resilient"],
-      derivatives: [{ word: "resilience", wordType: "n", zh: "韧性；弹力" }, { word: "resiliently", wordType: "adv", zh: "有韧性地" }],
-      sentencePatterns: [{ pattern: "resilient to sth", explanation: "对…有抵抗力", example: "The system is resilient to network failures." }, { pattern: "remain / stay resilient", explanation: "保持韧性", example: "The team stayed resilient through the crisis." }],
-      idioms: [{ idiom: "bounce back", explanation: "迅速复原（口语）", example: "She bounced back stronger after the setback." }],
-      authorityQuotes: [
-        { text: "A resilient economy can recover quickly from external shocks.", source: "Harvard Business Review, 2023" },
-        { text: "Ecosystems that look fragile are often surprisingly resilient over long timescales.", source: "Nature, 2022" },
-        { text: "The most resilient organisations treat every failure as a rehearsal for recovery.", source: "The Economist, 2023" },
-        { text: "Resilient children are not simply lucky; they have been given the tools to cope.", source: "Psychology Today, 2022" },
-        { text: "Building resilient infrastructure protects communities against the worst effects of climate change.", source: "World Economic Forum, 2024" },
-      ],
-      etymology: { parts: [{ seg: "re-", role: "prefix", meaning: "回/重新" }, { seg: "sili (salire)", role: "root", meaning: "跳跃" }, { seg: "-ent", role: "suffix", meaning: "形容词后缀" }], story: "源自拉丁语 resilire（回弹），17世纪进入英语，先指物质弹性，后引申为心理复原力。", originLang: "Latin" },
+      zhShort: "有韧性的",
       level: "C1",
-      mnemonic: "re(回)+ sili(跳)——压力下能「回跳」回来 → 有韧性的",
+      text: `**核心释义**：形容人或系统能从困境、压力中快速恢复——不是"不受打击"，而是"打了能回来"。也可以指材料有弹性，压了能弹回原状。
+
+> Children are often remarkably resilient.
+> 孩子们通常有着惊人的适应力。
+
+> A resilient rubber sole that absorbs impact.
+> 吸收冲击力的弹性橡胶鞋底。
+
+**近义词辨析**：tough 更口语、强调硬扛；adaptable 侧重适应新环境；hardy 多指体质强壮耐受。反义词：fragile、brittle、vulnerable。
+
+**常见搭配**：resilient economy · emotionally resilient · resilient supply chain · remain resilient
+
+**词源**：源自拉丁语 resilire（回弹），17 世纪进入英语，先指物质弹性，后引申为心理复原力。re-（回/重新）+ salire（跳跃）。
+
+**记忆法**：re(回) + sili(跳) —— 压力下能"回跳"回来 → 有韧性的
+
+**派生词**：resilience（n. 韧性）、resiliently（adv. 有韧性地）`,
     },
   },
   {
     word: "paradigm", zh: "范式；典范", level: "C1", word_type: "n", ipa: "/ˈpærədaɪm/",
     enrichment: {
-      definitions: [{ pos: "n", zh: "范式；典型模式", en: "a typical example or pattern of something", exampleEn: "This represents a paradigm shift in computing.", exampleZh: "这代表了计算领域的范式转变。" }],
-      synonyms: [{ word: "model", note: "更通用" }, { word: "framework", note: "侧重结构" }, { word: "template", note: "指可复制的模板" }],
-      antonyms: ["anomaly", "exception"],
-      collocations: ["paradigm shift", "dominant paradigm", "new paradigm", "within the paradigm"],
-      derivatives: [{ word: "paradigmatic", wordType: "adj", zh: "范式的；典型的" }],
-      sentencePatterns: [{ pattern: "a paradigm shift", explanation: "范式转变", example: "AI caused a paradigm shift in software development." }],
-      idioms: [],
-      authorityQuotes: [
-        { text: "Science advances through paradigm shifts, not incremental improvements.", source: "Thomas Kuhn, The Structure of Scientific Revolutions" },
-        { text: "The internet created an entirely new paradigm for commerce.", source: "Harvard Business Review, 2021" },
-        { text: "We are witnessing a paradigm shift in how machines learn.", source: "MIT Technology Review, 2023" },
-        { text: "The old paradigm of command and control is giving way to collaboration.", source: "The Economist, 2022" },
-        { text: "Each new paradigm makes the previous one seem quaint.", source: "Wired Magazine, 2023" },
-      ],
-      etymology: { parts: [{ seg: "para-", role: "prefix", meaning: "在旁边" }, { seg: "deikny", role: "root", meaning: "显示" }], story: "源自希腊语，在旁边展示出来供模仿的「范例」。", originLang: "Greek" },
+      zhShort: "范式；典范",
       level: "C1",
-      mnemonic: "para(旁)+ digm(示范)——站在旁边给你「示范」的东西 → 范式",
+      text: `**核心释义**：某一领域公认的典型模式或思维框架，常用于描述认知/方法论上的整体转变。
+
+> This represents a paradigm shift in computing.
+> 这代表了计算领域的范式转变。
+
+**常见搭配**：paradigm shift（范式转变，最高频）· dominant paradigm · new paradigm · within the paradigm
+
+**近义词**：model（更通用）、framework（侧重结构）、template（指可复制的模板）。
+
+**词源**：源自希腊语 para-（在旁边）+ deiknynai（显示）——"在旁边展示出来供模仿的范例"。
+
+**记忆法**：para(旁) + digm(示范) —— 站在旁边给你"示范"的东西 → 范式
+
+**权威引用**：
+> Science advances through paradigm shifts, not incremental improvements.
+> —— Thomas Kuhn, *The Structure of Scientific Revolutions*`,
     },
   },
   {
     word: "ubiquitous", zh: "无处不在的；普遍的", level: "C2", word_type: "adj", ipa: "/juːˈbɪkwɪtəs/",
     enrichment: {
-      definitions: [{ pos: "adj", zh: "无处不在的；极普遍的", en: "present, appearing, or found everywhere", exampleEn: "Smartphones have become ubiquitous.", exampleZh: "智能手机已经变得无处不在。" }],
-      synonyms: [{ word: "omnipresent", note: "更正式，常用于神或抽象概念" }, { word: "pervasive", note: "强调渗透性、蔓延性" }, { word: "widespread", note: "更日常，指分布广泛" }],
-      antonyms: ["rare", "scarce", "uncommon"],
-      collocations: ["ubiquitous computing", "become ubiquitous", "ubiquitous presence"],
-      derivatives: [{ word: "ubiquity", wordType: "n", zh: "无处不在；普遍存在" }, { word: "ubiquitously", wordType: "adv", zh: "无处不在地" }],
-      sentencePatterns: [{ pattern: "become ubiquitous", explanation: "变得无处不在", example: "Cloud storage has become ubiquitous in enterprise." }],
-      idioms: [],
-      authorityQuotes: [
-        { text: "The ubiquitous nature of mobile devices has fundamentally changed consumer behaviour.", source: "McKinsey Quarterly, 2023" },
-        { text: "English has become the ubiquitous language of international business.", source: "The Economist, 2022" },
-        { text: "Algorithms are ubiquitous — and largely invisible.", source: "The Guardian, 2023" },
-        { text: "Social media's ubiquitous influence raises new ethical questions.", source: "Nature Human Behaviour, 2022" },
-        { text: "The ubiquitous coffee shop has become the modern office.", source: "Financial Times, 2023" },
-      ],
-      etymology: { parts: [{ seg: "ubi-", role: "root", meaning: "在哪里（拉丁）" }, { seg: "-quit-", role: "root", meaning: "每一个" }, { seg: "-ous", role: "suffix", meaning: "形容词后缀" }], story: "源自拉丁语 ubique（到处），字面意思是「在每一个地方」。", originLang: "Latin" },
+      zhShort: "无处不在的",
       level: "C2",
-      mnemonic: "ubi（在哪）+ quit（离开）+ ous——「无论在哪都离不开」→ 无处不在",
+      text: `**核心释义**：形容某事物极其普遍，仿佛同时出现在每个地方——语气比 widespread 更强，常带一点"渗透到生活各处"的意味。
+
+> Smartphones have become ubiquitous.
+> 智能手机已经变得无处不在。
+
+**近义词辨析**：omnipresent 更正式，常用于神或抽象概念；pervasive 强调渗透性、蔓延性；widespread 更日常，指分布广泛。反义词：rare、scarce、uncommon。
+
+**常见搭配**：ubiquitous computing · become ubiquitous · ubiquitous presence
+
+**词源**：源自拉丁语 ubique（到处），由 ubi（在哪里）+ quit-（每一个）构成，字面意思是"在每一个地方"。
+
+**记忆法**：ubi(在哪) + quit(离开) + ous —— "无论在哪都离不开" → 无处不在
+
+**派生词**：ubiquity（n. 无处不在）、ubiquitously（adv.）`,
     },
   },
   {
     word: "mitigate", zh: "减轻；缓和；降低（风险）", level: "C1", word_type: "v", ipa: "/ˈmɪtɪɡeɪt/",
     enrichment: {
-      definitions: [{ pos: "v", zh: "减轻；缓和；降低（严重程度）", en: "make less severe, serious, or painful", exampleEn: "We need to mitigate the risks.", exampleZh: "我们需要降低风险。" }],
-      synonyms: [{ word: "alleviate", note: "侧重减轻痛苦" }, { word: "reduce", note: "更通用" }, { word: "diminish", note: "强调缩小程度" }],
-      antonyms: ["aggravate", "exacerbate", "worsen"],
-      collocations: ["mitigate risk", "mitigate damage", "mitigate the effects of", "measures to mitigate"],
-      derivatives: [{ word: "mitigation", wordType: "n", zh: "缓解；减轻" }, { word: "mitigating", wordType: "adj", zh: "减轻的（mitigating circumstances 减轻情节）" }],
-      sentencePatterns: [{ pattern: "mitigate the risk/impact of sth", explanation: "降低…的风险/影响", example: "Diversification can mitigate the impact of market volatility." }],
-      idioms: [],
-      authorityQuotes: [
-        { text: "Governments must take decisive action to mitigate the effects of climate change.", source: "The Guardian, 2023" },
-        { text: "Companies are seeking ways to mitigate supply chain disruptions.", source: "Financial Times, 2023" },
-        { text: "Early intervention can significantly mitigate the long-term consequences.", source: "The Lancet, 2022" },
-        { text: "Strong institutional frameworks help mitigate political risk.", source: "The Economist, 2023" },
-        { text: "Technology alone cannot mitigate the social consequences of automation.", source: "MIT Technology Review, 2022" },
-      ],
-      etymology: { parts: [{ seg: "miti-", role: "root", meaning: "柔和、温和（拉丁 mitis）" }, { seg: "-gate", role: "root", meaning: "驱动、使成为" }], story: "源自拉丁语 mitigare（使变柔和），由 mitis（柔和的）+ agere（做）构成。", originLang: "Latin" },
+      zhShort: "减轻；缓和",
       level: "C1",
-      mnemonic: "miti(柔)+ gate(门)——把「硬门」变软 → 减轻、缓和",
+      text: `**核心释义**：使（风险、损害、严重程度）变轻——是一个偏正式/书面的动词，常见于政策、商业、医学语境。
+
+> We need to mitigate the risks.
+> 我们需要降低风险。
+
+> Diversification can mitigate the impact of market volatility.
+> 分散投资可以降低市场波动带来的影响。
+
+**近义词辨析**：alleviate 侧重减轻痛苦；reduce 更通用；diminish 强调缩小程度。反义词：aggravate、exacerbate、worsen。
+
+**常见搭配**：mitigate risk · mitigate damage · mitigate the effects of · measures to mitigate
+
+**词源**：源自拉丁语 mitigare（使变柔和），由 mitis（柔和的）+ agere（做）构成。
+
+**记忆法**：miti(柔) + gate(门) —— 把"硬门"变软 → 减轻、缓和
+
+**派生词**：mitigation（n. 缓解）、mitigating（adj.，如 mitigating circumstances 减轻情节）`,
     },
   },
   {
     word: "pragmatic", zh: "务实的；注重实效的", level: "C1", word_type: "adj", ipa: "/præɡˈmætɪk/",
     enrichment: {
-      definitions: [{ pos: "adj", zh: "务实的；实事求是的", en: "dealing with things sensibly and realistically", exampleEn: "A pragmatic approach to problem-solving.", exampleZh: "务实的解决问题方式。" }],
-      synonyms: [{ word: "practical", note: "更日常，指可操作的" }, { word: "realistic", note: "强调正视现实" }, { word: "utilitarian", note: "强调功用性" }],
-      antonyms: ["idealistic", "impractical", "utopian"],
-      collocations: ["pragmatic approach", "pragmatic solution", "be pragmatic about"],
-      derivatives: [{ word: "pragmatism", wordType: "n", zh: "实用主义" }, { word: "pragmatist", wordType: "n", zh: "实用主义者" }, { word: "pragmatically", wordType: "adv", zh: "务实地" }],
-      sentencePatterns: [{ pattern: "take a pragmatic approach to", explanation: "对…采取务实的态度", example: "The CEO took a pragmatic approach to the restructuring." }],
-      idioms: [],
-      authorityQuotes: [
-        { text: "The pragmatic wing of the party favours compromise over ideological purity.", source: "The Economist, 2023" },
-        { text: "Silicon Valley's culture prizes pragmatic execution above all else.", source: "Wired, 2022" },
-        { text: "A pragmatic foreign policy serves national interests better than moral grandstanding.", source: "Foreign Affairs, 2023" },
-        { text: "The most successful leaders are those who are both visionary and pragmatic.", source: "Harvard Business Review, 2022" },
-        { text: "Science demands a pragmatic approach: test, fail, iterate.", source: "Nature, 2023" },
-      ],
-      etymology: { parts: [{ seg: "pragma", role: "root", meaning: "行动、事情（希腊）" }, { seg: "-tic", role: "suffix", meaning: "…的" }], story: "源自希腊语 pragma（行动、实际的事），注重「实际行动」而非空谈。", originLang: "Greek" },
+      zhShort: "务实的",
       level: "C1",
-      mnemonic: "pragma(行动)+ tic——注重「行动」的 → 务实的",
+      text: `**核心释义**：看重实际效果而非理论/理想的处事风格——做决策时先问"这样做行不行得通"，而不是"这样对不对"。
+
+> A pragmatic approach to problem-solving.
+> 务实的解决问题方式。
+
+> The CEO took a pragmatic approach to the restructuring.
+> CEO 对这次重组采取了务实的态度。
+
+**近义词辨析**：practical 更日常，指可操作的；realistic 强调正视现实；utilitarian 强调功用性。反义词：idealistic、impractical、utopian。
+
+**常见搭配**：pragmatic approach · pragmatic solution · be pragmatic about
+
+**词源**：源自希腊语 pragma（行动、实际的事），注重"实际行动"而非空谈。
+
+**记忆法**：pragma(行动) + tic —— 注重"行动"的 → 务实的
+
+**派生词**：pragmatism（n. 实用主义）、pragmatist（n. 实用主义者）、pragmatically（adv.）`,
     },
   },
 ];

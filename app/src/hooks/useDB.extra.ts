@@ -8,8 +8,7 @@ import { logError, reportWriteError } from "./useDB.errors";
 import {
   ChatSessionItem, ChatSessionDetail, ArticleListItem, ArticleDetail, NewExtractedItem,
   DashboardStats, DueCard, ReviewResult, SrsRating, SearchHistoryItem,
-  PatternListItem, PatternDetail, NewPattern,
-  RssFeedMeta, RssFeed, PracticeRecord,
+  RssFeedMeta, RssFeed, RssEntryRow,
 } from "./useDB.types";
 
 function serializeChatSession(s: {
@@ -210,106 +209,6 @@ export function useDBExtra() {
     }
   }, []);
 
-  // ── Sentence patterns (句式库) ─────────────────────────────────────────
-  // Rust side not implemented yet (Sonnet: migration v5 + commands) — until
-  // then these fail gracefully like every other wrapper here.
-
-  const addPattern = useCallback(async (p: NewPattern): Promise<number | null> => {
-    try {
-      return await invoke<number>("db_add_pattern", {
-        pattern: p.pattern,
-        zh: p.zh,
-        note: p.note ?? "",
-        level: p.level ?? null,
-        functionTag: p.functionTag ?? "other",
-        exampleJson: p.example ? JSON.stringify(p.example) : null,
-      });
-    } catch (e) {
-      reportWriteError("addPattern", e, "收藏句式失败");
-      return null;
-    }
-  }, []);
-
-  const getPatterns = useCallback(async (functionTag?: string): Promise<PatternListItem[]> => {
-    try {
-      return await invoke<PatternListItem[]>("db_get_patterns", { functionTag: functionTag ?? null });
-    } catch (e) {
-      logError("getPatterns", e);
-      return [];
-    }
-  }, []);
-
-  const getPatternDetail = useCallback(async (id: number): Promise<PatternDetail | null> => {
-    try {
-      return await invoke<PatternDetail>("db_get_pattern_detail", { id });
-    } catch (e) {
-      logError("getPatternDetail", e);
-      return null;
-    }
-  }, []);
-
-  const savePatternAnalysis = useCallback(
-    async (id: number, analysis: string, functionTag?: string): Promise<void> => {
-      try {
-        await invoke("db_update_pattern_analysis", { id, analysis, functionTag: functionTag ?? null });
-      } catch (e) {
-        reportWriteError("savePatternAnalysis", e, "保存句式分析失败");
-      }
-    },
-    []
-  );
-
-  const deletePattern = useCallback(async (id: number): Promise<void> => {
-    try {
-      await invoke("db_delete_pattern", { id });
-    } catch (e) {
-      reportWriteError("deletePattern", e, "删除句式失败");
-    }
-  }, []);
-
-  const addPatternExample = useCallback(async (
-    patternId: number, sentence: string, source: string, articleId?: number
-  ): Promise<number> => {
-    try {
-      return await invoke<number>("db_add_pattern_example", {
-        patternId, sentence, source, articleId: articleId ?? null,
-      });
-    } catch (e) {
-      reportWriteError("addPatternExample", e, "添加句式例句失败");
-      return 0;
-    }
-  }, []);
-
-  // ── Pattern Practice (造句练习) ──────────────────────────────────────────
-
-  const addPractice = useCallback(async (
-    patternId: number, sentence: string, verdict: string, feedback: string
-  ): Promise<number> => {
-    try {
-      return await invoke<number>("db_add_practice", { patternId, sentence, verdict, feedback });
-    } catch (e) {
-      reportWriteError("addPractice", e, "保存练习记录失败");
-      return 0;
-    }
-  }, []);
-
-  const getPractice = useCallback(async (patternId: number, limit = 20): Promise<PracticeRecord[]> => {
-    try {
-      return await invoke<PracticeRecord[]>("db_get_practice", { patternId, limit });
-    } catch (e) {
-      logError("getPractice", e);
-      return [];
-    }
-  }, []);
-
-  const deletePractice = useCallback(async (id: number): Promise<void> => {
-    try {
-      await invoke("db_delete_practice", { id });
-    } catch (e) {
-      reportWriteError("deletePractice", e, "删除练习记录失败");
-    }
-  }, []);
-
   // ── RSS Feeds ────────────────────────────────────────────────────────────
 
   const addRssFeed = useCallback(async (
@@ -357,6 +256,46 @@ export function useDBExtra() {
     }
   }, []);
 
+  /** Fetch the feed and upsert its entries into rss_entries. Returns new-entry count. */
+  const syncRssFeed = useCallback(async (feedId: number): Promise<number> => {
+    try {
+      return await invoke<number>("db_sync_rss_feed", { feedId });
+    } catch (e) {
+      logError("syncRssFeed", e);
+      throw e;
+    }
+  }, []);
+
+  /** Read cached entries from the DB; feedId null = all feeds, published DESC. */
+  const getRssEntries = useCallback(async (
+    feedId: number | null, limit = 200, offset = 0
+  ): Promise<RssEntryRow[]> => {
+    try {
+      return await invoke<RssEntryRow[]>("db_get_rss_entries", { feedId, limit, offset });
+    } catch (e) {
+      logError("getRssEntries", e);
+      return [];
+    }
+  }, []);
+
+  const markRssEntryRead = useCallback(async (id: number): Promise<void> => {
+    try {
+      await invoke("db_mark_rss_entry_read", { id });
+    } catch (e) {
+      // Read-marking is fire-and-forget; never toast for it.
+      logError("markRssEntryRead", e);
+    }
+  }, []);
+
+  const getRssUnreadCounts = useCallback(async (): Promise<Array<[number, number]>> => {
+    try {
+      return await invoke<Array<[number, number]>>("db_get_rss_unread_counts");
+    } catch (e) {
+      logError("getRssUnreadCounts", e);
+      return [];
+    }
+  }, []);
+
   // ── Data management (Settings › Data) ─────────────────────────────────
 
   const getDbPath = useCallback(async (): Promise<string> => {
@@ -401,9 +340,8 @@ export function useDBExtra() {
     getDashboardStats,
     getDueCards, reviewCard,
     addSearchHistory, getSearchHistory, clearSearchHistory,
-    addPattern, getPatterns, getPatternDetail, savePatternAnalysis, deletePattern, addPatternExample,
-    addPractice, getPractice, deletePractice,
     addRssFeed, getRssFeeds, updateRssFeedTitle, deleteRssFeed, fetchRssFeedMeta,
+    syncRssFeed, getRssEntries, markRssEntryRead, getRssUnreadCounts,
     getDbPath, exportBackup, switchDbPath, clearTranslations,
   }), [
     listChatSessions, getChatSession, upsertChatSession, deleteChatSession, searchChatSessions,
@@ -411,9 +349,8 @@ export function useDBExtra() {
     getDashboardStats,
     getDueCards, reviewCard,
     addSearchHistory, getSearchHistory, clearSearchHistory,
-    addPattern, getPatterns, getPatternDetail, savePatternAnalysis, deletePattern, addPatternExample,
-    addPractice, getPractice, deletePractice,
     addRssFeed, getRssFeeds, updateRssFeedTitle, deleteRssFeed, fetchRssFeedMeta,
+    syncRssFeed, getRssEntries, markRssEntryRead, getRssUnreadCounts,
     getDbPath, exportBackup, switchDbPath, clearTranslations,
   ]);
 }

@@ -2,20 +2,22 @@ import { useCallback, useState } from "react";
 import { jsonrepair } from "jsonrepair";
 import { findBestProvider } from "@/providers/select";
 import { useDB, NewExtractedItem } from "@/hooks/useDB";
+import { useSettingsStore } from "@/store/settingsStore";
 
-const SYSTEM_PROMPT =
-  "You are an English learning assistant for a Chinese native speaker who works in tech and has IELTS 7 (CEFR C1). Output ONLY valid JSON, no markdown, no code fences, no commentary.";
+function buildSystemPrompt(level: string): string {
+  return `You are an English learning assistant for a Chinese native speaker who works in tech (target level: CEFR ${level}). Output ONLY valid JSON, no markdown, no code fences, no commentary.`;
+}
 
-function buildPrompt(text: string, knownWords: string[]): string {
+function buildPrompt(text: string, knownWords: string[], level: string): string {
   const known = knownWords.slice(0, 150).join(", ");
   return `Analyze the article below and extract learning material. Return ONLY this JSON:
-{"title":"a short title for the article (keep original if obvious)","words":[{"text":"word","zh":"中文释义","level":"C1|C2","note":"用法/语气说明（中文，一句话）","context":"the EXACT sentence from the article containing it"}],"patterns":[{"text":"the expression, collocation or sentence pattern","zh":"中文意思","note":"什么场合用、为什么地道（中文，一句话）","context":"the EXACT sentence from the article"}]}
+{"title":"a short title for the article (keep original if obvious)","words":[{"text":"word","zh":"中文释义","level":"C1|C2","note":"用法/语气说明（中文，一句话）","context":"the EXACT sentence from the article containing it"}],"sentences":[{"text":"the EXACT sentence copied verbatim from the article","zh":"中文翻译","note":"这句好在哪、用了什么句式/修辞（中文，1-2句话）","pattern":"可复用的句式骨架，如 'not so much X as Y'"}]}
 
 Rules:
-- "words": up to 15 single words worth learning for a C1 learner. EXCLUDE: common words (below C1), basic tech terms every engineer knows (server, deploy, database...), proper nouns.
-- "patterns": up to 8 idiomatic expressions, strong collocations, or sentence patterns that are useful in professional/tech writing.
+- "words": up to 15 single words worth learning for a ${level} learner. EXCLUDE: common words (below ${level}), basic tech terms every engineer knows (server, deploy, database...), proper nouns.
+- "sentences": 3-8 highlight sentences worth imitating — advanced structures, elegant phrasing, rhetorical moves a ${level} learner should steal for their own writing. Prefer sentences that showcase a REUSABLE pattern over merely long ones.
 - The user already knows these words, never include them: ${known || "(none listed)"}
-- "context" must be copied verbatim from the article.
+- "context" and sentence "text" must be copied verbatim from the article.
 
 Article:
 """
@@ -56,9 +58,10 @@ export function useAnalyzeArticle() {
 
         const chunks: string[] = [];
         let received = 0;
+        const targetLevel = useSettingsStore.getState().targetLevels.join("/") || "C1";
         for await (const chunk of provider.generate(
-          SYSTEM_PROMPT,
-          buildPrompt(opts.text, knownWords)
+          buildSystemPrompt(targetLevel),
+          buildPrompt(opts.text, knownWords, targetLevel)
         )) {
           chunks.push(chunk);
           received += chunk.length;
@@ -87,18 +90,19 @@ export function useAnalyzeArticle() {
             context: String(w.context ?? ""),
           });
         }
-        for (const p of parsed.patterns ?? []) {
-          if (!p?.text) continue;
+        for (const s of parsed.sentences ?? []) {
+          if (!s?.text) continue;
           items.push({
-            kind: "pattern",
-            text: String(p.text),
-            zh: String(p.zh ?? ""),
-            note: String(p.note ?? ""),
+            kind: "sentence",
+            text: String(s.text),
+            zh: String(s.zh ?? ""),
+            note: String(s.note ?? ""),
             level: "",
-            context: String(p.context ?? ""),
+            // For sentence items the sentence IS the text — reuse the context
+            // column for the reusable pattern skeleton instead.
+            context: String(s.pattern ?? ""),
           });
         }
-
         const title = opts.title?.trim() || String(parsed.title ?? "").trim() || "Untitled";
         const articleId = await db.saveArticleAnalysis(
           title,

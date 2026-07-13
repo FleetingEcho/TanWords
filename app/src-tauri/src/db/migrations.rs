@@ -114,6 +114,49 @@ const MIGRATIONS: &[Migration] = &[
             CREATE INDEX IF NOT EXISTS idx_pattern_practice_pattern ON pattern_practice(pattern_id);
         ",
     },
+    Migration {
+        version: 8,
+        description: "add words.enrichment_text for freeform AI word explanations",
+        sql: "
+            ALTER TABLE words ADD COLUMN enrichment_text TEXT;
+        ",
+    },
+    Migration {
+        version: 9,
+        description: "drop the sentence-pattern library (patterns page removed)",
+        sql: "
+            DROP TABLE IF EXISTS pattern_practice;
+            DROP TABLE IF EXISTS pattern_examples;
+            DROP TABLE IF EXISTS patterns;
+        ",
+    },
+    Migration {
+        version: 10,
+        description: "add rss_entries for cached RSS articles (read state, cover images)",
+        sql: "
+            CREATE TABLE IF NOT EXISTS rss_entries (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                feed_id     INTEGER NOT NULL REFERENCES rss_feeds(id) ON DELETE CASCADE,
+                title       TEXT NOT NULL,
+                url         TEXT NOT NULL UNIQUE,
+                author      TEXT NOT NULL DEFAULT '',
+                summary     TEXT NOT NULL DEFAULT '',
+                image_url   TEXT,
+                published   TEXT NOT NULL DEFAULT '',
+                is_read     INTEGER NOT NULL DEFAULT 0,
+                fetched_at  TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_rss_entries_feed ON rss_entries(feed_id, published DESC);
+        ",
+    },
+    Migration {
+        version: 11,
+        description: "add audio enclosure fields to rss_entries for podcast playback",
+        sql: "
+            ALTER TABLE rss_entries ADD COLUMN audio_url TEXT;
+            ALTER TABLE rss_entries ADD COLUMN audio_duration INTEGER;
+        ",
+    },
 ];
 
 pub fn run(conn: &Connection) -> SqlResult<()> {

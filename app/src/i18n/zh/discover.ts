@@ -1,9 +1,10 @@
 import type { Dict } from "../types";
 
 export const discover: Dict = {
-    "discover.title": "发现",
-    "discover.subtitle": "按主题生成专属词库，或从词根出发探索词族",
+    "discover.tabTopic": "按类别生成",
+    "discover.tabFamily": "按词根生成",
     "discover.generatedOk": "已生成 {n} 个词汇",
+    "discover.mostlyDuplicate": "该主题下新词已经不多了，仅找到 {n} 个词库里没有的新词",
     "discover.addedOk": "已加入 {n} 个词到词库",
     "discover.alreadyIn": "「{word}」已在词库中",
     "discover.inVocab": "已收录",

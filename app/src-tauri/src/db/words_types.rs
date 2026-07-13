@@ -30,8 +30,10 @@ pub struct WordDetail {
     pub next_review_at: Option<String>,
     pub created_at: String,
     pub definitions: Vec<WordDefItem>,
-    pub phonetics: Vec<PhoneticItem>,
-    pub etymology: Option<EtymologyItem>,
+    pub enrichment_text: Option<String>,
+    /// Old structured-enrichment JSON, kept only so the UI can detect
+    /// "legacy explanation, click to regenerate" for words enriched before
+    /// the freeform-text rewrite. Never written to going forward.
     pub enrichment_json: Option<String>,
 }
 
@@ -42,20 +44,6 @@ pub struct WordDefItem {
     pub en: Option<String>,
     pub example_en: Option<String>,
     pub example_zh: Option<String>,
-}
-
-#[derive(Serialize)]
-pub struct PhoneticItem {
-    pub locale: String,
-    pub ipa: String,
-    pub accent_label: Option<String>,
-}
-
-#[derive(Serialize)]
-pub struct EtymologyItem {
-    pub parts: Option<String>,
-    pub story: Option<String>,
-    pub origin_lang: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -70,94 +58,20 @@ pub struct WordExtras {
     pub messages: String,
 }
 
-#[derive(Serialize)]
-pub struct WordGraphItem {
-    pub id: i64,
-    pub word: String,
-    pub level: Option<String>,
-    pub word_freq: i64,
-    pub enrichment_json: Option<String>,
-}
-
-// ── Enrichment input structs (db_add_word_enriched payload) ─────────────────
+// ── Enrichment input struct (db_add_word_enriched payload) ──────────────────
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WordEnrichmentInput {
-    pub definitions: Vec<DefInput>,
-    pub synonyms: Vec<RelInput>,
-    pub antonyms: Vec<String>,
-    pub collocations: Vec<String>,
-    pub derivatives: Vec<DerInput>,
-    pub sentence_patterns: Vec<PatInput>,
-    pub idioms: Vec<IdiomInput>,
-    pub authority_quotes: Vec<QuoteInput>,
-    pub etymology: Option<EtyInput>,
-    pub level: Option<String>,
-    pub mnemonic: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub complete: Option<bool>,
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DefInput {
-    pub pos: String,
-    pub zh: String,
-    pub en: Option<String>,
-    pub example_en: Option<String>,
-    pub example_zh: Option<String>,
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RelInput {
-    pub word: String,
-    pub note: Option<String>,
-    pub note_zh: Option<String>,
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DerInput {
-    pub word: String,
-    pub word_type: Option<String>,
-    pub zh: Option<String>,
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct PatInput {
-    pub pattern: String,
-    pub explanation: Option<String>,
-    pub example: Option<String>,
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct IdiomInput {
-    pub idiom: String,
-    pub explanation: Option<String>,
-    pub example: Option<String>,
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct QuoteInput {
+    /// The freeform AI-generated markdown explanation (META line already
+    /// stripped by the frontend).
     pub text: String,
-    pub source: Option<String>,
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EtyInput {
-    pub parts: Option<Vec<EtyPartInput>>,
-    pub story: Option<String>,
-    pub origin_lang: Option<String>,
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct EtyPartInput {
-    pub seg: String,
-    pub role: String,
-    pub meaning: String,
+    /// Short (<=10 char) Chinese gloss parsed from the META line, used for
+    /// quiz card generation. Only written if the word doesn't already have one.
+    pub zh_short: Option<String>,
+    /// CEFR level parsed from the META line. Only written if the word
+    /// doesn't already have one (e.g. Reading already supplied it).
+    pub level: Option<String>,
 }
 
 // ── Batch add payload (db_add_words_batch) ───────────────────────────────────

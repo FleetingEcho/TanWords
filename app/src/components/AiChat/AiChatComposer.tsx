@@ -1,7 +1,8 @@
 import React from "react";
 import { useT } from "@/hooks/useT";
 import { TOOL_GROUPS, ToolGroupKey } from "./tools";
-import { BookIcon, DocIcon } from "@/components/ui/icons";
+import { BookIcon, DocIcon, CloseIcon } from "@/components/ui/icons";
+import { CheckIcon } from "@heroicons/react/24/solid";
 
 const GROUP_ICONS: Record<ToolGroupKey, React.FC<{ className?: string }>> = {
   vocabulary: BookIcon,
@@ -50,7 +51,7 @@ export function AiChatComposer({
               onClick={onRemoveAttachment}
               className="w-4 h-4 rounded-full flex items-center justify-center text-muted-foreground hover:text-destructive"
             >
-              ✕
+              <CloseIcon className="w-3 h-3" />
             </button>
           </div>
           {showAttachment && (
@@ -97,7 +98,7 @@ export function AiChatComposer({
                     >
                       {React.createElement(GROUP_ICONS[g], { className: "w-3.5 h-3.5 shrink-0" })}
                       <span className="flex-1 text-left">{TOOL_GROUPS[g].label}</span>
-                      {active && <span className="text-emerald-500">✓</span>}
+                      {active && <CheckIcon className="w-3.5 h-3.5 text-emerald-500" />}
                     </button>
                   );
                 })}

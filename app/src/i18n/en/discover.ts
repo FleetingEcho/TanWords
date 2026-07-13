@@ -1,9 +1,10 @@
 import type { Dict } from "../types";
 
 export const discover: Dict = {
-    "discover.title": "Discover",
-    "discover.subtitle": "Generate vocabulary by topic, or explore word families from roots",
+    "discover.tabTopic": "By Category",
+    "discover.tabFamily": "By Root",
     "discover.generatedOk": "Generated {n} words",
+    "discover.mostlyDuplicate": "This topic is mostly covered already — only found {n} word(s) not in your vocabulary",
     "discover.addedOk": "Added {n} words to vocabulary",
     "discover.alreadyIn": "\"{word}\" is already in your vocabulary",
     "discover.inVocab": "In vocab",

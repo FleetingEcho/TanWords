@@ -1,6 +1,6 @@
-import { AIProvider, TranslateParams, ExplainParams, WordEnrichment, buildSystemPrompt, ToolDef, ApiMessage, ToolCallResponse } from "./base";
+import { AIProvider, TranslateParams, ExplainParams, buildSystemPrompt, buildEnrichSystemPrompt, buildEnrichUserPrompt, ToolDef, ApiMessage, ToolCallResponse } from "./base";
 import { logUsage } from "@/store/usageStore";
-import { jsonrepair } from "jsonrepair";
+import { useSettingsStore } from "@/store/settingsStore";
 
 export class AnthropicProvider implements AIProvider {
   id = "claude";
@@ -28,85 +28,17 @@ export class AnthropicProvider implements AIProvider {
     );
   }
 
-  async *enrich(word: string, signal?: AbortSignal): AsyncGenerator<Partial<WordEnrichment>> {
-    const queue: Partial<WordEnrichment>[] = [];
-    const waiters: Array<() => void> = [];
-
-    // Slice 1: definitions + level
-    this.fetchJSON(
-      "You are a lexicographer. Output ONLY valid JSON, no markdown, no code fences.",
-      `For the English word "${word}", return ONLY this JSON:
-{"definitions":[{"pos":"adj|v|n|adv","zh":"中文","en":"English def","exampleEn":"example sentence","exampleZh":"中文例句"}],"level":"C1"}
-Include all major parts of speech. Be thorough.`,
-      800, signal
-    ).then((d) => queue.push({ definitions: d.definitions || [], level: d.level || "B2" }), () => queue.push({}))
-     .finally(() => waiters.shift()?.());
-
-    // Slice 2: synonyms + antonyms + collocations + derivatives
-    this.fetchJSON(
-      "You are a lexicographer. Output ONLY valid JSON, no markdown, no code fences.",
-      `For the English word "${word}", return ONLY this JSON:
-{"synonyms":[{"word":"syn","note":"nuance diff in English","noteZh":"与原词的区别（中文说明）"}],"antonyms":["ant1"],"collocations":["phrase1"],"derivatives":[{"word":"deriv","wordType":"n|adj|v","zh":"中文"}]}
-Provide at least 3 synonyms, all antonyms, at least 4 collocations, all common derivatives.`,
-      800, signal
-    ).then((r) => queue.push({ synonyms: r.synonyms || [], antonyms: r.antonyms || [], collocations: r.collocations || [], derivatives: r.derivatives || [] }), () => queue.push({}))
-     .finally(() => waiters.shift()?.());
-
-    // Slice 3a: sentence patterns + idioms
-    this.fetchJSON(
-      "You are a lexicographer. Output ONLY valid JSON, no markdown, no code fences.",
-      `For the English word "${word}", return ONLY this JSON:
-{"sentencePatterns":[{"pattern":"V + obj","explanation":"说明","example":"example"}],"idioms":[{"idiom":"idiom phrase","explanation":"解释","example":"example sentence"}]}
-Include all major sentence patterns and any common idioms.`,
-      600, signal
-    ).then((u) => queue.push({ sentencePatterns: u.sentencePatterns || [], idioms: u.idioms || [] }), () => queue.push({}))
-     .finally(() => waiters.shift()?.());
-
-    // Slice 3b: mnemonic + example sentences + etymology
-    this.fetchJSON(
-      "You are a lexicographer. Output ONLY valid JSON, no markdown, no code fences.",
-      `For the English word "${word}", return ONLY this JSON:
-{"mnemonic":"记忆口诀","sentences":[{"text":"a natural, high-quality English sentence using this word","label":"casual|formal|technical|business"}],"etymology":{"parts":[{"seg":"root","role":"prefix|root|suffix","meaning":"meaning"}],"story":"etymology story","originLang":"Latin|Greek"}}
-Provide at least 4 varied example sentences in different registers.`,
-      700, signal
-    ).then((u) => queue.push({ mnemonic: u.mnemonic || "", sentences: u.sentences || [], etymology: u.etymology || { parts: [], story: "", originLang: "" } }), () => queue.push({}))
-     .finally(() => waiters.shift()?.());
-
-    let yielded = 0;
-    while (yielded < 4) {
-      if (signal?.aborted) return;
-      if (yielded < queue.length) {
-        yield queue[yielded++];
-      } else {
-        await new Promise<void>((r) => {
-          waiters.push(r);
-          signal?.addEventListener("abort", () => r(), { once: true });
-        });
-      }
-    }
-  }
-
-  private async fetchJSON(
-    system: string,
-    user: string,
-    maxTokens: number,
-    signal?: AbortSignal,
-  ): Promise<any> {
+  async *enrich(word: string, signal?: AbortSignal): AsyncGenerator<string> {
+    const targetLevel = useSettingsStore.getState().targetLevels.join("/");
+    const system = buildEnrichSystemPrompt();
+    const user = buildEnrichUserPrompt(word, targetLevel);
     const inputChars = system.length + user.length;
-    // Prefill assistant turn with "{" — forces model to start JSON immediately,
-    // no markdown wrapping or preamble possible.
-    let full = "{";
-    for await (const chunk of this.streamMessagesMulti(
-      system,
-      [{ role: "user", content: user }, { role: "assistant", content: "{" }],
-      signal,
-      maxTokens,
-    )) {
+    let full = "";
+    for await (const chunk of this.streamMessages(system, user, signal)) {
       full += chunk;
+      yield chunk;
     }
     logUsage(this.id, this.modelId, inputChars, full.length);
-    try { return JSON.parse(full); }
-    catch { return JSON.parse(jsonrepair(full)); }
   }
 
   async *generate(systemPrompt: string, userPrompt: string): AsyncGenerator<string> {

@@ -12,6 +12,7 @@ export const documents: Dict = {
     "doc.allTags": "所有标签",
     "doc.untitled": "无标题",
     "doc.wordCount": "{n} 字",
+    "doc.moreActions": "更多操作",
     "doc.rename": "重命名",
     "doc.pin": "置顶",
     "doc.unpin": "取消置顶",

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useDB, DocumentListItem } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { DocItem } from "./DocItem";
+import { CloseIcon } from "@/components/ui/icons";
 import { toast } from "sonner";
 
 const PAGE_SIZE = 20;
@@ -76,7 +77,7 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey }: Props)
     const ok = window.confirm(t("doc.deleteConfirm"));
     if (!ok) return;
     await db.deleteDocument(id);
-    toast.success(t("doc.delete") + " ✓");
+    toast.success(t("doc.delete"));
     load(page);
     if (activeId === id) onSelect(-1);
   };
@@ -157,9 +158,9 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey }: Props)
           {hasDateFilter && (
             <button
               onClick={() => { setDateFrom(""); setDateTo(""); }}
-              className="text-[10px] text-primary hover:underline"
+              className="text-[10px] text-primary hover:underline inline-flex items-center gap-0.5"
             >
-              {t("doc.clearDate")} ✕
+              {t("doc.clearDate")} <CloseIcon className="w-2.5 h-2.5" />
             </button>
           )}
         </div>

@@ -28,7 +28,9 @@ export interface ArticleListItem {
 export interface ExtractedItem {
   id: number;
   article_id: number;
-  kind: "word" | "pattern";
+  /** "word": vocabulary; "sentence": a highlight sentence / advanced pattern —
+   * text is the verbatim sentence, context_sentence holds the pattern skeleton. */
+  kind: "word" | "sentence";
   text: string;
   zh: string;
   note: string;
@@ -48,7 +50,7 @@ export interface ArticleDetail {
 }
 
 export interface NewExtractedItem {
-  kind: "word" | "pattern";
+  kind: "word" | "sentence";
   text: string;
   zh: string;
   note: string;
@@ -88,16 +90,10 @@ export interface WordDetail {
     example_en: string | null;
     example_zh: string | null;
   }[];
-  phonetics: {
-    locale: string;
-    ipa: string;
-    accent_label: string | null;
-  }[];
-  etymology: {
-    parts: string | null;
-    story: string | null;
-    origin_lang: string | null;
-  } | null;
+  /** Freeform AI-generated markdown explanation. */
+  enrichment_text?: string | null;
+  /** Structured enrichment from before the freeform-text rewrite — only
+   * present to let the UI offer "legacy explanation, regenerate". */
   enrichment_json?: string | null;
 }
 
@@ -114,20 +110,12 @@ export interface TranslationItem {
 }
 
 export interface EnrichmentInput {
-  definitions: { pos: string; zh: string; en?: string; exampleEn?: string; exampleZh?: string }[];
-  synonyms: { word: string; note?: string; noteZh?: string }[];
-  antonyms: string[];
-  collocations: string[];
-  derivatives: { word: string; wordType?: string; word_type?: string; zh?: string }[];
-  sentencePatterns: { pattern: string; explanation?: string; example?: string }[];
-  sentence_patterns?: { pattern: string; explanation?: string; example?: string }[];
-  idioms: { idiom: string; explanation?: string; example?: string }[];
-  authorityQuotes: { text: string; source?: string }[];
-  authority_quotes?: { text: string; source?: string }[];
-  etymology?: { parts?: { seg: string; role: string; meaning: string }[] | string; story?: string; originLang?: string; origin_lang?: string };
+  /** The freeform markdown explanation, META line already stripped. */
+  text: string;
+  /** Short (<=10 char) Chinese gloss parsed from the META line, for quiz cards. */
+  zhShort?: string;
+  /** CEFR level parsed from the META line. */
   level?: string;
-  mnemonic?: string;
-  complete?: boolean;
 }
 
 export interface DocumentListItem {
@@ -198,64 +186,6 @@ export interface SearchHistoryItem {
   in_vocab: boolean;
 }
 
-// ── Sentence patterns (句式库) ──────────────────────────────────────────────
-// Backend contract: Rust commands db_add_pattern / db_get_patterns /
-// db_get_pattern_detail / db_update_pattern_analysis / db_delete_pattern
-// (migration v5, tables `patterns` + `pattern_examples`).
-
-/** Pragmatic function of a pattern — drives the library's filter chips. */
-export type PatternTag =
-  | "contrast"    // 对比
-  | "concession"  // 让步
-  | "emphasis"    // 强调
-  | "causal"      // 因果
-  | "condition"   // 条件
-  | "comparison"  // 比较
-  | "example"     // 例证
-  | "other";
-
-export interface PatternListItem {
-  id: number;
-  pattern: string;          // 句式骨架或代表句
-  zh: string;
-  function_tag: PatternTag;
-  level: string | null;
-  example_count: number;
-  has_analysis: boolean;
-  created_at: string;
-}
-
-export interface PatternExample {
-  id: number;
-  sentence: string;
-  source: string;           // 文章标题 / "manual"
-  article_id: number | null;
-  created_at: string;
-}
-
-export interface PatternDetail {
-  id: number;
-  pattern: string;
-  zh: string;
-  function_tag: PatternTag;
-  level: string | null;
-  note: string;
-  /** AI 深度分析,markdown 文本;null = 尚未分析 */
-  analysis: string | null;
-  created_at: string;
-  examples: PatternExample[];
-}
-
-export interface NewPattern {
-  pattern: string;
-  zh: string;
-  note?: string;
-  level?: string;
-  functionTag?: PatternTag;
-  /** 首个真实例句及其出处;同骨架已存在时后端应追加例句而非重复建条目 */
-  example?: { sentence: string; source: string; articleId?: number };
-}
-
 // ── RSS Feeds ────────────────────────────────────────────────────────────────
 
 export interface RssFeedMeta {
@@ -271,6 +201,10 @@ export interface RssEntry {
   author: string;
   summary: string;
   published: string;
+  /** Podcast enclosure (direct mp3/m4a URL); null for regular article entries. */
+  audio_url?: string | null;
+  /** Episode length in seconds, when the feed provides it. */
+  audio_duration?: number | null;
 }
 
 export interface RssFeed {
@@ -281,15 +215,24 @@ export interface RssFeed {
   description: string;
   last_fetched_at: string | null;
   created_at: string;
+  /** True when any cached entry carries an audio enclosure — grouped as "Podcasts" in the UI. */
+  is_podcast?: boolean;
 }
 
-// ── Pattern Practice (造句练习) ─────────────────────────────────────────────
-
-export interface PracticeRecord {
+/** A cached entry row from the rss_entries table (plan2.md §A). */
+export interface RssEntryRow {
   id: number;
-  sentence: string;
-  feedback: string;
-  verdict: "good" | "okay" | "wrong" | "";
-  saved: boolean;
-  created_at: string;
+  feed_id: number;
+  title: string;
+  url: string;
+  author: string;
+  summary: string;
+  image_url: string | null;
+  /** Podcast enclosure (direct mp3/m4a URL); null for regular article entries. */
+  audio_url?: string | null;
+  /** Episode length in seconds, when the feed provides it. */
+  audio_duration?: number | null;
+  published: string;
+  is_read: boolean;
+  fetched_at: string;
 }

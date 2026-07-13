@@ -197,14 +197,6 @@ pub fn db_delete_article(id: i64, conn: State<'_, AppState>) -> Result<(), Strin
     let db = db::lock_db(&conn)?;
     db.execute("DELETE FROM extracted_items WHERE article_id = ?1", params![id])
         .map_err(|e| e.to_string())?;
-    // Pattern examples outlive their source article — keep the sentence and
-    // its `source` label, just drop the now-dangling article link so the UI
-    // stops offering a "view article" jump.
-    db.execute(
-        "UPDATE pattern_examples SET article_id = NULL WHERE article_id = ?1",
-        params![id],
-    )
-    .map_err(|e| e.to_string())?;
     db.execute("DELETE FROM articles WHERE id = ?1", params![id])
         .map_err(|e| e.to_string())?;
     Ok(())

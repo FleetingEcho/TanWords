@@ -9,6 +9,7 @@ import { useT } from "@/hooks/useT";
 import { useIsDark } from "@/hooks/useIsDark";
 import { contentToBlocks, editorToStorage } from "@/lib/docFormat";
 import { PinIcon } from "@/components/ui/icons";
+import { CheckIcon } from "@heroicons/react/24/solid";
 
 interface Props {
   doc: DocumentDetail;
@@ -140,7 +141,7 @@ export function DocEditor({ doc, onSave, onTitleChange, onTagsChange, onPinToggl
               {t("doc.saving")}
             </span>
           ) : saveStatus === "saved" ? (
-            <span className="text-emerald-600 dark:text-emerald-400">✓ {t("doc.autoSaved")}</span>
+            <span className="text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1"><CheckIcon className="w-3 h-3" /> {t("doc.autoSaved")}</span>
           ) : null}
         </span>
         <span className="ml-auto">{t("doc.wordCount", { n: doc.word_count })}</span>

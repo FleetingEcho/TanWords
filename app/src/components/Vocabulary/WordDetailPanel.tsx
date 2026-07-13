@@ -1,11 +1,14 @@
-import React from "react";
+import React, { useState } from "react";
 import { useT } from "@/hooks/useT";
 import { useWordModalStore } from "@/store/wordModalStore";
-import { EnrichedData, EnrichmentSections } from "./WordDetailSections";
+import { ParsedEnrichment } from "@/lib/enrichMeta";
+import { EnrichmentText } from "@/components/EnrichmentText";
 import { LevelBadge } from "@/components/shared/LevelBadge";
 import { SpeakButton } from "@/components/ui/SpeakButton";
-
-export type { EnrichedData };
+import { LazyWordNotesEditor } from "@/components/LazyWordNotesEditor";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { SparkIcon } from "@/components/ui/icons";
+import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
 
 interface SelectedInfo {
   word: string;
@@ -17,9 +20,12 @@ interface SelectedInfo {
 
 interface Props {
   selected: SelectedInfo;
-  enriched: EnrichedData | null;
+  wordId: number | null;
+  enriched: ParsedEnrichment | null;
   enriching: boolean;
   enrichError: string;
+  /** True when this word only has old structured enrichment (pre-rewrite) — offer regenerate instead of rendering it. */
+  legacy: boolean;
   notes: string;
   vocabBilingual: boolean;
   /** Dictionary lookup of a word not (yet) in the vocabulary */
@@ -27,20 +33,19 @@ interface Props {
   lookupAdded?: boolean;
   onAddToVocab?: () => void;
   onNotesChange: (v: string) => void;
-  onSaveNotes: () => void;
-  notesSaving: boolean;
   onClearNotes: () => void;
   onRetry: () => void;
   onReenrich: () => void;
 }
 
 export function WordDetailPanel({
-  selected, enriched, enriching, enrichError, notes, vocabBilingual,
+  selected, wordId, enriched, enriching, enrichError, legacy, notes, vocabBilingual,
   lookupMode = false, lookupAdded = false, onAddToVocab,
-  onNotesChange, onSaveNotes, notesSaving, onClearNotes, onRetry, onReenrich,
+  onNotesChange, onClearNotes, onRetry, onReenrich,
 }: Props) {
   const t = useT();
   const openWordModal = useWordModalStore((s) => s.openWordModal);
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
 
   return (
     <div className="flex-1 overflow-y-auto bg-background">
@@ -53,7 +58,7 @@ export function WordDetailPanel({
       )}
       {!enriching && enrichError && !enriched && (
         <div className="flex items-center gap-2 px-6 pt-4 pb-0">
-          <span className="text-xs text-destructive">⚠️ {enrichError}</span>
+          <span className="text-xs text-destructive inline-flex items-center gap-1"><ExclamationTriangleIcon className="w-3.5 h-3.5" /> {enrichError}</span>
           <button onClick={onRetry} className="text-xs text-primary hover:underline">{t("vocab.retry")}</button>
         </div>
       )}
@@ -84,7 +89,7 @@ export function WordDetailPanel({
                 </button>
               ) : (
                 <>
-                  {enriched?.complete && !enriching && (
+                  {enriched && !enriching && (
                     <button onClick={onReenrich} className="text-xs text-muted-foreground hover:text-primary transition-colors">{t("vocab.reenrich")}</button>
                   )}
                   <button onClick={() => openWordModal(selected.word)} className="text-xs font-medium text-primary hover:underline">{t("vocab.aiDetail")}</button>
@@ -94,45 +99,37 @@ export function WordDetailPanel({
           </div>
         </div>
 
-        {/* Saved word with partial enrichment — offer explicit completion
-            (browsing the list no longer auto-fires AI calls) */}
-        {!lookupMode && enriched && !enriched.complete && !enriching && (
+        {/* Legacy structured enrichment from before the freeform-text rewrite */}
+        {!lookupMode && legacy && !enriching && (
           <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl border border-amber-500/25 bg-amber-500/5 text-xs">
-            <span className="text-amber-600 dark:text-amber-400">{t("vocab.incomplete")}</span>
-            <button onClick={onReenrich} className="font-semibold text-primary hover:underline">
-              ✦ {t("vocab.completeEnrich")}
+            <span className="text-amber-600 dark:text-amber-400">{t("vocab.legacyEnrichment")}</span>
+            <button onClick={onReenrich} className="font-semibold text-primary hover:underline inline-flex items-center gap-1">
+              <SparkIcon className="w-3 h-3" /> {t("vocab.reenrich")}
             </button>
           </div>
         )}
 
-        {/* Enrichment sections from extracted component */}
-        <EnrichmentSections
-          enriched={enriched}
-          enriching={enriching}
-          vocabBilingual={vocabBilingual}
-          openWordModal={openWordModal}
-        />
+        {enriched && !legacy && <EnrichmentText text={enriched.text} />}
 
         {/* My Notes (only for saved words) */}
         {!lookupMode && (
         <section>
           <div className="flex items-center justify-between mb-2">
             <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t("vocab.myNotes")}</p>
-            <div className="flex items-center gap-3">
-              {notes && (
-                <button onClick={onClearNotes} className="text-[11px] text-muted-foreground hover:text-destructive transition-colors">{t("vocab.clear")}</button>
-              )}
-              <button onClick={onSaveNotes} disabled={notesSaving} className="text-[11px] text-primary hover:underline disabled:opacity-40">
-                {notesSaving ? t("vocab.saving") : t("vocab.save")}
-              </button>
-            </div>
+            {notes && (
+              <button onClick={() => setConfirmClearOpen(true)} className="text-[11px] text-muted-foreground hover:text-destructive transition-colors">{t("vocab.clear")}</button>
+            )}
           </div>
-          <textarea
-            value={notes}
-            onChange={(e) => onNotesChange(e.target.value)}
-            placeholder={t("vocab.notesPlaceholder")}
-            rows={3}
-            className="w-full resize-none p-3 text-sm bg-muted/40 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground leading-relaxed"
+          <div className="rounded-xl border border-border bg-muted/20 h-40">
+            <LazyWordNotesEditor wordId={wordId} text={notes} onChange={onNotesChange} />
+          </div>
+          <ConfirmModal
+            open={confirmClearOpen}
+            title={t("vocab.clearNotesTitle")}
+            message={t("vocab.clearNotesMessage")}
+            confirmLabel={t("vocab.clear")}
+            onConfirm={() => { onClearNotes(); setConfirmClearOpen(false); }}
+            onCancel={() => setConfirmClearOpen(false)}
           />
         </section>
         )}
@@ -140,13 +137,13 @@ export function WordDetailPanel({
         {/* Enrich error */}
         {!enriched && !enriching && enrichError && (
           <div className="py-4 text-center space-y-2">
-            <p className="text-sm text-destructive">⚠️ {enrichError}</p>
+            <p className="text-sm text-destructive inline-flex items-center gap-1.5"><ExclamationTriangleIcon className="w-4 h-4" /> {enrichError}</p>
             <button onClick={onRetry} className="text-xs font-semibold text-primary hover:underline">{t("vocab.retry")}</button>
           </div>
         )}
 
         {/* No enrichment, no error, not enriching */}
-        {!enriched && !enriching && !enrichError && (
+        {!enriched && !legacy && !enriching && !enrichError && (
           <div className="py-4 text-center">
             <p className="text-sm text-muted-foreground mb-2">{t("vocab.noData")}</p>
             <button onClick={onRetry} className="text-xs font-semibold text-primary hover:underline">{t("vocab.aiEnrich")}</button>

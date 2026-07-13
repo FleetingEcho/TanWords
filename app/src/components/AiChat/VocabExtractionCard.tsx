@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { toast } from "sonner";
 import { useDB } from "@/hooks/useDB";
 import { SpeakButton } from "@/components/ui/SpeakButton";
+import { SparkIcon } from "@/components/ui/icons";
+import { CheckIcon } from "@heroicons/react/24/solid";
 
 export interface ExtractedVocabItem {
   word: string;
@@ -69,7 +71,7 @@ export function VocabExtractionCard({ items }: { items: ExtractedVocabItem[] }) 
   return (
     <div className="my-1 rounded-2xl border border-border overflow-hidden bg-card max-w-lg">
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-muted/30">
-        <span className="text-primary">✦</span>
+        <SparkIcon className="w-3.5 h-3.5 text-primary" />
         <span className="text-xs font-semibold flex-1">提取到 {items.length} 个词条</span>
         {pendingCount > 0 && (
           <button
@@ -108,7 +110,7 @@ export function VocabExtractionCard({ items }: { items: ExtractedVocabItem[] }) 
                     </button>
                   </>
                 ) : status === "added" ? (
-                  <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">✓ 已加入</span>
+                  <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-0.5"><CheckIcon className="w-3 h-3" /> 已加入</span>
                 ) : (
                   <span className="text-[11px] text-muted-foreground">已认识</span>
                 )}

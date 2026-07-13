@@ -36,6 +36,7 @@ bzip2 = "0.4"
 futures-util = "0.3"
 keyring = "3"
 feed-rs = "2"
+url = "2"
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }

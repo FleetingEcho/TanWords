@@ -1,43 +1,9 @@
 import type { Dict } from "../types";
 
+/** Shared by ArticleReader/ReaderView (used by both Feeds and, historically, HN).
+ *  Keeping the `hn.` prefix avoids touching those call sites for a rename-only diff. */
 export const hackernews: Dict = {
-    "hn.title": "Hacker News",
-    "hn.subtitle": "Read something interesting, bring the text back to learn",
-    "hn.feed.top": "Top",
-    "hn.feed.best": "Best",
-    "hn.feed.new": "New",
-    "hn.refresh": "Refresh",
-    "hn.updated": "Updated {t}",
-    "hn.open": "Open article",
     "hn.learn": "Learn",
-    "hn.comments": "{n} comments",
-    "hn.saved": "Saved",
-    "hn.error": "Couldn't load stories. Check your connection and retry.",
-    "hn.retry": "Retry",
-    "hn.ago.now": "just now",
-    "hn.ago.m": "{n}m ago",
-    "hn.ago.h": "{n}h ago",
-    "hn.ago.d": "{n}d ago",
-    "hn.drawer.title": "Bring it back to learn",
-    "hn.drawer.hint": "After reading in your browser, paste the article text here",
-    "hn.drawer.placeholder": "Paste the article text…",
-    "hn.drawer.openArticle": "Open article ↗",
-    "hn.drawer.words": "{n} words",
-    "hn.drawer.save": "Save as document",
-    "hn.drawer.saving": "Saving…",
-    "hn.drawer.analyze": "AI analysis",
-    "hn.drawer.soon": "coming soon",
-    "hn.toast.saved": "Saved as document",
-    "hn.toast.saveFailed": "Save failed, try again",
     "hn.reader.back": "Back to list",
     "hn.reader.external": "Open in browser",
-
-    // Search & paging
-    "hn.search.placeholder": "Search Hacker News…",
-    "hn.search.results": "{n} results",
-    "hn.search.none": "No matching stories — try another keyword",
-    "hn.sort.pop": "Popular",
-    "hn.sort.new": "Newest",
-    "hn.loadingMore": "Loading…",
-    "hn.end": "That's all",
 };

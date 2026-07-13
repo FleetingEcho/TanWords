@@ -26,8 +26,6 @@ pub mod dashboard;
 pub mod migrations;
 pub mod srs;
 pub mod search_history;
-pub mod patterns;
-pub mod practice;
 
 pub use settings::*;
 pub use words_types::*;
@@ -41,8 +39,6 @@ pub use articles::*;
 pub use dashboard::*;
 pub use srs::*;
 pub use search_history::*;
-pub use patterns::*;
-pub use practice::*;
 
 // ── Database Initialization ─────────────────────────────────────────────────
 

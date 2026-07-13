@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { CheckIcon } from "@heroicons/react/24/solid";
 
 /**
  * Minimal markdown → React renderer for chat messages.
@@ -77,7 +78,7 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
       <div className="flex items-center justify-between px-3 py-1 bg-black/10 dark:bg-white/5 text-[10px] font-mono text-muted-foreground">
         <span>{lang || "code"}</span>
         <button onClick={copy} className="hover:text-foreground transition-colors">
-          {copied ? "✓" : "copy"}
+          {copied ? <CheckIcon className="w-3 h-3 inline" /> : "copy"}
         </button>
       </div>
       <pre className="px-3 py-2 overflow-x-auto bg-black/5 dark:bg-black/30 text-[0.86em] font-mono leading-relaxed">
@@ -157,7 +158,15 @@ function splitTableRow(line: string): string[] {
 
 const TABLE_SEP_RE = /^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?$/;
 
-export function Markdown({ text }: { text: string }) {
+export function Markdown({
+  text,
+  renderBlockquote,
+}: {
+  text: string;
+  /** Override how a blockquote's lines render (default: quoted paragraphs).
+   * Used by EnrichmentText to attach a speak button to example sentences. */
+  renderBlockquote?: (lines: string[], key: string) => React.ReactNode;
+}) {
   const lines = text.split("\n");
   const out: React.ReactNode[] = [];
   let i = 0;
@@ -211,12 +220,17 @@ export function Markdown({ text }: { text: string }) {
         quote.push(lines[i].replace(/^> ?/, ""));
         i++;
       }
+      const bqKey = `bq${key++}`;
       out.push(
-        <blockquote key={key++} className="border-l-2 border-border pl-3 my-2 text-muted-foreground italic">
-          {quote.map((q, j) => (
-            <p key={j}>{renderInline(q, `q${key}-${j}`)}</p>
-          ))}
-        </blockquote>
+        renderBlockquote ? (
+          <React.Fragment key={bqKey}>{renderBlockquote(quote, bqKey)}</React.Fragment>
+        ) : (
+          <blockquote key={bqKey} className="border-l-2 border-border pl-3 my-2 text-muted-foreground italic">
+            {quote.map((q, j) => (
+              <p key={j}>{renderInline(q, `q${bqKey}-${j}`)}</p>
+            ))}
+          </blockquote>
+        )
       );
       continue;
     }

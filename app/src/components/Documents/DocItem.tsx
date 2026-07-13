@@ -1,13 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
+import { EllipsisVerticalIcon, PencilIcon, MapPinIcon, DocumentDuplicateIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { DocumentListItem } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { PinIcon, DocIcon } from "@/components/ui/icons";
-
-interface ContextMenu {
-  x: number;
-  y: number;
-  doc: DocumentListItem;
-}
 
 interface Props {
   doc: DocumentListItem;
@@ -18,6 +13,8 @@ interface Props {
   onDuplicate: (id: number) => void;
   onDelete: (id: number) => void;
 }
+
+const MENU_WIDTH = 160;
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -36,6 +33,7 @@ export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, o
   const [renaming, setRenaming] = useState(false);
   const [renameVal, setRenameVal] = useState(doc.title);
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
   const renameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -51,10 +49,11 @@ export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, o
     if (renaming) renameRef.current?.select();
   }, [renaming]);
 
-  const handleContextMenu = (e: React.MouseEvent) => {
-    e.preventDefault();
+  const openMenu = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setMenu({ x: e.clientX, y: e.clientY });
+    const rect = menuBtnRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setMenu({ x: rect.right - MENU_WIDTH, y: rect.bottom + 4 });
   };
 
   const commitRename = () => {
@@ -70,7 +69,6 @@ export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, o
     <>
       <div
         onClick={() => onSelect(doc.id)}
-        onContextMenu={handleContextMenu}
         className={`px-3 py-2.5 rounded-xl cursor-pointer group border transition-colors ${
           active
             ? "bg-primary/10 border-primary/20 text-foreground"
@@ -84,22 +82,32 @@ export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, o
               : <DocIcon className="w-4 h-4 text-muted-foreground" />}
           </span>
           <div className="flex-1 min-w-0">
-            {renaming ? (
-              <input
-                ref={renameRef}
-                value={renameVal}
-                onChange={(e) => setRenameVal(e.target.value)}
-                onBlur={commitRename}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") commitRename();
-                  if (e.key === "Escape") { setRenaming(false); setRenameVal(doc.title); }
-                }}
-                onClick={(e) => e.stopPropagation()}
-                className="w-full text-sm font-medium bg-card border border-primary/40 rounded px-1 outline-none"
-              />
-            ) : (
-              <p className="text-sm font-medium truncate leading-tight">{doc.title || t("doc.untitled")}</p>
-            )}
+            <div className="flex items-center gap-1">
+              {renaming ? (
+                <input
+                  ref={renameRef}
+                  value={renameVal}
+                  onChange={(e) => setRenameVal(e.target.value)}
+                  onBlur={commitRename}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commitRename();
+                    if (e.key === "Escape") { setRenaming(false); setRenameVal(doc.title); }
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="flex-1 min-w-0 text-sm font-medium bg-card border border-primary/40 rounded px-1 outline-none"
+                />
+              ) : (
+                <p className="flex-1 min-w-0 text-sm font-medium truncate leading-tight">{doc.title || t("doc.untitled")}</p>
+              )}
+              <button
+                ref={menuBtnRef}
+                onClick={openMenu}
+                title={t("doc.moreActions")}
+                className="shrink-0 w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              >
+                <EllipsisVerticalIcon className="w-3.5 h-3.5" />
+              </button>
+            </div>
             <div className="flex items-center gap-2 mt-0.5">
               <span className="text-[10px] text-muted-foreground">{formatDate(doc.updated_at)}</span>
               {doc.word_count > 0 && (
@@ -121,7 +129,7 @@ export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, o
         </div>
       </div>
 
-      {/* Context menu */}
+      {/* Actions dropdown, anchored to the ⋮ button */}
       {menu && (
         <div
           ref={menuRef}
@@ -133,26 +141,26 @@ export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, o
             onClick={() => { setMenu(null); setRenaming(true); setRenameVal(doc.title); }}
             className="w-full flex items-center gap-2.5 px-3 py-2 text-sm hover:bg-muted text-left"
           >
-            ✏️ {t("doc.rename")}
+            <PencilIcon className="w-4 h-4 shrink-0" /> {t("doc.rename")}
           </button>
           <button
             onClick={() => { setMenu(null); onPin(doc.id); }}
             className="w-full flex items-center gap-2.5 px-3 py-2 text-sm hover:bg-muted text-left"
           >
-            📌 {doc.pinned ? t("doc.unpin") : t("doc.pin")}
+            <MapPinIcon className="w-4 h-4 shrink-0" /> {doc.pinned ? t("doc.unpin") : t("doc.pin")}
           </button>
           <button
             onClick={() => { setMenu(null); onDuplicate(doc.id); }}
             className="w-full flex items-center gap-2.5 px-3 py-2 text-sm hover:bg-muted text-left"
           >
-            📋 {t("doc.duplicate")}
+            <DocumentDuplicateIcon className="w-4 h-4 shrink-0" /> {t("doc.duplicate")}
           </button>
           <div className="border-t border-border my-1" />
           <button
             onClick={() => { setMenu(null); onDelete(doc.id); }}
             className="w-full flex items-center gap-2.5 px-3 py-2 text-sm hover:bg-destructive/10 text-destructive text-left"
           >
-            🗑️ {t("doc.delete")}
+            <TrashIcon className="w-4 h-4 shrink-0" /> {t("doc.delete")}
           </button>
         </div>
       )}

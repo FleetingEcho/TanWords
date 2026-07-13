@@ -2,7 +2,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useT } from "@/hooks/useT";
 import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
-import { SpeakerIcon } from "@/components/ui/icons";
+import { usePodcastPlayerStore, type PodcastTrack } from "@/store/podcastPlayerStore";
+import { SpeakerIcon, SparkIcon } from "@/components/ui/icons";
 
 export interface FetchedArticle {
   title: string;
@@ -18,11 +19,14 @@ interface Props {
   /** Learn should hand off the extracted plain text — no manual copy/paste needed. */
   onLearn: (article: { title: string; text: string }) => void;
   onOpenExternal: () => void;
+  /** The entry's own audio enclosure (podcast episodes). When set, the listen
+   * button plays this original recording instead of synthesizing TTS. */
+  audio?: PodcastTrack;
 }
 
 const FONT_STEPS = [15, 16, 17.5, 19, 21] as const;
 
-export function ArticleReader({ url, onLearn, onOpenExternal }: Props) {
+export function ArticleReader({ url, onLearn, onOpenExternal, audio }: Props) {
   const t = useT();
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [article, setArticle] = useState<FetchedArticle | null>(null);
@@ -32,8 +36,22 @@ export function ArticleReader({ url, onLearn, onOpenExternal }: Props) {
   const playerSourceKey = useTtsPlayerStore((s) => s.sourceKey);
   const playerStart = useTtsPlayerStore((s) => s.start);
   const playerToggle = useTtsPlayerStore((s) => s.toggle);
+  const podcastTrackUrl = usePodcastPlayerStore((s) => s.track?.audioUrl);
+  const podcastStatus = usePodcastPlayerStore((s) => s.status);
   const sourceKey = `reader-${url}`;
-  const playerActive = playerSourceKey === sourceKey;
+  const podcastActive = !!audio && podcastStatus !== "idle" && podcastTrackUrl === audio.audioUrl;
+  const playerActive = podcastActive || playerSourceKey === sourceKey;
+
+  const handleListen = () => {
+    if (audio) {
+      // Podcast episode: play the original recording, never TTS.
+      if (podcastActive) usePodcastPlayerStore.getState().toggle();
+      else usePodcastPlayerStore.getState().play(audio);
+      return;
+    }
+    if (playerActive) playerToggle();
+    else if (article) playerStart(sourceKey, article.text_content);
+  };
 
   useEffect(() => {
     const seq = ++requestSeq.current;
@@ -109,15 +127,12 @@ export function ArticleReader({ url, onLearn, onOpenExternal }: Props) {
         <div className="mt-6 flex items-center gap-2">
           <button
             onClick={() => onLearn({ title: article.title, text: article.text_content })}
-            className="h-9 px-4 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+            className="h-9 px-4 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors inline-flex items-center gap-1.5"
           >
-            ✦ {t("hn.learn")}
+            <SparkIcon className="w-3.5 h-3.5" /> {t("hn.learn")}
           </button>
           <button
-            onClick={() => {
-              if (playerActive) playerToggle();
-              else playerStart(sourceKey, article.text_content);
-            }}
+            onClick={handleListen}
             className={`h-9 px-4 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-colors ${
               playerActive
                 ? "bg-primary/10 text-primary"
@@ -125,7 +140,7 @@ export function ArticleReader({ url, onLearn, onOpenExternal }: Props) {
             }`}
           >
             <SpeakerIcon className="w-4 h-4" />
-            {t("tts.listenToArticle")}
+            {audio ? t("podcast.listenEpisode") : t("tts.listenToArticle")}
           </button>
         </div>
 

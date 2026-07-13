@@ -3,6 +3,8 @@ import { WordListItem } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { LevelBadge } from "@/components/shared/LevelBadge";
 import { SpeakButton } from "@/components/ui/SpeakButton";
+import { SparkIcon } from "@/components/ui/icons";
+import { PencilIcon, ChatBubbleLeftIcon, RectangleStackIcon, LightBulbIcon, StarIcon } from "@heroicons/react/24/outline";
 
 type LevelFilter = "all" | "C2" | "C1" | "B2" | "B1-";
 type SortBy = "recent" | "freq" | "alpha";
@@ -10,13 +12,13 @@ type SortBy = "recent" | "freq" | "alpha";
 const LEVEL_CHIPS: LevelFilter[] = ["all", "C2", "C1", "B2", "B1-"];
 
 /** Small origin marker so "where did this word come from" is visible at a glance */
-const SOURCE_ICONS: Record<string, string> = {
-  manual: "✎",
-  ai: "✦",
-  chat: "💬",
-  batch: "⚙",
-  discover: "◎",
-  seed: "★",
+const SOURCE_ICONS: Record<string, React.FC<{ className?: string }>> = {
+  manual: PencilIcon,
+  ai: SparkIcon,
+  chat: ChatBubbleLeftIcon,
+  batch: RectangleStackIcon,
+  discover: LightBulbIcon,
+  seed: StarIcon,
 };
 
 interface Props {
@@ -40,13 +42,14 @@ interface Props {
   onPageChange: (p: number) => void;
   onDoubleClick: (word: string) => void;
   onAiLookup: (q: string) => void;
+  onOpenGenerate: () => void;
 }
 
 export function WordListPanel({
   words, selectedId, search, sortBy, levelFilter, sourceFilter, sources, page, pageSize,
   showAiLookup, lookupActive,
   onSearchChange, onSortChange, onFilterChange, onSourceFilterChange,
-  onSelect, onPageChange, onDoubleClick, onAiLookup,
+  onSelect, onPageChange, onDoubleClick, onAiLookup, onOpenGenerate,
 }: Props) {
   const t = useT();
   const totalPages = Math.ceil(words.length / pageSize);
@@ -58,10 +61,19 @@ export function WordListPanel({
         <div className="flex items-baseline gap-2">
           <h2 className="text-lg font-bold">{t("vocab.title")}</h2>
           <span className="text-sm text-muted-foreground">{t("vocab.wordCount", { n: words.length })}</span>
+          <button
+            onClick={onOpenGenerate}
+            title={t("vocab.generateBtn")}
+            className="ml-auto w-6 h-6 rounded-md flex items-center justify-center text-primary hover:bg-primary/10 transition-colors shrink-0"
+          >
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3.5 h-3.5">
+              <path d="M10 4v12M4 10h12" strokeLinecap="round" />
+            </svg>
+          </button>
           <select
             value={sortBy}
             onChange={(e) => onSortChange(e.target.value as SortBy)}
-            className="ml-auto h-6 px-1.5 rounded-md border border-input bg-background text-[11px] text-muted-foreground focus:outline-none"
+            className="h-6 px-1.5 rounded-md border border-input bg-background text-[11px] text-muted-foreground focus:outline-none"
           >
             <option value="recent">{t("vocab.sortRecent")}</option>
             <option value="freq">{t("vocab.sortFreq")}</option>
@@ -126,7 +138,7 @@ export function WordListPanel({
                     : "border-border text-muted-foreground hover:border-primary/40"
                 }`}
               >
-                {SOURCE_ICONS[s] ?? "·"} {t(`vocab.source.${s}`)}
+                {SOURCE_ICONS[s] ? React.createElement(SOURCE_ICONS[s], { className: "w-2.5 h-2.5 inline" }) : "·"} {t(`vocab.source.${s}`)}
               </button>
             ))}
           </div>
@@ -143,7 +155,7 @@ export function WordListPanel({
             }`}
           >
             <div className="flex items-center gap-2">
-              <span className="text-primary">✦</span>
+              <SparkIcon className="w-3.5 h-3.5 text-primary" />
               <span className="text-sm font-semibold text-primary truncate">{search.trim()}</span>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">{t("vocab.aiLookupHint")}</p>
@@ -166,8 +178,8 @@ export function WordListPanel({
               <span className="font-semibold text-sm truncate">{w.word}</span>
               <LevelBadge level={w.level} />
               <SpeakButton text={w.word} className="w-3.5 h-3.5" />
-              <span className="ml-auto text-[10px] text-muted-foreground/50 shrink-0">
-                {SOURCE_ICONS[w.source] ?? ""}
+              <span className="ml-auto text-muted-foreground/50 shrink-0">
+                {SOURCE_ICONS[w.source] && React.createElement(SOURCE_ICONS[w.source], { className: "w-3 h-3" })}
               </span>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5 truncate">

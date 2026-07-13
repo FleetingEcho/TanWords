@@ -7,19 +7,21 @@ import { useT } from "@/hooks/useT";
 import { toast } from "sonner";
 import { FloatingChatButton } from "@/components/WordChatPanel";
 import { WordListPanel, LevelFilter, SortBy } from "./WordListPanel";
-import { WordDetailPanel, EnrichedData } from "./WordDetailPanel";
+import { WordDetailPanel } from "./WordDetailPanel";
+import { GenerateVocabModal } from "./GenerateVocabModal";
+import { parseEnrichmentStream, ParsedEnrichment } from "@/lib/enrichMeta";
 
 interface SelectedWordData {
   word: WordListItem;
-  enriched: EnrichedData | null;
-  phonetics: { ipa: string; locale: string }[];
+  enriched: ParsedEnrichment | null;
+  legacy: boolean;
   notes: string;
 }
 
 /** A word looked up via AI that is not (yet) in the vocabulary */
 interface LookupData {
   word: string;
-  enriched: EnrichedData | null;
+  enriched: ParsedEnrichment | null;
   added: boolean;
   wordId: number | null;
 }
@@ -35,7 +37,6 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
   const [selected, setSelected] = useState<SelectedWordData | null>(null);
   const [lookup, setLookup] = useState<LookupData | null>(null);
   const [notes, setNotes] = useState("");
-  const [notesSaving, setNotesSaving] = useState(false);
 
   // Filters
   const [levelFilter, setLevelFilter] = useState<LevelFilter>("all");
@@ -44,6 +45,7 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(0);
+  const [generateOpen, setGenerateOpen] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 250);
@@ -73,8 +75,17 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
 
   useEffect(() => { loadWords(); }, [levelFilter, sortBy, debouncedSearch]);
 
+  // Full, unfiltered vocabulary set — used for dedup in GenerateVocabModal, which
+  // must check against the whole vocabulary regardless of the list's current filters.
+  const [allWordsSet, setAllWordsSet] = useState<Set<string>>(new Set());
+  const loadAllWordsSet = async () => {
+    const all = await db.getWords();
+    setAllWordsSet(new Set(all.map((w) => w.word.toLowerCase())));
+  };
+  useEffect(() => { loadAllWordsSet(); }, []);
+
   useEffect(() => {
-    const handler = () => loadWords();
+    const handler = () => { loadWords(); loadAllWordsSet(); };
     window.addEventListener("vocab-updated", handler);
     return () => window.removeEventListener("vocab-updated", handler);
   }, [levelFilter, sortBy, debouncedSearch]);
@@ -109,26 +120,26 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
         db.getWordDetail(w.id),
         db.getWordExtras(w.id),
       ]);
-      let enriched: EnrichedData | null = null;
-      const phonetics = detail?.phonetics || [];
 
-      if (detail?.enrichment_json) {
-        try { enriched = JSON.parse(detail.enrichment_json); } catch {}
+      let enriched: ParsedEnrichment | null = null;
+      let legacy = false;
+      if (detail?.enrichment_text) {
+        enriched = { text: detail.enrichment_text, level: detail.level ?? undefined, zhShort: detail.definitions?.[0]?.zh };
+      } else if (detail?.enrichment_json) {
+        legacy = true;
       }
 
       const wordNotes = extras?.notes || "";
       setNotes(wordNotes);
-      // Incomplete enrichment no longer auto-triggers an AI call — the detail
-      // panel offers an explicit button, so browsing the list stays free.
-      setSelected({ word: w, enriched, phonetics, notes: wordNotes });
+      setSelected({ word: w, enriched, legacy, notes: wordNotes });
     } catch {
-      setSelected({ word: w, enriched: null, phonetics: [], notes: "" });
+      setSelected({ word: w, enriched: null, legacy: false, notes: "" });
     }
   };
 
   // ── Enrich a saved word (explicit trigger from the detail panel) ─────────
 
-  const enrichSelected = async (word: string, existingEnriched: EnrichedData | null) => {
+  const enrichSelected = async (word: string) => {
     const provider = findBestProvider();
     if (!provider) {
       setEnrichError(t("vocab.noApiKey"));
@@ -140,49 +151,26 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
 
     setEnriching(true);
     setEnrichError("");
-    const finalEnrichment: Partial<import("@/providers/base").WordEnrichment> = { ...(existingEnriched as any) };
-    setSelected((prev) => prev ? { ...prev, enriched: (existingEnriched ?? {}) as EnrichedData } : prev);
+    setSelected((prev) => prev ? { ...prev, legacy: false } : prev);
 
+    let raw = "";
     try {
-      for await (const partial of provider.enrich(word, controller.signal)) {
+      for await (const chunk of provider.enrich(word, controller.signal)) {
         if (controller.signal.aborted) break;
-        Object.assign(finalEnrichment, partial);
-        setSelected((prev) => prev?.word.word === word ? {
-          ...prev,
-          enriched: { ...(prev.enriched || {}), ...partial } as EnrichedData,
-        } : prev);
+        raw += chunk;
+        const parsed = parseEnrichmentStream(raw);
+        setSelected((prev) => prev?.word.word === word ? { ...prev, enriched: parsed } : prev);
       }
       if (controller.signal.aborted) return;
 
-      await db.addWordEnriched(
-        word,
-        finalEnrichment.definitions?.[0]?.zh || word,
-        finalEnrichment.definitions?.[0]?.pos || null,
-        {
-          definitions: finalEnrichment.definitions || [],
-          synonyms: finalEnrichment.synonyms || [],
-          antonyms: finalEnrichment.antonyms || [],
-          collocations: finalEnrichment.collocations || [],
-          derivatives: (finalEnrichment.derivatives || []).map((d: any) => ({ word: d.word, wordType: d.wordType, zh: d.zh })),
-          sentencePatterns: finalEnrichment.sentencePatterns || [],
-          idioms: finalEnrichment.idioms || [],
-          authorityQuotes: finalEnrichment.sentences?.map(s => ({ text: s.text, source: s.label })) || finalEnrichment.authorityQuotes || [],
-          etymology: finalEnrichment.etymology?.parts?.length ? {
-            parts: finalEnrichment.etymology.parts,
-            story: finalEnrichment.etymology.story,
-            originLang: finalEnrichment.etymology.originLang,
-          } : undefined,
-          level: finalEnrichment.level,
-          mnemonic: finalEnrichment.mnemonic,
-          complete: true,
-        }
-      ).catch(() => {});
+      const final = parseEnrichmentStream(raw);
+      await db.addWordEnriched(word, final.zhShort || word, null, {
+        text: final.text,
+        zhShort: final.zhShort,
+        level: final.level,
+      }).catch(() => {});
 
       toast.success(`「${word}」AI 分析完成`);
-      setSelected((prev) => prev?.word.word === word ? {
-        ...prev,
-        enriched: { ...(prev.enriched || {}), complete: true } as EnrichedData,
-      } : prev);
       window.dispatchEvent(new CustomEvent("vocab-updated"));
     } catch (e: any) {
       if (e?.name === "AbortError") return;
@@ -217,21 +205,14 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
     setEnriching(true);
     setEnrichError("");
 
-    const final: Partial<import("@/providers/base").WordEnrichment> = {};
+    let raw = "";
     try {
-      for await (const partial of provider.enrich(word, controller.signal)) {
+      for await (const chunk of provider.enrich(word, controller.signal)) {
         if (controller.signal.aborted) break;
-        Object.assign(final, partial);
-        setLookup((prev) => prev?.word === word ? {
-          ...prev,
-          enriched: { ...(prev.enriched || {}), ...partial } as EnrichedData,
-        } : prev);
+        raw += chunk;
+        const parsed = parseEnrichmentStream(raw);
+        setLookup((prev) => prev?.word === word ? { ...prev, enriched: parsed } : prev);
       }
-      if (controller.signal.aborted) return;
-      setLookup((prev) => prev?.word === word ? {
-        ...prev,
-        enriched: { ...(prev.enriched || {}), complete: true } as EnrichedData,
-      } : prev);
     } catch (e: any) {
       if (e?.name === "AbortError") return;
       const errMsg = e.message?.includes("Load failed") || e.message?.includes("fetch")
@@ -246,31 +227,12 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
 
   const addLookupToVocab = async () => {
     if (!lookup?.enriched || lookup.added) return;
-    const e = lookup.enriched as any;
     try {
-      const result = await db.addWordEnriched(
-        lookup.word,
-        e.definitions?.[0]?.zh || lookup.word,
-        e.definitions?.[0]?.pos || null,
-        {
-          definitions: e.definitions || [],
-          synonyms: e.synonyms || [],
-          antonyms: e.antonyms || [],
-          collocations: e.collocations || [],
-          derivatives: (e.derivatives || []).map((d: any) => ({ word: d.word, wordType: d.wordType, zh: d.zh })),
-          sentencePatterns: e.sentencePatterns || [],
-          idioms: e.idioms || [],
-          authorityQuotes: e.sentences?.map((s: any) => ({ text: s.text, source: s.label })) || e.authorityQuotes || [],
-          etymology: e.etymology?.parts?.length ? {
-            parts: e.etymology.parts,
-            story: e.etymology.story,
-            originLang: e.etymology.originLang,
-          } : undefined,
-          level: e.level,
-          mnemonic: e.mnemonic,
-          complete: true,
-        }
-      );
+      const result = await db.addWordEnriched(lookup.word, lookup.enriched.zhShort || lookup.word, null, {
+        text: lookup.enriched.text,
+        zhShort: lookup.enriched.zhShort,
+        level: lookup.enriched.level,
+      });
       setLookup((prev) => prev ? { ...prev, added: true, wordId: result.id } : prev);
       window.dispatchEvent(new CustomEvent("vocab-updated"));
       toast.success(`「${lookup.word}」已加入词库`);
@@ -279,19 +241,16 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
     }
   };
 
-  // ── Notes ────────────────────────────────────────────────────────────────
+  // ── Notes (autosaved by LazyWordNotesEditor) ────────────────────────────
 
-  const saveNotes = async () => {
+  const saveNotes = async (text: string) => {
     if (!selected) return;
-    setNotesSaving(true);
+    setNotes(text);
     try {
-      await db.saveWordNotes(selected.word.id, notes);
-      window.dispatchEvent(new CustomEvent("word-notes-updated", { detail: { wordId: selected.word.id, notes } }));
-      toast.success("笔记已保存");
+      await db.saveWordNotes(selected.word.id, text);
+      window.dispatchEvent(new CustomEvent("word-notes-updated", { detail: { wordId: selected.word.id, notes: text } }));
     } catch {
       toast.error("保存失败，请重试");
-    } finally {
-      setNotesSaving(false);
     }
   };
 
@@ -318,7 +277,6 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
 
   // ── Render ──────────────────────────────────────────────────────────────
 
-  const ipa = selected?.phonetics?.find((p) => p.locale === "en-US" || p.locale === "en-GB")?.ipa || "";
   const activeEnriched = lookup ? lookup.enriched : selected?.enriched ?? null;
   const chatWord = lookup ? lookup.word : selected?.word.word ?? "";
   const chatWordId = lookup ? lookup.wordId : selected?.word.id ?? null;
@@ -345,55 +303,50 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
         onPageChange={setPage}
         onDoubleClick={(word) => openWordModal(word)}
         onAiLookup={startLookup}
+        onOpenGenerate={() => setGenerateOpen(true)}
       />
 
       <WordDetailPanel
         selected={{
           word: lookup ? lookup.word : selected?.word.word ?? "",
-          zh: lookup ? (lookup.enriched as any)?.definitions?.[0]?.zh ?? null : selected?.word.zh ?? null,
+          zh: lookup ? lookup.enriched?.zhShort ?? null : selected?.word.zh ?? null,
           wordType: lookup ? null : selected?.word.word_type ?? null,
-          level: lookup ? (lookup.enriched as any)?.level ?? null : selected?.word.level ?? null,
-          ipa: lookup ? "" : ipa,
+          level: lookup ? lookup.enriched?.level ?? null : selected?.word.level ?? null,
+          ipa: "",
         }}
+        wordId={lookup ? null : selected?.word.id ?? null}
         enriched={activeEnriched}
         enriching={enriching}
         enrichError={enrichError}
+        legacy={lookup ? false : selected?.legacy ?? false}
         notes={notes}
         vocabBilingual={vocabBilingual}
         lookupMode={!!lookup}
         lookupAdded={lookup?.added ?? false}
         onAddToVocab={addLookupToVocab}
-        onNotesChange={setNotes}
-        onSaveNotes={saveNotes}
-        notesSaving={notesSaving}
-        onClearNotes={() => {
-          setNotes("");
-          if (selected) {
-            db.saveWordNotes(selected.word.id, "").then(() => {
-              window.dispatchEvent(new CustomEvent("word-notes-updated", { detail: { wordId: selected.word.id, notes: "" } }));
-            });
-          }
-        }}
+        onNotesChange={saveNotes}
+        onClearNotes={() => saveNotes("")}
         onRetry={() => {
           if (lookup) startLookup(lookup.word);
-          else if (selected) enrichSelected(selected.word.word, null);
+          else if (selected) enrichSelected(selected.word.word);
         }}
-        onReenrich={() => selected && enrichSelected(selected.word.word, null)}
+        onReenrich={() => selected && enrichSelected(selected.word.word)}
       />
 
       {chatWord && (
         <FloatingChatButton
           wordId={chatWordId}
           word={chatWord}
-          enrichedContext={activeEnriched ? JSON.stringify({
-            definitions: (activeEnriched as any).definitions?.slice(0, 3),
-            synonyms: (activeEnriched as any).synonyms?.slice(0, 4),
-            level: (activeEnriched as any).level,
-            etymology: (activeEnriched as any).etymology,
-            mnemonic: (activeEnriched as any).mnemonic,
-          }) : ""}
+          enrichedContext={activeEnriched?.text || ""}
         />
       )}
+
+      <GenerateVocabModal
+        open={generateOpen}
+        onClose={() => setGenerateOpen(false)}
+        existingWords={allWordsSet}
+        onAdded={() => { loadWords(); loadAllWordsSet(); }}
+      />
     </div>
   );
 }

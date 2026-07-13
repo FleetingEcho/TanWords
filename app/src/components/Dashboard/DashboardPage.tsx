@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { useDB, DashboardStats, PatternListItem } from "@/hooks/useDB";
+import { useDB, DashboardStats } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { useNavStore } from "@/store/navStore";
 import { useReadingStore } from "@/store/readingStore";
 import { useSettingsStore } from "@/store/settingsStore";
-import { PatternSlots, TagChip } from "@/components/Patterns/PatternDetailPanel";
-import { ReadingIcon, HNIcon, ChatIcon } from "@/components/ui/icons";
+import { ReadingIcon, ChatIcon, FeedIcon } from "@/components/ui/icons";
+import { RssWidget } from "./RssWidget";
 
 const LEVEL_COLORS: Record<string, string> = {
   C2: "#a855f7", C1: "#3b82f6", B2: "#14b8a6", B1: "#22c55e", A2: "#f59e0b", A1: "#f59e0b",
@@ -49,21 +49,17 @@ export function DashboardPage() {
   const navigate = useNavStore((s) => s.navigate);
   const setPendingArticleId = useReadingStore((s) => s.setPendingArticleId);
   const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [patterns, setPatterns] = useState<PatternListItem[]>([]);
 
   useEffect(() => {
     let alive = true;
     const load = () => {
       db.getDashboardStats().then((s) => { if (alive) setStats(s); });
-      db.getPatterns().then((p) => { if (alive) setPatterns(p); });
     };
     load();
     window.addEventListener("vocab-updated", load);
-    window.addEventListener("patterns-updated", load);
     return () => {
       alive = false;
       window.removeEventListener("vocab-updated", load);
-      window.removeEventListener("patterns-updated", load);
     };
   }, []);
 
@@ -101,6 +97,11 @@ export function DashboardPage() {
             {resume.origin === "hackernews" && (
               <span className="w-4 h-4 rounded-sm bg-white/20 text-[9px] font-bold flex items-center justify-center">Y</span>
             )}
+            {resume.origin === "rss" && (
+              <span className="w-4 h-4 rounded-sm bg-white/20 flex items-center justify-center">
+                <FeedIcon className="w-2.5 h-2.5" />
+              </span>
+            )}
             {t("dash.resume.eyebrow")}
           </div>
           <p className="text-xl font-bold leading-snug mt-2 pr-32 line-clamp-2">{resume.title}</p>
@@ -134,56 +135,21 @@ export function DashboardPage() {
       )}
 
       {/* Stat tiles: what has been collected, not how diligently */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <StatTile value={stats?.word_count ?? 0} label={t("dash.stat.words")} />
         <StatTile value={stats?.words_this_week ?? 0} label={t("dash.stat.week")} accent />
         <StatTile value={stats?.article_count ?? 0} label={t("dash.stat.articles")} />
-        <StatTile value={patterns.length} label={t("dash.stat.patterns")} />
       </div>
 
       {/* Recents */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
         <div className="space-y-3">
-          {/* Recent patterns */}
-          <div className="bg-card border border-border rounded-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
-              <h2 className="text-sm font-semibold">{t("dash.recentPatterns")}</h2>
-              <button
-                onClick={() => navigate("patterns")}
-                className="text-[11px] font-semibold text-primary hover:underline"
-              >
-                {t("dash.viewAll")}
-              </button>
-            </div>
-            {patterns.length === 0 ? (
-              <p className="px-4 py-6 text-xs text-muted-foreground leading-relaxed">{t("dash.empty.patterns")}</p>
-            ) : (
-              <div className="divide-y divide-border">
-                {patterns.slice(0, 5).map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => navigate("patterns")}
-                    className="w-full px-4 py-2.5 hover:bg-muted/40 transition-colors text-left"
-                  >
-                    <p className="text-sm font-semibold leading-relaxed line-clamp-1">
-                      <PatternSlots text={p.pattern} />
-                    </p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <TagChip tag={p.function_tag} />
-                      <span className="flex-1 min-w-0 text-xs text-muted-foreground truncate">{p.zh}</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
           {/* Quick actions */}
           <div className="bg-card border border-border rounded-2xl p-4">
             <div className="grid grid-cols-3 gap-2">
               {[
                 { icon: ReadingIcon, label: t("dash.quick.reading"), go: () => navigate("reading") },
-                { icon: HNIcon, label: t("dash.quick.hn"), go: () => navigate("hackernews") },
+                { icon: FeedIcon, label: t("dash.quick.feeds"), go: () => navigate("feeds") },
                 { icon: ChatIcon, label: t("dash.quick.chat"), go: () => navigate("chat") },
               ].map((a) => (
                 <button
@@ -197,6 +163,9 @@ export function DashboardPage() {
               ))}
             </div>
           </div>
+
+          {/* Feed subscriptions at a glance */}
+          <RssWidget />
         </div>
 
         <div className="space-y-3">

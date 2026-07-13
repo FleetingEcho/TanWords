@@ -82,7 +82,7 @@ export function AiChatPage() {
                     onClick={() => s.applyQuickCard(c.prefillKey)}
                     className="flex items-center gap-2.5 px-4 py-3 rounded-xl border border-border bg-card text-left hover:border-primary/40 hover:bg-muted/40 transition-colors"
                   >
-                    <span className="text-base">{c.icon}</span>
+                    <c.icon className="w-4 h-4 text-primary" />
                     <span className="text-xs font-medium">{t(c.titleKey)}</span>
                   </button>
                 ))}

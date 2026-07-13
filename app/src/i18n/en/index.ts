@@ -13,9 +13,10 @@ import { chat } from "./chat";
 import { settings } from "./settings";
 import { wordModal } from "./wordModal";
 import { aichat } from "./aichat";
-import { patterns } from "./patterns";
 import { tts } from "./tts";
 import { feeds } from "./feeds";
+import { podcast } from "./podcast";
+import { tools } from "./tools";
 
 export const en: Dict = {
     ...common,
@@ -32,7 +33,8 @@ export const en: Dict = {
     ...settings,
     ...wordModal,
     ...aichat,
-    ...patterns,
     ...tts,
     ...feeds,
+    ...podcast,
+    ...tools,
 };

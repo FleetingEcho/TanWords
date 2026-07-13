@@ -5,16 +5,23 @@ import { useDB, ArticleDetail, ExtractedItem } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { LevelBadge } from "@/components/shared/LevelBadge";
 import { SentenceParagraph, ParagraphSentence } from "./SentenceParagraph";
-import { SentenceAnalysisPanel } from "./SentenceAnalysisPanel";
 import { splitSentences } from "@/lib/sentences";
 import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
-import { SpeakerIcon } from "@/components/ui/icons";
+import { SpeakerIcon, FeedIcon, SparkIcon, RefreshIcon } from "@/components/ui/icons";
+import { CheckIcon } from "@heroicons/react/24/solid";
 import { SpeakButton } from "@/components/ui/SpeakButton";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { useAnalyzeArticle } from "@/hooks/useAnalyzeArticle";
+import { WordSearchBox } from "./WordSearchBox";
+
+const PATTERN_HIGHLIGHT_KEY = "tanwords_pattern_highlight";
 
 interface Props {
   articleId: number;
   onBack: () => void;
   onDeleted: () => void;
+  /** Called with the replacement article id after a successful re-analysis. */
+  onReanalyzed: (newArticleId: number) => void;
 }
 
 interface ParagraphChunk {
@@ -51,7 +58,6 @@ function ItemCard({
   innerRef: (el: HTMLDivElement | null) => void;
 }) {
   const t = useT();
-  const isWord = item.kind === "word";
   const dimmed = item.status === "dismissed" || item.status === "known";
 
   return (
@@ -62,7 +68,7 @@ function ItemCard({
       }`}
     >
       <div className="flex items-center gap-2">
-        <span className={`text-sm font-semibold ${isWord ? "text-primary" : "text-amber-700 dark:text-amber-400"}`}>
+        <span className="text-sm font-semibold text-primary">
           {item.text}
         </span>
         <SpeakButton text={item.text} className="w-3.5 h-3.5" />
@@ -83,16 +89,14 @@ function ItemCard({
               onClick={() => onAction(item, "accept")}
               className="text-[11px] font-semibold text-primary hover:underline"
             >
-              {isWord ? t("reading.addToVocab") : t("reading.savePattern")}
+              {t("reading.addToVocab")}
             </button>
-            {isWord && (
-              <button
-                onClick={() => onAction(item, "know")}
-                className="text-[11px] text-muted-foreground hover:text-foreground"
-              >
-                {t("reading.know")}
-              </button>
-            )}
+            <button
+              onClick={() => onAction(item, "know")}
+              className="text-[11px] text-muted-foreground hover:text-foreground"
+            >
+              {t("reading.know")}
+            </button>
             <button
               onClick={() => onAction(item, "dismiss")}
               className="text-[11px] text-muted-foreground hover:text-foreground"
@@ -102,8 +106,8 @@ function ItemCard({
           </>
         )}
         {item.status === "accepted" && (
-          <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-            ✓ {isWord ? t("reading.added") : t("reading.savedPattern")}
+          <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-0.5">
+            <CheckIcon className="w-3 h-3" /> {t("reading.added")}
           </span>
         )}
         {item.status === "known" && (
@@ -129,13 +133,17 @@ function ItemCard({
   );
 }
 
-export function LessonView({ articleId, onBack, onDeleted }: Props) {
+export function LessonView({ articleId, onBack, onDeleted, onReanalyzed }: Props) {
   const db = useDB();
   const t = useT();
+  const { analyze, isAnalyzing } = useAnalyzeArticle();
+  const [confirmReanalyze, setConfirmReanalyze] = useState(false);
   const [article, setArticle] = useState<ArticleDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [flashId, setFlashId] = useState<number | null>(null);
-  const [activeSentence, setActiveSentence] = useState<string | null>(null);
+  const [highlightPatterns, setHighlightPatterns] = useState(
+    () => localStorage.getItem(PATTERN_HIGHLIGHT_KEY) !== "0"
+  );
   const cardRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const sentenceSpanRefs = useRef<Map<number, HTMLSpanElement>>(new Map());
 
@@ -150,7 +158,9 @@ export function LessonView({ articleId, onBack, onDeleted }: Props) {
   useEffect(() => {
     setLoading(true);
     db.getArticle(articleId)
-      .then(setArticle)
+      // Strip footnote back-reference glyphs (↩︎) that older fetches stored
+      // before the extractor started cleaning them at the source.
+      .then((a) => setArticle(a && { ...a, content: a.content.replace(/[↩︎️]/g, "") }))
       .finally(() => setLoading(false));
   }, [articleId]);
 
@@ -203,25 +213,8 @@ export function LessonView({ articleId, onBack, onDeleted }: Props) {
   ) => {
     try {
       if (action === "accept") {
-        if (item.kind === "word") {
-          await db.addWord(item.text, item.zh, undefined, item.level || undefined);
-          window.dispatchEvent(new CustomEvent("vocab-updated"));
-        } else {
-          // Patterns land in the pattern library, carrying the real sentence
-          // and its article as the first example.
-          const patternId = await db.addPattern({
-            pattern: item.text,
-            zh: item.zh,
-            note: item.note || undefined,
-            level: item.level || undefined,
-            example: item.context_sentence
-              ? { sentence: item.context_sentence, source: article?.title ?? "", articleId }
-              : undefined,
-          });
-          if (patternId === null) return; // wrapper already toasted; stay candidate
-          window.dispatchEvent(new CustomEvent("patterns-updated"));
-          toast.success(t("reading.toast.patternSaved"));
-        }
+        await db.addWord(item.text, item.zh, undefined, item.level || undefined);
+        window.dispatchEvent(new CustomEvent("vocab-updated"));
         await db.updateItemStatus(item.id, "accepted");
         setStatus(item.id, "accepted");
       } else if (action === "know") {
@@ -254,6 +247,28 @@ export function LessonView({ articleId, onBack, onDeleted }: Props) {
       toast.success(t("reading.toast.addedAll", { n: candidates.length }));
     } catch {
       toast.error(t("reading.toast.actionFailed"));
+    }
+  };
+
+  /** Re-run the AI analysis on the same text. Creates the replacement article
+   * first and only deletes the old one on success, so a failed run loses
+   * nothing. Words already accepted into vocabulary are auto-excluded by the
+   * analyzer, so a re-run surfaces fresh material. */
+  const handleReanalyze = async () => {
+    if (!article || isAnalyzing) return;
+    const toastId = toast.loading(t("reading.analyzing"));
+    try {
+      const result = await analyze({
+        text: article.content,
+        title: article.title,
+        sourceUrl: article.source_url || undefined,
+        origin: article.origin,
+      });
+      await db.deleteArticle(articleId);
+      toast.success(t("reading.toast.analyzed", { n: result.itemCount }), { id: toastId });
+      onReanalyzed(result.articleId);
+    } catch (e: any) {
+      toast.error(e.message || t("reading.toast.failed"), { id: toastId });
     }
   };
 
@@ -295,13 +310,22 @@ export function LessonView({ articleId, onBack, onDeleted }: Props) {
   }
 
   const words = article.items.filter((it) => it.kind === "word");
-  const patterns = article.items.filter((it) => it.kind === "pattern");
+  const sentenceItems = article.items.filter((it) => it.kind === "sentence");
   const pendingWords = words.filter((it) => it.status === "candidate").length;
+
+  const togglePatterns = () => {
+    setHighlightPatterns((prev) => {
+      localStorage.setItem(PATTERN_HIGHLIGHT_KEY, prev ? "0" : "1");
+      return !prev;
+    });
+  };
 
   return (
     <div className="space-y-4">
-      {/* Lesson header */}
-      <div className="flex items-start justify-between gap-4">
+      {/* Lesson header — sticky so Back/Listen/Add-all stay reachable while
+        * reading a long article. Negative margins swallow the page wrapper's
+        * p-6 so the bar spans (and its backdrop covers) the full width. */}
+      <div className="sticky top-0 z-20 -mx-6 -mt-6 px-6 pt-4 pb-3 bg-background/95 backdrop-blur-sm border-b border-border flex items-start justify-between gap-4">
         <div className="min-w-0">
           <button
             onClick={onBack}
@@ -309,12 +333,18 @@ export function LessonView({ articleId, onBack, onDeleted }: Props) {
           >
             ← {t("reading.back")}
           </button>
-          <h2 className="text-xl font-bold leading-snug mt-1">{article.title}</h2>
+          <h2 className="text-xl font-bold leading-snug mt-1 line-clamp-2">{article.title}</h2>
           <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
             {article.origin === "hackernews" && (
               <span className="inline-flex items-center gap-1">
                 <span className="w-3.5 h-3.5 rounded-sm bg-orange-500 text-white text-[8px] font-bold flex items-center justify-center">Y</span>
                 Hacker News
+              </span>
+            )}
+            {article.origin === "rss" && (
+              <span className="inline-flex items-center gap-1">
+                <FeedIcon className="w-3.5 h-3.5 text-primary" />
+                {t("feeds.title")}
               </span>
             )}
             {article.source_url && (
@@ -328,6 +358,28 @@ export function LessonView({ articleId, onBack, onDeleted }: Props) {
             </button>
           </div>
         </div>
+        <button
+          onClick={() => setConfirmReanalyze(true)}
+          disabled={isAnalyzing}
+          title={t("reading.reanalyze")}
+          className="w-8 h-8 rounded-lg border border-input flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40 transition-colors shrink-0"
+        >
+          <RefreshIcon className={`w-3.5 h-3.5 ${isAnalyzing ? "animate-spin" : ""}`} />
+        </button>
+        {sentenceItems.length > 0 && (
+          <button
+            onClick={togglePatterns}
+            title={t("reading.patternToggleHint")}
+            className={`h-8 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 shrink-0 transition-colors ${
+              highlightPatterns
+                ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                : "border border-input text-muted-foreground hover:text-foreground hover:bg-muted"
+            }`}
+          >
+            <SparkIcon className="w-3.5 h-3.5" />
+            {t("reading.patternToggle")}
+          </button>
+        )}
         <button
           onClick={handleListenToArticle}
           className={`h-8 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 shrink-0 transition-colors ${
@@ -351,9 +403,8 @@ export function LessonView({ articleId, onBack, onDeleted }: Props) {
 
       {/* Two-column lesson */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr,360px] gap-4 items-start">
-        {/* Article body — every sentence clickable for close-reading */}
+        {/* Article body — extracted words highlighted, click-to-jump when playing */}
         <div className="bg-card border border-border rounded-2xl p-6 space-y-4">
-          <p className="text-[11px] text-muted-foreground -mb-1">💡 {t("reading.sentence.hint")}</p>
           {paragraphChunks.map((chunk, i) => {
             const chunkSentences: ParagraphSentence[] = articleSentences
               .map((s, globalIndex) => ({ s, globalIndex }))
@@ -363,10 +414,9 @@ export function LessonView({ articleId, onBack, onDeleted }: Props) {
               <SentenceParagraph
                 key={i}
                 sentences={chunkSentences}
-                items={article.items}
+                items={words}
+                sentenceItems={highlightPatterns ? sentenceItems : []}
                 onJump={jumpToItem}
-                activeSentence={activeSentence}
-                onSelectSentence={(s) => setActiveSentence((prev) => (prev === s ? null : s))}
                 playerActive={playerActive}
                 playerCurrentIndex={playerCurrentIndex}
                 onPlayerJump={playerJumpTo}
@@ -377,15 +427,9 @@ export function LessonView({ articleId, onBack, onDeleted }: Props) {
         </div>
 
         {/* Extracted items panel */}
-        <div className="space-y-4 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
-          {activeSentence && (
-            <SentenceAnalysisPanel
-              sentence={activeSentence}
-              articleTitle={article.title}
-              articleId={articleId}
-              onClose={() => setActiveSentence(null)}
-            />
-          )}
+        {/* top offset clears the sticky lesson header above (≤2-line title) */}
+        <div className="space-y-4 lg:sticky lg:top-36 lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto">
+          <WordSearchBox />
           {article.items.length === 0 && (
             <div className="bg-card border border-border rounded-2xl p-6 text-center text-xs text-muted-foreground">
               {t("reading.noItems")}
@@ -411,28 +455,54 @@ export function LessonView({ articleId, onBack, onDeleted }: Props) {
               </div>
             </div>
           )}
-          {patterns.length > 0 && (
+
+          {/* Highlight sentences / reusable patterns */}
+          {sentenceItems.length > 0 && (
             <div className="bg-card border border-border rounded-2xl overflow-hidden">
               <div className="px-4 py-2.5 border-b border-border flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-amber-500" />
                 <span className="text-xs font-semibold">{t("reading.patterns")}</span>
-                <span className="text-[11px] font-mono text-muted-foreground">{patterns.length}</span>
+                <span className="text-[11px] font-mono text-muted-foreground">{sentenceItems.length}</span>
               </div>
               <div className="divide-y divide-border">
-                {patterns.map((it) => (
-                  <ItemCard
+                {sentenceItems.map((it) => (
+                  <div
                     key={it.id}
-                    item={it}
-                    onAction={handleAction}
-                    flash={flashId === it.id}
-                    innerRef={(el) => { if (el) cardRefs.current.set(it.id, el); }}
-                  />
+                    ref={(el) => { if (el) cardRefs.current.set(it.id, el); }}
+                    className={`px-4 py-3 space-y-1.5 transition-all ${
+                      flashId === it.id ? "ring-2 ring-amber-500/50 bg-amber-500/5" : ""
+                    }`}
+                  >
+                    <p className="text-[13px] font-serif italic leading-relaxed text-foreground flex items-start gap-1">
+                      <span>“{it.text}”</span>
+                      <SpeakButton text={it.text} className="w-3 h-3 mt-1 shrink-0" />
+                    </p>
+                    {it.context_sentence && (
+                      <p className="text-[11px] font-mono text-amber-600 dark:text-amber-400">
+                        {it.context_sentence}
+                      </p>
+                    )}
+                    {it.zh && <p className="text-xs text-muted-foreground">{it.zh}</p>}
+                    {it.note && <p className="text-xs text-muted-foreground/80 leading-relaxed">{it.note}</p>}
+                  </div>
                 ))}
               </div>
             </div>
           )}
         </div>
       </div>
+
+      <ConfirmModal
+        open={confirmReanalyze}
+        title={t("reading.reanalyze")}
+        message={t("reading.reanalyzeConfirm")}
+        confirmLabel={t("reading.reanalyze")}
+        onCancel={() => setConfirmReanalyze(false)}
+        onConfirm={() => {
+          setConfirmReanalyze(false);
+          handleReanalyze();
+        }}
+      />
     </div>
   );
 }

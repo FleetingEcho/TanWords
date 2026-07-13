@@ -4,10 +4,7 @@ import type { Dict } from "../types";
 export const chat: Dict = {
     "chat.tabChat": "AI 对话",
     "chat.tabNotes": "笔记",
-    "chat.notesPlaceholder": "关于 \"{word}\" 的笔记、联想、例句…",
-    "chat.notesNoId": "搜索模式下无法保存笔记，加入词库后可用",
     "chat.notesNoIdHint": "加入词库后可保存笔记",
-    "chat.saveNotes": "保存笔记",
     "chat.saving": "保存中…",
     "chat.chatEmpty": "深入探讨这个词的用法、区别、例句…",
     "chat.inputPlaceholder": "回车发送，⇧回车换行",

@@ -5,6 +5,7 @@ import { useT } from "@/hooks/useT";
 import { useReadingStore } from "@/store/readingStore";
 import { useAnalyzeArticle } from "@/hooks/useAnalyzeArticle";
 import { LessonView } from "./LessonView";
+import { SparkIcon, FeedIcon } from "@/components/ui/icons";
 
 export function ReadingPage() {
   const db = useDB();
@@ -77,6 +78,7 @@ export function ReadingPage() {
           articleId={openArticleId}
           onBack={() => { setOpenArticleId(null); loadArticles(); }}
           onDeleted={() => { setOpenArticleId(null); loadArticles(); }}
+          onReanalyzed={(newId) => { setOpenArticleId(newId); loadArticles(); }}
         />
       </div>
     );
@@ -94,7 +96,7 @@ export function ReadingPage() {
       {/* Paste-to-learn card */}
       <div className="bg-card border border-border rounded-2xl p-5 space-y-3">
         <div className="flex items-center gap-2">
-          <span className="text-primary">✦</span>
+          <SparkIcon className="w-3.5 h-3.5 text-primary" />
           <h2 className="text-sm font-semibold">{t("reading.pasteTitle")}</h2>
         </div>
         <input
@@ -118,11 +120,13 @@ export function ReadingPage() {
           <button
             onClick={handleAnalyze}
             disabled={isAnalyzing || !text.trim()}
-            className="h-9 px-5 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            className="h-9 px-5 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors inline-flex items-center justify-center gap-1.5"
           >
-            {isAnalyzing
-              ? `${t("reading.analyzing")} ${progress > 0 ? `(${(progress / 1000).toFixed(1)}k)` : ""}`
-              : `✦ ${t("reading.analyze")}`}
+            {isAnalyzing ? (
+              `${t("reading.analyzing")} ${progress > 0 ? `(${(progress / 1000).toFixed(1)}k)` : ""}`
+            ) : (
+              <><SparkIcon className="w-3.5 h-3.5" /> {t("reading.analyze")}</>
+            )}
           </button>
         </div>
       </div>
@@ -146,6 +150,10 @@ export function ReadingPage() {
               >
                 {a.origin === "hackernews" ? (
                   <span className="w-5 h-5 rounded bg-orange-500 text-white text-[10px] font-bold flex items-center justify-center shrink-0">Y</span>
+                ) : a.origin === "rss" ? (
+                  <span className="w-5 h-5 rounded bg-primary/15 text-primary flex items-center justify-center shrink-0">
+                    <FeedIcon className="w-3 h-3" />
+                  </span>
                 ) : (
                   <span className="w-5 h-5 rounded bg-muted text-muted-foreground text-[10px] font-bold flex items-center justify-center shrink-0">¶</span>
                 )}

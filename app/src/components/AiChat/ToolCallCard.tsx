@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { BookIcon, SearchIcon, SparkIcon, ClipboardListIcon, DocIcon, SlidersIcon } from "@/components/ui/icons";
+import { CogIcon, XCircleIcon, CheckCircleIcon } from "@heroicons/react/24/solid";
 
 export interface ToolCallDisplay {
   id: string;
@@ -58,8 +59,14 @@ export function ToolCallCard({ calls }: { calls: ToolCallDisplay[] }) {
         }`}
       >
         {/* Status icon */}
-        <span className="shrink-0 text-base">
-          {!allDone ? "⚙️" : hasError ? "❌" : "✅"}
+        <span className="shrink-0">
+          {!allDone ? (
+            <CogIcon className="w-4 h-4 animate-spin" />
+          ) : hasError ? (
+            <XCircleIcon className="w-4 h-4" />
+          ) : (
+            <CheckCircleIcon className="w-4 h-4" />
+          )}
         </span>
 
         {/* Summary */}

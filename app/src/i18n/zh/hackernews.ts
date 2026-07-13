@@ -1,43 +1,9 @@
 import type { Dict } from "../types";
 
+/** Shared by ArticleReader/ReaderView (used by both Feeds and, historically, HN).
+ *  Keeping the `hn.` prefix avoids touching those call sites for a rename-only diff. */
 export const hackernews: Dict = {
-    "hn.title": "Hacker News",
-    "hn.subtitle": "读一篇感兴趣的文章，把正文带回来学习",
-    "hn.feed.top": "热门",
-    "hn.feed.best": "最佳",
-    "hn.feed.new": "最新",
-    "hn.refresh": "刷新",
-    "hn.updated": "更新于 {t}",
-    "hn.open": "打开原文",
     "hn.learn": "学习",
-    "hn.comments": "{n} 评论",
-    "hn.saved": "已存",
-    "hn.error": "加载失败，请检查网络后重试",
-    "hn.retry": "重试",
-    "hn.ago.now": "刚刚",
-    "hn.ago.m": "{n} 分钟前",
-    "hn.ago.h": "{n} 小时前",
-    "hn.ago.d": "{n} 天前",
-    "hn.drawer.title": "带回来学习",
-    "hn.drawer.hint": "在浏览器读完后，把正文粘贴到这里",
-    "hn.drawer.placeholder": "粘贴文章正文…",
-    "hn.drawer.openArticle": "打开原文 ↗",
-    "hn.drawer.words": "{n} 词",
-    "hn.drawer.save": "保存为文档",
-    "hn.drawer.saving": "保存中…",
-    "hn.drawer.analyze": "AI 分析",
-    "hn.drawer.soon": "即将推出",
-    "hn.toast.saved": "已保存为文档",
-    "hn.toast.saveFailed": "保存失败，请重试",
     "hn.reader.back": "返回列表",
     "hn.reader.external": "浏览器打开",
-
-    // 搜索与分页
-    "hn.search.placeholder": "搜索 HN 文章…",
-    "hn.search.results": "{n} 条结果",
-    "hn.search.none": "没有匹配的文章，换个关键词试试",
-    "hn.sort.pop": "热门",
-    "hn.sort.new": "最新",
-    "hn.loadingMore": "加载中…",
-    "hn.end": "到底了",
 };

@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import type { FC } from "react";
 import { toast } from "sonner";
+import { SparkIcon } from "@/components/ui/icons";
+import { PencilSquareIcon, LanguageIcon, EnvelopeIcon } from "@heroicons/react/24/outline";
 import { getAllProviders } from "@/providers";
 import { AIProvider, ApiMessage } from "@/providers/base";
 import { useDB, ChatSessionItem } from "@/hooks/useDB";
@@ -14,11 +17,11 @@ import {
   serializeItems, deserializeItems, buildApiHistory,
 } from "./aiChatHelpers";
 
-const QUICK_CARDS: { icon: string; titleKey: string; prefillKey: string }[] = [
-  { icon: "✦", titleKey: "aichat.quick.extract", prefillKey: "aichat.quick.extract.prefill" },
-  { icon: "✍️", titleKey: "aichat.quick.polish", prefillKey: "aichat.quick.polish.prefill" },
-  { icon: "🔤", titleKey: "aichat.quick.compare", prefillKey: "aichat.quick.compare.prefill" },
-  { icon: "📧", titleKey: "aichat.quick.email", prefillKey: "aichat.quick.email.prefill" },
+const QUICK_CARDS: { icon: FC<{ className?: string }>; titleKey: string; prefillKey: string }[] = [
+  { icon: SparkIcon, titleKey: "aichat.quick.extract", prefillKey: "aichat.quick.extract.prefill" },
+  { icon: PencilSquareIcon, titleKey: "aichat.quick.polish", prefillKey: "aichat.quick.polish.prefill" },
+  { icon: LanguageIcon, titleKey: "aichat.quick.compare", prefillKey: "aichat.quick.compare.prefill" },
+  { icon: EnvelopeIcon, titleKey: "aichat.quick.email", prefillKey: "aichat.quick.email.prefill" },
 ];
 
 /** All state and business logic behind AiChatPage — split out so the page
@@ -26,7 +29,7 @@ const QUICK_CARDS: { icon: string; titleKey: string; prefillKey: string }[] = [
 export function useAiChatSession() {
   const db = useDB();
   const t = useT();
-  const targetLevel = useSettingsStore((s) => s.targetLevel);
+  const targetLevel = useSettingsStore((s) => s.targetLevels.join("/"));
   const providers = getAllProviders().filter((p) => p.apiKey);
 
   // Sidebar

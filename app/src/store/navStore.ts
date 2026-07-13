@@ -2,12 +2,9 @@ import { create } from "zustand";
 
 export type NavPage =
   | "dashboard"
-  | "discover"
-  | "hackernews"
   | "feeds"
   | "reading"
   | "vocabulary"
-  | "patterns"
   | "documents"
   | "chat"
   | "settings";
@@ -32,12 +29,13 @@ interface NavState {
 }
 
 export const useNavStore = create<NavState>((set, get) => ({
-  history: [{ page: "dashboard" }],
+  // Feeds is the app's home page — reading sources come first.
+  history: [{ page: "feeds" }],
   historyIndex: 0,
 
   currentPage: () => {
     const { history, historyIndex } = get();
-    return history[historyIndex]?.page ?? "dashboard";
+    return history[historyIndex]?.page ?? "feeds";
   },
 
   currentWordId: () => {

@@ -4,7 +4,7 @@ export interface ReadingDraft {
   title: string;
   text: string;
   sourceUrl: string;
-  origin: "pasted" | "hackernews";
+  origin: "pasted" | "hackernews" | "rss";
 }
 
 interface ReadingState {
@@ -17,11 +17,6 @@ interface ReadingState {
   pendingArticleId: number | null;
   setPendingArticleId: (id: number) => void;
   clearPendingArticleId: () => void;
-
-  /** Pattern to open directly (e.g. re-encounter popover "查看句式") — consumed on Patterns page mount */
-  pendingPatternId: number | null;
-  setPendingPatternId: (id: number) => void;
-  clearPendingPatternId: () => void;
 }
 
 export const useReadingStore = create<ReadingState>((set) => ({
@@ -32,8 +27,4 @@ export const useReadingStore = create<ReadingState>((set) => ({
   pendingArticleId: null,
   setPendingArticleId: (id) => set({ pendingArticleId: id }),
   clearPendingArticleId: () => set({ pendingArticleId: null }),
-
-  pendingPatternId: null,
-  setPendingPatternId: (id) => set({ pendingPatternId: id }),
-  clearPendingPatternId: () => set({ pendingPatternId: null }),
 }));

@@ -22,11 +22,10 @@ export const dashboard: Dict = {
     "dash.viewAll": "查看全部",
     "dash.quick.title": "快捷入口",
     "dash.quick.reading": "粘贴文章学习",
-    "dash.quick.hn": "逛 HN 热点",
+    "dash.quick.feeds": "逛订阅源",
     "dash.quick.chat": "问 AI 导师",
-
-    // 句式
-    "dash.recentPatterns": "最近句式",
-    "dash.stat.patterns": "句式",
-    "dash.empty.patterns": "阅读课里收藏的句式会出现在这里。",
+    "dash.rss.title": "订阅动态",
+    "dash.rss.summary": "{articles} 个文章源 · {podcasts} 个播客 · {unread} 未读",
+    "dash.rss.empty": "还没有订阅任何 RSS 源",
+    "dash.rss.open": "去订阅页",
 };
