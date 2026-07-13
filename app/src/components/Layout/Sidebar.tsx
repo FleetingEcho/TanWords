@@ -110,8 +110,11 @@ export function MainLayout({
           })}
         </nav>
 
-        {/* Settings — pinned to the bottom, always in the same place */}
-        <div className="px-2 py-3 border-t border-[hsl(var(--sidebar-border))]">
+        {/* Settings — pinned to the bottom, always in the same place.
+            Fixed h-14 matches the h-8-button-in-p-3-container footer bars
+            used elsewhere (e.g. FeedRail's "+ Add feed"), so the sidebar's
+            bottom border lines up with the page content's footer border. */}
+        <div className="h-14 px-2 flex items-center border-t border-[hsl(var(--sidebar-border))]">
           <button
             onClick={() => onNavigate("settings")}
             title={collapsed ? t("nav.settings") : undefined}
