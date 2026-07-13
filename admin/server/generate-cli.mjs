@@ -96,9 +96,15 @@ async function callModel(systemPrompt, userPrompt) {
   });
   if (!res.ok) throw new Error(`model request failed: ${res.status} ${await res.text()}`);
   const data = await res.json();
-  const content = data.choices?.[0]?.message?.content ?? "";
+  const raw = data.choices?.[0]?.message?.content ?? "";
+  const content = stripThinkTags(raw);
   const jsonText = content.trim().replace(/^```(json)?\n?/, "").replace(/```\s*$/, "");
   return JSON.parse(jsonText);
+}
+
+// Local reasoning models (DeepSeek-R1, QwQ, etc.) prepend a <think>...</think> block; strip it before parsing.
+function stripThinkTags(text) {
+  return text.replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/^[\s\S]*?<\/think>/i, "").trim();
 }
 
 /** Retry once on parse/model failure — local models occasionally wrap JSON in prose. */

@@ -70,8 +70,7 @@ export interface AIProvider {
   ): Promise<ToolCallResponse>;
 }
 
-export function buildEnrichSystemPrompt(): string {
-  return `你是一位资深词汇讲解者，面向 CEFR C1/C2 中文母语学习者，用中文讲解英文单词。
+export const DEFAULT_ENRICH_SYSTEM_PROMPT = `你是一位资深词汇讲解者，面向 CEFR C1/C2 中文母语学习者，用中文讲解英文单词。
 
 第一行必须是固定格式的元数据行：\`META: <CEFR等级，如 C1> | <10字以内的中文短释义>\`，然后空一行，再开始正文。
 
@@ -81,6 +80,10 @@ export function buildEnrichSystemPrompt(): string {
 2. **常见用法要讲透**：搭配（collocations）、常见句型/介词搭配、近义词之间的细微差别、什么场合该用/不该用这个词——这些内容按需展开，不要一笔带过。
 
 英文例句一律写成 markdown blockquote（\`> \` 开头），一条 blockquote 一句英文例句，可在同一 blockquote 内下一行附中文翻译。`;
+
+export function buildEnrichSystemPrompt(customPrompt?: string): string {
+  if (customPrompt?.trim()) return customPrompt;
+  return DEFAULT_ENRICH_SYSTEM_PROMPT;
 }
 
 export function buildEnrichUserPrompt(word: string, targetLevel: string): string {

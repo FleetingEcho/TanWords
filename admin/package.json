@@ -9,7 +9,12 @@
     "web": "vite web --port 5199",
     "dev": "concurrently -n server,web -c blue,green \"npm:server\" \"npm:web\"",
     "build": "vite build web",
-    "generate": "node server/generate-cli.mjs"
+    "generate": "node server/generate-cli.mjs",
+    "generate:words": "node server/generate-cli.mjs words --count 100",
+    "generate:articles": "node server/generate-cli.mjs articles --count 5",
+    "generate:documents": "node server/generate-cli.mjs documents --count 5",
+    "generate:enrich": "node server/generate-cli.mjs enrich --count 50",
+    "generate:all": "node server/generate-cli.mjs all --count 20"
   },
   "dependencies": {
     "better-sqlite3": "^11",

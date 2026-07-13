@@ -71,7 +71,7 @@ export function WordListPanel({
       <div className="px-4 pt-5 pb-3 space-y-2.5">
         <div className="flex items-baseline gap-2">
           <h2 className="text-lg font-bold">{t("vocab.title")}</h2>
-          <span className="text-sm text-muted-foreground">{t("vocab.wordCount", { n: words.length })}</span>
+          <span className="text-sm text-muted-foreground">{words.length}</span>
           <Button
             variant="ghost"
             onClick={onOpenGenerate}

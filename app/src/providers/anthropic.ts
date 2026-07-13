@@ -29,8 +29,9 @@ export class AnthropicProvider implements AIProvider {
   }
 
   async *enrich(word: string, signal?: AbortSignal): AsyncGenerator<string> {
-    const targetLevel = useSettingsStore.getState().targetLevels.join("/");
-    const system = buildEnrichSystemPrompt();
+    const { targetLevels, customEnrichPrompt } = useSettingsStore.getState();
+    const targetLevel = targetLevels.join("/");
+    const system = buildEnrichSystemPrompt(customEnrichPrompt);
     const user = buildEnrichUserPrompt(word, targetLevel);
     const inputChars = system.length + user.length;
     let full = "";

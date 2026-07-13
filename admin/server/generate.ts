@@ -49,9 +49,15 @@ async function callModel(cfg: GenConfig, words: string[]): Promise<GeneratedWord
   });
   if (!res.ok) throw new Error(`Model request failed: ${res.status} ${await res.text()}`);
   const data = await res.json();
-  const content: string = data.choices?.[0]?.message?.content ?? "[]";
+  const raw: string = data.choices?.[0]?.message?.content ?? "[]";
+  const content = stripThinkTags(raw);
   const jsonText = content.trim().replace(/^```json\n?/, "").replace(/```$/, "");
   return JSON.parse(jsonText);
+}
+
+// Local reasoning models (DeepSeek-R1, QwQ, etc.) prepend a <think>...</think> block; strip it before parsing.
+function stripThinkTags(text: string): string {
+  return text.replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/^[\s\S]*?<\/think>/i, "").trim();
 }
 
 // POST /api/generate/preview — words + model config → generated rows, NOT written to DB yet

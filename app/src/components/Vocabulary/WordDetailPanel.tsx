@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { useT } from "@/hooks/useT";
-import { useWordModalStore } from "@/store/wordModalStore";
 import { ParsedEnrichment } from "@/lib/enrichMeta";
 import { EnrichmentText } from "@/components/EnrichmentText";
 import { LevelBadge } from "@/components/shared/LevelBadge";
@@ -45,7 +44,6 @@ export function WordDetailPanel({
   onNotesChange, onClearNotes, onRetry, onReenrich,
 }: Props) {
   const t = useT();
-  const openWordModal = useWordModalStore((s) => s.openWordModal);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
 
   return (
@@ -90,12 +88,9 @@ export function WordDetailPanel({
                   {lookupAdded ? t("search.added") : t("search.addToVocab")}
                 </Button>
               ) : (
-                <>
-                  {enriched && !enriching && (
-                    <Button variant="link" onClick={onReenrich} className="h-auto p-0 text-xs text-muted-foreground hover:text-primary transition-colors">{t("vocab.reenrich")}</Button>
-                  )}
-                  <Button variant="link" onClick={() => openWordModal(selected.word)} className="h-auto p-0 text-xs font-medium text-primary hover:underline">{t("vocab.aiDetail")}</Button>
-                </>
+                enriched && !enriching && (
+                  <Button variant="link" onClick={onReenrich} className="h-auto p-0 text-xs text-muted-foreground hover:text-primary transition-colors">{t("vocab.reenrich")}</Button>
+                )
               )}
             </div>
           </div>

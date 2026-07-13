@@ -9,6 +9,8 @@ interface SettingsState {
   vocabBilingual: boolean;
   /** CEFR levels the AI calibrates to — multi-select, e.g. ["C1","C2"]. */
   targetLevels: string[];
+  /** User override for the word-enrichment system prompt. Empty string = use the built-in default. */
+  customEnrichPrompt: string;
   ttsModelPath: string;
   ttsVoiceId: string;
   ttsExtraDirs: string[];
@@ -22,6 +24,7 @@ interface SettingsState {
   setUiLanguage: (lang: string) => void;
   setVocabBilingual: (v: boolean) => void;
   setTargetLevels: (levels: string[]) => void;
+  setCustomEnrichPrompt: (prompt: string) => void;
   setTtsModelPath: (path: string) => void;
   setTtsVoiceId: (id: string) => void;
   setTtsExtraDirs: (dirs: string[]) => void;
@@ -54,6 +57,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   uiLanguage: cachedUiLanguage(),
   vocabBilingual: false,
   targetLevels: ["C1"],
+  customEnrichPrompt: "",
   ttsModelPath: "",
   ttsVoiceId: "0",
   ttsExtraDirs: [],
@@ -94,6 +98,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     saveSetting("target_level", JSON.stringify(levels));
   },
 
+  setCustomEnrichPrompt: (prompt) => {
+    set({ customEnrichPrompt: prompt });
+    saveSetting("custom_enrich_prompt", JSON.stringify(prompt));
+  },
+
   setTtsModelPath: (path) => {
     set({ ttsModelPath: path });
     saveSetting("tts_model_path", JSON.stringify(path));
@@ -123,6 +132,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         "ui_language",
         "vocab_bilingual",
         "target_level",
+        "custom_enrich_prompt",
         "tts_model_path",
         "tts_voice_id",
         "tts_extra_dirs",
@@ -152,6 +162,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
           : values.target_level
           ? [values.target_level]
           : ["C1"],
+        customEnrichPrompt: values.custom_enrich_prompt || "",
         ttsModelPath: values.tts_model_path || "",
         ttsVoiceId: values.tts_voice_id || "0",
         ttsExtraDirs: Array.isArray(values.tts_extra_dirs) ? values.tts_extra_dirs : [],

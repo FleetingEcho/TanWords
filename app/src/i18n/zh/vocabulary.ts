@@ -8,7 +8,6 @@ export const vocabulary: Dict = {
     "vocab.loading": "加载中...",
     "vocab.analyzing": "AI 分析中，请稍候...",
     "vocab.retry": "重试",
-    "vocab.aiDetail": "AI 详情",
     "vocab.generateBtn": "AI 生成词库",
     "vocab.myNotes": "我的笔记",
     "vocab.notesPlaceholder": "写下你对这个词的理解、联想、例句…",

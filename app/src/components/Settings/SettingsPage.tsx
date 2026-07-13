@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { save as saveDialog, open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useSettingsStore, Theme } from "@/store/settingsStore";
+import { DEFAULT_ENRICH_SYSTEM_PROMPT } from "@/providers/base";
 import { useT } from "@/hooks/useT";
 import { useDB } from "@/hooks/useDB";
 import { ProviderSection } from "./ProviderSection";
@@ -39,6 +40,51 @@ function ToggleGroup({ options, value, onChange }: { options: { id: string; labe
           {o.label}
         </Button>
       ))}
+    </div>
+  );
+}
+
+function EnrichPromptEditor() {
+  const t = useT();
+  const customEnrichPrompt = useSettingsStore((s) => s.customEnrichPrompt);
+  const setCustomEnrichPrompt = useSettingsStore((s) => s.setCustomEnrichPrompt);
+  const [draft, setDraft] = useState(customEnrichPrompt || DEFAULT_ENRICH_SYSTEM_PROMPT);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => setDraft(customEnrichPrompt || DEFAULT_ENRICH_SYSTEM_PROMPT), [customEnrichPrompt]);
+
+  const onChange = useCallback((value: string) => {
+    setDraft(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setCustomEnrichPrompt(value), 500);
+  }, [setCustomEnrichPrompt]);
+
+  const resetToDefault = () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setDraft(DEFAULT_ENRICH_SYSTEM_PROMPT);
+    setCustomEnrichPrompt("");
+  };
+
+  return (
+    <div className="py-3.5">
+      <div className="flex items-center justify-between gap-4 mb-2">
+        <div className="min-w-0">
+          <p className="text-sm font-medium">{t("settings.enrichPrompt")}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{t("settings.enrichPromptSub")}</p>
+        </div>
+        {draft !== DEFAULT_ENRICH_SYSTEM_PROMPT && (
+          <Button variant="ghost" onClick={resetToDefault} className="h-auto px-2 py-1 text-xs shrink-0">
+            {t("settings.enrichPromptReset")}
+          </Button>
+        )}
+      </div>
+      <textarea
+        value={draft}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={t("settings.enrichPromptPlaceholder")}
+        rows={8}
+        className="w-full px-3 py-2 rounded-lg border border-input bg-background text-xs font-mono leading-relaxed focus:outline-none focus:ring-1 focus:ring-ring resize-y"
+      />
     </div>
   );
 }
@@ -153,6 +199,7 @@ export function SettingsPage() {
                   })}
                 </div>
               </SettingRow>
+              <EnrichPromptEditor />
             </div>
           </section>
 
