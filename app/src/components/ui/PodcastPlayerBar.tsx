@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { useT } from "@/hooks/useT";
 import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
 import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
@@ -36,6 +36,7 @@ export function PodcastPlayerBar() {
   const ttsActive = useTtsPlayerStore((s) => s.status !== "idle");
   const goToOrigin = usePlayerOriginStore((s) => s.goToOrigin);
   const sidebarCollapsed = useLayoutStore((s) => s.sidebarCollapsed);
+  const [dragValue, setDragValue] = useState<number | null>(null);
 
   if (status === "idle" || !track || ttsActive) return null;
 
@@ -102,8 +103,11 @@ export function PodcastPlayerBar() {
         min={0}
         max={Math.max(duration, 1)}
         step={1}
-        value={Math.min(position, duration || position)}
-        onChange={(e) => seekTo(Number(e.target.value))}
+        value={dragValue ?? Math.min(position, duration || position)}
+        onChange={(e) => setDragValue(Number(e.target.value))}
+        onMouseUp={() => { if (dragValue !== null) { seekTo(dragValue); setDragValue(null); } }}
+        onTouchEnd={() => { if (dragValue !== null) { seekTo(dragValue); setDragValue(null); } }}
+        onKeyUp={() => { if (dragValue !== null) { seekTo(dragValue); setDragValue(null); } }}
         disabled={!duration}
         aria-label={t("podcast.seek")}
         className="flex-1 min-w-0 h-1.5 cursor-pointer disabled:cursor-default"

@@ -52,6 +52,16 @@ function getAudio(): HTMLAudioElement {
   audio.addEventListener("playing", () => {
     usePodcastPlayerStore.setState({ status: "playing" });
   });
+  // Some WebViews (e.g. WebKitGTK on Linux) don't reliably re-fire "playing"
+  // after a seek-triggered "waiting" stall — only "seeked"/"canplay". Use them
+  // as a fallback so the spinner doesn't get stuck forever after dragging the seek bar.
+  const clearStallIfPlaying = () => {
+    if (!audio!.paused) {
+      usePodcastPlayerStore.setState((s) => (s.status === "loading" ? { ...s, status: "playing" } : s));
+    }
+  };
+  audio.addEventListener("seeked", clearStallIfPlaying);
+  audio.addEventListener("canplay", clearStallIfPlaying);
   audio.addEventListener("timeupdate", () => {
     usePodcastPlayerStore.setState({ position: audio!.currentTime });
   });
