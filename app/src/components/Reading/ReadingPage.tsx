@@ -87,7 +87,7 @@ export function ReadingPage() {
   const wordCount = text.split(/\s+/).filter(Boolean).length;
 
   return (
-    <div className="p-6 space-y-5 animate-fade-in max-w-4xl">
+    <div className="p-6 space-y-5 animate-fade-in w-full">
       <div>
         <h1 className="text-2xl font-bold">{t("reading.title")}</h1>
         <p className="text-sm text-muted-foreground mt-0.5">{t("reading.subtitle")}</p>

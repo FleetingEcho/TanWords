@@ -53,6 +53,7 @@ export const tts: Dict = {
     "tts.next": "下一句",
     "tts.prev": "上一句",
     "tts.close": "关闭",
+    "tts.backToSource": "返回播放来源",
     "tts.listenToArticle": "听全文",
     "tts.synthesizing": "合成中…",
     "tts.sentenceProgress": "第 {current} / {total} 句",

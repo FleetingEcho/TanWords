@@ -4,10 +4,12 @@ import { useT } from "@/hooks/useT";
 import { LevelBadge } from "@/components/shared/LevelBadge";
 import { SpeakButton } from "@/components/ui/SpeakButton";
 import { SparkIcon } from "@/components/ui/icons";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { PencilIcon, ChatBubbleLeftIcon, RectangleStackIcon, LightBulbIcon, StarIcon } from "@heroicons/react/24/outline";
 
 type LevelFilter = "all" | "C2" | "C1" | "B2" | "B1-";
 type SortBy = "recent" | "freq" | "alpha";
+type DateField = "created" | "updated";
 
 const LEVEL_CHIPS: LevelFilter[] = ["all", "C2", "C1", "B2", "B1-"];
 
@@ -34,10 +36,16 @@ interface Props {
   /** The searched term isn't in the vocabulary — offer an AI dictionary lookup */
   showAiLookup: boolean;
   lookupActive: boolean;
+  dateField: DateField;
+  dateFrom: string;
+  dateTo: string;
   onSearchChange: (v: string) => void;
   onSortChange: (v: SortBy) => void;
   onFilterChange: (v: LevelFilter) => void;
   onSourceFilterChange: (v: string) => void;
+  onDateFieldChange: (v: DateField) => void;
+  onDateFromChange: (v: string) => void;
+  onDateToChange: (v: string) => void;
   onSelect: (w: WordListItem) => void;
   onPageChange: (p: number) => void;
   onDoubleClick: (word: string) => void;
@@ -47,8 +55,9 @@ interface Props {
 
 export function WordListPanel({
   words, selectedId, search, sortBy, levelFilter, sourceFilter, sources, page, pageSize,
-  showAiLookup, lookupActive,
+  showAiLookup, lookupActive, dateField, dateFrom, dateTo,
   onSearchChange, onSortChange, onFilterChange, onSourceFilterChange,
+  onDateFieldChange, onDateFromChange, onDateToChange,
   onSelect, onPageChange, onDoubleClick, onAiLookup, onOpenGenerate,
 }: Props) {
   const t = useT();
@@ -56,7 +65,7 @@ export function WordListPanel({
   const paged = words.slice(page * pageSize, (page + 1) * pageSize);
 
   return (
-    <div className="w-[300px] shrink-0 border-r border-border bg-card flex flex-col h-full">
+    <div className="w-80 shrink-0 border-r border-border bg-card flex flex-col h-full">
       <div className="px-4 pt-5 pb-3 space-y-2.5">
         <div className="flex items-baseline gap-2">
           <h2 className="text-lg font-bold">{t("vocab.title")}</h2>
@@ -143,6 +152,29 @@ export function WordListPanel({
             ))}
           </div>
         )}
+
+        {/* Time-range filter — added vs. last-updated, each with a date range */}
+        <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-0.5 bg-muted p-0.5 rounded-lg shrink-0">
+            {(["created", "updated"] as DateField[]).map((f) => (
+              <button
+                key={f}
+                onClick={() => onDateFieldChange(f)}
+                className={`px-2 py-0.5 rounded-md text-[10px] font-medium transition-colors ${
+                  dateField === f ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {f === "created" ? t("vocab.dateAdded") : t("vocab.dateUpdated")}
+              </button>
+            ))}
+          </div>
+          <DateRangePicker
+            from={dateFrom}
+            to={dateTo}
+            onChange={(from, to) => { onDateFromChange(from); onDateToChange(to); }}
+            placeholder={t("vocab.dateRangePlaceholder")}
+          />
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto divide-y divide-border">
@@ -219,4 +251,4 @@ export function WordListPanel({
   );
 }
 
-export type { LevelFilter, SortBy };
+export type { LevelFilter, SortBy, DateField };

@@ -75,7 +75,7 @@ export function FeedRail({ feeds, unreadByFeed, failedFeeds, selected, onSelect,
   );
 
   return (
-    <div className="w-60 shrink-0 border-r border-border flex flex-col">
+    <div className="w-80 shrink-0 border-r border-border flex flex-col">
       <div className="px-4 pt-4 pb-3 border-b border-border">
         <h2 className="text-sm font-bold">{t("feeds.title")}</h2>
       </div>

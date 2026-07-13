@@ -39,4 +39,7 @@ export const vocabulary: Dict = {
     "vocab.source.batch": "Batch",
     "vocab.source.discover": "Discover",
     "vocab.source.seed": "Built-in",
+    "vocab.dateAdded": "Added",
+    "vocab.dateUpdated": "Updated",
+    "vocab.dateRangePlaceholder": "Pick a date range",
 };

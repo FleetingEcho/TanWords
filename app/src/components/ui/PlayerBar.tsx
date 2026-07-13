@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useT } from "@/hooks/useT";
 import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
 import { useArticlePlayer } from "@/hooks/useArticlePlayer";
+import { usePlayerOriginStore } from "@/store/playerOriginStore";
+import { useLayoutStore, SIDEBAR_WIDTH, SIDEBAR_WIDTH_COLLAPSED } from "@/store/layoutStore";
 import { PlayIcon, PauseIcon, SkipPrevIcon, SkipNextIcon, CloseIcon, RefreshIcon } from "@/components/ui/icons";
 
 const SPEEDS = [0.75, 1, 1.25, 1.5];
@@ -23,6 +25,8 @@ export function PlayerBar() {
   const setSpeed = useTtsPlayerStore((s) => s.setSpeed);
   const stop = useTtsPlayerStore((s) => s.stop);
   const jumpTo = useTtsPlayerStore((s) => s.jumpTo);
+  const goToOrigin = usePlayerOriginStore((s) => s.goToOrigin);
+  const sidebarCollapsed = useLayoutStore((s) => s.sidebarCollapsed);
 
   // ── Slider: local state for drag-follow, store-driven currentIndex ────
   // ALL hooks must live above the early-return, otherwise the hook count
@@ -55,10 +59,15 @@ export function PlayerBar() {
   const isError = status === "error";
   const isLoading = status === "loading";
   const maxIndex = Math.max(0, sentences.length - 1);
-  const progressPercent = sentences.length > 0 ? Math.round((sliderIdx / maxIndex) * 100) : 0;
+  // Fraction of sentences fully finished — the current sentence (still playing)
+  // doesn't count as done, so this never shows 100% until playback actually stops.
+  const progressPercent = sentences.length > 0 ? Math.round((sliderIdx / sentences.length) * 100) : 0;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-sm px-4 py-2.5 flex flex-col gap-1.5 animate-fade-in">
+    <div
+      className="fixed bottom-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-sm px-4 py-2.5 flex flex-col gap-1.5 animate-fade-in transition-[left] duration-200"
+      style={{ left: sidebarCollapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH }}
+    >
       {/* ── Sentence-level progress bar ──────────────────────────────────── */}
       <div className="flex items-center gap-2">
         <span className="text-[10px] font-mono tabular-nums text-muted-foreground shrink-0 w-max-[100px] text-right">
@@ -137,10 +146,14 @@ export function PlayerBar() {
           <SkipNextIcon className="w-4 h-4" />
         </button>
 
-        <div className="flex-1 min-w-0 truncate text-xs text-muted-foreground px-2 flex items-center gap-1.5">
+        <button
+          onClick={goToOrigin}
+          title={t("tts.backToSource")}
+          className="flex-1 min-w-0 truncate text-xs text-muted-foreground px-2 flex items-center gap-1.5 hover:text-foreground transition-colors text-left"
+        >
           {isLoading && <span className="shrink-0 text-primary/70 animate-pulse">{t("tts.synthesizing")}</span>}
           <span className="truncate">{sentences[currentIndex]?.text ?? ""}</span>
-        </div>
+        </button>
 
         <div className="flex items-center gap-1 bg-muted p-0.5 rounded-lg shrink-0">
           {SPEEDS.map((s) => (

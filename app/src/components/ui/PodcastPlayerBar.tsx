@@ -2,6 +2,8 @@ import React from "react";
 import { useT } from "@/hooks/useT";
 import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
 import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
+import { usePlayerOriginStore } from "@/store/playerOriginStore";
+import { useLayoutStore, SIDEBAR_WIDTH, SIDEBAR_WIDTH_COLLAPSED } from "@/store/layoutStore";
 import { PlayIcon, PauseIcon, CloseIcon, RefreshIcon } from "@/components/ui/icons";
 
 const SPEEDS = [0.75, 1, 1.25, 1.5];
@@ -31,6 +33,8 @@ export function PodcastPlayerBar() {
   const setSpeed = usePodcastPlayerStore((s) => s.setSpeed);
   const stop = usePodcastPlayerStore((s) => s.stop);
   const ttsActive = useTtsPlayerStore((s) => s.status !== "idle");
+  const goToOrigin = usePlayerOriginStore((s) => s.goToOrigin);
+  const sidebarCollapsed = useLayoutStore((s) => s.sidebarCollapsed);
 
   if (status === "idle" || !track || ttsActive) return null;
 
@@ -39,7 +43,10 @@ export function PodcastPlayerBar() {
   const isLoading = status === "loading";
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-sm px-4 py-2.5 flex items-center gap-3 animate-fade-in">
+    <div
+      className="fixed bottom-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-sm px-4 py-2.5 flex items-center gap-3 animate-fade-in transition-[left] duration-200"
+      style={{ left: sidebarCollapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH }}
+    >
       <button
         onClick={() => seekBy(-15)}
         className="h-8 px-2 rounded-md flex items-center justify-center text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
@@ -98,12 +105,16 @@ export function PodcastPlayerBar() {
         style={{ accentColor: "hsl(var(--primary))" }}
       />
 
-      <div className="w-56 min-w-0 hidden md:flex flex-col shrink-0">
+      <button
+        onClick={goToOrigin}
+        title={t("tts.backToSource")}
+        className="w-56 min-w-0 hidden md:flex flex-col shrink-0 text-left hover:opacity-80 transition-opacity"
+      >
         <span className="truncate text-xs font-medium text-foreground">{track.title}</span>
         <span className="truncate text-[10px] text-muted-foreground">
           {isError ? t("podcast.error") : track.feedTitle}
         </span>
-      </div>
+      </button>
 
       <div className="flex items-center gap-1 bg-muted p-0.5 rounded-lg shrink-0">
         {SPEEDS.map((s) => (

@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useT } from "@/hooks/useT";
 import { useToolsBallStore } from "@/store/toolsBallStore";
+import { useNavStore } from "@/store/navStore";
+import { useSelectedWordStore } from "@/store/selectedWordStore";
 import { DocSelector } from "@/components/Documents/DocSelector";
 import { LazyDocEditor } from "@/components/Documents/LazyDocEditor";
 import { useDocumentEditor } from "@/components/Documents/useDocumentEditor";
@@ -11,6 +13,7 @@ import { AiChatComposer } from "@/components/AiChat/AiChatComposer";
 import { useAiChatSession, PRESET_IDS } from "@/components/AiChat/useAiChatSession";
 import { ChatSessionItem } from "@/hooks/useDB";
 import { useDB } from "@/hooks/useDB";
+import { WordChatPanel } from "@/components/WordChatPanel";
 
 const MIN_W = 500;
 const MIN_H = 400;
@@ -38,10 +41,11 @@ function clampSize(
   };
 }
 
-/** Draggable + resizable modal with two always-mounted tabs:
- *  Documents (DocSelector + BlockNote editor) and AI Chat (minimal session
- *  selector + message area + composer). Content is globally cached — closing
- *  and reopening preserves all state. */
+/** Draggable + resizable modal with always-mounted tabs: Documents (DocSelector
+ *  + BlockNote editor), AI Chat (minimal session selector + message area +
+ *  composer), and — only while on the Vocabulary page — Word chat/notes for
+ *  the currently selected word. Content is globally cached — closing and
+ *  reopening preserves all state. */
 export function ToolsModal() {
   const t = useT();
   const isOpen = useToolsBallStore((s) => s.isOpen);
@@ -71,18 +75,17 @@ export function ToolsModal() {
   // ── Document editor (always mounted) ─────────────────────────────────────
   const docEditor = useDocumentEditor();
 
-  // Auto-create a new doc on first open if nothing loaded.
-  const prevDocOpen = useRef(false);
-  useEffect(() => {
-    if (isOpen && activeTab === "documents" && docEditor.doc === null && docEditor.activeId === null && !prevDocOpen.current) {
-      docEditor.handleNewDoc();
-      prevDocOpen.current = true;
-    }
-    if (!isOpen) prevDocOpen.current = false;
-  }, [isOpen, activeTab]);
-
   // ── AI Chat session (always mounted, independent from full-page AiChatPage)
   const chat = useAiChatSession();
+
+  // ── Word-chat tab (Vocabulary page only) ─────────────────────────────────
+  const isVocabPage = useNavStore((s) => s.currentPage()) === "vocabulary";
+  const selectedWord = useSelectedWordStore();
+
+  // Fall back to another tab if the user leaves the Vocabulary page while on "word"
+  useEffect(() => {
+    if (!isVocabPage && activeTab === "word") setActiveTab("documents");
+  }, [isVocabPage, activeTab, setActiveTab]);
 
   // ── Session selector ─────────────────────────────────────────────────────
   const db = useDB();
@@ -181,7 +184,7 @@ export function ToolsModal() {
   // When closed, the overlay is hidden but all state is preserved.
 
   return (
-    <div className={`fixed inset-0 z-40 ${isOpen ? "" : "pointer-events-none"}`} style={{ visibility: isOpen ? "visible" : "hidden" }}>
+    <div className={`fixed inset-0 z-100 ${isOpen ? "" : "pointer-events-none"}`} style={{ visibility: isOpen ? "visible" : "hidden" }}>
       {/* Backdrop */}
       <div className={`absolute inset-0 bg-black/20 transition-opacity ${isOpen ? "opacity-100" : "opacity-0"}`} onClick={closeModal} />
 
@@ -237,6 +240,18 @@ export function ToolsModal() {
             >
               {t("tools.chat")}
             </button>
+            {isVocabPage && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setActiveTab("word"); }}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                  activeTab === "word"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {t("tools.word")}
+              </button>
+            )}
           </div>
 
           {/* AI Chat controls (only visible on chat tab) */}
@@ -430,6 +445,24 @@ export function ToolsModal() {
               />
             </div>
           </div>
+
+          {/* Word chat tab (Vocabulary page only) */}
+          {isVocabPage && (
+            <div style={{ display: activeTab === "word" ? "flex" : "none", height: "100%" }} className="flex-col overflow-hidden p-3">
+              {selectedWord.word ? (
+                <WordChatPanel
+                  key={selectedWord.wordId ?? selectedWord.word}
+                  wordId={selectedWord.wordId}
+                  word={selectedWord.word}
+                  enrichedContext={selectedWord.enrichedContext}
+                />
+              ) : (
+                <div className="flex-1 flex items-center justify-center text-center px-4">
+                  <p className="text-xs text-muted-foreground">{t("tools.wordNoSelection")}</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Resize handle — bottom-right corner */}

@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useT } from "@/hooks/useT";
 import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
 import { usePodcastPlayerStore, type PodcastTrack } from "@/store/podcastPlayerStore";
+import { usePlayerOriginStore } from "@/store/playerOriginStore";
 import { SpeakerIcon, SparkIcon } from "@/components/ui/icons";
 
 export interface FetchedArticle {
@@ -16,6 +17,8 @@ export interface FetchedArticle {
 
 interface Props {
   url: string;
+  /** Domain label shown in the reader bar; also used to restore this view from the player bar. */
+  domain: string;
   /** Learn should hand off the extracted plain text — no manual copy/paste needed. */
   onLearn: (article: { title: string; text: string }) => void;
   onOpenExternal: () => void;
@@ -26,7 +29,7 @@ interface Props {
 
 const FONT_STEPS = [15, 16, 17.5, 19, 21] as const;
 
-export function ArticleReader({ url, onLearn, onOpenExternal, audio }: Props) {
+export function ArticleReader({ url, domain, onLearn, onOpenExternal, audio }: Props) {
   const t = useT();
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [article, setArticle] = useState<FetchedArticle | null>(null);
@@ -46,11 +49,29 @@ export function ArticleReader({ url, onLearn, onOpenExternal, audio }: Props) {
     if (audio) {
       // Podcast episode: play the original recording, never TTS.
       if (podcastActive) usePodcastPlayerStore.getState().toggle();
-      else usePodcastPlayerStore.getState().play(audio);
+      else {
+        usePodcastPlayerStore.getState().play(audio);
+        setReaderOrigin();
+      }
       return;
     }
     if (playerActive) playerToggle();
-    else if (article) playerStart(sourceKey, article.text_content);
+    else if (article) {
+      playerStart(sourceKey, article.text_content);
+      setReaderOrigin();
+    }
+  };
+
+  const setReaderOrigin = () => {
+    if (!article) return;
+    usePlayerOriginStore.getState().setOrigin({
+      kind: "reader",
+      url,
+      title: article.title,
+      domain,
+      audioUrl: audio?.audioUrl ?? null,
+      feedTitle: audio?.feedTitle ?? "",
+    });
   };
 
   useEffect(() => {

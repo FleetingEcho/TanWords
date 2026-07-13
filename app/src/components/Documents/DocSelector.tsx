@@ -2,7 +2,8 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useDB, DocumentListItem } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { DocItem } from "./DocItem";
-import { CloseIcon } from "@/components/ui/icons";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { toast } from "sonner";
 
 const PAGE_SIZE = 20;
@@ -28,6 +29,7 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey }: Props)
   const [allTags, setAllTags] = useState<string[]>([]);
   const [tagFilter, setTagFilter] = useState("");
   const [loading, setLoading] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
 
   const load = useCallback(async (p = page) => {
     setLoading(true);
@@ -73,19 +75,20 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey }: Props)
     onSelect(newId);
   };
 
-  const handleDelete = async (id: number) => {
-    const ok = window.confirm(t("doc.deleteConfirm"));
-    if (!ok) return;
+  const handleDelete = (id: number) => setPendingDeleteId(id);
+
+  const confirmDelete = async () => {
+    const id = pendingDeleteId;
+    if (id === null) return;
+    setPendingDeleteId(null);
     await db.deleteDocument(id);
     toast.success(t("doc.delete"));
     load(page);
     if (activeId === id) onSelect(-1);
   };
 
-  const hasDateFilter = dateFrom || dateTo;
-
   return (
-    <div className="flex flex-col h-full border-r border-border w-[260px] shrink-0 bg-sidebar">
+    <div className="flex flex-col h-full border-r border-border w-80 shrink-0 bg-sidebar">
       {/* Header */}
       <div className="px-3 pt-4 pb-2 space-y-2 shrink-0">
         <div className="flex items-center justify-between">
@@ -139,31 +142,13 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey }: Props)
         </div>
 
         {/* Date range */}
-        <div className="space-y-1">
-          <div className="flex items-center gap-1.5">
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="flex-1 h-6 text-[11px] rounded-lg border border-border bg-card text-foreground focus:outline-none px-1.5 [color-scheme:dark] dark:[color-scheme:dark] [color-scheme:light] dark:[color-scheme:dark]"
-            />
-            <span className="text-[11px] text-muted-foreground shrink-0">→</span>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="flex-1 h-6 text-[11px] rounded-lg border border-border bg-card text-foreground focus:outline-none px-1.5"
-            />
-          </div>
-          {hasDateFilter && (
-            <button
-              onClick={() => { setDateFrom(""); setDateTo(""); }}
-              className="text-[10px] text-primary hover:underline inline-flex items-center gap-0.5"
-            >
-              {t("doc.clearDate")} <CloseIcon className="w-2.5 h-2.5" />
-            </button>
-          )}
-        </div>
+        <DateRangePicker
+          from={dateFrom}
+          to={dateTo}
+          onChange={(from, to) => { setDateFrom(from); setDateTo(to); }}
+          placeholder={t("doc.dateRangePlaceholder")}
+          className="w-full"
+        />
       </div>
 
       {/* Doc list */}
@@ -214,6 +199,15 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey }: Props)
           </button>
         </div>
       )}
+
+      <ConfirmModal
+        open={pendingDeleteId !== null}
+        title={t("doc.deleteDocTitle")}
+        message={t("doc.deleteConfirm")}
+        confirmLabel={t("doc.delete")}
+        onCancel={() => setPendingDeleteId(null)}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

@@ -63,7 +63,7 @@ export function WordDetailPanel({
         </div>
       )}
 
-      <div className="p-6 space-y-5 animate-fade-in max-w-3xl">
+      <div className="p-6 space-y-5 animate-fade-in w-full">
         {/* Word header */}
         <div>
           <div className="flex items-center gap-3 flex-wrap">

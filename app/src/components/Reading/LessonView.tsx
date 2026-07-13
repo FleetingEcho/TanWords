@@ -7,6 +7,7 @@ import { LevelBadge } from "@/components/shared/LevelBadge";
 import { SentenceParagraph, ParagraphSentence } from "./SentenceParagraph";
 import { splitSentences } from "@/lib/sentences";
 import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
+import { usePlayerOriginStore } from "@/store/playerOriginStore";
 import { SpeakerIcon, FeedIcon, SparkIcon, RefreshIcon } from "@/components/ui/icons";
 import { CheckIcon } from "@heroicons/react/24/solid";
 import { SpeakButton } from "@/components/ui/SpeakButton";
@@ -187,7 +188,10 @@ export function LessonView({ articleId, onBack, onDeleted, onReanalyzed }: Props
   const handleListenToArticle = () => {
     if (!article) return;
     if (playerActive) playerToggle();
-    else playerStart(sourceKey, article.content);
+    else {
+      playerStart(sourceKey, article.content);
+      usePlayerOriginStore.getState().setOrigin({ kind: "lesson", articleId });
+    }
   };
 
   const jumpToItem = useCallback((id: number) => {

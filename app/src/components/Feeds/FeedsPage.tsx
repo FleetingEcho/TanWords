@@ -7,6 +7,8 @@ import { useDB } from "@/hooks/useDB";
 import { useNavStore } from "@/store/navStore";
 import { useReadingStore } from "@/store/readingStore";
 import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
+import { usePlayerOriginStore } from "@/store/playerOriginStore";
+import { useFeedsNavStore } from "@/store/feedsNavStore";
 import { ReaderView } from "@/components/Reader/ReaderView";
 import { RefreshIcon } from "@/components/ui/icons";
 import type { FetchedArticle } from "@/components/Reader/ArticleReader";
@@ -245,12 +247,32 @@ export function FeedsPage() {
   const playEntry = (entry: RssEntryRow) => {
     if (!entry.audio_url) return;
     markRead(entry);
+    const feedTitle = feedsById.get(entry.feed_id)?.title ?? domainOf(entry.url);
     usePodcastPlayerStore.getState().play({
       audioUrl: entry.audio_url,
       title: entry.title,
-      feedTitle: feedsById.get(entry.feed_id)?.title ?? domainOf(entry.url),
+      feedTitle,
+    });
+    usePlayerOriginStore.getState().setOrigin({
+      kind: "reader",
+      url: entry.url,
+      title: entry.title,
+      domain: domainOf(entry.url),
+      audioUrl: entry.audio_url,
+      feedTitle,
     });
   };
+
+  // Jump back here from the player bar: reopen the in-app reader for whichever
+  // entry started the currently playing audio.
+  const pendingBrowse = useFeedsNavStore((s) => s.pendingBrowse);
+  const clearPendingBrowse = useFeedsNavStore((s) => s.clearPendingBrowse);
+
+  useEffect(() => {
+    if (!pendingBrowse) return;
+    setBrowse(pendingBrowse);
+    clearPendingBrowse();
+  }, [pendingBrowse]);
 
   const selectedFeed = selected === "all" ? null : feedsById.get(selected);
 

@@ -39,4 +39,7 @@ export const vocabulary: Dict = {
     "vocab.source.batch": "批量",
     "vocab.source.discover": "发现",
     "vocab.source.seed": "内置",
+    "vocab.dateAdded": "添加时间",
+    "vocab.dateUpdated": "更新时间",
+    "vocab.dateRangePlaceholder": "选择日期范围",
 };

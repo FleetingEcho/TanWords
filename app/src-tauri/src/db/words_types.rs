@@ -13,6 +13,7 @@ pub struct WordListItem {
     pub srs_level: i64,
     pub next_review_at: Option<String>,
     pub created_at: String,
+    pub updated_at: String,
     pub source: String,
 }
 

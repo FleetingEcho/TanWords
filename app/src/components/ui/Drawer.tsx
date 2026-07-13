@@ -26,7 +26,7 @@ export function Drawer({ open, onClose, width = 560, panelClassName, children }:
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end">
+    <div className="fixed inset-0 z-100 flex justify-end">
       <div className="absolute inset-0 bg-black/20" onClick={onClose} />
       <div
         className={cn("relative h-full max-w-full bg-background shadow-2xl", panelClassName)}

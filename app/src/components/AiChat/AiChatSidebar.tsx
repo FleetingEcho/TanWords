@@ -22,7 +22,7 @@ export function AiChatSidebar({
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   return (
-    <div className="w-52 shrink-0 border-r border-border flex flex-col bg-[hsl(var(--sidebar))]">
+    <div className="w-80 shrink-0 border-r border-border flex flex-col bg-[hsl(var(--sidebar))]">
       <div className="p-3 pb-2 border-b border-border">
         <button
           onClick={onNewChat}

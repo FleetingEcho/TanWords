@@ -42,12 +42,19 @@ export function useDBCore() {
       search?: string;
       levelFilter?: string;
       sortBy?: string;
+      /** Which timestamp the date range filters on — defaults to "created". */
+      dateField?: "created" | "updated";
+      dateFrom?: string;
+      dateTo?: string;
     }): Promise<WordListItem[]> => {
       try {
         return await invoke<WordListItem[]>("db_get_words", {
           search: opts?.search || null,
           levelFilter: opts?.levelFilter || null,
           sortBy: opts?.sortBy || null,
+          dateField: opts?.dateField || null,
+          dateFrom: opts?.dateFrom || null,
+          dateTo: opts?.dateTo || null,
         });
       } catch (e) {
         logError("getWords", e);

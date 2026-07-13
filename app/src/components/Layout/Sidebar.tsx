@@ -1,12 +1,11 @@
-import React, { useState } from "react";
+import React from "react";
 import { NavPage } from "@/store/navStore";
+import { useLayoutStore } from "@/store/layoutStore";
 import { useT } from "@/hooks/useT";
 import {
   GridIcon, BookIcon, DocIcon, ChatIcon, SlidersIcon,
   FeedIcon, ReadingIcon, ChevronIcon,
 } from "@/components/ui/icons";
-
-const COLLAPSE_KEY = "tanwords_sidebar_collapsed";
 
 interface NavItemDef {
   id: NavPage;
@@ -39,19 +38,12 @@ export function MainLayout({
   wordCount = 0,
 }: MainLayoutProps) {
   const t = useT();
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === "1");
+  const collapsed = useLayoutStore((s) => s.sidebarCollapsed);
+  const toggleCollapsed = useLayoutStore((s) => s.toggleSidebar);
   const NAV_ITEMS: NavItemDef[] = NAV_ITEM_DEFS.map((d) => ({
     ...d,
     label: t(`nav.${d.id}`),
   }));
-
-  const toggleCollapsed = () => {
-    setCollapsed((prev) => {
-      const next = !prev;
-      localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
-      return next;
-    });
-  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">

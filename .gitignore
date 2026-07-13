@@ -2,3 +2,9 @@
 ./*/**/target
 
 .codegraph/
+
+# sherpa-onnx shared libs staged by src-tauri/build.rs at build time
+app/src-tauri/sherpa-libs/
+
+# local release build outputs (deb/rpm/dmg/app) — not source, regenerate via build
+dist-releases/

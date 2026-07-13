@@ -77,7 +77,7 @@ export function SettingsPage() {
   return (
     <div className="flex h-full animate-fade-in">
       {/* Anchor nav */}
-      <nav className="w-44 shrink-0 border-r border-border px-3 py-6 space-y-0.5">
+      <nav className="w-80 shrink-0 border-r border-border px-3 py-6 space-y-0.5">
         {SECTIONS.map((id) => (
           <button
             key={id}
@@ -93,7 +93,7 @@ export function SettingsPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-2xl px-8 py-6 space-y-10">
+        <div className="max-w-full px-8 py-6 space-y-10">
           <section ref={(el) => { sectionRefs.current.general = el; }} data-section="general" className="scroll-mt-6">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">{t("settings.general")}</p>
             <div className="bg-card border border-border rounded-xl px-5 divide-y divide-border">

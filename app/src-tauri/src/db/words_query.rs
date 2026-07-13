@@ -10,6 +10,9 @@ pub fn db_get_words(
     search: Option<String>,
     level_filter: Option<String>,
     sort_by: Option<String>,
+    date_field: Option<String>,
+    date_from: Option<String>,
+    date_to: Option<String>,
     conn: State<'_, AppState>,
 ) -> Result<Vec<WordListItem>, String> {
     let db = db::lock_db(&conn)?;
@@ -20,6 +23,7 @@ pub fn db_get_words(
                 COALESCE(sr.srs_level, 0) as srs_level,
                 sr.next_review_at,
                 w.created_at,
+                w.updated_at,
                 COALESCE(w.source, 'manual') as source
          FROM words w
          LEFT JOIN srs_records sr ON sr.entity_id = w.id AND sr.entity_type = 'word'
@@ -41,6 +45,22 @@ pub fn db_get_words(
             sql.push_str(&format!(" AND w.level = ?{idx}"));
             param_values.push(Box::new(lv.clone()));
         }
+    }
+
+    // Date-range filter, on either created_at or updated_at (default created_at).
+    let date_col = match date_field.as_deref() {
+        Some("updated") => "w.updated_at",
+        _ => "w.created_at",
+    };
+    if let Some(ref from) = date_from {
+        let idx = param_values.len() + 1;
+        sql.push_str(&format!(" AND {date_col} >= ?{idx}"));
+        param_values.push(Box::new(from.clone()));
+    }
+    if let Some(ref to) = date_to {
+        let idx = param_values.len() + 1;
+        sql.push_str(&format!(" AND {date_col} <= ?{idx}"));
+        param_values.push(Box::new(format!("{} 23:59:59", to)));
     }
 
     match sort_by.as_deref() {
@@ -67,7 +87,8 @@ pub fn db_get_words(
                 srs_level: row.get(6)?,
                 next_review_at: row.get(7)?,
                 created_at: row.get(8)?,
-                source: row.get(9)?,
+                updated_at: row.get(9)?,
+                source: row.get(10)?,
             })
         })
         .map_err(|e| e.to_string())?;

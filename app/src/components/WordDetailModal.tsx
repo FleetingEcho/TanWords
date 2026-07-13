@@ -7,7 +7,6 @@ import { findBestProvider } from "@/providers/select";
 import { useDB } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { toast } from "sonner";
-import { FloatingChatButton } from "@/components/WordChatPanel";
 import { LoadingSkeleton, ErrorState } from "@/components/WordDetailContent";
 import { EnrichmentText } from "@/components/EnrichmentText";
 import { parseEnrichmentStream, ParsedEnrichment } from "@/lib/enrichMeta";
@@ -23,7 +22,6 @@ export function WordDetailModal() {
   const [error, setError] = useState<string | null>(null);
   const [legacy, setLegacy] = useState(false);
   const [added, setAdded] = useState(false);
-  const [wordId, setWordId] = useState<number | null>(null);
 
   const runAiEnrich = useCallback(async (w: string, signal?: AbortSignal) => {
     const provider = findBestProvider();
@@ -58,14 +56,12 @@ export function WordDetailModal() {
     setError(null);
     setLegacy(false);
     setAdded(false);
-    setWordId(null);
     setLoading(true);
 
     const controller = new AbortController();
 
     db.getWordDetailByWord(word)
       .then((localDetail) => {
-        if (localDetail?.id) setWordId(localDetail.id);
         if (localDetail?.enrichment_text) {
           setParsed({
             text: localDetail.enrichment_text,
@@ -110,8 +106,6 @@ export function WordDetailModal() {
     }
   };
 
-  const enrichedContextStr = parsed?.text || "";
-
   return (
     <Dialog open={!!word} onClose={closeWordModal} maxWidth="max-w-xl">
       <div className="relative">
@@ -152,15 +146,6 @@ export function WordDetailModal() {
             </div>
           )}
         </div>
-
-        {word && (
-          <FloatingChatButton
-            wordId={wordId}
-            word={word}
-            enrichedContext={enrichedContextStr}
-            insideModal
-          />
-        )}
       </div>
     </Dialog>
   );

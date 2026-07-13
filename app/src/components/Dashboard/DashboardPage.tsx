@@ -80,7 +80,7 @@ export function DashboardPage() {
   const resume = stats?.resume ?? null;
 
   return (
-    <div className="p-6 space-y-5 animate-fade-in max-w-5xl">
+    <div className="p-6 space-y-5 animate-fade-in w-full">
       {/* Greeting */}
       <div>
         <h1 className="text-2xl font-bold">{greeting}</h1>

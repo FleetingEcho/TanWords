@@ -59,8 +59,8 @@ function getAudio(): HTMLAudioElement {
     if (isFinite(audio!.duration)) usePodcastPlayerStore.setState({ duration: audio!.duration });
   });
   audio.addEventListener("ended", () => {
-    releaseAudioChannel(pauseAudio);
-    usePodcastPlayerStore.setState({ status: "paused", position: audio!.duration || 0 });
+    // Episode finished — close the bar rather than leaving a stalled "paused at the end" state.
+    usePodcastPlayerStore.getState().stop();
   });
   audio.addEventListener("error", () => {
     if (usePodcastPlayerStore.getState().status !== "idle") {

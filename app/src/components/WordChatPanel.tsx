@@ -5,7 +5,6 @@ import { useT } from "@/hooks/useT";
 import { toast } from "sonner";
 import { MessageBubble } from "@/components/AiChat/MessageBubble";
 import { LazyWordNotesEditor } from "@/components/LazyWordNotesEditor";
-import { CloseIcon, ChatIcon } from "@/components/ui/icons";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -16,10 +15,6 @@ interface PanelProps {
   wordId: number | null;
   word: string;
   enrichedContext?: string;
-}
-
-interface FABProps extends PanelProps {
-  insideModal?: boolean;
 }
 
 function buildSystemPrompt(word: string, context: string): string {
@@ -250,68 +245,6 @@ export function WordChatPanel({ wordId, word, enrichedContext = "" }: PanelProps
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-// ── Floating chat button (FAB) ───────────────────────────────────────────────
-
-export function FloatingChatButton({ wordId, word, enrichedContext = "", insideModal = false }: FABProps) {
-  const [open, setOpen] = useState(false);
-  const t = useT();
-
-  // Close panel when word changes
-  useEffect(() => { setOpen(false); }, [word, wordId]);
-
-  const positionClass = insideModal
-    ? "absolute bottom-5 right-5"
-    : "fixed bottom-6 right-6";
-
-  return (
-    <div className={`${positionClass} z-50 flex flex-col items-end gap-2`} style={{ pointerEvents: "none" }}>
-      {/* Panel */}
-      <div
-        style={{
-          pointerEvents: open ? "auto" : "none",
-          opacity: open ? 1 : 0,
-          transform: open ? "scale(1) translateY(0)" : "scale(0.92) translateY(8px)",
-          transformOrigin: "bottom right",
-          transition: "opacity 0.18s ease, transform 0.2s cubic-bezier(0.34,1.56,0.64,1)",
-          width: "380px",
-          height: "540px",
-        }}
-        className="bg-card border border-border rounded-2xl shadow-2xl overflow-hidden flex flex-col"
-      >
-        {/* Panel header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
-          <span className="text-sm font-semibold text-foreground">{word}</span>
-          <button
-            onClick={() => setOpen(false)}
-            className="w-5 h-5 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
-            style={{ pointerEvents: "auto" }}
-          >
-            <CloseIcon className="w-3 h-3" />
-          </button>
-        </div>
-        <div className="flex-1 p-3 overflow-hidden">
-          {/* Mount fresh panel on each open to guarantee a DB reload */}
-          {open && <WordChatPanel wordId={wordId} word={word} enrichedContext={enrichedContext} />}
-        </div>
-      </div>
-
-      {/* FAB */}
-      <button
-        onClick={() => setOpen((v) => !v)}
-        style={{ pointerEvents: "auto" }}
-        className={`w-11 h-11 rounded-full shadow-lg flex items-center justify-center transition-all duration-200 ${
-          open
-            ? "bg-muted text-muted-foreground hover:bg-muted/80"
-            : "bg-primary text-white hover:opacity-90 hover:scale-105"
-        }`}
-        aria-label={open ? t("chat.close") : t("chat.open")}
-      >
-        {open ? <CloseIcon className="w-4 h-4" /> : <ChatIcon className="w-4 h-4" />}
-      </button>
     </div>
   );
 }

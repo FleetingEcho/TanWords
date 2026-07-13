@@ -5,8 +5,8 @@ import { findBestProvider } from "@/providers/select";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useT } from "@/hooks/useT";
 import { toast } from "sonner";
-import { FloatingChatButton } from "@/components/WordChatPanel";
-import { WordListPanel, LevelFilter, SortBy } from "./WordListPanel";
+import { useSelectedWordStore } from "@/store/selectedWordStore";
+import { WordListPanel, LevelFilter, SortBy, DateField } from "./WordListPanel";
 import { WordDetailPanel } from "./WordDetailPanel";
 import { GenerateVocabModal } from "./GenerateVocabModal";
 import { parseEnrichmentStream, ParsedEnrichment } from "@/lib/enrichMeta";
@@ -44,6 +44,9 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
   const [sortBy, setSortBy] = useState<SortBy>("recent");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [dateField, setDateField] = useState<DateField>("created");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(0);
   const [generateOpen, setGenerateOpen] = useState(false);
 
@@ -68,12 +71,15 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
       search: debouncedSearch || undefined,
       levelFilter: levelFilter === "all" ? undefined : levelFilter,
       sortBy,
+      dateField,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
     });
     setWords(results);
     setPage(0);
   };
 
-  useEffect(() => { loadWords(); }, [levelFilter, sortBy, debouncedSearch]);
+  useEffect(() => { loadWords(); }, [levelFilter, sortBy, debouncedSearch, dateField, dateFrom, dateTo]);
 
   // Full, unfiltered vocabulary set — used for dedup in GenerateVocabModal, which
   // must check against the whole vocabulary regardless of the list's current filters.
@@ -88,7 +94,7 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
     const handler = () => { loadWords(); loadAllWordsSet(); };
     window.addEventListener("vocab-updated", handler);
     return () => window.removeEventListener("vocab-updated", handler);
-  }, [levelFilter, sortBy, debouncedSearch]);
+  }, [levelFilter, sortBy, debouncedSearch, dateField, dateFrom, dateTo]);
 
   // Source filtering is client-side: getWords returns the full result set
   const sources = useMemo(
@@ -281,6 +287,14 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
   const chatWord = lookup ? lookup.word : selected?.word.word ?? "";
   const chatWordId = lookup ? lookup.wordId : selected?.word.id ?? null;
 
+  // Publish the selected word so ToolsModal's word-chat tab can show it.
+  const setSelectedWord = useSelectedWordStore((s) => s.setSelectedWord);
+  const clearSelectedWord = useSelectedWordStore((s) => s.clear);
+  useEffect(() => {
+    setSelectedWord({ wordId: chatWordId, word: chatWord, enrichedContext: activeEnriched?.text || "" });
+  }, [chatWordId, chatWord, activeEnriched, setSelectedWord]);
+  useEffect(() => () => clearSelectedWord(), [clearSelectedWord]);
+
   return (
     <div className="flex h-full">
       <WordListPanel
@@ -295,10 +309,16 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
         pageSize={PAGE_SIZE}
         showAiLookup={showAiLookup}
         lookupActive={!!lookup}
+        dateField={dateField}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
         onSearchChange={(v) => { setSearch(v); setPage(0); }}
         onSortChange={setSortBy}
         onFilterChange={setLevelFilter}
         onSourceFilterChange={setSourceFilter}
+        onDateFieldChange={setDateField}
+        onDateFromChange={setDateFrom}
+        onDateToChange={setDateTo}
         onSelect={selectWord}
         onPageChange={setPage}
         onDoubleClick={(word) => openWordModal(word)}
@@ -332,14 +352,6 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
         }}
         onReenrich={() => selected && enrichSelected(selected.word.word)}
       />
-
-      {chatWord && (
-        <FloatingChatButton
-          wordId={chatWordId}
-          word={chatWord}
-          enrichedContext={activeEnriched?.text || ""}
-        />
-      )}
 
       <GenerateVocabModal
         open={generateOpen}

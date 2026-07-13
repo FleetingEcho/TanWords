@@ -43,7 +43,7 @@ export function ReaderView({ url, title, domain, onBack, onOpenExternal, onLearn
         </button>
       </div>
 
-      <ArticleReader url={url} onOpenExternal={onOpenExternal} onLearn={onLearn} audio={audio} />
+      <ArticleReader url={url} domain={domain} onOpenExternal={onOpenExternal} onLearn={onLearn} audio={audio} />
     </div>
   );
 }
