@@ -362,7 +362,8 @@ export function LessonView({ articleId, onBack, onDeleted, onReanalyzed }: Props
             </button>
           </div>
         </div>
-        <button
+        <div className="flex gap-3">
+          <button
           onClick={() => setConfirmReanalyze(true)}
           disabled={isAnalyzing}
           title={t("reading.reanalyze")}
@@ -403,6 +404,7 @@ export function LessonView({ articleId, onBack, onDeleted, onReanalyzed }: Props
             {t("reading.addAll", { n: pendingWords })}
           </button>
         )}
+        </div>
       </div>
 
       {/* Two-column lesson */}

@@ -49,7 +49,6 @@ export function SettingsPage() {
   const t = useT();
   const db = useDB();
 
-  const [active, setActive] = useState<SectionId>("general");
   const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
     general: null, providers: null, learning: null, tts: null, data: null,
   });
@@ -60,9 +59,6 @@ export function SettingsPage() {
       (entries) => {
         const visible = entries.filter((e) => e.isIntersecting);
         if (visible.length === 0) return;
-        const topMost = visible.reduce((a, b) => (a.boundingClientRect.top < b.boundingClientRect.top ? a : b));
-        const id = (topMost.target as HTMLElement).dataset.section as SectionId;
-        if (id) setActive(id);
       },
       { rootMargin: "-10% 0px -70% 0px" }
     );
@@ -70,27 +66,8 @@ export function SettingsPage() {
     return () => observer.disconnect();
   }, []);
 
-  const scrollTo = (id: SectionId) => {
-    sectionRefs.current[id]?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
-
   return (
     <div className="flex h-full animate-fade-in">
-      {/* Anchor nav */}
-      <nav className="w-80 shrink-0 border-r border-border px-3 py-6 space-y-0.5">
-        {SECTIONS.map((id) => (
-          <button
-            key={id}
-            onClick={() => scrollTo(id)}
-            className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-              active === id ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted"
-            }`}
-          >
-            {t(`settings.section.${id}`)}
-          </button>
-        ))}
-      </nav>
-
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-full px-8 py-6 space-y-10">
