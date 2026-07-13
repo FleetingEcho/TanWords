@@ -19,9 +19,9 @@ export function ToolsBall() {
   const openModal = useToolsBallStore((s) => s.openModal);
   const ballPos = useToolsBallStore((s) => s.ballPos);
   const setBallPos = useToolsBallStore((s) => s.setBallPos);
-  const playerBarVisible =
-    useTtsPlayerStore((s) => s.status !== "idle") ||
-    usePodcastPlayerStore((s) => s.status !== "idle");
+  const ttsPlayerActive = useTtsPlayerStore((s) => s.status !== "idle");
+  const podcastPlayerActive = usePodcastPlayerStore((s) => s.status !== "idle");
+  const playerBarVisible = ttsPlayerActive || podcastPlayerActive;
 
   const [dragging, setDragging] = React.useState(false);
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number; moved: boolean } | null>(null);

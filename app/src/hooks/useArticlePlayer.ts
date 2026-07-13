@@ -168,6 +168,14 @@ export function useArticlePlayer() {
 
     return () => {
       cancelled = true;
+      // Immediately stop any in-flight playback so the old sentence
+      // doesn't overlap with the new one when the user skips ahead.
+      window.speechSynthesis?.cancel();
+      const audio = audioRef.current;
+      audio.onended = null;
+      audio.onerror = null;
+      audio.pause();
+      audio.removeAttribute("src");
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceKey, loadToken]);
