@@ -164,19 +164,30 @@ pub fn tts_delete_model(
     std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())
 }
 
-#[tauri::command(async)]
-pub fn tts_synthesize(
+#[tauri::command]
+pub async fn tts_synthesize(
     state: tauri::State<'_, crate::AppState>,
     text: String,
     speaker_id: u32,
     speed: f32,
 ) -> Result<String, String> {
-    let mut guard = state.tts.lock().map_err(|e| e.to_string())?;
-    let engine = guard.as_mut().ok_or_else(|| "model-not-loaded".to_string())?;
-    let (samples, sample_rate) = engine.handle.synthesize(&text, speaker_id as i32, speed)?;
-    let pcm = f32_samples_to_i16(&samples);
-    let wav = pcm_to_wav(&pcm, sample_rate);
-    Ok(base64_encode(&wav))
+    // Kokoro/VITS inference is synchronous, CPU-bound ONNX work. Running it
+    // inline inside the tokio-spawned command task (as `(async)` on a plain
+    // fn would) blocks a shared executor worker thread for its full duration;
+    // with several sentences in flight (current + prefetch) this starves
+    // other IPC commands. `spawn_blocking` moves it to the dedicated blocking
+    // pool instead.
+    let tts = state.tts.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut guard = tts.lock().map_err(|e| e.to_string())?;
+        let engine = guard.as_mut().ok_or_else(|| "model-not-loaded".to_string())?;
+        let (samples, sample_rate) = engine.handle.synthesize(&text, speaker_id as i32, speed)?;
+        let pcm = f32_samples_to_i16(&samples);
+        let wav = pcm_to_wav(&pcm, sample_rate);
+        Ok(base64_encode(&wav))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

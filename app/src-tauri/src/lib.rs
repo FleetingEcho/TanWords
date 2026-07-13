@@ -1,5 +1,5 @@
 use rusqlite::Connection;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 pub mod appconfig;
 pub mod db;
@@ -16,7 +16,10 @@ pub struct AppState {
     /// The active TTS engine, if one has been loaded. Loaded lazily — never
     /// populated at startup — and hot-swapped in place when the user picks a
     /// different model.
-    pub tts: Mutex<Option<tts::LoadedEngine>>,
+    /// `Arc`-wrapped so `tts_synthesize` can clone a `'static` handle into
+    /// `spawn_blocking`, keeping the CPU-bound ONNX inference off the tokio
+    /// worker threads that also service other IPC commands.
+    pub tts: Arc<Mutex<Option<tts::LoadedEngine>>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -31,7 +34,7 @@ pub fn run() {
         .manage(AppState {
             db: Mutex::new(conn),
             db_path: Mutex::new(db_path),
-            tts: Mutex::new(None),
+            tts: Arc::new(Mutex::new(None)),
         })
         .invoke_handler(tauri::generate_handler![
             db::db_get_word_count,

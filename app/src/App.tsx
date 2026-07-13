@@ -17,10 +17,11 @@ import { useSettingsStore } from "@/store/settingsStore";
 import { useNavStore } from "@/store/navStore";
 import { useDB } from "@/hooks/useDB";
 import { initProviders } from "@/lib/initProviders";
+import { invoke } from "@tauri-apps/api/core";
 import { ENRICHED_SEED_WORDS, BASIC_SEED_WORDS } from "@/data/seedWords";
 
 function App() {
-  const { loadFromDB } = useSettingsStore();
+  const { loadFromDB, isLoaded, ttsModelPath } = useSettingsStore();
   const db = useDB();
   const { currentPage, currentWordId, navigate } = useNavStore();
 
@@ -31,6 +32,15 @@ function App() {
     initProviders();
     loadFromDB();
   }, []);
+
+  // Preload the on-device TTS model at startup instead of on the first
+  // "Listen to article" click — sherpa-onnx session build + its own warm-up
+  // synth take a few seconds, and paying that cost eagerly here keeps the
+  // click-to-first-sentence latency down to just one real synth call.
+  useEffect(() => {
+    if (!isLoaded || !ttsModelPath) return;
+    invoke("tts_load_model", { path: ttsModelPath }).catch(() => {});
+  }, [isLoaded, ttsModelPath]);
 
   // Seed vocabulary once per install (localStorage flag prevents re-seeding)
   useEffect(() => {
