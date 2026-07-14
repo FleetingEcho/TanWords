@@ -28,6 +28,8 @@ export default function SceneLabPage() {
   const [expanding, setExpanding] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<KnowledgeMapSummary | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [regeneratingExamples, setRegeneratingExamples] = useState(false);
+  const [exampleProgress, setExampleProgress] = useState({ done: 0, total: 0 });
 
   const refreshList = useCallback(() => db.listKnowledgeMaps().then(setMaps), [db]);
   useEffect(() => { refreshList(); }, [refreshList]);
@@ -166,6 +168,38 @@ export default function SceneLabPage() {
     }).finally(() => exampleJobsRef.current.delete(node.id));
   };
 
+  const regenerateAllExamples = async () => {
+    if (!map || regeneratingExamples || expanding) return;
+    const provider = findBestProvider();
+    if (!provider) {
+      toast.error(t("knowledgeMap.configureAI"));
+      return;
+    }
+    const words = map.nodes.filter((node) => node.kind === "word");
+    if (!words.length) return;
+    setRegeneratingExamples(true);
+    setExampleProgress({ done: 0, total: words.length });
+    let updated = 0;
+    let done = 0;
+    try {
+      for (let start = 0; start < words.length; start += 2) {
+        await Promise.allSettled(words.slice(start, start + 2).map(async (word) => {
+          try {
+            const examples = await generateExamples(provider, map.root_label, word, levels);
+            if (examples.length >= 2 && await db.updateKnowledgeNodeNote(word.id, examples.join(" || "))) updated += 1;
+          } finally {
+            done += 1;
+            setExampleProgress({ done, total: words.length });
+          }
+        }));
+      }
+      await loadMap(map.id);
+      toast.success(t("knowledgeMap.examplesRegenerated", { updated, total: words.length }));
+    } finally {
+      setRegeneratingExamples(false);
+    }
+  };
+
   const explore = async (query: string) => {
     if (!map || !current || expanding) return;
     const provider = findBestProvider();
@@ -253,7 +287,10 @@ export default function SceneLabPage() {
       <strong title={map.root_label} className="block max-w-56 shrink truncate font-serif text-lg leading-tight">{map.root_label}</strong>
       <span className="text-xs text-muted-foreground">{t("knowledgeMap.nodes", { count: map.nodes.length })}</span>
       <KnowledgeSearch nodes={map.nodes} busy={expanding} onSelect={selectNode} onExplore={explore} />
-      <div className="ml-auto flex items-center gap-2"><span className="text-xs text-muted-foreground">{t("knowledgeMap.selected", { count: checked.size })}</span><Button onClick={add} disabled={!checked.size} className="h-8 text-xs">{t("knowledgeMap.addVocabulary")}</Button></div>
+      <div className="ml-auto flex shrink-0 items-center gap-2">
+        <Button variant="outline" onClick={regenerateAllExamples} disabled={regeneratingExamples || expanding} className="h-8 whitespace-nowrap text-xs">{regeneratingExamples ? t("knowledgeMap.regeneratingExamplesProgress", { done: exampleProgress.done, total: exampleProgress.total }) : t("knowledgeMap.regenerateAllExamples")}</Button>
+        <span className="text-xs text-muted-foreground">{t("knowledgeMap.selected", { count: checked.size })}</span><Button onClick={add} disabled={!checked.size} className="h-8 text-xs">{t("knowledgeMap.addVocabulary")}</Button>
+      </div>
     </header>
     <div className="grid min-h-0 flex-1 grid-cols-[minmax(360px,32%)_minmax(0,1fr)]">
       <KnowledgeOutline nodes={map.nodes} selectedId={current.id} onSelect={selectNode} onAdd={addOne} />
