@@ -103,6 +103,22 @@ pub fn db_create_knowledge_map(
 }
 
 #[tauri::command]
+pub fn db_delete_knowledge_map(
+    map_id: i64,
+    conn: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut db = db::lock_db(&conn)?;
+    let tx = db.transaction().map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM knowledge_edges WHERE map_id=?1", [map_id])
+        .map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM knowledge_nodes WHERE map_id=?1", [map_id])
+        .map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM knowledge_maps WHERE id=?1", [map_id])
+        .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn db_get_knowledge_map(
     map_id: i64,
     conn: State<'_, AppState>,

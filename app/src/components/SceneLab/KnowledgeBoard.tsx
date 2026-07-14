@@ -40,7 +40,7 @@ export function KnowledgeBoard({ nodes, current, checked, expanding, onSelect, o
           </div>
           {learnable && <Button variant={checked.has(current.id) ? "secondary" : "default"} disabled={Boolean(current.word_id)} onClick={() => onToggle(current.id)}>{current.word_id ? t("knowledgeMap.addedVocabulary") : checked.has(current.id) ? t("knowledgeMap.cancelSelection") : `+ ${t("knowledgeMap.addVocabulary")}`}</Button>}
         </div>
-        {current.note && <div className="mt-6 rounded-2xl bg-muted/50 p-4 text-sm leading-7">{current.note}</div>}
+        {current.note && <div className="mt-6 rounded-2xl bg-muted/50 p-4 text-sm leading-7">{learnable && <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-primary">{t("knowledgeMap.example")}</div>}{current.note}</div>}
       </section>
 
       <section className="mt-8">
@@ -58,7 +58,7 @@ export function KnowledgeBoard({ nodes, current, checked, expanding, onSelect, o
               <span className="text-[9px] font-bold uppercase tracking-widest text-primary">{t(`knowledgeMap.kind.${node.kind}`)}{node.level ? ` · ${node.level}` : ""}</span>
               <h3 className="mt-2 truncate font-serif text-xl font-bold">{node.label}</h3>
               <p className="mt-1 truncate text-sm text-muted-foreground">{node.zh || t("knowledgeMap.noTranslation")}</p>
-              {node.note && <p className="mt-3 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{node.note}</p>}
+              {node.note && <div className="mt-3 text-xs leading-relaxed text-muted-foreground"><span className="mr-1 font-semibold text-primary">{isLearnable(node) ? `${t("knowledgeMap.example")}:` : ""}</span><span className="line-clamp-2">{node.note}</span></div>}
             </button>
             {isLearnable(node) && <button disabled={Boolean(node.word_id)} onClick={() => onToggle(node.id)} className={`absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full border text-xs ${node.word_id ? "bg-emerald-500 text-white" : checked.has(node.id) ? "bg-primary text-primary-foreground" : "bg-background hover:border-primary"}`}>{node.word_id || checked.has(node.id) ? "✓" : "+"}</button>}
           </article>)}

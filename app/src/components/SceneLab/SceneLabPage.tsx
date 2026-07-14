@@ -46,7 +46,8 @@ export default function SceneLabPage() {
     setGenerating(true);
     setProgress(0);
     try {
-      const id = await db.createKnowledgeMap(topic, "topic", levels);
+      const rootType = topic.length > 18 || topic.trim().split(/\s+/).length >= 5 || /[。！？.!?]/.test(topic) ? "situation" : "topic";
+      const id = await db.createKnowledgeMap(topic, rootType, levels);
       if (!id) return;
       const current = await db.getKnowledgeMap(id);
       const root = current?.nodes.find((node) => node.parent_id === null);
@@ -82,7 +83,24 @@ export default function SceneLabPage() {
 
   const open = async (id: number) => {
     setChecked(new Set());
-    await loadMap(id);
+    const value = await loadMap(id);
+    const sentenceBranch = DEFAULT_BRANCHES.find((branch) => branch.label === "Common Situational Sentences");
+    const root = value?.nodes.find((node) => node.parent_id === null);
+    if (value && root && sentenceBranch && !value.nodes.some((node) => node.parent_id === root.id && node.label === sentenceBranch.label)) {
+      await db.addKnowledgeNodes(id, root.id, [sentenceBranch]);
+      await loadMap(id, root.id);
+    }
+  };
+
+  const removeMap = async (item: KnowledgeMapSummary) => {
+    if (!window.confirm(t("knowledgeMap.deleteConfirm", { name: item.root_label }))) return;
+    const deleted = await db.deleteKnowledgeMap(item.id);
+    if (deleted) {
+      toast.success(t("knowledgeMap.deleted"));
+      await refreshList();
+    } else {
+      toast.error(t("knowledgeMap.deleteFailed"));
+    }
   };
 
   const expand = async (target = selected) => {
@@ -168,7 +186,10 @@ export default function SceneLabPage() {
     </div>
     {generating && <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} /></div>}
     <h2 className="mb-3 mt-10 font-semibold">{t("knowledgeMap.myMaps")}</h2>
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{maps.map((item) => <button key={item.id} onClick={() => open(item.id)} className="rounded-2xl border bg-card p-4 text-left hover:border-primary/50"><strong>{item.root_label}</strong><p className="mt-1 text-xs text-muted-foreground">{t("knowledgeMap.nodes", { count: item.node_count })} · {item.root_type}</p></button>)}</div>
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{maps.map((item) => <article key={item.id} className="group relative rounded-2xl border bg-card transition hover:border-primary/50">
+      <button onClick={() => open(item.id)} className="block w-full p-4 pr-12 text-left"><strong>{item.root_label}</strong><p className="mt-1 text-xs text-muted-foreground">{t("knowledgeMap.nodes", { count: item.node_count })} · {t(`knowledgeMap.kind.${item.root_type}`)}</p></button>
+      <button onClick={() => removeMap(item)} aria-label={`${t("knowledgeMap.delete")}: ${item.root_label}`} title={t("knowledgeMap.delete")} className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition hover:bg-destructive/15 hover:text-destructive group-hover:opacity-100 focus:opacity-100">×</button>
+    </article>)}</div>
   </div>;
 
   const current = selected ?? map.nodes.find((node) => node.parent_id === null) ?? map.nodes[0];

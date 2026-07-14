@@ -101,6 +101,7 @@ pub fn run() {
             db::db_add_scene_words_to_vocabulary,
             db::db_list_knowledge_maps,
             db::db_create_knowledge_map,
+            db::db_delete_knowledge_map,
             db::db_get_knowledge_map,
             db::db_add_knowledge_nodes,
             db::db_add_map_words_to_vocabulary,
