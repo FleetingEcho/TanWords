@@ -50,6 +50,7 @@ export const knowledgeMap: Dict = {
   "knowledgeMap.deleteConfirm": "Delete “{name}” and all of its content? This cannot be undone.",
   "knowledgeMap.deleted": "Map deleted",
   "knowledgeMap.deleteFailed": "Failed to delete map",
+  "knowledgeMap.deleting": "Deleting…",
   "knowledgeMap.example": "Example",
   "knowledgeMap.commonSentences": "Common situational sentences",
   "knowledgeMap.kind.topic": "Topic",

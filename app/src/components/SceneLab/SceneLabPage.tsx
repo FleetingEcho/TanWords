@@ -10,6 +10,7 @@ import { KnowledgeOutline } from "./KnowledgeOutline";
 import { KnowledgeBoard } from "./KnowledgeBoard";
 import { KnowledgeSearch } from "./KnowledgeSearch";
 import { useT } from "@/hooks/useT";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 
 export default function SceneLabPage() {
   const db = useDB();
@@ -23,6 +24,8 @@ export default function SceneLabPage() {
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
   const [expanding, setExpanding] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<KnowledgeMapSummary | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const refreshList = useCallback(() => db.listKnowledgeMaps().then(setMaps), [db]);
   useEffect(() => { refreshList(); }, [refreshList]);
@@ -65,7 +68,8 @@ export default function SceneLabPage() {
       for (let start = 0; start < categoryIds.length; start += 2) {
         await Promise.allSettled(categoryIds.slice(start, start + 2).map(async (categoryId, offset) => {
           const index = start + offset;
-          const nodes = await generateBranch(provider, topic, DEFAULT_BRANCHES[index], levels, known);
+          const excluded = DEFAULT_BRANCHES[index].label === "Common Situational Sentences" ? [] : known;
+          const nodes = await generateBranch(provider, topic, DEFAULT_BRANCHES[index], levels, excluded);
           await db.addKnowledgeNodes(id, categoryId, nodes);
           finished += 1;
           setProgress(Math.round(finished / categoryIds.length * 90 + 10));
@@ -83,24 +87,42 @@ export default function SceneLabPage() {
 
   const open = async (id: number) => {
     setChecked(new Set());
-    const value = await loadMap(id);
+    let value = await loadMap(id);
     const sentenceBranch = DEFAULT_BRANCHES.find((branch) => branch.label === "Common Situational Sentences");
     const root = value?.nodes.find((node) => node.parent_id === null);
     if (value && root && sentenceBranch && !value.nodes.some((node) => node.parent_id === root.id && node.label === sentenceBranch.label)) {
       await db.addKnowledgeNodes(id, root.id, [sentenceBranch]);
-      await loadMap(id, root.id);
+      value = await loadMap(id, root.id);
+    }
+    const branch = value?.nodes.find((node) => node.parent_id === root?.id && node.label === sentenceBranch?.label);
+    const existing = branch ? value?.nodes.filter((node) => node.parent_id === branch.id) ?? [] : [];
+    const provider = findBestProvider();
+    if (value && branch && existing.length < 5 && provider) {
+      setExpanding(true);
+      try {
+        const sentences = await generateBranch(provider, value.root_label, branch, levels, existing.map((node) => node.label));
+        await db.addKnowledgeNodes(id, branch.id, sentences);
+        await loadMap(id, root?.id);
+      } catch (error: any) {
+        toast.error(error?.message || t("knowledgeMap.expandFailed"));
+      } finally {
+        setExpanding(false);
+      }
     }
   };
 
-  const removeMap = async (item: KnowledgeMapSummary) => {
-    if (!window.confirm(t("knowledgeMap.deleteConfirm", { name: item.root_label }))) return;
-    const deleted = await db.deleteKnowledgeMap(item.id);
+  const removeMap = async () => {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    const deleted = await db.deleteKnowledgeMap(deleteTarget.id);
     if (deleted) {
       toast.success(t("knowledgeMap.deleted"));
+      setDeleteTarget(null);
       await refreshList();
     } else {
       toast.error(t("knowledgeMap.deleteFailed"));
     }
+    setDeleting(false);
   };
 
   const expand = async (target = selected) => {
@@ -112,7 +134,10 @@ export default function SceneLabPage() {
     }
     setExpanding(true);
     try {
-      const nodes = await expandNode(provider, map.root_label, target, levels, map.nodes.map((node) => node.label));
+      const excluded = target.label === "Common Situational Sentences"
+        ? map.nodes.filter((node) => node.parent_id === target.id).map((node) => node.label)
+        : map.nodes.map((node) => node.label);
+      const nodes = await expandNode(provider, map.root_label, target, levels, excluded);
       if (!nodes.length) throw new Error(t("knowledgeMap.noModelItems"));
       await db.addKnowledgeNodes(map.id, target.id, nodes);
       await loadMap(map.id, target.id);
@@ -176,7 +201,7 @@ export default function SceneLabPage() {
     }
   };
 
-  if (!map) return <div className="mx-auto max-w-5xl p-8">
+  if (!map) return <><div className="mx-auto max-w-5xl p-8">
     <p className="text-xs font-bold uppercase tracking-[.2em] text-primary">Infinite Knowledge Map</p>
     <h1 className="mt-2 font-serif text-4xl font-bold">{t("knowledgeMap.title")}</h1>
     <p className="mt-2 text-muted-foreground">{t("knowledgeMap.subtitle")}</p>
@@ -188,9 +213,17 @@ export default function SceneLabPage() {
     <h2 className="mb-3 mt-10 font-semibold">{t("knowledgeMap.myMaps")}</h2>
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{maps.map((item) => <article key={item.id} className="group relative rounded-2xl border bg-card transition hover:border-primary/50">
       <button onClick={() => open(item.id)} className="block w-full p-4 pr-12 text-left"><strong>{item.root_label}</strong><p className="mt-1 text-xs text-muted-foreground">{t("knowledgeMap.nodes", { count: item.node_count })} · {t(`knowledgeMap.kind.${item.root_type}`)}</p></button>
-      <button onClick={() => removeMap(item)} aria-label={`${t("knowledgeMap.delete")}: ${item.root_label}`} title={t("knowledgeMap.delete")} className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition hover:bg-destructive/15 hover:text-destructive group-hover:opacity-100 focus:opacity-100">×</button>
+      <button onClick={() => setDeleteTarget(item)} aria-label={`${t("knowledgeMap.delete")}: ${item.root_label}`} title={t("knowledgeMap.delete")} className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition hover:bg-destructive/15 hover:text-destructive group-hover:opacity-100 focus:opacity-100">×</button>
     </article>)}</div>
-  </div>;
+  </div><ConfirmModal
+    open={Boolean(deleteTarget)}
+    title={t("knowledgeMap.delete")}
+    message={t("knowledgeMap.deleteConfirm", { name: deleteTarget?.root_label ?? "" })}
+    confirmLabel={deleting ? t("knowledgeMap.deleting") : t("knowledgeMap.delete")}
+    confirmDisabled={deleting}
+    onConfirm={removeMap}
+    onCancel={() => !deleting && setDeleteTarget(null)}
+  /></>;
 
   const current = selected ?? map.nodes.find((node) => node.parent_id === null) ?? map.nodes[0];
   if (!current) return null;
@@ -198,7 +231,7 @@ export default function SceneLabPage() {
   return <div className="flex h-full min-h-0 flex-col">
     <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4">
       <Button variant="ghost" onClick={() => { setMap(null); setSelected(null); refreshList(); }}>{t("knowledgeMap.back")}</Button>
-      <strong className="font-serif text-lg">{map.root_label}</strong>
+      <strong title={map.root_label} className="block max-w-56 shrink truncate font-serif text-lg leading-tight">{map.root_label}</strong>
       <span className="text-xs text-muted-foreground">{t("knowledgeMap.nodes", { count: map.nodes.length })}</span>
       <KnowledgeSearch nodes={map.nodes} busy={expanding} onSelect={setSelected} onExplore={explore} />
       <div className="ml-auto flex items-center gap-2"><span className="text-xs text-muted-foreground">{t("knowledgeMap.selected", { count: checked.size })}</span><Button onClick={add} disabled={!checked.size} className="h-8 text-xs">{t("knowledgeMap.addVocabulary")}</Button></div>

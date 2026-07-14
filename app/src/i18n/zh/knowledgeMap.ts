@@ -50,6 +50,7 @@ export const knowledgeMap: Dict = {
   "knowledgeMap.deleteConfirm": "确定删除“{name}”及其全部内容吗？此操作无法撤销。",
   "knowledgeMap.deleted": "地图已删除",
   "knowledgeMap.deleteFailed": "删除地图失败",
+  "knowledgeMap.deleting": "正在删除…",
   "knowledgeMap.example": "例句",
   "knowledgeMap.commonSentences": "常用情景句",
   "knowledgeMap.kind.topic": "主题",
