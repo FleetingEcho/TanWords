@@ -27,6 +27,7 @@ pub mod migrations;
 pub mod srs;
 pub mod search_history;
 pub mod scene_lab;
+pub mod knowledge_map;
 
 pub use settings::*;
 pub use words_types::*;
@@ -41,6 +42,7 @@ pub use dashboard::*;
 pub use srs::*;
 pub use search_history::*;
 pub use scene_lab::*;
+pub use knowledge_map::*;
 
 // ── Database Initialization ─────────────────────────────────────────────────
 

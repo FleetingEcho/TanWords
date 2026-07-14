@@ -102,7 +102,7 @@ admin/   # Standalone local admin tool for the same SQLite DB — table CRUD and
 | Dashboard | Resume an in-progress article, recent words/patterns/docs, quick actions. |
 | Reading | Paste an article → AI extracts words + sentence patterns → accept individually or in bulk; click-any-sentence close reading; "listen to article" plays it back sentence-by-sentence with the embedded TTS engine, highlighting as it goes. |
 | Feeds | Subscribe to RSS articles and podcasts side by side; browse HN, pull an article into Reading via an in-app reader or paste-back; the in-app reader also has "listen to article"; podcast episodes play in a persistent bottom player bar. |
-| Scene Lab | Generate a CEFR-calibrated Kitchen lesson, explore 20 interactive low-poly 3D objects, practise vocabulary through spatial recall and task chains, then add weak words to Vocabulary/FSRS. |
+| Knowledge Map | Enter any word, scene, or topic and build a persistent 2.5D map of related vocabulary and phrases; expand any branch progressively and add selected items to Vocabulary/FSRS. |
 | Vocabulary | Master-detail word browser with full AI enrichment (freeform explanation, examples, collocations, etymology, mnemonics), FSRS review, time-range filtering (added/updated), and a speak button on every word/example. |
 | Patterns | A parallel library for sentence patterns (skeleton + slots), tagged by rhetorical function, backed by real example sentences from the articles they came from. |
 | Discover | Generate a themed vocabulary batch by topic, or explore a word family from a root/affix. |

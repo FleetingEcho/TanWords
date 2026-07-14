@@ -12,6 +12,7 @@ import { useMemo } from "react";
 import { useDBCore } from "./useDB.core";
 import { useDBExtra } from "./useDB.extra";
 import { useDBSceneLab } from "./useDB.sceneLab";
+import { useDBKnowledgeMap } from "./useDB.knowledgeMap";
 
 export * from "./useDB.types";
 
@@ -19,6 +20,7 @@ export function useDB() {
   const core = useDBCore();
   const extra = useDBExtra();
   const sceneLab = useDBSceneLab();
+  const knowledgeMap = useDBKnowledgeMap();
 
-  return useMemo(() => ({ ...core, ...extra, ...sceneLab }), [core, extra, sceneLab]);
+  return useMemo(() => ({ ...core, ...extra, ...sceneLab, ...knowledgeMap }), [core, extra, sceneLab, knowledgeMap]);
 }

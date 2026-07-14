@@ -251,6 +251,47 @@ const MIGRATIONS: &[Migration] = &[
             CREATE INDEX idx_scene_attempts_vocab ON scene_attempts(scene_vocabulary_id, attempted_at DESC);
         ",
     },
+    Migration {
+        version: 13,
+        description: "add generic infinite knowledge maps",
+        sql: "
+            CREATE TABLE knowledge_maps (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                root_label TEXT NOT NULL,
+                root_type TEXT NOT NULL DEFAULT 'topic',
+                target_levels TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE knowledge_nodes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                map_id INTEGER NOT NULL REFERENCES knowledge_maps(id) ON DELETE CASCADE,
+                parent_id INTEGER REFERENCES knowledge_nodes(id) ON DELETE CASCADE,
+                kind TEXT NOT NULL CHECK(kind IN ('topic','category','word','phrase','situation','contrast')),
+                label TEXT NOT NULL,
+                zh TEXT NOT NULL DEFAULT '',
+                level TEXT NOT NULL DEFAULT '',
+                note TEXT NOT NULL DEFAULT '',
+                depth INTEGER NOT NULL DEFAULT 0,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                expanded INTEGER NOT NULL DEFAULT 0 CHECK(expanded IN (0,1)),
+                word_id INTEGER REFERENCES words(id) ON DELETE SET NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(map_id, parent_id, label)
+            );
+            CREATE TABLE knowledge_edges (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                map_id INTEGER NOT NULL REFERENCES knowledge_maps(id) ON DELETE CASCADE,
+                source_id INTEGER NOT NULL REFERENCES knowledge_nodes(id) ON DELETE CASCADE,
+                target_id INTEGER NOT NULL REFERENCES knowledge_nodes(id) ON DELETE CASCADE,
+                relation TEXT NOT NULL DEFAULT 'contains',
+                UNIQUE(map_id, source_id, target_id, relation)
+            );
+            CREATE INDEX idx_knowledge_nodes_map_parent ON knowledge_nodes(map_id,parent_id,sort_order);
+            CREATE INDEX idx_knowledge_nodes_word ON knowledge_nodes(word_id);
+            CREATE INDEX idx_knowledge_edges_map ON knowledge_edges(map_id,source_id);
+        ",
+    },
 ];
 
 pub fn run(conn: &Connection) -> SqlResult<()> {

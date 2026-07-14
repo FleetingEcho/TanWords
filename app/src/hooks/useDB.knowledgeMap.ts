@@ -1,0 +1,13 @@
+import { useCallback, useMemo } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { logError, reportWriteError } from "./useDB.errors";
+import type { KnowledgeMapDetail, KnowledgeMapSummary, MapWordAddResult, NewKnowledgeNode } from "@/features/knowledge-map/types";
+
+export function useDBKnowledgeMap(){
+ const listKnowledgeMaps=useCallback(async():Promise<KnowledgeMapSummary[]>=>{try{return await invoke("db_list_knowledge_maps")}catch(e){logError("listKnowledgeMaps",e);return[]}},[]);
+ const createKnowledgeMap=useCallback(async(rootLabel:string,rootType:string,targetLevels:string):Promise<number>=>{try{return await invoke("db_create_knowledge_map",{rootLabel,rootType,targetLevels})}catch(e){reportWriteError("createKnowledgeMap",e,"创建知识地图失败");return 0}},[]);
+ const getKnowledgeMap=useCallback(async(mapId:number):Promise<KnowledgeMapDetail|null>=>{try{return await invoke("db_get_knowledge_map",{mapId})}catch(e){logError("getKnowledgeMap",e);return null}},[]);
+ const addKnowledgeNodes=useCallback(async(mapId:number,parentId:number,nodes:NewKnowledgeNode[]):Promise<number[]>=>{try{return await invoke("db_add_knowledge_nodes",{mapId,parentId,nodes})}catch(e){reportWriteError("addKnowledgeNodes",e,"保存地图分支失败");return[]}},[]);
+ const addMapWordsToVocabulary=useCallback(async(nodeIds:number[]):Promise<MapWordAddResult>=>{try{return await invoke("db_add_map_words_to_vocabulary",{nodeIds})}catch(e){reportWriteError("addMapWordsToVocabulary",e,"添加词汇失败");return{added:0,linked:0,skipped:nodeIds.length}}},[]);
+ return useMemo(()=>({listKnowledgeMaps,createKnowledgeMap,getKnowledgeMap,addKnowledgeNodes,addMapWordsToVocabulary}),[listKnowledgeMaps,createKnowledgeMap,getKnowledgeMap,addKnowledgeNodes,addMapWordsToVocabulary]);
+}

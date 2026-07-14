@@ -15,6 +15,9 @@ fn scene_lab_schema_is_created_and_repeatable() {
         "scene_tasks",
         "scene_sessions",
         "scene_attempts",
+        "knowledge_maps",
+        "knowledge_nodes",
+        "knowledge_edges",
     ] {
         let found: i64 = conn
             .query_row(
@@ -30,5 +33,5 @@ fn scene_lab_schema_is_created_and_repeatable() {
             row.get(0)
         })
         .unwrap();
-    assert_eq!(version, 12);
+    assert_eq!(version, 13);
 }

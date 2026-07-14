@@ -1,20 +1,21 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { toast } from "sonner";
-import { useDB } from "@/hooks/useDB";
-import type { SceneLesson, SceneSummary } from "@/features/scene-lab/types";
-import { useSceneLessonGenerator } from "@/features/scene-lab/hooks/useSceneLessonGenerator";
-import { SceneLibrary } from "./SceneLibrary";
-import { KitchenWorkspace } from "./Kitchen/KitchenWorkspace";
+import React,{useCallback,useEffect,useState}from"react";
+import{toast}from"sonner";
+import{Button}from"@/components/ui/button";
+import{useDB}from"@/hooks/useDB";
+import{findBestProvider}from"@/providers/select";
+import{useSettingsStore}from"@/store/settingsStore";
+import type{KnowledgeMapDetail,KnowledgeMapSummary,KnowledgeNode}from"@/features/knowledge-map/types";
+import{DEFAULT_BRANCHES,expandNode,generateBranch}from"@/features/knowledge-map/generator";
+import{KnowledgeMapCanvas}from"./KnowledgeMapCanvas";
+import{KnowledgeNodePanel}from"./KnowledgeNodePanel";
 
-export default function SceneLabPage() {
-  const db = useDB();
-  const { generateKitchen, isGenerating } = useSceneLessonGenerator();
-  const [scenes, setScenes] = useState<SceneSummary[]>([]);
-  const [lesson, setLesson] = useState<SceneLesson | null>(null);
-  const refresh = useCallback(() => db.listScenes().then(setScenes), [db]);
-  useEffect(() => { refresh(); }, [refresh]);
-  const open = async (id: number) => { const value = await db.getSceneLesson(id); if (value) setLesson(value); };
-  const generate = async () => { try { const id = await generateKitchen(); if (id) { await refresh(); await open(id); } } catch (error: any) { toast.error(error?.message || "生成失败"); } };
-  if (lesson) return <KitchenWorkspace lesson={lesson} onLessonChange={setLesson} onExit={() => { setLesson(null); refresh(); }} />;
-  return <SceneLibrary scenes={scenes} generating={isGenerating} onGenerate={generate} onOpen={open} />;
+export default function SceneLabPage(){
+ const db=useDB();const levels=useSettingsStore(s=>s.targetLevels.join("/"));const[input,setInput]=useState("");const[maps,setMaps]=useState<KnowledgeMapSummary[]>([]);const[map,setMap]=useState<KnowledgeMapDetail|null>(null);const[selected,setSelected]=useState<KnowledgeNode|null>(null);const[checked,setChecked]=useState<Set<number>>(new Set());const[generating,setGenerating]=useState(false);const[progress,setProgress]=useState(0);const[expanding,setExpanding]=useState(false);
+ const refreshList=useCallback(()=>db.listKnowledgeMaps().then(setMaps),[db]);useEffect(()=>{refreshList()},[refreshList]);const reload=async(id:number)=>{const value=await db.getKnowledgeMap(id);if(value){setMap(value);if(selected)setSelected(value.nodes.find(n=>n.id===selected.id)??null)}};
+ const create=async()=>{const topic=input.trim();if(!topic||generating)return;const provider=findBestProvider();setGenerating(true);setProgress(0);try{const id=await db.createKnowledgeMap(topic,"topic",levels);if(!id)return;const current=await db.getKnowledgeMap(id);if(!current)return;const root=current.nodes[0];const categoryIds=await db.addKnowledgeNodes(id,root.id,DEFAULT_BRANCHES);await reload(id);setProgress(10);if(!provider){toast.info("已创建地图骨架；配置 AI 后可逐个展开");return}const known=(await db.getWords()).map(w=>w.word);let finished=0;for(let start=0;start<categoryIds.length;start+=2){await Promise.allSettled(categoryIds.slice(start,start+2).map(async(categoryId,offset)=>{const i=start+offset;const nodes=await generateBranch(provider,topic,DEFAULT_BRANCHES[i],levels,known);await db.addKnowledgeNodes(id,categoryId,nodes);finished++;setProgress(Math.round(finished/categoryIds.length*90+10))}));await reload(id)}await refreshList();toast.success("知识地图已生成")}finally{setGenerating(false)}};
+ const open=async(id:number)=>{setSelected(null);setChecked(new Set());await reload(id)};
+ const expand=async()=>{if(!map||!selected||expanding)return;const provider=findBestProvider();if(!provider){toast.error("请先配置 AI 提供商");return}setExpanding(true);try{const nodes=await expandNode(provider,map.root_label,selected,levels,map.nodes.map(n=>n.label));if(!nodes.length)throw new Error("模型没有返回可用条目");await db.addKnowledgeNodes(map.id,selected.id,nodes);await reload(map.id)}catch(e:any){toast.error(e?.message||"扩展失败，可以单独重试")}finally{setExpanding(false)}};
+ const toggle=(id:number)=>setChecked(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n});const add=async()=>{const r=await db.addMapWordsToVocabulary([...checked]);if(r.added+r.linked){window.dispatchEvent(new CustomEvent("vocab-updated"));toast.success(`已加入 ${r.added+r.linked} 个词`);setChecked(new Set());if(map)await reload(map.id)}};
+ if(!map)return <div className="mx-auto max-w-5xl p-8"><p className="text-xs font-bold uppercase tracking-[.2em] text-primary">Infinite Knowledge Map</p><h1 className="mt-2 font-serif text-4xl font-bold">无限知识地图</h1><p className="mt-2 text-muted-foreground">输入任意单词、场景或 Topic，快速展开一大片相关英语知识。</p><div className="mt-7 flex gap-2"><input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&create()} placeholder="例如：Kitchen、job interview、distributed systems、bank" className="h-11 flex-1 rounded-xl border bg-background px-4 outline-none focus:ring-2 focus:ring-primary/40"/><Button onClick={create} disabled={generating||!input.trim()} className="h-11 px-6">{generating?`生成中 ${progress}%`:"生成知识地图"}</Button></div>{generating&&<div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary transition-all" style={{width:`${progress}%`}}/></div>}<h2 className="mb-3 mt-10 font-semibold">我的地图</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{maps.map(m=><button key={m.id} onClick={()=>open(m.id)} className="rounded-2xl border bg-card p-4 text-left hover:border-primary/50"><strong>{m.root_label}</strong><p className="mt-1 text-xs text-muted-foreground">{m.node_count} 个节点 · {m.root_type}</p></button>)}</div></div>;
+ return <div className="flex h-full min-h-0 flex-col"><header className="flex h-14 shrink-0 items-center gap-3 border-b px-4"><Button variant="ghost" onClick={()=>{setMap(null);setSelected(null);refreshList()}}>← 我的地图</Button><strong className="font-serif text-lg">{map.root_label}</strong><span className="text-xs text-muted-foreground">{map.nodes.length} nodes</span><div className="ml-auto flex items-center gap-2"><span className="text-xs text-muted-foreground">已选 {checked.size}</span><Button onClick={add} disabled={!checked.size} className="h-8 text-xs">加入 Vocabulary</Button></div></header><div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_320px]"><KnowledgeMapCanvas map={map} selectedId={selected?.id??null} checked={checked} onSelect={setSelected} onToggle={toggle}/><KnowledgeNodePanel node={selected} expanding={expanding} checked={selected?checked.has(selected.id):false} onExpand={expand} onToggle={()=>selected&&toggle(selected.id)}/></div></div>;
 }
