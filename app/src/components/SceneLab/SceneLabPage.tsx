@@ -28,6 +28,8 @@ export default function SceneLabPage() {
   const [expanding, setExpanding] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<KnowledgeMapSummary | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [addAllConfirmOpen, setAddAllConfirmOpen] = useState(false);
+  const [addingAll, setAddingAll] = useState(false);
 
   const refreshList = useCallback(() => db.listKnowledgeMaps().then(setMaps), [db]);
   useEffect(() => { refreshList(); }, [refreshList]);
@@ -207,15 +209,21 @@ export default function SceneLabPage() {
   });
 
   const addAll = async () => {
-    if (!map) return;
+    if (!map || addingAll) return;
     const nodeIds = map.nodes.filter((node) => (node.kind === "word" || node.kind === "phrase") && !node.word_id).map((node) => node.id);
     if (!nodeIds.length) return;
-    const result = await db.addMapWordsToVocabulary(nodeIds);
-    if (result.added + result.linked) {
-      window.dispatchEvent(new CustomEvent("vocab-updated"));
-      toast.success(t("knowledgeMap.wordsAdded", { count: result.added + result.linked }));
-      setChecked(new Set());
-      await loadMap(map.id);
+    setAddingAll(true);
+    try {
+      const result = await db.addMapWordsToVocabulary(nodeIds);
+      if (result.added + result.linked) {
+        window.dispatchEvent(new CustomEvent("vocab-updated"));
+        toast.success(t("knowledgeMap.wordsAdded", { count: result.added + result.linked }));
+        setChecked(new Set());
+        setAddAllConfirmOpen(false);
+        await loadMap(map.id);
+      }
+    } finally {
+      setAddingAll(false);
     }
   };
 
@@ -255,15 +263,26 @@ export default function SceneLabPage() {
   const current = selected ?? map.nodes.find((node) => node.parent_id === null) ?? map.nodes[0];
   if (!current) return null;
 
-  return <div className="flex h-full min-h-0 flex-col">
+  const addableCount = map.nodes.filter((node) => (node.kind === "word" || node.kind === "phrase") && !node.word_id).length;
+
+  return <><div className="flex h-full min-h-0 flex-col">
     <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4">
       <Button variant="ghost" onClick={() => { setMap(null); setSelected(null); selectedIdRef.current = null; refreshList(); }}>{t("knowledgeMap.back")}</Button>
       <span className="text-xs text-muted-foreground">{t("knowledgeMap.nodes", { count: map.nodes.length })}</span>
       <KnowledgeSearch nodes={map.nodes} busy={expanding} onSelect={selectNode} onExplore={explore} />
     </header>
     <div className="grid min-h-0 flex-1 grid-cols-[minmax(360px,32%)_minmax(0,1fr)]">
-      <KnowledgeOutline nodes={map.nodes} selectedId={current.id} addableCount={map.nodes.filter((node) => (node.kind === "word" || node.kind === "phrase") && !node.word_id).length} onSelect={selectNode} onAdd={addOne} onAddAll={addAll} />
+      <KnowledgeOutline nodes={map.nodes} selectedId={current.id} addableCount={addableCount} onSelect={selectNode} onAdd={addOne} onAddAll={() => setAddAllConfirmOpen(true)} />
       <KnowledgeBoard nodes={map.nodes} current={current} checked={checked} expanding={expanding} onSelect={selectNode} onToggle={toggle} onExpand={() => expand(current)} onPersistDetail={persistDetail} onAddWord={addOne} />
     </div>
-  </div>;
+  </div><ConfirmModal
+    open={addAllConfirmOpen}
+    title={t("knowledgeMap.addAllConfirmTitle")}
+    message={t("knowledgeMap.addAllConfirmMessage", { count: addableCount })}
+    confirmLabel={addingAll ? t("knowledgeMap.addingAll") : t("knowledgeMap.addAllVocabulary")}
+    danger={false}
+    confirmDisabled={addingAll || !addableCount}
+    onConfirm={addAll}
+    onCancel={() => !addingAll && setAddAllConfirmOpen(false)}
+  /></>;
 }
