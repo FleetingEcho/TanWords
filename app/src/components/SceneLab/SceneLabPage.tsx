@@ -294,11 +294,10 @@ export default function SceneLabPage() {
           </Button>
           {regeneratingExamples && <span className="whitespace-nowrap text-[10px] tabular-nums text-muted-foreground">{exampleProgress.done}/{exampleProgress.total}</span>}
         </div>
-        <span className="text-xs text-muted-foreground">{t("knowledgeMap.selected", { count: checked.size })}</span><Button onClick={add} disabled={!checked.size} className="h-8 text-xs">{t("knowledgeMap.addVocabulary")}</Button>
       </div>
     </header>
     <div className="grid min-h-0 flex-1 grid-cols-[minmax(360px,32%)_minmax(0,1fr)]">
-      <KnowledgeOutline nodes={map.nodes} selectedId={current.id} onSelect={selectNode} onAdd={addOne} />
+      <KnowledgeOutline nodes={map.nodes} selectedId={current.id} selectedCount={checked.size} onSelect={selectNode} onAdd={addOne} onAddSelected={add} />
       <KnowledgeBoard nodes={map.nodes} current={current} checked={checked} expanding={expanding} onSelect={selectNode} onToggle={toggle} onExpand={() => expand(current)} />
     </div>
   </div>;
