@@ -52,6 +52,7 @@ export const knowledgeMap: Dict = {
   "knowledgeMap.deleteFailed": "删除地图失败",
   "knowledgeMap.deleting": "正在删除…",
   "knowledgeMap.example": "例句",
+  "knowledgeMap.examples": "例句",
   "knowledgeMap.commonSentences": "常用情景句",
   "knowledgeMap.kind.topic": "主题",
   "knowledgeMap.kind.category": "分类",

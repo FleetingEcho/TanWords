@@ -21,6 +21,7 @@ export function KnowledgeBoard({ nodes, current, checked, expanding, onSelect, o
   const children = childrenMap.get(current.id) ?? [];
   const breadcrumb = getBreadcrumb(nodes, current.id);
   const learnable = isLearnable(current);
+  const examples = current.kind === "word" ? current.note.split("||").map((item) => item.trim()).filter(Boolean) : [];
   const available = children.filter((node) => isLearnable(node) && !node.word_id);
   const allSelected = available.length > 0 && available.every((node) => checked.has(node.id));
 
@@ -40,7 +41,7 @@ export function KnowledgeBoard({ nodes, current, checked, expanding, onSelect, o
           </div>
           {learnable && <Button variant={checked.has(current.id) ? "secondary" : "default"} disabled={Boolean(current.word_id)} onClick={() => onToggle(current.id)}>{current.word_id ? t("knowledgeMap.addedVocabulary") : checked.has(current.id) ? t("knowledgeMap.cancelSelection") : `+ ${t("knowledgeMap.addVocabulary")}`}</Button>}
         </div>
-        {current.note && <div className="mt-6 rounded-2xl bg-muted/50 p-4 text-sm leading-7">{learnable && <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-primary">{t("knowledgeMap.example")}</div>}{current.note}</div>}
+        {current.note && <div className="mt-6 rounded-2xl bg-muted/50 p-4 text-sm leading-7">{learnable && <div className="mb-2 text-[10px] font-bold uppercase tracking-widest text-primary">{t("knowledgeMap.examples")}</div>}{examples.length ? <ol className="space-y-2">{examples.map((example, index) => <li key={`${example}-${index}`} className="flex gap-3"><span className="text-xs font-bold text-primary/70">{index + 1}</span><span>{example}</span></li>)}</ol> : current.note}</div>}
       </section>
 
       <section className="mt-8">

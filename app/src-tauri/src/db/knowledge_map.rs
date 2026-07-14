@@ -228,6 +228,21 @@ pub fn db_add_knowledge_nodes(
 }
 
 #[tauri::command]
+pub fn db_update_knowledge_node_note(
+    node_id: i64,
+    note: String,
+    conn: State<'_, AppState>,
+) -> Result<(), String> {
+    let db = db::lock_db(&conn)?;
+    db.execute(
+        "UPDATE knowledge_nodes SET note=?1 WHERE id=?2",
+        params![note, node_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn db_add_map_words_to_vocabulary(
     node_ids: Vec<i64>,
     conn: State<'_, AppState>,

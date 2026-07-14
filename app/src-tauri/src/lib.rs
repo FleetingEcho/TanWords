@@ -104,6 +104,7 @@ pub fn run() {
             db::db_delete_knowledge_map,
             db::db_get_knowledge_map,
             db::db_add_knowledge_nodes,
+            db::db_update_knowledge_node_note,
             db::db_add_map_words_to_vocabulary,
             tts::models::tts_scan_models,
             tts::models::tts_default_models_dir,

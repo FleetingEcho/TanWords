@@ -52,6 +52,7 @@ export const knowledgeMap: Dict = {
   "knowledgeMap.deleteFailed": "Failed to delete map",
   "knowledgeMap.deleting": "Deleting…",
   "knowledgeMap.example": "Example",
+  "knowledgeMap.examples": "Examples",
   "knowledgeMap.commonSentences": "Common situational sentences",
   "knowledgeMap.kind.topic": "Topic",
   "knowledgeMap.kind.category": "Category",
