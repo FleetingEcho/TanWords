@@ -11,6 +11,7 @@ import { KnowledgeBoard } from "./KnowledgeBoard";
 import { KnowledgeSearch } from "./KnowledgeSearch";
 import { useT } from "@/hooks/useT";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { RefreshIcon } from "@/components/ui/icons";
 
 export default function SceneLabPage() {
   const db = useDB();
@@ -287,7 +288,12 @@ export default function SceneLabPage() {
       <span className="text-xs text-muted-foreground">{t("knowledgeMap.nodes", { count: map.nodes.length })}</span>
       <KnowledgeSearch nodes={map.nodes} busy={expanding} onSelect={selectNode} onExplore={explore} />
       <div className="ml-auto flex shrink-0 items-center gap-2">
-        <Button variant="outline" onClick={regenerateAllExamples} disabled={regeneratingExamples || expanding} className="h-8 whitespace-nowrap text-xs">{regeneratingExamples ? t("knowledgeMap.regeneratingExamplesProgress", { done: exampleProgress.done, total: exampleProgress.total }) : t("knowledgeMap.regenerateAllExamples")}</Button>
+        <div className="flex items-center gap-1.5">
+          <Button variant="outline" size="icon" onClick={regenerateAllExamples} disabled={regeneratingExamples || expanding} title={t("knowledgeMap.regenerateAllExamples")} aria-label={t("knowledgeMap.regenerateAllExamples")} className="h-8 w-8">
+            <RefreshIcon className={`h-4 w-4 ${regeneratingExamples ? "animate-spin" : ""}`} />
+          </Button>
+          {regeneratingExamples && <span className="whitespace-nowrap text-[10px] tabular-nums text-muted-foreground">{exampleProgress.done}/{exampleProgress.total}</span>}
+        </div>
         <span className="text-xs text-muted-foreground">{t("knowledgeMap.selected", { count: checked.size })}</span><Button onClick={add} disabled={!checked.size} className="h-8 text-xs">{t("knowledgeMap.addVocabulary")}</Button>
       </div>
     </header>
