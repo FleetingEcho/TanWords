@@ -12,6 +12,7 @@ export const knowledgeMap: Dict = {
   "knowledgeMap.selected": "已选 {count}",
   "knowledgeMap.addVocabulary": "加入 Vocabulary",
   "knowledgeMap.addAllVocabulary": "全部加入词库",
+  "knowledgeMap.analyzedAndAdded": "“{word}”分析完成并已加入词库",
   "knowledgeMap.noTranslation": "暂无中文释义",
   "knowledgeMap.inVocabulary": "已在 Vocabulary",
   "knowledgeMap.addedVocabulary": "已加入词库",

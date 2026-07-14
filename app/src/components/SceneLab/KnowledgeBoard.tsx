@@ -5,6 +5,7 @@ import type { KnowledgeNode } from "@/features/knowledge-map/types";
 import { buildChildrenMap, getBreadcrumb } from "@/features/knowledge-map/tree";
 import { useT } from "@/hooks/useT";
 import { KnowledgeWordDetail } from "./KnowledgeWordDetail";
+import type { ParsedEnrichment } from "@/lib/enrichMeta";
 
 const isLearnable = (node: KnowledgeNode) => node.kind === "word" || node.kind === "phrase";
 
@@ -16,7 +17,7 @@ export function KnowledgeBoard({ nodes, current, checked, expanding, onSelect, o
   onSelect: (node: KnowledgeNode) => void;
   onToggle: (id: number) => void;
   onExpand: () => void;
-  onPersistDetail: (nodeId: number, content: string) => Promise<void>;
+  onPersistDetail: (node: KnowledgeNode, enrichment: ParsedEnrichment) => Promise<void>;
   onAddWord: (nodeId: number) => void;
 }) {
   const t = useT();

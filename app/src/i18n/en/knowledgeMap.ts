@@ -12,6 +12,7 @@ export const knowledgeMap: Dict = {
   "knowledgeMap.selected": "{count} selected",
   "knowledgeMap.addVocabulary": "Add to Vocabulary",
   "knowledgeMap.addAllVocabulary": "Add all to Vocabulary",
+  "knowledgeMap.analyzedAndAdded": "“{word}” analyzed and added to Vocabulary",
   "knowledgeMap.noTranslation": "No translation yet",
   "knowledgeMap.inVocabulary": "In Vocabulary",
   "knowledgeMap.addedVocabulary": "Added to vocabulary",

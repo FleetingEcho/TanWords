@@ -9,7 +9,7 @@ const CACHE_PREFIX = "__KNOWLEDGE_ENRICHED__\n";
 
 export function KnowledgeWordDetail({ node, onPersist, onAdd }: {
   node: KnowledgeNode;
-  onPersist: (nodeId: number, content: string) => Promise<void>;
+  onPersist: (node: KnowledgeNode, enrichment: ParsedEnrichment) => Promise<void>;
   onAdd: (nodeId: number) => void;
 }) {
   const t = useT();
@@ -36,7 +36,7 @@ export function KnowledgeWordDetail({ node, onPersist, onAdd }: {
         setEnriched(parseEnrichmentStream(raw));
       }
       const parsed = parseEnrichmentStream(raw);
-      if (parsed.text.trim()) await onPersistRef.current(node.id, `${CACHE_PREFIX}${parsed.text}`);
+      if (parsed.text.trim()) await onPersistRef.current(node, parsed);
     } catch (reason: any) {
       if (reason?.name !== "AbortError") setError(reason?.message || t("modal.noProvider"));
     } finally {

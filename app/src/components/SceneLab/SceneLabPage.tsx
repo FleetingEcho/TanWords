@@ -11,6 +11,7 @@ import { KnowledgeBoard } from "./KnowledgeBoard";
 import { KnowledgeSearch } from "./KnowledgeSearch";
 import { useT } from "@/hooks/useT";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import type { ParsedEnrichment } from "@/lib/enrichMeta";
 
 export default function SceneLabPage() {
   const db = useDB();
@@ -156,9 +157,18 @@ export default function SceneLabPage() {
     setSelected(node);
   };
 
-  const persistDetail = async (nodeId: number, content: string) => {
+  const persistDetail = async (node: KnowledgeNode, enrichment: ParsedEnrichment) => {
     if (!map) return;
-    if (await db.updateKnowledgeNodeNote(nodeId, content)) await loadMap(map.id);
+    await db.addWordEnriched(node.label, enrichment.zhShort || node.zh || node.label, null, {
+      text: enrichment.text,
+      zhShort: enrichment.zhShort || node.zh || undefined,
+      level: enrichment.level || node.level || undefined,
+    });
+    await db.updateKnowledgeNodeNote(node.id, `__KNOWLEDGE_ENRICHED__\n${enrichment.text}`);
+    await db.addMapWordsToVocabulary([node.id]);
+    window.dispatchEvent(new CustomEvent("vocab-updated"));
+    toast.success(t("knowledgeMap.analyzedAndAdded", { word: node.label }));
+    await loadMap(map.id);
   };
 
   const explore = async (query: string) => {
