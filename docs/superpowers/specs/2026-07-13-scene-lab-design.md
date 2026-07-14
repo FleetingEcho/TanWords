@@ -155,8 +155,25 @@
 - `relation`
 - `target_type`、`target_key`
 
+### `scene_tasks`
+
+- `id`
+- `lesson_id`
+- `title_en`、`title_zh`
+- `steps_json`，仅保存通过 manifest 校验的有限状态步骤
+- `sort_order`
+
+### `scene_sessions`
+
+- `id`
+- `lesson_id`
+- `mode`
+- `started_at`
+- `completed_at`
+
 ### `scene_attempts`
 
+- `session_id`
 - `scene_vocabulary_id`
 - `mode`
 - `correct`
@@ -164,7 +181,7 @@
 - `hints_used`
 - `attempted_at`
 
-关系表使用受控的 source/target 类型和 relation 枚举，不接受任意字符串。数据库迁移应建立外键、必要索引和唯一约束。
+关系表使用受控的 source/target 类型和 relation 枚举，不接受任意字符串。每轮学习先创建 session，所有 attempt 归属于该 session，结束报告只聚合当前 session。数据库迁移应建立外键、必要索引和唯一约束。
 
 ## Vocabulary 与 FSRS 集成
 
@@ -256,4 +273,3 @@ MVP 完成需满足：
 3. 增加场景热力图和跨日自适应回访。
 4. 为任意主题提供 3D 关系星图降级方案。
 5. 建立可复用模型资产库，再评估 AI 动态拼装场景。
-
