@@ -157,6 +157,100 @@ const MIGRATIONS: &[Migration] = &[
             ALTER TABLE rss_entries ADD COLUMN audio_duration INTEGER;
         ",
     },
+    Migration {
+        version: 12,
+        description: "add Scene Lab courses, spatial vocabulary, tasks and learning attempts",
+        sql: "
+            CREATE TABLE scenes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scene_key TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
+                scene_type TEXT NOT NULL DEFAULT 'prebuilt',
+                asset_path TEXT NOT NULL DEFAULT '',
+                generation_version INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE scene_objects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scene_id INTEGER NOT NULL REFERENCES scenes(id) ON DELETE CASCADE,
+                object_key TEXT NOT NULL,
+                label TEXT NOT NULL,
+                position_json TEXT NOT NULL DEFAULT '[0,0,0]',
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                UNIQUE(scene_id, object_key)
+            );
+            CREATE TABLE scene_lessons (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scene_id INTEGER NOT NULL REFERENCES scenes(id) ON DELETE CASCADE,
+                target_levels TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'ready' CHECK(status IN ('generating','ready','failed','archived')),
+                prompt_version INTEGER NOT NULL DEFAULT 1,
+                generation_key TEXT NOT NULL UNIQUE,
+                generated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE scene_vocabulary (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lesson_id INTEGER NOT NULL REFERENCES scene_lessons(id) ON DELETE CASCADE,
+                object_id INTEGER NOT NULL REFERENCES scene_objects(id) ON DELETE CASCADE,
+                word_id INTEGER REFERENCES words(id) ON DELETE SET NULL,
+                word TEXT NOT NULL,
+                zh TEXT NOT NULL DEFAULT '',
+                ipa TEXT NOT NULL DEFAULT '',
+                level TEXT NOT NULL DEFAULT '',
+                category TEXT NOT NULL DEFAULT '',
+                importance INTEGER NOT NULL DEFAULT 3 CHECK(importance BETWEEN 1 AND 5),
+                learning_status TEXT NOT NULL DEFAULT 'new' CHECK(learning_status IN ('new','learning','familiar','mastered')),
+                UNIQUE(lesson_id, word)
+            );
+            CREATE TABLE scene_examples (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scene_vocabulary_id INTEGER NOT NULL REFERENCES scene_vocabulary(id) ON DELETE CASCADE,
+                kind TEXT NOT NULL CHECK(kind IN ('collocation','action','sentence')),
+                content_en TEXT NOT NULL,
+                content_zh TEXT NOT NULL DEFAULT ''
+            );
+            CREATE TABLE scene_relations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lesson_id INTEGER NOT NULL REFERENCES scene_lessons(id) ON DELETE CASCADE,
+                source_key TEXT NOT NULL,
+                relation TEXT NOT NULL CHECK(relation IN ('located_near','used_for','followed_by','belongs_to')),
+                target_key TEXT NOT NULL
+            );
+            CREATE TABLE scene_tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lesson_id INTEGER NOT NULL REFERENCES scene_lessons(id) ON DELETE CASCADE,
+                title_en TEXT NOT NULL,
+                title_zh TEXT NOT NULL DEFAULT '',
+                steps_json TEXT NOT NULL,
+                sort_order INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE scene_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                lesson_id INTEGER NOT NULL REFERENCES scene_lessons(id) ON DELETE CASCADE,
+                mode TEXT NOT NULL CHECK(mode IN ('explore','semantic','task','test')),
+                started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                completed_at TEXT
+            );
+            CREATE TABLE scene_attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER NOT NULL REFERENCES scene_sessions(id) ON DELETE CASCADE,
+                scene_vocabulary_id INTEGER NOT NULL REFERENCES scene_vocabulary(id) ON DELETE CASCADE,
+                mode TEXT NOT NULL CHECK(mode IN ('explore','semantic','task','test')),
+                correct INTEGER NOT NULL CHECK(correct IN (0,1)),
+                response_ms INTEGER NOT NULL DEFAULT 0,
+                hints_used INTEGER NOT NULL DEFAULT 0,
+                attempted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX idx_scene_lessons_scene ON scene_lessons(scene_id, generated_at DESC);
+            CREATE INDEX idx_scene_vocab_lesson_object ON scene_vocabulary(lesson_id, object_id);
+            CREATE INDEX idx_scene_vocab_word ON scene_vocabulary(word_id);
+            CREATE INDEX idx_scene_tasks_lesson ON scene_tasks(lesson_id, sort_order);
+            CREATE INDEX idx_scene_sessions_lesson ON scene_sessions(lesson_id, started_at DESC);
+            CREATE INDEX idx_scene_attempts_session ON scene_attempts(session_id, attempted_at);
+            CREATE INDEX idx_scene_attempts_vocab ON scene_attempts(scene_vocabulary_id, attempted_at DESC);
+        ",
+    },
 ];
 
 pub fn run(conn: &Connection) -> SqlResult<()> {

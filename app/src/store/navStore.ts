@@ -4,6 +4,7 @@ export type NavPage =
   | "dashboard"
   | "feeds"
   | "reading"
+  | "scene-lab"
   | "vocabulary"
   | "documents"
   | "chat"

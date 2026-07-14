@@ -4,7 +4,7 @@ import { useLayoutStore } from "@/store/layoutStore";
 import { useT } from "@/hooks/useT";
 import {
   GridIcon, BookIcon, DocIcon, ChatIcon, SlidersIcon,
-  FeedIcon, ReadingIcon, ChevronIcon,
+  FeedIcon, ReadingIcon, ChevronIcon, CompassIcon,
 } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 
@@ -20,6 +20,7 @@ const NAV_ITEM_DEFS: Omit<NavItemDef, "label">[] = [
   { id: "dashboard", icon: GridIcon },
   { id: "feeds", icon: FeedIcon },
   { id: "reading", icon: ReadingIcon },
+  { id: "scene-lab", icon: CompassIcon },
   { id: "vocabulary", icon: BookIcon, showCount: "word" },
   { id: "documents", icon: DocIcon },
   { id: "chat", icon: ChatIcon },

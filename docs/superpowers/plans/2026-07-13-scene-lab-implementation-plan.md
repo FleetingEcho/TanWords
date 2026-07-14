@@ -40,14 +40,13 @@ cd app && npm run build
 - `app/src/features/scene-lab/types.ts`
 - `app/src/features/scene-lab/kitchenManifest.ts`
 - `app/src/features/scene-lab/kitchenManifest.test.ts`
-- `app/src/assets/scene-lab/kitchen.glb`
 
 **工作内容**
 
 1. 定义场景、物体、课程、词汇、例句、关系、任务步骤、尝试记录和学习状态的 TypeScript 类型。
 2. manifest 固定 Kitchen 的场景 ID、资产路径、15–25 个 `object_key`、中英文标签、类别和允许动作。
-3. GLB 每个可交互节点名称必须与 `object_key` 一致；环境网格使用保留前缀，不参与选词。
-4. 加入 manifest 校验：`object_key` 唯一、任务动作受控、必需对象存在、GLB 映射清单完整。
+3. 每个代码原生低多边形对象的名称必须与 `object_key` 一致；环境网格不参与选词。
+4. 加入 manifest 校验：`object_key` 唯一、任务动作受控、必需对象存在。
 5. 测试 manifest 的稳定性，防止资产改名破坏已有学习记录。
 
 **验证**
@@ -240,10 +239,10 @@ cd app && npm run build
 **工作内容**
 
 1. Canvas 支持 orbit、缩放和受限平移，设置合理相机、环境光和低成本阴影。
-2. 加载 GLB，根据节点名映射 `object_key`；环境节点不可选择。
+2. 根据 manifest 生成独立低多边形节点并映射 `object_key`；环境节点不可选择。
 3. 点击对象后高亮材质、轻微聚焦相机，并通知 React 侧栏。
 4. 无匹配课程内容的合法对象仍可选择，但显示“暂无课程内容”。
-5. 捕获 WebGL 创建失败和 GLB 加载失败，切换到对象列表；列表共享同一个 selection state。
+5. 捕获 WebGL 创建或场景渲染失败，切换到对象列表；列表共享同一个 selection state。
 6. 单元测试将 Three.js 选择逻辑与 Canvas 渲染分离；手动验证真实 WebGL。
 
 **验证**
@@ -368,7 +367,7 @@ cd app/src-tauri && cargo fmt --check
 建议在以下检查点分别提交，方便回滚和评审：
 
 1. 测试基础 + R3F 依赖。
-2. manifest + GLB 契约。
+2. manifest + 代码原生 3D 节点契约。
 3. migration + Rust 数据库 API。
 4. 前端 DB adapter + AI 生成校验。
 5. 导航 + 场景库。
@@ -379,7 +378,7 @@ cd app/src-tauri && cargo fmt --check
 
 ## 风险与前置条件
 
-- **3D 资产是最大前置条件。** `kitchen.glb` 必须拥有可独立选择、命名稳定的 15–25 个节点，并确认许可允许随应用分发。在开始任务 8 前完成资产验收。
+- MVP 使用代码原生低多边形对象，无外部 3D 资产许可阻塞；未来替换 GLB 时必须保持 15–25 个稳定节点名。
 - Three.js 会显著增加 bundle；必须保持页面懒加载并检查 chunk。
 - 当前前端没有测试框架，任务 1 必须先完成，不能把测试集中到最后补。
 - 场景数据库 API 较多，应保持在独立 Rust/TS 模块，避免继续扩大现有通用 DB 文件。

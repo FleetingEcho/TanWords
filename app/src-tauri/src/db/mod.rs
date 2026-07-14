@@ -26,6 +26,7 @@ pub mod dashboard;
 pub mod migrations;
 pub mod srs;
 pub mod search_history;
+pub mod scene_lab;
 
 pub use settings::*;
 pub use words_types::*;
@@ -39,6 +40,7 @@ pub use articles::*;
 pub use dashboard::*;
 pub use srs::*;
 pub use search_history::*;
+pub use scene_lab::*;
 
 // ── Database Initialization ─────────────────────────────────────────────────
 
