@@ -40,8 +40,8 @@ export async function generateBranch(provider:AIProvider,root:string,parent:Pick
  const system="You generate practical English vocabulary and sentences for a learner. The topic may be a word or a full situation description in any language. Return only a short JSON array. Follow the format exactly. No markdown and no explanation.";
  const request=sentences
   ? "Return exactly 5 natural, commonly used English sentences for this situation. Every item kind must be phrase. Put the full English sentence in the first field and its natural Chinese translation in the second field."
-  : "Return 8-10 useful English words or phrases strongly related to this branch. For every word, the fifth field MUST contain exactly 3 different natural English example sentences joined by the literal separator ||. A phrase may use the fifth field for a short usage context.";
- const user=`Topic or situation: ${root}\nBranch to expand: ${parent.label} (${parent.zh})\nLearner: CEFR ${targetLevels}.\n${request}\nAvoid: ${exclude.slice(0,100).join(", ")}.\nUse this simple format only: [["English word, phrase, or sentence","简短中文释义或翻译","B1|B2|C1|C2","word|phrase","example one || example two || example three"]].`;
+  : "Return 8-10 useful English words or short phrases strongly related to this branch. Keep the fifth field empty. Detailed explanations will be generated later only when the learner opens a word.";
+ const user=`Topic or situation: ${root}\nBranch to expand: ${parent.label} (${parent.zh})\nLearner: CEFR ${targetLevels}.\n${request}\nAvoid: ${exclude.slice(0,100).join(", ")}.\nUse this simple format only: [["English word, phrase, or sentence","简短中文释义或翻译","B1|B2|C1|C2","word|phrase",""]].`;
  const parsed=simpleParse(await collect(provider,system,user));
  if(sentences){
   const used=new Set(exclude.map(item=>item.trim().toLowerCase()));
@@ -57,16 +57,7 @@ export async function generateBranch(provider:AIProvider,root:string,parent:Pick
   append(SENTENCE_FALLBACKS);
   return result.slice(0,5);
  }
- return parsed.filter(item=>item.kind!=="word"||item.note.split("||").filter(Boolean).length>=2);
-}
-
-export async function generateExamples(provider:AIProvider,root:string,node:Pick<KnowledgeNode,"label"|"zh">,targetLevels:string):Promise<string[]>{
- const system="You write short, natural English example sentences for language learners. Return only a JSON array of strings. No markdown or explanation.";
- const user=`Topic or situation: ${root}\nWord: ${node.label} (${node.zh})\nLearner: CEFR ${targetLevels}.\nReturn exactly 3 different natural English sentences that clearly demonstrate this word: ["sentence one","sentence two","sentence three"].`;
- const raw=await collect(provider,system,user);
- const start=raw.indexOf("[");
- if(start<0)return[];
- try{return (JSON.parse(jsonrepair(raw.slice(start))) as unknown[]).filter(item=>typeof item==="string"&&item.trim()).map(String).slice(0,3)}catch{return[]}
+ return parsed;
 }
 
 export async function expandNode(provider:AIProvider,root:string,node:KnowledgeNode,targetLevels:string,exclude:string[]):Promise<NewKnowledgeNode[]>{return generateBranch(provider,root,{label:node.label,zh:node.zh,kind:node.kind},targetLevels,exclude)}

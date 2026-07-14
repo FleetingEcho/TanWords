@@ -5,13 +5,12 @@ import { useDB } from "@/hooks/useDB";
 import { findBestProvider } from "@/providers/select";
 import { useSettingsStore } from "@/store/settingsStore";
 import type { KnowledgeMapDetail, KnowledgeMapSummary, KnowledgeNode } from "@/features/knowledge-map/types";
-import { DEFAULT_BRANCHES, expandNode, generateBranch, generateExamples } from "@/features/knowledge-map/generator";
+import { DEFAULT_BRANCHES, expandNode, generateBranch } from "@/features/knowledge-map/generator";
 import { KnowledgeOutline } from "./KnowledgeOutline";
 import { KnowledgeBoard } from "./KnowledgeBoard";
 import { KnowledgeSearch } from "./KnowledgeSearch";
 import { useT } from "@/hooks/useT";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
-import { RefreshIcon } from "@/components/ui/icons";
 
 export default function SceneLabPage() {
   const db = useDB();
@@ -22,15 +21,12 @@ export default function SceneLabPage() {
   const [map, setMap] = useState<KnowledgeMapDetail | null>(null);
   const [selected, setSelected] = useState<KnowledgeNode | null>(null);
   const selectedIdRef = useRef<number | null>(null);
-  const exampleJobsRef = useRef(new Set<number>());
   const [checked, setChecked] = useState<Set<number>>(new Set());
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
   const [expanding, setExpanding] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<KnowledgeMapSummary | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [regeneratingExamples, setRegeneratingExamples] = useState(false);
-  const [exampleProgress, setExampleProgress] = useState({ done: 0, total: 0 });
 
   const refreshList = useCallback(() => db.listKnowledgeMaps().then(setMaps), [db]);
   useEffect(() => { refreshList(); }, [refreshList]);
@@ -158,47 +154,11 @@ export default function SceneLabPage() {
   const selectNode = (node: KnowledgeNode) => {
     selectedIdRef.current = node.id;
     setSelected(node);
-    if (node.kind !== "word" || node.note.split("||").filter(Boolean).length >= 2 || exampleJobsRef.current.has(node.id)) return;
-    const provider = findBestProvider();
-    if (!provider || !map) return;
-    exampleJobsRef.current.add(node.id);
-    void generateExamples(provider, map.root_label, node, levels).then(async (examples) => {
-      if (examples.length < 2) return;
-      const saved = await db.updateKnowledgeNodeNote(node.id, examples.join(" || "));
-      if (saved) await loadMap(map.id);
-    }).finally(() => exampleJobsRef.current.delete(node.id));
   };
 
-  const regenerateAllExamples = async () => {
-    if (!map || regeneratingExamples || expanding) return;
-    const provider = findBestProvider();
-    if (!provider) {
-      toast.error(t("knowledgeMap.configureAI"));
-      return;
-    }
-    const words = map.nodes.filter((node) => node.kind === "word");
-    if (!words.length) return;
-    setRegeneratingExamples(true);
-    setExampleProgress({ done: 0, total: words.length });
-    let updated = 0;
-    let done = 0;
-    try {
-      for (let start = 0; start < words.length; start += 2) {
-        await Promise.allSettled(words.slice(start, start + 2).map(async (word) => {
-          try {
-            const examples = await generateExamples(provider, map.root_label, word, levels);
-            if (examples.length >= 2 && await db.updateKnowledgeNodeNote(word.id, examples.join(" || "))) updated += 1;
-          } finally {
-            done += 1;
-            setExampleProgress({ done, total: words.length });
-          }
-        }));
-      }
-      await loadMap(map.id);
-      toast.success(t("knowledgeMap.examplesRegenerated", { updated, total: words.length }));
-    } finally {
-      setRegeneratingExamples(false);
-    }
+  const persistDetail = async (nodeId: number, content: string) => {
+    if (!map) return;
+    if (await db.updateKnowledgeNodeNote(nodeId, content)) await loadMap(map.id);
   };
 
   const explore = async (query: string) => {
@@ -287,18 +247,10 @@ export default function SceneLabPage() {
       <Button variant="ghost" onClick={() => { setMap(null); setSelected(null); selectedIdRef.current = null; refreshList(); }}>{t("knowledgeMap.back")}</Button>
       <span className="text-xs text-muted-foreground">{t("knowledgeMap.nodes", { count: map.nodes.length })}</span>
       <KnowledgeSearch nodes={map.nodes} busy={expanding} onSelect={selectNode} onExplore={explore} />
-      <div className="ml-auto flex shrink-0 items-center gap-2">
-        <div className="flex items-center gap-1.5">
-          <Button variant="outline" size="icon" onClick={regenerateAllExamples} disabled={regeneratingExamples || expanding} title={t("knowledgeMap.regenerateAllExamples")} aria-label={t("knowledgeMap.regenerateAllExamples")} className="h-8 w-8">
-            <RefreshIcon className={`h-4 w-4 ${regeneratingExamples ? "animate-spin" : ""}`} />
-          </Button>
-          {regeneratingExamples && <span className="whitespace-nowrap text-[10px] tabular-nums text-muted-foreground">{exampleProgress.done}/{exampleProgress.total}</span>}
-        </div>
-      </div>
     </header>
     <div className="grid min-h-0 flex-1 grid-cols-[minmax(360px,32%)_minmax(0,1fr)]">
       <KnowledgeOutline nodes={map.nodes} selectedId={current.id} selectedCount={checked.size} onSelect={selectNode} onAdd={addOne} onAddSelected={add} />
-      <KnowledgeBoard nodes={map.nodes} current={current} checked={checked} expanding={expanding} onSelect={selectNode} onToggle={toggle} onExpand={() => expand(current)} />
+      <KnowledgeBoard nodes={map.nodes} current={current} checked={checked} expanding={expanding} onSelect={selectNode} onToggle={toggle} onExpand={() => expand(current)} onPersistDetail={persistDetail} onAddWord={addOne} />
     </div>
   </div>;
 }
