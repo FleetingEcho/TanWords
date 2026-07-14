@@ -39,11 +39,11 @@ export function KnowledgeOutline({ nodes, selectedId, onSelect }: {
         >{descendants.length ? (isOpen ? "▾" : "▸") : "·"}</button>
         <button
           onClick={() => onSelect(node)}
-          className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm ${active ? "bg-primary/10 font-semibold text-primary" : "hover:bg-muted"}`}
+          className={`grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(0,.9fr)_auto] items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm ${active ? "bg-primary/10 font-semibold text-primary" : "hover:bg-muted"}`}
         >
-          <span className={`h-2 w-2 shrink-0 rounded-full ${DOT[node.kind]}`} />
-          <span className="truncate">{node.label}</span>
-          {!!descendants.length && <span className="ml-auto text-[10px] text-muted-foreground">{descendants.length}</span>}
+          <span className="flex min-w-0 items-center gap-2"><span className={`h-2 w-2 shrink-0 rounded-full ${DOT[node.kind]}`} /><span className="truncate">{node.label}</span></span>
+          <span className="truncate text-xs font-normal text-muted-foreground">{node.zh}</span>
+          {!!descendants.length && <span className="text-[10px] font-normal text-muted-foreground">{descendants.length}</span>}
         </button>
       </div>
       {isOpen && descendants.map(renderNode)}

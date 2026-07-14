@@ -8,7 +8,6 @@ import type { KnowledgeMapDetail, KnowledgeMapSummary, KnowledgeNode } from "@/f
 import { DEFAULT_BRANCHES, expandNode, generateBranch } from "@/features/knowledge-map/generator";
 import { KnowledgeOutline } from "./KnowledgeOutline";
 import { KnowledgeBoard } from "./KnowledgeBoard";
-import { KnowledgeNodePanel } from "./KnowledgeNodePanel";
 
 export default function SceneLabPage() {
   const db = useDB();
@@ -142,10 +141,9 @@ export default function SceneLabPage() {
       <span className="text-xs text-muted-foreground">{map.nodes.length} nodes</span>
       <div className="ml-auto flex items-center gap-2"><span className="text-xs text-muted-foreground">已选 {checked.size}</span><Button onClick={add} disabled={!checked.size} className="h-8 text-xs">加入 Vocabulary</Button></div>
     </header>
-    <div className="grid min-h-0 flex-1 grid-cols-[260px_minmax(360px,1fr)_320px]">
+    <div className="grid min-h-0 flex-1 grid-cols-[minmax(360px,32%)_minmax(0,1fr)]">
       <KnowledgeOutline nodes={map.nodes} selectedId={current.id} onSelect={setSelected} />
       <KnowledgeBoard nodes={map.nodes} current={current} checked={checked} expanding={expanding} onSelect={setSelected} onToggle={toggle} onExpand={() => expand(current)} />
-      <KnowledgeNodePanel node={current} expanding={expanding} checked={checked.has(current.id)} onExpand={() => expand(current)} onToggle={() => toggle(current.id)} />
     </div>
   </div>;
 }
