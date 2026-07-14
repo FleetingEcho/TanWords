@@ -75,18 +75,18 @@ export function WordDetailPanel({
             )}
             <div className="ml-auto flex items-center gap-3">
               {lookupMode ? (
-                <Button
-                  variant="ghost"
-                  onClick={onAddToVocab}
-                  disabled={lookupAdded || enriching || !enriched}
-                  className={`h-auto px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                    lookupAdded
-                      ? "bg-muted text-muted-foreground hover:bg-muted"
-                      : "bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                  }`}
-                >
-                  {lookupAdded ? t("search.added") : t("search.addToVocab")}
-                </Button>
+                lookupAdded ? (
+                  <span className="inline-flex items-center rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-4 py-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">✓ {t("search.added")}</span>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    onClick={onAddToVocab}
+                    disabled={enriching || !enriched}
+                    className="h-auto rounded-lg bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {t("search.addToVocab")}
+                  </Button>
+                )
               ) : (
                 enriched && !enriching && (
                   <Button variant="link" onClick={onReenrich} className="h-auto p-0 text-xs text-muted-foreground hover:text-primary transition-colors">{t("vocab.reenrich")}</Button>

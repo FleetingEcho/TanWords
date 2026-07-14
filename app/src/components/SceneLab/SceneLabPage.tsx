@@ -206,13 +206,16 @@ export default function SceneLabPage() {
     return next;
   });
 
-  const add = async () => {
-    const result = await db.addMapWordsToVocabulary([...checked]);
+  const addAll = async () => {
+    if (!map) return;
+    const nodeIds = map.nodes.filter((node) => (node.kind === "word" || node.kind === "phrase") && !node.word_id).map((node) => node.id);
+    if (!nodeIds.length) return;
+    const result = await db.addMapWordsToVocabulary(nodeIds);
     if (result.added + result.linked) {
       window.dispatchEvent(new CustomEvent("vocab-updated"));
       toast.success(t("knowledgeMap.wordsAdded", { count: result.added + result.linked }));
       setChecked(new Set());
-      if (map) await loadMap(map.id);
+      await loadMap(map.id);
     }
   };
 
@@ -259,7 +262,7 @@ export default function SceneLabPage() {
       <KnowledgeSearch nodes={map.nodes} busy={expanding} onSelect={selectNode} onExplore={explore} />
     </header>
     <div className="grid min-h-0 flex-1 grid-cols-[minmax(360px,32%)_minmax(0,1fr)]">
-      <KnowledgeOutline nodes={map.nodes} selectedId={current.id} selectedCount={checked.size} onSelect={selectNode} onAdd={addOne} onAddSelected={add} />
+      <KnowledgeOutline nodes={map.nodes} selectedId={current.id} addableCount={map.nodes.filter((node) => (node.kind === "word" || node.kind === "phrase") && !node.word_id).length} onSelect={selectNode} onAdd={addOne} onAddAll={addAll} />
       <KnowledgeBoard nodes={map.nodes} current={current} checked={checked} expanding={expanding} onSelect={selectNode} onToggle={toggle} onExpand={() => expand(current)} onPersistDetail={persistDetail} onAddWord={addOne} />
     </div>
   </div>;

@@ -2,20 +2,19 @@ import React, { useEffect, useMemo, useState } from "react";
 import type { KnowledgeNode } from "@/features/knowledge-map/types";
 import { buildChildrenMap, getBreadcrumb } from "@/features/knowledge-map/tree";
 import { useT } from "@/hooks/useT";
-import { Button } from "@/components/ui/button";
 
 const DOT: Record<string, string> = {
   topic: "bg-amber-500", category: "bg-teal-500", word: "bg-blue-500",
   phrase: "bg-violet-500", situation: "bg-pink-500", contrast: "bg-red-500",
 };
 
-export function KnowledgeOutline({ nodes, selectedId, selectedCount, onSelect, onAdd, onAddSelected }: {
+export function KnowledgeOutline({ nodes, selectedId, addableCount, onSelect, onAdd, onAddAll }: {
   nodes: KnowledgeNode[];
   selectedId: number;
-  selectedCount: number;
+  addableCount: number;
   onSelect: (node: KnowledgeNode) => void;
   onAdd: (id: number) => void;
-  onAddSelected: () => void;
+  onAddAll: () => void;
 }) {
   const t = useT();
   const children = useMemo(() => buildChildrenMap(nodes), [nodes]);
@@ -67,10 +66,7 @@ export function KnowledgeOutline({ nodes, selectedId, selectedCount, onSelect, o
   return <aside className="min-h-0 overflow-y-auto border-r bg-muted/15 p-3">
     <div className="mb-3 flex min-h-8 items-center gap-2 px-2">
       <div className="text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">Outline</div>
-      <div className="ml-auto flex items-center gap-2">
-        {!!selectedCount && <span className="text-[10px] tabular-nums text-muted-foreground">{t("knowledgeMap.selected", { count: selectedCount })}</span>}
-        <Button onClick={onAddSelected} disabled={!selectedCount} size="sm" className="h-7 px-2.5 text-[10px]">{t("knowledgeMap.addAllVocabulary")}</Button>
-      </div>
+      <button onClick={onAddAll} disabled={!addableCount} title={t("knowledgeMap.addAllVocabulary")} aria-label={t("knowledgeMap.addAllVocabulary")} className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border bg-background text-sm text-muted-foreground transition hover:border-primary hover:text-primary disabled:opacity-30">+</button>
     </div>
     <div className="space-y-0.5">{roots.map(renderNode)}</div>
   </aside>;
