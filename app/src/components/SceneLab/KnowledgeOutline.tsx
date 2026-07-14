@@ -7,10 +7,11 @@ const DOT: Record<string, string> = {
   phrase: "bg-violet-500", situation: "bg-pink-500", contrast: "bg-red-500",
 };
 
-export function KnowledgeOutline({ nodes, selectedId, onSelect }: {
+export function KnowledgeOutline({ nodes, selectedId, onSelect, onAdd }: {
   nodes: KnowledgeNode[];
   selectedId: number;
   onSelect: (node: KnowledgeNode) => void;
+  onAdd: (id: number) => void;
 }) {
   const children = useMemo(() => buildChildrenMap(nodes), [nodes]);
   const roots = children.get(null) ?? [];
@@ -25,6 +26,7 @@ export function KnowledgeOutline({ nodes, selectedId, onSelect }: {
     const descendants = children.get(node.id) ?? [];
     const isOpen = open.has(node.id);
     const active = node.id === selectedId;
+    const learnable = node.kind === "word" || node.kind === "phrase";
     return <React.Fragment key={node.id}>
       <div className="flex items-center" style={{ paddingLeft: `${Math.min(node.depth, 12) * 12}px` }}>
         <button
@@ -45,6 +47,13 @@ export function KnowledgeOutline({ nodes, selectedId, onSelect }: {
           <span className="truncate text-xs font-normal text-muted-foreground">{node.zh}</span>
           {!!descendants.length && <span className="text-[10px] font-normal text-muted-foreground">{descendants.length}</span>}
         </button>
+        {learnable && <button
+          aria-label={node.word_id ? `${node.label} 已在词库` : `将 ${node.label} 加入词库`}
+          title={node.word_id ? "已在 Vocabulary" : "立即加入 Vocabulary"}
+          disabled={Boolean(node.word_id)}
+          onClick={() => onAdd(node.id)}
+          className={`ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs transition ${node.word_id ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-500" : "border-border bg-background text-muted-foreground hover:border-primary hover:text-primary"}`}
+        >{node.word_id ? "✓" : "+"}</button>}
       </div>
       {isOpen && descendants.map(renderNode)}
     </React.Fragment>;

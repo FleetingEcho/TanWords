@@ -118,6 +118,15 @@ export default function SceneLabPage() {
     }
   };
 
+  const addOne = async (id: number) => {
+    const result = await db.addMapWordsToVocabulary([id]);
+    if (result.added + result.linked) {
+      window.dispatchEvent(new CustomEvent("vocab-updated"));
+      toast.success("已加入 Vocabulary");
+      if (map) await loadMap(map.id, selected?.id);
+    }
+  };
+
   if (!map) return <div className="mx-auto max-w-5xl p-8">
     <p className="text-xs font-bold uppercase tracking-[.2em] text-primary">Infinite Knowledge Map</p>
     <h1 className="mt-2 font-serif text-4xl font-bold">无限知识地图</h1>
@@ -142,7 +151,7 @@ export default function SceneLabPage() {
       <div className="ml-auto flex items-center gap-2"><span className="text-xs text-muted-foreground">已选 {checked.size}</span><Button onClick={add} disabled={!checked.size} className="h-8 text-xs">加入 Vocabulary</Button></div>
     </header>
     <div className="grid min-h-0 flex-1 grid-cols-[minmax(360px,32%)_minmax(0,1fr)]">
-      <KnowledgeOutline nodes={map.nodes} selectedId={current.id} onSelect={setSelected} />
+      <KnowledgeOutline nodes={map.nodes} selectedId={current.id} onSelect={setSelected} onAdd={addOne} />
       <KnowledgeBoard nodes={map.nodes} current={current} checked={checked} expanding={expanding} onSelect={setSelected} onToggle={toggle} onExpand={() => expand(current)} />
     </div>
   </div>;
