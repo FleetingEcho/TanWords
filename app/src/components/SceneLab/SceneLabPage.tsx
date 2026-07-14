@@ -284,7 +284,6 @@ export default function SceneLabPage() {
   return <div className="flex h-full min-h-0 flex-col">
     <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4">
       <Button variant="ghost" onClick={() => { setMap(null); setSelected(null); selectedIdRef.current = null; refreshList(); }}>{t("knowledgeMap.back")}</Button>
-      <strong title={map.root_label} className="block max-w-56 shrink truncate font-serif text-lg leading-tight">{map.root_label}</strong>
       <span className="text-xs text-muted-foreground">{t("knowledgeMap.nodes", { count: map.nodes.length })}</span>
       <KnowledgeSearch nodes={map.nodes} busy={expanding} onSelect={selectNode} onExplore={explore} />
       <div className="ml-auto flex shrink-0 items-center gap-2">
