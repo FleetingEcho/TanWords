@@ -17,6 +17,7 @@ import { tts } from "./tts";
 import { feeds } from "./feeds";
 import { podcast } from "./podcast";
 import { tools } from "./tools";
+import { knowledgeMap } from "./knowledgeMap";
 
 export const zh: Dict = {
     ...common,
@@ -37,4 +38,5 @@ export const zh: Dict = {
     ...feeds,
     ...podcast,
     ...tools,
+    ...knowledgeMap,
 };

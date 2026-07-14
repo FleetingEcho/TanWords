@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import type { KnowledgeNode } from "@/features/knowledge-map/types";
 import { buildChildrenMap, getBreadcrumb } from "@/features/knowledge-map/tree";
+import { useT } from "@/hooks/useT";
 
 const DOT: Record<string, string> = {
   topic: "bg-amber-500", category: "bg-teal-500", word: "bg-blue-500",
@@ -13,6 +14,7 @@ export function KnowledgeOutline({ nodes, selectedId, onSelect, onAdd }: {
   onSelect: (node: KnowledgeNode) => void;
   onAdd: (id: number) => void;
 }) {
+  const t = useT();
   const children = useMemo(() => buildChildrenMap(nodes), [nodes]);
   const roots = children.get(null) ?? [];
   const [open, setOpen] = useState<Set<number>>(() => new Set(roots.map((node) => node.id)));
@@ -30,7 +32,7 @@ export function KnowledgeOutline({ nodes, selectedId, onSelect, onAdd }: {
     return <React.Fragment key={node.id}>
       <div className="flex items-center" style={{ paddingLeft: `${Math.min(node.depth, 12) * 12}px` }}>
         <button
-          aria-label={isOpen ? "折叠" : "展开"}
+          aria-label={isOpen ? t("knowledgeMap.collapse") : t("knowledgeMap.expand")}
           disabled={!descendants.length}
           onClick={() => setOpen((current) => {
             const next = new Set(current);
@@ -48,8 +50,8 @@ export function KnowledgeOutline({ nodes, selectedId, onSelect, onAdd }: {
           {!!descendants.length && <span className="text-[10px] font-normal text-muted-foreground">{descendants.length}</span>}
         </button>
         {learnable && <button
-          aria-label={node.word_id ? `${node.label} 已在词库` : `将 ${node.label} 加入词库`}
-          title={node.word_id ? "已在 Vocabulary" : "立即加入 Vocabulary"}
+          aria-label={node.word_id ? t("knowledgeMap.wordAddedAria", { word: node.label }) : t("knowledgeMap.addWordAria", { word: node.label })}
+          title={node.word_id ? t("knowledgeMap.inVocabulary") : t("knowledgeMap.addNow")}
           disabled={Boolean(node.word_id)}
           onClick={() => onAdd(node.id)}
           className={`ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs transition ${node.word_id ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-500" : "border-border bg-background text-muted-foreground hover:border-primary hover:text-primary"}`}

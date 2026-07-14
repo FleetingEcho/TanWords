@@ -9,9 +9,11 @@ import { DEFAULT_BRANCHES, expandNode, generateBranch } from "@/features/knowled
 import { KnowledgeOutline } from "./KnowledgeOutline";
 import { KnowledgeBoard } from "./KnowledgeBoard";
 import { KnowledgeSearch } from "./KnowledgeSearch";
+import { useT } from "@/hooks/useT";
 
 export default function SceneLabPage() {
   const db = useDB();
+  const t = useT();
   const levels = useSettingsStore((state) => state.targetLevels.join("/"));
   const [input, setInput] = useState("");
   const [maps, setMaps] = useState<KnowledgeMapSummary[]>([]);
@@ -53,7 +55,7 @@ export default function SceneLabPage() {
       await loadMap(id, root.id);
       setProgress(10);
       if (!provider) {
-        toast.info("已创建地图骨架；配置 AI 后可逐个展开");
+        toast.info(t("knowledgeMap.mapSkeleton"));
         await refreshList();
         return;
       }
@@ -70,9 +72,9 @@ export default function SceneLabPage() {
         await loadMap(id, root.id);
       }
       await refreshList();
-      toast.success("知识地图已生成");
+      toast.success(t("knowledgeMap.mapGenerated"));
     } catch (error: any) {
-      toast.error(error?.message || "创建知识地图失败");
+      toast.error(error?.message || t("knowledgeMap.createFailed"));
     } finally {
       setGenerating(false);
     }
@@ -87,17 +89,17 @@ export default function SceneLabPage() {
     if (!map || !target || expanding) return;
     const provider = findBestProvider();
     if (!provider) {
-      toast.error("请先配置 AI 提供商");
+      toast.error(t("knowledgeMap.configureAI"));
       return;
     }
     setExpanding(true);
     try {
       const nodes = await expandNode(provider, map.root_label, target, levels, map.nodes.map((node) => node.label));
-      if (!nodes.length) throw new Error("模型没有返回可用条目");
+      if (!nodes.length) throw new Error(t("knowledgeMap.noModelItems"));
       await db.addKnowledgeNodes(map.id, target.id, nodes);
       await loadMap(map.id, target.id);
     } catch (error: any) {
-      toast.error(error?.message || "扩展失败，可以单独重试");
+      toast.error(error?.message || t("knowledgeMap.expandFailed"));
     } finally {
       setExpanding(false);
     }
@@ -107,25 +109,25 @@ export default function SceneLabPage() {
     if (!map || !current || expanding) return;
     const provider = findBestProvider();
     if (!provider) {
-      toast.error("请先配置 AI 提供商");
+      toast.error(t("knowledgeMap.configureAI"));
       return;
     }
     setExpanding(true);
     try {
-      const [id] = await db.addKnowledgeNodes(map.id, current.id, [{ kind: "topic", label: query, zh: "", level: "", note: `从 ${current.label} 延伸的新分支` }]);
+      const [id] = await db.addKnowledgeNodes(map.id, current.id, [{ kind: "topic", label: query, zh: "", level: "", note: t("knowledgeMap.branchNote", { parent: current.label }) }]);
       const fresh = await db.getKnowledgeMap(map.id);
-      if (!fresh) throw new Error("无法读取知识地图");
+      if (!fresh) throw new Error(t("knowledgeMap.readFailed"));
       const target = fresh.nodes.find((node) => node.id === id);
-      if (!target) throw new Error("无法创建探索分支");
+      if (!target) throw new Error(t("knowledgeMap.branchFailed"));
       setMap(fresh);
       setSelected(target);
       const generated = await expandNode(provider, map.root_label, target, levels, fresh.nodes.map((node) => node.label));
-      if (!generated.length) throw new Error("模型没有返回可用条目");
+      if (!generated.length) throw new Error(t("knowledgeMap.noModelItems"));
       await db.addKnowledgeNodes(map.id, target.id, generated);
       await loadMap(map.id, target.id);
-      toast.success(`已展开 “${query}”`);
+      toast.success(t("knowledgeMap.explored", { query }));
     } catch (error: any) {
-      toast.error(error?.message || "探索失败，可以重试");
+      toast.error(error?.message || t("knowledgeMap.exploreFailed"));
     } finally {
       setExpanding(false);
     }
@@ -141,7 +143,7 @@ export default function SceneLabPage() {
     const result = await db.addMapWordsToVocabulary([...checked]);
     if (result.added + result.linked) {
       window.dispatchEvent(new CustomEvent("vocab-updated"));
-      toast.success(`已加入 ${result.added + result.linked} 个词`);
+      toast.success(t("knowledgeMap.wordsAdded", { count: result.added + result.linked }));
       setChecked(new Set());
       if (map) await loadMap(map.id, selected?.id);
     }
@@ -151,22 +153,22 @@ export default function SceneLabPage() {
     const result = await db.addMapWordsToVocabulary([id]);
     if (result.added + result.linked) {
       window.dispatchEvent(new CustomEvent("vocab-updated"));
-      toast.success("已加入 Vocabulary");
+      toast.success(t("knowledgeMap.wordAdded"));
       if (map) await loadMap(map.id, selected?.id);
     }
   };
 
   if (!map) return <div className="mx-auto max-w-5xl p-8">
     <p className="text-xs font-bold uppercase tracking-[.2em] text-primary">Infinite Knowledge Map</p>
-    <h1 className="mt-2 font-serif text-4xl font-bold">无限知识地图</h1>
-    <p className="mt-2 text-muted-foreground">输入任意单词、场景或 Topic，快速展开一大片相关英语知识。</p>
+    <h1 className="mt-2 font-serif text-4xl font-bold">{t("knowledgeMap.title")}</h1>
+    <p className="mt-2 text-muted-foreground">{t("knowledgeMap.subtitle")}</p>
     <div className="mt-7 flex gap-2">
-      <input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && create()} placeholder="例如：Kitchen、job interview、distributed systems、bank" className="h-11 flex-1 rounded-xl border bg-background px-4 outline-none focus:ring-2 focus:ring-primary/40" />
-      <Button onClick={create} disabled={generating || !input.trim()} className="h-11 px-6">{generating ? `生成中 ${progress}%` : "生成知识地图"}</Button>
+      <input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && create()} placeholder={t("knowledgeMap.inputPlaceholder")} className="h-11 flex-1 rounded-xl border bg-background px-4 outline-none focus:ring-2 focus:ring-primary/40" />
+      <Button onClick={create} disabled={generating || !input.trim()} className="h-11 px-6">{generating ? t("knowledgeMap.generatingProgress", { progress }) : t("knowledgeMap.generate")}</Button>
     </div>
     {generating && <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} /></div>}
-    <h2 className="mb-3 mt-10 font-semibold">我的地图</h2>
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{maps.map((item) => <button key={item.id} onClick={() => open(item.id)} className="rounded-2xl border bg-card p-4 text-left hover:border-primary/50"><strong>{item.root_label}</strong><p className="mt-1 text-xs text-muted-foreground">{item.node_count} 个节点 · {item.root_type}</p></button>)}</div>
+    <h2 className="mb-3 mt-10 font-semibold">{t("knowledgeMap.myMaps")}</h2>
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{maps.map((item) => <button key={item.id} onClick={() => open(item.id)} className="rounded-2xl border bg-card p-4 text-left hover:border-primary/50"><strong>{item.root_label}</strong><p className="mt-1 text-xs text-muted-foreground">{t("knowledgeMap.nodes", { count: item.node_count })} · {item.root_type}</p></button>)}</div>
   </div>;
 
   const current = selected ?? map.nodes.find((node) => node.parent_id === null) ?? map.nodes[0];
@@ -174,11 +176,11 @@ export default function SceneLabPage() {
 
   return <div className="flex h-full min-h-0 flex-col">
     <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4">
-      <Button variant="ghost" onClick={() => { setMap(null); setSelected(null); refreshList(); }}>← 我的地图</Button>
+      <Button variant="ghost" onClick={() => { setMap(null); setSelected(null); refreshList(); }}>{t("knowledgeMap.back")}</Button>
       <strong className="font-serif text-lg">{map.root_label}</strong>
-      <span className="text-xs text-muted-foreground">{map.nodes.length} nodes</span>
+      <span className="text-xs text-muted-foreground">{t("knowledgeMap.nodes", { count: map.nodes.length })}</span>
       <KnowledgeSearch nodes={map.nodes} busy={expanding} onSelect={setSelected} onExplore={explore} />
-      <div className="ml-auto flex items-center gap-2"><span className="text-xs text-muted-foreground">已选 {checked.size}</span><Button onClick={add} disabled={!checked.size} className="h-8 text-xs">加入 Vocabulary</Button></div>
+      <div className="ml-auto flex items-center gap-2"><span className="text-xs text-muted-foreground">{t("knowledgeMap.selected", { count: checked.size })}</span><Button onClick={add} disabled={!checked.size} className="h-8 text-xs">{t("knowledgeMap.addVocabulary")}</Button></div>
     </header>
     <div className="grid min-h-0 flex-1 grid-cols-[minmax(360px,32%)_minmax(0,1fr)]">
       <KnowledgeOutline nodes={map.nodes} selectedId={current.id} onSelect={setSelected} onAdd={addOne} />
