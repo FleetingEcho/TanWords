@@ -8,6 +8,7 @@ import type { KnowledgeMapDetail, KnowledgeMapSummary, KnowledgeNode } from "@/f
 import { DEFAULT_BRANCHES, expandNode, generateBranch } from "@/features/knowledge-map/generator";
 import { KnowledgeOutline } from "./KnowledgeOutline";
 import { KnowledgeBoard } from "./KnowledgeBoard";
+import { KnowledgeSearch } from "./KnowledgeSearch";
 
 export default function SceneLabPage() {
   const db = useDB();
@@ -102,6 +103,34 @@ export default function SceneLabPage() {
     }
   };
 
+  const explore = async (query: string) => {
+    if (!map || !current || expanding) return;
+    const provider = findBestProvider();
+    if (!provider) {
+      toast.error("请先配置 AI 提供商");
+      return;
+    }
+    setExpanding(true);
+    try {
+      const [id] = await db.addKnowledgeNodes(map.id, current.id, [{ kind: "topic", label: query, zh: "", level: "", note: `从 ${current.label} 延伸的新分支` }]);
+      const fresh = await db.getKnowledgeMap(map.id);
+      if (!fresh) throw new Error("无法读取知识地图");
+      const target = fresh.nodes.find((node) => node.id === id);
+      if (!target) throw new Error("无法创建探索分支");
+      setMap(fresh);
+      setSelected(target);
+      const generated = await expandNode(provider, map.root_label, target, levels, fresh.nodes.map((node) => node.label));
+      if (!generated.length) throw new Error("模型没有返回可用条目");
+      await db.addKnowledgeNodes(map.id, target.id, generated);
+      await loadMap(map.id, target.id);
+      toast.success(`已展开 “${query}”`);
+    } catch (error: any) {
+      toast.error(error?.message || "探索失败，可以重试");
+    } finally {
+      setExpanding(false);
+    }
+  };
+
   const toggle = (id: number) => setChecked((previous) => {
     const next = new Set(previous);
     next.has(id) ? next.delete(id) : next.add(id);
@@ -148,6 +177,7 @@ export default function SceneLabPage() {
       <Button variant="ghost" onClick={() => { setMap(null); setSelected(null); refreshList(); }}>← 我的地图</Button>
       <strong className="font-serif text-lg">{map.root_label}</strong>
       <span className="text-xs text-muted-foreground">{map.nodes.length} nodes</span>
+      <KnowledgeSearch nodes={map.nodes} busy={expanding} onSelect={setSelected} onExplore={explore} />
       <div className="ml-auto flex items-center gap-2"><span className="text-xs text-muted-foreground">已选 {checked.size}</span><Button onClick={add} disabled={!checked.size} className="h-8 text-xs">加入 Vocabulary</Button></div>
     </header>
     <div className="grid min-h-0 flex-1 grid-cols-[minmax(360px,32%)_minmax(0,1fr)]">
