@@ -76,7 +76,7 @@ export function WordDetailPanel({
             <div className="ml-auto flex items-center gap-3">
               {lookupMode ? (
                 lookupAdded ? (
-                  <span className="inline-flex items-center rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-4 py-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">✓ {t("search.added")}</span>
+                  <span className="inline-flex items-center rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-4 py-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">{t("search.added")}</span>
                 ) : (
                   <Button
                     variant="ghost"
