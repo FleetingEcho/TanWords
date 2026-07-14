@@ -49,8 +49,9 @@ export function KnowledgeOutline({ nodes, selectedId, addableCount, onSelect, on
         >
           <span className="flex min-w-0 items-center gap-2"><span className={`h-2 w-2 shrink-0 rounded-full ${DOT[node.kind]}`} /><span className="truncate">{node.label}</span></span>
           <span className="truncate text-xs font-normal text-muted-foreground">{node.zh}</span>
-          {!!descendants.length && <span className="text-[10px] font-normal text-muted-foreground">{descendants.length}</span>}
+          {!!descendants.length && node.parent_id !== null && <span className="text-[10px] font-normal text-muted-foreground">{descendants.length}</span>}
         </button>
+        {node.parent_id === null && <button onClick={onAddAll} disabled={!addableCount} title={t("knowledgeMap.addAllVocabulary")} aria-label={t("knowledgeMap.addAllVocabulary")} className="ml-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border bg-background text-sm text-muted-foreground transition hover:border-primary hover:text-primary disabled:opacity-30">+</button>}
         {learnable && <button
           aria-label={node.word_id ? t("knowledgeMap.wordAddedAria", { word: node.label }) : t("knowledgeMap.addWordAria", { word: node.label })}
           title={node.word_id ? t("knowledgeMap.inVocabulary") : t("knowledgeMap.addNow")}
@@ -64,10 +65,7 @@ export function KnowledgeOutline({ nodes, selectedId, addableCount, onSelect, on
   };
 
   return <aside className="min-h-0 overflow-y-auto border-r bg-muted/15 p-3">
-    <div className="mb-3 flex min-h-8 items-center gap-2 px-2">
-      <div className="text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">Outline</div>
-      <button onClick={onAddAll} disabled={!addableCount} title={t("knowledgeMap.addAllVocabulary")} aria-label={t("knowledgeMap.addAllVocabulary")} className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border bg-background text-sm text-muted-foreground transition hover:border-primary hover:text-primary disabled:opacity-30">+</button>
-    </div>
+    <div className="mb-3 flex min-h-8 items-center px-2 text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">Outline</div>
     <div className="space-y-0.5">{roots.map(renderNode)}</div>
   </aside>;
 }
