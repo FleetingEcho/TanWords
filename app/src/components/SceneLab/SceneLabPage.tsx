@@ -5,13 +5,20 @@ import { useDB } from "@/hooks/useDB";
 import { findBestProvider } from "@/providers/select";
 import { useSettingsStore } from "@/store/settingsStore";
 import type { KnowledgeMapDetail, KnowledgeMapSummary, KnowledgeNode } from "@/features/knowledge-map/types";
-import { DEFAULT_BRANCHES, expandNode, generateBranch } from "@/features/knowledge-map/generator";
+import { BRANCH_PRESETS, expandNode, generateBranch, generateOverview, isSentenceBranchLabel, type RootType } from "@/features/knowledge-map/generator";
 import { KnowledgeOutline } from "./KnowledgeOutline";
 import { KnowledgeBoard } from "./KnowledgeBoard";
 import { KnowledgeSearch } from "./KnowledgeSearch";
 import { useT } from "@/hooks/useT";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import type { ParsedEnrichment } from "@/lib/enrichMeta";
+
+const classifyRootType = (topic: string): RootType => {
+  const situation = topic.length > 18 || topic.split(/\s+/).length >= 5 || /[。！？.!?]/.test(topic);
+  if (situation) return "situation";
+  const word = !/\s/.test(topic) && !/[，,]/.test(topic);
+  return word ? "word" : "topic";
+};
 
 export default function SceneLabPage() {
   const db = useDB();
@@ -55,13 +62,14 @@ export default function SceneLabPage() {
     setGenerating(true);
     setProgress(0);
     try {
-      const rootType = topic.length > 18 || topic.trim().split(/\s+/).length >= 5 || /[。！？.!?]/.test(topic) ? "situation" : "topic";
+      const rootType = classifyRootType(topic);
+      const branches = BRANCH_PRESETS[rootType];
       const id = await db.createKnowledgeMap(topic, rootType, levels);
       if (!id) return;
       const current = await db.getKnowledgeMap(id);
       const root = current?.nodes.find((node) => node.parent_id === null);
       if (!root) return;
-      const categoryIds = await db.addKnowledgeNodes(id, root.id, DEFAULT_BRANCHES);
+      const categoryIds = await db.addKnowledgeNodes(id, root.id, branches);
       await loadMap(id, root.id);
       setProgress(10);
       if (!provider) {
@@ -70,18 +78,22 @@ export default function SceneLabPage() {
         return;
       }
       const known = (await db.getWords()).map((word) => word.word);
+      const overviewPromise = rootType === "word" ? generateOverview(provider, topic, levels).catch(() => "") : Promise.resolve("");
       let finished = 0;
       for (let start = 0; start < categoryIds.length; start += 2) {
         await Promise.allSettled(categoryIds.slice(start, start + 2).map(async (categoryId, offset) => {
           const index = start + offset;
-          const excluded = DEFAULT_BRANCHES[index].label === "Common Situational Sentences" ? [] : known;
-          const nodes = await generateBranch(provider, topic, DEFAULT_BRANCHES[index], levels, excluded);
+          const excluded = isSentenceBranchLabel(branches[index].label) ? [] : known;
+          const nodes = await generateBranch(provider, topic, branches[index], levels, excluded);
           await db.addKnowledgeNodes(id, categoryId, nodes);
           finished += 1;
           setProgress(Math.round(finished / categoryIds.length * 90 + 10));
         }));
         await loadMap(id);
       }
+      const overview = await overviewPromise;
+      if (overview) await db.updateKnowledgeNodeNote(root.id, overview);
+      await loadMap(id);
       await refreshList();
       toast.success(t("knowledgeMap.mapGenerated"));
     } catch (error: any) {
@@ -94,7 +106,8 @@ export default function SceneLabPage() {
   const open = async (id: number) => {
     setChecked(new Set());
     let value = await loadMap(id);
-    const sentenceBranch = DEFAULT_BRANCHES.find((branch) => branch.label === "Common Situational Sentences");
+    const branches = value ? BRANCH_PRESETS[value.root_type as RootType] : undefined;
+    const sentenceBranch = branches?.find((branch) => isSentenceBranchLabel(branch.label));
     const root = value?.nodes.find((node) => node.parent_id === null);
     if (value && root && sentenceBranch && !value.nodes.some((node) => node.parent_id === root.id && node.label === sentenceBranch.label)) {
       await db.addKnowledgeNodes(id, root.id, [sentenceBranch]);
