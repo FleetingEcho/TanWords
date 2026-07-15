@@ -92,7 +92,18 @@ const categoryIds = await db.addKnowledgeNodes(id, root.id, branches);
 
 ## 成功标准
 
-- 输入单个词创建地图时，只生成 4 个分支，且都是与该词直接相关的内容（近义词、搭配、例句、易混词）。
+- 输入单个词创建地图时，只生成 5 个分支，且都是与该词直接相关的内容（近义词、搭配、例句、常用情景句、易混词）。
 - 输入短语类主题时，生成 5 个分支，不再包含 Situations & Use Cases / Problems & Solutions。
 - 输入场景句时，生成结果与改动前一致（7 个分支）。
-- `word` 类型的 Example Sentences 分支返回的是完整双语例句，而不是退化成单个词条。
+- `word` 类型的 Example Sentences 与 Common Situational Sentences 分支返回的都是完整双语例句，而不是退化成单个词条。
+
+## 补充：单词类地图的场景感知不足（2026-07-15 追加）
+
+初版上线后发现：像 "kitchen" 这类具体场景/地点类单词，被归入 `word` 类型后只生成词汇本身的近义词、搭配等内容，缺少场景介绍和常用情景句——用户体验上感觉这类词被当成了孤立的词汇条目，而不是一个可探索的小场景。抽象词（如 "resilient"）不受此影响，因为它们本来就没有场景属性。
+
+评估后决定不引入新的主题类型（避免规则复杂化），而是让改动统一覆盖所有 `word` 类型地图：
+
+- `WORD_BRANCHES` 增加第五个分支 **Common Situational Sentences / 常用情景句**，与 `topic`/`situation` 类型共用同一套双语例句生成与校验逻辑（`isSentenceBranchLabel` 判断集合）。
+- 新增 `generateOverview()`：在创建地图时对 `word` 类型额外发起一次 AI 调用，生成 2-3 句英文加一句中文的简短介绍，写入根节点的 `note` 字段（复用现有 `db_update_knowledge_node_note` 接口），在地图详情页的主题卡片中直接展示。
+- 该介绍生成失败或没有配置 AI provider 时静默跳过，不阻塞地图创建流程，也不影响其余分支的生成结果。
+- `topic`/`situation` 类型的地图不受此次改动影响。

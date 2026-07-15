@@ -2,7 +2,25 @@ import { jsonrepair } from "jsonrepair";
 import type { AIProvider } from "@/providers/base";
 import type { KnowledgeNode, NewKnowledgeNode } from "./types";
 
-export const DEFAULT_BRANCHES: NewKnowledgeNode[] = [
+export type RootType = "word" | "topic" | "situation";
+
+const WORD_BRANCHES: NewKnowledgeNode[] = [
+ {kind:"category",label:"Synonyms & Related Words",zh:"近义词与关联词",level:"",note:"Words with a similar or related meaning"},
+ {kind:"category",label:"Collocations & Common Phrases",zh:"常见搭配与短语",level:"",note:"Natural word combinations this word appears in"},
+ {kind:"category",label:"Example Sentences",zh:"例句",level:"",note:"Five natural example sentences using this word"},
+ {kind:"category",label:"Common Situational Sentences",zh:"常用情景句",level:"",note:"Five natural sentences people commonly use around this topic"},
+ {kind:"category",label:"Contrasts & Common Mistakes",zh:"易混词与常见错误",level:"",note:"Words often confused with this one, and typical mistakes"},
+];
+
+const TOPIC_BRANCHES: NewKnowledgeNode[] = [
+ {kind:"category",label:"Core Vocabulary",zh:"核心词汇",level:"",note:"Essential words and concepts"},
+ {kind:"category",label:"Actions & Processes",zh:"动作与过程",level:"",note:"What people do and how things happen"},
+ {kind:"category",label:"Objects & Concepts",zh:"对象与概念",level:"",note:"Things, roles and abstract concepts"},
+ {kind:"category",label:"Common Situational Sentences",zh:"常用情景句",level:"",note:"Five natural sentences people commonly use in this situation"},
+ {kind:"category",label:"Advanced Expressions",zh:"高级表达",level:"",note:"Precise phrases and C1/C2 language"},
+];
+
+const SITUATION_BRANCHES: NewKnowledgeNode[] = [
  {kind:"category",label:"Core Vocabulary",zh:"核心词汇",level:"",note:"Essential words and concepts"},
  {kind:"category",label:"Actions & Processes",zh:"动作与过程",level:"",note:"What people do and how things happen"},
  {kind:"category",label:"Objects & Concepts",zh:"对象与概念",level:"",note:"Things, roles and abstract concepts"},
@@ -11,6 +29,15 @@ export const DEFAULT_BRANCHES: NewKnowledgeNode[] = [
  {kind:"category",label:"Problems & Solutions",zh:"问题与解决",level:"",note:"Common difficulties and responses"},
  {kind:"category",label:"Advanced Expressions",zh:"高级表达",level:"",note:"Precise phrases and C1/C2 language"},
 ];
+
+export const BRANCH_PRESETS: Record<RootType, NewKnowledgeNode[]> = {
+ word: WORD_BRANCHES,
+ topic: TOPIC_BRANCHES,
+ situation: SITUATION_BRANCHES,
+};
+
+const SENTENCE_BRANCH_LABELS = new Set(["Common Situational Sentences", "Example Sentences"]);
+export const isSentenceBranchLabel = (label: string) => SENTENCE_BRANCH_LABELS.has(label);
 
 const SENTENCE_FALLBACKS: NewKnowledgeNode[] = [
  {kind:"phrase",label:"What do you think about it?",zh:"你对此怎么看？",level:"B1",note:"Ask for the other person's opinion."},
@@ -36,7 +63,7 @@ async function collect(provider:AIProvider,system:string,user:string){
 }
 
 export async function generateBranch(provider:AIProvider,root:string,parent:Pick<KnowledgeNode,"label"|"zh"|"kind">|NewKnowledgeNode,targetLevels:string,exclude:string[]=[]):Promise<NewKnowledgeNode[]>{
- const sentences=parent.label==="Common Situational Sentences";
+ const sentences=isSentenceBranchLabel(parent.label);
  const system="You generate practical English vocabulary and sentences for a learner. The topic may be a word or a full situation description in any language. Return only a short JSON array. Follow the format exactly. No markdown and no explanation.";
  const request=sentences
   ? "Return exactly 5 natural, commonly used English sentences for this situation. Every item kind must be phrase. Put the full English sentence in the first field and its natural Chinese translation in the second field."
@@ -61,3 +88,10 @@ export async function generateBranch(provider:AIProvider,root:string,parent:Pick
 }
 
 export async function expandNode(provider:AIProvider,root:string,node:KnowledgeNode,targetLevels:string,exclude:string[]):Promise<NewKnowledgeNode[]>{return generateBranch(provider,root,{label:node.label,zh:node.zh,kind:node.kind},targetLevels,exclude)}
+
+export async function generateOverview(provider:AIProvider,topic:string,targetLevels:string):Promise<string>{
+ const system="You write a short, welcoming introduction for an English learner who just opened a knowledge map for a single word or short topic. Two to three sentences in English, then one Chinese sentence summarizing it. Mention briefly what kind of related vocabulary or situational sentences they can expect to explore. No markdown, no lists, no headings, no explanation of these instructions.";
+ const user=`Word or topic: ${topic}\nLearner: CEFR ${targetLevels}.\nWrite the introduction now.`;
+ const text=(await collect(provider,system,user)).trim();
+ return text.slice(0,600);
+}
