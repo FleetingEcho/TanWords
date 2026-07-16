@@ -282,11 +282,12 @@ export default function SceneLabPage() {
     <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4">
       <Button variant="ghost" onClick={() => { setMap(null); setSelected(null); selectedIdRef.current = null; refreshList(); }}>{t("knowledgeMap.back")}</Button>
       <span className="text-xs text-muted-foreground">{t("knowledgeMap.nodes", { count: map.nodes.length })}</span>
+      {generating && <span className="flex items-center gap-1.5 text-xs font-medium text-primary"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />{t("knowledgeMap.generatingProgress", { progress })}</span>}
       <KnowledgeSearch nodes={map.nodes} busy={expanding} onSelect={selectNode} onExplore={explore} />
     </header>
     <div className="grid min-h-0 flex-1 grid-cols-[minmax(360px,32%)_minmax(0,1fr)]">
       <KnowledgeOutline nodes={map.nodes} selectedId={current.id} addableCount={addableCount} onSelect={selectNode} onAdd={addOne} onAddAll={() => setAddAllConfirmOpen(true)} />
-      <KnowledgeBoard nodes={map.nodes} current={current} checked={checked} expanding={expanding} onSelect={selectNode} onToggle={toggle} onExpand={() => expand(current)} onPersistDetail={persistDetail} onAddWord={addOne} />
+      <KnowledgeBoard nodes={map.nodes} current={current} checked={checked} expanding={expanding} generating={generating} onSelect={selectNode} onToggle={toggle} onExpand={() => expand(current)} onPersistDetail={persistDetail} onAddWord={addOne} />
     </div>
   </div><ConfirmModal
     open={addAllConfirmOpen}
