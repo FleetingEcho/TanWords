@@ -27,6 +27,9 @@ export function KnowledgeBoard({ nodes, current, checked, expanding, onSelect, o
   const learnable = isLearnable(current);
   const available = children.filter((node) => isLearnable(node) && !node.word_id);
   const allSelected = available.length > 0 && available.every((node) => checked.has(node.id));
+  const isRoot = current.parent_id === null;
+  const previewWords = isRoot ? nodes.filter((node) => node.kind === "word").slice(0, 6) : [];
+  const previewSentences = isRoot ? nodes.filter((node) => node.kind === "phrase").slice(0, 2) : [];
 
   if (current.kind === "word") return <main className="min-h-0 overflow-y-auto bg-background">
     <div className="mx-auto max-w-5xl p-8">
@@ -53,7 +56,21 @@ export function KnowledgeBoard({ nodes, current, checked, expanding, onSelect, o
           </div>
           {learnable && <Button variant={checked.has(current.id) ? "secondary" : "default"} disabled={Boolean(current.word_id)} onClick={() => onToggle(current.id)}>{current.word_id ? t("knowledgeMap.addedVocabulary") : checked.has(current.id) ? t("knowledgeMap.cancelSelection") : `+ ${t("knowledgeMap.addVocabulary")}`}</Button>}
         </div>
-        {current.note && <div className="mt-6 rounded-2xl bg-muted/50 p-4 text-sm leading-7">{current.note}</div>}
+        {current.note && <div className="mt-6 rounded-2xl bg-muted/50 p-4 text-sm leading-7">
+          {current.note}
+          {(previewWords.length > 0 || previewSentences.length > 0) && <div className="mt-4 space-y-3 border-t border-border/60 pt-4">
+            {previewWords.length > 0 && <div className="flex flex-wrap gap-2">
+              {previewWords.map((node) => <button key={node.id} onClick={() => onSelect(node)} className="rounded-full border bg-card px-3 py-1 text-xs font-medium transition hover:border-primary/50">
+                {node.label}{node.zh && <span className="ml-1.5 font-normal text-muted-foreground">{node.zh}</span>}
+              </button>)}
+            </div>}
+            {previewSentences.length > 0 && <div className="space-y-1.5">
+              {previewSentences.map((node) => <button key={node.id} onClick={() => onSelect(node)} className="block w-full text-left transition hover:text-primary">
+                “{node.label}”{node.zh && <span className="ml-1.5 text-muted-foreground">{node.zh}</span>}
+              </button>)}
+            </div>}
+          </div>}
+        </div>}
       </section>
 
       <section className="mt-8">
