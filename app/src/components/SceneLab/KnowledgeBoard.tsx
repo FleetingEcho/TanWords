@@ -9,11 +9,12 @@ import type { ParsedEnrichment } from "@/lib/enrichMeta";
 
 const isLearnable = (node: KnowledgeNode) => node.kind === "word" || node.kind === "phrase";
 
-export function KnowledgeBoard({ nodes, current, checked, expanding, onSelect, onToggle, onExpand, onPersistDetail, onAddWord }: {
+export function KnowledgeBoard({ nodes, current, checked, expanding, generating, onSelect, onToggle, onExpand, onPersistDetail, onAddWord }: {
   nodes: KnowledgeNode[];
   current: KnowledgeNode;
   checked: Set<number>;
   expanding: boolean;
+  generating?: boolean;
   onSelect: (node: KnowledgeNode) => void;
   onToggle: (id: number) => void;
   onExpand: () => void;
@@ -71,6 +72,11 @@ export function KnowledgeBoard({ nodes, current, checked, expanding, onSelect, o
             </div>}
           </div>}
         </div>}
+        {!current.note && isRoot && generating && <div className="mt-6 animate-pulse space-y-2 rounded-2xl bg-muted/50 p-4">
+          <div className="h-3 w-11/12 rounded bg-muted-foreground/20" />
+          <div className="h-3 w-4/5 rounded bg-muted-foreground/20" />
+          <div className="h-3 w-2/3 rounded bg-muted-foreground/20" />
+        </div>}
       </section>
 
       <section className="mt-8">
@@ -92,6 +98,12 @@ export function KnowledgeBoard({ nodes, current, checked, expanding, onSelect, o
             </button>
             {isLearnable(node) && <button disabled={Boolean(node.word_id)} onClick={() => onToggle(node.id)} className={`absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full border text-xs ${node.word_id ? "bg-emerald-500 text-white" : checked.has(node.id) ? "bg-primary text-primary-foreground" : "bg-background hover:border-primary"}`}>{node.word_id || checked.has(node.id) ? "✓" : "+"}</button>}
           </article>)}
+        </div> : !isRoot && generating ? <div className="grid animate-pulse gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {[0, 1, 2].map((key) => <div key={key} className="space-y-3 rounded-2xl border bg-card p-4">
+            <div className="h-2.5 w-1/3 rounded bg-muted-foreground/20" />
+            <div className="h-5 w-2/3 rounded bg-muted-foreground/20" />
+            <div className="h-3 w-1/2 rounded bg-muted-foreground/20" />
+          </div>)}
         </div> : <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">{t("knowledgeMap.emptyHint")}</div>}
       </section>
     </div>
