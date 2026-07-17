@@ -43,7 +43,7 @@ export default function SceneLabPage() {
   const [deleting, setDeleting] = useState(false);
   const [addAllConfirmOpen, setAddAllConfirmOpen] = useState(false);
   const [addingAll, setAddingAll] = useState(false);
-  const cancelRef = useRef(false);
+  const activeGenerationRef = useRef<{ cancelled: boolean } | null>(null);
 
   const refreshList = useCallback(() => db.listKnowledgeMaps().then(setMaps), [db]);
   useEffect(() => { refreshList(); }, [refreshList]);
@@ -66,7 +66,8 @@ export default function SceneLabPage() {
     const topic = input.trim();
     if (!topic || generating) return;
     const provider = findBestProvider();
-    cancelRef.current = false;
+    const generation = { cancelled: false };
+    activeGenerationRef.current = generation;
     setGenerating(true);
     setProgress(0);
     let id: number | undefined;
@@ -79,7 +80,7 @@ export default function SceneLabPage() {
       const root = current?.nodes.find((node) => node.parent_id === null);
       if (!root) return;
       const categoryIds = await db.addKnowledgeNodes(id, root.id, branches);
-      if (cancelRef.current) { await db.deleteKnowledgeMap(id); await refreshList(); return; }
+      if (generation.cancelled) { await db.deleteKnowledgeMap(id); await refreshList(); return; }
       await loadMap(id, root.id);
       setProgress(10);
       if (!provider) {
@@ -90,7 +91,7 @@ export default function SceneLabPage() {
       const known = (await db.getWords()).map((word) => word.word);
       const overviewPromise = rootType === "word" ? generateOverview(provider, topic, levels).catch(() => "") : Promise.resolve("");
       let finished = 0;
-      for (let start = 0; start < categoryIds.length && !cancelRef.current; start += 2) {
+      for (let start = 0; start < categoryIds.length && !generation.cancelled; start += 2) {
         await Promise.allSettled(categoryIds.slice(start, start + 2).map(async (categoryId, offset) => {
           const index = start + offset;
           const excluded = isSentenceBranchLabel(branches[index].label) ? [] : known;
@@ -99,11 +100,11 @@ export default function SceneLabPage() {
           finished += 1;
           setProgress(Math.round(finished / categoryIds.length * 90 + 10));
         }));
-        if (!cancelRef.current) await loadMap(id);
+        if (!generation.cancelled) await loadMap(id);
       }
-      const overview = cancelRef.current ? "" : await overviewPromise;
+      const overview = generation.cancelled ? "" : await overviewPromise;
       if (overview) await db.updateKnowledgeNodeNote(root.id, overview);
-      if (cancelRef.current) {
+      if (generation.cancelled) {
         await db.deleteKnowledgeMap(id);
         await refreshList();
         return;
@@ -114,13 +115,14 @@ export default function SceneLabPage() {
     } catch (error: any) {
       toast.error(error?.message || t("knowledgeMap.createFailed"));
     } finally {
-      setGenerating(false);
+      if (activeGenerationRef.current === generation) setGenerating(false);
     }
   };
 
   const cancelGeneration = () => {
-    if (!generating || cancelRef.current) return;
-    cancelRef.current = true;
+    const generation = activeGenerationRef.current;
+    if (!generating || !generation || generation.cancelled) return;
+    generation.cancelled = true;
     setGenerating(false);
     setMap(null);
     setSelected(null);
