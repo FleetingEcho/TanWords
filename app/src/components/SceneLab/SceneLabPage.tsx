@@ -79,6 +79,7 @@ export default function SceneLabPage() {
       const root = current?.nodes.find((node) => node.parent_id === null);
       if (!root) return;
       const categoryIds = await db.addKnowledgeNodes(id, root.id, branches);
+      if (cancelRef.current) { await db.deleteKnowledgeMap(id); await refreshList(); return; }
       await loadMap(id, root.id);
       setProgress(10);
       if (!provider) {
@@ -98,7 +99,7 @@ export default function SceneLabPage() {
           finished += 1;
           setProgress(Math.round(finished / categoryIds.length * 90 + 10));
         }));
-        await loadMap(id);
+        if (!cancelRef.current) await loadMap(id);
       }
       const overview = cancelRef.current ? "" : await overviewPromise;
       if (overview) await db.updateKnowledgeNodeNote(root.id, overview);
