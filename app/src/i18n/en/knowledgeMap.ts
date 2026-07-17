@@ -6,6 +6,7 @@ export const knowledgeMap: Dict = {
   "knowledgeMap.inputPlaceholder": "Try: Kitchen, job interview, distributed systems, bank",
   "knowledgeMap.generate": "Generate knowledge map",
   "knowledgeMap.generatingProgress": "Generating {progress}%",
+  "knowledgeMap.tryExamples": "Try:",
   "knowledgeMap.myMaps": "My maps",
   "knowledgeMap.back": "← My maps",
   "knowledgeMap.nodes": "{count} nodes",

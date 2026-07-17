@@ -1,12 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import type { KnowledgeNode } from "@/features/knowledge-map/types";
 import { buildChildrenMap, getBreadcrumb } from "@/features/knowledge-map/tree";
+import { NODE_KIND_COLORS } from "@/features/knowledge-map/colors";
 import { useT } from "@/hooks/useT";
-
-const DOT: Record<string, string> = {
-  topic: "bg-amber-500", category: "bg-teal-500", word: "bg-blue-500",
-  phrase: "bg-violet-500", situation: "bg-pink-500", contrast: "bg-red-500",
-};
 
 export function KnowledgeOutline({ nodes, selectedId, addableCount, onSelect, onAdd, onAddAll }: {
   nodes: KnowledgeNode[];
@@ -47,7 +43,7 @@ export function KnowledgeOutline({ nodes, selectedId, addableCount, onSelect, on
           onClick={() => onSelect(node)}
           className={`grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(0,.9fr)_auto] items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm ${active ? "bg-primary/10 font-semibold text-primary" : "hover:bg-muted"}`}
         >
-          <span className="flex min-w-0 items-center gap-2"><span className={`h-2 w-2 shrink-0 rounded-full ${DOT[node.kind]}`} /><span className="truncate">{node.label}</span></span>
+          <span className="flex min-w-0 items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: NODE_KIND_COLORS[node.kind] }} /><span className="truncate">{node.label}</span></span>
           <span className="truncate text-xs font-normal text-muted-foreground">{node.zh}</span>
           {!!descendants.length && node.parent_id !== null && <span className="text-[10px] font-normal text-muted-foreground">{descendants.length}</span>}
         </button>
