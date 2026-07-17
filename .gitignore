@@ -8,3 +8,4 @@ app/src-tauri/sherpa-libs/
 
 # local release build outputs (deb/rpm/dmg/app) — not source, regenerate via build
 dist-releases/
+.superpowers/
