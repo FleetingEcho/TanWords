@@ -1,11 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { formatDistanceToNow } from "date-fns";
+import { enUS, zhCN } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { useDB } from "@/hooks/useDB";
 import { findBestProvider } from "@/providers/select";
 import { useSettingsStore } from "@/store/settingsStore";
-import type { KnowledgeMapDetail, KnowledgeMapSummary, KnowledgeNode } from "@/features/knowledge-map/types";
+import type { KnowledgeMapDetail, KnowledgeMapSummary, KnowledgeNode, KnowledgeNodeKind } from "@/features/knowledge-map/types";
 import { BRANCH_PRESETS, expandNode, generateBranch, generateOverview, isSentenceBranchLabel, type RootType } from "@/features/knowledge-map/generator";
+import { NODE_KIND_COLORS } from "@/features/knowledge-map/colors";
 import { KnowledgeOutline } from "./KnowledgeOutline";
 import { KnowledgeBoard } from "./KnowledgeBoard";
 import { KnowledgeSearch } from "./KnowledgeSearch";
@@ -20,10 +23,13 @@ const classifyRootType = (topic: string): RootType => {
   return word ? "word" : "topic";
 };
 
+const EXAMPLE_TOPICS = ["kitchen", "job interview", "distributed systems", "bank"];
+
 export default function SceneLabPage() {
   const db = useDB();
   const t = useT();
   const levels = useSettingsStore((state) => state.targetLevels.join("/"));
+  const uiLanguage = useSettingsStore((state) => state.uiLanguage);
   const [input, setInput] = useState("");
   const [maps, setMaps] = useState<KnowledgeMapSummary[]>([]);
   const [map, setMap] = useState<KnowledgeMapDetail | null>(null);
@@ -249,20 +255,30 @@ export default function SceneLabPage() {
     }
   };
 
-  if (!map) return <><div className="mx-auto max-w-5xl p-8">
-    <p className="text-xs font-bold uppercase tracking-[.2em] text-primary">Infinite Knowledge Map</p>
-    <h1 className="mt-2 font-serif text-4xl font-bold">{t("knowledgeMap.title")}</h1>
-    <p className="mt-2 text-muted-foreground">{t("knowledgeMap.subtitle")}</p>
-    <div className="mt-7 flex gap-2">
-      <input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && create()} placeholder={t("knowledgeMap.inputPlaceholder")} className="h-11 flex-1 rounded-xl border bg-background px-4 outline-none focus:ring-2 focus:ring-primary/40" />
-      <Button onClick={create} disabled={generating || !input.trim()} className="h-11 px-6">{generating ? t("knowledgeMap.generatingProgress", { progress }) : t("knowledgeMap.generate")}</Button>
+  if (!map) return <><div className="min-h-full bg-[radial-gradient(circle_at_1px_1px,hsl(var(--muted))_1px,transparent_0)] [background-size:22px_22px]">
+    <div className="mx-auto max-w-5xl p-8">
+      <p className="text-xs font-bold uppercase tracking-[.2em] text-primary">Infinite Knowledge Map</p>
+      <h1 className="mt-2 font-serif text-4xl font-bold">{t("knowledgeMap.title")}</h1>
+      <p className="mt-2 text-muted-foreground">{t("knowledgeMap.subtitle")}</p>
+      <div className="mt-7 flex gap-2">
+        <input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && create()} placeholder={t("knowledgeMap.inputPlaceholder")} className="h-11 flex-1 rounded-xl border bg-background px-4 outline-none focus:ring-2 focus:ring-primary/40" />
+        <Button onClick={create} disabled={generating || !input.trim()} className="h-11 px-6">{generating ? t("knowledgeMap.generatingProgress", { progress }) : t("knowledgeMap.generate")}</Button>
+      </div>
+      {generating && <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} /></div>}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <span className="text-xs text-muted-foreground">{t("knowledgeMap.tryExamples")}</span>
+        {EXAMPLE_TOPICS.map((example) => <button key={example} onClick={() => setInput(example)} className="rounded-full border bg-card px-3 py-1 text-xs text-muted-foreground transition hover:border-primary/50 hover:text-foreground">{example}</button>)}
+      </div>
+      <h2 className="mb-3 mt-10 font-semibold">{t("knowledgeMap.myMaps")}</h2>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{maps.map((item) => <article key={item.id} className="group relative overflow-hidden rounded-2xl border bg-card transition hover:border-primary/50">
+        <div className="absolute inset-y-0 left-0 w-[3px]" style={{ backgroundColor: NODE_KIND_COLORS[item.root_type as KnowledgeNodeKind] ?? NODE_KIND_COLORS.topic }} />
+        <button onClick={() => open(item.id)} className="block w-full p-4 pl-5 pr-12 text-left">
+          <strong>{item.root_label}</strong>
+          <p className="mt-1 text-xs text-muted-foreground">{t(`knowledgeMap.kind.${item.root_type}`)} · {t("knowledgeMap.nodes", { count: item.node_count })} · {formatDistanceToNow(new Date(item.updated_at), { addSuffix: true, locale: uiLanguage === "zh" ? zhCN : enUS })}</p>
+        </button>
+        <button onClick={() => setDeleteTarget(item)} aria-label={`${t("knowledgeMap.delete")}: ${item.root_label}`} title={t("knowledgeMap.delete")} className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition hover:bg-destructive/15 hover:text-destructive group-hover:opacity-100 focus:opacity-100">×</button>
+      </article>)}</div>
     </div>
-    {generating && <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} /></div>}
-    <h2 className="mb-3 mt-10 font-semibold">{t("knowledgeMap.myMaps")}</h2>
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{maps.map((item) => <article key={item.id} className="group relative rounded-2xl border bg-card transition hover:border-primary/50">
-      <button onClick={() => open(item.id)} className="block w-full p-4 pr-12 text-left"><strong>{item.root_label}</strong><p className="mt-1 text-xs text-muted-foreground">{t("knowledgeMap.nodes", { count: item.node_count })} · {t(`knowledgeMap.kind.${item.root_type}`)}</p></button>
-      <button onClick={() => setDeleteTarget(item)} aria-label={`${t("knowledgeMap.delete")}: ${item.root_label}`} title={t("knowledgeMap.delete")} className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition hover:bg-destructive/15 hover:text-destructive group-hover:opacity-100 focus:opacity-100">×</button>
-    </article>)}</div>
   </div><ConfirmModal
     open={Boolean(deleteTarget)}
     title={t("knowledgeMap.delete")}

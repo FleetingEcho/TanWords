@@ -47,7 +47,7 @@ export function KnowledgeBoard({ nodes, current, checked, expanding, generating,
         {breadcrumb.map((node, index) => <React.Fragment key={node.id}>{index > 0 && <span>/</span>}<button onClick={() => onSelect(node)} className="rounded px-1 py-0.5 hover:bg-muted hover:text-foreground">{node.label}</button></React.Fragment>)}
       </nav>
 
-      <section className="rounded-3xl border bg-card p-7 shadow-sm">
+      <section className={`rounded-3xl border bg-card p-7 shadow-sm ${isRoot ? "bg-gradient-to-br from-primary/10 to-transparent" : ""}`}>
         <div className="flex items-start gap-6">
           <div className="min-w-0 flex-1">
             <span className="text-[10px] font-bold uppercase tracking-[.2em] text-primary">{t(`knowledgeMap.kind.${current.kind}`)}</span>
@@ -98,12 +98,9 @@ export function KnowledgeBoard({ nodes, current, checked, expanding, generating,
             </button>
             {isLearnable(node) && <button disabled={Boolean(node.word_id)} onClick={() => onToggle(node.id)} className={`absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full border text-xs ${node.word_id ? "bg-emerald-500 text-white" : checked.has(node.id) ? "bg-primary text-primary-foreground" : "bg-background hover:border-primary"}`}>{node.word_id || checked.has(node.id) ? "✓" : "+"}</button>}
           </article>)}
-        </div> : !isRoot && generating ? <div className="grid animate-pulse gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {[0, 1, 2].map((key) => <div key={key} className="space-y-3 rounded-2xl border bg-card p-4">
-            <div className="h-2.5 w-1/3 rounded bg-muted-foreground/20" />
-            <div className="h-5 w-2/3 rounded bg-muted-foreground/20" />
-            <div className="h-3 w-1/2 rounded bg-muted-foreground/20" />
-          </div>)}
+        </div> : !isRoot && generating ? <div className="rounded-2xl border border-dashed p-8 text-center">
+          <div className="mx-auto h-1 w-40 overflow-hidden rounded-full bg-muted"><div className="h-full w-1/2 animate-pulse rounded-full bg-gradient-to-r from-primary/40 to-primary" /></div>
+          <p className="mt-3 text-sm text-muted-foreground">{t("knowledgeMap.generating")}</p>
         </div> : <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">{t("knowledgeMap.emptyHint")}</div>}
       </section>
     </div>
