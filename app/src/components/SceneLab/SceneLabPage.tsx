@@ -43,6 +43,7 @@ export default function SceneLabPage() {
   const [deleting, setDeleting] = useState(false);
   const [addAllConfirmOpen, setAddAllConfirmOpen] = useState(false);
   const [addingAll, setAddingAll] = useState(false);
+  const cancelRef = useRef(false);
 
   const refreshList = useCallback(() => db.listKnowledgeMaps().then(setMaps), [db]);
   useEffect(() => { refreshList(); }, [refreshList]);
@@ -65,12 +66,14 @@ export default function SceneLabPage() {
     const topic = input.trim();
     if (!topic || generating) return;
     const provider = findBestProvider();
+    cancelRef.current = false;
     setGenerating(true);
     setProgress(0);
+    let id: number | undefined;
     try {
       const rootType = classifyRootType(topic);
       const branches = BRANCH_PRESETS[rootType];
-      const id = await db.createKnowledgeMap(topic, rootType, levels);
+      id = await db.createKnowledgeMap(topic, rootType, levels);
       if (!id) return;
       const current = await db.getKnowledgeMap(id);
       const root = current?.nodes.find((node) => node.parent_id === null);
@@ -86,19 +89,24 @@ export default function SceneLabPage() {
       const known = (await db.getWords()).map((word) => word.word);
       const overviewPromise = rootType === "word" ? generateOverview(provider, topic, levels).catch(() => "") : Promise.resolve("");
       let finished = 0;
-      for (let start = 0; start < categoryIds.length; start += 2) {
+      for (let start = 0; start < categoryIds.length && !cancelRef.current; start += 2) {
         await Promise.allSettled(categoryIds.slice(start, start + 2).map(async (categoryId, offset) => {
           const index = start + offset;
           const excluded = isSentenceBranchLabel(branches[index].label) ? [] : known;
           const nodes = await generateBranch(provider, topic, branches[index], levels, excluded);
-          await db.addKnowledgeNodes(id, categoryId, nodes);
+          await db.addKnowledgeNodes(id!, categoryId, nodes);
           finished += 1;
           setProgress(Math.round(finished / categoryIds.length * 90 + 10));
         }));
         await loadMap(id);
       }
-      const overview = await overviewPromise;
+      const overview = cancelRef.current ? "" : await overviewPromise;
       if (overview) await db.updateKnowledgeNodeNote(root.id, overview);
+      if (cancelRef.current) {
+        await db.deleteKnowledgeMap(id);
+        await refreshList();
+        return;
+      }
       await loadMap(id);
       await refreshList();
       toast.success(t("knowledgeMap.mapGenerated"));
@@ -107,6 +115,16 @@ export default function SceneLabPage() {
     } finally {
       setGenerating(false);
     }
+  };
+
+  const cancelGeneration = () => {
+    if (!generating || cancelRef.current) return;
+    cancelRef.current = true;
+    setGenerating(false);
+    setMap(null);
+    setSelected(null);
+    selectedIdRef.current = null;
+    toast.info(t("knowledgeMap.generationCancelled"));
   };
 
   const open = async (id: number) => {
@@ -264,7 +282,10 @@ export default function SceneLabPage() {
         <input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => event.key === "Enter" && create()} placeholder={t("knowledgeMap.inputPlaceholder")} className="h-11 flex-1 rounded-xl border bg-background px-4 outline-none focus:ring-2 focus:ring-primary/40" />
         <Button onClick={create} disabled={generating || !input.trim()} className="h-11 px-6">{generating ? t("knowledgeMap.generatingProgress", { progress }) : t("knowledgeMap.generate")}</Button>
       </div>
-      {generating && <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} /></div>}
+      {generating && <div className="mt-3 flex items-center gap-3">
+        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} /></div>
+        <button onClick={cancelGeneration} className="shrink-0 rounded-full border border-primary/30 px-2.5 py-1 text-[11px] font-medium text-primary transition hover:bg-primary/10">{t("knowledgeMap.cancelGeneration")}</button>
+      </div>}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <span className="text-xs text-muted-foreground">{t("knowledgeMap.tryExamples")}</span>
         {EXAMPLE_TOPICS.map((example) => <button key={example} onClick={() => setInput(example)} className="rounded-full border bg-card px-3 py-1 text-xs text-muted-foreground transition hover:border-primary/50 hover:text-foreground">{example}</button>)}
@@ -298,7 +319,10 @@ export default function SceneLabPage() {
     <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4">
       <Button variant="ghost" onClick={() => { setMap(null); setSelected(null); selectedIdRef.current = null; refreshList(); }}>{t("knowledgeMap.back")}</Button>
       <span className="text-xs text-muted-foreground">{t("knowledgeMap.nodes", { count: map.nodes.length })}</span>
-      {generating && <span className="flex items-center gap-1.5 text-xs font-medium text-primary"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />{t("knowledgeMap.generatingProgress", { progress })}</span>}
+      {generating && <span className="flex items-center gap-1.5 text-xs font-medium text-primary">
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />{t("knowledgeMap.generatingProgress", { progress })}
+        <button onClick={cancelGeneration} className="ml-1 rounded-full border border-primary/30 px-2 py-0.5 text-[11px] font-medium text-primary transition hover:bg-primary/10">{t("knowledgeMap.cancelGeneration")}</button>
+      </span>}
       <KnowledgeSearch nodes={map.nodes} busy={expanding} onSelect={selectNode} onExplore={explore} />
     </header>
     <div className="grid min-h-0 flex-1 grid-cols-[minmax(360px,32%)_minmax(0,1fr)]">

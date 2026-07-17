@@ -6,6 +6,8 @@ export const knowledgeMap: Dict = {
   "knowledgeMap.inputPlaceholder": "例如：Kitchen、job interview、distributed systems、bank",
   "knowledgeMap.generate": "生成知识地图",
   "knowledgeMap.generatingProgress": "生成中 {progress}%",
+  "knowledgeMap.cancelGeneration": "取消",
+  "knowledgeMap.generationCancelled": "已取消生成，地图已删除",
   "knowledgeMap.tryExamples": "试试看",
   "knowledgeMap.myMaps": "我的地图",
   "knowledgeMap.back": "← 我的地图",
