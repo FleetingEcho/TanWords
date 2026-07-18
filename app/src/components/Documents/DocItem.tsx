@@ -13,6 +13,8 @@ interface Props {
   onPin: (id: number) => void;
   onDuplicate: (id: number) => void;
   onDelete: (id: number) => void;
+  searchQuery?: string;
+  onExport: (id: number) => void;
 }
 
 const MENU_WIDTH = 160;
@@ -28,7 +30,40 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString();
 }
 
-export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, onDelete }: Props) {
+function fuzzyPositions(text: string, query: string): number[] | null {
+  const haystack = text.toLowerCase();
+  const needle = query.trim().toLowerCase();
+  if (!needle) return null;
+  const positions: number[] = [];
+  let cursor = 0;
+  for (const char of needle) {
+    const found = haystack.indexOf(char, cursor);
+    if (found < 0) return null;
+    positions.push(found);
+    cursor = found + 1;
+  }
+  return positions;
+}
+
+function HighlightFuzzy({ text, query }: { text: string; query: string }) {
+  const positions = fuzzyPositions(text, query);
+  if (!positions) return <>{text}</>;
+  const matched = new Set(positions);
+  return <>{[...text].map((char, index) => matched.has(index)
+    ? <mark key={index} className="rounded-sm bg-yellow-300/70 text-inherit dark:bg-yellow-500/40">{char}</mark>
+    : char)}</>;
+}
+
+function contentExcerpt(content: string, query: string): string | null {
+  const normalized = content.replace(/\s+/g, " ").trim();
+  const positions = fuzzyPositions(normalized, query);
+  if (!positions) return null;
+  const start = Math.max(0, positions[0] - 32);
+  const end = Math.min(normalized.length, positions[positions.length - 1] + 72);
+  return `${start > 0 ? "…" : ""}${normalized.slice(start, end)}${end < normalized.length ? "…" : ""}`;
+}
+
+export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, onDelete, onExport, searchQuery = "" }: Props) {
   const t = useT();
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [renaming, setRenaming] = useState(false);
@@ -65,6 +100,7 @@ export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, o
   };
 
   const tags: string[] = (() => { try { return JSON.parse(doc.tags); } catch { return []; } })();
+  const excerpt = searchQuery.trim() ? contentExcerpt(doc.content_text, searchQuery) : null;
 
   return (
     <>
@@ -98,7 +134,7 @@ export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, o
                   className="flex-1 min-w-0 text-sm font-medium bg-card border border-primary/40 rounded px-1 outline-none"
                 />
               ) : (
-                <p className="flex-1 min-w-0 text-sm font-medium truncate leading-tight">{doc.title || t("doc.untitled")}</p>
+                <p className="flex-1 min-w-0 text-sm font-medium truncate leading-tight"><HighlightFuzzy text={doc.title || t("doc.untitled")} query={searchQuery} /></p>
               )}
               <Button
                 ref={menuBtnRef}
@@ -110,6 +146,11 @@ export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, o
                 <EllipsisVerticalIcon className="w-3.5 h-3.5" />
               </Button>
             </div>
+            {excerpt && (
+              <p className="mt-1.5 line-clamp-2 text-[10px] font-normal leading-4 text-muted-foreground">
+                <HighlightFuzzy text={excerpt} query={searchQuery} />
+              </p>
+            )}
             <div className="flex items-center gap-2 mt-0.5">
               <span className="text-[10px] text-muted-foreground">{formatDate(doc.updated_at)}</span>
               {doc.word_count > 0 && (
@@ -145,6 +186,13 @@ export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, o
             className="h-auto w-full rounded-none flex items-center justify-start gap-2.5 px-3 py-2 text-sm hover:bg-muted text-left"
           >
             <PencilIcon className="w-4 h-4 shrink-0" /> {t("doc.rename")}
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => { setMenu(null); onExport(doc.id); }}
+            className="h-auto w-full rounded-none flex items-center justify-start gap-2.5 px-3 py-2 text-sm hover:bg-muted text-left"
+          >
+            <DocumentDuplicateIcon className="w-4 h-4 shrink-0" /> {t("doc.exportMarkdown")}
           </Button>
           <Button
             variant="ghost"

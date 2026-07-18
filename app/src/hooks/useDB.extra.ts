@@ -318,6 +318,15 @@ export function useDBExtra() {
     }
   }, []);
 
+  const getDbSize = useCallback(async (): Promise<number> => {
+    try {
+      return await invoke<number>("db_get_db_size");
+    } catch (e) {
+      logError("getDbSize", e);
+      return 0;
+    }
+  }, []);
+
   const exportBackup = useCallback(async (dest: string): Promise<void> => {
     try {
       await invoke("db_export_backup", { dest });
@@ -353,7 +362,7 @@ export function useDBExtra() {
     addSearchHistory, getSearchHistory, clearSearchHistory,
     addRssFeed, getRssFeeds, updateRssFeedTitle, updateRssFeedPreferences, deleteRssFeed, fetchRssFeedMeta,
     syncRssFeed, getRssEntries, markRssEntryRead, getRssUnreadCounts,
-    getDbPath, exportBackup, switchDbPath, clearTranslations,
+    getDbPath, getDbSize, exportBackup, switchDbPath, clearTranslations,
   }), [
     listChatSessions, getChatSession, upsertChatSession, deleteChatSession, searchChatSessions,
     saveArticleAnalysis, getArticles, getArticle, deleteArticle, updateItemStatus, addKnownWords, getKnownWords,
@@ -362,6 +371,6 @@ export function useDBExtra() {
     addSearchHistory, getSearchHistory, clearSearchHistory,
     addRssFeed, getRssFeeds, updateRssFeedTitle, updateRssFeedPreferences, deleteRssFeed, fetchRssFeedMeta,
     syncRssFeed, getRssEntries, markRssEntryRead, getRssUnreadCounts,
-    getDbPath, exportBackup, switchDbPath, clearTranslations,
+    getDbPath, getDbSize, exportBackup, switchDbPath, clearTranslations,
   ]);
 }

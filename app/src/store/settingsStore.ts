@@ -12,7 +12,6 @@ interface SettingsState {
   theme: Theme;
   defaultAiProvider: string;
   uiLanguage: string;
-  vocabBilingual: boolean;
   /** CEFR levels the AI calibrates to — multi-select, e.g. ["C1","C2"]. */
   targetLevels: string[];
   /** User override for the word-enrichment system prompt. Empty string = use the built-in default. */
@@ -34,7 +33,6 @@ interface SettingsState {
   setTheme: (theme: Theme) => void;
   setDefaultAiProvider: (provider: string) => void;
   setUiLanguage: (lang: string) => void;
-  setVocabBilingual: (v: boolean) => void;
   setTargetLevels: (levels: string[]) => void;
   setCustomEnrichPrompt: (prompt: string) => void;
   setMusicFolderPath: (path: string) => void;
@@ -66,11 +64,30 @@ function cacheUiLanguage(lang: string) {
   }
 }
 
+const SIDEBAR_TABS_CACHE_KEY = "tanwords_visible_sidebar_tabs_cache";
+
+function cachedSidebarTabs(): SidebarTabId[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SIDEBAR_TABS_CACHE_KEY) || "null");
+    if (!Array.isArray(parsed)) return [];
+    return DEFAULT_SIDEBAR_TABS.filter((id) => parsed.includes(id));
+  } catch {
+    return [];
+  }
+}
+
+function cacheSidebarTabs(tabs: SidebarTabId[]) {
+  try {
+    localStorage.setItem(SIDEBAR_TABS_CACHE_KEY, JSON.stringify(tabs));
+  } catch {
+    // The DB remains authoritative when localStorage is unavailable.
+  }
+}
+
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   theme: "system",
   defaultAiProvider: "openai",
   uiLanguage: cachedUiLanguage(),
-  vocabBilingual: false,
   targetLevels: ["C1"],
   customEnrichPrompt: "",
   musicFolderPath: "",
@@ -80,7 +97,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   ttsSpeed: 1,
   showQuickDoc: true,
   showGithubLink: true,
-  visibleSidebarTabs: DEFAULT_SIDEBAR_TABS,
+  visibleSidebarTabs: cachedSidebarTabs(),
   isLoaded: false,
 
   setTheme: (theme) => {
@@ -100,10 +117,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     cacheUiLanguage(lang);
   },
 
-  setVocabBilingual: (v) => {
-    set({ vocabBilingual: v });
-    saveSetting("vocab_bilingual", JSON.stringify(v));
-  },
 
   setShowQuickDoc: (v) => {
     set({ showQuickDoc: v });
@@ -121,6 +134,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       ? DEFAULT_SIDEBAR_TABS.filter((id) => id === tab || current.includes(id))
       : current.filter((id) => id !== tab);
     set({ visibleSidebarTabs: next });
+    cacheSidebarTabs(next);
     saveSetting("visible_sidebar_tabs", JSON.stringify(next));
   },
 
@@ -167,7 +181,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         "theme",
         "default_ai_provider",
         "ui_language",
-        "vocab_bilingual",
         "target_level",
         "custom_enrich_prompt",
         "music_folder_path",
@@ -191,11 +204,15 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const resolvedUiLanguage = values.ui_language || "zh";
       cacheUiLanguage(resolvedUiLanguage);
 
+      const resolvedSidebarTabs = Array.isArray(values.visible_sidebar_tabs)
+        ? DEFAULT_SIDEBAR_TABS.filter((id) => (values.visible_sidebar_tabs as unknown as string[]).includes(id))
+        : DEFAULT_SIDEBAR_TABS;
+      cacheSidebarTabs(resolvedSidebarTabs);
+
       set({
         theme: (values.theme as Theme) || "system",
         defaultAiProvider: values.default_ai_provider || "openai",
         uiLanguage: resolvedUiLanguage,
-        vocabBilingual: values.vocab_bilingual === "true",
         // Legacy installs stored a single string ("C1"); newer ones an array.
         targetLevels: Array.isArray(values.target_level)
           ? (values.target_level as unknown as string[])
@@ -211,9 +228,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         // JSON.parse turns the stored string into a real boolean; default on.
         showQuickDoc: (values.quick_doc_ball as unknown) !== false && values.quick_doc_ball !== "false",
         showGithubLink: (values.show_github_link as unknown) !== false && values.show_github_link !== "false",
-        visibleSidebarTabs: Array.isArray(values.visible_sidebar_tabs)
-          ? DEFAULT_SIDEBAR_TABS.filter((id) => (values.visible_sidebar_tabs as unknown as string[]).includes(id))
-          : DEFAULT_SIDEBAR_TABS,
+        visibleSidebarTabs: resolvedSidebarTabs,
         isLoaded: true,
       });
 
@@ -236,7 +251,7 @@ async function saveSetting(key: string, value: string) {
   }
 }
 
-export function applyTheme(theme: Theme) {
+function applyTheme(theme: Theme) {
   const root = document.documentElement;
   if (theme === "system") {
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;

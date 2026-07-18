@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Dialog } from "@/components/ui/dialog";
+import { Dialog, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useWordModalStore } from "@/store/wordModalStore";
@@ -139,7 +139,7 @@ export function WordDetailModal() {
           {parsed && !loading && !legacy && (
             <div className="space-y-3">
               <div className="flex items-center gap-3">
-                <h2 className="text-2xl font-bold">{word}</h2>
+                <DialogTitle className="text-2xl font-bold">{word}</DialogTitle>
                 {parsed.level && <Badge variant="default" className="text-xs">{parsed.level}</Badge>}
               </div>
               <EnrichmentText text={parsed.text} />

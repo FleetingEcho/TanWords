@@ -1,14 +1,7 @@
-import { jsonrepair } from "jsonrepair";
 import { KITCHEN_ACTIONS, KITCHEN_OBJECT_KEYS } from "../kitchenManifest";
 import type { GeneratedSceneLesson, RelationType, SceneTaskStep, SceneVocabularyItem } from "../types";
 
 const RELATIONS = new Set<RelationType>(["located_near", "used_for", "followed_by", "belongs_to"]);
-
-export function parseSceneLesson(raw: string): GeneratedSceneLesson {
-  const start = raw.indexOf("{");
-  if (start < 0) throw new Error("AI 没有返回有效的场景课程");
-  return validateSceneLesson(JSON.parse(jsonrepair(raw.slice(start))));
-}
 
 export function validateSceneLesson(value: any): GeneratedSceneLesson {
   const seen = new Set<string>();

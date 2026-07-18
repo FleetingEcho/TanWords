@@ -1,4 +1,5 @@
-import React, { useEffect } from "react";
+import React from "react";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { cn } from "@/lib/utils";
 
 interface DialogProps {
@@ -9,22 +10,24 @@ interface DialogProps {
   maxWidth?: string;
 }
 
+export const DialogTitle = DialogPrimitive.Title;
+
 export function Dialog({ open, onClose, children, className, maxWidth = "max-w-2xl" }: DialogProps) {
-  useEffect(() => {
-    if (!open) return;
-    const handleEsc = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    document.addEventListener("keydown", handleEsc);
-    return () => document.removeEventListener("keydown", handleEsc);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[8vh]">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className={cn("relative w-full mx-4 rounded-xl border border-border bg-background shadow-2xl", maxWidth, className)}>
-        {children}
-      </div>
-    </div>
+    <DialogPrimitive.Root open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+        <DialogPrimitive.Content
+          aria-describedby={undefined}
+          className={cn(
+            "fixed left-1/2 top-[8vh] z-[101] w-[calc(100%-2rem)] -translate-x-1/2 rounded-xl border border-border bg-background shadow-2xl outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+            maxWidth,
+            className,
+          )}
+        >
+          {children}
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 }

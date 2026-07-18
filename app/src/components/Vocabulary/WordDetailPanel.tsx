@@ -27,7 +27,6 @@ interface Props {
   /** True when this word only has old structured enrichment (pre-rewrite) — offer regenerate instead of rendering it. */
   legacy: boolean;
   notes: string;
-  vocabBilingual: boolean;
   /** Dictionary lookup of a word not (yet) in the vocabulary */
   lookupMode?: boolean;
   lookupAdded?: boolean;
@@ -42,7 +41,7 @@ interface Props {
 }
 
 export function WordDetailPanel({
-  selected, wordId, enriched, enriching, enrichError, legacy, notes, vocabBilingual,
+  selected, wordId, enriched, enriching, enrichError, legacy, notes,
   lookupMode = false, lookupAdded = false, onAddToVocab,
   onNotesChange, onClearNotes, onRetry, onReenrich, onGeneratePatterns,
 }: Props) {

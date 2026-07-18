@@ -72,7 +72,6 @@ export function WordAnalysis({ word, onExpandTopic }: { word: string; onExpandTo
         enrichError={error}
         legacy={false}
         notes=""
-        vocabBilingual
         lookupMode
         lookupAdded={Boolean(wordId)}
         onAddToVocab={() => void add()}

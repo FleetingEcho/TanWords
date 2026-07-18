@@ -12,7 +12,6 @@ import {
   ArrowTopRightOnSquareIcon,
   MagnifyingGlassIcon,
   MapPinIcon as MapPinIconOutline,
-  LinkIcon as HeroLinkIcon,
   ClipboardDocumentListIcon,
   XMarkIcon,
   RssIcon,
@@ -147,10 +146,6 @@ export function RefreshIcon({ className }: IconProps) {
 
 export function PinIcon({ filled = false, className }: IconProps & { filled?: boolean }) {
   return filled ? <MapPinIconSolid className={className} /> : <MapPinIconOutline className={className} />;
-}
-
-export function LinkIcon({ className }: IconProps) {
-  return <HeroLinkIcon className={className} />;
 }
 
 export function SpeakerIcon({ className }: IconProps) {

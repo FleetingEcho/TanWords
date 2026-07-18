@@ -35,7 +35,7 @@ export function logUsage(providerId: string, model: string, inputChars: number, 
   save(entries);
 }
 
-export function getUsage(): UsageEntry[] {
+function getUsage(): UsageEntry[] {
   return load();
 }
 

@@ -8,6 +8,7 @@ pub mod reader;
 pub mod secrets;
 pub mod rss;
 pub mod music;
+pub mod localdocs;
 
 pub struct AppState {
     pub db: Mutex<Connection>,
@@ -64,6 +65,7 @@ pub fn run() {
             db::db_save_word_notes,
             db::db_save_word_chat,
             db::db_create_document,
+            db::db_document_title_exists,
             db::db_get_documents,
             db::db_get_document,
             db::db_update_document,
@@ -84,6 +86,7 @@ pub fn run() {
             db::db_get_known_words,
             db::db_dashboard_stats,
             db::db_get_db_path,
+            db::db_get_db_size,
             db::db_export_backup,
             db::db_clear_translations,
             db::db_add_words_batch,
@@ -134,6 +137,17 @@ pub fn run() {
             rss::db_mark_rss_entry_read,
             rss::db_get_rss_unread_counts,
             music::music_scan_library,
+            localdocs::localdocs_list,
+            localdocs::localdocs_search,
+            localdocs::localdocs_read,
+            localdocs::localdocs_write,
+            localdocs::localdocs_create,
+            localdocs::localdocs_rename,
+            localdocs::localdocs_delete,
+            localdocs::localdocs_import,
+            localdocs::localdocs_export,
+            localdocs::markdown_read_files,
+            localdocs::markdown_export_files,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

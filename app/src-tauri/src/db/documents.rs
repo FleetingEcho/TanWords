@@ -14,6 +14,7 @@ pub struct DocumentListItem {
     pub word_count: i64,
     pub created_at: String,
     pub updated_at: String,
+    pub content_text: String,
 }
 
 #[derive(Serialize)]
@@ -47,12 +48,21 @@ fn build_doc_where(
     if let Some(q) = search {
         let q = q.trim();
         if !q.is_empty() {
-            let escaped = q.replace('"', "\"\"");
+            // Ordered-character fuzzy match: "btmk" matches "bitmask".
+            // Escaping keeps LIKE metacharacters literal.
+            let fuzzy = q.to_lowercase().chars().fold(String::from("%"), |mut out, ch| {
+                if matches!(ch, '%' | '_' | '\\') { out.push('\\'); }
+                out.push(ch);
+                out.push('%');
+                out
+            });
             conditions.push(format!(
-                "d.id IN (SELECT rowid FROM documents_fts WHERE documents_fts MATCH ?{})",
-                params.len() + 1
+                "(LOWER(d.title) LIKE ?{} ESCAPE '\\' OR LOWER(d.content_text) LIKE ?{} ESCAPE '\\')",
+                params.len() + 1,
+                params.len() + 2
             ));
-            params.push(format!("{}*", escaped));
+            params.push(fuzzy.clone());
+            params.push(fuzzy);
         }
     }
     if let Some(from) = date_from {
@@ -84,6 +94,17 @@ pub fn db_create_document(conn: State<'_, AppState>) -> Result<i64, String> {
 }
 
 #[tauri::command]
+pub fn db_document_title_exists(title: String, conn: State<'_, AppState>) -> Result<bool, String> {
+    let db = db::lock_db(&conn)?;
+    db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM documents WHERE LOWER(title) = LOWER(?1))",
+        [title],
+        |row| row.get(0),
+    )
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn db_get_documents(
     search: Option<String>,
     date_from: Option<String>,
@@ -112,7 +133,7 @@ pub fn db_get_documents(
     ).map_err(|e| e.to_string())?;
 
     let data_sql = format!(
-        "SELECT d.id, d.title, d.tags, d.pinned, d.word_count, d.created_at, d.updated_at
+        "SELECT d.id, d.title, d.tags, d.pinned, d.word_count, d.created_at, d.updated_at, d.content_text
          FROM documents d WHERE {} ORDER BY d.pinned DESC, {} LIMIT {} OFFSET {}",
         where_clause, sort_col, page_size, offset
     );
@@ -126,6 +147,7 @@ pub fn db_get_documents(
             word_count: row.get(4)?,
             created_at: row.get(5)?,
             updated_at: row.get(6)?,
+            content_text: row.get(7)?,
         })
     }).map_err(|e| e.to_string())?
     .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;

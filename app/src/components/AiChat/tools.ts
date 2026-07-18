@@ -27,7 +27,7 @@ export type ToolGroupKey = keyof typeof TOOL_GROUPS;
 
 // ── Tool Definitions ───────────────────────────────────────────────────────
 
-export const ALL_TOOL_DEFS: Record<string, ToolDef> = {
+const ALL_TOOL_DEFS: Record<string, ToolDef> = {
   save_word: {
     name: "save_word",
     description: "Save an English word to the user's vocabulary database. Call this when the user asks to save, add, or remember a word.",

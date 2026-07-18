@@ -1,6 +1,6 @@
 [package]
 name = "tanwords"
-version = "0.1.5"
+version = "0.1.6"
 description = "TanWords - AI-powered English learning assistant"
 authors = ["Tanner"]
 edition = "2021"
@@ -48,6 +48,9 @@ walkdir = "2"
 encoding_rs = "0.8"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+ignore = "0.4.30"
+grep-searcher = "0.1.17"
+grep-regex = "0.1.14"
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }
