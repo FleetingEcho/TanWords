@@ -94,6 +94,23 @@ pub fn db_create_document(conn: State<'_, AppState>) -> Result<i64, String> {
 }
 
 #[tauri::command]
+pub fn db_create_document_with_content(
+    title: String,
+    content: String,
+    content_text: String,
+    tags: String,
+    word_count: i64,
+    conn: State<'_, AppState>,
+) -> Result<i64, String> {
+    let db = db::lock_db(&conn)?;
+    db.execute(
+        "INSERT INTO documents (title,content,content_text,tags,pinned,word_count) VALUES (?1,?2,?3,?4,0,?5)",
+        params![title, content, content_text, tags, word_count],
+    ).map_err(|e| e.to_string())?;
+    Ok(db.last_insert_rowid())
+}
+
+#[tauri::command]
 pub fn db_document_title_exists(title: String, conn: State<'_, AppState>) -> Result<bool, String> {
     let db = db::lock_db(&conn)?;
     db.query_row(

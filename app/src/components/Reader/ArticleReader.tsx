@@ -141,7 +141,7 @@ export function ArticleReader({ url, domain, onLearn, onOpenExternal, audio }: P
           </Button>
         </div>
 
-        <h1 className="font-serif text-[1.9em] font-bold leading-tight text-foreground">{article.title}</h1>
+        <h1 className="text-[1.9em] font-bold leading-tight text-foreground">{article.title}</h1>
         {(article.byline || article.site_name) && (
           <p className="text-xs text-muted-foreground mt-3">
             {[article.byline, article.site_name].filter(Boolean).join(" · ")}
@@ -170,7 +170,7 @@ export function ArticleReader({ url, domain, onLearn, onOpenExternal, audio }: P
         </div>
 
         <div
-          className="reader-article-content font-serif text-foreground mt-8"
+          className="reader-article-content text-foreground mt-8"
           style={{ fontSize: `${FONT_STEPS[fontStep]}px`, lineHeight: 1.85 }}
           dangerouslySetInnerHTML={{ __html: article.content_html }}
         />

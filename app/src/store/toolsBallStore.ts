@@ -79,15 +79,15 @@ function loadModalSize(): { width: number; height: number } {
 
 interface ToolsBallState {
   isOpen: boolean;
-  activeTab: "documents" | "chat" | "word";
+  activeTab: "documents" | "chat" | "writing" | "word";
   ballPos: Pos;
   modalPos: Pos;
   modalSize: { width: number; height: number };
 
-  openModal: (tab?: "documents" | "chat" | "word") => void;
+  openModal: (tab?: "documents" | "chat" | "writing" | "word") => void;
   closeModal: () => void;
   toggleModal: () => void;
-  setActiveTab: (tab: "documents" | "chat" | "word") => void;
+  setActiveTab: (tab: "documents" | "chat" | "writing" | "word") => void;
   setBallPos: (pos: Pos) => void;
   setModalPos: (pos: Pos) => void;
   setModalSize: (size: { width: number; height: number }) => void;

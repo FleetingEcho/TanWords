@@ -20,6 +20,7 @@ import { tools } from "./tools";
 import { knowledgeMap } from "./knowledgeMap";
 import { music } from "./music";
 import { updater } from "./updater";
+import { writing } from "./writing";
 
 export const zh: Dict = {
     ...common,
@@ -43,4 +44,5 @@ export const zh: Dict = {
     ...knowledgeMap,
     ...music,
     ...updater,
+    ...writing,
 };

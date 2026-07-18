@@ -37,8 +37,13 @@ export function writeLocalDoc(root: string, relPath: string, content: string): P
 }
 
 /** Returns the new file's relative path. */
-export function createLocalDoc(root: string, name: string): Promise<string> {
-  return invoke("localdocs_create", { root, name });
+export function createLocalDoc(root: string, name: string, directory = ""): Promise<string> {
+  return invoke("localdocs_create", { root, name, directory });
+}
+
+/** Moves a file into a directory and returns its new relative path. */
+export function moveLocalDoc(root: string, relPath: string, targetDir: string): Promise<string> {
+  return invoke("localdocs_move", { root, relPath, targetDir });
 }
 
 /** Returns the new relative path. */

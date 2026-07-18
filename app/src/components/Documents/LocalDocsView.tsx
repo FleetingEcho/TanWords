@@ -14,6 +14,7 @@ import {
   listLocalDocs,
   mdFromDisplay,
   mdToDisplay,
+  moveLocalDoc,
   readLocalDoc,
   renameLocalDoc,
   searchLocalDocs,
@@ -201,14 +202,27 @@ export function LocalDocsView() {
     }
   };
 
-  const handleNewFile = async () => {
+  const handleNewFile = async (directory = "") => {
     if (!root) return;
     try {
-      const relPath = await createLocalDoc(root, t("doc.untitled"));
+      const relPath = await createLocalDoc(root, t("doc.untitled"), directory);
       await refresh();
       await handleOpen(relPath);
     } catch (e) {
       toast.error(String(e));
+    }
+  };
+
+  const handleMoveFile = async (relPath: string, targetDir: string) => {
+    if (!root) return;
+    try {
+      const newRelPath = await moveLocalDoc(root, relPath, targetDir);
+      if (newRelPath === relPath) return;
+      if (activePath === relPath) setActivePath(newRelPath);
+      await refresh();
+      toast.success(t("doc.fileMoved"));
+    } catch (error) {
+      toast.error(String(error));
     }
   };
 
@@ -342,10 +356,11 @@ export function LocalDocsView() {
             </div>
             {root && (
               <div className="flex items-center gap-1">
-                <Button onClick={handleNewFile} className="h-6 px-2.5 rounded-lg bg-primary text-white text-[11px] font-semibold hover:bg-primary/90">+ {t("doc.newFile")}</Button>
+                <Button onClick={() => void handleNewFile()} className="h-6 px-2.5 rounded-lg bg-primary text-white text-[11px] font-semibold hover:bg-primary/90">+ {t("doc.newFile")}</Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-6 w-6"><MoreHorizontal className="h-3.5 w-3.5" /></Button></DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
+                    <DropdownMenuItem onSelect={() => void handleNewFile("")}><FileText className="h-3.5 w-3.5" /> {t("doc.newFileHere")}</DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => void handleImportFiles()}><FileInput className="h-3.5 w-3.5" /> {t("doc.importMarkdown")}</DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => setExportPickerOpen(true)}><Download className="h-3.5 w-3.5" /> {t("doc.exportAllMarkdown")}</DropdownMenuItem>
                   </DropdownMenuContent>
@@ -415,6 +430,8 @@ export function LocalDocsView() {
               onDelete={setPendingDelete}
               onImport={(relPath) => void requestImportToDatabase(relPath)}
               onExport={(relPath) => void handleExportFiles([relPath])}
+              onMove={(relPath, targetDir) => void handleMoveFile(relPath, targetDir)}
+              onCreateInFolder={(directory) => void handleNewFile(directory)}
             />
           )}
         </div>

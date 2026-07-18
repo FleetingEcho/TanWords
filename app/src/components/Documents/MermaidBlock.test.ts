@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { liftMermaid, lowerMermaid } from "./mermaidTransforms";
+import { createMermaidConfig } from "./mermaidConfig";
 
 describe("Mermaid block transforms", () => {
+  it("suppresses Mermaid's document-level error SVG", () => {
+    expect(createMermaidConfig(true)).toMatchObject({
+      securityLevel: "strict",
+      suppressErrorRendering: true,
+      theme: "dark",
+    });
+  });
+
   it("lifts Mermaid code fences, including nested blocks", () => {
     const blocks = [
       {

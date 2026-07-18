@@ -341,10 +341,14 @@ pub fn localdocs_write(root: String, rel_path: String, content: String) -> Resul
     fs::write(&path, content).map_err(|e| format!("写入失败: {e}"))
 }
 
-/// Create an empty markdown file at the vault root, deduplicating the name
+/// Create an empty markdown file in a vault directory, deduplicating the name
 /// ("Untitled.md" → "Untitled 2.md"). Returns the new file's relative path.
 #[tauri::command]
-pub fn localdocs_create(root: String, name: String) -> Result<String, String> {
+pub fn localdocs_create(
+    root: String,
+    name: String,
+    directory: Option<String>,
+) -> Result<String, String> {
     let stem = name.trim().trim_end_matches(".md").trim();
     if stem.is_empty() || stem.contains(['/', '\\']) {
         return Err(format!("非法文件名: {name}"));
@@ -355,13 +359,55 @@ pub fn localdocs_create(root: String, name: String) -> Result<String, String> {
         } else {
             format!("{stem} {}.md", i + 1)
         };
-        let path = resolve(&root, &candidate)?;
+        let rel_path = Path::new(directory.as_deref().unwrap_or(""))
+            .join(&candidate)
+            .to_string_lossy()
+            .to_string();
+        let path = resolve(&root, &rel_path)?;
+        let parent = path.parent().ok_or("目标文件夹无效")?;
+        if !parent.is_dir() {
+            return Err("目标文件夹不存在".into());
+        }
         if !path.exists() {
             fs::write(&path, "").map_err(|e| format!("创建失败: {e}"))?;
-            return Ok(candidate);
+            return Ok(rel_path);
         }
     }
     Err("同名文件过多".into())
+}
+
+/// Move one markdown file into an existing directory inside the mounted root.
+/// Returns the file's new relative path and never overwrites an existing file.
+#[tauri::command]
+pub fn localdocs_move(
+    root: String,
+    rel_path: String,
+    target_dir: String,
+) -> Result<String, String> {
+    let source = resolve(&root, &rel_path)?;
+    ensure_md(&source)?;
+    if !source.is_file() {
+        return Err("源文件不存在".into());
+    }
+    let directory = resolve(&root, &target_dir)?;
+    if !directory.is_dir() {
+        return Err("目标文件夹不存在".into());
+    }
+    let file_name = source.file_name().ok_or("源文件名无效")?;
+    let destination = directory.join(file_name);
+    let new_rel = destination
+        .strip_prefix(Path::new(&root))
+        .map_err(|_| "目标路径无效")?
+        .to_string_lossy()
+        .to_string();
+    if destination == source {
+        return Ok(new_rel);
+    }
+    if destination.exists() {
+        return Err("目标文件夹中已存在同名文件".into());
+    }
+    fs::rename(&source, &destination).map_err(|e| format!("移动失败: {e}"))?;
+    Ok(new_rel)
 }
 
 /// Rename a file in place (same directory). Returns the new relative path.
@@ -398,4 +444,34 @@ pub fn localdocs_delete(root: String, rel_path: String) -> Result<(), String> {
     let path = resolve(&root, &rel_path)?;
     ensure_md(&path)?;
     fs::remove_file(&path).map_err(|e| format!("删除失败: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{localdocs_create, localdocs_move};
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    #[test]
+    fn creates_and_moves_files_without_overwriting() {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("tanwords-localdocs-{suffix}"));
+        let target = root.join("notes");
+        fs::create_dir_all(&target).unwrap();
+        let root_string = root.to_string_lossy().to_string();
+
+        let source = localdocs_create(root_string.clone(), "Draft".into(), None).unwrap();
+        let moved = localdocs_move(root_string.clone(), source, "notes".into()).unwrap();
+        assert_eq!(moved, "notes/Draft.md");
+        assert!(target.join("Draft.md").is_file());
+
+        let duplicate = localdocs_create(root_string.clone(), "Draft".into(), None).unwrap();
+        assert!(localdocs_move(root_string, duplicate, "notes".into()).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
 }
