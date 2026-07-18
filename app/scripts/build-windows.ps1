@@ -78,7 +78,7 @@ if ($Portable) {
 
     $portableDir = Join-Path $releaseDir "bundle\portable"
     New-Item -ItemType Directory -Path $portableDir -Force | Out-Null
-    $archive = Join-Path $portableDir "TanWords_0.1.3_windows_x64_portable.zip"
+    $archive = Join-Path $portableDir "TanWords_0.1.5_windows_x64_portable.zip"
     Compress-Archive -LiteralPath $portableFiles -DestinationPath $archive -Force
     Write-Output "Portable app created: $archive"
 }
