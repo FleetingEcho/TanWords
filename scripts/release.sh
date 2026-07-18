@@ -57,6 +57,11 @@ if [[ -n "$KEY_PATH" && ! -f "$KEY_PATH" ]]; then
   echo "Signing key not found at $KEY_PATH" >&2
   exit 1
 fi
+# The updater bundler reads the key contents from this variable even though
+# the standalone `tauri signer sign` command also accepts the path variable.
+if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" && -n "$KEY_PATH" ]]; then
+  export TAURI_SIGNING_PRIVATE_KEY="$(<"$KEY_PATH")"
+fi
 
 # ── Build macOS (universal: app for the updater, dmg for first installs) ───
 echo "==> Building macOS universal"
