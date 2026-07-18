@@ -14,6 +14,7 @@ import { PodcastPlayerBar } from "@/components/ui/PodcastPlayerBar";
 import { ToolsBall } from "@/components/ui/ToolsBall";
 import { ToolsModal } from "@/components/ui/ToolsModal";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useUpdaterStore } from "@/store/updaterStore";
 import { useNavStore } from "@/store/navStore";
 import { useDB } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
@@ -48,6 +49,15 @@ function App() {
         if (path) toast.warning(t("settings.dbFallbackWarning", { path }), { duration: 15000 });
       })
       .catch(() => {});
+  }, []);
+
+  // Silent update check, delayed past the startup rush (DB load, TTS
+  // preload). Failures stay invisible; a hit only lights the sidebar dot.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      useUpdaterStore.getState().checkForUpdate({ silent: true });
+    }, 5000);
+    return () => clearTimeout(timer);
   }, []);
 
   // Preload the on-device TTS model at startup instead of on the first
