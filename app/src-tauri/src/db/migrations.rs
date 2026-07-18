@@ -356,6 +356,64 @@ const MIGRATIONS: &[Migration] = &[
              WHERE id IN (SELECT id FROM rss_feeds ORDER BY created_at DESC, id DESC LIMIT 5);
         ",
     },
+    Migration {
+        version: 17,
+        description: "add Writing Studio submissions, analyses, vocabulary, essays and summaries",
+        sql: "
+            CREATE TABLE writing_submissions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                original_text TEXT NOT NULL,
+                input_type TEXT NOT NULL CHECK(input_type IN ('sentence','essay')),
+                detected_genre TEXT NOT NULL DEFAULT '',
+                overall_feedback TEXT NOT NULL DEFAULT '',
+                refined_full_text TEXT NOT NULL DEFAULT '',
+                structure_feedback TEXT NOT NULL DEFAULT '',
+                coherence_feedback TEXT NOT NULL DEFAULT '',
+                tone_feedback TEXT NOT NULL DEFAULT '',
+                sentence_count INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE writing_sentences (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                submission_id INTEGER NOT NULL REFERENCES writing_submissions(id) ON DELETE CASCADE,
+                position INTEGER NOT NULL,
+                original TEXT NOT NULL,
+                corrected TEXT NOT NULL DEFAULT '',
+                natural TEXT NOT NULL DEFAULT '',
+                explanation TEXT NOT NULL DEFAULT ''
+            );
+            CREATE TABLE writing_vocabulary (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sentence_id INTEGER NOT NULL REFERENCES writing_sentences(id) ON DELETE CASCADE,
+                original_expression TEXT NOT NULL DEFAULT '',
+                suggested_word TEXT NOT NULL,
+                meaning TEXT NOT NULL DEFAULT '',
+                reason TEXT NOT NULL DEFAULT '',
+                example_sentence TEXT NOT NULL DEFAULT '',
+                selected INTEGER NOT NULL DEFAULT 0 CHECK(selected IN (0,1)),
+                vocabulary_id INTEGER REFERENCES words(id) ON DELETE SET NULL
+            );
+            CREATE TABLE writing_model_essays (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                submission_id INTEGER NOT NULL REFERENCES writing_submissions(id) ON DELETE CASCADE,
+                position INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE writing_summaries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                source_type TEXT NOT NULL CHECK(source_type IN ('sentences','submissions','summaries')),
+                source_snapshot TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX idx_writing_submissions_created ON writing_submissions(created_at DESC);
+            CREATE INDEX idx_writing_sentences_submission ON writing_sentences(submission_id, position);
+            CREATE INDEX idx_writing_vocabulary_sentence ON writing_vocabulary(sentence_id);
+            CREATE INDEX idx_writing_summaries_created ON writing_summaries(created_at DESC);
+        ",
+    },
 ];
 
 pub fn run(conn: &Connection) -> SqlResult<()> {

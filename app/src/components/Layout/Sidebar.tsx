@@ -4,7 +4,7 @@ import { useLayoutStore } from "@/store/layoutStore";
 import { useT } from "@/hooks/useT";
 import {
   GridIcon, BookIcon, DocIcon, ChatIcon, SlidersIcon,
-  FeedIcon, ReadingIcon, ChevronIcon, CompassIcon, MusicIcon, GitHubIcon,
+  FeedIcon, ReadingIcon, ChevronIcon, CompassIcon, MusicIcon, GitHubIcon, ClipboardListIcon,
 } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { UpdateButton } from "@/components/Layout/UpdateButton";
@@ -26,6 +26,7 @@ const NAV_ITEM_DEFS: Omit<NavItemDef, "label">[] = [
   { id: "reading", icon: ReadingIcon },
   { id: "scene-lab", icon: CompassIcon },
   { id: "vocabulary", icon: BookIcon, showCount: "word" },
+  { id: "writing", icon: ClipboardListIcon },
   { id: "documents", icon: DocIcon },
   { id: "music", icon: MusicIcon },
   { id: "chat", icon: ChatIcon },

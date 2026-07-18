@@ -10,6 +10,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createReactBlockSpec } from "@blocknote/react";
 import { useT } from "@/hooks/useT";
 import { useIsDark } from "@/hooks/useIsDark";
+import { createMermaidConfig } from "./mermaidConfig";
 
 let renderSeq = 0;
 
@@ -28,13 +29,7 @@ function MermaidView({ code, onChange }: { code: string; onChange: (code: string
     (async () => {
       try {
         const mermaid = (await import("mermaid")).default;
-        mermaid.initialize({
-          startOnLoad: false,
-          // Diagram source can come from local files, so keep Mermaid's SVG
-          // sandboxing enabled before injecting the rendered markup.
-          securityLevel: "strict",
-          theme: isDark ? "dark" : "neutral",
-        });
+        mermaid.initialize(createMermaidConfig(isDark));
         const { svg } = await mermaid.render(`tanwords-mermaid-${++renderSeq}`, code);
         if (!cancelled) { setSvg(svg); setError(null); }
       } catch (e) {

@@ -1,9 +1,21 @@
+@import "@blocknote/core/fonts/inter.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: "Monaspace Neon NF";
+  src: url("./static/MonaspaceNeonNF-Regular.woff") format("woff");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
 @layer base {
   :root {
+    --app-font: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    --code-font: "Monaspace Neon NF", "SFMono-Regular", Consolas, monospace;
     --background: 220 20% 97%;
     --foreground: 220 13% 13%;
     --card: 0 0% 100%;
@@ -64,7 +76,10 @@
 
 @layer base {
   * { @apply border-border; }
+  html, body, #root, button, input, textarea, select { font-family: var(--app-font); }
   body { @apply bg-background text-foreground; }
+  .font-sans { font-family: var(--app-font); }
+  .font-mono { font-family: var(--code-font); }
 }
 
 ::-webkit-scrollbar { width: 5px; height: 5px; }
@@ -126,6 +141,10 @@
   font-size: 0.8125rem;
 }
 /* Reader mode — sanitized article HTML from fetch_article */
+.reader-article-content,
+.reader-article-content * {
+  font-family: var(--app-font);
+}
 .reader-article-content > * + * {
   margin-top: 1.3em;
 }
@@ -166,7 +185,7 @@
   line-height: 1.6;
 }
 .reader-article-content code {
-  font-family: ui-monospace, monospace;
+  font-family: var(--code-font);
   background: hsl(var(--muted));
   border-radius: 0.3em;
   padding: 0.15em 0.4em;

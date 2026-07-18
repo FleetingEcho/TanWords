@@ -29,6 +29,7 @@ pub mod search_history;
 pub mod scene_lab;
 pub mod knowledge_map;
 pub mod patterns;
+pub mod writing;
 
 pub use settings::*;
 pub use words_types::*;
@@ -45,6 +46,7 @@ pub use search_history::*;
 pub use scene_lab::*;
 pub use knowledge_map::*;
 pub use patterns::*;
+pub use writing::*;
 
 // ── Database Initialization ─────────────────────────────────────────────────
 

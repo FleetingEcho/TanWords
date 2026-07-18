@@ -3,7 +3,7 @@ import { LocalDocItem } from "@/lib/localDocs";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Copy, Download, MoreHorizontal, Trash2 } from "lucide-react";
+import { Copy, Download, FilePlus2, GripVertical, MoreHorizontal, Trash2 } from "lucide-react";
 
 interface Props {
   files: LocalDocItem[];
@@ -14,6 +14,8 @@ interface Props {
   onDelete: (relPath: string) => void;
   onImport: (relPath: string) => void;
   onExport: (relPath: string) => void;
+  onMove: (relPath: string, targetDir: string) => void;
+  onCreateInFolder: (directory: string) => void;
 }
 
 interface DirNode {
@@ -57,6 +59,21 @@ function FileRow({ file, active, depth, onOpen, onDelete, onImport, onExport }: 
         active ? "bg-primary/10 text-foreground" : "hover:bg-muted text-foreground/80"
       }`}
     >
+      <span
+        draggable
+        onClick={(event) => event.stopPropagation()}
+        onDragStart={(event) => {
+          event.stopPropagation();
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("application/x-tanwords-localdoc", file.rel_path);
+          event.dataTransfer.setData("text/plain", file.rel_path);
+        }}
+        className="flex h-5 w-3.5 shrink-0 cursor-grab items-center justify-center text-muted-foreground/40 opacity-50 transition-opacity hover:text-muted-foreground group-hover:opacity-100 active:cursor-grabbing"
+        title={t("doc.dragToMove")}
+        aria-label={t("doc.dragToMove")}
+      >
+        <GripVertical className="h-3.5 w-3.5" />
+      </span>
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5 shrink-0 text-muted-foreground/60">
         <path d="M6 3h6l3 3v11a1 1 0 01-1 1H6a1 1 0 01-1-1V4a1 1 0 011-1z" strokeLinejoin="round" />
         <path d="M12 3v3h3" />
@@ -92,8 +109,10 @@ function FileRow({ file, active, depth, onOpen, onDelete, onImport, onExport }: 
   );
 }
 
-export function LocalDocTree({ files, activePath, flat, onOpen, onDelete, onImport, onExport }: Props) {
+export function LocalDocTree({ files, activePath, flat, onOpen, onDelete, onImport, onExport, onMove, onCreateInFolder }: Props) {
+  const t = useT();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
   const tree = useMemo(() => buildTree(files), [files]);
 
   if (flat) {
@@ -115,6 +134,18 @@ export function LocalDocTree({ files, activePath, flat, onOpen, onDelete, onImpo
     });
   };
 
+  const readDraggedPath = (event: React.DragEvent) =>
+    event.dataTransfer.getData("application/x-tanwords-localdoc");
+
+  const acceptDrop = (event: React.DragEvent, targetDir: string) => {
+    const relPath = readDraggedPath(event);
+    if (!relPath) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setDropTarget(null);
+    onMove(relPath, targetDir);
+  };
+
   const renderDir = (node: DirNode, path: string, depth: number): React.ReactNode => {
     const dirNames = [...node.dirs.keys()].sort((a, b) => a.localeCompare(b));
     return (
@@ -126,8 +157,19 @@ export function LocalDocTree({ files, activePath, flat, onOpen, onDelete, onImpo
             <React.Fragment key={childPath}>
               <div
                 onClick={() => toggle(childPath)}
+                onDragOver={(event) => {
+                  if (!event.dataTransfer.types.includes("application/x-tanwords-localdoc")) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  event.dataTransfer.dropEffect = "move";
+                  setDropTarget(childPath);
+                }}
+                onDragLeave={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null);
+                }}
+                onDrop={(event) => acceptDrop(event, childPath)}
                 style={{ paddingLeft: `${10 + depth * 14}px` }}
-                className="flex items-center gap-1.5 pr-2.5 py-1.5 rounded-lg cursor-pointer hover:bg-muted text-muted-foreground transition-colors select-none"
+                className={`group/folder flex items-center gap-1.5 pr-2.5 py-1.5 rounded-lg cursor-pointer text-muted-foreground transition-colors select-none ${dropTarget === childPath ? "bg-primary/15 text-primary ring-1 ring-inset ring-primary/40" : "hover:bg-muted"}`}
               >
                 <svg
                   viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2"
@@ -139,6 +181,18 @@ export function LocalDocTree({ files, activePath, flat, onOpen, onDelete, onImpo
                   <path d="M2.5 5.5a1.5 1.5 0 011.5-1.5h3l2 2h6.5a1.5 1.5 0 011.5 1.5v7a1.5 1.5 0 01-1.5 1.5H4a1.5 1.5 0 01-1.5-1.5v-9z" strokeLinejoin="round" />
                 </svg>
                 <span className="text-xs font-medium truncate">{name}</span>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" onClick={(event) => event.stopPropagation()} className="ml-auto h-5 w-5 opacity-0 group-hover/folder:opacity-100 data-[state=open]:opacity-100" aria-label={t("doc.more")}>
+                      <MoreHorizontal className="h-3.5 w-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
+                    <DropdownMenuItem onSelect={() => onCreateInFolder(childPath)}>
+                      <FilePlus2 className="h-3.5 w-3.5" /> {t("doc.newFileHere")}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
               {!isCollapsed && renderDir(node.dirs.get(name)!, childPath, depth + 1)}
             </React.Fragment>
@@ -151,5 +205,21 @@ export function LocalDocTree({ files, activePath, flat, onOpen, onDelete, onImpo
     );
   };
 
-  return <>{renderDir(tree, "", 0)}</>;
+  return (
+    <div
+      className={`min-h-full rounded-lg transition-colors ${dropTarget === "" ? "bg-primary/10 ring-1 ring-inset ring-primary/30" : ""}`}
+      onDragOver={(event) => {
+        if (!event.dataTransfer.types.includes("application/x-tanwords-localdoc")) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        setDropTarget("");
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null);
+      }}
+      onDrop={(event) => acceptDrop(event, "")}
+    >
+      {renderDir(tree, "", 0)}
+    </div>
+  );
 }
