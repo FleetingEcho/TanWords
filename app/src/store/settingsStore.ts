@@ -1,6 +1,12 @@
 import { create } from "zustand";
+import type { NavPage } from "@/store/navStore";
 
 export type Theme = "light" | "dark" | "system";
+export type SidebarTabId = Exclude<NavPage, "settings">;
+
+export const DEFAULT_SIDEBAR_TABS: SidebarTabId[] = [
+  "dashboard", "feeds", "reading", "scene-lab", "vocabulary", "documents", "music", "chat",
+];
 
 interface SettingsState {
   theme: Theme;
@@ -19,6 +25,10 @@ interface SettingsState {
   ttsSpeed: number;
   /** Show the floating quick-doc-edit ball in the bottom-right corner. */
   showQuickDoc: boolean;
+  /** Show the project GitHub link in the sidebar footer. */
+  showGithubLink: boolean;
+  /** Main navigation tabs visible in the sidebar. Settings is always visible. */
+  visibleSidebarTabs: SidebarTabId[];
   isLoaded: boolean;
 
   setTheme: (theme: Theme) => void;
@@ -33,6 +43,8 @@ interface SettingsState {
   setTtsExtraDirs: (dirs: string[]) => void;
   setTtsSpeed: (speed: number) => void;
   setShowQuickDoc: (v: boolean) => void;
+  setShowGithubLink: (v: boolean) => void;
+  setSidebarTabVisible: (tab: SidebarTabId, visible: boolean) => void;
   loadFromDB: () => Promise<void>;
 }
 
@@ -67,6 +79,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   ttsExtraDirs: [],
   ttsSpeed: 1,
   showQuickDoc: true,
+  showGithubLink: true,
+  visibleSidebarTabs: DEFAULT_SIDEBAR_TABS,
   isLoaded: false,
 
   setTheme: (theme) => {
@@ -94,6 +108,20 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setShowQuickDoc: (v) => {
     set({ showQuickDoc: v });
     saveSetting("quick_doc_ball", JSON.stringify(v));
+  },
+
+  setShowGithubLink: (v) => {
+    set({ showGithubLink: v });
+    saveSetting("show_github_link", JSON.stringify(v));
+  },
+
+  setSidebarTabVisible: (tab, visible) => {
+    const current = get().visibleSidebarTabs;
+    const next = visible
+      ? DEFAULT_SIDEBAR_TABS.filter((id) => id === tab || current.includes(id))
+      : current.filter((id) => id !== tab);
+    set({ visibleSidebarTabs: next });
+    saveSetting("visible_sidebar_tabs", JSON.stringify(next));
   },
 
   setTargetLevels: (levels) => {
@@ -148,6 +176,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         "tts_extra_dirs",
         "tts_speed",
         "quick_doc_ball",
+        "show_github_link",
+        "visible_sidebar_tabs",
       ];
 
       const values: Record<string, string> = {};
@@ -180,6 +210,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         ttsSpeed: Number(values.tts_speed) || 1,
         // JSON.parse turns the stored string into a real boolean; default on.
         showQuickDoc: (values.quick_doc_ball as unknown) !== false && values.quick_doc_ball !== "false",
+        showGithubLink: (values.show_github_link as unknown) !== false && values.show_github_link !== "false",
+        visibleSidebarTabs: Array.isArray(values.visible_sidebar_tabs)
+          ? DEFAULT_SIDEBAR_TABS.filter((id) => (values.visible_sidebar_tabs as unknown as string[]).includes(id))
+          : DEFAULT_SIDEBAR_TABS,
         isLoaded: true,
       });
 
