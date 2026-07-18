@@ -62,6 +62,10 @@ fi
 if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" && -n "$KEY_PATH" ]]; then
   export TAURI_SIGNING_PRIVATE_KEY="$(<"$KEY_PATH")"
 fi
+# An unset password makes the bundler prompt interactively, which fails in
+# non-TTY release runs. This key uses an empty password; callers with an
+# encrypted key can still provide TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD-}"
 
 # ── Build macOS (universal: app for the updater, dmg for first installs) ───
 echo "==> Building macOS universal"
