@@ -2,6 +2,7 @@
 .reasonix/
 screenshots/
 plan.md
+docs/*
 
 # Dependencies
 node_modules/
