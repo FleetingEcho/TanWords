@@ -342,6 +342,20 @@ const MIGRATIONS: &[Migration] = &[
             CREATE INDEX IF NOT EXISTS idx_pattern_practice_pattern ON pattern_practice(pattern_id);
         ",
     },
+    Migration {
+        version: 16,
+        description: "add category overrides and pinned navigation to RSS feeds",
+        sql: "
+            ALTER TABLE rss_feeds ADD COLUMN category_override TEXT
+                CHECK(category_override IN ('article', 'podcast'));
+            ALTER TABLE rss_feeds ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0
+                CHECK(is_pinned IN (0, 1));
+            ALTER TABLE rss_feeds ADD COLUMN pin_order INTEGER;
+            UPDATE rss_feeds
+               SET is_pinned = 1, pin_order = id
+             WHERE id IN (SELECT id FROM rss_feeds ORDER BY created_at DESC, id DESC LIMIT 5);
+        ",
+    },
 ];
 
 pub fn run(conn: &Connection) -> SqlResult<()> {
@@ -353,7 +367,11 @@ pub fn run(conn: &Connection) -> SqlResult<()> {
     )?;
 
     let current: i64 = conn
-        .query_row("SELECT COALESCE(MAX(version), 0) FROM schema_migrations", [], |r| r.get(0))
+        .query_row(
+            "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
+            [],
+            |r| r.get(0),
+        )
         .unwrap_or(0);
 
     for m in MIGRATIONS {
@@ -369,4 +387,49 @@ pub fn run(conn: &Connection) -> SqlResult<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn migration_16_adds_feed_preferences_and_pins_five() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at DATETIME);
+             INSERT INTO schema_migrations(version) VALUES (15);
+             CREATE TABLE rss_feeds (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL DEFAULT '', url TEXT NOT NULL,
+                site_link TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '',
+                last_fetched_at TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+             );",
+        )
+        .unwrap();
+        for i in 0..7 {
+            conn.execute(
+                "INSERT INTO rss_feeds(title, url) VALUES (?1, ?2)",
+                rusqlite::params![format!("feed {i}"), format!("https://example.com/{i}")],
+            )
+            .unwrap();
+        }
+
+        run(&conn).unwrap();
+
+        let pinned: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM rss_feeds WHERE is_pinned = 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let category: Option<String> = conn
+            .query_row("SELECT category_override FROM rss_feeds LIMIT 1", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(pinned, 5);
+        assert_eq!(category, None);
+    }
 }

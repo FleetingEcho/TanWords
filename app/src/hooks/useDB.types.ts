@@ -218,6 +218,10 @@ export interface RssFeed {
   created_at: string;
   /** True when any cached entry carries an audio enclosure — grouped as "Podcasts" in the UI. */
   is_podcast?: boolean;
+  category: "article" | "podcast";
+  category_override: "article" | "podcast" | null;
+  is_pinned: boolean;
+  pin_order: number | null;
 }
 
 /** A cached entry row from the rss_entries table (plan2.md §A). */
