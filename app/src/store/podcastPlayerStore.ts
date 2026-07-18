@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { claimAudioChannel, releaseAudioChannel } from "@/lib/audioChannel";
 import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
+import { PlayMode, nextIndexOnEnded, nextIndexOnSkip } from "@/features/music/queue";
 
 export type PodcastStatus = "idle" | "loading" | "playing" | "paused" | "error";
 
@@ -18,8 +19,16 @@ interface PodcastPlayerState {
   position: number;
   duration: number;
   speed: number;
+  /** Non-null while playing a music-library queue; single podcast episodes
+   * play with no playlist and keep the original close-on-ended behavior. */
+  playlist: PodcastTrack[] | null;
+  playlistIndex: number;
+  playMode: PlayMode;
 
   play: (track: PodcastTrack) => void;
+  playQueue: (tracks: PodcastTrack[], startIndex: number, mode?: PlayMode) => void;
+  skip: (direction: 1 | -1) => void;
+  setPlayMode: (mode: PlayMode) => void;
   toggle: () => void;
   seekTo: (seconds: number) => void;
   seekBy: (delta: number) => void;
@@ -69,8 +78,17 @@ function getAudio(): HTMLAudioElement {
     if (isFinite(audio!.duration)) usePodcastPlayerStore.setState({ duration: audio!.duration });
   });
   audio.addEventListener("ended", () => {
-    // Episode finished — close the bar rather than leaving a stalled "paused at the end" state.
-    usePodcastPlayerStore.getState().stop();
+    const s = usePodcastPlayerStore.getState();
+    if (s.playlist) {
+      const next = nextIndexOnEnded(s.playlistIndex, s.playlist.length, s.playMode);
+      if (next !== null) {
+        playAt(next);
+        return;
+      }
+    }
+    // Episode (or queue) finished — close the bar rather than leaving a
+    // stalled "paused at the end" state.
+    s.stop();
   });
   audio.addEventListener("error", () => {
     if (usePodcastPlayerStore.getState().status !== "idle") {
@@ -80,12 +98,30 @@ function getAudio(): HTMLAudioElement {
   return audio;
 }
 
+/** Loads and plays playlist[index]. Always resets src — unlike play(), which
+ * treats a same-URL call as resume, a queue jump to the same track (loop-one)
+ * must restart from the top. */
+function playAt(index: number) {
+  const el = getAudio();
+  const s = usePodcastPlayerStore.getState();
+  const track = s.playlist?.[index];
+  if (!track) return;
+  usePodcastPlayerStore.setState({ track, playlistIndex: index, status: "loading", position: 0, duration: 0 });
+  el.src = track.audioUrl;
+  el.currentTime = 0;
+  el.playbackRate = s.speed;
+  el.play().catch(() => usePodcastPlayerStore.setState({ status: "error" }));
+}
+
 export const usePodcastPlayerStore = create<PodcastPlayerState>((set, get) => ({
   status: "idle",
   track: null,
   position: 0,
   duration: 0,
   speed: 1,
+  playlist: null,
+  playlistIndex: 0,
+  playMode: "order",
 
   play: (track) => {
     const el = getAudio();
@@ -100,11 +136,28 @@ export const usePodcastPlayerStore = create<PodcastPlayerState>((set, get) => ({
       return;
     }
 
-    set({ track, status: "loading", position: 0, duration: 0 });
+    set({ track, playlist: null, playlistIndex: 0, status: "loading", position: 0, duration: 0 });
     el.src = track.audioUrl;
     el.playbackRate = get().speed;
     el.play().catch(() => set({ status: "error" }));
   },
+
+  playQueue: (tracks, startIndex, mode) => {
+    if (tracks.length === 0) return;
+    useTtsPlayerStore.getState().stop();
+    claimAudioChannel(pauseAudio);
+    set({ playlist: tracks, playMode: mode ?? get().playMode });
+    playAt(Math.min(Math.max(0, startIndex), tracks.length - 1));
+  },
+
+  skip: (direction) => {
+    const { playlist, playlistIndex, playMode } = get();
+    if (!playlist) return;
+    const next = nextIndexOnSkip(playlistIndex, playlist.length, playMode, direction);
+    if (next !== null) playAt(next);
+  },
+
+  setPlayMode: (mode) => set({ playMode: mode }),
 
   toggle: () => {
     const el = getAudio();
@@ -141,6 +194,6 @@ export const usePodcastPlayerStore = create<PodcastPlayerState>((set, get) => ({
     el.pause();
     el.removeAttribute("src");
     releaseAudioChannel(pauseAudio);
-    set({ status: "idle", track: null, position: 0, duration: 0 });
+    set({ status: "idle", track: null, playlist: null, playlistIndex: 0, position: 0, duration: 0 });
   },
 }));

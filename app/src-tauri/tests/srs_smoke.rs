@@ -24,7 +24,8 @@ fn srs_review_roundtrip() {
     app.manage(tanwords_lib::AppState {
         db: std::sync::Mutex::new(conn),
         db_path: std::sync::Mutex::new(":memory:".to_string()),
-        tts: std::sync::Mutex::new(None),
+        tts: std::sync::Mutex::new(None).into(),
+        db_fallback_warning: None,
     });
     let state: tauri::State<tanwords_lib::AppState> = app.state();
 
@@ -75,7 +76,8 @@ fn search_history_roundtrip() {
     app.manage(tanwords_lib::AppState {
         db: std::sync::Mutex::new(conn),
         db_path: std::sync::Mutex::new(":memory:".to_string()),
-        tts: std::sync::Mutex::new(None),
+        tts: std::sync::Mutex::new(None).into(),
+        db_fallback_warning: None,
     });
     let state: tauri::State<tanwords_lib::AppState> = app.state();
 

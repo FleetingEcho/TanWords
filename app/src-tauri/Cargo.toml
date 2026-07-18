@@ -19,7 +19,7 @@ tauri-build = { version = "2", features = [] }
 sherpa-rs = "0.6"
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
@@ -43,6 +43,9 @@ futures-util = "0.3"
 keyring = "3"
 feed-rs = "2"
 url = "2"
+lofty = "0.22"
+walkdir = "2"
+encoding_rs = "0.8"
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }

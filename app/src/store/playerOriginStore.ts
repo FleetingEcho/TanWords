@@ -5,7 +5,8 @@ import { useFeedsNavStore } from "@/store/feedsNavStore";
 
 export type PlayerOrigin =
   | { kind: "lesson"; articleId: number }
-  | { kind: "reader"; url: string; title: string; domain: string; audioUrl: string | null; feedTitle: string };
+  | { kind: "reader"; url: string; title: string; domain: string; audioUrl: string | null; feedTitle: string }
+  | { kind: "music" };
 
 interface PlayerOriginState {
   origin: PlayerOrigin | null;
@@ -37,6 +38,9 @@ export const usePlayerOriginStore = create<PlayerOriginState>((set, get) => ({
           audioUrl: origin.audioUrl,
           feedTitle: origin.feedTitle,
         });
+        break;
+      case "music":
+        navigate("music");
         break;
     }
   },

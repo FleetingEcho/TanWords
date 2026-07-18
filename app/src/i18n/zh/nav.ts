@@ -13,5 +13,6 @@ export const nav: Dict = {
     "nav.collapse": "收起导航",
     "nav.expand": "展开导航",
     "nav.settings": "设置",
+    "nav.music": "音乐",
     "nav.feeds": "订阅",
 };

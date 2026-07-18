@@ -4,9 +4,9 @@ use rusqlite::Connection;
 use tauri::test::{mock_builder, mock_context, noop_assets};
 use tauri::Manager;
 
-#[test]
+#[tokio::test]
 #[ignore]
-fn deletes_and_unloads_active_model() {
+async fn deletes_and_unloads_active_model() {
     let dir = std::env::var("TTS_TEST_MODEL_DIR").expect("set TTS_TEST_MODEL_DIR");
 
     let conn = Connection::open_in_memory().unwrap();
@@ -15,7 +15,8 @@ fn deletes_and_unloads_active_model() {
     app.manage(tanwords_lib::AppState {
         db: std::sync::Mutex::new(conn),
         db_path: std::sync::Mutex::new(":memory:".to_string()),
-        tts: std::sync::Mutex::new(None),
+        tts: std::sync::Mutex::new(None).into(),
+        db_fallback_warning: None,
     });
     let state: tauri::State<tanwords_lib::AppState> = app.state();
 
@@ -33,6 +34,7 @@ fn deletes_and_unloads_active_model() {
     );
 
     let err = tanwords_lib::tts::engine::tts_synthesize(state.clone(), "hi".to_string(), 0, 1.0)
+        .await
         .unwrap_err();
     assert_eq!(err, "model-not-loaded");
 }
