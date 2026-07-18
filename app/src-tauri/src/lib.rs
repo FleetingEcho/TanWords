@@ -127,6 +127,7 @@ pub fn run() {
             rss::db_add_rss_feed,
             rss::db_get_rss_feeds,
             rss::db_update_rss_feed_title,
+            rss::db_update_rss_feed_preferences,
             rss::db_delete_rss_feed,
             rss::db_sync_rss_feed,
             rss::db_get_rss_entries,

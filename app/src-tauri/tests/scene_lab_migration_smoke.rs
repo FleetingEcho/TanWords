@@ -33,5 +33,5 @@ fn scene_lab_schema_is_created_and_repeatable() {
             row.get(0)
         })
         .unwrap();
-    assert_eq!(version, 15);
+    assert_eq!(version, 16);
 }

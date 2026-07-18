@@ -239,6 +239,17 @@ export function useDBExtra() {
     }
   }, []);
 
+  const updateRssFeedPreferences = useCallback(async (
+    id: number, category: "article" | "podcast" | null, isPinned: boolean
+  ): Promise<void> => {
+    try {
+      await invoke("db_update_rss_feed_preferences", { id, category, isPinned });
+    } catch (e) {
+      reportWriteError("updateRssFeedPreferences", e, "更新 RSS 源设置失败");
+      throw e;
+    }
+  }, []);
+
   const deleteRssFeed = useCallback(async (id: number): Promise<void> => {
     try {
       await invoke("db_delete_rss_feed", { id });
@@ -340,7 +351,7 @@ export function useDBExtra() {
     getDashboardStats,
     getDueCards, reviewCard,
     addSearchHistory, getSearchHistory, clearSearchHistory,
-    addRssFeed, getRssFeeds, updateRssFeedTitle, deleteRssFeed, fetchRssFeedMeta,
+    addRssFeed, getRssFeeds, updateRssFeedTitle, updateRssFeedPreferences, deleteRssFeed, fetchRssFeedMeta,
     syncRssFeed, getRssEntries, markRssEntryRead, getRssUnreadCounts,
     getDbPath, exportBackup, switchDbPath, clearTranslations,
   }), [
@@ -349,7 +360,7 @@ export function useDBExtra() {
     getDashboardStats,
     getDueCards, reviewCard,
     addSearchHistory, getSearchHistory, clearSearchHistory,
-    addRssFeed, getRssFeeds, updateRssFeedTitle, deleteRssFeed, fetchRssFeedMeta,
+    addRssFeed, getRssFeeds, updateRssFeedTitle, updateRssFeedPreferences, deleteRssFeed, fetchRssFeedMeta,
     syncRssFeed, getRssEntries, markRssEntryRead, getRssUnreadCounts,
     getDbPath, exportBackup, switchDbPath, clearTranslations,
   ]);

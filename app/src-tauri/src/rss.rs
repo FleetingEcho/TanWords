@@ -60,6 +60,10 @@ pub struct RssFeed {
     /// True when any cached entry of this feed carries an audio enclosure —
     /// the UI groups such feeds under "Podcasts" instead of "Articles".
     pub is_podcast: bool,
+    pub category: String,
+    pub category_override: Option<String>,
+    pub is_pinned: bool,
+    pub pin_order: Option<i64>,
 }
 
 /// Resolve a possibly-relative image URL against the entry/feed's page URL.
@@ -103,12 +107,18 @@ fn first_img_src(html: &str) -> Option<String> {
 /// True if the URL's path extension is a known non-image media type (podcast enclosures etc).
 /// Extensionless URLs (common for CMS-generated image links) are treated as images.
 fn looks_like_non_image(url_str: &str) -> bool {
-    const NON_IMAGE_EXT: &[&str] = &["mp3", "mp4", "m4a", "wav", "mov", "pdf", "zip", "ogg", "webm"];
+    const NON_IMAGE_EXT: &[&str] = &[
+        "mp3", "mp4", "m4a", "wav", "mov", "pdf", "zip", "ogg", "webm",
+    ];
     url_str
         .rsplit('.')
         .next()
         .map(|ext| {
-            let ext = ext.split(&['?', '#'][..]).next().unwrap_or(ext).to_ascii_lowercase();
+            let ext = ext
+                .split(&['?', '#'][..])
+                .next()
+                .unwrap_or(ext)
+                .to_ascii_lowercase();
             NON_IMAGE_EXT.contains(&ext.as_str())
         })
         .unwrap_or(false)
@@ -215,7 +225,11 @@ async fn fetch_feed_meta(url: &str) -> Result<RssFeedMeta, String> {
     let body = resp.bytes().await.map_err(|e| e.to_string())?;
     let feed = feed_rs::parser::parse(&body[..]).map_err(|e| format!("Feed parse error: {e}"))?;
 
-    let site_link = feed.links.first().map(|l| l.href.clone()).unwrap_or_default();
+    let site_link = feed
+        .links
+        .first()
+        .map(|l| l.href.clone())
+        .unwrap_or_default();
 
     let entries: Vec<RssEntry> = feed
         .entries
@@ -227,7 +241,11 @@ async fn fetch_feed_meta(url: &str) -> Result<RssFeedMeta, String> {
             let page_url = if href.is_empty() { &site_link } else { &href };
             let (audio_url, audio_duration) = extract_audio(e, page_url);
             RssEntry {
-                title: e.title.as_ref().map(|t| t.content.clone()).unwrap_or_default(),
+                title: e
+                    .title
+                    .as_ref()
+                    .map(|t| t.content.clone())
+                    .unwrap_or_default(),
                 url: href.clone(),
                 author: e
                     .authors
@@ -253,10 +271,7 @@ async fn fetch_feed_meta(url: &str) -> Result<RssFeedMeta, String> {
 
     Ok(RssFeedMeta {
         title: feed.title.map(|t| t.content).unwrap_or_default(),
-        description: feed
-            .description
-            .map(|d| d.content)
-            .unwrap_or_default(),
+        description: feed.description.map(|d| d.content).unwrap_or_default(),
         site_link,
         entries,
     })
@@ -280,12 +295,40 @@ pub fn db_add_rss_feed(
 ) -> Result<i64, String> {
     let db = db::lock_db(&conn)?;
     db.execute(
-        "INSERT INTO rss_feeds (url, title, site_link, description) VALUES (?1, ?2, ?3, ?4)
-         ON CONFLICT(url) DO UPDATE SET title=excluded.title, site_link=excluded.site_link, description=excluded.description",
+        "INSERT OR IGNORE INTO rss_feeds (url, title, site_link, description) VALUES (?1, ?2, ?3, ?4)",
         rusqlite::params![url, title, site_link, description],
     )
     .map_err(|e| e.to_string())?;
-    Ok(db.last_insert_rowid())
+    let inserted = db.changes() > 0;
+    db.execute(
+        "UPDATE rss_feeds SET title=?2, site_link=?3, description=?4 WHERE url=?1",
+        rusqlite::params![url, title, site_link, description],
+    )
+    .map_err(|e| e.to_string())?;
+    let id: i64 = db
+        .query_row("SELECT id FROM rss_feeds WHERE url=?1", [&url], |r| {
+            r.get(0)
+        })
+        .map_err(|e| e.to_string())?;
+    if inserted {
+        let pinned: i64 = db
+            .query_row(
+                "SELECT COUNT(*) FROM rss_feeds WHERE is_pinned=1",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if pinned < 5 {
+            db.execute(
+                "UPDATE rss_feeds SET is_pinned=1,
+                    pin_order=(SELECT COALESCE(MAX(pin_order), 0) + 1 FROM rss_feeds)
+                  WHERE id=?1",
+                [id],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(id)
 }
 
 #[tauri::command]
@@ -294,8 +337,12 @@ pub fn db_get_rss_feeds(conn: State<'_, AppState>) -> Result<Vec<RssFeed>, Strin
     let mut stmt = db
         .prepare(
             "SELECT id, title, url, site_link, description, last_fetched_at, created_at,
-                    EXISTS(SELECT 1 FROM rss_entries e WHERE e.feed_id = rss_feeds.id AND e.audio_url IS NOT NULL)
-             FROM rss_feeds ORDER BY created_at DESC",
+                    EXISTS(SELECT 1 FROM rss_entries e WHERE e.feed_id = rss_feeds.id AND e.audio_url IS NOT NULL),
+                    COALESCE(category_override, CASE WHEN EXISTS(
+                        SELECT 1 FROM rss_entries e WHERE e.feed_id = rss_feeds.id AND e.audio_url IS NOT NULL
+                    ) THEN 'podcast' ELSE 'article' END),
+                    category_override, is_pinned, pin_order
+             FROM rss_feeds ORDER BY is_pinned DESC, pin_order ASC, created_at DESC",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
@@ -309,10 +356,57 @@ pub fn db_get_rss_feeds(conn: State<'_, AppState>) -> Result<Vec<RssFeed>, Strin
                 last_fetched_at: row.get(5)?,
                 created_at: row.get(6)?,
                 is_podcast: row.get(7)?,
+                category: row.get(8)?,
+                category_override: row.get(9)?,
+                is_pinned: row.get(10)?,
+                pin_order: row.get(11)?,
             })
         })
         .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn db_update_rss_feed_preferences(
+    id: i64,
+    category: Option<String>,
+    is_pinned: bool,
+    conn: State<'_, AppState>,
+) -> Result<(), String> {
+    if !matches!(
+        category.as_deref(),
+        None | Some("article") | Some("podcast")
+    ) {
+        return Err("invalid feed category".into());
+    }
+    let db = db::lock_db(&conn)?;
+    if is_pinned {
+        let pinned: i64 = db
+            .query_row(
+                "SELECT COUNT(*) FROM rss_feeds WHERE is_pinned = 1 AND id != ?1",
+                [id],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if pinned >= 5 {
+            return Err("at most five feeds can be pinned".into());
+        }
+    }
+    db.execute(
+        "UPDATE rss_feeds
+            SET category_override = ?1,
+                is_pinned = ?2,
+                pin_order = CASE
+                    WHEN ?2 = 1 AND is_pinned = 0 THEN (SELECT COALESCE(MAX(pin_order), 0) + 1 FROM rss_feeds)
+                    WHEN ?2 = 1 THEN pin_order
+                    ELSE NULL
+                END
+          WHERE id = ?3",
+        rusqlite::params![category, is_pinned, id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -494,5 +588,6 @@ pub fn db_get_rss_unread_counts(conn: State<'_, AppState>) -> Result<Vec<(i64, i
     let rows = stmt
         .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))
         .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }

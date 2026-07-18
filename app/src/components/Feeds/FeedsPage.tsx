@@ -198,6 +198,15 @@ export function FeedsPage() {
     else refreshEntries(selected);
   };
 
+  const handlePreferences = async (
+    id: number,
+    category: "article" | "podcast" | null,
+    isPinned: boolean
+  ) => {
+    await db.updateRssFeedPreferences(id, category, isPinned);
+    setFeeds(await db.getRssFeeds());
+  };
+
   const markRead = (entry: RssEntryRow) => {
     if (entry.is_read) return;
     db.markRssEntryRead(entry.id);
@@ -291,6 +300,7 @@ export function FeedsPage() {
         syncing={syncing}
         onSelect={selectFeed}
         onDelete={handleDelete}
+        onPreferences={handlePreferences}
         onAdd={() => setShowAdd(true)}
         onRefresh={handleRefresh}
       />

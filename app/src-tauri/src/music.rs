@@ -3,7 +3,7 @@ use std::path::Path;
 use serde::Serialize;
 use walkdir::WalkDir;
 
-const AUDIO_EXTENSIONS: &[&str] = &["mp3", "wav", "m4a", "flac", "ogg", "aac"];
+const AUDIO_EXTENSIONS: &[&str] = &["mp3", "wav", "m4a", "mp4", "flac", "ogg", "aac"];
 
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -163,6 +163,7 @@ mod tests {
         touch(&dir.join("podcasts/ep1.MP3"));
         touch(&dir.join("podcasts/nested/deep/ep2.wav"));
         touch(&dir.join("recordings/interview.m4a"));
+        touch(&dir.join("recordings/concert.mp4"));
 
         let collections = scan_library(&dir).unwrap();
         let summary: Vec<(String, Vec<String>)> = collections
@@ -174,7 +175,7 @@ mod tests {
             summary,
             vec![
                 ("podcasts".into(), vec!["ep1".into(), "ep2".into()]),
-                ("recordings".into(), vec!["interview".into()]),
+                ("recordings".into(), vec!["concert".into(), "interview".into()]),
                 ("".into(), vec!["loose".into()]),
             ]
         );
