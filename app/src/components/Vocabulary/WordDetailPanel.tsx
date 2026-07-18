@@ -36,12 +36,15 @@ interface Props {
   onClearNotes: () => void;
   onRetry: () => void;
   onReenrich: () => void;
+  /** Shown as a header action when provided — jumps to the pattern library
+   * and generates example sentences for this word. */
+  onGeneratePatterns?: () => void;
 }
 
 export function WordDetailPanel({
   selected, wordId, enriched, enriching, enrichError, legacy, notes, vocabBilingual,
   lookupMode = false, lookupAdded = false, onAddToVocab,
-  onNotesChange, onClearNotes, onRetry, onReenrich,
+  onNotesChange, onClearNotes, onRetry, onReenrich, onGeneratePatterns,
 }: Props) {
   const t = useT();
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
@@ -74,6 +77,9 @@ export function WordDetailPanel({
               <span className="text-xs font-medium text-muted-foreground border border-border px-2 py-0.5 rounded">{selected.wordType}</span>
             )}
             <div className="ml-auto flex items-center gap-3">
+              {onGeneratePatterns && (
+                <Button variant="link" onClick={onGeneratePatterns} className="h-auto p-0 text-xs text-muted-foreground hover:text-primary transition-colors">✨ {t("vocab.genPatterns")}</Button>
+              )}
               {lookupMode ? (
                 lookupAdded ? (
                   <span className="inline-flex items-center rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-4 py-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">{t("search.added")}</span>

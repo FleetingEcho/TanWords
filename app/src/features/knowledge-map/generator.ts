@@ -1,97 +1,148 @@
 import { jsonrepair } from "jsonrepair";
 import type { AIProvider } from "@/providers/base";
-import type { KnowledgeNode, NewKnowledgeNode } from "./types";
+import type { NewKnowledgeNode } from "./types";
 
-export type RootType = "word" | "topic" | "situation";
+export type RootType = "word" | "topic";
+export type InputKind = "word" | "topic" | "sentence";
 
-const WORD_BRANCHES: NewKnowledgeNode[] = [
- {kind:"category",label:"Synonyms & Related Words",zh:"近义词与关联词",level:"",note:"Words with a similar or related meaning"},
- {kind:"category",label:"Collocations & Common Phrases",zh:"常见搭配与短语",level:"",note:"Natural word combinations this word appears in"},
- {kind:"category",label:"Example Sentences",zh:"例句",level:"",note:"Five natural example sentences using this word"},
- {kind:"category",label:"Common Situational Sentences",zh:"常用情景句",level:"",note:"Five natural sentences people commonly use around this topic"},
- {kind:"category",label:"Contrasts & Common Mistakes",zh:"易混词与常见错误",level:"",note:"Words often confused with this one, and typical mistakes"},
-];
-
-const TOPIC_BRANCHES: NewKnowledgeNode[] = [
- {kind:"category",label:"Core Vocabulary",zh:"核心词汇",level:"",note:"Essential words and concepts"},
- {kind:"category",label:"Actions & Processes",zh:"动作与过程",level:"",note:"What people do and how things happen"},
- {kind:"category",label:"Objects & Concepts",zh:"对象与概念",level:"",note:"Things, roles and abstract concepts"},
- {kind:"category",label:"Common Situational Sentences",zh:"常用情景句",level:"",note:"Five natural sentences people commonly use in this situation"},
- {kind:"category",label:"Advanced Expressions",zh:"高级表达",level:"",note:"Precise phrases and C1/C2 language"},
-];
-
-const SITUATION_BRANCHES: NewKnowledgeNode[] = [
- {kind:"category",label:"Core Vocabulary",zh:"核心词汇",level:"",note:"Essential words and concepts"},
- {kind:"category",label:"Actions & Processes",zh:"动作与过程",level:"",note:"What people do and how things happen"},
- {kind:"category",label:"Objects & Concepts",zh:"对象与概念",level:"",note:"Things, roles and abstract concepts"},
- {kind:"category",label:"Situations & Use Cases",zh:"场景与用法",level:"",note:"Where and when the language is used"},
- {kind:"category",label:"Common Situational Sentences",zh:"常用情景句",level:"",note:"Five natural sentences people commonly use in this situation"},
- {kind:"category",label:"Problems & Solutions",zh:"问题与解决",level:"",note:"Common difficulties and responses"},
- {kind:"category",label:"Advanced Expressions",zh:"高级表达",level:"",note:"Precise phrases and C1/C2 language"},
-];
-
-export const BRANCH_PRESETS: Record<RootType, NewKnowledgeNode[]> = {
- word: WORD_BRANCHES,
- topic: TOPIC_BRANCHES,
- situation: SITUATION_BRANCHES,
-};
-
-const SENTENCE_BRANCH_LABELS = new Set(["Common Situational Sentences", "Example Sentences"]);
-export const isSentenceBranchLabel = (label: string) => SENTENCE_BRANCH_LABELS.has(label);
-
-const SENTENCE_FALLBACKS: NewKnowledgeNode[] = [
- {kind:"phrase",label:"What do you think about it?",zh:"你对此怎么看？",level:"B1",note:"Ask for the other person's opinion."},
- {kind:"phrase",label:"Could you tell me more about that?",zh:"你能再多说一点吗？",level:"B1",note:"Invite the other person to continue."},
- {kind:"phrase",label:"That's a good point.",zh:"这个观点很好。",level:"B1",note:"Acknowledge what someone has said."},
- {kind:"phrase",label:"I completely agree with you.",zh:"我完全同意你的看法。",level:"B1",note:"Express clear agreement."},
- {kind:"phrase",label:"I'm not sure about that.",zh:"我不太确定。",level:"B1",note:"Express polite uncertainty."},
- {kind:"phrase",label:"That makes sense.",zh:"这很有道理。",level:"B1",note:"Show that you understand the explanation."},
- {kind:"phrase",label:"It depends on the situation.",zh:"这取决于具体情况。",level:"B1",note:"Give a balanced response."},
- {kind:"phrase",label:"How about you?",zh:"你呢？",level:"A2",note:"Return the question naturally."},
-];
-
-function simpleParse(raw:string):NewKnowledgeNode[]{
- const start=raw.indexOf("[");
- if(start>=0){try{const data=JSON.parse(jsonrepair(raw.slice(start)));return (Array.isArray(data)?data:[]).map((x:any)=>Array.isArray(x)?{label:String(x[0]??""),zh:String(x[1]??""),level:String(x[2]??""),kind:(String(x[3]??"").includes("phrase")?"phrase":"word") as "word"|"phrase",note:String(x[4]??"")}:{label:String(x.label??x.word??""),zh:String(x.zh??""),level:String(x.level??""),kind:(x.kind==="phrase"||x.kind==="situation"?x.kind:"word"),note:String(x.note??x.example??"")}).filter(x=>x.label.trim()).slice(0,12)}catch{}}
- return raw.split("\n").map(line=>line.replace(/^[-*\d.\s]+/,"").trim()).filter(Boolean).slice(0,10).map(label=>({kind:"word" as const,label,zh:"",level:"",note:""}));
+/** Heuristic routing for the universal input box: full sentences go to
+ * instant analysis, everything else becomes an expandable topic. */
+export function classifyInput(raw: string): InputKind {
+  const input = raw.trim();
+  if (/[。！？.!?]$/.test(input) || input.split(/\s+/).length >= 5) return "sentence";
+  if (!/[\s，,]/.test(input)) return "word";
+  return "topic";
 }
 
-async function collect(provider:AIProvider,system:string,user:string){
- const run=(async()=>{const chunks:string[]=[];for await(const c of provider.generate(system,user))chunks.push(c);return chunks.join("")})();
- let timer:number|undefined;const timeout=new Promise<string>((_,reject)=>{timer=window.setTimeout(()=>reject(new Error("本地模型生成超时")),45000)});
- try{return await Promise.race([run,timeout])}finally{if(timer)window.clearTimeout(timer)}
+export interface SectionDef {
+  key: string;
+  label: string;
+  zh: string;
+  itemKind: "word" | "phrase";
+  /** Instruction sentence spliced into the generation prompt. */
+  instruction: string;
+  count: string;
 }
 
-export async function generateBranch(provider:AIProvider,root:string,parent:Pick<KnowledgeNode,"label"|"zh"|"kind">|NewKnowledgeNode,targetLevels:string,exclude:string[]=[]):Promise<NewKnowledgeNode[]>{
- const sentences=isSentenceBranchLabel(parent.label);
- const system="You generate practical English vocabulary and sentences for a learner. The topic may be a word or a full situation description in any language. Return only a short JSON array. Follow the format exactly. No markdown and no explanation.";
- const request=sentences
-  ? "Return exactly 5 natural, commonly used English sentences for this situation. Every item kind must be phrase. Put the full English sentence in the first field and its natural Chinese translation in the second field."
-  : "Return 8-10 useful English words or short phrases strongly related to this branch. Keep the fifth field empty. Detailed explanations will be generated later only when the learner opens a word.";
- const user=`Topic or situation: ${root}\nBranch to expand: ${parent.label} (${parent.zh})\nLearner: CEFR ${targetLevels}.\n${request}\nAvoid: ${exclude.slice(0,100).join(", ")}.\nUse this simple format only: [["English word, phrase, or sentence","简短中文释义或翻译","B1|B2|C1|C2","word|phrase",""]].`;
- const parsed=simpleParse(await collect(provider,system,user));
- if(sentences){
-  const used=new Set(exclude.map(item=>item.trim().toLowerCase()));
-  const result:NewKnowledgeNode[]=[];
-  const append=(items:NewKnowledgeNode[])=>items.forEach(item=>{
-   const key=item.label.trim().toLowerCase();
-   if(key&&!used.has(key)&&item.zh.trim()&&result.length<5){used.add(key);result.push({...item,kind:"phrase"})}
-  });
-  append(parsed);
-  if(result.length<5){
-   try{append(simpleParse(await collect(provider,system,`${user}\nYou returned too few valid bilingual sentences. Return ${5-result.length} different additional sentences now.`)))}catch{}
-  }
-  append(SENTENCE_FALLBACKS);
-  return result.slice(0,5);
- }
- return parsed;
+const TOPIC_SECTIONS: SectionDef[] = [
+  { key: "core", label: "Core Vocabulary", zh: "核心词汇", itemKind: "word", count: "10-14",
+    instruction: "the essential words a learner must know for this topic: concrete nouns, key verbs, and important adjectives. Cover the topic broadly, from everyday basics up to precise C1 terms. Note field: part of speech abbreviation only (n. / v. / adj. / adv.)." },
+  { key: "collocations", label: "Collocations", zh: "高频搭配", itemKind: "phrase", count: "8-10",
+    instruction: "high-frequency collocations and fixed phrases native speakers actually use for this topic (verb+noun, adjective+noun, prepositional phrases). Note field: one short natural example sentence using the collocation." },
+  { key: "sentences", label: "Practical Sentences", zh: "实用句式", itemKind: "phrase", count: "6-8",
+    instruction: "complete, natural English sentences a person would really say in this situation — the reusable sentence patterns, not textbook examples. Note field: a one-line explanation of the sentence pattern and when to use it, in Chinese." },
+  { key: "situations", label: "Scenario Lines", zh: "场景对话", itemKind: "phrase", count: "5-6",
+    instruction: "short dialogue lines from typical scenarios within this topic (questions people ask, responses they give). Note field: who says it and in which scenario, in Chinese." },
+  { key: "contrasts", label: "Confusables", zh: "易混辨析", itemKind: "word", count: "4-6",
+    instruction: "pairs or small groups of easily confused words relevant to this topic. Label field: the confusable words joined with ' vs '. Note field: a concise Chinese explanation of the difference with a tiny example for each." },
+];
+
+const WORD_SECTIONS: SectionDef[] = [
+  { key: "related", label: "Synonyms & Related", zh: "近义与关联词", itemKind: "word", count: "8-12",
+    instruction: "synonyms, near-synonyms and closely related words, spanning register (formal/informal) and nuance. Note field: one short Chinese phrase pinning down the nuance vs the root word." },
+  { key: "collocations", label: "Collocations", zh: "高频搭配", itemKind: "phrase", count: "8-10",
+    instruction: "the collocations and fixed phrases this word most frequently appears in. Note field: one short natural example sentence." },
+  { key: "sentences", label: "Example Sentences", zh: "地道例句", itemKind: "phrase", count: "5-6",
+    instruction: "natural example sentences using this word in different senses and registers. Note field: a one-line Chinese note on which sense/register the sentence shows." },
+  { key: "contrasts", label: "Confusables", zh: "易混辨析", itemKind: "word", count: "3-5",
+    instruction: "words easily confused with this one. Label field: the confusable words joined with ' vs '. Note field: a concise Chinese explanation of the difference with a tiny example for each." },
+];
+
+export const SECTION_PRESETS: Record<RootType, SectionDef[]> = { topic: TOPIC_SECTIONS, word: WORD_SECTIONS };
+
+export const DEEP_DIVE_SECTION = (label: string): SectionDef => ({
+  key: "deep", label, zh: "", itemKind: "word", count: "8-12",
+  instruction: "a focused deep-dive: the most useful words, phrases and one or two full sentences for this sub-topic. Mix kinds as appropriate. Note field: part of speech for words, a short Chinese usage note for phrases and sentences.",
+});
+
+const SYSTEM_PROMPT =
+  "You are an expert English vocabulary coach for Chinese learners. You expand a topic into practical, high-value language: words and expressions people genuinely use, calibrated to the learner's CEFR level with some stretch items one level above. Prefer concrete, immediately usable items over rare or academic ones. Chinese glosses must be short, natural, and idiomatic. Return ONLY a JSON array in the exact requested format — no markdown fences, no commentary.";
+
+export function parseItems(raw: string, defaultKind: "word" | "phrase"): NewKnowledgeNode[] {
+  const start = raw.indexOf("[");
+  if (start < 0) return [];
+  try {
+    const data = JSON.parse(jsonrepair(raw.slice(start)));
+    if (!Array.isArray(data)) return [];
+    return data.map((x: any): NewKnowledgeNode => Array.isArray(x)
+      ? { label: String(x[0] ?? ""), zh: String(x[1] ?? ""), level: String(x[2] ?? "").toUpperCase(), kind: String(x[3] ?? "") === "phrase" ? "phrase" : String(x[3] ?? "") === "word" ? "word" : defaultKind, note: String(x[4] ?? "") }
+      : { label: String(x.label ?? x.word ?? ""), zh: String(x.zh ?? ""), level: String(x.level ?? "").toUpperCase(), kind: x.kind === "phrase" || x.kind === "word" ? x.kind : defaultKind, note: String(x.note ?? x.example ?? "") })
+      .filter((x) => x.label.trim())
+      .slice(0, 16);
+  } catch { return []; }
 }
 
-export async function expandNode(provider:AIProvider,root:string,node:KnowledgeNode,targetLevels:string,exclude:string[]):Promise<NewKnowledgeNode[]>{return generateBranch(provider,root,{label:node.label,zh:node.zh,kind:node.kind},targetLevels,exclude)}
+async function collect(provider: AIProvider, system: string, user: string, signal?: AbortSignal): Promise<string> {
+  const run = (async () => {
+    const chunks: string[] = [];
+    for await (const c of provider.generate(system, user)) {
+      if (signal?.aborted) throw new DOMException("aborted", "AbortError");
+      chunks.push(c);
+    }
+    return chunks.join("");
+  })();
+  let timer: number | undefined;
+  const timeout = new Promise<string>((_, reject) => { timer = window.setTimeout(() => reject(new Error("模型生成超时")), 60000); });
+  try { return await Promise.race([run, timeout]); } finally { if (timer) window.clearTimeout(timer); }
+}
 
-export async function generateOverview(provider:AIProvider,topic:string,targetLevels:string):Promise<string>{
- const system="You write a short, welcoming introduction for an English learner who just opened a knowledge map for a single word or short topic. Two to three sentences in English, then one Chinese sentence summarizing it. Mention briefly what kind of related vocabulary or situational sentences they can expect to explore. No markdown, no lists, no headings, no explanation of these instructions.";
- const user=`Word or topic: ${topic}\nLearner: CEFR ${targetLevels}.\nWrite the introduction now.`;
- const text=(await collect(provider,system,user)).trim();
- return text.slice(0,600);
+export async function generateSection(provider: AIProvider, topic: string, section: SectionDef, targetLevels: string, exclude: string[] = [], signal?: AbortSignal): Promise<NewKnowledgeNode[]> {
+  const user = [
+    `Topic: ${topic}`,
+    `Learner level: CEFR ${targetLevels || "B1/B2"}.`,
+    `Generate ${section.count} items for the section "${section.label}" (${section.zh}): ${section.instruction}`,
+    exclude.length ? `Do NOT repeat any of: ${exclude.slice(0, 120).join(", ")}.` : "",
+    `Format — a JSON array of 5-element arrays: [["English item","简短中文释义","A2|B1|B2|C1|C2","word|phrase","note per the section rules"]]. For full sentences use kind "phrase" and put the natural Chinese translation in the second field.`,
+  ].filter(Boolean).join("\n");
+  return parseItems(await collect(provider, SYSTEM_PROMPT, user, signal), section.itemKind);
+}
+
+/** Sub-topic suggestions for the "dig deeper" card. Returns [label, zh] pairs. */
+export async function suggestSubtopics(provider: AIProvider, topic: string, covered: string[], signal?: AbortSignal): Promise<Array<[string, string]>> {
+  const system = "You suggest focused sub-topics an English learner could expand next. Return ONLY a JSON array, no commentary.";
+  const user = `Topic: ${topic}\nAlready covered sections: ${covered.join(", ")}.\nSuggest 4 specific, practical sub-topics worth a vocabulary deep-dive. Format: [["sub-topic in English","简短中文"]]. Keep each under 4 words.`;
+  try {
+    const raw = await collect(provider, system, user, signal);
+    const start = raw.indexOf("[");
+    if (start < 0) return [];
+    const data = JSON.parse(jsonrepair(raw.slice(start)));
+    return (Array.isArray(data) ? data : [])
+      .map((x: any): [string, string] => Array.isArray(x) ? [String(x[0] ?? ""), String(x[1] ?? "")] : [String(x?.label ?? ""), String(x?.zh ?? "")])
+      .filter(([label]) => label.trim())
+      .slice(0, 4);
+  } catch { return []; }
+}
+
+export interface SentenceAnalysis {
+  translation: string;
+  pattern: string;
+  /** Reusable English pattern skeleton, e.g. "be shortlisted for + noun". */
+  skeleton: string;
+  items: NewKnowledgeNode[];
+  related: string[];
+}
+
+export async function analyzeSentence(provider: AIProvider, sentence: string, targetLevels: string, signal?: AbortSignal): Promise<SentenceAnalysis> {
+  const system = "You are an expert English coach for Chinese learners. You break a sentence down into learnable pieces. Return ONLY one JSON object, no markdown fences, no commentary.";
+  const user = [
+    `Sentence: ${sentence}`,
+    `Learner level: CEFR ${targetLevels || "B1/B2"}.`,
+    `Return a JSON object with exactly these keys:`,
+    `"translation": natural Chinese translation of the sentence.`,
+    `"pattern": one-line Chinese explanation of the key sentence pattern / grammar point, quoting the English pattern (e.g. "be shortlisted for + n. → 被动语态表\\"入围\\"").`,
+    `"skeleton": the reusable English pattern skeleton on its own, e.g. "be shortlisted for + noun".`,
+    `"items": the words and collocations in the sentence worth learning at this level, as an array of 5-element arrays [["word or phrase","简短中文释义","A2|B1|B2|C1|C2","word|phrase","短注释：词性或用法"]]. Skip trivial words below the learner's level.`,
+    `"related": 2-3 short English topic suggestions to explore next, as an array of strings.`,
+  ].join("\n");
+  const raw = await collect(provider, system, user, signal);
+  const start = raw.indexOf("{");
+  if (start < 0) throw new Error("模型未返回有效分析");
+  const data = JSON.parse(jsonrepair(raw.slice(start)));
+  return {
+    translation: String(data.translation ?? ""),
+    pattern: String(data.pattern ?? ""),
+    skeleton: String(data.skeleton ?? ""),
+    items: parseItems(JSON.stringify(data.items ?? []), "word"),
+    related: (Array.isArray(data.related) ? data.related : []).map((x: any) => String(x)).filter(Boolean).slice(0, 3),
+  };
 }

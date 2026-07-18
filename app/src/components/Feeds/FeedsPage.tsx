@@ -10,10 +10,9 @@ import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
 import { usePlayerOriginStore } from "@/store/playerOriginStore";
 import { useFeedsNavStore } from "@/store/feedsNavStore";
 import { ReaderView } from "@/components/Reader/ReaderView";
-import { RefreshIcon } from "@/components/ui/icons";
 import type { FetchedArticle } from "@/components/Reader/ArticleReader";
 import type { RssEntryRow, RssFeed } from "@/hooks/useDB.types";
-import { FeedRail } from "./FeedRail";
+import { FeedTabs } from "./FeedTabs";
 import { AddFeedDialog } from "./AddFeedDialog";
 import { EntryGrid } from "./EntryGrid";
 import { domainOf } from "./feedUtils";
@@ -89,18 +88,24 @@ export function FeedsPage() {
     feedTitle: string;
   } | null>(null);
   const syncingRef = useRef(false);
+  // The live selection, readable from long-running background syncs — their
+  // captured `selected` would otherwise be stale and yank the view back.
+  const selectedRef = useRef<number | "all">("all");
+  useEffect(() => { selectedRef.current = selected; }, [selected]);
 
   const feedsById = new Map(feeds.map((f) => [f.id, f]));
 
   const refreshEntries = useCallback(async (sel: number | "all") => {
     const rows = await db.getRssEntries(sel === "all" ? null : sel);
-    setEntries(rows);
+    // The user may have switched tabs while this read was in flight —
+    // never overwrite the current tab's list with another tab's rows.
+    if (selectedRef.current === sel) setEntries(rows);
     const counts = await db.getRssUnreadCounts();
     setUnreadByFeed(new Map(counts));
   }, [db]);
 
-  /** Sync the given feeds sequentially; refresh the view after each one lands. */
-  const syncFeeds = useCallback(async (targets: RssFeed[], sel: number | "all") => {
+  /** Sync the given feeds sequentially; refresh whichever tab is current after each one lands. */
+  const syncFeeds = useCallback(async (targets: RssFeed[]) => {
     if (syncingRef.current || targets.length === 0) return;
     syncingRef.current = true;
     setSyncing(true);
@@ -108,7 +113,7 @@ export function FeedsPage() {
     for (const feed of targets) {
       try {
         await db.syncRssFeed(feed.id);
-        await refreshEntries(sel);
+        await refreshEntries(selectedRef.current);
       } catch {
         failed.add(feed.id);
       }
@@ -163,7 +168,7 @@ export function FeedsPage() {
         setFeeds(list);
         await refreshEntries("all");
         setBooting(false);
-        syncFeeds(list.filter((f) => isStale(f.last_fetched_at)), "all");
+        syncFeeds(list.filter((f) => isStale(f.last_fetched_at)));
       } finally {
         setBooting(false);
       }
@@ -172,16 +177,17 @@ export function FeedsPage() {
 
   const selectFeed = (sel: number | "all") => {
     setSelected(sel);
+    selectedRef.current = sel;
     setBrowse(null);
     refreshEntries(sel);
   };
 
-  const handleRefresh = () => syncFeeds(feeds, selected);
+  const handleRefresh = () => syncFeeds(feeds);
 
   const handleAdded = async () => {
     const list = await db.getRssFeeds();
     setFeeds(list);
-    syncFeeds(list.filter((f) => isStale(f.last_fetched_at)), selected);
+    syncFeeds(list.filter((f) => isStale(f.last_fetched_at)));
   };
 
   const handleDelete = async (id: number) => {
@@ -275,21 +281,21 @@ export function FeedsPage() {
     clearPendingBrowse();
   }, [pendingBrowse]);
 
-  const selectedFeed = selected === "all" ? null : feedsById.get(selected);
-
   return (
-    <div className="flex h-full animate-fade-in">
-      <FeedRail
+    <div className="flex h-full flex-col animate-fade-in">
+      <FeedTabs
         feeds={feeds}
         unreadByFeed={unreadByFeed}
         failedFeeds={failedFeeds}
         selected={selected}
+        syncing={syncing}
         onSelect={selectFeed}
         onDelete={handleDelete}
         onAdd={() => setShowAdd(true)}
+        onRefresh={handleRefresh}
       />
 
-      <div className="flex-1 min-w-0 flex flex-col">
+      <div className="flex-1 min-w-0 min-h-0 flex flex-col">
         {browse ? (
           <ReaderView
             url={browse.url}
@@ -306,22 +312,6 @@ export function FeedsPage() {
           />
         ) : (
           <>
-            <div className="flex items-center gap-3 px-6 h-12 border-b border-border shrink-0">
-              <h2 className="flex-1 min-w-0 text-sm font-semibold truncate">
-                {selectedFeed ? selectedFeed.title || domainOf(selectedFeed.url) : t("feeds.all")}
-              </h2>
-              {syncing && <span className="text-[11px] text-muted-foreground">{t("feeds.refreshing")}</span>}
-              <Button
-                variant="ghost"
-                onClick={handleRefresh}
-                disabled={syncing || feeds.length === 0}
-                title={t("feeds.refresh")}
-                className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-40 transition-colors"
-              >
-                <RefreshIcon className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
-              </Button>
-            </div>
-
             <div className="flex-1 min-h-0 overflow-y-auto">
               {booting && entries.length === 0 ? (
                 <EntrySkeleton />

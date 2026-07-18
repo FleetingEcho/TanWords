@@ -7,10 +7,14 @@ import { useT } from "@/hooks/useT";
 
 const CACHE_PREFIX = "__KNOWLEDGE_ENRICHED__\n";
 
-export function KnowledgeWordDetail({ node, onPersist, onAdd }: {
+/** In-page panel showing the full AI enrichment for one map entry. */
+export function EntryDetail({ node, listCollapsed, onToggleList, onPersist, onAdd, onClose }: {
   node: KnowledgeNode;
+  listCollapsed: boolean;
+  onToggleList: () => void;
   onPersist: (node: KnowledgeNode, enrichment: ParsedEnrichment) => Promise<void>;
   onAdd: (nodeId: number) => void;
+  onClose: () => void;
 }) {
   const t = useT();
   const onPersistRef = useRef(onPersist);
@@ -21,10 +25,7 @@ export function KnowledgeWordDetail({ node, onPersist, onAdd }: {
 
   const enrich = useCallback(async (signal?: AbortSignal) => {
     const provider = findBestProvider();
-    if (!provider) {
-      setError(t("modal.noProvider"));
-      return;
-    }
+    if (!provider) { setError(t("modal.noProvider")); return; }
     setError("");
     setEnriched(null);
     setEnriching(true);
@@ -56,21 +57,35 @@ export function KnowledgeWordDetail({ node, onPersist, onAdd }: {
     return () => controller.abort();
   }, [node.id, node.note, enrich]);
 
-  return <WordDetailPanel
-    selected={{ word: node.label, zh: node.zh || null, wordType: null, level: node.level || null, ipa: "" }}
-    wordId={node.word_id}
-    enriched={enriched}
-    enriching={enriching}
-    enrichError={error}
-    legacy={false}
-    notes=""
-    vocabBilingual
-    lookupMode
-    lookupAdded={Boolean(node.word_id)}
-    onAddToVocab={() => onAdd(node.id)}
-    onNotesChange={() => {}}
-    onClearNotes={() => {}}
-    onRetry={() => void enrich()}
-    onReenrich={() => void enrich()}
-  />;
+  return <section className="flex h-full min-h-0 flex-col">
+    <header className="flex h-11 shrink-0 items-center gap-2 border-b px-3">
+      <button
+        onClick={onToggleList}
+        title={listCollapsed ? t("knowledgeMap.showList") : t("knowledgeMap.hideList")}
+        aria-label={listCollapsed ? t("knowledgeMap.showList") : t("knowledgeMap.hideList")}
+        className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+      >{listCollapsed ? "▸" : "◂"}</button>
+      <span className="text-xs font-bold uppercase tracking-[.18em] text-muted-foreground">{t("knowledgeMap.detailTitle")}</span>
+      <button onClick={onClose} aria-label={t("knowledgeMap.close")} className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground">×</button>
+    </header>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <WordDetailPanel
+        selected={{ word: node.label, zh: node.zh || null, wordType: null, level: node.level || null, ipa: "" }}
+        wordId={node.word_id}
+        enriched={enriched}
+        enriching={enriching}
+        enrichError={error}
+        legacy={false}
+        notes=""
+        vocabBilingual
+        lookupMode
+        lookupAdded={Boolean(node.word_id)}
+        onAddToVocab={() => onAdd(node.id)}
+        onNotesChange={() => {}}
+        onClearNotes={() => {}}
+        onRetry={() => void enrich()}
+        onReenrich={() => void enrich()}
+      />
+    </div>
+  </section>;
 }
