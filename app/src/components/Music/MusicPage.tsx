@@ -7,7 +7,7 @@ import { usePodcastPlayerStore, PodcastTrack } from "@/store/podcastPlayerStore"
 import { usePlayerOriginStore } from "@/store/playerOriginStore";
 import { coverGradient } from "@/features/music/cover";
 import { Button } from "@/components/ui/button";
-import { MusicIcon, PlayIcon, RefreshIcon, ChevronIcon, GridIcon, ListIcon, FolderIcon, SearchIcon } from "@/components/ui/icons";
+import { MusicIcon, PlayIcon, PauseIcon, RefreshIcon, ChevronIcon, GridIcon, ListIcon, FolderIcon, SearchIcon } from "@/components/ui/icons";
 
 interface MusicTrack {
   path: string;
@@ -445,8 +445,10 @@ function TrackRows({
   const t = useT();
   const currentUrl = usePodcastPlayerStore((s) => s.track?.audioUrl);
   const status = usePodcastPlayerStore((s) => s.status);
+  const toggle = usePodcastPlayerStore((s) => s.toggle);
 
   const shown = indices ? indices.map((i) => ({ tr: collection.tracks[i], i })) : collection.tracks.map((tr, i) => ({ tr, i }));
+  const isPlaying = status === "playing" || status === "loading";
 
   return (
     <>
@@ -455,7 +457,9 @@ function TrackRows({
         return (
           <button
             key={tr.path}
-            onClick={() => startQueue(collection, displayName, i)}
+            // The current row toggles pause/resume; restarting from 0:00 on a
+            // click here is never what anyone wants.
+            onClick={() => (isCurrent ? toggle() : startQueue(collection, displayName, i))}
             className={`w-full flex items-center gap-4 px-4 rounded-xl text-left transition-colors group ${
               compact ? "py-1.5" : "py-2.5"
             } ${isCurrent ? "bg-primary/10" : "hover:bg-muted"}`}
@@ -463,9 +467,17 @@ function TrackRows({
             <span className={`w-6 text-xs font-mono tabular-nums shrink-0 ${isCurrent ? "text-primary" : "text-muted-foreground"}`}>
               {isCurrent ? (
                 <span className="inline-flex items-end gap-[2px] h-3" aria-label={t("music.nowPlaying")}>
-                  <span className="w-[3px] bg-primary animate-pulse" style={{ height: "60%" }} />
-                  <span className="w-[3px] bg-primary animate-pulse" style={{ height: "100%", animationDelay: "150ms" }} />
-                  <span className="w-[3px] bg-primary animate-pulse" style={{ height: "40%", animationDelay: "300ms" }} />
+                  {[
+                    { height: "60%" },
+                    { height: "100%", animationDelay: "150ms" },
+                    { height: "40%", animationDelay: "300ms" },
+                  ].map((style, b) => (
+                    <span
+                      key={b}
+                      className="w-[3px] bg-primary animate-pulse"
+                      style={{ ...style, animationPlayState: isPlaying ? "running" : "paused" }}
+                    />
+                  ))}
                 </span>
               ) : (
                 String(i + 1).padStart(2, "0")
@@ -477,7 +489,15 @@ function TrackRows({
               </span>
               {!compact && tr.artist && <span className="block text-xs text-muted-foreground truncate">{tr.artist}</span>}
             </span>
-            <PlayIcon className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+            {isCurrent ? (
+              isPlaying ? (
+                <PauseIcon className="w-4 h-4 text-primary shrink-0" />
+              ) : (
+                <PlayIcon className="w-4 h-4 text-primary shrink-0" />
+              )
+            ) : (
+              <PlayIcon className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+            )}
             <span className="text-xs font-mono tabular-nums text-muted-foreground shrink-0">
               {formatDuration(tr.durationSec)}
             </span>
