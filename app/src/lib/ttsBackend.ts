@@ -17,13 +17,6 @@ export function consumeFallbackWarning(): boolean {
   return true;
 }
 
-/** Resets the one-time fallback warning — call when a new model is
- * successfully loaded (e.g. from the settings page) so a later failure
- * warns again instead of staying silent forever. */
-export function resetFallbackWarning(): void {
-  warnedFallback = false;
-}
-
 /** Synthesizes `text` through the embedded engine. If the model isn't
  * loaded yet, self-heals once using the persisted model choice before
  * giving up and asking the caller to fall back to webspeech. */

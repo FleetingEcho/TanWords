@@ -39,7 +39,7 @@ export function dateGroupOf(dateStr: string): DateGroup {
 }
 
 /** Deterministic hue from a feed title, for the no-cover placeholder gradient. */
-export function feedHue(name: string): number {
+function feedHue(name: string): number {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) % 360;
   return h;

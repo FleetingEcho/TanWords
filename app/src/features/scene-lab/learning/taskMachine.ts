@@ -11,8 +11,3 @@ export function answerTask(task: SceneTask, state: TaskState, answer: { type: "f
   const next = state.stepIndex + 1;
   return { correct: true, state: { ...state, stepIndex: next, complete: next >= task.steps.length } };
 }
-
-export function currentTaskInstruction(task: SceneTask, state: TaskState, chinese = true): string {
-  const step = task.steps[state.stepIndex];
-  return step ? (chinese ? step.instruction_zh : step.instruction_en) : "";
-}

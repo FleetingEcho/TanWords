@@ -1,5 +1,5 @@
 import React from "react";
-import { Dialog } from "./dialog";
+import { Dialog, DialogTitle } from "./dialog";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 
@@ -24,7 +24,7 @@ export function ConfirmModal({
   return (
     <Dialog open={open} onClose={onCancel} maxWidth="max-w-sm">
       <div className="p-5 space-y-3">
-        <h2 className="text-sm font-semibold">{title}</h2>
+        <DialogTitle className="text-sm font-semibold">{title}</DialogTitle>
         <p className="text-xs text-muted-foreground leading-relaxed">{message}</p>
       </div>
       <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border">
