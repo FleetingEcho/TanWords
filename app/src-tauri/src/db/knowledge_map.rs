@@ -290,9 +290,10 @@ pub fn db_add_map_words_to_vocabulary(
             linked += 1;
             id
         } else {
+            let word_type = if kind == "phrase" { Some("phrase") } else { None };
             tx.execute(
-                "INSERT INTO words(word,level,word_freq,source) VALUES(?1,?2,1,'knowledge-map')",
-                params![normalized, level],
+                "INSERT INTO words(word,word_type,level,word_freq,source) VALUES(?1,?2,?3,1,'knowledge-map')",
+                params![normalized, word_type, level],
             )
             .map_err(|e| e.to_string())?;
             let id = tx.last_insert_rowid();

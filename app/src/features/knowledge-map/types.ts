@@ -5,3 +5,6 @@ export interface KnowledgeMapDetail { id:number; root_label:string; root_type:st
 export interface KnowledgeMapSummary { id:number; root_label:string; root_type:string; node_count:number; updated_at:string }
 export interface NewKnowledgeNode { kind:KnowledgeNodeKind; label:string; zh:string; level:string; note:string }
 export interface MapWordAddResult { added:number; linked:number; skipped:number }
+export interface SavePatternResult { pattern_id:number; created:boolean }
+/** Prepended to a sentence node's note once it has been saved to the pattern library. */
+export const PATTERN_SAVED_PREFIX = "__PATTERN_SAVED__\n";

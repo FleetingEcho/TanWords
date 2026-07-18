@@ -27,4 +27,7 @@ export const feeds: Dict = {
   "feeds.group.yesterday": "Yesterday",
   "feeds.group.thisWeek": "This week",
   "feeds.group.earlier": "Earlier",
+  "feeds.cat.webdev": "Articles · Web Dev",
+  "feeds.cat.tech": "Articles · Tech & AI",
+  "feeds.cat.podcast": "Podcasts",
 };
