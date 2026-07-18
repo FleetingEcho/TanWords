@@ -3,7 +3,7 @@ import { useT } from "@/hooks/useT";
 import { useDB } from "@/hooks/useDB";
 import { CloseIcon } from "@/components/ui/icons";
 import type { RssFeedMeta } from "@/hooks/useDB.types";
-import { DEFAULT_FEEDS } from "./defaultFeeds";
+import { DEFAULT_FEEDS, FEED_CATEGORIES, type FeedCategory } from "./defaultFeeds";
 import { Button } from "@/components/ui/button";
 
 interface Props {
@@ -23,6 +23,14 @@ export function AddFeedDialog({ open, onClose, onAdded, subscribedUrls }: Props)
   const [preview, setPreview] = useState<RssFeedMeta | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [collapsed, setCollapsed] = useState<Set<FeedCategory>>(new Set());
+
+  const toggleCategory = (category: FeedCategory) =>
+    setCollapsed((current) => {
+      const next = new Set(current);
+      next.has(category) ? next.delete(category) : next.add(category);
+      return next;
+    });
 
   useEffect(() => {
     if (open) {
@@ -114,24 +122,38 @@ export function AddFeedDialog({ open, onClose, onAdded, subscribedUrls }: Props)
         )}
 
         {!preview && DEFAULT_FEEDS.some((p) => !subscribedUrls.has(p.url)) && (
-          <div className="mt-5">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
-              {t("feeds.presets")}
-            </p>
-            <div className="space-y-1">
-              {DEFAULT_FEEDS.filter((p) => !subscribedUrls.has(p.url)).map((p) => (
-                <Button
-                  key={p.url}
-                  variant="ghost"
-                  onClick={() => fetchPreview(p.url)}
-                  disabled={loading}
-                  className="h-auto w-full block text-left px-3 py-2 rounded-lg hover:bg-muted disabled:opacity-50 transition-colors"
-                >
-                  <p className="text-xs font-semibold">{p.title}</p>
-                  <p className="text-[10px] text-muted-foreground line-clamp-1">{p.desc}</p>
-                </Button>
-              ))}
-            </div>
+          <div className="mt-5 space-y-4">
+            {FEED_CATEGORIES.map((category) => {
+              const group = DEFAULT_FEEDS.filter((p) => p.category === category && !subscribedUrls.has(p.url));
+              if (!group.length) return null;
+              const isCollapsed = collapsed.has(category);
+              return (
+                <div key={category}>
+                  <button
+                    onClick={() => toggleCategory(category)}
+                    className="mb-2 flex w-full items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    <span className="text-[9px]">{isCollapsed ? "▸" : "▾"}</span>
+                    {t(`feeds.cat.${category}`)}
+                    <span className="font-normal">({group.length})</span>
+                  </button>
+                  {!isCollapsed && <div className="space-y-1">
+                    {group.map((p) => (
+                      <Button
+                        key={p.url}
+                        variant="ghost"
+                        onClick={() => fetchPreview(p.url)}
+                        disabled={loading}
+                        className="h-auto w-full block text-left px-3 py-2 rounded-lg hover:bg-muted disabled:opacity-50 transition-colors"
+                      >
+                        <p className="text-xs font-semibold">{p.title}</p>
+                        <p className="text-[10px] text-muted-foreground line-clamp-1">{p.desc}</p>
+                      </Button>
+                    ))}
+                  </div>}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

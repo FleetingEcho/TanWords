@@ -1,49 +1,40 @@
 import { describe, expect, it } from "vitest";
-import type { AIProvider } from "@/providers/base";
-import { BRANCH_PRESETS, generateBranch, isSentenceBranchLabel } from "./generator";
+import { classifyInput, parseItems } from "./generator";
 
-describe("knowledge map branch presets", () => {
-  it("gives topic and situation maps a dedicated situational sentence branch", () => {
-    expect(BRANCH_PRESETS.topic).toContainEqual(expect.objectContaining({
-      kind: "category",
-      label: "Common Situational Sentences",
-    }));
-    expect(BRANCH_PRESETS.situation).toContainEqual(expect.objectContaining({
-      kind: "category",
-      label: "Common Situational Sentences",
-    }));
+describe("classifyInput", () => {
+  it("routes single tokens to word", () => {
+    expect(classifyInput("shortlist")).toBe("word");
+    expect(classifyInput("  bank ")).toBe("word");
   });
-
-  it("gives single-word maps a lean, word-focused branch set that still covers scene sentences", () => {
-    expect(BRANCH_PRESETS.word).toHaveLength(5);
-    expect(BRANCH_PRESETS.word).toContainEqual(expect.objectContaining({
-      kind: "category",
-      label: "Example Sentences",
-    }));
-    expect(BRANCH_PRESETS.word).toContainEqual(expect.objectContaining({
-      kind: "category",
-      label: "Common Situational Sentences",
-    }));
-    expect(BRANCH_PRESETS.word.some((branch) => branch.label === "Situations & Use Cases")).toBe(false);
+  it("routes short multi-word inputs to topic", () => {
+    expect(classifyInput("job interview")).toBe("topic");
+    expect(classifyInput("distributed systems design")).toBe("topic");
   });
-
-  it("recognizes both sentence-branch labels used across presets", () => {
-    expect(isSentenceBranchLabel("Common Situational Sentences")).toBe(true);
-    expect(isSentenceBranchLabel("Example Sentences")).toBe(true);
-    expect(isSentenceBranchLabel("Core Vocabulary")).toBe(false);
+  it("routes full sentences to sentence", () => {
+    expect(classifyInput("He was shortlisted for the final round.")).toBe("sentence");
+    expect(classifyInput("What do you think about it?")).toBe("sentence");
+    expect(classifyInput("I really want to learn more about cooking today")).toBe("sentence");
   });
+});
 
-  it("fills a weak model response to five bilingual sentences", async () => {
-    const provider = {
-      async *generate() {
-        yield '[["Is it going to rain?","会下雨吗？","A2","phrase",""]]';
-      },
-    } as unknown as AIProvider;
-    const branch = BRANCH_PRESETS.situation.find((item) => item.label === "Common Situational Sentences")!;
-
-    const result = await generateBranch(provider, "两个人在外面讨论天气", branch, "A2/B1");
-
-    expect(result).toHaveLength(5);
-    expect(result.every((item) => item.kind === "phrase" && item.label && item.zh)).toBe(true);
+describe("parseItems", () => {
+  it("parses tuple arrays and applies the default kind", () => {
+    const raw = 'noise before [["land a job offer","拿到offer","B2","phrase","She landed a job offer."],["candidate","候选人","B1","word","n."]]';
+    const items = parseItems(raw, "word");
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({ label: "land a job offer", zh: "拿到offer", level: "B2", kind: "phrase" });
+    expect(items[1]).toMatchObject({ label: "candidate", kind: "word", note: "n." });
+  });
+  it("falls back to the default kind for unknown kinds", () => {
+    const items = parseItems('[["résumé","简历","B1","sentence",""]]', "phrase");
+    expect(items[0].kind).toBe("phrase");
+  });
+  it("repairs slightly malformed JSON and drops empty labels", () => {
+    const items = parseItems('[["walk me through","请介绍一下","B2","phrase","note",],["","x","B1","word",""]]', "word");
+    expect(items).toHaveLength(1);
+    expect(items[0].label).toBe("walk me through");
+  });
+  it("returns empty for output without an array", () => {
+    expect(parseItems("sorry, I cannot help", "word")).toEqual([]);
   });
 });

@@ -9,6 +9,7 @@ import { useSelectedWordStore } from "@/store/selectedWordStore";
 import { WordListPanel, LevelFilter, SortBy, DateField } from "./WordListPanel";
 import { WordDetailPanel } from "./WordDetailPanel";
 import { GenerateVocabModal } from "./GenerateVocabModal";
+import { PatternLibrary } from "./PatternLibrary";
 import { parseEnrichmentStream, ParsedEnrichment } from "@/lib/enrichMeta";
 
 interface SelectedWordData {
@@ -49,6 +50,8 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(0);
   const [generateOpen, setGenerateOpen] = useState(false);
+  const [view, setView] = useState<"words" | "patterns">("words");
+  const [patternSeed, setPatternSeed] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 250);
@@ -296,7 +299,20 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
   useEffect(() => () => clearSelectedWord(), [clearSelectedWord]);
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full flex-col">
+      <div className="flex h-10 shrink-0 items-center gap-1 border-b px-3">
+        {(["words", "patterns"] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setView(tab)}
+            className={`rounded-lg px-3 py-1 text-sm font-medium transition ${view === tab ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+          >
+            {t(tab === "words" ? "vocab.tabWords" : "vocab.tabPatterns")}
+          </button>
+        ))}
+      </div>
+      {view === "patterns" ? <PatternLibrary initialQuery={patternSeed} onSeedConsumed={() => setPatternSeed(null)} /> : (
+      <div className="flex min-h-0 flex-1">
       <WordListPanel
         words={visibleWords}
         selectedId={selected?.word.id ?? null}
@@ -351,7 +367,10 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
           else if (selected) enrichSelected(selected.word.word);
         }}
         onReenrich={() => selected && enrichSelected(selected.word.word)}
+        onGeneratePatterns={chatWord ? () => { setPatternSeed(chatWord); setView("patterns"); } : undefined}
       />
+      </div>
+      )}
 
       <GenerateVocabModal
         open={generateOpen}

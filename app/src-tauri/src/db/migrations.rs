@@ -292,6 +292,56 @@ const MIGRATIONS: &[Migration] = &[
             CREATE INDEX idx_knowledge_edges_map ON knowledge_edges(map_id,source_id);
         ",
     },
+    Migration {
+        version: 14,
+        description: "wipe knowledge maps for the document-flow redesign",
+        sql: "
+            DELETE FROM knowledge_edges;
+            DELETE FROM knowledge_nodes;
+            DELETE FROM knowledge_maps;
+        ",
+    },
+    // Some in-the-wild databases have migrations 5/7 recorded in
+    // schema_migrations without the tables actually existing (schema drifted,
+    // likely via a backup restore). Re-run the idempotent DDL to self-heal.
+    Migration {
+        version: 15,
+        description: "recreate pattern tables lost to schema drift",
+        sql: "
+            CREATE TABLE IF NOT EXISTS patterns (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                pattern       TEXT NOT NULL,
+                zh            TEXT NOT NULL DEFAULT '',
+                function_tag  TEXT NOT NULL DEFAULT 'other',
+                level         TEXT,
+                note          TEXT NOT NULL DEFAULT '',
+                analysis      TEXT,
+                created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS pattern_examples (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                pattern_id  INTEGER NOT NULL,
+                sentence    TEXT NOT NULL,
+                source      TEXT NOT NULL DEFAULT '',
+                article_id  INTEGER,
+                created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(pattern_id) REFERENCES patterns(id)
+            );
+            CREATE TABLE IF NOT EXISTS pattern_practice (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                pattern_id  INTEGER NOT NULL,
+                sentence    TEXT NOT NULL,
+                feedback    TEXT NOT NULL DEFAULT '',
+                verdict     TEXT NOT NULL DEFAULT '',
+                saved       INTEGER NOT NULL DEFAULT 0,
+                created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(pattern_id) REFERENCES patterns(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_pattern_examples_pattern ON pattern_examples(pattern_id);
+            CREATE INDEX IF NOT EXISTS idx_pattern_examples_article ON pattern_examples(article_id);
+            CREATE INDEX IF NOT EXISTS idx_pattern_practice_pattern ON pattern_practice(pattern_id);
+        ",
+    },
 ];
 
 pub fn run(conn: &Connection) -> SqlResult<()> {

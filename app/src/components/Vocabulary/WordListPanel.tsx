@@ -65,6 +65,8 @@ export function WordListPanel({
   const t = useT();
   const totalPages = Math.ceil(words.length / pageSize);
   const paged = words.slice(page * pageSize, (page + 1) * pageSize);
+  const activeFilters = (levelFilter !== "all" ? 1 : 0) + (sourceFilter !== "all" ? 1 : 0) + (dateFrom || dateTo ? 1 : 0);
+  const [filtersOpen, setFiltersOpen] = React.useState(false);
 
   return (
     <div className="w-80 shrink-0 border-r border-border bg-card flex flex-col h-full">
@@ -111,6 +113,18 @@ export function WordListPanel({
           </svg>
         </div>
 
+        {/* Collapsible filters — most sessions never touch them */}
+        <button
+          onClick={() => setFiltersOpen((v) => !v)}
+          className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <svg viewBox="0 0 20 20" fill="currentColor" className="h-3 w-3"><path d="M2.5 4.5A.5.5 0 013 4h14a.5.5 0 01.4.8L12 11.5V16a.5.5 0 01-.7.46l-3-1.3A.5.5 0 018 14.7v-3.2L2.6 4.8a.5.5 0 01-.1-.3z" /></svg>
+          {t("vocab.filters")}
+          {activeFilters > 0 && <span className="rounded-full bg-primary/15 px-1.5 py-px text-[10px] font-bold text-primary">{activeFilters}</span>}
+          <span className="text-[9px]">{filtersOpen ? "▲" : "▼"}</span>
+        </button>
+
+        {filtersOpen && <>
         {/* Level chips */}
         <div className="flex gap-1 flex-wrap">
           {LEVEL_CHIPS.map((lv) => (
@@ -183,6 +197,7 @@ export function WordListPanel({
             placeholder={t("vocab.dateRangePlaceholder")}
           />
         </div>
+        </>}
       </div>
 
       <div className="flex-1 overflow-y-auto divide-y divide-border">

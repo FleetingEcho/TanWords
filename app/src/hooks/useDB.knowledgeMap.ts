@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { logError, reportWriteError } from "./useDB.errors";
-import type { KnowledgeMapDetail, KnowledgeMapSummary, MapWordAddResult, NewKnowledgeNode } from "@/features/knowledge-map/types";
+import type { KnowledgeMapDetail, KnowledgeMapSummary, MapWordAddResult, NewKnowledgeNode, SavePatternResult } from "@/features/knowledge-map/types";
 
 export function useDBKnowledgeMap(){
  const listKnowledgeMaps=useCallback(async():Promise<KnowledgeMapSummary[]>=>{try{return await invoke("db_list_knowledge_maps")}catch(e){logError("listKnowledgeMaps",e);return[]}},[]);
@@ -11,5 +11,6 @@ export function useDBKnowledgeMap(){
  const addKnowledgeNodes=useCallback(async(mapId:number,parentId:number,nodes:NewKnowledgeNode[]):Promise<number[]>=>{try{return await invoke("db_add_knowledge_nodes",{mapId,parentId,nodes})}catch(e){reportWriteError("addKnowledgeNodes",e,"保存地图分支失败");return[]}},[]);
  const updateKnowledgeNodeNote=useCallback(async(nodeId:number,note:string):Promise<boolean>=>{try{await invoke("db_update_knowledge_node_note",{nodeId,note});return true}catch(e){reportWriteError("updateKnowledgeNodeNote",e,"保存例句失败");return false}},[]);
  const addMapWordsToVocabulary=useCallback(async(nodeIds:number[]):Promise<MapWordAddResult>=>{try{return await invoke("db_add_map_words_to_vocabulary",{nodeIds})}catch(e){reportWriteError("addMapWordsToVocabulary",e,"添加词汇失败");return{added:0,linked:0,skipped:nodeIds.length}}},[]);
- return useMemo(()=>({listKnowledgeMaps,createKnowledgeMap,deleteKnowledgeMap,getKnowledgeMap,addKnowledgeNodes,updateKnowledgeNodeNote,addMapWordsToVocabulary}),[listKnowledgeMaps,createKnowledgeMap,deleteKnowledgeMap,getKnowledgeMap,addKnowledgeNodes,updateKnowledgeNodeNote,addMapWordsToVocabulary]);
+ const saveSentencePattern=useCallback(async(sentence:string,zh:string,skeleton:string,note:string,level:string,source:string):Promise<SavePatternResult|null>=>{try{return await invoke("db_save_sentence_pattern",{sentence,zh,skeleton,note,level,source})}catch(e){reportWriteError("saveSentencePattern",e,"收藏句式失败");return null}},[]);
+ return useMemo(()=>({listKnowledgeMaps,createKnowledgeMap,deleteKnowledgeMap,getKnowledgeMap,addKnowledgeNodes,updateKnowledgeNodeNote,addMapWordsToVocabulary,saveSentencePattern}),[listKnowledgeMaps,createKnowledgeMap,deleteKnowledgeMap,getKnowledgeMap,addKnowledgeNodes,updateKnowledgeNodeNote,addMapWordsToVocabulary,saveSentencePattern]);
 }
