@@ -13,7 +13,8 @@
     "build:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1",
     "build:windows:portable": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1 -Portable",
     "build:appimage": "tauri build --bundles appimage",
-    "build:dmg": "tauri build --bundles dmg"
+    "build:dmg": "tauri build --bundles dmg",
+    "build:release:mac": "tauri build --target universal-apple-darwin --bundles app,dmg && bash scripts/verify-release-data.sh"
   },
   "dependencies": {
     "@blocknote/code-block": "^0.51.4",
