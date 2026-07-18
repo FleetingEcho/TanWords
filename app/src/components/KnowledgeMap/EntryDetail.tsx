@@ -77,7 +77,6 @@ export function EntryDetail({ node, listCollapsed, onToggleList, onPersist, onAd
         enrichError={error}
         legacy={false}
         notes=""
-        vocabBilingual
         lookupMode
         lookupAdded={Boolean(node.word_id)}
         onAddToVocab={() => onAdd(node.id)}

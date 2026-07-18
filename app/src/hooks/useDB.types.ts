@@ -8,6 +8,7 @@ export interface ChatSessionItem {
   message_count: number;
   created_at: string;
   updated_at: string;
+  content_text: string;
 }
 
 export interface ChatSessionDetail extends ChatSessionItem {
@@ -127,6 +128,7 @@ export interface DocumentListItem {
   word_count: number;
   created_at: string;
   updated_at: string;
+  content_text: string;
 }
 
 export interface DocumentDetail {

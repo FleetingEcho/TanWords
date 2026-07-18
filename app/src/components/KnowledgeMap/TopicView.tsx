@@ -10,7 +10,7 @@ const isLearnable = (node: KnowledgeNode) => node.kind === "word" || node.kind =
 export const hasDetail = (node: KnowledgeNode) =>
   isLearnable(node) && !/\bvs\.?\b/i.test(node.label) && classifyInput(node.label) !== "sentence";
 /** Full sentences go to the pattern library instead of the vocabulary. */
-export const isSentence = (node: KnowledgeNode) =>
+const isSentence = (node: KnowledgeNode) =>
   isLearnable(node) && classifyInput(node.label) === "sentence";
 
 function ItemRow({ node, checked, onToggle, onOpenDetail, onAddOne, onSavePattern }: {

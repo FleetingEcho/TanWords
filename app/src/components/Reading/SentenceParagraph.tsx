@@ -13,7 +13,7 @@ function normalizeSentence(s: string): string {
 }
 
 /** Find the highlight-sentence item matching this sentence, if any. */
-export function matchSentenceItem(text: string, sentenceItems: ExtractedItem[]): ExtractedItem | undefined {
+function matchSentenceItem(text: string, sentenceItems: ExtractedItem[]): ExtractedItem | undefined {
   const norm = normalizeSentence(text);
   if (!norm) return undefined;
   return sentenceItems.find((it) => {

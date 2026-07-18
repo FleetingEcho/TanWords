@@ -10,6 +10,7 @@ import { TtsSection } from "./TtsSection";
 import { getTotalTokens, clearUsage } from "@/store/usageStore";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const LEVELS = ["A2", "B1", "B2", "C1", "C2"] as const;
 
@@ -140,16 +141,6 @@ export function SettingsPage() {
                   onChange={(v) => settings.setTheme(v as Theme)}
                 />
               </SettingRow>
-              <SettingRow label={t("settings.vocabDisplayLang")} sub={t("settings.vocabDisplayLangSub")}>
-                <ToggleGroup
-                  options={[
-                    { id: "en", label: t("settings.englishOnly") },
-                    { id: "bilingual", label: t("settings.bilingual") },
-                  ]}
-                  value={settings.vocabBilingual ? "bilingual" : "en"}
-                  onChange={(v) => settings.setVocabBilingual(v === "bilingual")}
-                />
-              </SettingRow>
               <SettingRow label={t("settings.quickDoc")} sub={t("settings.quickDocSub")}>
                 <ToggleGroup
                   options={[
@@ -170,29 +161,35 @@ export function SettingsPage() {
                   onChange={(v) => settings.setShowGithubLink(v === "on")}
                 />
               </SettingRow>
-              <SettingRow label={t("settings.sidebarTabs")} sub={t("settings.sidebarTabsSub")}>
-                <div className="grid min-w-[280px] grid-cols-2 gap-1.5">
+              <div className="py-4">
+                <div className="mb-3">
+                  <div className="flex items-center gap-2.5">
+                    <p className="text-sm font-medium">{t("settings.sidebarTabs")}</p>
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                      {t("settings.sidebarTabsSelected", { n: settings.visibleSidebarTabs.length })}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{t("settings.sidebarTabsSub")}</p>
+                </div>
+                <div className="flex max-w-3xl flex-wrap gap-2">
                   {DEFAULT_SIDEBAR_TABS.map((tab) => {
                     const visible = settings.visibleSidebarTabs.includes(tab);
                     return (
-                      <Button
+                      <label
                         key={tab}
-                        variant="ghost"
-                        aria-pressed={visible}
-                        onClick={() => settings.setSidebarTabVisible(tab, !visible)}
-                        className={`h-8 justify-start rounded-lg px-2.5 text-xs transition-colors ${
+                        className={`flex h-8 w-32 cursor-pointer items-center gap-2 rounded-full border px-3 text-xs font-medium transition-colors ${
                           visible
-                            ? "bg-primary/10 text-primary hover:bg-primary/15"
-                            : "bg-muted/50 text-muted-foreground hover:bg-muted"
+                            ? "border-primary/30 bg-primary/[0.07] text-foreground"
+                            : "border-transparent bg-muted/50 text-muted-foreground hover:bg-muted"
                         }`}
                       >
-                        <span className={`mr-2 h-2 w-2 rounded-full ${visible ? "bg-primary" : "bg-muted-foreground/35"}`} />
-                        {t(`nav.${tab}`)}
-                      </Button>
+                        <Checkbox className="h-3.5 w-3.5 rounded-full shadow-none" checked={visible} onCheckedChange={(checked) => settings.setSidebarTabVisible(tab, checked === true)} />
+                        <span className="truncate">{t(`nav.${tab}`)}</span>
+                      </label>
                     );
                   })}
                 </div>
-              </SettingRow>
+              </div>
             </div>
           </section>
 
@@ -253,6 +250,7 @@ export function SettingsPage() {
 
 function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: ReturnType<typeof useT> }) {
   const [dbPath, setDbPath] = useState("");
+  const [dbSize, setDbSize] = useState<number | null>(null);
   const [exporting, setExporting] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [pendingSwitchPath, setPendingSwitchPath] = useState<string | null>(null);
@@ -260,7 +258,18 @@ function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: ReturnType<ty
 
   useEffect(() => {
     db.getDbPath().then(setDbPath);
+    db.getDbSize().then(setDbSize);
   }, []);
+
+  const formattedDbSize = dbSize === null
+    ? "…"
+    : dbSize >= 1024 ** 3
+      ? `${(dbSize / 1024 ** 3).toFixed(2)} GB`
+      : dbSize >= 1024 ** 2
+        ? `${(dbSize / 1024 ** 2).toFixed(2)} MB`
+        : dbSize >= 1024
+          ? `${(dbSize / 1024).toFixed(1)} KB`
+          : `${dbSize} B`;
 
   const handleOpenExisting = async () => {
     const picked = await openDialog({
@@ -324,9 +333,10 @@ function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: ReturnType<ty
     <div className="space-y-3">
       <div className="bg-card border border-border rounded-xl px-5 divide-y divide-border">
         <SettingRow label={t("settings.dbLocation")}>
-          <span className="text-[11px] font-mono text-muted-foreground max-w-[280px] truncate" title={dbPath}>
-            {dbPath || "…"}
-          </span>
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="max-w-[360px] truncate font-mono text-[11px] text-muted-foreground" title={dbPath}>{dbPath || "…"}</span>
+            <span className="shrink-0 rounded-full border border-border bg-muted/60 px-2 py-0.5 font-mono text-[10px] font-medium text-foreground" title={t("settings.dbSizeIncludesAuxiliary")}>{formattedDbSize}</span>
+          </div>
         </SettingRow>
         <SettingRow label={t("settings.switchDB")} sub={t("settings.switchDBSub")}>
           <div className="flex items-center gap-2">

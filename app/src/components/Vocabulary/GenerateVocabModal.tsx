@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Dialog } from "@/components/ui/dialog";
+import { Dialog, DialogTitle } from "@/components/ui/dialog";
 import { useDiscover, GeneratedWord, WordFamily } from "@/hooks/useDiscover";
 import { useDB } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
@@ -222,7 +222,7 @@ export function GenerateVocabModal({ open, onClose, existingWords, onAdded }: Pr
       <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-border">
         <div className="flex items-center gap-2">
           <SparkIcon className="w-3.5 h-3.5 text-primary" />
-          <h2 className="text-sm font-semibold">{t("discover.generateTitle")}</h2>
+          <DialogTitle className="text-sm font-semibold">{t("discover.generateTitle")}</DialogTitle>
         </div>
         <Button
           variant="ghost"

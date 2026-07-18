@@ -15,13 +15,6 @@ export function claimAudioChannel(stop: StopFn): void {
   }
 }
 
-/** Stops whatever currently owns the channel, if anything. */
-export function stopAllAudio(): void {
-  const owner = current;
-  current = null;
-  owner?.();
-}
-
 /** Called by the current owner when it stops on its own (e.g. finished
  * playing) so a stale reference doesn't later stop an unrelated owner. */
 export function releaseAudioChannel(stop: StopFn): void {

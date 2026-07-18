@@ -7,6 +7,14 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+import { PanelLeftClose } from "lucide-react";
+import { Download, FileInput, MoreHorizontal } from "lucide-react";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { exportMarkdownFiles, readMarkdownFiles } from "@/lib/localDocs";
+import { blocksToMarkdown, blocksToStorage, contentToBlocks, markdownToBlocks } from "@/lib/docFormat";
+import { liftMermaid, lowerMermaid } from "./mermaidTransforms";
+import { ExportMarkdownDialog, MarkdownExportChoice } from "./ExportMarkdownDialog";
 
 const PAGE_SIZE = 20;
 
@@ -15,9 +23,10 @@ interface Props {
   onSelect: (id: number) => void;
   onNewDoc: () => void;
   refreshKey: number;
+  onCollapse?: () => void;
 }
 
-export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey }: Props) {
+export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, onCollapse }: Props) {
   const db = useDB();
   const t = useT();
 
@@ -32,6 +41,7 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey }: Props)
   const [tagFilter, setTagFilter] = useState("");
   const [loading, setLoading] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const [exportChoices, setExportChoices] = useState<MarkdownExportChoice[] | null>(null);
 
   const load = useCallback(async (p = page) => {
     setLoading(true);
@@ -60,14 +70,14 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey }: Props)
   const handleRename = async (id: number, title: string) => {
     const doc = await db.getDocument(id);
     if (!doc) return;
-    await db.updateDocument(id, title, doc.content, "", doc.tags, doc.pinned, doc.word_count);
+    await db.updateDocument(id, title, doc.content, doc.content_text, doc.tags, doc.pinned, doc.word_count);
     load(page);
   };
 
   const handlePin = async (id: number) => {
     const doc = await db.getDocument(id);
     if (!doc) return;
-    await db.updateDocument(id, doc.title, doc.content, "", doc.tags, !doc.pinned, doc.word_count);
+    await db.updateDocument(id, doc.title, doc.content, doc.content_text, doc.tags, !doc.pinned, doc.word_count);
     load(page);
   };
 
@@ -78,6 +88,63 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey }: Props)
   };
 
   const handleDelete = (id: number) => setPendingDeleteId(id);
+
+  const handleImport = async () => {
+    const picked = await openDialog({ multiple: true, filters: [{ name: "Markdown", extensions: ["md", "markdown"] }] });
+    const paths = typeof picked === "string" ? [picked] : picked;
+    if (!paths?.length) return;
+    try {
+      const sources = await readMarkdownFiles(paths);
+      let firstImportedId: number | null = null;
+      for (const source of sources) {
+        const blocks = liftMermaid(await markdownToBlocks(source.content));
+        const { content, contentText, wordCount } = blocksToStorage(blocks);
+        const id = await db.createDocument();
+        if (firstImportedId === null) firstImportedId = id;
+        const title = source.name.replace(/\.(md|markdown)$/i, "");
+        await db.updateDocument(id, title, content, contentText, "[]", false, wordCount);
+      }
+      await load(0);
+      if (firstImportedId !== null) onSelect(firstImportedId);
+      toast.success(t("doc.importedCount", { n: sources.length }));
+    } catch (error) { toast.error(String(error)); }
+  };
+
+  const exportDocuments = async (ids: number[]) => {
+    const destination = await openDialog({ directory: true, multiple: false });
+    if (typeof destination !== "string") return;
+    try {
+      const files = [];
+      for (const id of ids) {
+        const detail = await db.getDocument(id);
+        if (!detail) continue;
+        const blocks = lowerMermaid(await contentToBlocks(detail.content));
+        files.push({ name: `${detail.title || t("doc.untitled")}.md`, content: await blocksToMarkdown(blocks) });
+      }
+      const count = await exportMarkdownFiles(destination, files);
+      toast.success(t("doc.exportedCount", { n: count }));
+    } catch (error) { toast.error(String(error)); }
+  };
+
+  const handleExportAll = async () => {
+    try {
+      const firstPage = await db.getDocuments({ sort: "title", page: 0 });
+      const allDocs = [...firstPage.items];
+      const pageCount = Math.ceil(firstPage.total / PAGE_SIZE);
+      for (let nextPage = 1; nextPage < pageCount; nextPage += 1) {
+        const result = await db.getDocuments({ sort: "title", page: nextPage });
+        allDocs.push(...result.items);
+      }
+      setExportChoices(allDocs.map((doc) => ({
+        id: String(doc.id),
+        label: doc.title || t("doc.untitled"),
+        detail: doc.content_text.slice(0, 100),
+        searchText: doc.content_text,
+      })));
+    } catch (error) {
+      toast.error(String(error));
+    }
+  };
 
   const confirmDelete = async () => {
     const id = pendingDeleteId;
@@ -94,13 +161,23 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey }: Props)
       {/* Header */}
       <div className="px-3 pt-4 pb-2 space-y-2 shrink-0">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Documents</p>
-          <Button
-            onClick={onNewDoc}
-            className="h-6 px-2.5 rounded-lg bg-primary text-white text-[11px] font-semibold hover:bg-primary/90 transition-colors"
-          >
-            + {t("doc.newDoc")}
-          </Button>
+          <div className="flex items-center gap-1">
+            {onCollapse && (
+              <Button variant="ghost" size="icon" onClick={onCollapse} className="h-6 w-6" title={t("doc.collapseFiles")}>
+                <PanelLeftClose className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            <Button onClick={onNewDoc} className="h-6 px-2.5 rounded-lg bg-primary text-white text-[11px] font-semibold hover:bg-primary/90">+ {t("doc.newDoc")}</Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-6 w-6"><MoreHorizontal className="h-3.5 w-3.5" /></Button></DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => void handleImport()}><FileInput className="h-3.5 w-3.5" /> {t("doc.importMarkdown")}</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void handleExportAll()}><Download className="h-3.5 w-3.5" /> {t("doc.exportAllMarkdown")}</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
 
         {/* Search */}
@@ -175,6 +252,8 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey }: Props)
               onPin={handlePin}
               onDuplicate={handleDuplicate}
               onDelete={handleDelete}
+              searchQuery={search}
+              onExport={(id) => void exportDocuments([id])}
             />
           ))
         )}
@@ -213,6 +292,15 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey }: Props)
         confirmLabel={t("doc.delete")}
         onCancel={() => setPendingDeleteId(null)}
         onConfirm={confirmDelete}
+      />
+      <ExportMarkdownDialog
+        open={exportChoices !== null}
+        items={exportChoices ?? []}
+        onClose={() => setExportChoices(null)}
+        onExport={(ids) => {
+          setExportChoices(null);
+          void exportDocuments(ids.map(Number));
+        }}
       />
     </div>
   );

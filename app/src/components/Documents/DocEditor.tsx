@@ -1,16 +1,20 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
+import { editorSchema } from "./editorSchema";
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
 
 import { DocumentDetail } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { useIsDark } from "@/hooks/useIsDark";
-import { contentToBlocks, editorToStorage } from "@/lib/docFormat";
+import { blocksToStorage, contentToBlocks, editorToStorage, markdownToBlocks } from "@/lib/docFormat";
+import { liftMermaid, lowerMermaid } from "./mermaidTransforms";
 import { PinIcon } from "@/components/ui/icons";
 import { CheckIcon } from "@heroicons/react/24/solid";
 import { Button } from "@/components/ui/button";
+import { Code2, Eye } from "lucide-react";
+import { RawMarkdownEditor } from "./RawMarkdownEditor";
 
 interface Props {
   doc: DocumentDetail;
@@ -28,17 +32,22 @@ export function DocEditor({ doc, onSave, onTitleChange, onTagsChange, onPinToggl
   const [tagsInput, setTagsInput] = useState(
     (() => { try { return (JSON.parse(doc.tags) as string[]).join(", "); } catch { return ""; } })()
   );
+  const [mode, setMode] = useState<"rich" | "raw">("rich");
+  const [rawMarkdown, setRawMarkdown] = useState("");
+  const [switchingMode, setSwitchingMode] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
   const loaded = useRef(false);
+  const rawDirty = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const editor = useCreateBlockNote();
+  const editor = useCreateBlockNote({ schema: editorSchema });
 
   // Load stored content (BlockNote JSON, or legacy Lexical — lazily migrated)
   useEffect(() => {
     let cancelled = false;
-    contentToBlocks(doc.content).then((blocks) => {
+    contentToBlocks(doc.content).then((parsed) => {
       if (cancelled) return;
+      const blocks = liftMermaid(parsed);
       if (blocks.length > 0) editor.replaceBlocks(editor.document, blocks);
       // Enable saving only after initial content is in place
       requestAnimationFrame(() => { loaded.current = true; });
@@ -54,6 +63,42 @@ export function DocEditor({ doc, onSave, onTitleChange, onTagsChange, onPinToggl
       onSave(content, contentText, wordCount);
     }, 500);
   }, [editor, onSave]);
+
+  const switchMode = useCallback(async (next: "rich" | "raw") => {
+    if (next === mode || switchingMode) return;
+    setSwitchingMode(true);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    try {
+      if (next === "raw") {
+        setRawMarkdown(await editor.blocksToMarkdownLossy(lowerMermaid(editor.document) as any));
+      } else {
+        loaded.current = false;
+        const blocks = liftMermaid(await markdownToBlocks(rawMarkdown));
+        editor.replaceBlocks(editor.document, blocks.length ? blocks : [{ type: "paragraph" }]);
+        if (rawDirty.current) {
+          const { content, contentText, wordCount } = blocksToStorage(blocks);
+          onSave(content, contentText, wordCount);
+          rawDirty.current = false;
+        }
+        requestAnimationFrame(() => { loaded.current = true; });
+      }
+      setMode(next);
+    } finally {
+      setSwitchingMode(false);
+    }
+  }, [editor, mode, onSave, rawMarkdown, switchingMode]);
+
+  const handleRawChange = (markdown: string) => {
+    rawDirty.current = true;
+    setRawMarkdown(markdown);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      const blocks = liftMermaid(await markdownToBlocks(markdown));
+      const { content, contentText, wordCount } = blocksToStorage(blocks);
+      onSave(content, contentText, wordCount);
+      rawDirty.current = false;
+    }, 500);
+  };
 
   useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
 
@@ -120,19 +165,25 @@ export function DocEditor({ doc, onSave, onTitleChange, onTagsChange, onPinToggl
               ))}
             </div>
           )}
+          <div className="ml-auto flex items-center rounded-md bg-muted p-0.5">
+            <Button type="button" variant="ghost" disabled={switchingMode} onClick={() => void switchMode("rich")} className={`h-6 gap-1 px-2 text-[10px] ${mode === "rich" ? "bg-background shadow-sm" : ""}`}>
+              <Eye className="h-3 w-3" /> {t("doc.richMode")}
+            </Button>
+            <Button type="button" variant="ghost" disabled={switchingMode} onClick={() => void switchMode("raw")} className={`h-6 gap-1 px-2 text-[10px] ${mode === "raw" ? "bg-background shadow-sm" : ""}`}>
+              <Code2 className="h-3 w-3" /> {t("doc.rawMode")}
+            </Button>
+          </div>
         </div>
         <div className="mt-3 border-b border-border/60" />
       </div>
 
-      {/* BlockNote editor */}
-      <div className="flex-1 overflow-y-auto">
-        <BlockNoteView
-          editor={editor}
-          theme={isDark ? "dark" : "light"}
-          onChange={handleChange}
-          className="tanwords-editor"
-        />
-      </div>
+      {mode === "rich" ? (
+        <div className="flex-1 overflow-y-auto">
+          <BlockNoteView editor={editor} theme={isDark ? "dark" : "light"} onChange={handleChange} className="tanwords-editor" />
+        </div>
+      ) : (
+        <RawMarkdownEditor value={rawMarkdown} onChange={handleRawChange} label={t("doc.rawMode")} />
+      )}
 
       {/* Footer: save status + word count */}
       <div className="px-12 py-2.5 border-t border-border flex items-center gap-3 text-[10px] font-mono tabular-nums text-muted-foreground shrink-0">

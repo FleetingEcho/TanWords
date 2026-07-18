@@ -6,7 +6,7 @@
  * markdown, then parsed into blocks on load (lazy migration: the next save
  * persists the new format).
  */
-import { BlockNoteEditor, PartialBlock, Block } from "@blocknote/core";
+import { BlockNoteEditor, PartialBlock } from "@blocknote/core";
 
 // ── Legacy Lexical → Markdown ───────────────────────────────────────────────
 
@@ -48,7 +48,7 @@ function lexicalListToMd(node: any, depth: number): string {
   return lines.join("\n");
 }
 
-export function lexicalToMarkdown(json: any): string {
+function lexicalToMarkdown(json: any): string {
   const blocks: string[] = [];
   for (const node of json?.root?.children ?? []) {
     switch (node.type) {
@@ -86,6 +86,10 @@ export async function markdownToBlocks(md: string): Promise<PartialBlock[]> {
   return await getParser().tryParseMarkdownToBlocks(md);
 }
 
+export async function blocksToMarkdown(blocks: readonly unknown[]): Promise<string> {
+  return getParser().blocksToMarkdownLossy(blocks as any);
+}
+
 /**
  * Parse stored document content into BlockNote blocks.
  * Handles: BlockNote JSON array (current), Lexical JSON (legacy), empty.
@@ -103,16 +107,6 @@ export async function contentToBlocks(content: string): Promise<PartialBlock[]> 
   return [];
 }
 
-/** Plain paragraphs → blocks (e.g. pasted article text). */
-export function textToBlocks(text: string): PartialBlock[] {
-  const paragraphs = text
-    .split(/\n+/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-  if (paragraphs.length === 0) return [{ type: "paragraph", content: [] }];
-  return paragraphs.map((p) => ({ type: "paragraph", content: p }));
-}
-
 function inlineText(content: any): string {
   if (!content) return "";
   if (typeof content === "string") return content;
@@ -125,11 +119,13 @@ function inlineText(content: any): string {
 }
 
 /** Extract plain text from blocks (for FTS + word count). */
-export function blocksToText(blocks: (Block | PartialBlock)[]): string {
+export function blocksToText(blocks: readonly unknown[]): string {
   const lines: string[] = [];
   const walk = (bs: any[]) => {
     for (const b of bs ?? []) {
-      const line = inlineText(b.content);
+      // Custom Mermaid blocks store their searchable source in props rather
+      // than inline content.
+      const line = b.type === "mermaid" ? inlineText(b.props?.code) : inlineText(b.content);
       if (line) lines.push(line);
       if (b.children?.length) walk(b.children);
     }
@@ -139,12 +135,19 @@ export function blocksToText(blocks: (Block | PartialBlock)[]): string {
 }
 
 /** Serialize an editor's document for storage. */
-export function editorToStorage(editor: BlockNoteEditor): {
+export function editorToStorage(editor: BlockNoteEditor<any, any, any>): {
   content: string;
   contentText: string;
   wordCount: number;
 } {
   const blocks = editor.document;
+  const contentText = blocksToText(blocks);
+  const wordCount = contentText.trim() ? contentText.trim().split(/\s+/).length : 0;
+  return { content: JSON.stringify(blocks), contentText, wordCount };
+}
+
+/** Serialize already-parsed blocks without requiring a mounted editor. */
+export function blocksToStorage(blocks: readonly unknown[]) {
   const contentText = blocksToText(blocks);
   const wordCount = contentText.trim() ? contentText.trim().split(/\s+/).length : 0;
   return { content: JSON.stringify(blocks), contentText, wordCount };

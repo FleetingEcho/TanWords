@@ -62,7 +62,6 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
   const [enriching, setEnriching] = useState(false);
   const [enrichError, setEnrichError] = useState("");
   const enrichControllerRef = useRef<AbortController | null>(null);
-  const vocabBilingual = useSettingsStore((s) => s.vocabBilingual);
   const t = useT();
 
   useEffect(() => {
@@ -356,7 +355,6 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
         enrichError={enrichError}
         legacy={lookup ? false : selected?.legacy ?? false}
         notes={notes}
-        vocabBilingual={vocabBilingual}
         lookupMode={!!lookup}
         lookupAdded={lookup?.added ?? false}
         onAddToVocab={addLookupToVocab}
