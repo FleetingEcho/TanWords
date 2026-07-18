@@ -8,6 +8,8 @@ export const updater: Dict = {
     "updater.checkNow": "Check for updates",
     "updater.newVersion": "New version available",
     "updater.downloadInstall": "Download & install",
+    "updater.downloadPortable": "Download portable version",
+    "updater.portableHint": "Portable versions are updated manually. Download and extract the new package to replace this version.",
     "updater.downloading": "Downloading {percent}%",
     "updater.installing": "Installing…",
     "updater.restart": "Restart to finish update",

@@ -8,6 +8,7 @@ import { useUpdaterStore } from "@/store/updaterStore";
 import { useT } from "@/hooks/useT";
 
 const RELEASES_URL = "https://github.com/FleetingEcho/TanWords/releases/latest";
+const IS_PORTABLE = import.meta.env.VITE_PORTABLE === "true";
 
 export function UpdateButton({ collapsed }: { collapsed: boolean }) {
   const t = useT();
@@ -82,9 +83,20 @@ export function UpdateButton({ collapsed }: { collapsed: boolean }) {
           {status === "available" && (
             <>
               {error && <p className="text-xs text-destructive">{t("updater.error")}: {error}</p>}
-              <Button size="sm" className="w-full" onClick={downloadAndInstall}>
-                {error ? t("updater.retry") : t("updater.downloadInstall")}
+              <Button
+                size="sm"
+                className="w-full"
+                onClick={IS_PORTABLE ? () => openUrl(RELEASES_URL) : downloadAndInstall}
+              >
+                {IS_PORTABLE
+                  ? t("updater.downloadPortable")
+                  : error
+                    ? t("updater.retry")
+                    : t("updater.downloadInstall")}
               </Button>
+              {IS_PORTABLE && (
+                <p className="text-xs text-muted-foreground">{t("updater.portableHint")}</p>
+              )}
             </>
           )}
 

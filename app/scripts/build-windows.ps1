@@ -45,8 +45,13 @@ if (Test-Path -LiteralPath $releaseDir) {
 }
 
 if ($Portable) {
+    # Embedded into the frontend bundle so portable builds never invoke the
+    # installer-based Tauri updater. They still check for updates, but direct
+    # users to the release download page instead.
+    $env:VITE_PORTABLE = "true"
     & bunx tauri build --no-bundle
 } else {
+    Remove-Item Env:VITE_PORTABLE -ErrorAction SilentlyContinue
     & bunx tauri build --bundles nsis
 }
 if ($LASTEXITCODE -ne 0) {
