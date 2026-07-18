@@ -78,5 +78,9 @@ export const settings: Dict = {
     "settings.bilingual": "Bilingual",
     "settings.quickDoc": "Floating tools ball",
     "settings.quickDocSub": "Show a floating ball for quick access to documents and AI chat",
+    "settings.githubLink": "GitHub link",
+    "settings.githubLinkSub": "Show the project link in the sidebar footer",
+    "settings.sidebarTabs": "Sidebar tabs",
+    "settings.sidebarTabsSub": "Choose which main navigation tabs are shown. Settings always remains visible.",
     "settings.on": "On",
 };

@@ -1,16 +1,19 @@
 import React from "react";
-import { NavPage } from "@/store/navStore";
+import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { useLayoutStore } from "@/store/layoutStore";
 import { useT } from "@/hooks/useT";
 import {
   GridIcon, BookIcon, DocIcon, ChatIcon, SlidersIcon,
-  FeedIcon, ReadingIcon, ChevronIcon, CompassIcon, MusicIcon,
+  FeedIcon, ReadingIcon, ChevronIcon, CompassIcon, MusicIcon, GitHubIcon,
 } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { UpdateButton } from "@/components/Layout/UpdateButton";
+import { useSettingsStore, type SidebarTabId } from "@/store/settingsStore";
+import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
+import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
 
 interface NavItemDef {
-  id: NavPage;
+  id: SidebarTabId;
   label?: string;
   icon: React.FC<{ className?: string }>;
   badge?: string;
@@ -44,10 +47,21 @@ export function MainLayout({
   const t = useT();
   const collapsed = useLayoutStore((s) => s.sidebarCollapsed);
   const toggleCollapsed = useLayoutStore((s) => s.toggleSidebar);
-  const NAV_ITEMS: NavItemDef[] = NAV_ITEM_DEFS.map((d) => ({
-    ...d,
-    label: t(`nav.${d.id}`),
-  }));
+  const showGithubLink = useSettingsStore((s) => s.showGithubLink);
+  const visibleSidebarTabs = useSettingsStore((s) => s.visibleSidebarTabs);
+  const podcastActive = usePodcastPlayerStore((s) => s.status !== "idle" && s.track !== null);
+  const ttsActive = useTtsPlayerStore((s) => s.status !== "idle");
+  const NAV_ITEMS: NavItemDef[] = NAV_ITEM_DEFS
+    .filter((d) => visibleSidebarTabs.includes(d.id))
+    .map((d) => ({ ...d, label: t(`nav.${d.id}`) }));
+  const openGitHub = async () => {
+    const url = "https://github.com/FleetingEcho/TanWords";
+    try {
+      await openUrl(url);
+    } catch {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -121,6 +135,19 @@ export function MainLayout({
             content-driven height next to it, and two almost-but-not-quite
             aligned horizontal lines read as a glitch. */}
         <div className="px-2 pb-1 flex flex-col justify-end space-y-0.5">
+          {showGithubLink && (
+            <Button
+              variant="ghost"
+              onClick={openGitHub}
+              title="GitHub"
+              className={`h-auto w-full flex items-center rounded-lg text-sm font-medium text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--muted))] transition-colors duration-100 ${
+                collapsed ? "justify-center px-0 py-[9px]" : "gap-2.5 px-3 py-[7px]"
+              }`}
+            >
+              <GitHubIcon className="w-[18px] h-[18px] shrink-0" />
+              {!collapsed && <span className="flex-1 text-left">GitHub</span>}
+            </Button>
+          )}
           <UpdateButton collapsed={collapsed} />
           <Button
             variant="ghost"
@@ -141,7 +168,13 @@ export function MainLayout({
 
       </aside>
 
-      <main className="flex-1 overflow-y-auto">{children}</main>
+      <main
+        className={`flex-1 overflow-y-auto box-border transition-[padding-bottom] duration-200 ${
+          ttsActive ? "pb-20" : podcastActive ? "pb-16" : "pb-0"
+        }`}
+      >
+        {children}
+      </main>
     </div>
   );
 }

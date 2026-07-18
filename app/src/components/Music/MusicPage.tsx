@@ -23,6 +23,56 @@ interface MusicCollection {
 
 type ViewMode = "cards" | "list";
 
+function probeAudioDuration(path: string): Promise<number | null> {
+  return new Promise((resolve) => {
+    const audio = new Audio();
+    let settled = false;
+    const finish = (duration: number | null) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      audio.removeAttribute("src");
+      audio.load();
+      resolve(duration);
+    };
+    const timeout = window.setTimeout(() => finish(null), 10_000);
+
+    audio.preload = "metadata";
+    audio.addEventListener(
+      "loadedmetadata",
+      () => finish(Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : null),
+      { once: true }
+    );
+    audio.addEventListener("error", () => finish(null), { once: true });
+    audio.src = convertFileSrc(path);
+  });
+}
+
+async function fillMissingDurations(collections: MusicCollection[]): Promise<MusicCollection[]> {
+  const result = collections.map((collection) => ({
+    ...collection,
+    tracks: collection.tracks.map((track) => ({ ...track })),
+  }));
+  const missing = result.flatMap((collection) =>
+    collection.tracks
+      .map((track) => ({ track }))
+      .filter(({ track }) => track.durationSec === null || !Number.isFinite(track.durationSec) || track.durationSec <= 0)
+  );
+  let next = 0;
+
+  // Loading metadata still opens each media file, so keep the fallback modest
+  // for large libraries instead of asking the OS to inspect everything at once.
+  const workers = Array.from({ length: Math.min(4, missing.length) }, async () => {
+    while (next < missing.length) {
+      const { track } = missing[next++];
+      const duration = await probeAudioDuration(track.path);
+      if (duration !== null) track.durationSec = duration;
+    }
+  });
+  await Promise.all(workers);
+  return result;
+}
+
 function formatDuration(sec: number | null): string {
   if (sec === null || !isFinite(sec) || sec <= 0) return "—";
   const s = Math.floor(sec % 60);
@@ -74,7 +124,9 @@ export default function MusicPage() {
     setLoading(true);
     setError(null);
     try {
-      setCollections(await invoke<MusicCollection[]>("music_scan_library", { root: musicFolderPath }));
+      const scanned = await invoke<MusicCollection[]>("music_scan_library", { root: musicFolderPath });
+      setCollections(scanned);
+      setCollections(await fillMissingDurations(scanned));
     } catch (e) {
       setCollections(null);
       setError(String(e));

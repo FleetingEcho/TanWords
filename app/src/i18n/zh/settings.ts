@@ -78,5 +78,9 @@ export const settings: Dict = {
     "settings.bilingual": "中英双语",
     "settings.quickDoc": "浮动工具球",
     "settings.quickDocSub": "在右下角显示浮动入口，快速访问文档和 AI 对话",
+    "settings.githubLink": "GitHub 入口",
+    "settings.githubLinkSub": "在侧边栏底部显示项目链接",
+    "settings.sidebarTabs": "侧边栏页面",
+    "settings.sidebarTabsSub": "选择要显示的主要页面；设置入口始终保留。",
     "settings.on": "开启",
 };

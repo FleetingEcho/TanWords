@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { save as saveDialog, open as openDialog } from "@tauri-apps/plugin-dialog";
-import { useSettingsStore, Theme } from "@/store/settingsStore";
+import { DEFAULT_SIDEBAR_TABS, useSettingsStore, Theme } from "@/store/settingsStore";
 import { DEFAULT_ENRICH_SYSTEM_PROMPT } from "@/providers/base";
 import { useT } from "@/hooks/useT";
 import { useDB } from "@/hooks/useDB";
@@ -159,6 +159,39 @@ export function SettingsPage() {
                   value={settings.showQuickDoc ? "on" : "off"}
                   onChange={(v) => settings.setShowQuickDoc(v === "on")}
                 />
+              </SettingRow>
+              <SettingRow label={t("settings.githubLink")} sub={t("settings.githubLinkSub")}>
+                <ToggleGroup
+                  options={[
+                    { id: "on", label: t("settings.on") },
+                    { id: "off", label: t("settings.off") },
+                  ]}
+                  value={settings.showGithubLink ? "on" : "off"}
+                  onChange={(v) => settings.setShowGithubLink(v === "on")}
+                />
+              </SettingRow>
+              <SettingRow label={t("settings.sidebarTabs")} sub={t("settings.sidebarTabsSub")}>
+                <div className="grid min-w-[280px] grid-cols-2 gap-1.5">
+                  {DEFAULT_SIDEBAR_TABS.map((tab) => {
+                    const visible = settings.visibleSidebarTabs.includes(tab);
+                    return (
+                      <Button
+                        key={tab}
+                        variant="ghost"
+                        aria-pressed={visible}
+                        onClick={() => settings.setSidebarTabVisible(tab, !visible)}
+                        className={`h-8 justify-start rounded-lg px-2.5 text-xs transition-colors ${
+                          visible
+                            ? "bg-primary/10 text-primary hover:bg-primary/15"
+                            : "bg-muted/50 text-muted-foreground hover:bg-muted"
+                        }`}
+                      >
+                        <span className={`mr-2 h-2 w-2 rounded-full ${visible ? "bg-primary" : "bg-muted-foreground/35"}`} />
+                        {t(`nav.${tab}`)}
+                      </Button>
+                    );
+                  })}
+                </div>
               </SettingRow>
             </div>
           </section>

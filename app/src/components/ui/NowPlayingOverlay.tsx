@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { useT } from "@/hooks/useT";
 import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
 import { coverGradient } from "@/features/music/cover";
@@ -8,8 +8,8 @@ import {
   PlayIcon, PauseIcon, RefreshIcon, SkipPrevIcon, SkipNextIcon, ChevronIcon, MusicIcon,
 } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
-
-const SPEEDS = [0.75, 1, 1.25, 1.5];
+import { PlaybackSpeedSelector } from "@/components/ui/PlaybackSpeedSelector";
+import { AudioSeekSlider } from "@/components/ui/AudioSeekSlider";
 
 function formatTime(sec: number): string {
   if (!isFinite(sec) || sec <= 0) return "0:00";
@@ -37,7 +37,6 @@ export function NowPlayingOverlay({ onClose }: { onClose: () => void }) {
   const skip = usePodcastPlayerStore((s) => s.skip);
   const setSpeed = usePodcastPlayerStore((s) => s.setSpeed);
   const setPlayMode = usePodcastPlayerStore((s) => s.setPlayMode);
-  const [dragValue, setDragValue] = useState<number | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -105,27 +104,19 @@ export function NowPlayingOverlay({ onClose }: { onClose: () => void }) {
         <div className="w-full max-w-xl flex items-center gap-3 mb-4">
           <span className="text-xs font-mono tabular-nums text-white/70 shrink-0">{formatTime(position)}</span>
           <div className="flex-1 min-w-0">
-            <input
-              type="range"
-              min={0}
-              max={Math.max(duration, 1)}
-              step={1}
-              value={dragValue ?? Math.min(position, duration || position)}
-              onChange={(e) => setDragValue(Number(e.target.value))}
-              onMouseUp={() => { if (dragValue !== null) { seekTo(dragValue); setDragValue(null); } }}
-              onTouchEnd={() => { if (dragValue !== null) { seekTo(dragValue); setDragValue(null); } }}
-              onKeyUp={() => { if (dragValue !== null) { seekTo(dragValue); setDragValue(null); } }}
-              disabled={!duration}
-              aria-label={t("podcast.seek")}
-              className="w-full block h-1.5 cursor-pointer disabled:cursor-default"
-              style={{ accentColor: "white" }}
+            <AudioSeekSlider
+              position={position}
+              duration={duration}
+              onSeek={seekTo}
+              ariaLabel={t("podcast.seek")}
+              variant="glass"
             />
           </div>
           <span className="text-xs font-mono tabular-nums text-white/70 shrink-0">{formatTime(duration)}</span>
         </div>
 
         {/* Transport */}
-        <div className="flex items-center gap-5 mb-5">
+        <div className="grid grid-cols-[2.5rem_2.75rem_4rem_2.75rem_2.5rem] items-center gap-5 mb-5">
           <Button
             variant="ghost"
             onClick={() => setPlayMode(PLAY_MODES[(PLAY_MODES.indexOf(playMode) + 1) % PLAY_MODES.length])}
@@ -182,20 +173,7 @@ export function NowPlayingOverlay({ onClose }: { onClose: () => void }) {
             <SkipNextIcon className="w-6 h-6" />
           </Button>
 
-          <div className="flex items-center gap-0.5 bg-white/10 p-0.5 rounded-full">
-            {SPEEDS.map((s) => (
-              <Button
-                key={s}
-                variant="ghost"
-                onClick={() => setSpeed(s)}
-                className={`h-auto px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
-                  speed === s ? "bg-white text-black hover:bg-white" : "text-white/60 hover:text-white"
-                }`}
-              >
-                {s}x
-              </Button>
-            ))}
-          </div>
+          <PlaybackSpeedSelector value={speed} onChange={setSpeed} variant="glass" />
         </div>
       </div>
     </div>

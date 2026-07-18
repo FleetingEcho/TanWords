@@ -11,8 +11,8 @@ import { Button } from "@/components/ui/button";
 import { PLAY_MODES } from "@/features/music/queue";
 import { MODE_ICONS } from "@/components/ui/playModeIcons";
 import { NowPlayingOverlay } from "@/components/ui/NowPlayingOverlay";
-
-const SPEEDS = [0.75, 1, 1.25, 1.5];
+import { PlaybackSpeedSelector } from "@/components/ui/PlaybackSpeedSelector";
+import { AudioSeekSlider } from "@/components/ui/AudioSeekSlider";
 
 function formatTime(sec: number): string {
   if (!isFinite(sec) || sec <= 0) return "0:00";
@@ -45,7 +45,6 @@ export function PodcastPlayerBar() {
   const ttsActive = useTtsPlayerStore((s) => s.status !== "idle");
   const goToOrigin = usePlayerOriginStore((s) => s.goToOrigin);
   const sidebarCollapsed = useLayoutStore((s) => s.sidebarCollapsed);
-  const [dragValue, setDragValue] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(false);
 
   if (status === "idle" || !track || ttsActive) return null;
@@ -140,21 +139,7 @@ export function PodcastPlayerBar() {
       {/* input[type=range] keeps its intrinsic width under flex in WebKit —
           grow a wrapper instead and let the input fill it. */}
       <div className="flex-1 min-w-0">
-        <input
-          type="range"
-          min={0}
-          max={Math.max(duration, 1)}
-          step={1}
-          value={dragValue ?? Math.min(position, duration || position)}
-          onChange={(e) => setDragValue(Number(e.target.value))}
-          onMouseUp={() => { if (dragValue !== null) { seekTo(dragValue); setDragValue(null); } }}
-          onTouchEnd={() => { if (dragValue !== null) { seekTo(dragValue); setDragValue(null); } }}
-          onKeyUp={() => { if (dragValue !== null) { seekTo(dragValue); setDragValue(null); } }}
-          disabled={!duration}
-          aria-label={t("podcast.seek")}
-          className="w-full block h-1.5 cursor-pointer disabled:cursor-default"
-          style={{ accentColor: "hsl(var(--primary))" }}
-        />
+        <AudioSeekSlider position={position} duration={duration} onSeek={seekTo} ariaLabel={t("podcast.seek")} />
       </div>
 
       <Button
@@ -185,20 +170,7 @@ export function PodcastPlayerBar() {
         );
       })()}
 
-      <div className="flex items-center gap-1 bg-muted p-0.5 rounded-lg shrink-0">
-        {SPEEDS.map((s) => (
-          <Button
-            key={s}
-            variant="ghost"
-            onClick={() => setSpeed(s)}
-            className={`h-auto px-2 py-1 rounded-md text-[11px] font-medium transition-colors ${
-              speed === s ? "bg-card shadow-sm text-foreground hover:bg-card" : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {s}x
-          </Button>
-        ))}
-      </div>
+      <PlaybackSpeedSelector value={speed} onChange={setSpeed} />
 
       <Button
         variant="ghost"
