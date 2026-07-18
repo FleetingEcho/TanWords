@@ -22,6 +22,7 @@ import {
   ArrowLongRightIcon,
   ArrowPathRoundedSquareIcon,
   ArrowsRightLeftIcon,
+  ArrowUpCircleIcon,
 } from "@heroicons/react/24/outline";
 import {
   ArrowPathIcon,
@@ -52,6 +53,10 @@ export function GridIcon({ className }: IconProps) {
 
 export function CompassIcon({ className }: IconProps) {
   return <MapIcon className={className} />;
+}
+
+export function UpgradeIcon({ className }: IconProps) {
+  return <ArrowUpCircleIcon className={className} />;
 }
 
 export function MusicIcon({ className }: IconProps) {
