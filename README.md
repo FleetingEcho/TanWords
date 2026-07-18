@@ -25,6 +25,14 @@ came from:
 
 ![Reading page — sentence pattern extraction](static/images/Reading_2.png)
 
+### Knowledge Map — expand any topic into learnable vocabulary
+
+Enter a topic to generate a structured map of CEFR-leveled vocabulary and
+sentence patterns, then explore AI-enriched explanations and add selected
+items—or the whole map—to your personal library.
+
+![Knowledge Map page — topic vocabulary and entry detail](static/images/Knowledge_Map.png)
+
 ### Vocabulary — full AI enrichment per word
 
 Every word gets a freeform AI write-up (core meaning, common usage,
@@ -46,6 +54,14 @@ vocabulary/patterns from the transcript, same as any article), or hit "Play
 episode" to start it in the bottom player bar without leaving the page:
 
 ![Feeds page — podcast episode detail](static/images/Play_Episode.png)
+
+### Music — learn while listening to your local library
+
+Browse local music by artist and album, play or shuffle a collection, and
+control the active queue from the persistent player with seeking, playback
+speed, and track navigation.
+
+![Music page — local album and persistent player](static/images/Music.png)
 
 ### Settings — on-device TTS voices
 
