@@ -13,5 +13,6 @@ export const nav: Dict = {
     "nav.collapse": "Collapse sidebar",
     "nav.expand": "Expand sidebar",
     "nav.settings": "Settings",
+    "nav.music": "Music",
     "nav.feeds": "RSS",
 };

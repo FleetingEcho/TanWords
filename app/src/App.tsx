@@ -21,7 +21,8 @@ import { initProviders } from "@/lib/initProviders";
 import { invoke } from "@tauri-apps/api/core";
 import { ENRICHED_SEED_WORDS, BASIC_SEED_WORDS } from "@/data/seedWords";
 
-const SceneLabPage = React.lazy(() => import("@/components/SceneLab/SceneLabPage"));
+const KnowledgeMapPage = React.lazy(() => import("@/components/KnowledgeMap/KnowledgeMapPage"));
+const MusicPage = React.lazy(() => import("@/components/Music/MusicPage"));
 
 function App() {
   const { loadFromDB, isLoaded, ttsModelPath } = useSettingsStore();
@@ -103,7 +104,9 @@ function App() {
       case "reading":
         return <ReadingPage />;
       case "scene-lab":
-        return <React.Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-muted-foreground">Loading Scene Lab…</div>}><SceneLabPage /></React.Suspense>;
+        return <React.Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-muted-foreground">Loading Knowledge Map…</div>}><KnowledgeMapPage /></React.Suspense>;
+      case "music":
+        return <React.Suspense fallback={null}><MusicPage /></React.Suspense>;
       case "vocabulary":
         return <VocabularyPage initialWordId={wordId} />;
       case "documents":

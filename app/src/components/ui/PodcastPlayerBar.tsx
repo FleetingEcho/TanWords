@@ -4,8 +4,13 @@ import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
 import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
 import { usePlayerOriginStore } from "@/store/playerOriginStore";
 import { useLayoutStore, SIDEBAR_WIDTH, SIDEBAR_WIDTH_COLLAPSED } from "@/store/layoutStore";
-import { PlayIcon, PauseIcon, CloseIcon, RefreshIcon } from "@/components/ui/icons";
+import {
+  PlayIcon, PauseIcon, CloseIcon, RefreshIcon, SkipPrevIcon, SkipNextIcon, ChevronIcon,
+} from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
+import { PLAY_MODES } from "@/features/music/queue";
+import { MODE_ICONS } from "@/components/ui/playModeIcons";
+import { NowPlayingOverlay } from "@/components/ui/NowPlayingOverlay";
 
 const SPEEDS = [0.75, 1, 1.25, 1.5];
 
@@ -33,12 +38,19 @@ export function PodcastPlayerBar() {
   const seekBy = usePodcastPlayerStore((s) => s.seekBy);
   const setSpeed = usePodcastPlayerStore((s) => s.setSpeed);
   const stop = usePodcastPlayerStore((s) => s.stop);
+  const playlist = usePodcastPlayerStore((s) => s.playlist);
+  const playMode = usePodcastPlayerStore((s) => s.playMode);
+  const skip = usePodcastPlayerStore((s) => s.skip);
+  const setPlayMode = usePodcastPlayerStore((s) => s.setPlayMode);
   const ttsActive = useTtsPlayerStore((s) => s.status !== "idle");
   const goToOrigin = usePlayerOriginStore((s) => s.goToOrigin);
   const sidebarCollapsed = useLayoutStore((s) => s.sidebarCollapsed);
   const [dragValue, setDragValue] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   if (status === "idle" || !track || ttsActive) return null;
+
+  if (expanded) return <NowPlayingOverlay onClose={() => setExpanded(false)} />;
 
   const isPlaying = status === "playing";
   const isError = status === "error";
@@ -46,9 +58,25 @@ export function PodcastPlayerBar() {
 
   return (
     <div
-      className="fixed bottom-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-sm px-4 py-2.5 flex items-center gap-3 animate-fade-in transition-[left] duration-200"
+      className="fixed bottom-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-sm px-4 py-2.5 flex items-center gap-3 animate-fade-in transition-[left] duration-200 cursor-pointer"
       style={{ left: sidebarCollapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH }}
+      onClick={(e) => {
+        // Only blank bar area expands — buttons and the slider keep their own clicks.
+        if (e.target === e.currentTarget) setExpanded(true);
+      }}
+      title={t("music.expandPlayer")}
     >
+      {playlist && (
+        <Button
+          variant="ghost"
+          onClick={() => skip(-1)}
+          className="w-8 h-8 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+          title={t("music.prev")}
+        >
+          <SkipPrevIcon className="w-4 h-4" />
+        </Button>
+      )}
+
       <Button
         variant="ghost"
         onClick={() => seekBy(-15)}
@@ -94,37 +122,68 @@ export function PodcastPlayerBar() {
         +15s
       </Button>
 
+      {playlist && (
+        <Button
+          variant="ghost"
+          onClick={() => skip(1)}
+          className="w-8 h-8 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+          title={t("music.next")}
+        >
+          <SkipNextIcon className="w-4 h-4" />
+        </Button>
+      )}
+
       <span className="text-xs font-mono tabular-nums text-muted-foreground shrink-0">
         {formatTime(position)} / {formatTime(duration)}
       </span>
 
-      <input
-        type="range"
-        min={0}
-        max={Math.max(duration, 1)}
-        step={1}
-        value={dragValue ?? Math.min(position, duration || position)}
-        onChange={(e) => setDragValue(Number(e.target.value))}
-        onMouseUp={() => { if (dragValue !== null) { seekTo(dragValue); setDragValue(null); } }}
-        onTouchEnd={() => { if (dragValue !== null) { seekTo(dragValue); setDragValue(null); } }}
-        onKeyUp={() => { if (dragValue !== null) { seekTo(dragValue); setDragValue(null); } }}
-        disabled={!duration}
-        aria-label={t("podcast.seek")}
-        className="flex-1 min-w-0 h-1.5 cursor-pointer disabled:cursor-default"
-        style={{ accentColor: "hsl(var(--primary))" }}
-      />
+      {/* input[type=range] keeps its intrinsic width under flex in WebKit —
+          grow a wrapper instead and let the input fill it. */}
+      <div className="flex-1 min-w-0">
+        <input
+          type="range"
+          min={0}
+          max={Math.max(duration, 1)}
+          step={1}
+          value={dragValue ?? Math.min(position, duration || position)}
+          onChange={(e) => setDragValue(Number(e.target.value))}
+          onMouseUp={() => { if (dragValue !== null) { seekTo(dragValue); setDragValue(null); } }}
+          onTouchEnd={() => { if (dragValue !== null) { seekTo(dragValue); setDragValue(null); } }}
+          onKeyUp={() => { if (dragValue !== null) { seekTo(dragValue); setDragValue(null); } }}
+          disabled={!duration}
+          aria-label={t("podcast.seek")}
+          className="w-full block h-1.5 cursor-pointer disabled:cursor-default"
+          style={{ accentColor: "hsl(var(--primary))" }}
+        />
+      </div>
 
       <Button
         variant="ghost"
         onClick={goToOrigin}
         title={t("tts.backToSource")}
-        className="h-auto w-56 min-w-0 hidden md:flex flex-col items-start shrink-0 text-left hover:opacity-80 hover:bg-transparent transition-opacity"
+        className="h-auto max-w-56 min-w-0 hidden md:flex flex-col items-start shrink-0 overflow-hidden text-left hover:opacity-80 hover:bg-transparent transition-opacity"
       >
-        <span className="truncate text-xs font-medium text-foreground">{track.title}</span>
-        <span className="truncate text-[10px] text-muted-foreground">
+        <span className="w-full truncate text-xs font-medium text-foreground">{track.title}</span>
+        <span className="w-full truncate text-[10px] text-muted-foreground">
           {isError ? t("podcast.error") : track.feedTitle}
         </span>
       </Button>
+
+      {playlist && (() => {
+        const ModeIcon = MODE_ICONS[playMode];
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => setPlayMode(PLAY_MODES[(PLAY_MODES.indexOf(playMode) + 1) % PLAY_MODES.length])}
+            className={`w-8 h-8 p-0 rounded-md flex items-center justify-center hover:bg-muted transition-colors shrink-0 ${
+              playMode === "order" ? "text-muted-foreground hover:text-foreground" : "text-primary"
+            }`}
+            title={t(`music.mode.${playMode}`)}
+          >
+            <ModeIcon className="w-4 h-4" />
+          </Button>
+        );
+      })()}
 
       <div className="flex items-center gap-1 bg-muted p-0.5 rounded-lg shrink-0">
         {SPEEDS.map((s) => (
@@ -140,6 +199,15 @@ export function PodcastPlayerBar() {
           </Button>
         ))}
       </div>
+
+      <Button
+        variant="ghost"
+        onClick={() => setExpanded(true)}
+        className="w-8 h-8 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0 rotate-90"
+        title={t("music.expandPlayer")}
+      >
+        <ChevronIcon direction="left" className="w-4 h-4" />
+      </Button>
 
       <Button
         variant="ghost"
