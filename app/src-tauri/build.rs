@@ -1,3 +1,4 @@
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::path::{Path, PathBuf};
 
 fn main() {
