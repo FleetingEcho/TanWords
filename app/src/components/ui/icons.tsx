@@ -16,6 +16,12 @@ import {
   ClipboardDocumentListIcon,
   XMarkIcon,
   RssIcon,
+  MusicalNoteIcon,
+  QueueListIcon,
+  FolderOpenIcon,
+  ArrowLongRightIcon,
+  ArrowPathRoundedSquareIcon,
+  ArrowsRightLeftIcon,
 } from "@heroicons/react/24/outline";
 import {
   ArrowPathIcon,
@@ -46,6 +52,42 @@ export function GridIcon({ className }: IconProps) {
 
 export function CompassIcon({ className }: IconProps) {
   return <MapIcon className={className} />;
+}
+
+export function MusicIcon({ className }: IconProps) {
+  return <MusicalNoteIcon className={className} />;
+}
+
+export function ListIcon({ className }: IconProps) {
+  return <QueueListIcon className={className} />;
+}
+
+export function FolderIcon({ className }: IconProps) {
+  return <FolderOpenIcon className={className} />;
+}
+
+// ── Play modes (music queue) ───────────────────────────────────────────────
+
+export function PlayOrderIcon({ className }: IconProps) {
+  return <ArrowLongRightIcon className={className} />;
+}
+
+export function RepeatIcon({ className }: IconProps) {
+  return <ArrowPathRoundedSquareIcon className={className} />;
+}
+
+/** Repeat-one: the repeat glyph with a tiny "1" badge. */
+export function RepeatOneIcon({ className }: IconProps) {
+  return (
+    <span className={`relative inline-flex ${className ?? ""}`}>
+      <ArrowPathRoundedSquareIcon className="w-full h-full" />
+      <span className="absolute inset-0 flex items-center justify-center text-[7px] font-bold leading-none">1</span>
+    </span>
+  );
+}
+
+export function ShuffleIcon({ className }: IconProps) {
+  return <ArrowsRightLeftIcon className={className} />;
 }
 
 export function BookIcon({ className }: IconProps) {

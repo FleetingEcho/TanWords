@@ -5,6 +5,7 @@ export type NavPage =
   | "feeds"
   | "reading"
   | "scene-lab"
+  | "music"
   | "vocabulary"
   | "documents"
   | "chat"

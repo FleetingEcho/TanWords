@@ -7,6 +7,7 @@ pub mod tts;
 pub mod reader;
 pub mod secrets;
 pub mod rss;
+pub mod music;
 
 pub struct AppState {
     pub db: Mutex<Connection>,
@@ -106,6 +107,9 @@ pub fn run() {
             db::db_add_knowledge_nodes,
             db::db_update_knowledge_node_note,
             db::db_add_map_words_to_vocabulary,
+            db::db_save_sentence_pattern,
+            db::db_list_patterns,
+            db::db_delete_pattern,
             tts::models::tts_scan_models,
             tts::models::tts_default_models_dir,
             tts::engine::tts_load_model,
@@ -126,6 +130,7 @@ pub fn run() {
             rss::db_get_rss_entries,
             rss::db_mark_rss_entry_read,
             rss::db_get_rss_unread_counts,
+            music::music_scan_library,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

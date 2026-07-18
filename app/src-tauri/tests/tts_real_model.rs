@@ -5,9 +5,9 @@ use rusqlite::Connection;
 use tauri::test::{mock_builder, mock_context, noop_assets};
 use tauri::Manager;
 
-#[test]
+#[tokio::test]
 #[ignore]
-fn loads_and_synthesizes_real_model() {
+async fn loads_and_synthesizes_real_model() {
     let dir = std::env::var("TTS_TEST_MODEL_DIR").expect("set TTS_TEST_MODEL_DIR");
 
     let conn = Connection::open_in_memory().unwrap();
@@ -16,7 +16,8 @@ fn loads_and_synthesizes_real_model() {
     app.manage(tanwords_lib::AppState {
         db: std::sync::Mutex::new(conn),
         db_path: std::sync::Mutex::new(":memory:".to_string()),
-        tts: std::sync::Mutex::new(None),
+        tts: std::sync::Mutex::new(None).into(),
+        db_fallback_warning: None,
     });
     let state: tauri::State<tanwords_lib::AppState> = app.state();
 
@@ -32,6 +33,7 @@ fn loads_and_synthesizes_real_model() {
         0,
         1.0,
     )
+    .await
     .expect("tts_synthesize should succeed");
 
     use base64::Engine;

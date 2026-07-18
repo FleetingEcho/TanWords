@@ -18,6 +18,7 @@ import { feeds } from "./feeds";
 import { podcast } from "./podcast";
 import { tools } from "./tools";
 import { knowledgeMap } from "./knowledgeMap";
+import { music } from "./music";
 
 export const zh: Dict = {
     ...common,
@@ -39,4 +40,5 @@ export const zh: Dict = {
     ...podcast,
     ...tools,
     ...knowledgeMap,
+    ...music,
 };
