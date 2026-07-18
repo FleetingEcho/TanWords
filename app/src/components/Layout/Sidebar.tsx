@@ -7,6 +7,7 @@ import {
   FeedIcon, ReadingIcon, ChevronIcon, CompassIcon, MusicIcon,
 } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
+import { UpdateButton } from "@/components/Layout/UpdateButton";
 
 interface NavItemDef {
   id: NavPage;
@@ -115,11 +116,12 @@ export function MainLayout({
           })}
         </nav>
 
-        {/* Settings — pinned to the bottom, always in the same place.
-            Fixed h-14 matches the h-8-button-in-p-3-container footer bars
-            used elsewhere (e.g. FeedRail's "+ Add feed"), so the sidebar's
-            bottom border lines up with the page content's footer border. */}
-        <div className="h-14 px-2 flex items-center border-t border-[hsl(var(--sidebar-border))]">
+        {/* Update + Settings — pinned to the bottom, always in the same place.
+            Deliberately borderless: the player bar's top border sits at a
+            content-driven height next to it, and two almost-but-not-quite
+            aligned horizontal lines read as a glitch. */}
+        <div className="px-2 pb-1 flex flex-col justify-end space-y-0.5">
+          <UpdateButton collapsed={collapsed} />
           <Button
             variant="ghost"
             onClick={() => onNavigate("settings")}
