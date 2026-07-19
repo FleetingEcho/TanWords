@@ -1,5 +1,6 @@
 import { findBestProvider } from "@/providers/select";
 import type { WritingMode, WritingResponse } from "./types";
+import { filterSuggestedVocabulary } from "./vocabulary";
 
 function systemPrompt(mode: WritingMode, language: "zh" | "en") {
   const responseLanguage = language === "en" ? "English" : "Simplified Chinese";
@@ -9,9 +10,10 @@ function systemPrompt(mode: WritingMode, language: "zh" | "en") {
   return `You are a rigorous English writing coach. The user may provide a sentence, paragraph, or essay; never ask them to classify it.
 Preserve meaning and facts. ${depth}
 Explanations and meanings must be in ${responseLanguage}; keep the user's English and refined English in English.
-Candidate originals must be exact excerpts from the input. Vocabulary examples must show how the suggestion works in the user's context.
-Return valid JSON only, without markdown fences:
-{"refinedText":"","analysis":"","candidates":[{"original":"","refined":"","explanation":""}],"vocabulary":[{"word":"","meaning":"","reason":"","exampleSentence":""}],"modelEssays":[]}`;
+	Candidate originals must be exact excerpts from the input. Vocabulary examples must show how the suggestion works in the user's context.
+	Recommend vocabulary only when it is CEFR B1, B2, C1, or C2 and genuinely improves the user's expression. Never recommend A1/A2 greetings, function words, or elementary vocabulary such as "hi", "hello", "good", or "nice". If no suitable B1+ recommendation exists, return an empty vocabulary array. Assign each recommendation its accurate CEFR level.
+	Return valid JSON only, without markdown fences:
+	{"refinedText":"","analysis":"","candidates":[{"original":"","refined":"","explanation":""}],"vocabulary":[{"word":"","level":"B2","meaning":"","reason":"","exampleSentence":""}],"modelEssays":[]}`;
 }
 
 function parseJson(raw: string): unknown {
@@ -28,7 +30,9 @@ function validate(value: unknown): WritingResponse {
   const v = value as WritingResponse;
   if (!v || typeof v.refinedText !== "string" || typeof v.analysis !== "string") throw new Error("AI response is incomplete");
   v.candidates = Array.isArray(v.candidates) ? v.candidates.filter((item) => item?.original && item?.refined) : [];
-  v.vocabulary = Array.isArray(v.vocabulary) ? v.vocabulary.filter((item) => item?.word && item?.meaning) : [];
+  v.vocabulary = Array.isArray(v.vocabulary)
+    ? filterSuggestedVocabulary(v.vocabulary)
+    : [];
   v.modelEssays = Array.isArray(v.modelEssays) ? v.modelEssays : [];
   return v;
 }

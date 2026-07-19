@@ -48,6 +48,7 @@ pub struct WordDefItem {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AddWordResult {
     pub id: i64,
     pub is_new: bool,
