@@ -43,6 +43,7 @@ export interface WritingCandidate {
 
 export interface WritingSuggestion {
   word: string;
+  level?: "B1" | "B2" | "C1" | "C2";
   meaning: string;
   reason: string;
   exampleSentence: string;

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
+import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/AiChat/Markdown";
 import { useDB } from "@/hooks/useDB";
@@ -26,7 +27,7 @@ export function WritingAnalyzer({ compact = false, onSaved }: { compact?: boolea
   const [showCustomVocab, setShowCustomVocab] = useState(false);
   const [showCustomSentence, setShowCustomSentence] = useState(false);
   const [customSentence, setCustomSentence] = useState({ original: "", refined: "", explanation: "" });
-  const [customVocab, setCustomVocab] = useState({ word: "", meaning: "", example: "", reason: "" });
+  const [customVocab, setCustomVocab] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const wordCount = useMemo(() => text.trim() ? text.trim().split(/\s+/).length : 0, [text]);
 
@@ -91,10 +92,16 @@ export function WritingAnalyzer({ compact = false, onSaved }: { compact?: boolea
   };
 
   const addCustomVocabulary = async () => {
-    if (!customVocab.word.trim() || !customVocab.meaning.trim()) return toast.error(t("writing.invalidCustomVocab"));
-    await addVocabulary({ word: customVocab.word.trim(), meaning: customVocab.meaning.trim(), reason: customVocab.reason.trim(), exampleSentence: customVocab.example.trim() });
-    setCustomVocab({ word: "", meaning: "", example: "", reason: "" });
+    const word = customVocab.trim();
+    if (!word) return toast.error(t("writing.invalidCustomVocab"));
+    const existing = await db.getWordDetailByWord(word);
+    if (existing) return toast.info(t("writing.alreadyExists", { word }));
+    const response = await db.addWord(word, "");
+    if (!response.isNew) return toast.info(t("writing.alreadyExists", { word }));
+    setCustomVocab("");
     setShowCustomVocab(false);
+    toast.success(t("writing.vocabSaved"));
+    window.dispatchEvent(new CustomEvent("vocab-updated"));
   };
 
   const addCustomSentence = async () => {
@@ -137,8 +144,8 @@ export function WritingAnalyzer({ compact = false, onSaved }: { compact?: boolea
           <ResultSection title={t("writing.candidates")}><div className="space-y-3">{result.candidates.map((candidate, index) => <div key={`${candidate.original}-${index}`} className="rounded-xl bg-background p-4 ring-1 ring-border/60"><p className="text-xs leading-5 text-muted-foreground line-through decoration-destructive/40">{candidate.original}</p><p className="mt-2 text-sm leading-6">{candidate.refined}</p>{candidate.explanation && <p className="mt-2 text-xs leading-5 text-muted-foreground">{candidate.explanation}</p>}<Button variant="outline" disabled={savedCandidates.has(index)} onClick={() => saveCandidate(candidate, index)} className="mt-3 h-8 px-3 text-[11px]">{savedCandidates.has(index) ? t("writing.collected") : t("writing.collect")}</Button></div>)}</div>
             {!showCustomSentence ? <Button variant="ghost" onClick={() => setShowCustomSentence(true)} className="mt-3 h-8 px-2 text-xs text-primary">+ {t("writing.addCustomSentence")}</Button> : <div className="mt-3 space-y-2 rounded-xl border border-border bg-background p-3"><textarea value={customSentence.original} onChange={(e) => setCustomSentence({ ...customSentence, original: e.target.value })} placeholder={t("writing.originalSentence")} className="min-h-16 w-full resize-y rounded-lg border border-input bg-background p-3 text-xs"/><textarea value={customSentence.refined} onChange={(e) => setCustomSentence({ ...customSentence, refined: e.target.value })} placeholder={t("writing.refinedSentence")} className="min-h-16 w-full resize-y rounded-lg border border-input bg-background p-3 text-xs"/><input value={customSentence.explanation} onChange={(e) => setCustomSentence({ ...customSentence, explanation: e.target.value })} placeholder={t("writing.explanation")} className="h-9 w-full rounded-lg border border-input bg-background px-3 text-xs"/><div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => setShowCustomSentence(false)} className="h-8 text-xs">{t("writing.cancel")}</Button><Button disabled={!customSentence.original.trim() || !customSentence.refined.trim()} onClick={addCustomSentence} className="h-8 text-xs">{t("writing.collect")}</Button></div></div>}
           </ResultSection>
-          <ResultSection title={t("writing.vocabulary")}><div className="space-y-3">{result.vocabulary.map((item, index) => <div key={`${item.word}-${index}`} className="rounded-xl bg-background p-4 ring-1 ring-border/60"><div className="flex items-baseline gap-2"><b className="text-sm">{item.word}</b><span className="text-xs text-muted-foreground">{item.meaning}</span></div>{item.reason && <p className="mt-2 text-xs leading-5 text-muted-foreground">{item.reason}</p>}<p className="mt-1 text-xs italic leading-5">{item.exampleSentence}</p><Button variant="outline" disabled={savedVocabulary.has(index)} onClick={() => addVocabulary(item, index)} className="mt-3 h-8 px-3 text-[11px]">{savedVocabulary.has(index) ? t("writing.vocabAdded") : t("writing.addVocab")}</Button></div>)}</div>
-            {!showCustomVocab ? <Button variant="ghost" onClick={() => setShowCustomVocab(true)} className="mt-3 h-8 px-2 text-xs text-primary">+ {t("writing.addCustomVocab")}</Button> : <div className="mt-3 space-y-2 rounded-xl border border-border bg-background p-3"><input value={customVocab.word} onChange={(e) => setCustomVocab({ ...customVocab, word: e.target.value })} placeholder={t("writing.word")} className="h-9 w-full rounded-lg border border-input bg-background px-3 text-xs"/><input value={customVocab.meaning} onChange={(e) => setCustomVocab({ ...customVocab, meaning: e.target.value })} placeholder={t("writing.meaning")} className="h-9 w-full rounded-lg border border-input bg-background px-3 text-xs"/><input value={customVocab.example} onChange={(e) => setCustomVocab({ ...customVocab, example: e.target.value })} placeholder={t("writing.example")} className="h-9 w-full rounded-lg border border-input bg-background px-3 text-xs"/><div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => setShowCustomVocab(false)} className="h-8 text-xs">{t("writing.cancel")}</Button><Button onClick={addCustomVocabulary} className="h-8 text-xs">{t("writing.add")}</Button></div></div>}
+          <ResultSection title={t("writing.vocabulary")}><div className="space-y-3">{result.vocabulary.map((item, index) => <div key={`${item.word}-${index}`} className="rounded-xl bg-background p-4 ring-1 ring-border/60"><div className="flex items-baseline gap-2"><b className="text-sm">{item.word}</b>{item.level && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">{item.level}</span>}<span className="text-xs text-muted-foreground">{item.meaning}</span></div>{item.reason && <p className="mt-2 text-xs leading-5 text-muted-foreground">{item.reason}</p>}<p className="mt-1 text-xs italic leading-5">{item.exampleSentence}</p><Button variant="outline" disabled={savedVocabulary.has(index)} onClick={() => addVocabulary(item, index)} className="mt-3 h-8 px-3 text-[11px]">{savedVocabulary.has(index) ? t("writing.vocabAdded") : t("writing.addVocab")}</Button></div>)}</div>
+            {!showCustomVocab ? <Button variant="ghost" onClick={() => setShowCustomVocab(true)} className="mt-3 h-8 px-2 text-xs text-primary">+ {t("writing.addCustomVocab")}</Button> : <div className="mt-3 rounded-xl border border-border bg-background p-3"><div className="flex gap-2"><label className="relative min-w-0 flex-1"><Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"/><input autoFocus value={customVocab} onChange={(e) => setCustomVocab(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void addCustomVocabulary(); }} placeholder={t("writing.searchVocab")} className="h-9 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-xs outline-none focus:ring-1 focus:ring-primary"/></label><Button disabled={!customVocab.trim()} onClick={addCustomVocabulary} className="h-9 text-xs">{t("writing.addVocab")}</Button><Button variant="ghost" onClick={() => { setShowCustomVocab(false); setCustomVocab(""); }} className="h-9 px-2 text-xs">{t("writing.cancel")}</Button></div></div>}
           </ResultSection>
           {result.modelEssays.length > 0 && <ResultSection title={t("writing.modelEssays")}><div className="space-y-2">{result.modelEssays.map((essay, index) => <details key={index} className="rounded-xl bg-background p-4 ring-1 ring-border/60"><summary className="cursor-pointer text-xs font-semibold">{t("writing.modelEssay")} {index + 1}</summary><p className="mt-3 whitespace-pre-wrap text-sm leading-7">{essay}</p></details>)}</div></ResultSection>}
         </div>}
