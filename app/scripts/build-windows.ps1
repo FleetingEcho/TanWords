@@ -38,6 +38,24 @@ $sherpaDlls = @(
     "sherpa-onnx-c-api.dll",
     "sherpa-onnx-cxx-api.dll"
 )
+
+# Tauri only bundles files declared in tauri.conf.json. sherpa-rs copies its
+# runtime DLLs next to Cargo's executable for local runs, but those files are
+# not automatically included in an NSIS installer. Stage them in the stable
+# sherpa-libs directory consumed by bundle.resources before invoking Tauri.
+$sherpaCache = Join-Path $env:LOCALAPPDATA "sherpa-rs"
+$sherpaStage = Join-Path (Split-Path $PSScriptRoot -Parent) "src-tauri\sherpa-libs"
+New-Item -ItemType Directory -Path $sherpaStage -Force | Out-Null
+foreach ($dll in $sherpaDlls) {
+    $cachedDll = Get-ChildItem -LiteralPath $sherpaCache -Recurse -File -Filter $dll |
+        Where-Object { $_.Directory.Name -eq "lib" } |
+        Select-Object -First 1
+    if (-not $cachedDll) {
+        throw "Sherpa DLL was not found in its cache: $dll"
+    }
+    Copy-Item -LiteralPath $cachedDll.FullName -Destination (Join-Path $sherpaStage $dll) -Force
+}
+
 if (Test-Path -LiteralPath $releaseDir) {
     Get-ChildItem -LiteralPath $releaseDir -Recurse -File |
         Where-Object { $_.Name -in $sherpaDlls } |
@@ -64,16 +82,9 @@ if ($Portable) {
         throw "Portable executable is missing: $appExe"
     }
 
-    $sherpaCache = Join-Path $env:LOCALAPPDATA "sherpa-rs"
     $portableFiles = @($appExe)
     foreach ($dll in $sherpaDlls) {
-        $cachedDll = Get-ChildItem -LiteralPath $sherpaCache -Recurse -File -Filter $dll |
-            Where-Object { $_.Directory.Name -eq "lib" } |
-            Select-Object -First 1
-        if (-not $cachedDll) {
-            throw "Sherpa DLL was not found in its cache: $dll"
-        }
-        $portableFiles += $cachedDll.FullName
+        $portableFiles += Join-Path $sherpaStage $dll
     }
 
     $portableDir = Join-Path $releaseDir "bundle\portable"
