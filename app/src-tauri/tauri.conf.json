@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicehash/tauri/main/tooling/cli/schema.json",
   "productName": "TanWords",
-  "version": "0.1.6",
+  "version": "0.2.0",
   "identifier": "com.tanner.tanwords",
   "build": {
     "beforeDevCommand": "npm run dev",
