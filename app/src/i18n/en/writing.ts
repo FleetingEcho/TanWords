@@ -2,13 +2,14 @@ import type { Dict } from "../types";
 
 export const writing: Dict = {
   "writing.title": "Writing Studio", "writing.subtitle": "Write more naturally, and understand why.", "writing.aiReady": "AI ready",
-  "writing.compose": "Start writing", "writing.records": "Writing records", "writing.summaries": "Learning summaries",
+  "writing.compose": "Start writing", "writing.records": "Writing records", "writing.summaries": "Learning summaries", "writing.library": "Manuscripts",
   "writing.quick": "Quick refine", "writing.deep": "Deep analysis", "writing.quickHint": "Polish quickly with a few key suggestions", "writing.deepHint": "Analyze expression, structure, logic, and tone",
   "writing.yourWriting": "Your writing", "writing.inputHint": "Enter a sentence, paragraph, or full essay", "writing.placeholder": "Start writing in English…", "writing.words": "{count} words",
   "writing.modelEssay": "Reference essay", "writing.essayCount": "{count}", "writing.stop": "Stop", "writing.analyze": "Analyze", "writing.analyzeAgain": "Analyze again", "writing.analyzing": "Analyzing…",
   "writing.result": "AI feedback", "writing.emptyTitle": "Your feedback appears here", "writing.emptyHint": "You decide which sentences and words are worth saving.", "writing.progress": "Analyzing · {count} characters",
   "writing.refined": "Refined version", "writing.analysis": "Analysis", "writing.candidates": "Expressions worth saving", "writing.vocabulary": "Suggested vocabulary", "writing.modelEssays": "Reference essays",
   "writing.original": "Original", "writing.refinedSnippet": "Refined", "writing.explanation": "Note", "writing.collect": "Save sentence", "writing.collected": "Saved",
+  "writing.collectAll": "Save all", "writing.collectedAll": "All saved", "writing.savedAll": "Saved to writing records",
   "writing.addCustomSentence": "Add your own sentence", "writing.originalSentence": "Original sentence", "writing.refinedSentence": "Refined sentence",
   "writing.addVocab": "Add to vocabulary", "writing.vocabAdded": "Added", "writing.alreadyExists": "“{word}” is already in Vocabulary", "writing.addCustomVocab": "Add your own word",
   "writing.word": "Word or expression", "writing.meaning": "Meaning", "writing.example": "Example in context", "writing.reason": "Note or reason", "writing.add": "Add", "writing.cancel": "Cancel", "writing.searchVocab": "Search or enter a word…",

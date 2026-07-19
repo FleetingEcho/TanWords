@@ -10,17 +10,16 @@ import type { WritingSubmission, WritingSummary } from "@/features/writing/types
 import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
-import { Trash2 } from "lucide-react";
+import { ArrowLeft, Trash2, X } from "lucide-react";
 
-type Tab = "compose" | "records" | "summaries";
+type Tab = "compose" | "library";
 type PendingDelete =
   | { kind: "records" | "sources"; recordIds: number[]; sentenceIds: number[] }
   | { kind: "summaries"; summaryIds: number[] };
 
 const TABS: Array<{ id: Tab; labelKey: string }> = [
   { id: "compose", labelKey: "writing.compose" },
-  { id: "records", labelKey: "writing.records" },
-  { id: "summaries", labelKey: "writing.summaries" },
+  { id: "library", labelKey: "writing.library" },
 ];
 
 function formatDate(value: string) {
@@ -52,8 +51,8 @@ export default function WritingStudioPage() {
       ]);
       setRecords(nextRecords);
       setSummaries(nextSummaries);
-      setActiveRecordId((current) => nextRecords.some((item) => item.id === current) ? current : nextRecords[0]?.id ?? null);
-      setActiveSummaryId((current) => nextSummaries.some((item) => item.id === current) ? current : nextSummaries[0]?.id ?? null);
+      setActiveRecordId((current) => nextRecords.some((item) => item.id === current) ? current : null);
+      setActiveSummaryId((current) => nextSummaries.some((item) => item.id === current) ? current : null);
     } catch (e) { toast.error(String(e)); }
   }, [search]);
 
@@ -91,7 +90,8 @@ export default function WritingStudioPage() {
         });
       }
       setSelectedRecords(new Set()); setSelectedSentences(new Set()); setSelectedSummaries(new Set());
-      await load(); setTab("summaries");
+      await load();
+      setActiveRecordId(null); setActiveSummaryId(null); setTab("library");
     } catch (e) { if (!abortRef.current.signal.aborted) toast.error(String(e)); }
     finally { setBusy(false); }
   };
@@ -132,30 +132,31 @@ export default function WritingStudioPage() {
     : pendingDelete ? t(pendingDelete.kind === "sources" ? "writing.deleteSourceConfirm" : "writing.deleteRecordsConfirm", { records: pendingDelete.recordIds.length, sentences: pendingDelete.sentenceIds.length }) : "";
 
   return <div className="flex h-full min-h-0 flex-col bg-background">
-    <header className="shrink-0 border-b border-border/70 px-5 py-4 md:px-8">
-      <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
-        <div className="mr-auto">
-          <div className="flex items-center gap-3"><h1 className="text-xl font-bold tracking-tight">{t("writing.title")}</h1><span className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><i className="h-1.5 w-1.5 rounded-full bg-emerald-500"/>{t("writing.aiReady")}</span></div>
-          <p className="mt-1 text-xs text-muted-foreground">{t("writing.subtitle")}</p>
+    <header className="shrink-0 border-b border-border/70 px-6 md:px-10">
+      <div className="flex flex-wrap items-end justify-between gap-x-10 gap-y-1 pt-5">
+        <div className="pb-4">
+          <div className="flex items-baseline gap-3">
+            <h1 className="font-manuscript text-[22px] font-semibold tracking-tight">{t("writing.title")}</h1>
+            <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground"><i className="h-1.5 w-1.5 rounded-full bg-emerald-500"/>{t("writing.aiReady")}</span>
+          </div>
+          <p className="mt-0.5 text-xs text-muted-foreground">{t("writing.subtitle")}</p>
         </div>
-        <nav className="flex rounded-xl bg-muted/70 p-1">
-          {TABS.map((item) => <button key={item.id} onClick={() => setTab(item.id)} className={`rounded-lg px-4 py-2 text-xs font-semibold transition ${tab === item.id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{t(item.labelKey)}</button>)}
+        <nav className="flex gap-7">
+          {TABS.map((item) => <button key={item.id} onClick={() => setTab(item.id)} className={`border-b-2 pb-3.5 pt-1 text-xs font-semibold tracking-wide transition ${tab === item.id ? "border-ink text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}>{t(item.labelKey)}</button>)}
         </nav>
       </div>
     </header>
 
     <main className="min-h-0 flex-1">
       {tab === "compose" && <WritingAnalyzer onSaved={load} />}
-      {tab === "records" && <RecordsView
-        records={records} active={activeRecord} search={search} busy={busy}
-        selectedRecords={selectedRecords} selectedSentences={selectedSentences}
-        onSearch={setSearch} onActive={setActiveRecordId} onSelectedRecords={setSelectedRecords} onSelectedSentences={setSelectedSentences}
-        onSummarize={() => summarize("submissions")} onDelete={removeRecords}
-      />}
-      {tab === "summaries" && <SummariesView
-        summaries={summaries} active={activeSummary} busy={busy} selected={selectedSummaries}
-        onActive={setActiveSummaryId} onSelected={setSelectedSummaries}
-        onSummarize={() => summarize("summaries")} onDelete={removeSummaries} onExport={setExportSummary}
+      {tab === "library" && <LibraryView
+        records={records} summaries={summaries} activeRecord={activeRecord} activeSummary={activeSummary}
+        search={search} busy={busy}
+        selectedRecords={selectedRecords} selectedSentences={selectedSentences} selectedSummaries={selectedSummaries}
+        onSearch={setSearch} onActiveRecord={setActiveRecordId} onActiveSummary={setActiveSummaryId}
+        onSelectedRecords={setSelectedRecords} onSelectedSentences={setSelectedSentences} onSelectedSummaries={setSelectedSummaries}
+        onSummarize={() => summarize("submissions")} onMerge={() => summarize("summaries")}
+        onDeleteRecords={removeRecords} onDeleteSummaries={removeSummaries} onExport={setExportSummary}
       />}
     </main>
     {exportSummary && <SummaryExportModal summary={exportSummary} onClose={() => setExportSummary(null)} />}
@@ -163,80 +164,203 @@ export default function WritingStudioPage() {
   </div>;
 }
 
-function RecordsView(props: {
-  records: WritingSubmission[]; active: WritingSubmission | null; search: string; busy: boolean;
-  selectedRecords: Set<number>; selectedSentences: Set<number>;
-  onSearch: (value: string) => void; onActive: (id: number) => void;
+function LibraryView(props: {
+  records: WritingSubmission[]; summaries: WritingSummary[];
+  activeRecord: WritingSubmission | null; activeSummary: WritingSummary | null;
+  search: string; busy: boolean;
+  selectedRecords: Set<number>; selectedSentences: Set<number>; selectedSummaries: Set<number>;
+  onSearch: (value: string) => void;
+  onActiveRecord: (id: number | null) => void; onActiveSummary: (id: number | null) => void;
   onSelectedRecords: React.Dispatch<React.SetStateAction<Set<number>>>;
   onSelectedSentences: React.Dispatch<React.SetStateAction<Set<number>>>;
-  onSummarize: () => void; onDelete: () => void;
+  onSelectedSummaries: React.Dispatch<React.SetStateAction<Set<number>>>;
+  onSummarize: () => void; onMerge: () => void;
+  onDeleteRecords: () => void; onDeleteSummaries: () => void;
+  onExport: (summary: WritingSummary) => void;
 }) {
   const t = useT();
-  const count = props.selectedRecords.size + props.selectedSentences.size;
-  return <div className="grid h-full min-h-0 grid-rows-[240px_minmax(0,1fr)] md:grid-cols-[300px_minmax(0,1fr)] md:grid-rows-1">
-    <aside className="flex min-h-0 flex-col border-b border-border/70 bg-muted/15 md:border-b-0 md:border-r">
-      <div className="space-y-3 border-b border-border/60 p-4">
-        <input value={props.search} onChange={(e) => props.onSearch(e.target.value)} placeholder={t("writing.search")} className="h-9 w-full rounded-lg bg-background px-3 text-xs outline-none ring-1 ring-border/70 focus:ring-primary/50" />
-        <div className="flex items-center gap-1.5"><Button disabled={!count || props.busy} onClick={props.onSummarize} className="h-8 flex-1 text-[11px]">{props.busy ? t("writing.summarizing") : t("writing.summarizeSelected", { count: count || "" })}</Button><Button variant="ghost" size="icon" disabled={!count} onClick={props.onDelete} title={t("writing.delete")} aria-label={t("writing.delete")} className="h-8 w-8 text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button></div>
-      </div>
-      <div className="flex-1 overflow-y-auto p-2">
-        {!props.records.length && <EmptyList text={t("writing.noRecords")} />}
-        {props.records.map((record) => <button key={record.id} onClick={() => props.onActive(record.id)} className={`mb-1 w-full rounded-xl p-3 text-left transition ${props.active?.id === record.id ? "bg-background shadow-sm ring-1 ring-border/60" : "hover:bg-muted/70"}`}>
-          <div className="flex items-center gap-2"><input type="checkbox" checked={props.selectedRecords.has(record.id)} onClick={(e) => e.stopPropagation()} onChange={() => props.onSelectedRecords((old) => toggleSet(old, record.id))}/><time className="ml-auto text-[9px] text-muted-foreground">{formatDate(record.created_at)}</time></div>
-          <p className="mt-2 line-clamp-2 text-xs font-medium leading-5">{record.original_text}</p>
-          <p className="mt-1 text-[10px] text-muted-foreground">{t("writing.items", { count: record.sentences.length })} · {record.detected_genre || t("writing.general")}</p>
-        </button>)}
-      </div>
-    </aside>
-    <section className="min-h-0 overflow-y-auto">
-      {!props.active ? <EmptyDetail title={t("writing.selectRecord")} text={t("writing.selectRecordHint")} /> : <div className="mx-auto max-w-4xl px-6 py-8 lg:px-10">
-        <div className="flex items-start gap-4"><div className="flex-1"><div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground"><span>{props.active.detected_genre || t("writing.general")}</span><span>·</span><time>{formatDate(props.active.created_at)}</time></div><h2 className="mt-3 text-xl font-semibold leading-8">{props.active.original_text}</h2></div></div>
-        {props.active.overall_feedback && <div className="mt-7 rounded-2xl bg-muted/50 p-5"><p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{t("writing.overview")}</p><p className="mt-2 text-sm leading-7">{props.active.overall_feedback}</p></div>}
-        {props.active.refined_full_text && <div className="mt-7"><p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{t("writing.refined")}</p><p className="mt-3 whitespace-pre-wrap rounded-2xl bg-primary/[0.04] p-5 text-sm leading-7 ring-1 ring-primary/15">{props.active.refined_full_text}</p></div>}
-        <div className="mt-8 space-y-5">{props.active.sentences.map((sentence, index) => <div key={sentence.id} className="rounded-2xl bg-card p-5 shadow-sm ring-1 ring-border/60">
-          <div className="flex items-start gap-3"><input type="checkbox" className="mt-1" checked={!!sentence.id && props.selectedSentences.has(sentence.id)} onChange={() => sentence.id && props.onSelectedSentences((old) => toggleSet(old, sentence.id!))}/><div><span className="text-[10px] font-bold text-muted-foreground">{t("writing.candidates")} {index + 1}</span><p className="mt-1 text-sm font-medium leading-6">{sentence.original}</p></div></div>
-          <div className="ml-6 mt-4 grid gap-3 lg:grid-cols-2"><CompareBlock label={t("writing.original")} text={sentence.original}/><CompareBlock label={t("writing.refinedSnippet")} text={sentence.natural}/></div>
-          <div className="ml-6 mt-4 border-l-2 border-border pl-4"><p className="text-[10px] font-bold uppercase text-muted-foreground">{t("writing.explanation")}</p><p className="mt-1 text-xs leading-5 text-foreground/75 whitespace-pre-wrap">{sentence.explanation}</p></div>
-          {sentence.vocabulary.length > 0 && <div className="ml-6 mt-5 grid gap-2 sm:grid-cols-2">{sentence.vocabulary.map((word) => <div key={word.id} className="rounded-xl bg-muted/45 p-3"><div className="flex items-baseline gap-2"><b className="text-sm">{word.suggested_word ?? word.word}</b><span className="text-[11px] text-muted-foreground">{word.meaning}</span>{word.selected && <span className="ml-auto text-[9px] font-bold text-primary">{t("writing.vocabAdded")}</span>}</div><p className="mt-2 text-xs italic leading-5">{word.example_sentence ?? word.exampleSentence}</p><p className="mt-1 text-[10px] leading-4 text-muted-foreground">{word.reason}</p></div>)}</div>}
-        </div>)}</div>
+  const recordCount = props.selectedRecords.size + props.selectedSentences.size;
+  const summaryCount = props.selectedSummaries.size;
+  const clearRecordSelection = () => { props.onSelectedRecords(new Set()); props.onSelectedSentences(new Set()); };
+  const clearSummarySelection = () => props.onSelectedSummaries(new Set());
+  // Record and summary selections drive different actions, so they are mutually exclusive.
+  const toggleRecord = (id: number) => { props.onSelectedRecords((old) => toggleSet(old, id)); clearSummarySelection(); };
+  const toggleSentence = (id: number) => { props.onSelectedSentences((old) => toggleSet(old, id)); clearSummarySelection(); };
+  const toggleSummary = (id: number) => { props.onSelectedSummaries((old) => toggleSet(old, id)); clearRecordSelection(); };
+
+  return <div className="relative h-full min-h-0">
+    <div className="h-full overflow-y-auto">
+      {props.activeRecord ? <RecordDetail
+        record={props.activeRecord} onBack={() => props.onActiveRecord(null)}
+        selectedSentences={props.selectedSentences} onToggleSentence={toggleSentence}
+      /> : props.activeSummary ? <SummaryDetail
+        summary={props.activeSummary} onBack={() => props.onActiveSummary(null)} onExport={props.onExport}
+      /> : <div className="mx-auto max-w-6xl px-6 py-7 pb-24 md:px-10">
+        {props.summaries.length > 0 && <section className="mb-10">
+          <SectionLabel text={t("writing.summaries")} />
+          <div className="mt-4 grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]">
+            {props.summaries.map((summary) => <SummaryVolumeCard
+              key={summary.id} summary={summary}
+              selected={props.selectedSummaries.has(summary.id)}
+              onOpen={() => props.onActiveSummary(summary.id)}
+              onToggle={() => toggleSummary(summary.id)}
+            />)}
+          </div>
+        </section>}
+        <section>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <SectionLabel text={t("writing.records")} />
+            <input value={props.search} onChange={(e) => props.onSearch(e.target.value)} placeholder={t("writing.search")} className="h-9 w-full max-w-56 rounded-full bg-muted/60 px-4 text-xs outline-none ring-1 ring-transparent transition focus:bg-background focus:ring-ink/40" />
+          </div>
+          {!props.records.length && <EmptyWall text={t("writing.noRecords")} />}
+          <div className="mt-4 grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(236px,1fr))]">
+            {props.records.map((record) => <PaperCard
+              key={record.id}
+              eyebrow={record.detected_genre || t("writing.general")}
+              excerpt={record.original_text ?? ""}
+              meta={t("writing.items", { count: record.sentences.length })}
+              date={formatDate(record.created_at)}
+              selected={props.selectedRecords.has(record.id)}
+              onOpen={() => props.onActiveRecord(record.id)}
+              onToggle={() => toggleRecord(record.id)}
+            />)}
+          </div>
+        </section>
       </div>}
-    </section>
+    </div>
+    {summaryCount > 0 ? <SelectionBar
+      label={props.busy ? t("writing.merging") : t("writing.mergeSelected", { count: summaryCount })}
+      busy={props.busy} onAction={props.onMerge} onDelete={props.onDeleteSummaries} onClear={clearSummarySelection}
+    /> : recordCount > 0 ? <SelectionBar
+      label={props.busy ? t("writing.summarizing") : t("writing.summarizeSelected", { count: recordCount })}
+      busy={props.busy} onAction={props.onSummarize} onDelete={props.onDeleteRecords} onClear={clearRecordSelection}
+    /> : null}
   </div>;
 }
 
-function SummariesView(props: {
-  summaries: WritingSummary[]; active: WritingSummary | null; busy: boolean; selected: Set<number>;
-  onActive: (id: number) => void; onSelected: React.Dispatch<React.SetStateAction<Set<number>>>;
-  onSummarize: () => void; onDelete: () => void; onExport: (summary: WritingSummary) => void;
+function RecordDetail(props: {
+  record: WritingSubmission; onBack: () => void;
+  selectedSentences: Set<number>; onToggleSentence: (id: number) => void;
 }) {
   const t = useT();
-  return <div className="grid h-full min-h-0 grid-rows-[240px_minmax(0,1fr)] md:grid-cols-[300px_minmax(0,1fr)] md:grid-rows-1">
-    <aside className="flex min-h-0 flex-col border-b border-border/70 bg-muted/15 md:border-b-0 md:border-r">
-      <div className="border-b border-border/60 p-4"><div className="flex gap-1.5"><Button disabled={!props.selected.size || props.busy} onClick={props.onSummarize} className="h-8 flex-1 text-[11px]">{props.busy ? t("writing.merging") : t("writing.mergeSelected", { count: props.selected.size || "" })}</Button><Button variant="ghost" size="icon" disabled={!props.selected.size} onClick={props.onDelete} title={t("writing.delete")} aria-label={t("writing.delete")} className="h-8 w-8 text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button></div></div>
-      <div className="flex-1 overflow-y-auto p-2">
-        {!props.summaries.length && <EmptyList text={t("writing.noSummaries")} />}
-        {props.summaries.map((summary) => <button key={summary.id} onClick={() => props.onActive(summary.id)} className={`mb-1 w-full rounded-xl p-3 text-left transition ${props.active?.id === summary.id ? "bg-background shadow-sm ring-1 ring-border/60" : "hover:bg-muted/70"}`}><div className="flex items-center gap-2"><input type="checkbox" checked={props.selected.has(summary.id)} onClick={(e) => e.stopPropagation()} onChange={() => props.onSelected((old) => toggleSet(old, summary.id))}/><time className="text-[9px] uppercase text-muted-foreground">{formatDate(summary.created_at)}</time></div><p className="mt-2 text-xs font-semibold leading-5">{summary.title}</p><p className="mt-1 line-clamp-2 text-[10px] leading-4 text-muted-foreground">{summary.content.replace(/[#*_>-]/g, "")}</p></button>)}
+  const record = props.record;
+  return <div className="mx-auto max-w-3xl animate-fade-in px-6 py-7 pb-28 md:px-10">
+    <BackButton label={t("writing.library")} onClick={props.onBack} />
+    <div className="mt-6 flex items-center gap-2 text-[10px] uppercase tracking-[0.14em]">
+      <span className="font-bold text-ink">{record.detected_genre || t("writing.general")}</span>
+      <span className="text-muted-foreground">·</span>
+      <time className="font-mono text-muted-foreground">{formatDate(record.created_at)}</time>
+    </div>
+    <h2 className="mt-3 font-manuscript text-[21px] leading-9">{record.original_text}</h2>
+    {record.overall_feedback && <section className="mt-9">
+      <SectionLabel text={t("writing.overview")} />
+      <p className="mt-3 text-sm leading-7 text-foreground/85">{record.overall_feedback}</p>
+    </section>}
+    {record.refined_full_text && <section className="mt-9">
+      <SectionLabel text={t("writing.refined")} />
+      <p className="mt-3 whitespace-pre-wrap rounded-xl bg-card p-5 font-manuscript text-[15px] leading-8 shadow-sm ring-1 ring-border/60">{record.refined_full_text}</p>
+    </section>}
+    {record.sentences.length > 0 && <section className="mt-10">
+      <SectionLabel text={t("writing.candidates")} />
+      <div className="mt-5 space-y-8">
+        {record.sentences.map((sentence) => <div key={sentence.id} className="border-l-2 border-ink/40 pl-5">
+          <label className="flex cursor-pointer items-start gap-3">
+            <input type="checkbox" className="mt-1.5 accent-[hsl(var(--ink))]" checked={!!sentence.id && props.selectedSentences.has(sentence.id)} onChange={() => sentence.id && props.onToggleSentence(sentence.id)} />
+            <p className="font-manuscript text-[15px] leading-7 text-muted-foreground line-through decoration-ink/60">{sentence.original}</p>
+          </label>
+          <p className="ml-7 mt-1.5 font-manuscript text-[15px] leading-7">{sentence.natural}</p>
+          {sentence.explanation && <p className="ml-7 mt-2.5 whitespace-pre-wrap text-xs leading-6 text-muted-foreground"><span className="mr-1.5 font-bold text-ink">※</span>{sentence.explanation}</p>}
+          {sentence.vocabulary.length > 0 && <div className="ml-7 mt-4 grid gap-2.5 sm:grid-cols-2">
+            {sentence.vocabulary.map((word) => <div key={word.id} className="rounded-lg bg-muted/40 p-3">
+              <div className="flex items-baseline gap-2">
+                <b className="font-manuscript text-sm">{word.suggested_word ?? word.word}</b>
+                <span className="min-w-0 truncate text-[11px] text-muted-foreground">{word.meaning}</span>
+                {word.selected && <span className="ml-auto shrink-0 text-[9px] font-bold text-ink">{t("writing.vocabAdded")}</span>}
+              </div>
+              <p className="mt-1.5 font-manuscript text-xs italic leading-5">{word.example_sentence ?? word.exampleSentence}</p>
+              {word.reason && <p className="mt-1 text-[10px] leading-4 text-muted-foreground">{word.reason}</p>}
+            </div>)}
+          </div>}
+        </div>)}
       </div>
-    </aside>
-    <section className="min-h-0 overflow-y-auto">
-      {!props.active ? <EmptyDetail title={t("writing.selectSummary")} text={t("writing.selectSummaryHint")} /> : <article className="mx-auto max-w-3xl px-6 py-10 lg:px-10">
-        <header className="border-b border-border/70 pb-6"><div className="flex flex-wrap items-start gap-4"><div className="flex-1"><time className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{formatDate(props.active.created_at)}</time><h2 className="mt-2 text-2xl font-bold tracking-tight">{props.active.title}</h2></div><Button onClick={() => props.onExport(props.active!)} className="h-9 px-4 text-xs font-semibold">{t("writing.exportDocument")}</Button></div></header>
-        <div className="py-7 text-[15px] leading-7"><Markdown text={props.active.content}/></div>
-      </article>}
-    </section>
+    </section>}
   </div>;
 }
 
-function CompareBlock({ label, text }: { label: string; text: string }) {
-  return <div className="rounded-xl bg-muted/45 p-3"><p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">{label}</p><p className="mt-1.5 text-xs leading-5">{text}</p></div>;
+function SummaryDetail(props: { summary: WritingSummary; onBack: () => void; onExport: (summary: WritingSummary) => void }) {
+  const t = useT();
+  return <article className="mx-auto max-w-3xl animate-fade-in px-6 py-7 pb-28 md:px-10">
+    <div className="flex items-center justify-between gap-4">
+      <BackButton label={t("writing.library")} onClick={props.onBack} />
+      <Button onClick={() => props.onExport(props.summary)} className="h-8 rounded-full px-4 text-[11px] font-semibold">{t("writing.exportDocument")}</Button>
+    </div>
+    <time className="mt-7 block font-mono text-[10px] uppercase tracking-[0.14em] text-ink">{formatDate(props.summary.created_at)}</time>
+    <h2 className="mt-2 font-manuscript text-2xl font-semibold tracking-tight">{props.summary.title}</h2>
+    <div className="mt-6 border-t border-border/70 pt-6 text-[15px] leading-7"><Markdown text={props.summary.content} /></div>
+  </article>;
 }
 
-function EmptyList({ text }: { text: string }) {
-  return <p className="px-3 py-12 text-center text-xs text-muted-foreground">{text}</p>;
+function SummaryVolumeCard(props: { summary: WritingSummary; selected: boolean; onOpen: () => void; onToggle: () => void }) {
+  const summary = props.summary;
+  return <div role="button" tabIndex={0} onClick={props.onOpen}
+    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); props.onOpen(); } }}
+    className={`group relative flex min-h-28 cursor-pointer flex-col rounded-lg border-l-[3px] border-ink bg-card p-4 pl-5 text-left shadow-sm ring-1 transition hover:-translate-y-0.5 hover:shadow-md motion-reduce:transform-none ${props.selected ? "ring-2 ring-ink/60" : "ring-border/60"}`}>
+    <p className="mr-7 line-clamp-2 font-manuscript text-[13px] font-semibold leading-5">{summary.title}</p>
+    <p className="mt-1.5 line-clamp-2 text-[11px] leading-4 text-muted-foreground">{summary.content.replace(/[#*_>`-]/g, "")}</p>
+    <div className="mt-auto flex justify-end pt-3">
+      <time className="shrink-0 rounded-[3px] border border-ink/45 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-ink">{formatDate(summary.created_at)}</time>
+    </div>
+    <input type="checkbox" checked={props.selected} onClick={(e) => e.stopPropagation()} onChange={props.onToggle}
+      aria-label={summary.title}
+      className={`absolute right-3 top-3 accent-[hsl(var(--ink))] transition ${props.selected ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`} />
+  </div>;
 }
 
-function EmptyDetail({ title, text }: { title: string; text: string }) {
-  return <div className="flex h-full min-h-80 flex-col items-center justify-center text-center"><div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-muted text-lg text-muted-foreground">Aa</div><p className="text-sm font-semibold">{title}</p><p className="mt-2 text-xs text-muted-foreground">{text}</p></div>;
+function PaperCard(props: {
+  eyebrow: string; excerpt: string; meta?: string; date: string; selected: boolean;
+  onOpen: () => void; onToggle: () => void;
+}) {
+  return <div role="button" tabIndex={0} onClick={props.onOpen}
+    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); props.onOpen(); } }}
+    className={`group relative flex min-h-44 cursor-pointer flex-col rounded-xl bg-card p-4 text-left shadow-sm ring-1 transition hover:-translate-y-0.5 hover:shadow-md motion-reduce:transform-none ${props.selected ? "ring-2 ring-ink/60" : "ring-border/60"}`}>
+    <p className="mr-7 truncate text-[9px] font-bold uppercase tracking-[0.14em] text-ink">{props.eyebrow}</p>
+    <p className="mt-2.5 line-clamp-4 font-manuscript text-[13px] leading-6 text-foreground/90">{props.excerpt}</p>
+    <div className="mt-auto flex items-end justify-between gap-2 pt-4">
+      <span className="text-[10px] text-muted-foreground">{props.meta}</span>
+      <time className="shrink-0 rounded-[3px] border border-ink/45 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-ink">{props.date}</time>
+    </div>
+    <input type="checkbox" checked={props.selected} onClick={(e) => e.stopPropagation()} onChange={props.onToggle}
+      aria-label={props.eyebrow}
+      className={`absolute right-3 top-3 accent-[hsl(var(--ink))] transition ${props.selected ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`} />
+  </div>;
+}
+
+function SelectionBar(props: { label: string; busy: boolean; onAction: () => void; onDelete: () => void; onClear: () => void }) {
+  const t = useT();
+  return <div className="pointer-events-none absolute inset-x-0 bottom-5 flex justify-center px-4">
+    <div className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-card py-1.5 pl-1.5 pr-2 shadow-lg ring-1 ring-border/70 animate-fade-in">
+      <Button disabled={props.busy} onClick={props.onAction} className="h-8 rounded-full px-4 text-[11px] font-semibold">{props.label}</Button>
+      <Button variant="ghost" size="icon" onClick={props.onDelete} title={t("writing.delete")} aria-label={t("writing.delete")} className="h-8 w-8 rounded-full text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
+      <button onClick={props.onClear} title={t("writing.cancel")} aria-label={t("writing.cancel")} className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition hover:text-foreground"><X className="h-3.5 w-3.5" /></button>
+    </div>
+  </div>;
+}
+
+function BackButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return <button onClick={onClick} className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition hover:text-foreground">
+    <ArrowLeft className="h-3.5 w-3.5" />{label}
+  </button>;
+}
+
+function SectionLabel({ text }: { text: string }) {
+  return <p className="flex items-center gap-2.5 text-[10px] font-bold uppercase tracking-[0.16em] text-ink"><span className="h-px w-5 bg-ink/60" />{text}</p>;
+}
+
+function EmptyWall({ text }: { text: string }) {
+  return <div className="flex min-h-72 flex-col items-center justify-center text-center">
+    <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-[4px] border border-ink/50 font-manuscript text-lg italic text-ink">Aa</div>
+    <p className="text-xs text-muted-foreground">{text}</p>
+  </div>;
 }
 
 function toggleSet<T>(source: Set<T>, value: T) {
