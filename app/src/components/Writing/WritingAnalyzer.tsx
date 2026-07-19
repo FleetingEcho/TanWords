@@ -29,7 +29,15 @@ export function WritingAnalyzer({ compact = false, onSaved }: { compact?: boolea
   const [customSentence, setCustomSentence] = useState({ original: "", refined: "", explanation: "" });
   const [customVocab, setCustomVocab] = useState("");
   const abortRef = useRef<AbortController | null>(null);
+  const sheetRef = useRef<HTMLTextAreaElement | null>(null);
   const wordCount = useMemo(() => text.trim() ? text.trim().split(/\s+/).length : 0, [text]);
+
+  useEffect(() => {
+    const el = sheetRef.current;
+    if (!el) return;
+    el.style.height = "0px";
+    el.style.height = `${Math.max(el.scrollHeight, compact ? 160 : 240)}px`;
+  }, [text, compact]);
 
   useEffect(() => {
     const syncMode = (event: Event) => {
@@ -67,13 +75,29 @@ export function WritingAnalyzer({ compact = false, onSaved }: { compact?: boolea
     if (index >= 0 && savedCandidates.has(index)) return;
     try {
       await invoke("db_save_writing_submission", { input: {
-        originalText: candidate.original, inputType: "saved", detectedGenre: "", overallFeedback: "",
+        originalText: candidate.original, inputType: "sentence", detectedGenre: "", overallFeedback: "",
         refinedFullText: candidate.refined, structureFeedback: "", coherenceFeedback: "", toneFeedback: "",
         sentences: [{ original: candidate.original, corrected: candidate.refined, natural: candidate.refined, explanation: candidate.explanation, vocabulary: [] }],
         modelEssays: [],
       } });
       if (index >= 0) setSavedCandidates((old) => new Set(old).add(index));
       toast.success(t("writing.savedSentence"));
+      window.dispatchEvent(new CustomEvent("writing-updated"));
+      onSaved?.();
+    } catch (error) { toast.error(t("writing.saveFailed", { error: String(error) })); }
+  };
+
+  const saveAll = async () => {
+    if (!result?.candidates.length) return;
+    try {
+      await invoke("db_save_writing_submission", { input: {
+        originalText: text.trim(), inputType: result.candidates.length > 1 ? "essay" : "sentence", detectedGenre: "", overallFeedback: result.analysis || "",
+        refinedFullText: result.refinedText, structureFeedback: "", coherenceFeedback: "", toneFeedback: "",
+        sentences: result.candidates.map((candidate) => ({ original: candidate.original, corrected: candidate.refined, natural: candidate.refined, explanation: candidate.explanation, vocabulary: [] })),
+        modelEssays: result.modelEssays,
+      } });
+      setSavedCandidates(new Set(result.candidates.map((_, index) => index)));
+      toast.success(t("writing.savedAll"));
       window.dispatchEvent(new CustomEvent("writing-updated"));
       onSaved?.();
     } catch (error) { toast.error(t("writing.saveFailed", { error: String(error) })); }
@@ -111,49 +135,93 @@ export function WritingAnalyzer({ compact = false, onSaved }: { compact?: boolea
     setShowCustomSentence(false);
   };
 
-  return <div className={`h-full min-h-0 ${compact ? "flex flex-col overflow-y-auto" : "grid lg:grid-cols-[minmax(0,1fr)_minmax(400px,0.9fr)]"}`}>
-    <section className="flex min-h-0 flex-col bg-background lg:border-r lg:border-border/70">
-      <div className="px-5 pt-4">
-        <div className="grid grid-cols-2 rounded-xl bg-muted/70 p-1">
-          {(["quick", "deep"] as const).map((value) => <button key={value} onClick={() => setMode(value)} className={`rounded-lg px-3 py-2 text-left transition ${mode === value ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
-            <span className="block text-xs font-semibold">{t(`writing.${value}`)}</span><span className="mt-0.5 hidden text-[10px] text-muted-foreground sm:block">{t(`writing.${value}Hint`)}</span>
-          </button>)}
+  return <div className="h-full min-h-0 overflow-y-auto">
+    <div className={`mx-auto max-w-3xl px-5 ${compact ? "py-4" : "py-7 md:px-8"}`}>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+        <div className="flex gap-5">
+          {(["quick", "deep"] as const).map((value) => <button key={value} onClick={() => setMode(value)} className={`border-b-2 pb-1 text-xs font-semibold transition ${mode === value ? "border-ink text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}>{t(`writing.${value}`)}</button>)}
+        </div>
+        <p className="text-[11px] text-muted-foreground/80">{t(`writing.${mode}Hint`)}</p>
+      </div>
+
+      <div className="mt-4 rounded-2xl bg-card shadow-sm ring-1 ring-border/60">
+        <textarea ref={sheetRef} value={text} onChange={(event) => setText(event.target.value)} placeholder={t("writing.placeholder")}
+          className="block w-full resize-none overflow-hidden bg-transparent px-6 pb-4 pt-6 font-manuscript text-[17px] leading-8 outline-none placeholder:italic placeholder:text-muted-foreground/40" />
+        <div className="flex flex-wrap items-center gap-3 border-t border-border/50 px-5 py-3">
+          <span className="font-mono text-[10px] tabular-nums text-muted-foreground">{t("writing.words", { count: wordCount })}</span>
+          {mode === "deep" && <><label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" className="accent-[hsl(var(--ink))]" checked={essayCount > 0} onChange={(event) => setEssayCount(event.target.checked ? 1 : 0)} />{t("writing.modelEssay")}</label>{essayCount > 0 && <select value={essayCount} onChange={(event) => setEssayCount(Number(event.target.value))} className="h-8 rounded-lg border border-input bg-background px-2 text-xs"><option value={1}>{t("writing.essayCount", { count: 1 })}</option><option value={2}>{t("writing.essayCount", { count: 2 })}</option></select>}</>}
+          <div className="flex-1" />
+          {loading && <Button variant="ghost" onClick={() => { abortRef.current?.abort(); setLoading(false); }} className="h-9 px-3 text-xs">{t("writing.stop")}</Button>}
+          <Button onClick={run} disabled={loading || !text.trim()} className="h-9 rounded-full px-5 text-xs font-semibold">{loading ? t("writing.analyzing") : result ? t("writing.analyzeAgain") : t("writing.analyze")}</Button>
         </div>
       </div>
-      <div className="flex items-center justify-between px-6 pb-2 pt-4">
-        <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t("writing.yourWriting")}</p><p className="mt-1 text-xs text-muted-foreground/70">{t("writing.inputHint")}</p></div>
-        <span className="rounded-full bg-muted px-2.5 py-1 text-[10px] tabular-nums text-muted-foreground">{t("writing.words", { count: wordCount })}</span>
-      </div>
-      <textarea value={text} onChange={(event) => setText(event.target.value)} placeholder={t("writing.placeholder")} className={`min-h-0 flex-1 resize-none bg-transparent px-6 py-4 text-[16px] leading-8 outline-none placeholder:text-muted-foreground/35 ${compact ? "min-h-52" : ""}`} />
-      <div className="flex flex-wrap items-center gap-3 border-t border-border/60 px-5 py-3">
-        {mode === "deep" && <><label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={essayCount > 0} onChange={(event) => setEssayCount(event.target.checked ? 1 : 0)} />{t("writing.modelEssay")}</label>{essayCount > 0 && <select value={essayCount} onChange={(event) => setEssayCount(Number(event.target.value))} className="h-8 rounded-lg border border-input bg-background px-2 text-xs"><option value={1}>{t("writing.essayCount", { count: 1 })}</option><option value={2}>{t("writing.essayCount", { count: 2 })}</option></select>}</>}
-        <div className="flex-1" />
-        {loading && <Button variant="ghost" onClick={() => { abortRef.current?.abort(); setLoading(false); }} className="h-9 px-3 text-xs">{t("writing.stop")}</Button>}
-        <Button onClick={run} disabled={loading || !text.trim()} className="h-9 rounded-lg px-5 text-xs font-semibold">{loading ? t("writing.analyzing") : result ? t("writing.analyzeAgain") : t("writing.analyze")}</Button>
-      </div>
-    </section>
 
-    <section className={`min-h-0 flex-col bg-muted/20 ${compact ? result || loading ? "flex min-h-80" : "hidden" : "flex"}`}>
-      <div className="border-b border-border/60 px-5 py-4"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t("writing.result")}</p></div>
-      <div className="flex-1 overflow-y-auto px-5 py-5">
-        {!result && !loading && <div className="flex h-full min-h-64 flex-col items-center justify-center text-center"><div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-xl text-primary">Aa</div><p className="text-sm font-semibold">{t("writing.emptyTitle")}</p><p className="mt-2 max-w-xs text-xs leading-5 text-muted-foreground">{t("writing.emptyHint")}</p></div>}
-        {loading && <div className="flex h-full min-h-64 flex-col items-center justify-center"><span className="h-6 w-6 animate-spin rounded-full border-2 border-primary/20 border-t-primary"/><p className="mt-3 text-xs text-muted-foreground">{t("writing.progress", { count: progress.length })}</p></div>}
-        {result && <div className="space-y-7">
-          <ResultSection title={t("writing.refined")}><p className="whitespace-pre-wrap rounded-xl bg-background p-4 text-sm leading-7 ring-1 ring-border/60">{result.refinedText}</p></ResultSection>
-          {result.analysis && <ResultSection title={t("writing.analysis")}><div className="text-sm leading-7"><Markdown text={result.analysis}/></div></ResultSection>}
-          <ResultSection title={t("writing.candidates")}><div className="space-y-3">{result.candidates.map((candidate, index) => <div key={`${candidate.original}-${index}`} className="rounded-xl bg-background p-4 ring-1 ring-border/60"><p className="text-xs leading-5 text-muted-foreground line-through decoration-destructive/40">{candidate.original}</p><p className="mt-2 text-sm leading-6">{candidate.refined}</p>{candidate.explanation && <p className="mt-2 text-xs leading-5 text-muted-foreground">{candidate.explanation}</p>}<Button variant="outline" disabled={savedCandidates.has(index)} onClick={() => saveCandidate(candidate, index)} className="mt-3 h-8 px-3 text-[11px]">{savedCandidates.has(index) ? t("writing.collected") : t("writing.collect")}</Button></div>)}</div>
-            {!showCustomSentence ? <Button variant="ghost" onClick={() => setShowCustomSentence(true)} className="mt-3 h-8 px-2 text-xs text-primary">+ {t("writing.addCustomSentence")}</Button> : <div className="mt-3 space-y-2 rounded-xl border border-border bg-background p-3"><textarea value={customSentence.original} onChange={(e) => setCustomSentence({ ...customSentence, original: e.target.value })} placeholder={t("writing.originalSentence")} className="min-h-16 w-full resize-y rounded-lg border border-input bg-background p-3 text-xs"/><textarea value={customSentence.refined} onChange={(e) => setCustomSentence({ ...customSentence, refined: e.target.value })} placeholder={t("writing.refinedSentence")} className="min-h-16 w-full resize-y rounded-lg border border-input bg-background p-3 text-xs"/><input value={customSentence.explanation} onChange={(e) => setCustomSentence({ ...customSentence, explanation: e.target.value })} placeholder={t("writing.explanation")} className="h-9 w-full rounded-lg border border-input bg-background px-3 text-xs"/><div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => setShowCustomSentence(false)} className="h-8 text-xs">{t("writing.cancel")}</Button><Button disabled={!customSentence.original.trim() || !customSentence.refined.trim()} onClick={addCustomSentence} className="h-8 text-xs">{t("writing.collect")}</Button></div></div>}
-          </ResultSection>
-          <ResultSection title={t("writing.vocabulary")}><div className="space-y-3">{result.vocabulary.map((item, index) => <div key={`${item.word}-${index}`} className="rounded-xl bg-background p-4 ring-1 ring-border/60"><div className="flex items-baseline gap-2"><b className="text-sm">{item.word}</b>{item.level && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">{item.level}</span>}<span className="text-xs text-muted-foreground">{item.meaning}</span></div>{item.reason && <p className="mt-2 text-xs leading-5 text-muted-foreground">{item.reason}</p>}<p className="mt-1 text-xs italic leading-5">{item.exampleSentence}</p><Button variant="outline" disabled={savedVocabulary.has(index)} onClick={() => addVocabulary(item, index)} className="mt-3 h-8 px-3 text-[11px]">{savedVocabulary.has(index) ? t("writing.vocabAdded") : t("writing.addVocab")}</Button></div>)}</div>
-            {!showCustomVocab ? <Button variant="ghost" onClick={() => setShowCustomVocab(true)} className="mt-3 h-8 px-2 text-xs text-primary">+ {t("writing.addCustomVocab")}</Button> : <div className="mt-3 rounded-xl border border-border bg-background p-3"><div className="flex gap-2"><label className="relative min-w-0 flex-1"><Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"/><input autoFocus value={customVocab} onChange={(e) => setCustomVocab(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void addCustomVocabulary(); }} placeholder={t("writing.searchVocab")} className="h-9 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-xs outline-none focus:ring-1 focus:ring-primary"/></label><Button disabled={!customVocab.trim()} onClick={addCustomVocabulary} className="h-9 text-xs">{t("writing.addVocab")}</Button><Button variant="ghost" onClick={() => { setShowCustomVocab(false); setCustomVocab(""); }} className="h-9 px-2 text-xs">{t("writing.cancel")}</Button></div></div>}
-          </ResultSection>
-          {result.modelEssays.length > 0 && <ResultSection title={t("writing.modelEssays")}><div className="space-y-2">{result.modelEssays.map((essay, index) => <details key={index} className="rounded-xl bg-background p-4 ring-1 ring-border/60"><summary className="cursor-pointer text-xs font-semibold">{t("writing.modelEssay")} {index + 1}</summary><p className="mt-3 whitespace-pre-wrap text-sm leading-7">{essay}</p></details>)}</div></ResultSection>}
-        </div>}
-      </div>
-    </section>
+      {!result && !loading && !compact && <p className="mt-7 text-center text-xs text-muted-foreground/60">{t("writing.emptyHint")}</p>}
+
+      {loading && <div className="flex min-h-48 flex-col items-center justify-center">
+        <span className="h-6 w-6 animate-spin rounded-full border-2 border-ink/20 border-t-[hsl(var(--ink))] motion-reduce:animate-none" />
+        <p className="mt-3 font-mono text-[11px] text-muted-foreground">{t("writing.progress", { count: progress.length })}</p>
+      </div>}
+
+      {result && <div className="mt-10 space-y-10 pb-12 animate-fade-in">
+        <section>
+          <SectionLabel text={t("writing.refined")} />
+          <p className="mt-3 whitespace-pre-wrap rounded-xl bg-card p-5 font-manuscript text-[16px] leading-8 shadow-sm ring-1 ring-border/60">{result.refinedText}</p>
+        </section>
+
+        {result.analysis && <section>
+          <SectionLabel text={t("writing.analysis")} />
+          <div className="mt-3 text-sm leading-7"><Markdown text={result.analysis} /></div>
+        </section>}
+
+        <section>
+          <div className="flex items-center justify-between gap-4">
+            <SectionLabel text={t("writing.candidates")} />
+            {result.candidates.length > 0 && <Button variant="outline" disabled={result.candidates.every((_, index) => savedCandidates.has(index))} onClick={saveAll} className="h-7 rounded-full px-3 text-[11px]">{result.candidates.every((_, index) => savedCandidates.has(index)) ? t("writing.collectedAll") : t("writing.collectAll")}</Button>}
+          </div>
+          <div className="mt-5 space-y-7">
+            {result.candidates.map((candidate, index) => <div key={`${candidate.original}-${index}`} className="border-l-2 border-ink/40 pl-5">
+              <p className="font-manuscript text-[15px] leading-7 text-muted-foreground line-through decoration-ink/60">{candidate.original}</p>
+              <p className="mt-1.5 font-manuscript text-[15px] leading-7">{candidate.refined}</p>
+              {candidate.explanation && <p className="mt-2.5 text-xs leading-6 text-muted-foreground"><span className="mr-1.5 font-bold text-ink">※</span>{candidate.explanation}</p>}
+              <Button variant="outline" disabled={savedCandidates.has(index)} onClick={() => saveCandidate(candidate, index)} className="mt-3 h-7 rounded-full px-3 text-[11px]">{savedCandidates.has(index) ? t("writing.collected") : t("writing.collect")}</Button>
+            </div>)}
+          </div>
+          {!showCustomSentence ? <Button variant="ghost" onClick={() => setShowCustomSentence(true)} className="mt-4 h-8 px-2 text-xs text-ink hover:text-ink">+ {t("writing.addCustomSentence")}</Button> : <div className="mt-4 space-y-2 rounded-xl bg-card p-3 ring-1 ring-border/60"><textarea value={customSentence.original} onChange={(e) => setCustomSentence({ ...customSentence, original: e.target.value })} placeholder={t("writing.originalSentence")} className="min-h-16 w-full resize-y rounded-lg border border-input bg-background p-3 font-manuscript text-xs" /><textarea value={customSentence.refined} onChange={(e) => setCustomSentence({ ...customSentence, refined: e.target.value })} placeholder={t("writing.refinedSentence")} className="min-h-16 w-full resize-y rounded-lg border border-input bg-background p-3 font-manuscript text-xs" /><input value={customSentence.explanation} onChange={(e) => setCustomSentence({ ...customSentence, explanation: e.target.value })} placeholder={t("writing.explanation")} className="h-9 w-full rounded-lg border border-input bg-background px-3 text-xs" /><div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => setShowCustomSentence(false)} className="h-8 text-xs">{t("writing.cancel")}</Button><Button disabled={!customSentence.original.trim() || !customSentence.refined.trim()} onClick={addCustomSentence} className="h-8 text-xs">{t("writing.collect")}</Button></div></div>}
+        </section>
+
+        <section>
+          <SectionLabel text={t("writing.vocabulary")} />
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {result.vocabulary.map((item, index) => <div key={`${item.word}-${index}`} className="flex flex-col rounded-xl bg-card p-4 shadow-sm ring-1 ring-border/60">
+              <div className="flex items-baseline gap-2">
+                <b className="font-manuscript text-[15px]">{item.word}</b>
+                {item.level && <span className="rounded bg-ink/10 px-1.5 py-0.5 text-[10px] font-semibold text-ink">{item.level}</span>}
+                <span className="min-w-0 truncate text-xs text-muted-foreground">{item.meaning}</span>
+              </div>
+              <p className="mt-2 font-manuscript text-xs italic leading-5">{item.exampleSentence}</p>
+              {item.reason && <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground">{item.reason}</p>}
+              <div className="flex-1" />
+              <Button variant="outline" disabled={savedVocabulary.has(index)} onClick={() => addVocabulary(item, index)} className="mt-3 h-7 self-start rounded-full px-3 text-[11px]">{savedVocabulary.has(index) ? t("writing.vocabAdded") : t("writing.addVocab")}</Button>
+            </div>)}
+          </div>
+          {!showCustomVocab ? <Button variant="ghost" onClick={() => setShowCustomVocab(true)} className="mt-4 h-8 px-2 text-xs text-ink hover:text-ink">+ {t("writing.addCustomVocab")}</Button> : <div className="mt-4 rounded-xl bg-card p-3 ring-1 ring-border/60"><div className="flex gap-2"><label className="relative min-w-0 flex-1"><Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" /><input autoFocus value={customVocab} onChange={(e) => setCustomVocab(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void addCustomVocabulary(); }} placeholder={t("writing.searchVocab")} className="h-9 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-xs outline-none focus:ring-1 focus:ring-ring" /></label><Button disabled={!customVocab.trim()} onClick={addCustomVocabulary} className="h-9 text-xs">{t("writing.addVocab")}</Button><Button variant="ghost" onClick={() => { setShowCustomVocab(false); setCustomVocab(""); }} className="h-9 px-2 text-xs">{t("writing.cancel")}</Button></div></div>}
+        </section>
+
+        {result.modelEssays.length > 0 && <section>
+          <SectionLabel text={t("writing.modelEssays")} />
+          <div className="mt-4 space-y-2">
+            {result.modelEssays.map((essay, index) => <details key={index} className="rounded-xl bg-card p-4 shadow-sm ring-1 ring-border/60">
+              <summary className="cursor-pointer text-xs font-semibold">{t("writing.modelEssay")} {index + 1}</summary>
+              <p className="mt-3 whitespace-pre-wrap font-manuscript text-[15px] leading-8">{essay}</p>
+            </details>)}
+          </div>
+        </section>}
+      </div>}
+    </div>
   </div>;
 }
 
-function ResultSection({ title, children }: { title: string; children: React.ReactNode }) {
-  return <section><h3 className="mb-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{title}</h3>{children}</section>;
+function SectionLabel({ text }: { text: string }) {
+  return <p className="flex items-center gap-2.5 text-[10px] font-bold uppercase tracking-[0.16em] text-ink"><span className="h-px w-5 bg-ink/60" />{text}</p>;
 }

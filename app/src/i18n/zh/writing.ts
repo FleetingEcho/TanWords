@@ -2,13 +2,14 @@ import type { Dict } from "../types";
 
 export const writing: Dict = {
   "writing.title": "写作工坊", "writing.subtitle": "写得更自然，也知道为什么。", "writing.aiReady": "AI 已就绪",
-  "writing.compose": "开始写作", "writing.records": "写作记录", "writing.summaries": "学习总结",
+  "writing.compose": "开始写作", "writing.records": "写作记录", "writing.summaries": "学习总结", "writing.library": "手稿库",
   "writing.quick": "简洁优化", "writing.deep": "深度分析", "writing.quickHint": "快速润色并给出少量关键建议", "writing.deepHint": "深入分析表达、结构、逻辑和语气",
   "writing.yourWriting": "你的写作", "writing.inputHint": "输入一句话、段落或完整文章", "writing.placeholder": "用英文开始写作…", "writing.words": "{count} 词",
   "writing.modelEssay": "参考范文", "writing.essayCount": "{count} 篇", "writing.stop": "停止", "writing.analyze": "开始分析", "writing.analyzeAgain": "重新分析", "writing.analyzing": "分析中…",
   "writing.result": "AI 建议", "writing.emptyTitle": "分析结果会显示在这里", "writing.emptyHint": "你决定哪些句子和词汇值得保存。", "writing.progress": "正在分析 · {count} 字符",
   "writing.refined": "优化版本", "writing.analysis": "分析建议", "writing.candidates": "值得收藏的表达", "writing.vocabulary": "推荐词汇", "writing.modelEssays": "参考范文",
   "writing.original": "原文", "writing.refinedSnippet": "优化", "writing.explanation": "说明", "writing.collect": "收藏句子", "writing.collected": "已收藏",
+  "writing.collectAll": "全部收藏", "writing.collectedAll": "已全部收藏", "writing.savedAll": "已存入写作记录",
   "writing.addCustomSentence": "自己添加句子", "writing.originalSentence": "原句", "writing.refinedSentence": "优化后的句子",
   "writing.addVocab": "加入词汇库", "writing.vocabAdded": "已加入", "writing.alreadyExists": "“{word}” 已在词汇库中", "writing.addCustomVocab": "自己添加词汇",
   "writing.word": "单词或表达", "writing.meaning": "中文释义", "writing.example": "语境例句", "writing.reason": "备注或推荐原因", "writing.add": "添加", "writing.cancel": "取消", "writing.searchVocab": "搜索或输入单词…",

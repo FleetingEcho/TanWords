@@ -43,6 +43,9 @@
     --sidebar-border: 220 13% 91%;
     --sidebar-active-bg: 243 100% 96%;
     --sidebar-active-fg: 243 75% 59%;
+    /* Writing studio — blue "fountain-pen ink" for annotations + manuscript serif */
+    --ink: 211 65% 45%;
+    --manuscript-font: "Georgia", "Iowan Old Style", "Times New Roman", "Songti SC", "STSong", serif;
   }
 
   .dark {
@@ -71,6 +74,7 @@
     --sidebar-border: 222 14% 18%;
     --sidebar-active-bg: 243 50% 22%;
     --sidebar-active-fg: 243 75% 75%;
+    --ink: 210 55% 70%;
   }
 }
 
@@ -80,6 +84,7 @@
   body { @apply bg-background text-foreground; }
   .font-sans { font-family: var(--app-font); }
   .font-mono { font-family: var(--code-font); }
+  .font-manuscript { font-family: var(--manuscript-font); }
 }
 
 ::-webkit-scrollbar { width: 5px; height: 5px; }
