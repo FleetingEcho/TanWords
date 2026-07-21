@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { claimAudioChannel, releaseAudioChannel } from "@/lib/audioChannel";
+import { toPlayableSrc } from "@/lib/localAudioSrc";
 import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
 import { PlayMode, nextIndexOnEnded, nextIndexOnSkip } from "@/features/music/queue";
 
@@ -42,6 +43,20 @@ interface PodcastPlayerState {
 let audio: HTMLAudioElement | null = null;
 
 const pauseAudio = () => audio?.pause();
+
+// Only one track plays at a time, so a single slot (revoked on replace/stop)
+// is enough here — unlike the duration-probing in MusicPage.tsx, which
+// resolves several tracks concurrently and owns its blob URLs individually.
+let currentBlobUrl: string | null = null;
+
+async function resolvePlayableSrc(url: string): Promise<string> {
+  const src = await toPlayableSrc(url);
+  if (src !== url) {
+    if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+    currentBlobUrl = src;
+  }
+  return src;
+}
 
 function getAudio(): HTMLAudioElement {
   if (audio) return audio;
@@ -91,6 +106,12 @@ function getAudio(): HTMLAudioElement {
     s.stop();
   });
   audio.addEventListener("error", () => {
+    console.error("[podcastPlayer] audio error", {
+      code: audio!.error?.code,
+      message: audio!.error?.message,
+      src: audio!.src,
+      networkState: audio!.networkState,
+    });
     if (usePodcastPlayerStore.getState().status !== "idle") {
       usePodcastPlayerStore.setState({ status: "error" });
     }
@@ -101,16 +122,25 @@ function getAudio(): HTMLAudioElement {
 /** Loads and plays playlist[index]. Always resets src — unlike play(), which
  * treats a same-URL call as resume, a queue jump to the same track (loop-one)
  * must restart from the top. */
-function playAt(index: number) {
+async function playAt(index: number) {
   const el = getAudio();
   const s = usePodcastPlayerStore.getState();
   const track = s.playlist?.[index];
   if (!track) return;
   usePodcastPlayerStore.setState({ track, playlistIndex: index, status: "loading", position: 0, duration: 0 });
-  el.src = track.audioUrl;
-  el.currentTime = 0;
-  el.playbackRate = s.speed;
-  el.play().catch(() => usePodcastPlayerStore.setState({ status: "error" }));
+  try {
+    const src = await resolvePlayableSrc(track.audioUrl);
+    // A newer playAt/play/stop may have run while we were fetching; bail so
+    // we don't stomp a since-changed track with this stale load.
+    if (usePodcastPlayerStore.getState().track !== track) return;
+    el.src = src;
+    el.currentTime = 0;
+    el.playbackRate = s.speed;
+    await el.play();
+  } catch (e) {
+    console.error("[podcastPlayer] play() rejected", e);
+    usePodcastPlayerStore.setState({ status: "error" });
+  }
 }
 
 export const usePodcastPlayerStore = create<PodcastPlayerState>((set, get) => ({
@@ -132,14 +162,22 @@ export const usePodcastPlayerStore = create<PodcastPlayerState>((set, get) => ({
 
     const { track: current } = get();
     if (current?.audioUrl === track.audioUrl) {
-      el.play().catch(() => set({ status: "error" }));
+      el.play().catch((e) => { console.error("[podcastPlayer] play() rejected", e); set({ status: "error" }); });
       return;
     }
 
     set({ track, playlist: null, playlistIndex: 0, status: "loading", position: 0, duration: 0 });
-    el.src = track.audioUrl;
-    el.playbackRate = get().speed;
-    el.play().catch(() => set({ status: "error" }));
+    resolvePlayableSrc(track.audioUrl)
+      .then((src) => {
+        if (get().track !== track) return; // superseded while fetching
+        el.src = src;
+        el.playbackRate = get().speed;
+        return el.play();
+      })
+      .catch((e) => {
+        console.error("[podcastPlayer] play() rejected", e);
+        set({ status: "error" });
+      });
   },
 
   playQueue: (tracks, startIndex, mode) => {
@@ -165,7 +203,7 @@ export const usePodcastPlayerStore = create<PodcastPlayerState>((set, get) => ({
     if (status === "playing" || status === "loading") el.pause();
     else if (status === "paused") {
       claimAudioChannel(pauseAudio);
-      el.play().catch(() => set({ status: "error" }));
+      el.play().catch((e) => { console.error("[podcastPlayer] play() rejected", e); set({ status: "error" }); });
     } else if (status === "error") {
       const { track } = get();
       if (track) {
@@ -193,6 +231,10 @@ export const usePodcastPlayerStore = create<PodcastPlayerState>((set, get) => ({
     const el = getAudio();
     el.pause();
     el.removeAttribute("src");
+    if (currentBlobUrl) {
+      URL.revokeObjectURL(currentBlobUrl);
+      currentBlobUrl = null;
+    }
     releaseAudioChannel(pauseAudio);
     set({ status: "idle", track: null, playlist: null, playlistIndex: 0, position: 0, duration: 0 });
   },
