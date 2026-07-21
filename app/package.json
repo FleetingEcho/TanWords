@@ -12,7 +12,7 @@
     "tauri": "tauri",
     "build:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1",
     "build:windows:portable": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1 -Portable",
-    "build:appimage": "tauri build --bundles appimage",
+    "build:appimage": "PKG_CONFIG_PATH=\"/usr/local/lib/x86_64-linux-gnu/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:$PKG_CONFIG_PATH\" tauri build --bundles appimage",
     "build:dmg": "tauri build --bundles dmg",
     "build:release:mac": "tauri build --target universal-apple-darwin --bundles app,dmg && bash scripts/verify-release-data.sh"
   },
