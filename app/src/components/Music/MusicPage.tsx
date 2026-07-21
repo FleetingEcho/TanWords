@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { toPlayableSrc } from "@/lib/localAudioSrc";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -23,7 +24,14 @@ interface MusicCollection {
 
 type ViewMode = "cards" | "list";
 
-function probeAudioDuration(path: string): Promise<number | null> {
+async function probeAudioDuration(path: string): Promise<number | null> {
+  let blobUrl: string | null = null;
+  try {
+    blobUrl = await toPlayableSrc(convertFileSrc(path));
+  } catch {
+    return null;
+  }
+  const src = blobUrl;
   return new Promise((resolve) => {
     const audio = new Audio();
     let settled = false;
@@ -33,6 +41,7 @@ function probeAudioDuration(path: string): Promise<number | null> {
       window.clearTimeout(timeout);
       audio.removeAttribute("src");
       audio.load();
+      if (src.startsWith("blob:")) URL.revokeObjectURL(src);
       resolve(duration);
     };
     const timeout = window.setTimeout(() => finish(null), 10_000);
@@ -44,7 +53,7 @@ function probeAudioDuration(path: string): Promise<number | null> {
       { once: true }
     );
     audio.addEventListener("error", () => finish(null), { once: true });
-    audio.src = convertFileSrc(path);
+    audio.src = src;
   });
 }
 
