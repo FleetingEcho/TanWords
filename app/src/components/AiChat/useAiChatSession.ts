@@ -214,7 +214,7 @@ export function useAiChatSession() {
         messageCount: items.filter((item) => item.kind === "message").length,
       });
       localStorage.setItem(ACTIVE_SESSION_KEY, id);
-    }, 2000);
+    }, 6000);
     return () => window.clearInterval(timer);
   }, [streaming, db, systemPrompt, selectedPreset, selectedProviderId]);
 
@@ -312,7 +312,14 @@ export function useAiChatSession() {
     const controller = new AbortController();
     controllerRef.current = controller;
 
-    const updateLastAssistant = (content: string) => {
+    // Providers may yield token-sized chunks. Rendering Markdown for every
+    // token makes long chats progressively more expensive, so coalesce UI
+    // updates to roughly one frame every 50ms while retaining every byte.
+    let pendingAssistant = "";
+    let renderTimer: number | null = null;
+    const commitLastAssistant = () => {
+      renderTimer = null;
+      const content = pendingAssistant;
       setDisplayItems((prev) => {
         const next = [...prev];
         for (let i = next.length - 1; i >= 0; i--) {
@@ -327,6 +334,14 @@ export function useAiChatSession() {
         return next;
       });
     };
+    const updateLastAssistant = (content: string) => {
+      pendingAssistant = content;
+      if (renderTimer === null) renderTimer = window.setTimeout(commitLastAssistant, 50);
+    };
+    const flushLastAssistant = () => {
+      if (renderTimer !== null) window.clearTimeout(renderTimer);
+      commitLastAssistant();
+    };
 
     try {
       const MAX_ITER = 5;
@@ -340,7 +355,8 @@ export function useAiChatSession() {
             (chunk) => { textContent += chunk; updateLastAssistant(textContent); }
           );
           textContent = response.textContent;
-          updateLastAssistant(textContent);
+          pendingAssistant = textContent;
+          flushLastAssistant();
 
           currentItems = currentItems.map((item, idx) => {
             if (item.kind === "message" && item.msg.role === "assistant" && idx === currentItems.length - 1) {
@@ -410,6 +426,8 @@ export function useAiChatSession() {
             textContent += chunk;
             updateLastAssistant(textContent);
           }
+          pendingAssistant = textContent;
+          flushLastAssistant();
           currentItems = currentItems.map((item, idx) =>
             item.kind === "message" && item.msg.role === "assistant" && idx === currentItems.length - 1
               ? { kind: "message", msg: { role: "assistant", content: textContent } }
@@ -419,6 +437,7 @@ export function useAiChatSession() {
         }
       }
     } catch (e: any) {
+      if (renderTimer !== null) window.clearTimeout(renderTimer);
       if (e?.name === "AbortError") return; // handleStop already saved partial content
       const msg = e?.message ?? "Request failed";
       toast.error(msg.includes("401") ? t("aichat.invalidKey") : t("aichat.requestFailed"));
@@ -426,6 +445,7 @@ export function useAiChatSession() {
     }
 
     if (!controller.signal.aborted) {
+      if (renderTimer !== null) window.clearTimeout(renderTimer);
       setStreaming(false);
       setItems(currentItems);
       await saveSession(sessionId, title, currentItems, sysPrompt, selectedPreset, selectedProviderId);

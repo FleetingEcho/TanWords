@@ -66,7 +66,12 @@ function App() {
   // click-to-first-sentence latency down to just one real synth call.
   useEffect(() => {
     if (!isLoaded || !ttsModelPath) return;
-    invoke("tts_load_model", { path: ttsModelPath }).catch(() => {});
+    // Let the first paint, settings hydration and initial DB reads settle
+    // before starting CPU-heavy ONNX session construction in the background.
+    const timer = window.setTimeout(() => {
+      invoke("tts_load_model", { path: ttsModelPath }).catch(() => {});
+    }, 2000);
+    return () => window.clearTimeout(timer);
   }, [isLoaded, ttsModelPath]);
 
   // Seed vocabulary once per install (localStorage flag prevents re-seeding)

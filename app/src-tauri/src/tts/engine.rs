@@ -115,30 +115,34 @@ fn build_handle(dir: &Path, kind: &str) -> Result<TtsHandle, String> {
 }
 
 #[tauri::command]
-pub fn tts_load_model(
+pub async fn tts_load_model(
     state: tauri::State<'_, crate::AppState>,
     path: String,
 ) -> Result<TtsModelInfo, String> {
-    let dir = PathBuf::from(&path);
-    let info = detect_model_dir(&dir).ok_or_else(|| "model not recognized".to_string())?;
-    if info.kind == "unknown" {
-        return Err("model not recognized".to_string());
-    }
+    // Session construction and the warm-up synthesis both perform synchronous
+    // ONNX work. Keep them off Tauri's command/runtime threads so app startup
+    // and unrelated IPC remain responsive while a saved model is preloaded.
+    let tts = state.tts.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let dir = PathBuf::from(&path);
+        let info = detect_model_dir(&dir).ok_or_else(|| "model not recognized".to_string())?;
+        if info.kind == "unknown" {
+            return Err("model not recognized".to_string());
+        }
 
-    let mut handle = build_handle(&dir, &info.kind)?;
-    // sherpa-rs only reports sample_rate on a synthesis result, so probe it
-    // once at load time with a throwaway sentence.
-    let (_, sample_rate) = handle.synthesize(".", 0, 1.0)?;
-
-    let mut guard = state.tts.lock().map_err(|e| e.to_string())?;
-    *guard = Some(LoadedEngine {
-        model_path: path,
-        kind: info.kind.clone(),
-        sample_rate,
-        handle,
-    });
-
-    Ok(info)
+        let mut handle = build_handle(&dir, &info.kind)?;
+        let (_, sample_rate) = handle.synthesize(".", 0, 1.0)?;
+        let mut guard = tts.lock().map_err(|e| e.to_string())?;
+        *guard = Some(LoadedEngine {
+            model_path: path,
+            kind: info.kind.clone(),
+            sample_rate,
+            handle,
+        });
+        Ok(info)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Deletes a model directory from disk — unloading it first if it's the one

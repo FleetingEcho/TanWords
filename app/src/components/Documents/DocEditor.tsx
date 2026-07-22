@@ -61,7 +61,7 @@ export function DocEditor({ doc, onSave, onTitleChange, onTagsChange, onPinToggl
     saveTimer.current = setTimeout(() => {
       const { content, contentText, wordCount } = editorToStorage(editor);
       onSave(content, contentText, wordCount);
-    }, 500);
+    }, 1000);
   }, [editor, onSave]);
 
   const switchMode = useCallback(async (next: "rich" | "raw") => {
@@ -97,7 +97,7 @@ export function DocEditor({ doc, onSave, onTitleChange, onTagsChange, onPinToggl
       const { content, contentText, wordCount } = blocksToStorage(blocks);
       onSave(content, contentText, wordCount);
       rawDirty.current = false;
-    }, 500);
+    }, 1000);
   };
 
   useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);

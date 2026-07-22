@@ -61,7 +61,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
         lastSavedRaw.current = markdown;
       }
       dirty.current = false;
-    }, 500);
+    }, 1000);
   }, [onSave]);
 
   useEffect(() => {
@@ -90,7 +90,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
         lastSavedRaw.current = raw;
       }
       dirty.current = false;
-    }, 500);
+    }, 1000);
   }, [editor, onSave, toRawMarkdown]);
 
   const switchMode = useCallback(async (nextMode: EditorMode) => {
