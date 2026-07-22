@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 interface Props {
   position: number;
@@ -12,6 +12,7 @@ interface Props {
 export function AudioSeekSlider({ position, duration, onSeek, ariaLabel, variant = "card" }: Props) {
   const [dragValue, setDragValue] = useState<number | null>(null);
   const pendingRef = useRef<number | null>(null);
+  const committedRef = useRef<number | null>(null);
   const glass = variant === "glass";
   const value = dragValue ?? Math.min(position, duration || position);
   const progress = duration > 0 ? Math.min(100, Math.max(0, (value / duration) * 100)) : 0;
@@ -20,11 +21,23 @@ export function AudioSeekSlider({ position, duration, onSeek, ariaLabel, variant
     pendingRef.current = next;
     setDragValue(next);
   };
+
+  useEffect(() => {
+    const committed = committedRef.current;
+    if (committed !== null && Math.abs(position - committed) <= 0.75) {
+      committedRef.current = null;
+      setDragValue(null);
+    }
+  }, [position]);
+
   const commit = () => {
     const pending = pendingRef.current;
     pendingRef.current = null;
-    setDragValue(null);
-    if (pending !== null) onSeek(pending);
+    if (pending !== null) {
+      committedRef.current = pending;
+      setDragValue(pending);
+      onSeek(pending);
+    }
   };
 
   return (
