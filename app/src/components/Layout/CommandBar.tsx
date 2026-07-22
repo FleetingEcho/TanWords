@@ -1,8 +1,8 @@
 import React from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
-  ArrowLeft, ArrowRight, BookPlus, BrainCircuit, Check, ChevronDown, FilePlus2,
-  MessageSquarePlus, Search, Server, Settings, Sparkles, Unplug, X,
+  ArrowLeft, ArrowRight, BookPlus, BrainCircuit, Check, ChevronDown, FilePlus2, Languages,
+  MessageSquarePlus, Monitor, Moon, Search, Server, Settings, Sparkles, Sun, Unplug, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,6 +30,10 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   const openWord = useWordModalStore((state) => state.openWordModal);
   const defaultProvider = useSettingsStore((state) => state.defaultAiProvider);
   const setDefaultProvider = useSettingsStore((state) => state.setDefaultAiProvider);
+  const language = useSettingsStore((state) => state.uiLanguage);
+  const setLanguage = useSettingsStore((state) => state.setUiLanguage);
+  const theme = useSettingsStore((state) => state.theme);
+  const setTheme = useSettingsStore((state) => state.setTheme);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [wordOpen, setWordOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -140,6 +144,21 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
               {availableProviders.length === 0 && <p className="px-2.5 py-4 text-center text-xs text-muted-foreground">{t("command.noModels")}</p>}
               <div className="my-1 h-px bg-border" />
               <DropdownMenuItem onClick={() => navigate("settings")}><Settings className="h-4 w-4" />{t("command.manageModels")}</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" title={t("settings.uiLanguage")} className="h-8 w-8 rounded-lg text-muted-foreground"><Languages className="h-4 w-4" /></Button></DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-40">
+              <DropdownMenuItem onClick={() => setLanguage("zh")}><span className="w-5 font-medium">中</span><span className="flex-1">中文</span>{language === "zh" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setLanguage("en")}><span className="w-5 font-medium">En</span><span className="flex-1">English</span>{language === "en" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" title={t("settings.theme")} className="h-8 w-8 rounded-lg text-muted-foreground">{theme === "light" ? <Sun className="h-4 w-4" /> : theme === "dark" ? <Moon className="h-4 w-4" /> : <Monitor className="h-4 w-4" />}</Button></DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem onClick={() => setTheme("light")}><Sun className="h-4 w-4" /><span className="flex-1">{t("settings.light")}</span>{theme === "light" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme("dark")}><Moon className="h-4 w-4" /><span className="flex-1">{t("settings.dark")}</span>{theme === "dark" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme("system")}><Monitor className="h-4 w-4" /><span className="flex-1">{t("settings.system")}</span>{theme === "system" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <UpdateButton placement="toolbar" />
