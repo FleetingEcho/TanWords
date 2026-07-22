@@ -21,7 +21,7 @@ interface Props {
 const COLLAPSE_THRESHOLD = 700;
 const COLLAPSE_PREVIEW = 350;
 
-export function MessageBubble({ msg, compact = false, isTyping = false }: Props) {
+export const MessageBubble = React.memo(function MessageBubble({ msg, compact = false, isTyping = false }: Props) {
   const t = useT();
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -128,4 +128,4 @@ export function MessageBubble({ msg, compact = false, isTyping = false }: Props)
       )}
     </div>
   );
-}
+});

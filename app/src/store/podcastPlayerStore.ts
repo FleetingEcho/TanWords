@@ -103,7 +103,7 @@ function startNativePoll(track: PodcastTrack) {
       console.error("[nativeAudio] snapshot failed", error);
       usePodcastPlayerStore.setState({ status: "error" });
     }
-  }, 100);
+  }, 250);
 }
 
 async function resolvePlayableSrc(url: string): Promise<string> {
