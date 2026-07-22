@@ -10,6 +10,7 @@ pub mod rss;
 pub mod music;
 pub mod native_audio;
 pub mod localdocs;
+pub mod mcp;
 
 pub struct AppState {
     pub db: Mutex<Connection>,
@@ -35,18 +36,31 @@ pub fn run() {
     let (db_path, db_fallback_warning) = resolve_db_path();
     let conn = Connection::open(&db_path).expect("Failed to open database");
     db::init_db(&conn).expect("Failed to initialize database");
+    let mcp_config = mcp::load_config(&conn);
+    let mcp_controller = mcp::McpController::default();
+    let startup_mcp_controller = mcp_controller.clone();
+    let startup_db_path = db_path.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .setup(move |_| {
+            if mcp_config.enabled {
+                tauri::async_runtime::spawn(async move {
+                    let _ = startup_mcp_controller.restart(mcp_config, startup_db_path).await;
+                });
+            }
+            Ok(())
+        })
         .manage(AppState {
             db: Mutex::new(conn),
             db_path: Mutex::new(db_path),
             tts: Arc::new(Mutex::new(None)),
             db_fallback_warning,
         })
+        .manage(mcp_controller)
         .manage(native_audio::NativeAudioState::default())
         .invoke_handler(tauri::generate_handler![
             db::db_get_word_count,
@@ -166,6 +180,9 @@ pub fn run() {
             localdocs::localdocs_export,
             localdocs::markdown_read_files,
             localdocs::markdown_export_files,
+            mcp::mcp_get_config,
+            mcp::mcp_apply_config,
+            mcp::mcp_generate_token,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
