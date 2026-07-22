@@ -3,9 +3,13 @@ import type { NavPage } from "@/store/navStore";
 
 export type Theme = "light" | "dark" | "system";
 export type SidebarTabId = Exclude<NavPage, "settings">;
+export type TopBarItemId = "history" | "new" | "search" | "context" | "mcp" | "ai" | "language" | "theme" | "updates" | "github" | "settings";
 
 export const DEFAULT_SIDEBAR_TABS: SidebarTabId[] = [
   "dashboard", "feeds", "reading", "scene-lab", "vocabulary", "documents", "music", "chat",
+];
+export const DEFAULT_TOPBAR_ITEMS: TopBarItemId[] = [
+  "history", "new", "search", "context", "mcp", "ai", "language", "theme", "updates", "github", "settings",
 ];
 
 interface SettingsState {
@@ -28,6 +32,8 @@ interface SettingsState {
   showGithubLink: boolean;
   /** Main navigation tabs visible in the sidebar. Settings is always visible. */
   visibleSidebarTabs: SidebarTabId[];
+  /** User-selected controls visible in the global command bar. */
+  visibleTopBarItems: TopBarItemId[];
   isLoaded: boolean;
 
   setTheme: (theme: Theme) => void;
@@ -43,6 +49,7 @@ interface SettingsState {
   setShowQuickDoc: (v: boolean) => void;
   setShowGithubLink: (v: boolean) => void;
   setSidebarTabVisible: (tab: SidebarTabId, visible: boolean) => void;
+  setTopBarItemVisible: (item: TopBarItemId, visible: boolean) => void;
   loadFromDB: () => Promise<void>;
 }
 
@@ -65,6 +72,7 @@ function cacheUiLanguage(lang: string) {
 }
 
 const SIDEBAR_TABS_CACHE_KEY = "tanwords_visible_sidebar_tabs_cache";
+const TOPBAR_ITEMS_CACHE_KEY = "tanwords_visible_topbar_items_cache";
 
 function cachedSidebarTabs(): SidebarTabId[] {
   try {
@@ -84,6 +92,20 @@ function cacheSidebarTabs(tabs: SidebarTabId[]) {
   }
 }
 
+function cachedTopBarItems(): TopBarItemId[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(TOPBAR_ITEMS_CACHE_KEY) || "null");
+    if (!Array.isArray(parsed)) return DEFAULT_TOPBAR_ITEMS;
+    return DEFAULT_TOPBAR_ITEMS.filter((id) => parsed.includes(id));
+  } catch {
+    return DEFAULT_TOPBAR_ITEMS;
+  }
+}
+
+function cacheTopBarItems(items: TopBarItemId[]) {
+  try { localStorage.setItem(TOPBAR_ITEMS_CACHE_KEY, JSON.stringify(items)); } catch {}
+}
+
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   theme: "system",
   defaultAiProvider: "openai",
@@ -98,6 +120,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   showQuickDoc: true,
   showGithubLink: true,
   visibleSidebarTabs: cachedSidebarTabs(),
+  visibleTopBarItems: cachedTopBarItems(),
   isLoaded: false,
 
   setTheme: (theme) => {
@@ -136,6 +159,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ visibleSidebarTabs: next });
     cacheSidebarTabs(next);
     saveSetting("visible_sidebar_tabs", JSON.stringify(next));
+  },
+
+  setTopBarItemVisible: (item, visible) => {
+    const current = get().visibleTopBarItems;
+    const next = visible
+      ? DEFAULT_TOPBAR_ITEMS.filter((id) => id === item || current.includes(id))
+      : current.filter((id) => id !== item);
+    set({ visibleTopBarItems: next });
+    cacheTopBarItems(next);
+    saveSetting("visible_topbar_items", JSON.stringify(next));
   },
 
   setTargetLevels: (levels) => {
@@ -191,6 +224,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         "quick_doc_ball",
         "show_github_link",
         "visible_sidebar_tabs",
+        "visible_topbar_items",
       ];
 
       const values: Record<string, string> = {};
@@ -215,6 +249,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         await invoke("db_set_setting", { key: "visible_sidebar_tabs", value: JSON.stringify(resolvedSidebarTabs) });
       }
       cacheSidebarTabs(resolvedSidebarTabs);
+      const resolvedTopBarItems = Array.isArray(values.visible_topbar_items)
+        ? DEFAULT_TOPBAR_ITEMS.filter((id) => (values.visible_topbar_items as unknown as string[]).includes(id))
+        : DEFAULT_TOPBAR_ITEMS;
+      cacheTopBarItems(resolvedTopBarItems);
 
       set({
         theme: (values.theme as Theme) || "system",
@@ -236,6 +274,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         showQuickDoc: (values.quick_doc_ball as unknown) !== false && values.quick_doc_ball !== "false",
         showGithubLink: (values.show_github_link as unknown) !== false && values.show_github_link !== "false",
         visibleSidebarTabs: resolvedSidebarTabs,
+        visibleTopBarItems: resolvedTopBarItems,
         isLoaded: true,
       });
 
