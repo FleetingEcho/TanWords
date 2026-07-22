@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useT } from "@/hooks/useT";
 import { DocSelector } from "./DocSelector";
 import { LazyDocEditor } from "./LazyDocEditor";
@@ -19,6 +19,12 @@ export function DocumentsPage() {
     activeId, doc, saveStatus, refreshKey,
     loadDoc, handleNewDoc, handleSave, handleTitleChange, handleTagsChange, handlePinToggle,
   } = useDocumentEditor();
+
+  useEffect(() => {
+    const onNewDocument = () => { setSource("db"); void handleNewDoc(); };
+    window.addEventListener("tanwords:new-document", onNewDocument);
+    return () => window.removeEventListener("tanwords:new-document", onNewDocument);
+  }, [handleNewDoc]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">

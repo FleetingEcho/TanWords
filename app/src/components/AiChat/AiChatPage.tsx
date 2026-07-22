@@ -26,6 +26,16 @@ export function AiChatPage() {
     localStorage.setItem("aichat-sidebar-collapsed", current ? "0" : "1");
     return !current;
   });
+  React.useEffect(() => {
+    const onNewChat = () => s.startNew();
+    const onDigest = () => setDigestOpen(true);
+    window.addEventListener("tanwords:new-chat", onNewChat);
+    window.addEventListener("tanwords:conversation-note", onDigest);
+    return () => {
+      window.removeEventListener("tanwords:new-chat", onNewChat);
+      window.removeEventListener("tanwords:conversation-note", onDigest);
+    };
+  }, [s.startNew]);
 
   return (
     <div className="flex h-full overflow-hidden bg-background bg-[radial-gradient(circle_at_55%_-20%,hsl(var(--primary)/.09),transparent_38%)]">

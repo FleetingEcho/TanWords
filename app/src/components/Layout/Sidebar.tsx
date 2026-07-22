@@ -11,6 +11,8 @@ import { UpdateButton } from "@/components/Layout/UpdateButton";
 import { useSettingsStore, type SidebarTabId } from "@/store/settingsStore";
 import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
 import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
+import { CommandBar } from "@/components/Layout/CommandBar";
+import type { NavPage } from "@/store/navStore";
 
 interface NavItemDef {
   id: SidebarTabId;
@@ -170,11 +172,12 @@ export function MainLayout({
       </aside>
 
       <main
-        className={`flex-1 overflow-y-auto box-border transition-[padding-bottom] duration-200 ${
+        className={`flex min-w-0 flex-1 flex-col overflow-hidden box-border transition-[padding-bottom] duration-200 ${
           ttsActive ? "pb-20" : podcastActive ? "pb-16" : "pb-0"
         }`}
       >
-        {children}
+        <CommandBar activePage={activeNav as NavPage} />
+        <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
       </main>
     </div>
   );
