@@ -104,7 +104,7 @@ export function FeedsPage() {
     setUnreadByFeed(new Map(counts));
   }, [db]);
 
-  /** Sync the given feeds sequentially; refresh whichever tab is current after each one lands. */
+  /** Sync sequentially in the backend, then update the visible cache once for the whole batch. */
   const syncFeeds = useCallback(async (targets: RssFeed[]) => {
     if (syncingRef.current || targets.length === 0) return;
     syncingRef.current = true;
@@ -113,11 +113,11 @@ export function FeedsPage() {
     for (const feed of targets) {
       try {
         await db.syncRssFeed(feed.id);
-        await refreshEntries(selectedRef.current);
       } catch {
         failed.add(feed.id);
       }
     }
+    await refreshEntries(selectedRef.current);
     setFailedFeeds(failed);
     setFeeds(await db.getRssFeeds());
     syncingRef.current = false;
@@ -160,19 +160,23 @@ export function FeedsPage() {
     return toAdd.length > 0 ? await db.getRssFeeds() : existing;
   };
 
-  // Initial load: render from the DB immediately, then sync stale feeds in the background.
+  // Initial load: paint cached data first. Network refresh starts after a short
+  // idle window so app launch/navigation remains responsive.
   useEffect(() => {
+    let syncTimer: number | undefined;
     (async () => {
       try {
         const list = await seedDefaults(await db.getRssFeeds());
         setFeeds(list);
         await refreshEntries("all");
         setBooting(false);
-        syncFeeds(list.filter((f) => isStale(f.last_fetched_at)));
+        const stale = list.filter((f) => isStale(f.last_fetched_at));
+        syncTimer = window.setTimeout(() => { void syncFeeds(stale); }, 1200);
       } finally {
         setBooting(false);
       }
     })();
+    return () => { if (syncTimer !== undefined) window.clearTimeout(syncTimer); };
   }, []);
 
   const selectFeed = (sel: number | "all") => {

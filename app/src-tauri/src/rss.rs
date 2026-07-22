@@ -448,10 +448,17 @@ pub async fn db_sync_rss_feed(feed_id: i64, conn: State<'_, AppState>) -> Result
     };
 
     let meta = fetch_feed_meta(&url).await?;
+    // RSS may write dozens of entries. Use a separate WAL connection and one
+    // transaction so a background refresh never holds the app-wide DB mutex
+    // or performs one autocommit per article.
+    let db_path = conn.db_path.lock().map_err(|e| e.to_string())?.clone();
+    tauri::async_runtime::spawn_blocking(move || -> Result<i64, String> {
+    let mut rss_db = rusqlite::Connection::open(db_path).map_err(|e| e.to_string())?;
+    rss_db.busy_timeout(Duration::from_secs(5)).map_err(|e| e.to_string())?;
+    rss_db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;").map_err(|e| e.to_string())?;
+    let tx = rss_db.transaction().map_err(|e| e.to_string())?;
 
-    let db = db::lock_db(&conn)?;
-
-    let before: i64 = db
+    let before: i64 = tx
         .query_row(
             "SELECT COUNT(*) FROM rss_entries WHERE feed_id = ?1",
             rusqlite::params![feed_id],
@@ -463,7 +470,7 @@ pub async fn db_sync_rss_feed(feed_id: i64, conn: State<'_, AppState>) -> Result
         if e.url.is_empty() {
             continue;
         }
-        db.execute(
+        tx.execute(
             "INSERT INTO rss_entries (feed_id, title, url, author, summary, image_url, audio_url, audio_duration, published, fetched_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now'))
              ON CONFLICT(url) DO UPDATE SET
@@ -486,7 +493,7 @@ pub async fn db_sync_rss_feed(feed_id: i64, conn: State<'_, AppState>) -> Result
         .map_err(|e| e.to_string())?;
     }
 
-    let after: i64 = db
+    let after: i64 = tx
         .query_row(
             "SELECT COUNT(*) FROM rss_entries WHERE feed_id = ?1",
             rusqlite::params![feed_id],
@@ -494,7 +501,7 @@ pub async fn db_sync_rss_feed(feed_id: i64, conn: State<'_, AppState>) -> Result
         )
         .unwrap_or(0);
 
-    db.execute(
+    tx.execute(
         "UPDATE rss_feeds SET
            last_fetched_at = datetime('now'),
            title = CASE WHEN title = '' THEN ?2 ELSE title END,
@@ -505,7 +512,9 @@ pub async fn db_sync_rss_feed(feed_id: i64, conn: State<'_, AppState>) -> Result
     )
     .map_err(|e| e.to_string())?;
 
+    tx.commit().map_err(|e| e.to_string())?;
     Ok(after - before)
+    }).await.map_err(|e| e.to_string())?
 }
 
 fn map_rss_entry_row(row: &rusqlite::Row) -> rusqlite::Result<RssEntryRow> {
