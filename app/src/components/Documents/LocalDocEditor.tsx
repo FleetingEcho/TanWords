@@ -7,7 +7,7 @@ import "@blocknote/mantine/style.css";
 
 import { useT } from "@/hooks/useT";
 import { useIsDark } from "@/hooks/useIsDark";
-import { markdownToBlocks } from "@/lib/docFormat";
+import { blocksToMarkdownOffThread, markdownToBlocksOffThread } from "@/lib/documentWorkerClient";
 import { liftMermaid, lowerMermaid } from "./mermaidTransforms";
 import { CheckIcon } from "@heroicons/react/24/solid";
 import { SaveStatus } from "./useDocumentEditor";
@@ -66,7 +66,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
 
   useEffect(() => {
     let cancelled = false;
-    markdownToBlocks(initialMarkdown).then((parsed) => {
+    markdownToBlocksOffThread(initialMarkdown).then((parsed) => {
       if (cancelled) return;
       const blocks = liftMermaid(parsed);
       if (blocks.length > 0) editor.replaceBlocks(editor.document, blocks);
@@ -83,7 +83,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
     dirty.current = true;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
-      const markdown = await editor.blocksToMarkdownLossy(lowerMermaid(editor.document) as any);
+      const markdown = await blocksToMarkdownOffThread(lowerMermaid(editor.document) as any);
       const raw = toRawMarkdown(markdown);
       if (raw !== lastSavedRaw.current) {
         onSave(raw);
@@ -100,7 +100,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
     try {
       if (nextMode === "raw") {
         const raw = dirty.current
-          ? toRawMarkdown(await editor.blocksToMarkdownLossy(lowerMermaid(editor.document) as any))
+          ? toRawMarkdown(await blocksToMarkdownOffThread(lowerMermaid(editor.document) as any))
           : lastSavedRaw.current;
         setRawMarkdown(raw);
         if (dirty.current && raw !== lastSavedRaw.current) {
@@ -111,7 +111,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
         setMode("raw");
       } else {
         loaded.current = false;
-        const parsed = liftMermaid(await markdownToBlocks(toDisplayMarkdown(rawMarkdown)));
+        const parsed = liftMermaid(await markdownToBlocksOffThread(toDisplayMarkdown(rawMarkdown)));
         editor.replaceBlocks(editor.document, parsed.length ? parsed : [{ type: "paragraph" }]);
         if (dirty.current && rawMarkdown !== lastSavedRaw.current) {
           onSave(rawMarkdown);
