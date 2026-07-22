@@ -12,6 +12,7 @@ import { useT } from "@/hooks/useT";
 import { findBestProvider } from "@/providers/select";
 import { NavPage, useNavStore } from "@/store/navStore";
 import { useWordModalStore } from "@/store/wordModalStore";
+import { UpdateButton } from "@/components/Layout/UpdateButton";
 
 type McpState = { status: { running: boolean; error: string | null } };
 
@@ -111,6 +112,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
         <div className="ml-auto flex items-center gap-0.5 border-l border-border pl-2">
           <Button variant="ghost" size="icon" onClick={() => navigate("settings")} title={mcp.error || (mcp.running ? t("command.mcpRunning") : t("command.mcpStopped"))} className={`relative h-8 w-8 rounded-lg ${mcp.error ? "text-amber-500" : mcp.running ? "text-emerald-500" : "text-muted-foreground"}`}><Server className="h-4 w-4" />{mcp.running && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />}</Button>
           <Button variant="ghost" size="icon" onClick={() => !providerConnected && navigate("settings")} title={providerConnected ? t("command.aiConnected") : t("command.aiDisconnected")} className={`h-8 w-8 rounded-lg ${providerConnected ? "text-emerald-500" : "text-amber-500"}`}>{providerConnected ? <CheckCircle2 className="h-4 w-4" /> : <Unplug className="h-4 w-4" />}</Button>
+          <UpdateButton placement="toolbar" />
           <Button variant="ghost" size="icon" onClick={() => navigate("settings")} title={t("nav.settings")} className="h-8 w-8 rounded-lg text-muted-foreground"><Settings className="h-4 w-4" /></Button>
         </div>
       </header>

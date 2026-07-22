@@ -10,7 +10,7 @@ import { useT } from "@/hooks/useT";
 const RELEASES_URL = "https://github.com/FleetingEcho/TanWords/releases/latest";
 const IS_PORTABLE = import.meta.env.VITE_PORTABLE === "true";
 
-export function UpdateButton({ collapsed }: { collapsed: boolean }) {
+export function UpdateButton({ collapsed = false, placement = "sidebar" }: { collapsed?: boolean; placement?: "sidebar" | "toolbar" }) {
   const t = useT();
   const { status, version, notes, progress, error, checkForUpdate, downloadAndInstall, restart } =
     useUpdaterStore();
@@ -22,6 +22,7 @@ export function UpdateButton({ collapsed }: { collapsed: boolean }) {
   }, []);
 
   const hasUpdate = status === "available" || status === "downloading" || status === "ready";
+  const toolbar = placement === "toolbar";
 
   const handleOpenChange = (next: boolean) => {
     setOpen(next);
@@ -36,9 +37,9 @@ export function UpdateButton({ collapsed }: { collapsed: boolean }) {
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
-          title={collapsed ? t("updater.tooltip") : undefined}
-          className={`h-auto w-full flex items-center rounded-lg text-sm font-medium transition-colors duration-100 text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--muted))] ${
-            collapsed ? "justify-center px-0 py-[9px]" : "gap-2.5 px-3 py-[7px]"
+          title={toolbar || collapsed ? t("updater.tooltip") : undefined}
+          className={`${toolbar ? "h-8 w-8 justify-center p-0 text-muted-foreground" : "h-auto w-full text-[hsl(var(--sidebar-foreground))]"} flex items-center rounded-lg text-sm font-medium transition-colors duration-100 hover:bg-[hsl(var(--muted))] ${
+            toolbar ? "" : collapsed ? "justify-center px-0 py-[9px]" : "gap-2.5 px-3 py-[7px]"
           }`}
         >
           <span className="relative shrink-0">
@@ -47,10 +48,10 @@ export function UpdateButton({ collapsed }: { collapsed: boolean }) {
               <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-red-500" />
             )}
           </span>
-          {!collapsed && <span className="flex-1 text-left">{t("updater.tooltip")}</span>}
+          {!toolbar && !collapsed && <span className="flex-1 text-left">{t("updater.tooltip")}</span>}
         </Button>
       </PopoverTrigger>
-      <PopoverContent side="right" align="end" className="w-80">
+      <PopoverContent side={toolbar ? "bottom" : "right"} align="end" className="w-80">
         <div className="space-y-3">
           <div className="flex items-baseline justify-between">
             <p className="text-sm font-semibold">{t("updater.title")}</p>

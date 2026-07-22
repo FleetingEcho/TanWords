@@ -3,11 +3,10 @@ import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { useLayoutStore } from "@/store/layoutStore";
 import { useT } from "@/hooks/useT";
 import {
-  GridIcon, BookIcon, DocIcon, ChatIcon, SlidersIcon,
+  GridIcon, BookIcon, DocIcon, ChatIcon,
   FeedIcon, ReadingIcon, ChevronIcon, CompassIcon, MusicIcon, GitHubIcon, ClipboardListIcon,
 } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
-import { UpdateButton } from "@/components/Layout/UpdateButton";
 import { useSettingsStore, type SidebarTabId } from "@/store/settingsStore";
 import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
 import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
@@ -133,10 +132,7 @@ export function MainLayout({
           })}
         </nav>
 
-        {/* Update + Settings — pinned to the bottom, always in the same place.
-            Deliberately borderless: the player bar's top border sits at a
-            content-driven height next to it, and two almost-but-not-quite
-            aligned horizontal lines read as a glitch. */}
+        {/* Optional project link; update and settings live in the global command bar. */}
         <div className="px-2 pb-1 flex flex-col justify-end space-y-0.5">
           {showGithubLink && (
             <Button
@@ -151,22 +147,6 @@ export function MainLayout({
               {!collapsed && <span className="flex-1 text-left">GitHub</span>}
             </Button>
           )}
-          <UpdateButton collapsed={collapsed} />
-          <Button
-            variant="ghost"
-            onClick={() => onNavigate("settings")}
-            title={collapsed ? t("nav.settings") : undefined}
-            className={`h-auto w-full flex items-center rounded-lg text-sm font-medium transition-colors duration-100 ${
-              collapsed ? "justify-center px-0 py-[9px]" : "gap-2.5 px-3 py-[7px]"
-            } ${
-              activeNav === "settings"
-                ? "bg-[hsl(var(--sidebar-active-bg))] text-[hsl(var(--sidebar-active-fg))] hover:bg-[hsl(var(--sidebar-active-bg))]"
-                : "text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--muted))]"
-            }`}
-          >
-            <SlidersIcon className="w-[18px] h-[18px] shrink-0" />
-            {!collapsed && <span className="flex-1 text-left">{t("nav.settings")}</span>}
-          </Button>
         </div>
 
       </aside>
