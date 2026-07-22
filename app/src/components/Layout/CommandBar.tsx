@@ -1,7 +1,7 @@
 import React from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
-  ArrowLeft, ArrowRight, BookPlus, CheckCircle2, ChevronDown, FilePlus2,
+  ArrowLeft, ArrowRight, BookPlus, BrainCircuit, Check, ChevronDown, FilePlus2,
   MessageSquarePlus, Search, Server, Settings, Sparkles, Unplug, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,9 +10,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useT } from "@/hooks/useT";
 import { findBestProvider } from "@/providers/select";
+import { getAllProviders, type AIProvider } from "@/providers";
 import { NavPage, useNavStore } from "@/store/navStore";
 import { useWordModalStore } from "@/store/wordModalStore";
 import { UpdateButton } from "@/components/Layout/UpdateButton";
+import { useSettingsStore } from "@/store/settingsStore";
 
 type McpState = { status: { running: boolean; error: string | null } };
 
@@ -26,12 +28,15 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   const canGoBack = useNavStore((state) => state.canGoBack());
   const canGoForward = useNavStore((state) => state.canGoForward());
   const openWord = useWordModalStore((state) => state.openWordModal);
+  const defaultProvider = useSettingsStore((state) => state.defaultAiProvider);
+  const setDefaultProvider = useSettingsStore((state) => state.setDefaultAiProvider);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [wordOpen, setWordOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [word, setWord] = React.useState("");
   const [mcp, setMcp] = React.useState<{ running: boolean; error: string | null }>({ running: false, error: null });
   const [providerConnected, setProviderConnected] = React.useState(() => Boolean(findBestProvider()));
+  const [availableProviders, setAvailableProviders] = React.useState<AIProvider[]>(() => getAllProviders().filter((provider) => provider.apiKey));
 
   const refreshMcp = React.useCallback(() => {
     invoke<McpState>("mcp_get_config").then((result) => setMcp(result.status)).catch(() => {});
@@ -39,7 +44,11 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
 
   React.useEffect(() => {
     refreshMcp();
-    const refreshStatus = () => { refreshMcp(); setProviderConnected(Boolean(findBestProvider())); };
+    const refreshStatus = () => {
+      refreshMcp();
+      setProviderConnected(Boolean(findBestProvider()));
+      setAvailableProviders(getAllProviders().filter((provider) => provider.apiKey));
+    };
     const timer = window.setInterval(refreshStatus, 5000);
     window.addEventListener("tanwords:mcp-status-changed", refreshStatus);
     return () => {
@@ -111,7 +120,28 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
 
         <div className="ml-auto flex items-center gap-0.5 border-l border-border pl-2">
           <Button variant="ghost" size="icon" onClick={() => navigate("settings")} title={mcp.error || (mcp.running ? t("command.mcpRunning") : t("command.mcpStopped"))} className={`relative h-8 w-8 rounded-lg ${mcp.error ? "text-amber-500" : mcp.running ? "text-emerald-500" : "text-muted-foreground"}`}><Server className="h-4 w-4" />{mcp.running && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />}</Button>
-          <Button variant="ghost" size="icon" onClick={() => !providerConnected && navigate("settings")} title={providerConnected ? t("command.aiConnected") : t("command.aiDisconnected")} className={`h-8 w-8 rounded-lg ${providerConnected ? "text-emerald-500" : "text-amber-500"}`}>{providerConnected ? <CheckCircle2 className="h-4 w-4" /> : <Unplug className="h-4 w-4" />}</Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" title={providerConnected ? t("command.switchModel") : t("command.aiDisconnected")} className={`relative h-8 w-8 rounded-lg ${providerConnected ? "text-foreground" : "text-amber-500"}`}>
+                {providerConnected ? <BrainCircuit className="h-4 w-4" /> : <Unplug className="h-4 w-4" />}
+                {providerConnected && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-72">
+              <div className="px-2.5 py-2"><p className="text-xs font-semibold">{t("command.globalModel")}</p><p className="mt-0.5 text-[10px] text-muted-foreground">{t("command.globalModelHint")}</p></div>
+              <div className="my-1 h-px bg-border" />
+              {availableProviders.map((provider) => (
+                <DropdownMenuItem key={provider.id} onClick={() => setDefaultProvider(provider.id)} className="py-2.5">
+                  <BrainCircuit className="h-4 w-4 text-muted-foreground" />
+                  <span className="min-w-0 flex-1"><span className="block truncate font-medium">{provider.name}</span><span className="block truncate font-mono text-[10px] text-muted-foreground">{provider.modelId}</span></span>
+                  {provider.id === defaultProvider && <Check className="h-4 w-4 text-emerald-500" />}
+                </DropdownMenuItem>
+              ))}
+              {availableProviders.length === 0 && <p className="px-2.5 py-4 text-center text-xs text-muted-foreground">{t("command.noModels")}</p>}
+              <div className="my-1 h-px bg-border" />
+              <DropdownMenuItem onClick={() => navigate("settings")}><Settings className="h-4 w-4" />{t("command.manageModels")}</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <UpdateButton placement="toolbar" />
           <Button variant="ghost" size="icon" onClick={() => navigate("settings")} title={t("nav.settings")} className="h-8 w-8 rounded-lg text-muted-foreground"><Settings className="h-4 w-4" /></Button>
         </div>
