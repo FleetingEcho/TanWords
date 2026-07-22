@@ -28,4 +28,9 @@ export const nav: Dict = {
     "command.mcpStopped": "MCP server not running",
     "command.aiConnected": "AI connected",
     "command.aiDisconnected": "AI not configured",
+    "command.switchModel": "Switch global model",
+    "command.globalModel": "Global AI model",
+    "command.globalModelHint": "Used by vocabulary, reading, and other AI features",
+    "command.noModels": "No configured models",
+    "command.manageModels": "Manage models…",
 };

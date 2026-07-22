@@ -7,6 +7,7 @@ import { useT } from "@/hooks/useT";
 import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/24/solid";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Check, Pencil, PlugZap, Trash2, X } from "lucide-react";
 
 function TestStatusBadge({ status }: { status: { ok: boolean | null; text: string } }) {
   return (
@@ -16,6 +17,10 @@ function TestStatusBadge({ status }: { status: { ok: boolean | null; text: strin
       {status.text}
     </span>
   );
+}
+
+function ProviderIconButton({ label, onClick, danger = false, children }: { label: string; onClick: () => void; danger?: boolean; children: React.ReactNode }) {
+  return <Button type="button" variant="ghost" size="icon" onClick={onClick} title={label} aria-label={label} className={`h-8 w-8 rounded-lg ${danger ? "text-muted-foreground hover:bg-destructive/10 hover:text-destructive" : "text-muted-foreground hover:bg-primary/10 hover:text-primary"}`}>{children}</Button>;
 }
 
 interface ProviderDef {
@@ -59,6 +64,11 @@ export function ProviderSection() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", apiBase: "", apiKey: "", modelId: "" });
   const [testStatus, setTestStatus] = useState<{ ok: boolean | null; text: string } | null>(null);
+  const globalDefaultProvider = useSettingsStore((state) => state.defaultAiProvider);
+
+  useEffect(() => {
+    if (keysLoaded && globalDefaultProvider) setSelectedProvider(globalDefaultProvider);
+  }, [globalDefaultProvider, keysLoaded]);
 
   // Debounce timers for keychain writes (per key)
   const debounceRefs = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -335,7 +345,7 @@ export function ProviderSection() {
                 <label className="text-xs text-muted-foreground block mb-1">{t("settings.apiKey")}</label>
                 <input type="password" value={openaiKey} onChange={(e) => handleOpenaiKeyChange(e.target.value)} placeholder="sk-..." className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30" />
               </div>
-              <Button variant="link" onClick={() => testConnection("openai", "https://api.openai.com/v1", openaiKey)} className="h-auto p-0 text-xs text-primary hover:underline">{t("settings.testConnection")}</Button>
+              <ProviderIconButton label={t("settings.testConnection")} onClick={() => testConnection("openai", "https://api.openai.com/v1", openaiKey)}><PlugZap className="h-4 w-4" /></ProviderIconButton>
               {testStatus && <TestStatusBadge status={testStatus} />}
             </div>
           )}
@@ -346,7 +356,7 @@ export function ProviderSection() {
                 <label className="text-xs text-muted-foreground block mb-1">{t("settings.apiKey")}</label>
                 <input type="password" value={claudeKey} onChange={(e) => handleClaudeKeyChange(e.target.value)} placeholder="sk-ant-..." className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30" />
               </div>
-              <Button variant="link" onClick={() => testConnection("claude", "https://api.anthropic.com", claudeKey)} className="h-auto p-0 text-xs text-primary hover:underline">{t("settings.testConnection")}</Button>
+              <ProviderIconButton label={t("settings.testConnection")} onClick={() => testConnection("claude", "https://api.anthropic.com", claudeKey)}><PlugZap className="h-4 w-4" /></ProviderIconButton>
               {testStatus && <TestStatusBadge status={testStatus} />}
             </div>
           )}
@@ -358,7 +368,7 @@ export function ProviderSection() {
                   <label className="text-xs text-muted-foreground block mb-1">{t("settings.apiKey")}</label>
                   <input type="password" value={presetKeys[preset.id] || ""} onChange={(e) => handlePresetKeyChange(preset.id, e.target.value)} placeholder="API Key" className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30" />
                 </div>
-                <Button variant="link" onClick={() => testConnection(preset.id, preset.apiBase!, presetKeys[preset.id] || "", preset.model)} className="h-auto p-0 text-xs text-primary hover:underline">{t("settings.testConnection")}</Button>
+                <ProviderIconButton label={t("settings.testConnection")} onClick={() => testConnection(preset.id, preset.apiBase!, presetKeys[preset.id] || "", preset.model)}><PlugZap className="h-4 w-4" /></ProviderIconButton>
                 {testStatus && <TestStatusBadge status={testStatus} />}
               </div>
             )
@@ -385,8 +395,8 @@ export function ProviderSection() {
                     <input value={editForm.modelId} onChange={(e) => setEditForm((prev) => ({ ...prev, modelId: e.target.value }))} className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none" />
                   </div>
                   <div className="flex gap-2">
-                    <Button variant="link" onClick={saveEdit} className="h-auto p-0 text-xs text-primary hover:underline">Save</Button>
-                    <Button variant="link" onClick={() => setEditingId(null)} className="h-auto p-0 text-xs text-muted-foreground hover:underline">Cancel</Button>
+                    <ProviderIconButton label={t("settings.save")} onClick={saveEdit}><Check className="h-4 w-4" /></ProviderIconButton>
+                    <ProviderIconButton label={t("settings.cancel")} onClick={() => setEditingId(null)}><X className="h-4 w-4" /></ProviderIconButton>
                   </div>
                 </>
               ) : (
@@ -399,12 +409,12 @@ export function ProviderSection() {
                     <label className="text-xs text-muted-foreground block mb-1">{t("settings.defaultModel")}</label>
                     <p className="text-sm font-mono">{p.modelId}</p>
                   </div>
-                  <Button variant="link" onClick={() => testConnection(p.id, p.apiBase, p.apiKey, p.modelId)} className="h-auto p-0 text-xs text-primary hover:underline">{t("settings.testConnection")}</Button>
-                  {testStatus && <TestStatusBadge status={testStatus} />}
-                  <div className="flex gap-2 mt-1">
-                    <Button variant="link" onClick={() => { setEditingId(p.id); setEditForm({ name: p.name, apiBase: p.apiBase, apiKey: p.apiKey, modelId: p.modelId }); }} className="h-auto p-0 text-xs text-primary hover:underline">Edit</Button>
-                    <Button variant="link" onClick={() => removeCustom(p.id)} className="h-auto p-0 text-xs text-destructive hover:underline">Remove</Button>
+                  <div className="flex items-center gap-1 pt-1">
+                    <ProviderIconButton label={t("settings.testConnection")} onClick={() => testConnection(p.id, p.apiBase, p.apiKey, p.modelId)}><PlugZap className="h-4 w-4" /></ProviderIconButton>
+                    <ProviderIconButton label={t("settings.edit")} onClick={() => { setEditingId(p.id); setEditForm({ name: p.name, apiBase: p.apiBase, apiKey: p.apiKey, modelId: p.modelId }); }}><Pencil className="h-4 w-4" /></ProviderIconButton>
+                    <ProviderIconButton label={t("settings.delete")} danger onClick={() => removeCustom(p.id)}><Trash2 className="h-4 w-4" /></ProviderIconButton>
                   </div>
+                  {testStatus && <TestStatusBadge status={testStatus} />}
                 </>
               )}
             </div>

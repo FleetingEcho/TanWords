@@ -28,4 +28,9 @@ export const nav: Dict = {
     "command.mcpStopped": "MCP 服务未运行",
     "command.aiConnected": "AI 已连接",
     "command.aiDisconnected": "AI 尚未配置",
+    "command.switchModel": "切换全局模型",
+    "command.globalModel": "全局 AI 模型",
+    "command.globalModelHint": "用于词汇、阅读和其他 AI 功能",
+    "command.noModels": "暂无已配置模型",
+    "command.manageModels": "管理模型…",
 };
