@@ -20,7 +20,6 @@ import { tools } from "./tools";
 import { knowledgeMap } from "./knowledgeMap";
 import { music } from "./music";
 import { updater } from "./updater";
-import { writing } from "./writing";
 
 export const en: Dict = {
     ...common,
@@ -44,5 +43,4 @@ export const en: Dict = {
     ...knowledgeMap,
     ...music,
     ...updater,
-    ...writing,
 };

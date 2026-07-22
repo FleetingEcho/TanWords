@@ -5,7 +5,7 @@ export type Theme = "light" | "dark" | "system";
 export type SidebarTabId = Exclude<NavPage, "settings">;
 
 export const DEFAULT_SIDEBAR_TABS: SidebarTabId[] = [
-  "dashboard", "feeds", "reading", "scene-lab", "vocabulary", "writing", "documents", "music", "chat",
+  "dashboard", "feeds", "reading", "scene-lab", "vocabulary", "documents", "music", "chat",
 ];
 
 interface SettingsState {
@@ -210,7 +210,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       // One-time upgrade: existing installs predate Writing Studio, so their
       // persisted visible-tab list cannot contain it yet.
       if (!localStorage.getItem("tanwords_writing_tab_migrated")) {
-        resolvedSidebarTabs = DEFAULT_SIDEBAR_TABS.filter((id) => id === "writing" || resolvedSidebarTabs.includes(id));
+        resolvedSidebarTabs = DEFAULT_SIDEBAR_TABS.filter((id) => resolvedSidebarTabs.includes(id));
         localStorage.setItem("tanwords_writing_tab_migrated", "1");
         await invoke("db_set_setting", { key: "visible_sidebar_tabs", value: JSON.stringify(resolvedSidebarTabs) });
       }
