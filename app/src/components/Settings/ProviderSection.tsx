@@ -7,7 +7,7 @@ import { useT } from "@/hooks/useT";
 import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/24/solid";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Check, Pencil, PlugZap, Trash2, X } from "lucide-react";
+import { Check, ListRestart, Loader2, Pencil, PlugZap, Trash2, X } from "lucide-react";
 
 function TestStatusBadge({ status }: { status: { ok: boolean | null; text: string } }) {
   return (
@@ -64,6 +64,8 @@ export function ProviderSection() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", apiBase: "", apiKey: "", modelId: "" });
   const [testStatus, setTestStatus] = useState<{ ok: boolean | null; text: string } | null>(null);
+  const [fetchedModels, setFetchedModels] = useState<string[]>([]);
+  const [fetchingModels, setFetchingModels] = useState(false);
   const globalDefaultProvider = useSettingsStore((state) => state.defaultAiProvider);
 
   useEffect(() => {
@@ -231,6 +233,32 @@ export function ProviderSection() {
     setTimeout(() => setTestStatus(null), 3000);
   };
 
+  const fetchModels = async (apiBase: string, apiKey: string, selectFirst: (model: string) => void, currentModel: string) => {
+    if (!apiBase.trim()) return;
+    setFetchingModels(true);
+    try {
+      const base = apiBase.trim().replace(/\/chat\/completions\/?$/, "").replace(/\/$/, "");
+      const headers: Record<string, string> = { Accept: "application/json" };
+      if (apiKey.trim()) headers.Authorization = `Bearer ${apiKey.trim()}`;
+      const response = await fetch(`${base}/models`, { headers });
+      if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
+      const body = await response.json();
+      const rows = Array.isArray(body?.data) ? body.data : Array.isArray(body?.models) ? body.models : [];
+      const modelIds: string[] = rows
+        .map((item: any) => item?.id ?? item?.model ?? item?.name)
+        .filter((id: unknown): id is string => typeof id === "string" && Boolean(id.trim()));
+      const models = [...new Set<string>(modelIds)].sort();
+      if (!models.length) throw new Error(t("settings.modelsEmpty"));
+      setFetchedModels(models);
+      if (!currentModel.trim() || models.length === 1) selectFirst(models[0]);
+      toast.success(t("settings.modelsFetched", { count: models.length }));
+    } catch (error) {
+      toast.error(t("settings.modelsFetchFailed", { error: String(error) }));
+    } finally {
+      setFetchingModels(false);
+    }
+  };
+
   const addCustom = async () => {
     if (!newProvider.name || !newProvider.apiBase || !newProvider.modelId) return;
     const id = `custom_${Date.now()}`;
@@ -325,6 +353,8 @@ export function ProviderSection() {
         </Select>
       </div>
 
+      <datalist id="provider-model-options">{fetchedModels.map((model) => <option key={model} value={model} />)}</datalist>
+
       {selectedProvider !== "__new__" && (
         <div className="mt-4 bg-card border border-border rounded-xl p-5">
           <div className="flex items-center justify-between mb-4">
@@ -392,7 +422,7 @@ export function ProviderSection() {
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground block mb-1">{t("settings.modelId")}</label>
-                    <input value={editForm.modelId} onChange={(e) => setEditForm((prev) => ({ ...prev, modelId: e.target.value }))} className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none" />
+                    <div className="flex gap-2"><input list="provider-model-options" value={editForm.modelId} onChange={(e) => setEditForm((prev) => ({ ...prev, modelId: e.target.value }))} className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-sm focus:outline-none" /><ProviderIconButton label={t("settings.fetchModels")} onClick={() => void fetchModels(editForm.apiBase, editForm.apiKey, (model) => setEditForm((prev) => ({ ...prev, modelId: model })), editForm.modelId)}>{fetchingModels ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListRestart className="h-4 w-4" />}</ProviderIconButton></div>
                   </div>
                   <div className="flex gap-2">
                     <ProviderIconButton label={t("settings.save")} onClick={saveEdit}><Check className="h-4 w-4" /></ProviderIconButton>
@@ -440,7 +470,7 @@ export function ProviderSection() {
           </div>
           <div>
             <label className="text-xs text-muted-foreground block mb-1">{t("settings.modelId")}</label>
-            <input value={newProvider.modelId} onChange={(e) => setNewProvider((prev) => ({ ...prev, modelId: e.target.value }))} placeholder="gpt-4o-mini" className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none" />
+            <div className="flex gap-2"><input list="provider-model-options" value={newProvider.modelId} onChange={(e) => setNewProvider((prev) => ({ ...prev, modelId: e.target.value }))} placeholder="gpt-4o-mini" className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-sm focus:outline-none" /><ProviderIconButton label={t("settings.fetchModels")} onClick={() => void fetchModels(newProvider.apiBase, newProvider.apiKey, (model) => setNewProvider((prev) => ({ ...prev, modelId: model })), newProvider.modelId)}>{fetchingModels ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListRestart className="h-4 w-4" />}</ProviderIconButton></div>
           </div>
           <div className="flex gap-2">
             <Button onClick={addCustom} disabled={!newProvider.name || !newProvider.apiBase || !newProvider.modelId} className="h-auto px-4 py-1.5 rounded-lg text-xs font-medium bg-primary text-white hover:bg-primary/90 disabled:opacity-50 transition-colors">{t("settings.add")}</Button>
