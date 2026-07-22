@@ -751,6 +751,7 @@ fn playback_worker(
     }
 }
 
+#[cfg(target_os = "linux")]
 fn resample_speed(input: &[f32], channels: usize, speed: f32) -> Vec<f32> {
     if (speed - 1.0).abs() < f32::EPSILON {
         return input.to_vec();
@@ -774,18 +775,63 @@ fn set_error(snapshot: &Arc<Mutex<NativeAudioSnapshot>>, error: String) {
 
 #[cfg(not(target_os = "linux"))]
 fn playback_worker(
-    _: FileDecoder,
+    decoder: FileDecoder,
     _: u32,
     _: u16,
-    _: bool,
-    _: u64,
+    autoplay: bool,
+    generation: u64,
     snapshot: Arc<Mutex<NativeAudioSnapshot>>,
-    _: mpsc::Receiver<Command>,
+    commands: mpsc::Receiver<Command>,
 ) {
-    set_error(
-        &snapshot,
-        "native local playback is only enabled on Linux".into(),
-    );
+    let output = match rodio::DeviceSinkBuilder::open_default_sink() {
+        Ok(value) => value,
+        Err(error) => {
+            set_error(&snapshot, error.to_string());
+            return;
+        }
+    };
+    let player = rodio::Player::connect_new(output.mixer());
+    player.append(decoder);
+    if !autoplay {
+        player.pause();
+    }
+
+    loop {
+        match commands.recv_timeout(Duration::from_millis(20)) {
+            Ok(Command::Play) => player.play(),
+            Ok(Command::Pause) => player.pause(),
+            Ok(Command::Seek(seconds)) => {
+                if let Err(error) = player.try_seek(Duration::from_secs_f64(seconds.max(0.0))) {
+                    set_error(&snapshot, error.to_string());
+                    return;
+                }
+            }
+            Ok(Command::Speed(value)) => player.set_speed(value.clamp(0.5, 2.0)),
+            Ok(Command::Stop) | Err(mpsc::RecvTimeoutError::Disconnected) => {
+                player.stop();
+                return;
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+        }
+
+        if let Ok(mut current) = snapshot.lock() {
+            if current.generation != generation {
+                return;
+            }
+            current.status = if player.empty() {
+                "ended"
+            } else if player.is_paused() {
+                "paused"
+            } else {
+                "playing"
+            };
+            current.position_sec = player.get_pos().as_secs_f64();
+            current.speed = player.speed();
+        }
+        if player.empty() {
+            return;
+        }
+    }
 }
 
 #[tauri::command]

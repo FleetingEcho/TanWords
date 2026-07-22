@@ -38,8 +38,8 @@ export function AiChatComposer({
   const t = useT();
 
   return (
-    <div className="shrink-0 border-t border-border/60 bg-background/75 px-5 py-4 backdrop-blur-xl">
-      <div className="mx-auto max-w-3xl">
+    <div className="shrink-0 border-t border-border/60 bg-background/75 px-2 py-3 backdrop-blur-xl">
+      <div className="mx-auto max-w-full">
       {/* Attachment chip */}
       {attachment && (
         <div className="mb-2">
@@ -147,7 +147,6 @@ export function AiChatComposer({
         )}
         </div>
       </div>
-      {tokenCount > 0 && <p className="mt-1.5 px-2 text-right text-[9px] text-muted-foreground/35">~{tokenCount.toLocaleString()} tokens</p>}
       </div>
     </div>
   );
