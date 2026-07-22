@@ -114,7 +114,6 @@ export const settings: Dict = {
     "settings.topBar.theme": "主题",
     "settings.topBar.updates": "软件更新",
     "settings.topBar.github": "GitHub",
-    "settings.topBar.settings": "设置",
     "settings.sidebarTabs": "侧边栏页面",
     "settings.sidebarTabsSub": "选择要显示的主要页面；设置入口始终保留。",
     "settings.sidebarTabsSelected": "已显示 {n} 项",
