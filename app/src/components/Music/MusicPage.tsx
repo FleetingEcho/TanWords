@@ -94,6 +94,7 @@ function formatDuration(sec: number | null): string {
 function toQueue(collection: MusicCollection, displayName: string): PodcastTrack[] {
   return collection.tracks.map((tr) => ({
     audioUrl: convertFileSrc(tr.path),
+    localPath: tr.path,
     title: tr.title,
     feedTitle: displayName,
   }));

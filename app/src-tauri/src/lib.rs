@@ -8,6 +8,7 @@ pub mod reader;
 pub mod secrets;
 pub mod rss;
 pub mod music;
+pub mod native_audio;
 pub mod localdocs;
 
 pub struct AppState {
@@ -46,6 +47,7 @@ pub fn run() {
             tts: Arc::new(Mutex::new(None)),
             db_fallback_warning,
         })
+        .manage(native_audio::NativeAudioState::default())
         .invoke_handler(tauri::generate_handler![
             db::db_get_word_count,
             db::db_get_translation_count,
@@ -145,6 +147,13 @@ pub fn run() {
             rss::db_mark_rss_entry_read,
             rss::db_get_rss_unread_counts,
             music::music_scan_library,
+            native_audio::native_audio_load,
+            native_audio::native_audio_play,
+            native_audio::native_audio_pause,
+            native_audio::native_audio_seek,
+            native_audio::native_audio_set_speed,
+            native_audio::native_audio_stop,
+            native_audio::native_audio_snapshot,
             localdocs::localdocs_list,
             localdocs::localdocs_search,
             localdocs::localdocs_read,

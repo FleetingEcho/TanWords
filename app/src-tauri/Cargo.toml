@@ -1,6 +1,6 @@
 [package]
 name = "tanwords"
-version = "0.2.0"
+version = "0.2.1"
 description = "TanWords - AI-powered English learning assistant"
 authors = ["Tanner"]
 edition = "2021"
@@ -41,9 +41,11 @@ tar = "0.4"
 bzip2 = "0.4"
 futures-util = "0.3"
 keyring = "3"
+libloading = "0.8"
 feed-rs = "2"
 url = "2"
 lofty = "0.22"
+rodio = { version = "0.22.2", default-features = false, features = ["mp3", "flac", "vorbis", "wav", "mp4"] }
 walkdir = "2"
 encoding_rs = "0.8"
 tauri-plugin-updater = "2"

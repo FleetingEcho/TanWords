@@ -3,6 +3,7 @@ import { claimAudioChannel, releaseAudioChannel } from "@/lib/audioChannel";
 import { toPlayableSrc } from "@/lib/localAudioSrc";
 import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
 import { PlayMode, nextIndexOnEnded, nextIndexOnSkip } from "@/features/music/queue";
+import { invoke } from "@tauri-apps/api/core";
 
 export type PodcastStatus = "idle" | "loading" | "playing" | "paused" | "error";
 
@@ -11,6 +12,9 @@ export interface PodcastTrack {
   audioUrl: string;
   title: string;
   feedTitle: string;
+  /** Raw filesystem path selects the native local-music adapter. Remote
+   * podcasts omit it and continue through HTMLAudioElement. */
+  localPath?: string;
 }
 
 interface PodcastPlayerState {
@@ -42,12 +46,65 @@ interface PodcastPlayerState {
  * its events write back into the store. No React effect choreography needed. */
 let audio: HTMLAudioElement | null = null;
 
-const pauseAudio = () => audio?.pause();
+const pauseAudio = () => {
+  if (usePodcastPlayerStore.getState().track?.localPath) void invoke("native_audio_pause").catch(() => {});
+  else audio?.pause();
+};
 
 // Only one track plays at a time, so a single slot (revoked on replace/stop)
 // is enough here — unlike the duration-probing in MusicPage.tsx, which
 // resolves several tracks concurrently and owns its blob URLs individually.
 let currentBlobUrl: string | null = null;
+let nativePoll: number | null = null;
+
+interface NativeAudioSnapshot {
+  status: "idle" | "playing" | "paused" | "ended" | "error";
+  positionSec: number;
+  durationSec: number;
+  speed: number;
+  error: string | null;
+  generation: number;
+}
+
+function stopNativePoll() {
+  if (nativePoll !== null) window.clearInterval(nativePoll);
+  nativePoll = null;
+}
+
+function startNativePoll(track: PodcastTrack) {
+  stopNativePoll();
+  nativePoll = window.setInterval(async () => {
+    if (usePodcastPlayerStore.getState().track !== track) return;
+    try {
+      const native = await invoke<NativeAudioSnapshot>("native_audio_snapshot");
+      if (usePodcastPlayerStore.getState().track !== track) return;
+      if (native.status === "ended") {
+        stopNativePoll();
+        const state = usePodcastPlayerStore.getState();
+        if (state.playlist) {
+          const next = nextIndexOnEnded(state.playlistIndex, state.playlist.length, state.playMode);
+          if (next !== null) { playAt(next); return; }
+        }
+        state.stop();
+        return;
+      }
+      const status: PodcastStatus = native.status === "playing"
+        ? "playing"
+        : native.status === "error"
+          ? "error"
+          : "paused";
+      usePodcastPlayerStore.setState({
+        status,
+        position: native.positionSec,
+        duration: native.durationSec,
+        speed: native.speed,
+      });
+    } catch (error) {
+      console.error("[nativeAudio] snapshot failed", error);
+      usePodcastPlayerStore.setState({ status: "error" });
+    }
+  }, 100);
+}
 
 async function resolvePlayableSrc(url: string): Promise<string> {
   const src = await toPlayableSrc(url);
@@ -127,6 +184,25 @@ async function playAt(index: number) {
   const s = usePodcastPlayerStore.getState();
   const track = s.playlist?.[index];
   if (!track) return;
+  if (track.localPath) {
+    stopNativePoll();
+    el.pause();
+    el.removeAttribute("src");
+    usePodcastPlayerStore.setState({ track, playlistIndex: index, status: "loading", position: 0, duration: 0 });
+    try {
+      const loaded = await invoke<NativeAudioSnapshot>("native_audio_load", { path: track.localPath, autoplay: true });
+      if (usePodcastPlayerStore.getState().track !== track) return;
+      await invoke("native_audio_set_speed", { speed: s.speed });
+      usePodcastPlayerStore.setState({ status: "playing", duration: loaded.durationSec, position: 0 });
+      startNativePoll(track);
+    } catch (error) {
+      console.error("[nativeAudio] load failed", error);
+      usePodcastPlayerStore.setState({ status: "error" });
+    }
+    return;
+  }
+  void invoke("native_audio_stop").catch(() => {});
+  stopNativePoll();
   usePodcastPlayerStore.setState({ track, playlistIndex: index, status: "loading", position: 0, duration: 0 });
   try {
     const src = await resolvePlayableSrc(track.audioUrl);
@@ -155,6 +231,10 @@ export const usePodcastPlayerStore = create<PodcastPlayerState>((set, get) => ({
 
   play: (track) => {
     const el = getAudio();
+    if (!track.localPath) {
+      stopNativePoll();
+      void invoke("native_audio_stop").catch(() => {});
+    }
     // The TTS player and podcast player share the bottom bar slot — starting
     // one fully stops the other (audioChannel alone would only pause it).
     useTtsPlayerStore.getState().stop();
@@ -199,7 +279,12 @@ export const usePodcastPlayerStore = create<PodcastPlayerState>((set, get) => ({
 
   toggle: () => {
     const el = getAudio();
-    const { status } = get();
+    const { status, track } = get();
+    if (track?.localPath) {
+      const command = status === "playing" || status === "loading" ? "native_audio_pause" : "native_audio_play";
+      invoke(command).catch((error) => { console.error("[nativeAudio] toggle failed", error); set({ status: "error" }); });
+      return;
+    }
     if (status === "playing" || status === "loading") el.pause();
     else if (status === "paused") {
       claimAudioChannel(pauseAudio);
@@ -215,14 +300,20 @@ export const usePodcastPlayerStore = create<PodcastPlayerState>((set, get) => ({
 
   seekTo: (seconds) => {
     const el = getAudio();
-    const { duration } = get();
+    const { duration, track } = get();
+    if (track?.localPath) {
+      invoke("native_audio_seek", { seconds: Math.min(Math.max(0, seconds), duration || seconds) })
+        .catch((error) => { console.error("[nativeAudio] seek failed", error); set({ status: "error" }); });
+      return;
+    }
     el.currentTime = Math.min(Math.max(0, seconds), duration || seconds);
     set({ position: el.currentTime });
   },
 
-  seekBy: (delta) => get().seekTo(getAudio().currentTime + delta),
+  seekBy: (delta) => get().seekTo((get().track?.localPath ? get().position : getAudio().currentTime) + delta),
 
   setSpeed: (v) => {
+    if (get().track?.localPath) invoke("native_audio_set_speed", { speed: v }).catch(() => {});
     getAudio().playbackRate = v;
     set({ speed: v });
   },
@@ -231,6 +322,8 @@ export const usePodcastPlayerStore = create<PodcastPlayerState>((set, get) => ({
     const el = getAudio();
     el.pause();
     el.removeAttribute("src");
+    stopNativePoll();
+    void invoke("native_audio_stop").catch(() => {});
     if (currentBlobUrl) {
       URL.revokeObjectURL(currentBlobUrl);
       currentBlobUrl = null;
