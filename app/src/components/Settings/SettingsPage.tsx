@@ -331,8 +331,8 @@ function McpSection() {
             <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-primary/15 bg-primary/10 text-primary"><Server className="h-5 w-5" /></div>
             <div><p className="text-sm font-semibold">{t("settings.mcpLocalServer")}</p><p className="text-xs text-muted-foreground">{t("settings.mcpLocalOnly")}</p></div>
           </div>
-          <button type="button" disabled={loading} onClick={() => setConfig((current) => ({ ...current, enabled: !current.enabled }))} className={`relative h-6 w-11 rounded-full transition-colors ${config.enabled ? "bg-primary" : "bg-muted"}`} aria-label={t("settings.mcpEnable")}>
-            <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${config.enabled ? "translate-x-6" : "translate-x-1"}`} />
+          <button type="button" disabled={loading} onClick={() => setConfig((current) => ({ ...current, enabled: !current.enabled }))} className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${config.enabled ? "bg-primary" : "bg-muted"}`} aria-label={t("settings.mcpEnable")}>
+            <span className={`pointer-events-none absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${config.enabled ? "translate-x-5" : "translate-x-0"}`} />
           </button>
         </div>
 
