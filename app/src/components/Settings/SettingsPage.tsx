@@ -288,23 +288,32 @@ function McpSection() {
     setConfig((current) => ({ ...current, token }));
   };
 
-  const apply = async () => {
-    if (config.port < 1024 || config.port > 65535) {
+  const apply = async (candidate: McpConfig = config, rollback?: McpConfig) => {
+    if (candidate.port < 1024 || candidate.port > 65535) {
       toast.error(t("settings.mcpPortInvalid"));
       return;
     }
     setSaving(true);
     try {
-      const next = await invoke<McpStatus>("mcp_apply_config", { config });
+      const next = await invoke<McpStatus>("mcp_apply_config", { config: candidate });
+      setConfig(candidate);
       setStatus(next);
       window.dispatchEvent(new CustomEvent("tanwords:mcp-status-changed"));
-      toast.success(config.enabled ? t("settings.mcpStarted") : t("settings.mcpStopped"));
+      toast.success(next.running ? t("settings.mcpStarted") : t("settings.mcpStopped"));
     } catch (error) {
+      if (rollback) setConfig(rollback);
       setStatus((current) => ({ ...current, running: false, error: String(error) }));
       toast.error(String(error));
     } finally {
       setSaving(false);
     }
+  };
+
+  const toggleServer = () => {
+    if (loading || saving) return;
+    const next = { ...config, enabled: !config.enabled };
+    setConfig(next);
+    void apply(next, config);
   };
 
   const endpoint = status.endpoint || `http://127.0.0.1:${config.port}/mcp`;
@@ -331,7 +340,7 @@ function McpSection() {
             <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-primary/15 bg-primary/10 text-primary"><Server className="h-5 w-5" /></div>
             <div><p className="text-sm font-semibold">{t("settings.mcpLocalServer")}</p><p className="text-xs text-muted-foreground">{t("settings.mcpLocalOnly")}</p></div>
           </div>
-          <button type="button" disabled={loading} onClick={() => setConfig((current) => ({ ...current, enabled: !current.enabled }))} className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${config.enabled ? "bg-primary" : "bg-muted"}`} aria-label={t("settings.mcpEnable")}>
+          <button type="button" disabled={loading || saving} onClick={toggleServer} className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${config.enabled ? "bg-primary" : "bg-muted"}`} aria-label={t("settings.mcpEnable")}>
             <span className={`pointer-events-none absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${config.enabled ? "translate-x-5" : "translate-x-0"}`} />
           </button>
         </div>
@@ -346,7 +355,7 @@ function McpSection() {
 
           <div className="rounded-lg border border-border bg-muted/25 p-3"><div className="mb-2 flex items-center justify-between"><span className="text-xs font-medium">{t("settings.mcpClientConfig")}</span><Button variant="ghost" onClick={() => copy(clientConfig, "config")} className="h-7 gap-1.5 px-2 text-xs">{copied === "config" ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}{t("settings.mcpCopy")}</Button></div><pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed text-muted-foreground">{clientConfig}</pre></div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-muted-foreground">{t("settings.mcpTools")}</p><Button onClick={apply} disabled={loading || saving} className="h-9 rounded-lg px-4 text-xs font-semibold">{saving ? t("settings.mcpApplying") : t("settings.mcpApply")}</Button></div>
+          <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-muted-foreground">{t("settings.mcpTools")}</p><Button onClick={() => void apply()} disabled={loading || saving || !config.enabled} className="h-9 rounded-lg px-4 text-xs font-semibold">{saving ? t("settings.mcpApplying") : t("settings.mcpApply")}</Button></div>
           {status.error && <p className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">{status.error}</p>}
         </div>
       </div>
