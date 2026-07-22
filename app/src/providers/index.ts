@@ -6,14 +6,14 @@ import { CustomProvider } from "./custom";
 const providers = new Map<string, AIProvider>();
 
 // Register built-in providers
-export function registerBuiltInProviders(openaiKey: string, anthropicKey: string) {
+export function registerBuiltInProviders(openaiKey: string, anthropicKey: string, models?: { openai?: string; claude?: string }) {
   providers.set(
     "openai",
-    new OpenAIProvider("https://api.openai.com/v1", openaiKey, "gpt-4o-mini")
+    new OpenAIProvider("https://api.openai.com/v1", openaiKey, models?.openai || "gpt-4o-mini")
   );
   providers.set(
     "claude",
-    new AnthropicProvider("https://api.anthropic.com", anthropicKey, "claude-haiku-4-5")
+    new AnthropicProvider("https://api.anthropic.com", anthropicKey, models?.claude || "claude-haiku-4-5")
   );
 }
 

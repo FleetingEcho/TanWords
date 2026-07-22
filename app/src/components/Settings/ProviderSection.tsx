@@ -8,6 +8,7 @@ import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/24/solid";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Check, ListRestart, Loader2, Pencil, PlugZap, Trash2, X } from "lucide-react";
+import { loadProviderModels, saveProviderModel } from "@/providers/modelPreferences";
 
 function TestStatusBadge({ status }: { status: { ok: boolean | null; text: string } }) {
   return (
@@ -66,6 +67,7 @@ export function ProviderSection() {
   const [testStatus, setTestStatus] = useState<{ ok: boolean | null; text: string } | null>(null);
   const [fetchedModels, setFetchedModels] = useState<string[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
+  const [providerModels, setProviderModels] = useState<Record<string, string>>(() => loadProviderModels());
   const globalDefaultProvider = useSettingsStore((state) => state.defaultAiProvider);
 
   useEffect(() => {
@@ -162,8 +164,8 @@ export function ProviderSection() {
   // Re-register built-in providers when keys change
   useEffect(() => {
     if (!keysLoaded) return;
-    registerBuiltInProviders(openaiKey, claudeKey);
-  }, [openaiKey, claudeKey, keysLoaded]);
+    registerBuiltInProviders(openaiKey, claudeKey, providerModels);
+  }, [openaiKey, claudeKey, keysLoaded, providerModels.openai, providerModels.claude]);
 
   // Persist + register custom providers
   useEffect(() => {
@@ -180,10 +182,10 @@ export function ProviderSection() {
     if (!keysLoaded) return;
     for (const preset of PRESET_PROVIDERS) {
       const key = presetKeys[preset.id];
-      if (key) registerCustomProvider(preset.id, preset.name, preset.apiBase, key, preset.model);
+      if (key) registerCustomProvider(preset.id, preset.name, preset.apiBase, key, providerModels[preset.id] || preset.model);
       else removeProvider(preset.id);
     }
-  }, [presetKeys, keysLoaded]);
+  }, [presetKeys, keysLoaded, providerModels.deepseek]);
 
   // Handle built-in key changes: write to keychain (debounced) + re-register
   const handleOpenaiKeyChange = (value: string) => {
@@ -213,7 +215,7 @@ export function ProviderSection() {
             "anthropic-version": "2023-06-01",
           },
           body: JSON.stringify({
-            model: "claude-haiku-4-5",
+            model,
             max_tokens: 3,
             messages: [{ role: "user", content: "Hi" }],
           }),
@@ -233,14 +235,22 @@ export function ProviderSection() {
     setTimeout(() => setTestStatus(null), 3000);
   };
 
-  const fetchModels = async (apiBase: string, apiKey: string, selectFirst: (model: string) => void, currentModel: string) => {
+  const fetchModels = async (providerId: string, apiBase: string, apiKey: string, selectFirst: (model: string) => void, currentModel: string) => {
     if (!apiBase.trim()) return;
     setFetchingModels(true);
     try {
       const base = apiBase.trim().replace(/\/chat\/completions\/?$/, "").replace(/\/$/, "");
       const headers: Record<string, string> = { Accept: "application/json" };
-      if (apiKey.trim()) headers.Authorization = `Bearer ${apiKey.trim()}`;
-      const response = await fetch(`${base}/models`, { headers });
+      if (apiKey.trim()) {
+        if (providerId === "claude") {
+          headers["x-api-key"] = apiKey.trim();
+          headers["anthropic-version"] = "2023-06-01";
+        } else {
+          headers.Authorization = `Bearer ${apiKey.trim()}`;
+        }
+      }
+      const modelsUrl = providerId === "claude" ? `${base}/v1/models` : `${base}/models`;
+      const response = await fetch(modelsUrl, { headers });
       if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
       const body = await response.json();
       const rows = Array.isArray(body?.data) ? body.data : Array.isArray(body?.models) ? body.models : [];
@@ -257,6 +267,11 @@ export function ProviderSection() {
     } finally {
       setFetchingModels(false);
     }
+  };
+
+  const updateProviderModel = (providerId: string, modelId: string) => {
+    setProviderModels((current) => ({ ...current, [providerId]: modelId }));
+    saveProviderModel(providerId, modelId);
   };
 
   const addCustom = async () => {
@@ -309,8 +324,8 @@ export function ProviderSection() {
   };
 
   const allCards: ProviderDef[] = [
-    ...BUILT_IN_PROVIDERS,
-    ...PRESET_PROVIDERS,
+    ...BUILT_IN_PROVIDERS.map((provider) => ({ ...provider, model: providerModels[provider.id] || provider.model })),
+    ...PRESET_PROVIDERS.map((provider) => ({ ...provider, model: providerModels[provider.id] || provider.model })),
     ...customProviders.map((p) => ({ id: p.id, name: p.name, model: p.modelId, dot: "#6366f1", isCustom: true, apiBase: p.apiBase })),
   ];
 
@@ -346,7 +361,7 @@ export function ProviderSection() {
           </SelectTrigger>
           <SelectContent>
             {allCards.map((p) => (
-              <SelectItem key={p.id} value={p.id}>{p.name} · {p.model}</SelectItem>
+              <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
             ))}
             <SelectItem value="__new__">+ {t("settings.custom")}</SelectItem>
           </SelectContent>
@@ -375,7 +390,8 @@ export function ProviderSection() {
                 <label className="text-xs text-muted-foreground block mb-1">{t("settings.apiKey")}</label>
                 <input type="password" value={openaiKey} onChange={(e) => handleOpenaiKeyChange(e.target.value)} placeholder="sk-..." className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30" />
               </div>
-              <ProviderIconButton label={t("settings.testConnection")} onClick={() => testConnection("openai", "https://api.openai.com/v1", openaiKey)}><PlugZap className="h-4 w-4" /></ProviderIconButton>
+              <div><label className="text-xs text-muted-foreground block mb-1">{t("settings.modelId")}</label><div className="flex gap-2"><input list="provider-model-options" value={providerModels.openai || ""} onChange={(e) => updateProviderModel("openai", e.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-sm font-mono focus:outline-none" /><ProviderIconButton label={t("settings.fetchModels")} onClick={() => void fetchModels("openai", "https://api.openai.com/v1", openaiKey, (model) => updateProviderModel("openai", model), providerModels.openai || "")}>{fetchingModels ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListRestart className="h-4 w-4" />}</ProviderIconButton></div></div>
+              <ProviderIconButton label={t("settings.testConnection")} onClick={() => testConnection("openai", "https://api.openai.com/v1", openaiKey, providerModels.openai)}><PlugZap className="h-4 w-4" /></ProviderIconButton>
               {testStatus && <TestStatusBadge status={testStatus} />}
             </div>
           )}
@@ -386,7 +402,8 @@ export function ProviderSection() {
                 <label className="text-xs text-muted-foreground block mb-1">{t("settings.apiKey")}</label>
                 <input type="password" value={claudeKey} onChange={(e) => handleClaudeKeyChange(e.target.value)} placeholder="sk-ant-..." className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30" />
               </div>
-              <ProviderIconButton label={t("settings.testConnection")} onClick={() => testConnection("claude", "https://api.anthropic.com", claudeKey)}><PlugZap className="h-4 w-4" /></ProviderIconButton>
+              <div><label className="text-xs text-muted-foreground block mb-1">{t("settings.modelId")}</label><div className="flex gap-2"><input list="provider-model-options" value={providerModels.claude || ""} onChange={(e) => updateProviderModel("claude", e.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-sm font-mono focus:outline-none" /><ProviderIconButton label={t("settings.fetchModels")} onClick={() => void fetchModels("claude", "https://api.anthropic.com", claudeKey, (model) => updateProviderModel("claude", model), providerModels.claude || "")}>{fetchingModels ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListRestart className="h-4 w-4" />}</ProviderIconButton></div></div>
+              <ProviderIconButton label={t("settings.testConnection")} onClick={() => testConnection("claude", "https://api.anthropic.com", claudeKey, providerModels.claude)}><PlugZap className="h-4 w-4" /></ProviderIconButton>
               {testStatus && <TestStatusBadge status={testStatus} />}
             </div>
           )}
@@ -398,7 +415,8 @@ export function ProviderSection() {
                   <label className="text-xs text-muted-foreground block mb-1">{t("settings.apiKey")}</label>
                   <input type="password" value={presetKeys[preset.id] || ""} onChange={(e) => handlePresetKeyChange(preset.id, e.target.value)} placeholder="API Key" className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30" />
                 </div>
-                <ProviderIconButton label={t("settings.testConnection")} onClick={() => testConnection(preset.id, preset.apiBase!, presetKeys[preset.id] || "", preset.model)}><PlugZap className="h-4 w-4" /></ProviderIconButton>
+                <div><label className="text-xs text-muted-foreground block mb-1">{t("settings.modelId")}</label><div className="flex gap-2"><input list="provider-model-options" value={providerModels[preset.id] || ""} onChange={(e) => updateProviderModel(preset.id, e.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-sm font-mono focus:outline-none" /><ProviderIconButton label={t("settings.fetchModels")} onClick={() => void fetchModels(preset.id, preset.apiBase!, presetKeys[preset.id] || "", (model) => updateProviderModel(preset.id, model), providerModels[preset.id] || "")}>{fetchingModels ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListRestart className="h-4 w-4" />}</ProviderIconButton></div></div>
+                <ProviderIconButton label={t("settings.testConnection")} onClick={() => testConnection(preset.id, preset.apiBase!, presetKeys[preset.id] || "", providerModels[preset.id] || preset.model)}><PlugZap className="h-4 w-4" /></ProviderIconButton>
                 {testStatus && <TestStatusBadge status={testStatus} />}
               </div>
             )
@@ -422,7 +440,7 @@ export function ProviderSection() {
                   </div>
                   <div>
                     <label className="text-xs text-muted-foreground block mb-1">{t("settings.modelId")}</label>
-                    <div className="flex gap-2"><input list="provider-model-options" value={editForm.modelId} onChange={(e) => setEditForm((prev) => ({ ...prev, modelId: e.target.value }))} className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-sm focus:outline-none" /><ProviderIconButton label={t("settings.fetchModels")} onClick={() => void fetchModels(editForm.apiBase, editForm.apiKey, (model) => setEditForm((prev) => ({ ...prev, modelId: model })), editForm.modelId)}>{fetchingModels ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListRestart className="h-4 w-4" />}</ProviderIconButton></div>
+                    <div className="flex gap-2"><input list="provider-model-options" value={editForm.modelId} onChange={(e) => setEditForm((prev) => ({ ...prev, modelId: e.target.value }))} className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-sm focus:outline-none" /><ProviderIconButton label={t("settings.fetchModels")} onClick={() => void fetchModels(p.id, editForm.apiBase, editForm.apiKey, (model) => setEditForm((prev) => ({ ...prev, modelId: model })), editForm.modelId)}>{fetchingModels ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListRestart className="h-4 w-4" />}</ProviderIconButton></div>
                   </div>
                   <div className="flex gap-2">
                     <ProviderIconButton label={t("settings.save")} onClick={saveEdit}><Check className="h-4 w-4" /></ProviderIconButton>
@@ -470,7 +488,7 @@ export function ProviderSection() {
           </div>
           <div>
             <label className="text-xs text-muted-foreground block mb-1">{t("settings.modelId")}</label>
-            <div className="flex gap-2"><input list="provider-model-options" value={newProvider.modelId} onChange={(e) => setNewProvider((prev) => ({ ...prev, modelId: e.target.value }))} placeholder="gpt-4o-mini" className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-sm focus:outline-none" /><ProviderIconButton label={t("settings.fetchModels")} onClick={() => void fetchModels(newProvider.apiBase, newProvider.apiKey, (model) => setNewProvider((prev) => ({ ...prev, modelId: model })), newProvider.modelId)}>{fetchingModels ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListRestart className="h-4 w-4" />}</ProviderIconButton></div>
+            <div className="flex gap-2"><input list="provider-model-options" value={newProvider.modelId} onChange={(e) => setNewProvider((prev) => ({ ...prev, modelId: e.target.value }))} placeholder="gpt-4o-mini" className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-sm focus:outline-none" /><ProviderIconButton label={t("settings.fetchModels")} onClick={() => void fetchModels("custom", newProvider.apiBase, newProvider.apiKey, (model) => setNewProvider((prev) => ({ ...prev, modelId: model })), newProvider.modelId)}>{fetchingModels ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListRestart className="h-4 w-4" />}</ProviderIconButton></div>
           </div>
           <div className="flex gap-2">
             <Button onClick={addCustom} disabled={!newProvider.name || !newProvider.apiBase || !newProvider.modelId} className="h-auto px-4 py-1.5 rounded-lg text-xs font-medium bg-primary text-white hover:bg-primary/90 disabled:opacity-50 transition-colors">{t("settings.add")}</Button>

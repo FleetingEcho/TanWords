@@ -1,4 +1,5 @@
 import { registerBuiltInProviders, registerCustomProvider } from "@/providers";
+import { loadProviderModels } from "@/providers/modelPreferences";
 import { getSecret, setSecret } from "./secrets";
 
 const MIGRATION_FLAG = "tanwords_keychain_migrated_v1";
@@ -77,7 +78,8 @@ export async function initProviders(): Promise<void> {
     localStorage.getItem("tanwords_claude_key") ||
     "";
 
-  registerBuiltInProviders(openaiKey, claudeKey);
+  const providerModels = loadProviderModels();
+  registerBuiltInProviders(openaiKey, claudeKey, providerModels);
 
   // Register preset providers (DeepSeek) from keychain
   const presetProviders = [
@@ -100,7 +102,7 @@ export async function initProviders(): Promise<void> {
       })();
 
     if (key) {
-      registerCustomProvider(preset.id, preset.name, preset.apiBase, key, preset.model);
+      registerCustomProvider(preset.id, preset.name, preset.apiBase, key, providerModels[preset.id] || preset.model);
     }
   }
 

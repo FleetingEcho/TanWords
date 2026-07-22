@@ -46,7 +46,7 @@ export function useAiChatSession() {
 
   // Settings
   const [selectedPreset, setSelectedPreset] = useState("english-tutor");
-  const [customPrompt, setCustomPrompt] = useState("");
+  const [customPrompt, setCustomPrompt] = useState(() => buildPresetPrompt("english-tutor", targetLevel));
   const [selectedProviderId, setSelectedProviderId] = useState(() => providers[0]?.id ?? "");
   const [enabledGroups, setEnabledGroups] = useState<Set<ToolGroupKey>>(
     () => new Set<ToolGroupKey>(["vocabulary", "documents"])
@@ -70,7 +70,9 @@ export function useAiChatSession() {
   const activeIdRef = useRef<string | null>(null);
   activeIdRef.current = activeId;
 
-  const systemPrompt = selectedPreset === "custom" ? customPrompt : buildPresetPrompt(selectedPreset, targetLevel);
+  // Keep the effective prompt explicit and editable for every role. Presets are
+  // starting points, not opaque behavior that users cannot inspect or change.
+  const systemPrompt = customPrompt || buildPresetPrompt(selectedPreset, targetLevel);
   const ACTIVE_SESSION_KEY = "tanwords_ai_chat_active_session";
 
   const setItems = useCallback((items: DisplayItem[]) => {
@@ -136,7 +138,7 @@ export function useAiChatSession() {
     setItems(deserializeItems(detail.messages));
     setActiveTitle(detail.title);
     setSelectedPreset(detail.preset_id);
-    if (detail.preset_id === "custom") setCustomPrompt(detail.system_prompt || "");
+    setCustomPrompt(detail.system_prompt || buildPresetPrompt(detail.preset_id, targetLevel));
     setSelectedProviderId(detail.provider_id || providers[0]?.id || "");
   }, [db, providers, setItems]);
 
@@ -152,6 +154,11 @@ export function useAiChatSession() {
     setSearchQuery("");
     setSearchResults(null);
     localStorage.removeItem(ACTIVE_SESSION_KEY);
+  };
+
+  const selectPreset = (presetId: string) => {
+    setSelectedPreset(presetId);
+    setCustomPrompt(presetId === "custom" ? "" : buildPresetPrompt(presetId, targetLevel));
   };
 
   const deleteSession = async (id: string, e: React.MouseEvent) => {
@@ -453,7 +460,7 @@ export function useAiChatSession() {
     displayItems, activeTitle, isNewSession, streaming,
     tokenCount: estimateTokens(displayItems),
     // settings
-    selectedPreset, setSelectedPreset, customPrompt, setCustomPrompt,
+    selectedPreset, setSelectedPreset: selectPreset, customPrompt, setCustomPrompt,
     selectedProviderId, setSelectedProviderId, providers,
     enabledGroups, toggleGroup, showTools, setShowTools,
     clearMessages,

@@ -11,7 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ChatDigestPanel } from "./ChatDigestPanel";
 import { Bot, Eraser, PanelRightOpen, PlugZap, Settings, Sparkles, Unplug } from "lucide-react";
 import { useNavStore } from "@/store/navStore";
+import { useSettingsStore } from "@/store/settingsStore";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { Dialog, DialogTitle } from "@/components/ui/dialog";
+import { buildPresetPrompt } from "./aiChatHelpers";
 
 export function AiChatPage() {
   const t = useT();
@@ -20,6 +23,7 @@ export function AiChatPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(() => localStorage.getItem("aichat-sidebar-collapsed") === "1");
   const [digestOpen, setDigestOpen] = React.useState(false);
   const [confirmClear, setConfirmClear] = React.useState(false);
+  const [promptOpen, setPromptOpen] = React.useState(false);
   const messages = React.useMemo(() => s.displayItems.flatMap((item) => item.kind === "message" ? [item.msg] : []), [s.displayItems]);
   const activeProvider = s.providers.find((provider) => provider.id === s.selectedProviderId) ?? s.providers[0];
   const toggleSidebar = () => setSidebarCollapsed((current) => {
@@ -67,6 +71,9 @@ export function AiChatPage() {
               ))}
             </SelectContent>
           </Select>
+          <Button variant="ghost" onClick={() => setPromptOpen(true)} title={t("aichat.promptView")} aria-label={t("aichat.promptView")} className="h-9 w-9 rounded-xl p-0 text-muted-foreground hover:bg-primary/10 hover:text-primary shrink-0">
+            <Settings className="h-4 w-4" />
+          </Button>
           <div className="mx-0.5 h-5 w-px bg-border/70" />
           {activeProvider ? <div title={t("aichat.providerConnected")} aria-label={t("aichat.providerConnected")} className="grid h-9 w-9 place-items-center rounded-xl text-emerald-500"><PlugZap className="h-4 w-4" /><span className="sr-only">{t("aichat.providerConnected")}</span></div> : <Button variant="ghost" onClick={() => navigate("settings")} title={t("aichat.providerDisconnected")} aria-label={t("aichat.providerDisconnected")} className="h-9 w-9 rounded-xl p-0 text-amber-500 hover:bg-amber-500/10 hover:text-amber-500"><Unplug className="h-4 w-4" /></Button>}
           <Button variant="ghost" onClick={() => setDigestOpen(true)} disabled={messages.length < 2 || s.streaming} title={t("aichat.createDigest")} aria-label={t("aichat.createDigest")} className="h-9 w-9 rounded-xl p-0 text-primary hover:bg-primary/10">
@@ -79,19 +86,6 @@ export function AiChatPage() {
           )}
           {!activeProvider && <Button variant="ghost" onClick={() => navigate("settings")} title={t("aichat.openSettings")} aria-label={t("aichat.openSettings")} className="h-9 w-9 rounded-xl p-0 text-muted-foreground"><Settings className="h-4 w-4" /></Button>}
         </div>
-
-        {/* Custom system prompt (only for the Custom preset) */}
-        {s.selectedPreset === "custom" && (
-          <div className="shrink-0 border-b border-border px-5 py-3">
-            <textarea
-              value={s.customPrompt}
-              onChange={(e) => s.setCustomPrompt(e.target.value)}
-              placeholder={t("aichat.customPromptPlaceholder")}
-              rows={3}
-              className="w-full resize-none px-3 py-2 text-xs rounded-xl border border-input bg-background placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/30 leading-relaxed"
-            />
-          </div>
-        )}
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-5 py-7 min-h-0 scroll-smooth">
@@ -172,6 +166,33 @@ export function AiChatPage() {
         onCancel={() => setConfirmClear(false)}
         onConfirm={() => { setConfirmClear(false); void s.clearMessages(); }}
       />
+      <Dialog open={promptOpen} onClose={() => setPromptOpen(false)} maxWidth="max-w-2xl" className="overflow-hidden">
+        <div className="border-b border-border/70 px-6 py-5">
+          <DialogTitle className="text-base font-semibold">{t("aichat.promptTitle")}</DialogTitle>
+          <p className="mt-1 text-xs text-muted-foreground">{t("aichat.promptDescription")}</p>
+        </div>
+        <div className="p-6">
+          <textarea
+            value={s.customPrompt}
+            onChange={(e) => s.setCustomPrompt(e.target.value)}
+            placeholder={t("aichat.customPromptPlaceholder")}
+            rows={14}
+            autoFocus
+            className="w-full resize-y rounded-xl border border-input bg-muted/20 px-4 py-3 font-mono text-sm leading-relaxed placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/30"
+          />
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <Button
+              variant="ghost"
+              disabled={s.selectedPreset === "custom"}
+              onClick={() => s.setCustomPrompt(buildPresetPrompt(s.selectedPreset, useSettingsStore.getState().targetLevels.join("/")))}
+              className="text-xs text-muted-foreground"
+            >
+              {t("aichat.promptReset")}
+            </Button>
+            <Button onClick={() => setPromptOpen(false)}>{t("aichat.promptDone")}</Button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }
