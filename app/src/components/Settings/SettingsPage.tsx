@@ -297,6 +297,7 @@ function McpSection() {
     try {
       const next = await invoke<McpStatus>("mcp_apply_config", { config });
       setStatus(next);
+      window.dispatchEvent(new CustomEvent("tanwords:mcp-status-changed"));
       toast.success(config.enabled ? t("settings.mcpStarted") : t("settings.mcpStopped"));
     } catch (error) {
       setStatus((current) => ({ ...current, running: false, error: String(error) }));
