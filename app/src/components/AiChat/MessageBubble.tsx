@@ -42,20 +42,20 @@ export function MessageBubble({ msg, compact = false, isTyping = false }: Props)
   const isLongUserMsg = msg.role === "user" && msg.content.length > COLLAPSE_THRESHOLD;
 
   return (
-    <div className={`flex gap-2 group ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+    <div className={`flex gap-3 group ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
       {msg.role === "assistant" && (
         <div
-          className={`${avatarSize} rounded-full bg-primary/15 flex items-center justify-center font-semibold text-primary shrink-0 mt-1`}
+          className={`${avatarSize} rounded-xl bg-gradient-to-br from-primary/25 to-primary/5 ring-1 ring-primary/15 flex items-center justify-center font-semibold text-primary shrink-0 mt-1 shadow-sm`}
         >
           AI
         </div>
       )}
 
       <div
-        className={`relative max-w-[82%] rounded-2xl px-3 py-2 ${textSize} leading-relaxed ${
+        className={`relative max-w-[82%] rounded-[20px] px-4 py-3 ${textSize} leading-7 shadow-sm ${
           msg.role === "user"
-            ? "bg-primary text-primary-foreground rounded-br-none"
-            : "bg-muted/80 text-foreground rounded-bl-none"
+            ? "bg-gradient-to-br from-primary to-primary/90 text-primary-foreground rounded-br-md shadow-primary/10"
+            : "border border-border/55 bg-card/80 text-foreground rounded-bl-md backdrop-blur-sm"
         }`}
       >
         {isTyping ? (
@@ -119,7 +119,7 @@ export function MessageBubble({ msg, compact = false, isTyping = false }: Props)
 
       {msg.role === "user" && (
         <div
-          className={`${avatarSize} rounded-full bg-muted flex items-center justify-center shrink-0 mt-1`}
+          className={`${avatarSize} rounded-xl bg-muted/80 ring-1 ring-border/60 flex items-center justify-center shrink-0 mt-1`}
         >
           <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-muted-foreground">
             <path fillRule="evenodd" d="M8 8a3 3 0 100-6 3 3 0 000 6zm-4.5 8a4.5 4.5 0 019 0H3.5z" />
