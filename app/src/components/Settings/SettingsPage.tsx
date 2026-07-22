@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { save as saveDialog, open as openDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { Check, Copy, Eye, EyeOff, RefreshCw, Server, ShieldCheck } from "lucide-react";
-import { DEFAULT_SIDEBAR_TABS, useSettingsStore, Theme } from "@/store/settingsStore";
+import { DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, useSettingsStore, Theme } from "@/store/settingsStore";
 import { DEFAULT_ENRICH_SYSTEM_PROMPT } from "@/providers/base";
 import { useT } from "@/hooks/useT";
 import { useDB } from "@/hooks/useDB";
@@ -153,16 +153,26 @@ export function SettingsPage() {
                   onChange={(v) => settings.setShowQuickDoc(v === "on")}
                 />
               </SettingRow>
-              <SettingRow label={t("settings.githubLink")} sub={t("settings.githubLinkSub")}>
-                <ToggleGroup
-                  options={[
-                    { id: "on", label: t("settings.on") },
-                    { id: "off", label: t("settings.off") },
-                  ]}
-                  value={settings.showGithubLink ? "on" : "off"}
-                  onChange={(v) => settings.setShowGithubLink(v === "on")}
-                />
-              </SettingRow>
+              <div className="py-4">
+                <div className="mb-3">
+                  <div className="flex items-center gap-2.5">
+                    <p className="text-sm font-medium">{t("settings.topBarItems")}</p>
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">{t("settings.topBarItemsSelected", { n: settings.visibleTopBarItems.length })}</span>
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{t("settings.topBarItemsSub")}</p>
+                </div>
+                <div className="flex max-w-4xl flex-wrap gap-2">
+                  {DEFAULT_TOPBAR_ITEMS.map((item) => {
+                    const visible = settings.visibleTopBarItems.includes(item);
+                    return (
+                      <label key={item} className={`flex h-8 w-32 cursor-pointer items-center gap-2 rounded-full border px-3 text-xs font-medium transition-colors ${visible ? "border-primary/30 bg-primary/[0.07] text-foreground" : "border-transparent bg-muted/50 text-muted-foreground hover:bg-muted"}`}>
+                        <Checkbox className="h-3.5 w-3.5 rounded-full shadow-none" checked={visible} onCheckedChange={(checked) => settings.setTopBarItemVisible(item, checked === true)} />
+                        <span className="truncate">{t(`settings.topBar.${item}`)}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
               <div className="py-4">
                 <div className="mb-3">
                   <div className="flex items-center gap-2.5">

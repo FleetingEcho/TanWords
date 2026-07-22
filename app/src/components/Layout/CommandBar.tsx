@@ -1,5 +1,6 @@
 import React from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { open as openUrl } from "@tauri-apps/plugin-shell";
 import {
   ArrowLeft, ArrowRight, BookPlus, BrainCircuit, Check, ChevronDown, FilePlus2, Languages,
   MessageSquarePlus, Monitor, Moon, Search, Server, Settings, Sparkles, Sun, Unplug, X,
@@ -15,6 +16,7 @@ import { NavPage, useNavStore } from "@/store/navStore";
 import { useWordModalStore } from "@/store/wordModalStore";
 import { UpdateButton } from "@/components/Layout/UpdateButton";
 import { useSettingsStore } from "@/store/settingsStore";
+import { GitHubIcon } from "@/components/ui/icons";
 
 type McpState = { status: { running: boolean; error: string | null } };
 
@@ -34,6 +36,8 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   const setLanguage = useSettingsStore((state) => state.setUiLanguage);
   const theme = useSettingsStore((state) => state.theme);
   const setTheme = useSettingsStore((state) => state.setTheme);
+  const visibleItems = useSettingsStore((state) => state.visibleTopBarItems);
+  const visible = (item: import("@/store/settingsStore").TopBarItemId) => visibleItems.includes(item);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [wordOpen, setWordOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -76,6 +80,10 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   const newDocument = () => { navigate("documents"); window.setTimeout(() => dispatch("tanwords:new-document"), 0); };
   const newChat = () => { navigate("chat"); window.setTimeout(() => dispatch("tanwords:new-chat"), 0); };
   const digest = () => dispatch("tanwords:conversation-note");
+  const openGitHub = async () => {
+    const url = "https://github.com/FleetingEcho/TanWords";
+    try { await openUrl(url); } catch { window.open(url, "_blank", "noopener,noreferrer"); }
+  };
   const addWord = () => {
     const value = word.trim();
     if (!value) return;
@@ -103,12 +111,12 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   return (
     <>
       <header className="flex h-12 shrink-0 select-none items-center gap-1.5 border-b border-border/80 bg-background/90 px-3 backdrop-blur-xl">
-        <div className="flex items-center gap-0.5 border-r border-border pr-2">
+        {visible("history") && <div className="flex items-center gap-0.5 border-r border-border pr-2">
           <Button variant="ghost" size="icon" disabled={!canGoBack} onClick={goBack} className="h-8 w-8 rounded-lg"><ArrowLeft className="h-4 w-4" /></Button>
           <Button variant="ghost" size="icon" disabled={!canGoForward} onClick={goForward} className="h-8 w-8 rounded-lg"><ArrowRight className="h-4 w-4" /></Button>
-        </div>
+        </div>}
 
-        <DropdownMenu>
+        {visible("new") && <DropdownMenu>
           <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 gap-2 rounded-lg px-2.5 text-xs font-medium"><FilePlus2 className="h-4 w-4" /><span className="hidden sm:inline">{t("command.new")}</span><ChevronDown className="h-3 w-3 text-muted-foreground" /></Button></DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-52">
             <DropdownMenuItem onClick={newDocument}><FilePlus2 className="mr-2 h-4 w-4" />{t("command.newDocument")}</DropdownMenuItem>
@@ -116,15 +124,15 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
             <div className="my-1 h-px bg-border" />
             <DropdownMenuItem onClick={() => setWordOpen(true)}><BookPlus className="mr-2 h-4 w-4" />{t("command.addVocabulary")}</DropdownMenuItem>
           </DropdownMenuContent>
-        </DropdownMenu>
+        </DropdownMenu>}
 
-        <button onClick={() => setPaletteOpen(true)} className="ml-1 flex h-8 min-w-0 max-w-72 flex-1 items-center gap-2 rounded-lg border border-border bg-muted/35 px-2.5 text-xs text-muted-foreground transition hover:bg-muted/60 hover:text-foreground"><Search className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{t("command.search")}</span><kbd className="ml-auto hidden rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] md:inline">⌘K</kbd></button>
+        {visible("search") && <button onClick={() => setPaletteOpen(true)} className="ml-1 flex h-8 min-w-0 max-w-72 flex-1 items-center gap-2 rounded-lg border border-border bg-muted/35 px-2.5 text-xs text-muted-foreground transition hover:bg-muted/60 hover:text-foreground"><Search className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{t("command.search")}</span><kbd className="ml-auto hidden rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] md:inline">⌘K</kbd></button>}
 
-        {context && <><div className="mx-1 hidden h-5 w-px bg-border sm:block" /><Button variant="ghost" onClick={context.run} className="h-8 gap-2 rounded-lg px-2.5 text-xs font-medium text-foreground"><context.icon className="h-4 w-4 text-primary" /><span className="hidden lg:inline">{context.label}</span></Button></>}
+        {visible("context") && context && <><div className="mx-1 hidden h-5 w-px bg-border sm:block" /><Button variant="ghost" onClick={context.run} className="h-8 gap-2 rounded-lg px-2.5 text-xs font-medium text-foreground"><context.icon className="h-4 w-4 text-primary" /><span className="hidden lg:inline">{context.label}</span></Button></>}
 
         <div className="ml-auto flex items-center gap-0.5 border-l border-border pl-2">
-          <Button variant="ghost" size="icon" onClick={() => navigate("settings")} title={mcp.error || (mcp.running ? t("command.mcpRunning") : t("command.mcpStopped"))} className={`relative h-8 w-8 rounded-lg ${mcp.error ? "text-amber-500" : mcp.running ? "text-emerald-500" : "text-muted-foreground"}`}><Server className="h-4 w-4" />{mcp.running && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />}</Button>
-          <DropdownMenu>
+          {visible("mcp") && <Button variant="ghost" size="icon" onClick={() => navigate("settings")} title={mcp.error || (mcp.running ? t("command.mcpRunning") : t("command.mcpStopped"))} className={`relative h-8 w-8 rounded-lg ${mcp.error ? "text-amber-500" : mcp.running ? "text-emerald-500" : "text-muted-foreground"}`}><Server className="h-4 w-4" />{mcp.running && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />}</Button>}
+          {visible("ai") && <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" title={providerConnected ? t("command.switchModel") : t("command.aiDisconnected")} className={`relative h-8 w-8 rounded-lg ${providerConnected ? "text-foreground" : "text-amber-500"}`}>
                 {providerConnected ? <BrainCircuit className="h-4 w-4" /> : <Unplug className="h-4 w-4" />}
@@ -145,24 +153,25 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
               <div className="my-1 h-px bg-border" />
               <DropdownMenuItem onClick={() => navigate("settings")}><Settings className="h-4 w-4" />{t("command.manageModels")}</DropdownMenuItem>
             </DropdownMenuContent>
-          </DropdownMenu>
-          <DropdownMenu>
+          </DropdownMenu>}
+          {visible("language") && <DropdownMenu>
             <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" title={t("settings.uiLanguage")} className="h-8 w-8 rounded-lg text-muted-foreground"><Languages className="h-4 w-4" /></Button></DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-40">
               <DropdownMenuItem onClick={() => setLanguage("zh")}><span className="w-5 font-medium">中</span><span className="flex-1">中文</span>{language === "zh" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setLanguage("en")}><span className="w-5 font-medium">En</span><span className="flex-1">English</span>{language === "en" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
             </DropdownMenuContent>
-          </DropdownMenu>
-          <DropdownMenu>
+          </DropdownMenu>}
+          {visible("theme") && <DropdownMenu>
             <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" title={t("settings.theme")} className="h-8 w-8 rounded-lg text-muted-foreground">{theme === "light" ? <Sun className="h-4 w-4" /> : theme === "dark" ? <Moon className="h-4 w-4" /> : <Monitor className="h-4 w-4" />}</Button></DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
               <DropdownMenuItem onClick={() => setTheme("light")}><Sun className="h-4 w-4" /><span className="flex-1">{t("settings.light")}</span>{theme === "light" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setTheme("dark")}><Moon className="h-4 w-4" /><span className="flex-1">{t("settings.dark")}</span>{theme === "dark" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setTheme("system")}><Monitor className="h-4 w-4" /><span className="flex-1">{t("settings.system")}</span>{theme === "system" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
             </DropdownMenuContent>
-          </DropdownMenu>
-          <UpdateButton placement="toolbar" />
-          <Button variant="ghost" size="icon" onClick={() => navigate("settings")} title={t("nav.settings")} className="h-8 w-8 rounded-lg text-muted-foreground"><Settings className="h-4 w-4" /></Button>
+          </DropdownMenu>}
+          {visible("updates") && <UpdateButton placement="toolbar" />}
+          {visible("github") && <Button variant="ghost" size="icon" onClick={() => void openGitHub()} title="GitHub" className="h-8 w-8 rounded-lg text-muted-foreground"><GitHubIcon className="h-4 w-4" /></Button>}
+          {visible("settings") && <Button variant="ghost" size="icon" onClick={() => navigate("settings")} title={t("nav.settings")} className="h-8 w-8 rounded-lg text-muted-foreground"><Settings className="h-4 w-4" /></Button>}
         </div>
       </header>
 
