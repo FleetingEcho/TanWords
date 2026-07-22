@@ -16,7 +16,7 @@ import { UpdateButton } from "@/components/Layout/UpdateButton";
 
 type McpState = { status: { running: boolean; error: string | null } };
 
-const PAGE_IDS: NavPage[] = ["feeds", "reading", "vocabulary", "writing", "documents", "chat", "dashboard", "scene-lab", "music", "settings"];
+const PAGE_IDS: NavPage[] = ["feeds", "reading", "vocabulary", "documents", "chat", "dashboard", "scene-lab", "music", "settings"];
 
 export function CommandBar({ activePage }: { activePage: NavPage }) {
   const t = useT();

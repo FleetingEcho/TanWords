@@ -24,7 +24,6 @@ import { ENRICHED_SEED_WORDS, BASIC_SEED_WORDS } from "@/data/seedWords";
 
 const KnowledgeMapPage = React.lazy(() => import("@/components/KnowledgeMap/KnowledgeMapPage"));
 const MusicPage = React.lazy(() => import("@/components/Music/MusicPage"));
-const WritingStudioPage = React.lazy(() => import("@/components/Writing/WritingStudioPage"));
 
 function App() {
   const { loadFromDB, isLoaded, ttsModelPath } = useSettingsStore();
@@ -120,8 +119,6 @@ function App() {
         return <React.Suspense fallback={null}><MusicPage /></React.Suspense>;
       case "vocabulary":
         return <VocabularyPage initialWordId={wordId} />;
-      case "writing":
-        return <React.Suspense fallback={null}><WritingStudioPage /></React.Suspense>;
       case "documents":
         return <DocumentsPage />;
       case "chat":

@@ -16,7 +16,6 @@ import { useDB } from "@/hooks/useDB";
 import { WordChatPanel } from "@/components/WordChatPanel";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { WritingAnalyzer } from "@/components/Writing/WritingAnalyzer";
 
 const MIN_W = 500;
 const MIN_H = 400;
@@ -245,17 +244,6 @@ export function ToolsModal() {
             >
               {t("tools.chat")}
             </Button>
-            <Button
-              variant="ghost"
-              onClick={(e) => { e.stopPropagation(); setActiveTab("writing"); }}
-              className={`h-auto px-3 py-1.5 text-xs font-semibold rounded-md transition-colors hover:bg-transparent ${
-                activeTab === "writing"
-                  ? "bg-background text-foreground shadow-sm hover:bg-background"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {t("tools.writing")}
-            </Button>
             {isVocabPage && (
               <Button
                 variant="ghost"
@@ -468,11 +456,6 @@ export function ToolsModal() {
                 textareaRef={chat.textareaRef}
               />
             </div>
-          </div>
-
-          {/* Writing Studio quick entry */}
-          <div style={{ display: activeTab === "writing" ? "flex" : "none", height: "100%" }} className="flex-col overflow-hidden">
-            <WritingAnalyzer compact />
           </div>
 
           {/* Word chat tab (Vocabulary page only) */}
