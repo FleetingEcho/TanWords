@@ -71,6 +71,7 @@ export function useAiChatSession() {
   activeIdRef.current = activeId;
 
   const systemPrompt = selectedPreset === "custom" ? customPrompt : buildPresetPrompt(selectedPreset, targetLevel);
+  const ACTIVE_SESSION_KEY = "tanwords_ai_chat_active_session";
 
   const setItems = useCallback((items: DisplayItem[]) => {
     itemsRef.current = items;
@@ -87,7 +88,10 @@ export function useAiChatSession() {
 
   useEffect(() => {
     loadSessions().then((items) => {
-      if (items.length > 0) switchSession(items[0].id);
+      if (items.length === 0) return;
+      const remembered = localStorage.getItem(ACTIVE_SESSION_KEY);
+      const target = items.find((item) => item.id === remembered) ?? items[0];
+      switchSession(target.id);
     });
   }, []);
 
@@ -128,6 +132,7 @@ export function useAiChatSession() {
     setAttachment(null);
     const detail = await db.getChatSession(id);
     if (!detail) return;
+    localStorage.setItem(ACTIVE_SESSION_KEY, id);
     setItems(deserializeItems(detail.messages));
     setActiveTitle(detail.title);
     setSelectedPreset(detail.preset_id);
@@ -146,6 +151,7 @@ export function useAiChatSession() {
     setAttachment(null);
     setSearchQuery("");
     setSearchResults(null);
+    localStorage.removeItem(ACTIVE_SESSION_KEY);
   };
 
   const deleteSession = async (id: string, e: React.MouseEvent) => {
@@ -154,6 +160,7 @@ export function useAiChatSession() {
     setSessions((p) => p.filter((s) => s.id !== id));
     setSearchResults((p) => p?.filter((s) => s.id !== id) ?? null);
     if (activeId === id) {
+      localStorage.removeItem(ACTIVE_SESSION_KEY);
       const rest = sessions.filter((s) => s.id !== id);
       if (rest.length > 0) switchSession(rest[0].id);
       else startNew();
@@ -182,8 +189,27 @@ export function useAiChatSession() {
       providerId,
       messageCount: msgCount,
     });
+    localStorage.setItem(ACTIVE_SESSION_KEY, id);
     await loadSessions();
   }, [db, loadSessions]);
+
+  // Persist partial streaming output as well as completed turns. A long AI
+  // response can take minutes; closing the window must not discard it.
+  useEffect(() => {
+    if (!streaming) return;
+    const timer = window.setInterval(() => {
+      const { id, title } = sessionMetaRef.current;
+      if (!id) return;
+      const items = itemsRef.current;
+      db.upsertChatSession({
+        id, title, messages: serializeItems(items), systemPrompt,
+        presetId: selectedPreset, providerId: selectedProviderId,
+        messageCount: items.filter((item) => item.kind === "message").length,
+      });
+      localStorage.setItem(ACTIVE_SESSION_KEY, id);
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [streaming, db, systemPrompt, selectedPreset, selectedProviderId]);
 
   const toggleGroup = (g: ToolGroupKey) => {
     setEnabledGroups((prev) => {
@@ -273,6 +299,9 @@ export function useAiChatSession() {
 
     const tools = getEnabledTools(enabledGroups);
     const sysPrompt = systemPrompt || buildPresetPrompt("english-tutor", targetLevel);
+    // Save the user's turn before starting the network request. This makes a
+    // new session visible in History immediately and survives app/API failure.
+    await saveSession(sessionId, title, [...displayItems, userItem], sysPrompt, selectedPreset, selectedProviderId);
     const controller = new AbortController();
     controllerRef.current = controller;
 
