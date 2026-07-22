@@ -3,13 +3,13 @@ import type { NavPage } from "@/store/navStore";
 
 export type Theme = "light" | "dark" | "system";
 export type SidebarTabId = Exclude<NavPage, "settings">;
-export type TopBarItemId = "history" | "new" | "search" | "context" | "mcp" | "ai" | "language" | "theme" | "updates" | "github" | "settings";
+export type TopBarItemId = "history" | "new" | "search" | "context" | "mcp" | "ai" | "language" | "theme" | "updates" | "github";
 
 export const DEFAULT_SIDEBAR_TABS: SidebarTabId[] = [
   "dashboard", "feeds", "reading", "scene-lab", "vocabulary", "documents", "music", "chat",
 ];
 export const DEFAULT_TOPBAR_ITEMS: TopBarItemId[] = [
-  "history", "new", "search", "context", "mcp", "ai", "language", "theme", "updates", "github", "settings",
+  "history", "new", "search", "context", "mcp", "ai", "language", "theme", "updates", "github",
 ];
 
 interface SettingsState {

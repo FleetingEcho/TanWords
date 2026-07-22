@@ -114,7 +114,6 @@ export const settings: Dict = {
     "settings.topBar.theme": "Theme",
     "settings.topBar.updates": "Software update",
     "settings.topBar.github": "GitHub",
-    "settings.topBar.settings": "Settings",
     "settings.sidebarTabs": "Sidebar tabs",
     "settings.sidebarTabsSub": "Choose which main navigation tabs are shown. Settings always remains visible.",
     "settings.sidebarTabsSelected": "{n} visible",
