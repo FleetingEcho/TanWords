@@ -8,7 +8,7 @@ import "@blocknote/mantine/style.css";
 import { DocumentDetail } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { useIsDark } from "@/hooks/useIsDark";
-import { blocksToStorage, contentToBlocks, editorToStorage, markdownToBlocks } from "@/lib/docFormat";
+import { blocksToStorageOffThread, contentToBlocksOffThread, markdownToBlocksOffThread } from "@/lib/documentWorkerClient";
 import { liftMermaid, lowerMermaid } from "./mermaidTransforms";
 import { PinIcon } from "@/components/ui/icons";
 import { CheckIcon } from "@heroicons/react/24/solid";
@@ -45,7 +45,7 @@ export function DocEditor({ doc, onSave, onTitleChange, onTagsChange, onPinToggl
   // Load stored content (BlockNote JSON, or legacy Lexical — lazily migrated)
   useEffect(() => {
     let cancelled = false;
-    contentToBlocks(doc.content).then((parsed) => {
+    contentToBlocksOffThread(doc.content).then((parsed) => {
       if (cancelled) return;
       const blocks = liftMermaid(parsed);
       if (blocks.length > 0) editor.replaceBlocks(editor.document, blocks);
@@ -58,8 +58,8 @@ export function DocEditor({ doc, onSave, onTitleChange, onTagsChange, onPinToggl
   const handleChange = useCallback(() => {
     if (!loaded.current) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      const { content, contentText, wordCount } = editorToStorage(editor);
+    saveTimer.current = setTimeout(async () => {
+      const { content, contentText, wordCount } = await blocksToStorageOffThread(editor.document);
       onSave(content, contentText, wordCount);
     }, 1000);
   }, [editor, onSave]);
@@ -73,10 +73,10 @@ export function DocEditor({ doc, onSave, onTitleChange, onTagsChange, onPinToggl
         setRawMarkdown(await editor.blocksToMarkdownLossy(lowerMermaid(editor.document) as any));
       } else {
         loaded.current = false;
-        const blocks = liftMermaid(await markdownToBlocks(rawMarkdown));
+        const blocks = liftMermaid(await markdownToBlocksOffThread(rawMarkdown));
         editor.replaceBlocks(editor.document, blocks.length ? blocks : [{ type: "paragraph" }]);
         if (rawDirty.current) {
-          const { content, contentText, wordCount } = blocksToStorage(blocks);
+          const { content, contentText, wordCount } = await blocksToStorageOffThread(blocks);
           onSave(content, contentText, wordCount);
           rawDirty.current = false;
         }
@@ -93,8 +93,8 @@ export function DocEditor({ doc, onSave, onTitleChange, onTagsChange, onPinToggl
     setRawMarkdown(markdown);
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
-      const blocks = liftMermaid(await markdownToBlocks(markdown));
-      const { content, contentText, wordCount } = blocksToStorage(blocks);
+      const blocks = liftMermaid(await markdownToBlocksOffThread(markdown));
+      const { content, contentText, wordCount } = await blocksToStorageOffThread(blocks);
       onSave(content, contentText, wordCount);
       rawDirty.current = false;
     }, 1000);
