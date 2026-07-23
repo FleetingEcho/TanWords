@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-interface SelectedWordState {
+export interface SelectedWordState {
   wordId: number | null;
   word: string;
   enrichedContext: string;
