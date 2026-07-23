@@ -13,6 +13,8 @@ import { getTotalTokens, clearUsage } from "@/store/usageStore";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { RssFeed } from "@/hooks/useDB.types";
 
 const LEVELS = ["A2", "B1", "B2", "C1", "C2"] as const;
 
@@ -92,6 +94,38 @@ function EnrichPromptEditor() {
   );
 }
 
+function DefaultRssTabSetting() {
+  const t = useT();
+  const db = useDB();
+  const defaultRssTab = useSettingsStore((s) => s.defaultRssTab);
+  const setDefaultRssTab = useSettingsStore((s) => s.setDefaultRssTab);
+  const [feeds, setFeeds] = useState<RssFeed[]>([]);
+
+  useEffect(() => {
+    db.getRssFeeds().then(setFeeds);
+  }, []);
+
+  return (
+    <SettingRow label={t("settings.defaultRssTab")} sub={t("settings.defaultRssTabSub")}>
+      <Select
+        value={String(defaultRssTab)}
+        onValueChange={(v) => setDefaultRssTab(v === "all" || v === "hackernews" ? v : Number(v))}
+      >
+        <SelectTrigger className="h-8 w-52 rounded-lg border-border bg-background text-xs focus:outline-none">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">{t("settings.defaultRssTabAll")}</SelectItem>
+          <SelectItem value="hackernews">{t("settings.defaultRssTabHn")}</SelectItem>
+          {feeds.map((f) => (
+            <SelectItem key={f.id} value={String(f.id)}>{f.title}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </SettingRow>
+  );
+}
+
 const SECTIONS = ["general", "providers", "learning", "tts", "mcp", "data"] as const;
 type SectionId = (typeof SECTIONS)[number];
 
@@ -143,6 +177,7 @@ export function SettingsPage() {
                   onChange={(v) => settings.setTheme(v as Theme)}
                 />
               </SettingRow>
+              <DefaultRssTabSetting />
               <SettingRow label={t("settings.quickDoc")} sub={t("settings.quickDocSub")}>
                 <ToggleGroup
                   options={[

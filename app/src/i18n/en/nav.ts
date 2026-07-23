@@ -24,6 +24,7 @@ export const nav: Dict = {
     "command.search": "Search commands and pages",
     "command.searchPlaceholder": "Type a command or page…",
     "command.conversationNote": "Conversation note",
+    "command.analyzing": "Analyzing…",
     "command.mcpRunning": "MCP server running",
     "command.mcpStopped": "MCP server not running",
     "command.aiConnected": "AI connected",

@@ -6,7 +6,7 @@ import { useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { logError, reportWriteError } from "./useDB.errors";
 import {
-  ChatSessionItem, ChatSessionDetail, ArticleListItem, ArticleDetail, NewExtractedItem,
+  ChatSessionItem, ChatSessionDetail, ArticleListItem, ArticleDetail, SavedSentence,
   DashboardStats, DueCard, ReviewResult, SrsRating, SearchHistoryItem,
   RssFeedMeta, RssFeed, RssEntryRow,
 } from "./useDB.types";
@@ -74,7 +74,7 @@ export function useDBExtra() {
     }
   }, []);
 
-  // ── Reading Lessons (articles + extracted items) ─────────────────────
+  // ── Reading Lessons (articles + AI notes + saved sentences) ───────────
 
   const saveArticleAnalysis = useCallback(
     async (
@@ -82,7 +82,7 @@ export function useDBExtra() {
       sourceUrl: string,
       origin: string,
       content: string,
-      items: NewExtractedItem[]
+      analysisMarkdown: string
     ): Promise<number> => {
       try {
         return await invoke<number>("db_save_article_analysis", {
@@ -90,7 +90,7 @@ export function useDBExtra() {
           sourceUrl,
           origin,
           content,
-          itemsJson: JSON.stringify(items),
+          analysisMarkdown,
         });
       } catch (e) {
         // Caller (ReadingPage) already surfaces a toast with the specific
@@ -128,14 +128,6 @@ export function useDBExtra() {
     }
   }, []);
 
-  const updateItemStatus = useCallback(async (id: number, status: string): Promise<void> => {
-    try {
-      await invoke("db_update_item_status", { id, status });
-    } catch (e) {
-      reportWriteError("updateItemStatus", e, "更新词条状态失败");
-    }
-  }, []);
-
   const addKnownWords = useCallback(async (words: string[], source = "marked"): Promise<void> => {
     try {
       await invoke("db_add_known_words", { words, source });
@@ -150,6 +142,47 @@ export function useDBExtra() {
     } catch (e) {
       logError("getKnownWords", e);
       return [];
+    }
+  }, []);
+
+  const addSavedSentence = useCallback(
+    async (
+      text: string,
+      zh: string,
+      note: string,
+      articleId: number | null,
+      articleTitle: string
+    ): Promise<number> => {
+      try {
+        return await invoke<number>("db_add_saved_sentence", {
+          text,
+          zh,
+          note,
+          articleId,
+          articleTitle,
+        });
+      } catch (e) {
+        reportWriteError("addSavedSentence", e, "保存句子失败");
+        throw e;
+      }
+    },
+    []
+  );
+
+  const getSavedSentences = useCallback(async (): Promise<SavedSentence[]> => {
+    try {
+      return await invoke<SavedSentence[]>("db_get_saved_sentences");
+    } catch (e) {
+      logError("getSavedSentences", e);
+      return [];
+    }
+  }, []);
+
+  const deleteSavedSentence = useCallback(async (id: number): Promise<void> => {
+    try {
+      await invoke("db_delete_saved_sentence", { id });
+    } catch (e) {
+      reportWriteError("deleteSavedSentence", e, "删除句子失败");
     }
   }, []);
 
@@ -356,7 +389,8 @@ export function useDBExtra() {
 
   return useMemo(() => ({
     listChatSessions, getChatSession, upsertChatSession, deleteChatSession, searchChatSessions,
-    saveArticleAnalysis, getArticles, getArticle, deleteArticle, updateItemStatus, addKnownWords, getKnownWords,
+    saveArticleAnalysis, getArticles, getArticle, deleteArticle, addKnownWords, getKnownWords,
+    addSavedSentence, getSavedSentences, deleteSavedSentence,
     getDashboardStats,
     getDueCards, reviewCard,
     addSearchHistory, getSearchHistory, clearSearchHistory,
@@ -365,7 +399,8 @@ export function useDBExtra() {
     getDbPath, getDbSize, exportBackup, switchDbPath, clearTranslations,
   }), [
     listChatSessions, getChatSession, upsertChatSession, deleteChatSession, searchChatSessions,
-    saveArticleAnalysis, getArticles, getArticle, deleteArticle, updateItemStatus, addKnownWords, getKnownWords,
+    saveArticleAnalysis, getArticles, getArticle, deleteArticle, addKnownWords, getKnownWords,
+    addSavedSentence, getSavedSentences, deleteSavedSentence,
     getDashboardStats,
     getDueCards, reviewCard,
     addSearchHistory, getSearchHistory, clearSearchHistory,

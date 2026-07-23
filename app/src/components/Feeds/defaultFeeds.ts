@@ -6,7 +6,9 @@
  *  Essays) was removed 2026-07-17 at the user's request; JS Party removed
  *  because the show ended (last episode Feb 2025). Aeon/Psyche stay excluded:
  *  Vercel bot-challenge breaks in-app reading (verified 2026-07-12).
- *  Every feed below was verified alive 2026-07-17. */
+ *  Every feed below was verified alive 2026-07-17. Hacker News (hnrss.org)
+ *  removed 2026-07-22 — replaced by the native New/Top/Best browser in
+ *  FeedTabs, which reads HN's own API instead of an RSS mirror. */
 
 export type FeedCategory = "webdev" | "tech" | "podcast";
 
@@ -35,7 +37,6 @@ export const DEFAULT_FEEDS: DefaultFeed[] = [
   { category: "tech", title: "Cloudflare Blog", url: "https://blog.cloudflare.com/rss/", desc: "Deep engineering write-ups on networks and security" },
   { category: "tech", title: "GitHub Blog", url: "https://github.blog/feed/", desc: "Product news and engineering from GitHub" },
   { category: "tech", title: "The Pragmatic Engineer", url: "https://blog.pragmaticengineer.com/rss/", desc: "Big-tech and startup engineering culture" },
-  { category: "tech", title: "Hacker News", url: "https://hnrss.org/frontpage?points=100", desc: "Front page stories with 100+ points" },
   { category: "tech", title: "Lobsters", url: "https://lobste.rs/rss", desc: "Computing link aggregator, quieter than HN" },
   { category: "tech", title: "Ars Technica", url: "https://feeds.arstechnica.com/arstechnica/index", desc: "Tech news with real technical depth" },
   { category: "tech", title: "MIT Technology Review", url: "https://www.technologyreview.com/feed/", desc: "Emerging tech and its impact" },

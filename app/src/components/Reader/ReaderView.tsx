@@ -1,4 +1,5 @@
 import React from "react";
+import { open as openShell } from "@tauri-apps/plugin-shell";
 import { useT } from "@/hooks/useT";
 import { ArticleReader } from "@/components/Reader/ArticleReader";
 import { ExternalIcon } from "@/components/ui/icons";
@@ -11,14 +12,25 @@ interface Props {
   domain: string;
   onBack: () => void;
   onOpenExternal: () => void;
-  onLearn: (payload: { title: string; text: string }) => void;
+  onLearn: (payload: { title: string; text: string; commentsText?: string }) => void;
   /** Podcast episodes: the entry's own audio enclosure, passed through to the reader. */
   audio?: PodcastTrack;
+  /** Set when this entry came from an hnrss.org-style feed — shows the HN discussion below the article. */
+  hnItemId?: number | null;
 }
 
 /** In-app reader mode: top bar (back / title / domain / open-external) over the extracted article. */
-export function ReaderView({ url, title, domain, onBack, onOpenExternal, onLearn, audio }: Props) {
+export function ReaderView({ url, title, domain, onBack, onOpenExternal, onLearn, audio, hnItemId }: Props) {
   const t = useT();
+
+  const openHnDiscussion = async () => {
+    const hnUrl = `https://news.ycombinator.com/item?id=${hnItemId}`;
+    try {
+      await openShell(hnUrl);
+    } catch {
+      window.open(hnUrl, "_blank");
+    }
+  };
 
   return (
     <div className="h-full flex flex-col animate-fade-in">
@@ -32,7 +44,17 @@ export function ReaderView({ url, title, domain, onBack, onOpenExternal, onLearn
           ← {t("hn.reader.back")}
         </Button>
         <div className="w-px h-4 bg-border" />
-        <span className="flex-1 min-w-0 text-sm font-medium truncate">{title}</span>
+        {hnItemId != null ? (
+          <button
+            onClick={openHnDiscussion}
+            title={t("hn.reader.openDiscussion")}
+            className="flex-1 min-w-0 text-left text-sm font-medium truncate hover:text-primary hover:underline transition-colors"
+          >
+            {title}
+          </button>
+        ) : (
+          <span className="flex-1 min-w-0 text-sm font-medium truncate">{title}</span>
+        )}
         <span className="text-[10px] font-mono text-muted-foreground bg-muted rounded px-1.5 py-0.5 shrink-0">
           {domain}
         </span>
@@ -46,7 +68,7 @@ export function ReaderView({ url, title, domain, onBack, onOpenExternal, onLearn
         </Button>
       </div>
 
-      <ArticleReader url={url} domain={domain} onOpenExternal={onOpenExternal} onLearn={onLearn} audio={audio} />
+      <ArticleReader url={url} domain={domain} onOpenExternal={onOpenExternal} onLearn={onLearn} audio={audio} hnItemId={hnItemId} />
     </div>
   );
 }

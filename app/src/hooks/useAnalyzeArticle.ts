@@ -1,23 +1,27 @@
-import { useCallback, useState } from "react";
-import { jsonrepair } from "jsonrepair";
+import { useCallback } from "react";
 import { findBestProvider } from "@/providers/select";
-import { useDB, NewExtractedItem } from "@/hooks/useDB";
+import { useDB } from "@/hooks/useDB";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useAnalysisStore } from "@/store/analysisStore";
 
 function buildSystemPrompt(level: string): string {
-  return `You are an English learning assistant for a Chinese native speaker who works in tech (target level: CEFR ${level}). Output ONLY valid JSON, no markdown, no code fences, no commentary.`;
+  return `You are an English learning assistant for a Chinese native speaker who works in tech (target level: CEFR ${level}). Output ONLY markdown — no commentary about the task itself, no code fences around the whole response.`;
 }
 
 function buildPrompt(text: string, knownWords: string[], level: string): string {
   const known = knownWords.slice(0, 150).join(", ");
-  return `Analyze the article below and extract learning material. Return ONLY this JSON:
-{"title":"a short title for the article (keep original if obvious)","words":[{"text":"word","zh":"中文释义","level":"C1|C2","note":"用法/语气说明（中文，一句话）","context":"the EXACT sentence from the article containing it"}],"sentences":[{"text":"the EXACT sentence copied verbatim from the article","zh":"中文翻译","note":"这句好在哪、用了什么句式/修辞（中文，1-2句话）","pattern":"可复用的句式骨架，如 'not so much X as Y'"}]}
+  return `Read the article below and write a short markdown study note for a ${level} learner. Structure it as:
+
+## Words worth learning
+Up to 15 single words worth learning for a ${level} learner, each as one bullet: **word** — 中文释义 — 用法/语气说明（中文，一句话）. Exclude common words (below ${level}), basic tech terms every engineer knows (server, deploy, database...), and proper nouns.
+
+## Sentences worth stealing
+3-8 highlight sentences worth imitating — advanced structures, elegant phrasing, rhetorical moves a ${level} learner should steal for their own writing. Prefer sentences that showcase a reusable pattern over merely long ones. Each as a blockquote with the EXACT sentence copied verbatim from the article, followed by a line with 中文翻译 and 这句好在哪、用了什么句式/修辞（中文，1-2句话）.
 
 Rules:
-- "words": up to 15 single words worth learning for a ${level} learner. EXCLUDE: common words (below ${level}), basic tech terms every engineer knows (server, deploy, database...), proper nouns.
-- "sentences": 3-8 highlight sentences worth imitating — advanced structures, elegant phrasing, rhetorical moves a ${level} learner should steal for their own writing. Prefer sentences that showcase a REUSABLE pattern over merely long ones.
-- The user already knows these words, never include them: ${known || "(none listed)"}
-- "context" and sentence "text" must be copied verbatim from the article.
+- The user already knows these words, never suggest them again: ${known || "(none listed)"}
+- Sentences must be copied verbatim from the article.
+- Keep it concise — this is a note to read, not a report.
 
 Article:
 """
@@ -25,16 +29,45 @@ ${text}
 """`;
 }
 
+/** Comments get a different lens than the article body: informal/conversational text is where
+ * native idioms, phrasal verbs, and natural discourse patterns actually show up — a formal-prose
+ * analysis prompt would mostly find nothing worth extracting there. */
+function buildCommentsPrompt(text: string, knownWords: string[], level: string): string {
+  const known = knownWords.slice(0, 150).join(", ");
+  return `The text below is informal online discussion (Hacker News comments). Write a short markdown study note focused on NATIVE, everyday usage — idioms, phrasal verbs, discourse markers, and natural phrasing a native speaker uses in casual writing that a non-native learner wouldn't naturally produce. Structure it as:
+
+## Words worth learning
+Up to 10 words/short phrases worth learning for a ${level} learner, each as one bullet: **word or phrase** — 中文释义 — 地道用法说明：为什么这样说更地道、非母语者容易怎么说得不自然（中文，一句话）.
+
+## Sentences worth stealing
+3-6 sentences that showcase natural native phrasing worth imitating in casual writing or speech. Each as a blockquote with the EXACT sentence copied verbatim, followed by a line with 中文翻译 and 这是什么样的口语/网络化表达，母语者为什么会这样说（中文，1-2句话）.
+
+Rules:
+- Focus on NATIVE, colloquial usage — NOT formal vocabulary or literary rhetoric (that's a separate pass on the article itself).
+- The user already knows these words, never suggest them again: ${known || "(none listed)"}
+- Sentences must be copied verbatim from the text.
+- Ignore off-topic banter, jokes, or single-word replies with no learning value — skip them rather than forcing something in. If nothing qualifies, write a single line saying so instead of the two headings.
+- Keep it concise — this is a note to read, not a report.
+
+Comments:
+"""
+${text}
+"""`;
+}
+
 export interface AnalysisResult {
   articleId: number;
-  itemCount: number;
   title: string;
 }
 
 export function useAnalyzeArticle() {
   const db = useDB();
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [progress, setProgress] = useState(0);
+  // Global rather than local useState: the underlying AI call already keeps running
+  // if the caller (e.g. ReadingPage) unmounts mid-analysis — it's just a plain async
+  // function, not tied to React lifecycle — but local state wouldn't stay observable
+  // once that happens. This makes progress visible from anywhere (see CommandBar).
+  const isAnalyzing = useAnalysisStore((s) => s.isAnalyzing);
+  const progress = useAnalysisStore((s) => s.progress);
 
   const analyze = useCallback(
     async (opts: {
@@ -42,83 +75,62 @@ export function useAnalyzeArticle() {
       title?: string;
       sourceUrl?: string;
       origin?: string;
+      /** Flattened HN comment text, when loaded — run through a separate
+       * native/colloquial-usage prompt instead of the article's formal-prose one. */
+      commentsText?: string;
     }): Promise<AnalysisResult> => {
-      setIsAnalyzing(true);
-      setProgress(0);
+      const { start, setProgress, finish } = useAnalysisStore.getState();
+      start();
       try {
         const provider = findBestProvider();
         if (!provider) throw new Error("未找到 AI 提供商，请在设置中注册");
         if (!provider.apiKey) throw new Error("未配置 API Key，请在设置 → AI 提供商 中填写");
 
         const [knownWords, vocab] = await Promise.all([db.getKnownWords(), db.getWords()]);
-        const excludeSet = new Set<string>([
-          ...knownWords.map((w) => w.toLowerCase()),
-          ...vocab.map((w) => w.word.toLowerCase()),
-        ]);
+        const excludeWords = [
+          ...new Set([...knownWords.map((w) => w.toLowerCase()), ...vocab.map((w) => w.word.toLowerCase())]),
+        ];
 
-        const chunks: string[] = [];
-        let received = 0;
         const targetLevel = useSettingsStore.getState().targetLevels.join("/") || "C1";
-        for await (const chunk of provider.generate(
-          buildSystemPrompt(targetLevel),
-          buildPrompt(opts.text, knownWords, targetLevel)
-        )) {
-          chunks.push(chunk);
-          received += chunk.length;
-          setProgress(received);
-        }
-        const raw = chunks.join("");
+        let received = 0;
+        const runPrompt = async (systemPrompt: string, userPrompt: string): Promise<string> => {
+          const chunks: string[] = [];
+          for await (const chunk of provider.generate(systemPrompt, userPrompt)) {
+            chunks.push(chunk);
+            received += chunk.length;
+            setProgress(received);
+          }
+          return chunks.join("").trim();
+        };
 
-        let parsed: any;
-        const json = raw.match(/\{[\s\S]*\}/)?.[0] ?? raw;
-        try {
-          parsed = JSON.parse(json);
-        } catch {
-          parsed = JSON.parse(jsonrepair(json));
+        const system = buildSystemPrompt(targetLevel);
+        let markdown = await runPrompt(system, buildPrompt(opts.text, excludeWords, targetLevel));
+
+        if (opts.commentsText?.trim()) {
+          try {
+            const commentsMarkdown = await runPrompt(system, buildCommentsPrompt(opts.commentsText, excludeWords, targetLevel));
+            markdown += `\n\n---\n\n## From the comments\n\n${commentsMarkdown}`;
+          } catch {
+            // The comments pass is a bonus — a flaky/short response there shouldn't sink the whole Learn action.
+          }
         }
 
-        const items: NewExtractedItem[] = [];
-        for (const w of parsed.words ?? []) {
-          if (!w?.text) continue;
-          if (excludeSet.has(String(w.text).toLowerCase())) continue;
-          items.push({
-            kind: "word",
-            text: String(w.text),
-            zh: String(w.zh ?? ""),
-            note: String(w.note ?? ""),
-            level: String(w.level ?? ""),
-            context: String(w.context ?? ""),
-          });
-        }
-        for (const s of parsed.sentences ?? []) {
-          if (!s?.text) continue;
-          items.push({
-            kind: "sentence",
-            text: String(s.text),
-            zh: String(s.zh ?? ""),
-            note: String(s.note ?? ""),
-            level: "",
-            // For sentence items the sentence IS the text — reuse the context
-            // column for the reusable pattern skeleton instead.
-            context: String(s.pattern ?? ""),
-          });
-        }
-        const title = opts.title?.trim() || String(parsed.title ?? "").trim() || "Untitled";
+        const title = opts.title?.trim() || "Untitled";
         const articleId = await db.saveArticleAnalysis(
           title,
           opts.sourceUrl ?? "",
           opts.origin ?? "pasted",
           opts.text,
-          items
+          markdown
         );
-        return { articleId, itemCount: items.length, title };
+        return { articleId, title };
       } catch (e: any) {
         if (e.message === "Load failed" || e.message === "Failed to fetch") {
           throw new Error("网络请求失败。请检查 API Key 与网络连接");
         }
         throw e;
       } finally {
-        setIsAnalyzing(false);
+        finish();
       }
     },
     [db]

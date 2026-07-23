@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 
 /** Vocabulary lookup box for the lesson panel: type any word from the article
  * (not just the AI's picks) to see whether it's already collected — click
- * through to its detail — or add it on the spot. */
+ * through to its detail — or add it on the spot. Lives inside a popover (see
+ * LessonView) so it doesn't take permanent space away from the AI notes panel. */
 export function WordSearchBox() {
   const db = useDB();
   const t = useT();
@@ -18,10 +19,13 @@ export function WordSearchBox() {
   const [matches, setMatches] = useState<WordListItem[]>([]);
   const [searched, setSearched] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [markingKnown, setMarkingKnown] = useState(false);
+  const [markedKnown, setMarkedKnown] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
     clearTimeout(debounceRef.current);
+    setMarkedKnown(false);
     const q = query.trim();
     if (!q) {
       setMatches([]);
@@ -55,8 +59,20 @@ export function WordSearchBox() {
     }
   };
 
+  const handleMarkKnown = async () => {
+    if (!q || markingKnown) return;
+    setMarkingKnown(true);
+    try {
+      await db.addKnownWords([q], "marked");
+      setMarkedKnown(true);
+      toast.success(t("reading.search.markedKnown", { word: q }));
+    } finally {
+      setMarkingKnown(false);
+    }
+  };
+
   return (
-    <div className="bg-card border border-border rounded-2xl p-3 space-y-2">
+    <div className="space-y-2">
       <div className="relative">
         <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
         <input
@@ -93,6 +109,20 @@ export function WordSearchBox() {
               className="h-auto w-full flex items-center justify-start gap-1.5 px-2 py-1.5 rounded-lg text-xs font-semibold text-primary hover:bg-primary/10 disabled:opacity-50 transition-colors text-left"
             >
               + {adding ? t("reading.search.adding") : t("reading.search.add", { word: q })}
+            </Button>
+          )}
+          {!exactMatch && (
+            <Button
+              variant="ghost"
+              onClick={handleMarkKnown}
+              disabled={markingKnown || markedKnown}
+              className="h-auto w-full flex items-center justify-start gap-1.5 px-2 py-1.5 rounded-lg text-xs font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50 transition-colors text-left"
+            >
+              {markedKnown
+                ? t("reading.search.markedKnown", { word: q })
+                : markingKnown
+                ? t("reading.search.marking")
+                : t("reading.search.markKnown", { word: q })}
             </Button>
           )}
         </div>

@@ -9,12 +9,16 @@ import { useReadingStore } from "@/store/readingStore";
 import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
 import { usePlayerOriginStore } from "@/store/playerOriginStore";
 import { useFeedsNavStore } from "@/store/feedsNavStore";
+import { useSettingsStore, type RssTabSelection } from "@/store/settingsStore";
 import { ReaderView } from "@/components/Reader/ReaderView";
 import type { FetchedArticle } from "@/components/Reader/ArticleReader";
 import type { RssEntryRow, RssFeed } from "@/hooks/useDB.types";
 import { FeedTabs } from "./FeedTabs";
 import { AddFeedDialog } from "./AddFeedDialog";
 import { EntryGrid } from "./EntryGrid";
+import { HackerNewsSection } from "./HackerNewsSection";
+import { TranslateModal } from "@/components/Reading/TranslateModal";
+import { fetchHnComments, flattenHnComments } from "@/lib/hnComments";
 import { domainOf } from "./feedUtils";
 import { DEFAULT_FEEDS } from "./defaultFeeds";
 import { Button } from "@/components/ui/button";
@@ -24,15 +28,20 @@ const SEEDED_FLAG = "rss_defaults_seeded";
 
 /** Default feeds added in a later release, after existing installs had already
  * run the one-time SEEDED_FLAG seeding — those installs need a follow-up
- * seeding pass so JS Party / Syntax / Hacker News still show up as real
- * subscriptions (not just AddFeedDialog suggestions) without re-adding
- * anything the user has since unsubscribed from the original batch. */
+ * seeding pass so JS Party / Syntax still show up as real subscriptions (not
+ * just AddFeedDialog suggestions) without re-adding anything the user has
+ * since unsubscribed from the original batch. */
 const SEEDED_FLAG_V2 = "rss_defaults_seeded_v2";
 const V2_DEFAULT_URLS = new Set([
   "https://changelog.com/jsparty/feed",
   "https://feed.syntax.fm",
-  "https://hnrss.org/frontpage?points=100",
 ]);
+
+/** One-time cleanup: the hnrss.org RSS subscription is superseded by the
+ * native Hacker News section (New/Top/Best via HN's own API) — drop it from
+ * existing installs so it doesn't keep showing up as a regular feed tab. */
+const HN_RSS_URL = "https://hnrss.org/frontpage?points=100";
+const HN_NATIVE_MIGRATED_FLAG = "tanwords_hn_native_migrated";
 
 /** Pulse placeholders shown while the first DB read is in flight, so opening
  * the page never sits on a blank screen while feeds/entries load. */
@@ -69,16 +78,20 @@ export function FeedsPage() {
   const db = useDB();
   const { navigate } = useNavStore();
   const { setDraft } = useReadingStore();
+  const feedsViewMode = useSettingsStore((s) => s.feedsViewMode);
+  const setFeedsViewMode = useSettingsStore((s) => s.setFeedsViewMode);
 
   const [feeds, setFeeds] = useState<RssFeed[]>([]);
   const [entries, setEntries] = useState<RssEntryRow[]>([]);
   const [unreadByFeed, setUnreadByFeed] = useState<Map<number, number>>(new Map());
   const [failedFeeds, setFailedFeeds] = useState<Set<number>>(new Set());
-  const [selected, setSelected] = useState<number | "all">("all");
+  const [selected, setSelected] = useState<RssTabSelection>(() => useSettingsStore.getState().defaultRssTab);
   const [booting, setBooting] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [learningId, setLearningId] = useState<number | null>(null);
+  const [translatingId, setTranslatingId] = useState<number | null>(null);
+  const [translateTarget, setTranslateTarget] = useState<{ title: string; articleText: string; commentsText?: string } | null>(null);
   const [browse, setBrowse] = useState<{
     url: string;
     title: string;
@@ -86,16 +99,19 @@ export function FeedsPage() {
     /** Set for podcast entries — the reader's listen button plays this instead of TTS. */
     audioUrl: string | null;
     feedTitle: string;
+    /** Set for entries from hnrss.org-style feeds — shows HN comments below the article. */
+    hnItemId: number | null;
   } | null>(null);
   const syncingRef = useRef(false);
   // The live selection, readable from long-running background syncs — their
   // captured `selected` would otherwise be stale and yank the view back.
-  const selectedRef = useRef<number | "all">("all");
+  const selectedRef = useRef<RssTabSelection>(selected);
   useEffect(() => { selectedRef.current = selected; }, [selected]);
 
   const feedsById = new Map(feeds.map((f) => [f.id, f]));
 
-  const refreshEntries = useCallback(async (sel: number | "all") => {
+  const refreshEntries = useCallback(async (sel: RssTabSelection) => {
+    if (sel === "hackernews") return; // the native HN section fetches its own data
     const rows = await db.getRssEntries(sel === "all" ? null : sel);
     // The user may have switched tabs while this read was in flight —
     // never overwrite the current tab's list with another tab's rows.
@@ -166,9 +182,28 @@ export function FeedsPage() {
     let syncTimer: number | undefined;
     (async () => {
       try {
-        const list = await seedDefaults(await db.getRssFeeds());
+        let list = await seedDefaults(await db.getRssFeeds());
+        if (!localStorage.getItem(HN_NATIVE_MIGRATED_FLAG)) {
+          const legacyHn = list.find((f) => f.url === HN_RSS_URL);
+          if (legacyHn) {
+            await db.deleteRssFeed(legacyHn.id);
+            list = list.filter((f) => f.id !== legacyHn.id);
+          }
+          localStorage.setItem(HN_NATIVE_MIGRATED_FLAG, "1");
+        }
         setFeeds(list);
-        await refreshEntries("all");
+        // Respect the user's configured default tab, falling back to "all"
+        // if it names a feed they've since unsubscribed from.
+        const requestedTab = selectedRef.current;
+        const validTab: RssTabSelection =
+          requestedTab === "all" || requestedTab === "hackernews" || list.some((f) => f.id === requestedTab)
+            ? requestedTab
+            : "all";
+        if (validTab !== requestedTab) {
+          selectedRef.current = validTab;
+          setSelected(validTab);
+        }
+        await refreshEntries(validTab);
         setBooting(false);
         const stale = list.filter((f) => isStale(f.last_fetched_at));
         syncTimer = window.setTimeout(() => { void syncFeeds(stale); }, 1200);
@@ -179,7 +214,7 @@ export function FeedsPage() {
     return () => { if (syncTimer !== undefined) window.clearTimeout(syncTimer); };
   }, []);
 
-  const selectFeed = (sel: number | "all") => {
+  const selectFeed = (sel: RssTabSelection) => {
     setSelected(sel);
     selectedRef.current = sel;
     setBrowse(null);
@@ -230,11 +265,12 @@ export function FeedsPage() {
       domain: domainOf(entry.url),
       audioUrl: entry.audio_url ?? null,
       feedTitle: feedsById.get(entry.feed_id)?.title ?? domainOf(entry.url),
+      hnItemId: entry.hn_item_id ?? null,
     });
   };
 
-  const goToReading = (title: string, text: string, sourceUrl: string) => {
-    setDraft({ title, text, sourceUrl, origin: "rss" });
+  const goToReading = (title: string, text: string, sourceUrl: string, commentsText?: string) => {
+    setDraft({ title, text, sourceUrl, origin: "rss", commentsText });
     navigate("reading");
   };
 
@@ -246,20 +282,51 @@ export function FeedsPage() {
     }
   };
 
-  /** One-click learn: extract the article text and hand it straight to Reading. */
+  /** One-click learn: extract the article text and hand it straight to Reading.
+   *  HN entries also pull in their comments (analyzed separately, native/colloquial usage). */
   const learnEntry = async (entry: RssEntryRow) => {
     if (learningId !== null) return;
     setLearningId(entry.id);
     try {
       const article = await invoke<FetchedArticle>("fetch_article", { url: entry.url });
       markRead(entry);
-      goToReading(article.title || entry.title, article.text_content, entry.url);
+      let commentsText: string | undefined;
+      if (entry.hn_item_id) {
+        try {
+          commentsText = flattenHnComments(await fetchHnComments(entry.hn_item_id)) || undefined;
+        } catch {
+          // Comments are a bonus pass — never block Learn on them.
+        }
+      }
+      goToReading(article.title || entry.title, article.text_content, entry.url, commentsText);
     } catch {
       // Extraction failed (paywall etc.) — fall back to the reader so the user sees why.
       toast(t("reader.extractFailed"));
       openEntry(entry);
     } finally {
       setLearningId(null);
+    }
+  };
+
+  /** One-click "translate to Chinese": fetches the article (and comments, if HN) and opens TranslateModal. */
+  const translateEntry = async (entry: RssEntryRow) => {
+    if (translatingId !== null) return;
+    setTranslatingId(entry.id);
+    try {
+      const article = await invoke<FetchedArticle>("fetch_article", { url: entry.url });
+      let commentsText: string | undefined;
+      if (entry.hn_item_id) {
+        try {
+          commentsText = flattenHnComments(await fetchHnComments(entry.hn_item_id)) || undefined;
+        } catch {
+          // Comments are a bonus — never block translation on them.
+        }
+      }
+      setTranslateTarget({ title: article.title || entry.title, articleText: article.text_content, commentsText });
+    } catch {
+      toast(t("reader.extractFailed"));
+    } finally {
+      setTranslatingId(null);
     }
   };
 
@@ -280,6 +347,7 @@ export function FeedsPage() {
       domain: domainOf(entry.url),
       audioUrl: entry.audio_url,
       feedTitle,
+      hnItemId: entry.hn_item_id ?? null,
     });
   };
 
@@ -307,6 +375,8 @@ export function FeedsPage() {
         onPreferences={handlePreferences}
         onAdd={() => setShowAdd(true)}
         onRefresh={handleRefresh}
+        viewMode={feedsViewMode}
+        onSetViewMode={setFeedsViewMode}
       />
 
       <div className="flex-1 min-w-0 min-h-0 flex flex-col">
@@ -322,7 +392,17 @@ export function FeedsPage() {
             }
             onBack={() => setBrowse(null)}
             onOpenExternal={() => openExternal(browse.url)}
-            onLearn={({ title, text }) => goToReading(title, text, browse.url)}
+            onLearn={({ title, text, commentsText }) => goToReading(title, text, browse.url, commentsText)}
+            hnItemId={browse.hnItemId}
+          />
+        ) : selected === "hackernews" ? (
+          <HackerNewsSection
+            viewMode={feedsViewMode}
+            learningId={learningId}
+            onOpen={openEntry}
+            onLearn={learnEntry}
+            onTranslate={translateEntry}
+            translatingId={translatingId}
           />
         ) : (
           <>
@@ -353,6 +433,9 @@ export function FeedsPage() {
                   onOpen={openEntry}
                   onLearn={learnEntry}
                   onPlay={playEntry}
+                  onTranslate={translateEntry}
+                  translatingId={translatingId}
+                  viewMode={feedsViewMode}
                 />
               )}
             </div>
@@ -365,6 +448,14 @@ export function FeedsPage() {
         onClose={() => setShowAdd(false)}
         onAdded={handleAdded}
         subscribedUrls={new Set(feeds.map((f) => f.url))}
+      />
+
+      <TranslateModal
+        open={translateTarget !== null}
+        onClose={() => setTranslateTarget(null)}
+        title={translateTarget?.title ?? ""}
+        articleText={translateTarget?.articleText ?? ""}
+        commentsText={translateTarget?.commentsText}
       />
     </div>
   );

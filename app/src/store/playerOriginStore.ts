@@ -5,7 +5,7 @@ import { useFeedsNavStore } from "@/store/feedsNavStore";
 
 export type PlayerOrigin =
   | { kind: "lesson"; articleId: number }
-  | { kind: "reader"; url: string; title: string; domain: string; audioUrl: string | null; feedTitle: string }
+  | { kind: "reader"; url: string; title: string; domain: string; audioUrl: string | null; feedTitle: string; hnItemId: number | null }
   | { kind: "music" };
 
 interface PlayerOriginState {
@@ -37,6 +37,7 @@ export const usePlayerOriginStore = create<PlayerOriginState>((set, get) => ({
           domain: origin.domain,
           audioUrl: origin.audioUrl,
           feedTitle: origin.feedTitle,
+          hnItemId: origin.hnItemId,
         });
         break;
       case "music":

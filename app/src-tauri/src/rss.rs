@@ -21,6 +21,10 @@ pub struct RssEntry {
     pub audio_url: Option<String>,
     /// Episode length in seconds, when the feed provides it.
     pub audio_duration: Option<i64>,
+    /// Hacker News item id, when this entry came from an hnrss.org-style feed
+    /// (which reuses the RSS guid as the `news.ycombinator.com/item?id=` discussion
+    /// link) — lets the reader fetch and show that story's comments.
+    pub hn_item_id: Option<i64>,
 }
 
 /// A cached article row from `rss_entries` (plan2.md §A).
@@ -35,6 +39,7 @@ pub struct RssEntryRow {
     pub image_url: Option<String>,
     pub audio_url: Option<String>,
     pub audio_duration: Option<i64>,
+    pub hn_item_id: Option<i64>,
     pub published: String,
     pub is_read: bool,
     pub fetched_at: String,
@@ -187,6 +192,17 @@ fn extract_audio(entry: &feed_rs::model::Entry, page_url: &str) -> (Option<Strin
     (None, None)
 }
 
+/// hnrss.org (and compatible HN-to-RSS bridges) sets the RSS `<guid>` to the
+/// story's `news.ycombinator.com/item?id=<n>` discussion URL rather than a
+/// synthetic id. feed-rs surfaces that guid as `Entry.id`; pull the numeric
+/// item id back out of it so comments can be fetched later.
+fn extract_hn_item_id(id: &str) -> Option<i64> {
+    let rest = id
+        .strip_prefix("https://news.ycombinator.com/item?id=")
+        .or_else(|| id.strip_prefix("http://news.ycombinator.com/item?id="))?;
+    rest.split(['&', '#']).next().unwrap_or(rest).parse().ok()
+}
+
 /// Strip HTML tags from a string, leaving plain text.
 fn strip_html(input: &str) -> String {
     let mut result = String::new();
@@ -265,6 +281,7 @@ async fn fetch_feed_meta(url: &str) -> Result<RssFeedMeta, String> {
                 image_url: extract_image(e, page_url),
                 audio_url,
                 audio_duration,
+                hn_item_id: extract_hn_item_id(&e.id),
             }
         })
         .collect();
@@ -471,12 +488,13 @@ pub async fn db_sync_rss_feed(feed_id: i64, conn: State<'_, AppState>) -> Result
             continue;
         }
         tx.execute(
-            "INSERT INTO rss_entries (feed_id, title, url, author, summary, image_url, audio_url, audio_duration, published, fetched_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now'))
+            "INSERT INTO rss_entries (feed_id, title, url, author, summary, image_url, audio_url, audio_duration, hn_item_id, published, fetched_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, datetime('now'))
              ON CONFLICT(url) DO UPDATE SET
                feed_id=excluded.feed_id, title=excluded.title, author=excluded.author,
                summary=excluded.summary, image_url=excluded.image_url,
                audio_url=excluded.audio_url, audio_duration=excluded.audio_duration,
+               hn_item_id=excluded.hn_item_id,
                published=excluded.published, fetched_at=excluded.fetched_at",
             rusqlite::params![
                 feed_id,
@@ -487,6 +505,7 @@ pub async fn db_sync_rss_feed(feed_id: i64, conn: State<'_, AppState>) -> Result
                 e.image_url,
                 e.audio_url,
                 e.audio_duration,
+                e.hn_item_id,
                 e.published
             ],
         )
@@ -528,14 +547,15 @@ fn map_rss_entry_row(row: &rusqlite::Row) -> rusqlite::Result<RssEntryRow> {
         image_url: row.get(6)?,
         audio_url: row.get(7)?,
         audio_duration: row.get(8)?,
-        published: row.get(9)?,
-        is_read: row.get(10)?,
-        fetched_at: row.get(11)?,
+        hn_item_id: row.get(9)?,
+        published: row.get(10)?,
+        is_read: row.get(11)?,
+        fetched_at: row.get(12)?,
     })
 }
 
 const RSS_ENTRY_COLUMNS: &str =
-    "id, feed_id, title, url, author, summary, image_url, audio_url, audio_duration, published, is_read, fetched_at";
+    "id, feed_id, title, url, author, summary, image_url, audio_url, audio_duration, hn_item_id, published, is_read, fetched_at";
 
 /// Read cached entries from the DB; `feed_id = None` returns entries across all feeds.
 #[tauri::command]

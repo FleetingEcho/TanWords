@@ -6,6 +6,8 @@ import { usePodcastPlayerStore, type PodcastTrack } from "@/store/podcastPlayerS
 import { usePlayerOriginStore } from "@/store/playerOriginStore";
 import { SpeakerIcon, SparkIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
+import { HnComments } from "@/components/Reader/HnComments";
+import { flattenHnComments, type HnComment } from "@/lib/hnComments";
 
 export interface FetchedArticle {
   title: string;
@@ -20,22 +22,26 @@ interface Props {
   url: string;
   /** Domain label shown in the reader bar; also used to restore this view from the player bar. */
   domain: string;
-  /** Learn should hand off the extracted plain text — no manual copy/paste needed. */
-  onLearn: (article: { title: string; text: string }) => void;
+  /** Learn should hand off the extracted plain text — no manual copy/paste needed. `commentsText`
+   * (when HN comments are loaded) is analyzed separately for native/colloquial usage. */
+  onLearn: (article: { title: string; text: string; commentsText?: string }) => void;
   onOpenExternal: () => void;
   /** The entry's own audio enclosure (podcast episodes). When set, the listen
    * button plays this original recording instead of synthesizing TTS. */
   audio?: PodcastTrack;
+  /** Set when this entry came from an hnrss.org-style feed — shows the HN discussion below the article. */
+  hnItemId?: number | null;
 }
 
 const FONT_STEPS = [15, 16, 17.5, 19, 21] as const;
 
-export function ArticleReader({ url, domain, onLearn, onOpenExternal, audio }: Props) {
+export function ArticleReader({ url, domain, onLearn, onOpenExternal, audio, hnItemId }: Props) {
   const t = useT();
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [article, setArticle] = useState<FetchedArticle | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [fontStep, setFontStep] = useState(1);
+  const [hnComments, setHnComments] = useState<HnComment[] | null>(null);
   const requestSeq = useRef(0);
   const playerSourceKey = useTtsPlayerStore((s) => s.sourceKey);
   const playerStart = useTtsPlayerStore((s) => s.start);
@@ -72,6 +78,7 @@ export function ArticleReader({ url, domain, onLearn, onOpenExternal, audio }: P
       domain,
       audioUrl: audio?.audioUrl ?? null,
       feedTitle: audio?.feedTitle ?? "",
+      hnItemId: hnItemId ?? null,
     });
   };
 
@@ -79,6 +86,7 @@ export function ArticleReader({ url, domain, onLearn, onOpenExternal, audio }: P
     const seq = ++requestSeq.current;
     setStatus("loading");
     setArticle(null);
+    setHnComments(null);
     invoke<FetchedArticle>("fetch_article", { url })
       .then((a) => {
         if (seq !== requestSeq.current) return;
@@ -150,7 +158,13 @@ export function ArticleReader({ url, domain, onLearn, onOpenExternal, audio }: P
 
         <div className="mt-6 flex items-center gap-2">
           <Button
-            onClick={() => onLearn({ title: article.title, text: article.text_content })}
+            onClick={() =>
+              onLearn({
+                title: article.title,
+                text: article.text_content,
+                commentsText: hnComments ? flattenHnComments(hnComments) : undefined,
+              })
+            }
             className="h-9 px-4 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors inline-flex items-center gap-1.5"
           >
             <SparkIcon className="w-3.5 h-3.5" /> {t("hn.learn")}
@@ -174,6 +188,8 @@ export function ArticleReader({ url, domain, onLearn, onOpenExternal, audio }: P
           style={{ fontSize: `${FONT_STEPS[fontStep]}px`, lineHeight: 1.85 }}
           dangerouslySetInnerHTML={{ __html: article.content_html }}
         />
+
+        {hnItemId != null && <HnComments storyId={hnItemId} onLoaded={setHnComments} />}
       </div>
     </div>
   );

@@ -414,6 +414,38 @@ const MIGRATIONS: &[Migration] = &[
             CREATE INDEX idx_writing_summaries_created ON writing_summaries(created_at DESC);
         ",
     },
+    Migration {
+        version: 18,
+        description: "add hn_item_id to rss_entries for fetching Hacker News comments",
+        sql: "
+            ALTER TABLE rss_entries ADD COLUMN hn_item_id INTEGER;
+        ",
+    },
+    Migration {
+        version: 19,
+        description: "add source to extracted_items so comment-derived native-usage items stay distinct from the article's own vocabulary pass",
+        sql: "
+            ALTER TABLE extracted_items ADD COLUMN source TEXT NOT NULL DEFAULT 'article';
+        ",
+    },
+    Migration {
+        version: 20,
+        description: "replace the extracted_items candidate/accept workflow with an AI markdown note per article plus a manually-curated saved_sentences collection",
+        sql: "
+            ALTER TABLE articles ADD COLUMN analysis_markdown TEXT NOT NULL DEFAULT '';
+            DROP TABLE IF EXISTS extracted_items;
+            CREATE TABLE IF NOT EXISTS saved_sentences (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                text          TEXT NOT NULL,
+                zh            TEXT NOT NULL DEFAULT '',
+                note          TEXT NOT NULL DEFAULT '',
+                article_id    INTEGER REFERENCES articles(id) ON DELETE SET NULL,
+                article_title TEXT NOT NULL DEFAULT '',
+                created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_saved_sentences_created ON saved_sentences(created_at DESC);
+        ",
+    },
 ];
 
 pub fn run(conn: &Connection) -> SqlResult<()> {
@@ -489,5 +521,66 @@ mod tests {
             .unwrap();
         assert_eq!(pinned, 5);
         assert_eq!(category, None);
+    }
+
+    #[test]
+    fn migration_20_replaces_extracted_items_with_markdown_notes_and_saved_sentences() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+        conn.execute_batch(
+            "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at DATETIME);
+             INSERT INTO schema_migrations(version) VALUES (19);
+             CREATE TABLE articles (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                title      TEXT NOT NULL DEFAULT '',
+                source_url TEXT NOT NULL DEFAULT '',
+                origin     TEXT NOT NULL DEFAULT 'pasted',
+                content    TEXT NOT NULL DEFAULT '',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+             );
+             CREATE TABLE extracted_items (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                article_id INTEGER NOT NULL,
+                kind       TEXT NOT NULL DEFAULT 'word'
+             );
+             INSERT INTO articles (title, content) VALUES ('Test Article', 'Some content.');
+             INSERT INTO extracted_items (article_id, kind) VALUES (1, 'word');",
+        )
+        .unwrap();
+
+        run(&conn).unwrap();
+
+        // extracted_items is fully superseded and dropped.
+        let extracted_items_exists: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='extracted_items'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(extracted_items_exists, 0);
+
+        // articles gained analysis_markdown, defaulting to '' for existing rows.
+        let markdown: String = conn
+            .query_row("SELECT analysis_markdown FROM articles WHERE id = 1", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(markdown, "");
+        conn.execute(
+            "UPDATE articles SET analysis_markdown = ?1 WHERE id = 1",
+            rusqlite::params!["## Words\n- **foo** — 中文"],
+        )
+        .unwrap();
+
+        // saved_sentences supports the manual save flow, with article_id set null on delete.
+        conn.execute(
+            "INSERT INTO saved_sentences (text, zh, note, article_id, article_title) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params!["A great sentence.", "一句好句子", "note", 1, "Test Article"],
+        )
+        .unwrap();
+        conn.execute("DELETE FROM articles WHERE id = 1", []).unwrap();
+        let article_id: Option<i64> = conn
+            .query_row("SELECT article_id FROM saved_sentences WHERE text = 'A great sentence.'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(article_id, None);
     }
 }
