@@ -4,51 +4,12 @@ import { registerBuiltInProviders, registerCustomProvider, removeProvider } from
 import { getSecret, setSecret, secretDelete } from "@/lib/secrets";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useT } from "@/hooks/useT";
-import { CheckCircleIcon, XCircleIcon } from "@heroicons/react/24/solid";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Check, ListRestart, Loader2, Pencil, PlugZap, Trash2, X } from "lucide-react";
 import { loadProviderModels, saveProviderModel } from "@/providers/modelPreferences";
-
-function TestStatusBadge({ status }: { status: { ok: boolean | null; text: string } }) {
-  return (
-    <span className="text-xs text-muted-foreground ml-2 inline-flex items-center gap-1">
-      {status.ok === true && <CheckCircleIcon className="w-3.5 h-3.5 text-emerald-500" />}
-      {status.ok === false && <XCircleIcon className="w-3.5 h-3.5 text-destructive" />}
-      {status.text}
-    </span>
-  );
-}
-
-function ProviderIconButton({ label, onClick, danger = false, children }: { label: string; onClick: () => void; danger?: boolean; children: React.ReactNode }) {
-  return <Button type="button" variant="ghost" size="icon" onClick={onClick} title={label} aria-label={label} className={`h-8 w-8 rounded-lg ${danger ? "text-muted-foreground hover:bg-destructive/10 hover:text-destructive" : "text-muted-foreground hover:bg-primary/10 hover:text-primary"}`}>{children}</Button>;
-}
-
-interface ProviderDef {
-  id: string;
-  name: string;
-  model: string;
-  dot: string;
-  isCustom?: boolean;
-  apiBase?: string;
-}
-
-const BUILT_IN_PROVIDERS: ProviderDef[] = [
-  { id: "openai", name: "OpenAI", model: "gpt-4o-mini", dot: "#22c55e" },
-  { id: "claude", name: "Claude", model: "haiku-4.5", dot: "#8b5cf6" },
-];
-
-const PRESET_PROVIDERS = [
-  { id: "deepseek", name: "DeepSeek", model: "deepseek-chat", dot: "#3b82f6", apiBase: "https://api.deepseek.com/v1" },
-];
-
-function loadCustomProvidersMeta(): { id: string; name: string; apiBase: string; modelId: string }[] {
-  try { return JSON.parse(localStorage.getItem("tanwords_custom_providers") || "[]"); } catch { return []; }
-}
-
-function saveCustomProvidersMeta(providers: { id: string; name: string; apiBase: string; modelId: string }[]) {
-  localStorage.setItem("tanwords_custom_providers", JSON.stringify(providers));
-}
+import { BUILT_IN_PROVIDERS, PRESET_PROVIDERS, ProviderDef, loadCustomProvidersMeta, saveCustomProvidersMeta } from "./providerConstants";
+import { ProviderPicker } from "./ProviderPicker";
+import { ProviderKeyModelPanel } from "./ProviderKeyModelPanel";
+import { CustomProviderPanel } from "./CustomProviderPanel";
+import { CustomProviderAddForm } from "./CustomProviderAddForm";
 
 export function ProviderSection() {
   const t = useT();
@@ -343,32 +304,19 @@ export function ProviderSection() {
   return (
     <section>
       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-3">{t("settings.providers")}</p>
-      <div className="relative w-full max-w-xs">
-        <span
-          className="absolute left-3.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full pointer-events-none z-10"
-          style={{ background: selectedDot }}
-        />
-        <Select
-          value={selectedProvider}
-          onValueChange={(v) => {
-            setSelectedProvider(v);
-            setShowAddCustom(v === "__new__");
-            if (v !== "__new__") useSettingsStore.getState().setDefaultAiProvider(v);
-          }}
-        >
-          <SelectTrigger className="w-full h-10 pl-9 pr-8 rounded-xl border border-input bg-card text-sm font-medium cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/30">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {allCards.map((p) => (
-              <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-            ))}
-            <SelectItem value="__new__">+ {t("settings.custom")}</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
 
-      <datalist id="provider-model-options">{fetchedModels.map((model) => <option key={model} value={model} />)}</datalist>
+      <ProviderPicker
+        allCards={allCards}
+        selectedProvider={selectedProvider}
+        selectedDot={selectedDot}
+        fetchedModels={fetchedModels}
+        t={t}
+        onChange={(v) => {
+          setSelectedProvider(v);
+          setShowAddCustom(v === "__new__");
+          if (v !== "__new__") useSettingsStore.getState().setDefaultAiProvider(v);
+        }}
+      />
 
       {selectedProvider !== "__new__" && (
         <div className="mt-4 bg-card border border-border rounded-xl p-5">
@@ -385,116 +333,85 @@ export function ProviderSection() {
           </div>
 
           {selectedProvider === "openai" && (
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs text-muted-foreground block mb-1">{t("settings.apiKey")}</label>
-                <input type="password" value={openaiKey} onChange={(e) => handleOpenaiKeyChange(e.target.value)} placeholder="sk-..." className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30" />
-              </div>
-              <div><label className="text-xs text-muted-foreground block mb-1">{t("settings.modelId")}</label><div className="flex gap-2"><input list="provider-model-options" value={providerModels.openai || ""} onChange={(e) => updateProviderModel("openai", e.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-sm font-mono focus:outline-none" /><ProviderIconButton label={t("settings.fetchModels")} onClick={() => void fetchModels("openai", "https://api.openai.com/v1", openaiKey, (model) => updateProviderModel("openai", model), providerModels.openai || "")}>{fetchingModels ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListRestart className="h-4 w-4" />}</ProviderIconButton></div></div>
-              <ProviderIconButton label={t("settings.testConnection")} onClick={() => testConnection("openai", "https://api.openai.com/v1", openaiKey, providerModels.openai)}><PlugZap className="h-4 w-4" /></ProviderIconButton>
-              {testStatus && <TestStatusBadge status={testStatus} />}
-            </div>
+            <ProviderKeyModelPanel
+              apiKeyValue={openaiKey}
+              onApiKeyChange={handleOpenaiKeyChange}
+              apiKeyPlaceholder="sk-..."
+              modelValue={providerModels.openai || ""}
+              onModelChange={(model) => updateProviderModel("openai", model)}
+              fetchingModels={fetchingModels}
+              onFetchModels={() => void fetchModels("openai", "https://api.openai.com/v1", openaiKey, (model) => updateProviderModel("openai", model), providerModels.openai || "")}
+              onTest={() => testConnection("openai", "https://api.openai.com/v1", openaiKey, providerModels.openai)}
+              testStatus={testStatus}
+              t={t}
+            />
           )}
 
           {selectedProvider === "claude" && (
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs text-muted-foreground block mb-1">{t("settings.apiKey")}</label>
-                <input type="password" value={claudeKey} onChange={(e) => handleClaudeKeyChange(e.target.value)} placeholder="sk-ant-..." className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30" />
-              </div>
-              <div><label className="text-xs text-muted-foreground block mb-1">{t("settings.modelId")}</label><div className="flex gap-2"><input list="provider-model-options" value={providerModels.claude || ""} onChange={(e) => updateProviderModel("claude", e.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-sm font-mono focus:outline-none" /><ProviderIconButton label={t("settings.fetchModels")} onClick={() => void fetchModels("claude", "https://api.anthropic.com", claudeKey, (model) => updateProviderModel("claude", model), providerModels.claude || "")}>{fetchingModels ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListRestart className="h-4 w-4" />}</ProviderIconButton></div></div>
-              <ProviderIconButton label={t("settings.testConnection")} onClick={() => testConnection("claude", "https://api.anthropic.com", claudeKey, providerModels.claude)}><PlugZap className="h-4 w-4" /></ProviderIconButton>
-              {testStatus && <TestStatusBadge status={testStatus} />}
-            </div>
+            <ProviderKeyModelPanel
+              apiKeyValue={claudeKey}
+              onApiKeyChange={handleClaudeKeyChange}
+              apiKeyPlaceholder="sk-ant-..."
+              modelValue={providerModels.claude || ""}
+              onModelChange={(model) => updateProviderModel("claude", model)}
+              fetchingModels={fetchingModels}
+              onFetchModels={() => void fetchModels("claude", "https://api.anthropic.com", claudeKey, (model) => updateProviderModel("claude", model), providerModels.claude || "")}
+              onTest={() => testConnection("claude", "https://api.anthropic.com", claudeKey, providerModels.claude)}
+              testStatus={testStatus}
+              t={t}
+            />
           )}
 
           {PRESET_PROVIDERS.map((preset) =>
             selectedProvider === preset.id && (
-              <div key={preset.id} className="space-y-3">
-                <div>
-                  <label className="text-xs text-muted-foreground block mb-1">{t("settings.apiKey")}</label>
-                  <input type="password" value={presetKeys[preset.id] || ""} onChange={(e) => handlePresetKeyChange(preset.id, e.target.value)} placeholder="API Key" className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30" />
-                </div>
-                <div><label className="text-xs text-muted-foreground block mb-1">{t("settings.modelId")}</label><div className="flex gap-2"><input list="provider-model-options" value={providerModels[preset.id] || ""} onChange={(e) => updateProviderModel(preset.id, e.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-sm font-mono focus:outline-none" /><ProviderIconButton label={t("settings.fetchModels")} onClick={() => void fetchModels(preset.id, preset.apiBase!, presetKeys[preset.id] || "", (model) => updateProviderModel(preset.id, model), providerModels[preset.id] || "")}>{fetchingModels ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListRestart className="h-4 w-4" />}</ProviderIconButton></div></div>
-                <ProviderIconButton label={t("settings.testConnection")} onClick={() => testConnection(preset.id, preset.apiBase!, presetKeys[preset.id] || "", providerModels[preset.id] || preset.model)}><PlugZap className="h-4 w-4" /></ProviderIconButton>
-                {testStatus && <TestStatusBadge status={testStatus} />}
-              </div>
+              <ProviderKeyModelPanel
+                key={preset.id}
+                apiKeyValue={presetKeys[preset.id] || ""}
+                onApiKeyChange={(value) => handlePresetKeyChange(preset.id, value)}
+                apiKeyPlaceholder="API Key"
+                modelValue={providerModels[preset.id] || ""}
+                onModelChange={(model) => updateProviderModel(preset.id, model)}
+                fetchingModels={fetchingModels}
+                onFetchModels={() => void fetchModels(preset.id, preset.apiBase!, presetKeys[preset.id] || "", (model) => updateProviderModel(preset.id, model), providerModels[preset.id] || "")}
+                onTest={() => testConnection(preset.id, preset.apiBase!, presetKeys[preset.id] || "", providerModels[preset.id] || preset.model)}
+                testStatus={testStatus}
+                t={t}
+              />
             )
           )}
 
           {customProviders.filter((p) => p.id === selectedProvider).map((p) => (
-            <div key={p.id} className="space-y-3">
-              {editingId === p.id ? (
-                <>
-                  <div>
-                    <label className="text-xs text-muted-foreground block mb-1">{t("settings.name")}</label>
-                    <input value={editForm.name} onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))} className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground block mb-1">{t("settings.baseUrl")}</label>
-                    <input value={editForm.apiBase} onChange={(e) => setEditForm((prev) => ({ ...prev, apiBase: e.target.value }))} className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground block mb-1">{t("settings.apiKey")}</label>
-                    <input type="password" value={editForm.apiKey} onChange={(e) => setEditForm((prev) => ({ ...prev, apiKey: e.target.value }))} className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm font-mono focus:outline-none" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground block mb-1">{t("settings.modelId")}</label>
-                    <div className="flex gap-2"><input list="provider-model-options" value={editForm.modelId} onChange={(e) => setEditForm((prev) => ({ ...prev, modelId: e.target.value }))} className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-sm focus:outline-none" /><ProviderIconButton label={t("settings.fetchModels")} onClick={() => void fetchModels(p.id, editForm.apiBase, editForm.apiKey, (model) => setEditForm((prev) => ({ ...prev, modelId: model })), editForm.modelId)}>{fetchingModels ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListRestart className="h-4 w-4" />}</ProviderIconButton></div>
-                  </div>
-                  <div className="flex gap-2">
-                    <ProviderIconButton label={t("settings.save")} onClick={saveEdit}><Check className="h-4 w-4" /></ProviderIconButton>
-                    <ProviderIconButton label={t("settings.cancel")} onClick={() => setEditingId(null)}><X className="h-4 w-4" /></ProviderIconButton>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div>
-                    <label className="text-xs text-muted-foreground block mb-1">{t("settings.baseUrl")}</label>
-                    <p className="text-sm font-mono">{p.apiBase}</p>
-                  </div>
-                  <div>
-                    <label className="text-xs text-muted-foreground block mb-1">{t("settings.defaultModel")}</label>
-                    <p className="text-sm font-mono">{p.modelId}</p>
-                  </div>
-                  <div className="flex items-center gap-1 pt-1">
-                    <ProviderIconButton label={t("settings.testConnection")} onClick={() => testConnection(p.id, p.apiBase, p.apiKey, p.modelId)}><PlugZap className="h-4 w-4" /></ProviderIconButton>
-                    <ProviderIconButton label={t("settings.edit")} onClick={() => { setEditingId(p.id); setEditForm({ name: p.name, apiBase: p.apiBase, apiKey: p.apiKey, modelId: p.modelId }); }}><Pencil className="h-4 w-4" /></ProviderIconButton>
-                    <ProviderIconButton label={t("settings.delete")} danger onClick={() => removeCustom(p.id)}><Trash2 className="h-4 w-4" /></ProviderIconButton>
-                  </div>
-                  {testStatus && <TestStatusBadge status={testStatus} />}
-                </>
-              )}
-            </div>
+            <CustomProviderPanel
+              key={p.id}
+              provider={p}
+              editingId={editingId}
+              editForm={editForm}
+              onEditFormChange={setEditForm}
+              onSaveEdit={saveEdit}
+              onCancelEdit={() => setEditingId(null)}
+              onStartEdit={(provider) => { setEditingId(provider.id); setEditForm({ name: provider.name, apiBase: provider.apiBase, apiKey: provider.apiKey, modelId: provider.modelId }); }}
+              fetchingModels={fetchingModels}
+              onFetchModelsForEdit={() => void fetchModels(p.id, editForm.apiBase, editForm.apiKey, (model) => setEditForm((prev) => ({ ...prev, modelId: model })), editForm.modelId)}
+              onTest={(provider) => testConnection(provider.id, provider.apiBase, provider.apiKey, provider.modelId)}
+              testStatus={testStatus}
+              onRemove={removeCustom}
+              t={t}
+            />
           ))}
         </div>
       )}
 
       {/* Custom provider add form */}
       {showAddCustom && (
-        <div className="mt-4 bg-card border border-border rounded-xl p-5 space-y-3">
-          <h3 className="text-sm font-semibold">{t("settings.addCustomTitle")}</h3>
-          <div>
-            <label className="text-xs text-muted-foreground block mb-1">{t("settings.name")}</label>
-            <input value={newProvider.name} onChange={(e) => setNewProvider((prev) => ({ ...prev, name: e.target.value }))} placeholder="e.g., Ollama" className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none" />
-          </div>
-          <div>
-            <label className="text-xs text-muted-foreground block mb-1">{t("settings.baseUrl")}</label>
-            <input value={newProvider.apiBase} onChange={(e) => setNewProvider((prev) => ({ ...prev, apiBase: e.target.value }))} placeholder="http://localhost:11434/v1" className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none" />
-          </div>
-          <div>
-            <label className="text-xs text-muted-foreground block mb-1">{t("settings.apiKey")}</label>
-            <input type="password" value={newProvider.apiKey} onChange={(e) => setNewProvider((prev) => ({ ...prev, apiKey: e.target.value }))} className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm font-mono focus:outline-none" />
-          </div>
-          <div>
-            <label className="text-xs text-muted-foreground block mb-1">{t("settings.modelId")}</label>
-            <div className="flex gap-2"><input list="provider-model-options" value={newProvider.modelId} onChange={(e) => setNewProvider((prev) => ({ ...prev, modelId: e.target.value }))} placeholder="gpt-4o-mini" className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-sm focus:outline-none" /><ProviderIconButton label={t("settings.fetchModels")} onClick={() => void fetchModels("custom", newProvider.apiBase, newProvider.apiKey, (model) => setNewProvider((prev) => ({ ...prev, modelId: model })), newProvider.modelId)}>{fetchingModels ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListRestart className="h-4 w-4" />}</ProviderIconButton></div>
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={addCustom} disabled={!newProvider.name || !newProvider.apiBase || !newProvider.modelId} className="h-auto px-4 py-1.5 rounded-lg text-xs font-medium bg-primary text-white hover:bg-primary/90 disabled:opacity-50 transition-colors">{t("settings.add")}</Button>
-            <Button variant="outline" onClick={() => setShowAddCustom(false)} className="h-auto px-4 py-1.5 rounded-lg text-xs font-medium border border-border hover:bg-muted transition-colors">{t("settings.cancel")}</Button>
-          </div>
-        </div>
+        <CustomProviderAddForm
+          newProvider={newProvider}
+          onNewProviderChange={setNewProvider}
+          fetchingModels={fetchingModels}
+          onFetchModels={() => void fetchModels("custom", newProvider.apiBase, newProvider.apiKey, (model) => setNewProvider((prev) => ({ ...prev, modelId: model })), newProvider.modelId)}
+          onAdd={addCustom}
+          onCancel={() => setShowAddCustom(false)}
+          t={t}
+        />
       )}
     </section>
   );
