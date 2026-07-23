@@ -936,8 +936,21 @@ fn open_decoder(path: &Path) -> Result<FileDecoder, String> {
         return gstreamer_decoder::GstreamerDecoder::open(path).map(FileDecoder::Gstreamer);
     }
 
+    // rodio's Symphonia demuxers can also misjudge duration/track boundaries
+    // for mp4-family containers (mp4/m4a/aac), including audio-in-video files
+    // (music videos) where a video track sits alongside the audio track.
+    // ExtAudioFile natively opens all of these and reads the enabled audio
+    // track, same as QuickTime/Music.app.
     #[cfg(target_os = "macos")]
-    if is_mp3 {
+    let is_coreaudio_format = is_mp3
+        || path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| {
+                matches!(extension.to_ascii_lowercase().as_str(), "mp4" | "m4a" | "aac")
+            });
+    #[cfg(target_os = "macos")]
+    if is_coreaudio_format {
         return coreaudio_decoder::CoreAudioDecoder::open(path).map(FileDecoder::CoreAudio);
     }
 
@@ -1248,6 +1261,29 @@ mod tests {
         let mut late = DecodedTrack::open(path).unwrap();
         late.seek(Duration::from_secs(220)).unwrap();
         assert_eq!(late.read_samples(4096).len(), 4096);
+    }
+
+    // mp4 audio-in-video file (music video with an h264 track alongside aac
+    // audio) that rodio's isomp4 demuxer previously mis-measured/truncated.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn coreaudio_reads_full_mp4_audio_track() {
+        let path = Path::new(
+            "/Users/tengzhang/work/Music_JayZhou/“我只为自己而哭泣”！Cry For Me (feat. Ami) - Original.mp4",
+        );
+        if !path.exists() {
+            return;
+        }
+        let decoder = open_decoder(path).unwrap();
+        let duration = decoder.total_duration().unwrap().as_secs_f64();
+        let rate = decoder.sample_rate().get() as f64;
+        let channels = decoder.channels().get() as f64;
+        let decoded_seconds = decoder.count() as f64 / rate / channels;
+        assert!((300.0..=304.0).contains(&duration), "duration={duration:.3}");
+        assert!(
+            (300.0..=304.0).contains(&decoded_seconds),
+            "decoded_seconds={decoded_seconds:.3}"
+        );
     }
 
     #[test]
