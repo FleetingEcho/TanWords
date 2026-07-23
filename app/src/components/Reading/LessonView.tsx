@@ -1,22 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { open as openShell } from "@tauri-apps/plugin-shell";
-import { useDB, ArticleDetail, ExtractedItem } from "@/hooks/useDB";
+import { useDB, ArticleDetail } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
-import { LevelBadge } from "@/components/shared/LevelBadge";
 import { SentenceParagraph, ParagraphSentence } from "./SentenceParagraph";
 import { splitSentences } from "@/lib/sentences";
 import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
 import { usePlayerOriginStore } from "@/store/playerOriginStore";
-import { SpeakerIcon, FeedIcon, SparkIcon, RefreshIcon } from "@/components/ui/icons";
-import { CheckIcon } from "@heroicons/react/24/solid";
-import { SpeakButton } from "@/components/ui/SpeakButton";
+import { SpeakerIcon, FeedIcon, RefreshIcon, TranslateIcon, SearchIcon, PinIcon } from "@/components/ui/icons";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useAnalyzeArticle } from "@/hooks/useAnalyzeArticle";
 import { WordSearchBox } from "./WordSearchBox";
+import { SaveSentenceBox } from "./SaveSentenceBox";
+import { TranslateModal } from "./TranslateModal";
+import { Markdown } from "@/components/AiChat/Markdown";
 import { Button } from "@/components/ui/button";
-
-const PATTERN_HIGHLIGHT_KEY = "tanwords_pattern_highlight";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 
 interface Props {
   articleId: number;
@@ -48,110 +47,14 @@ function splitParagraphsWithOffsets(content: string): ParagraphChunk[] {
   return chunks;
 }
 
-function ItemCard({
-  item,
-  onAction,
-  flash,
-  innerRef,
-}: {
-  item: ExtractedItem;
-  onAction: (item: ExtractedItem, action: "accept" | "know" | "dismiss" | "reset") => void;
-  flash: boolean;
-  innerRef: (el: HTMLDivElement | null) => void;
-}) {
-  const t = useT();
-  const dimmed = item.status === "dismissed" || item.status === "known";
-
-  return (
-    <div
-      ref={innerRef}
-      className={`px-4 py-3 space-y-1.5 transition-all ${flash ? "ring-2 ring-primary/50 bg-primary/5" : ""} ${
-        dimmed ? "opacity-50" : ""
-      }`}
-    >
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-semibold text-primary">
-          {item.text}
-        </span>
-        <SpeakButton text={item.text} className="w-3.5 h-3.5" />
-        <LevelBadge level={item.level} />
-        <span className="text-xs text-muted-foreground truncate">{item.zh}</span>
-      </div>
-      {item.note && <p className="text-xs text-muted-foreground leading-relaxed">{item.note}</p>}
-      {item.context_sentence && (
-        <p className="text-xs text-muted-foreground/70 italic leading-relaxed line-clamp-2 flex items-start gap-1">
-          <span>“{item.context_sentence}”</span>
-          <SpeakButton text={item.context_sentence} className="w-3 h-3 mt-0.5 shrink-0" />
-        </p>
-      )}
-      <div className="flex items-center gap-2 pt-0.5">
-        {item.status === "candidate" && (
-          <>
-            <Button
-              variant="link"
-              onClick={() => onAction(item, "accept")}
-              className="h-auto p-0 text-[11px] font-semibold text-primary hover:underline"
-            >
-              {t("reading.addToVocab")}
-            </Button>
-            <Button
-              variant="link"
-              onClick={() => onAction(item, "know")}
-              className="h-auto p-0 text-[11px] text-muted-foreground hover:text-foreground"
-            >
-              {t("reading.know")}
-            </Button>
-            <Button
-              variant="link"
-              onClick={() => onAction(item, "dismiss")}
-              className="h-auto p-0 text-[11px] text-muted-foreground hover:text-foreground"
-            >
-              {t("reading.dismiss")}
-            </Button>
-          </>
-        )}
-        {item.status === "accepted" && (
-          <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-0.5">
-            <CheckIcon className="w-3 h-3" /> {t("reading.added")}
-          </span>
-        )}
-        {item.status === "known" && (
-          <Button
-            variant="link"
-            onClick={() => onAction(item, "reset")}
-            className="h-auto p-0 text-[11px] text-muted-foreground hover:text-foreground"
-            title={t("reading.undo")}
-          >
-            {t("reading.knownChip")}
-          </Button>
-        )}
-        {item.status === "dismissed" && (
-          <Button
-            variant="link"
-            onClick={() => onAction(item, "reset")}
-            className="h-auto p-0 text-[11px] text-muted-foreground hover:text-foreground"
-            title={t("reading.undo")}
-          >
-            {t("reading.dismissedChip")}
-          </Button>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export function LessonView({ articleId, onBack, onDeleted, onReanalyzed }: Props) {
   const db = useDB();
   const t = useT();
   const { analyze, isAnalyzing } = useAnalyzeArticle();
   const [confirmReanalyze, setConfirmReanalyze] = useState(false);
+  const [translateOpen, setTranslateOpen] = useState(false);
   const [article, setArticle] = useState<ArticleDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [flashId, setFlashId] = useState<number | null>(null);
-  const [highlightPatterns, setHighlightPatterns] = useState(
-    () => localStorage.getItem(PATTERN_HIGHLIGHT_KEY) !== "0"
-  );
-  const cardRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const sentenceSpanRefs = useRef<Map<number, HTMLSpanElement>>(new Map());
 
   const sourceKey = `lesson-${articleId}`;
@@ -200,66 +103,6 @@ export function LessonView({ articleId, onBack, onDeleted, onReanalyzed }: Props
     }
   };
 
-  const jumpToItem = useCallback((id: number) => {
-    const el = cardRefs.current.get(id);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-      setFlashId(id);
-      setTimeout(() => setFlashId(null), 1200);
-    }
-  }, []);
-
-  const setStatus = (id: number, status: ExtractedItem["status"]) => {
-    setArticle((prev) =>
-      prev
-        ? { ...prev, items: prev.items.map((it) => (it.id === id ? { ...it, status } : it)) }
-        : prev
-    );
-  };
-
-  const handleAction = async (
-    item: ExtractedItem,
-    action: "accept" | "know" | "dismiss" | "reset"
-  ) => {
-    try {
-      if (action === "accept") {
-        await db.addWord(item.text, item.zh, undefined, item.level || undefined);
-        window.dispatchEvent(new CustomEvent("vocab-updated"));
-        await db.updateItemStatus(item.id, "accepted");
-        setStatus(item.id, "accepted");
-      } else if (action === "know") {
-        await db.addKnownWords([item.text], "marked");
-        await db.updateItemStatus(item.id, "known");
-        setStatus(item.id, "known");
-      } else if (action === "dismiss") {
-        await db.updateItemStatus(item.id, "dismissed");
-        setStatus(item.id, "dismissed");
-      } else {
-        await db.updateItemStatus(item.id, "candidate");
-        setStatus(item.id, "candidate");
-      }
-    } catch {
-      toast.error(t("reading.toast.actionFailed"));
-    }
-  };
-
-  const handleAddAll = async () => {
-    if (!article) return;
-    const candidates = article.items.filter((it) => it.kind === "word" && it.status === "candidate");
-    if (candidates.length === 0) return;
-    try {
-      for (const it of candidates) {
-        await db.addWord(it.text, it.zh, undefined, it.level || undefined);
-        await db.updateItemStatus(it.id, "accepted");
-        setStatus(it.id, "accepted");
-      }
-      window.dispatchEvent(new CustomEvent("vocab-updated"));
-      toast.success(t("reading.toast.addedAll", { n: candidates.length }));
-    } catch {
-      toast.error(t("reading.toast.actionFailed"));
-    }
-  };
-
   /** Re-run the AI analysis on the same text. Creates the replacement article
    * first and only deletes the old one on success, so a failed run loses
    * nothing. Words already accepted into vocabulary are auto-excluded by the
@@ -275,7 +118,7 @@ export function LessonView({ articleId, onBack, onDeleted, onReanalyzed }: Props
         origin: article.origin,
       });
       await db.deleteArticle(articleId);
-      toast.success(t("reading.toast.analyzed", { n: result.itemCount }), { id: toastId });
+      toast.success(t("reading.toast.analyzed"), { id: toastId });
       onReanalyzed(result.articleId);
     } catch (e: any) {
       toast.error(e.message || t("reading.toast.failed"), { id: toastId });
@@ -319,17 +162,6 @@ export function LessonView({ articleId, onBack, onDeleted, onReanalyzed }: Props
     );
   }
 
-  const words = article.items.filter((it) => it.kind === "word");
-  const sentenceItems = article.items.filter((it) => it.kind === "sentence");
-  const pendingWords = words.filter((it) => it.status === "candidate").length;
-
-  const togglePatterns = () => {
-    setHighlightPatterns((prev) => {
-      localStorage.setItem(PATTERN_HIGHLIGHT_KEY, prev ? "0" : "1");
-      return !prev;
-    });
-  };
-
   return (
     <div className="space-y-4">
       {/* Lesson header — sticky so Back/Listen/Add-all stay reachable while
@@ -370,6 +202,34 @@ export function LessonView({ articleId, onBack, onDeleted, onReanalyzed }: Props
           </div>
         </div>
         <div className="flex gap-3">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                title={t("reading.search.title")}
+                className="w-8 h-8 p-0 rounded-lg border border-input flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+              >
+                <SearchIcon className="w-3.5 h-3.5" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-80 p-3">
+              <WordSearchBox />
+            </PopoverContent>
+          </Popover>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                title={t("reading.saveSentence.title")}
+                className="w-8 h-8 p-0 rounded-lg border border-input flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+              >
+                <PinIcon className="w-3.5 h-3.5" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-80 p-3 max-h-[70vh] overflow-y-auto">
+              <SaveSentenceBox articleId={article.id} articleTitle={article.title} />
+            </PopoverContent>
+          </Popover>
           <Button
           variant="outline"
           onClick={() => setConfirmReanalyze(true)}
@@ -379,21 +239,14 @@ export function LessonView({ articleId, onBack, onDeleted, onReanalyzed }: Props
         >
           <RefreshIcon className={`w-3.5 h-3.5 ${isAnalyzing ? "animate-spin" : ""}`} />
         </Button>
-        {sentenceItems.length > 0 && (
-          <Button
-            variant="ghost"
-            onClick={togglePatterns}
-            title={t("reading.patternToggleHint")}
-            className={`h-8 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 shrink-0 transition-colors ${
-              highlightPatterns
-                ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 hover:bg-amber-500/15"
-                : "border border-input text-muted-foreground hover:text-foreground hover:bg-muted"
-            }`}
-          >
-            <SparkIcon className="w-3.5 h-3.5" />
-            {t("reading.patternToggle")}
-          </Button>
-        )}
+        <Button
+          variant="outline"
+          onClick={() => setTranslateOpen(true)}
+          title={t("reading.translate.button")}
+          className="w-8 h-8 p-0 rounded-lg border border-input flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+        >
+          <TranslateIcon className="w-3.5 h-3.5" />
+        </Button>
         <Button
           variant="ghost"
           onClick={handleListenToArticle}
@@ -406,104 +259,49 @@ export function LessonView({ articleId, onBack, onDeleted, onReanalyzed }: Props
           <SpeakerIcon className="w-3.5 h-3.5" />
           {t("tts.listenToArticle")}
         </Button>
-        {pendingWords > 0 && (
-          <Button
-            onClick={handleAddAll}
-            className="h-8 px-4 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shrink-0"
-          >
-            {t("reading.addAll", { n: pendingWords })}
-          </Button>
-        )}
         </div>
       </div>
 
-      {/* Two-column lesson */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr,360px] gap-4 items-start">
-        {/* Article body — extracted words highlighted, click-to-jump when playing */}
+      {/* Two-column lesson, split evenly — article prose is capped at a
+        * readable measure internally so it doesn't stretch into long lines
+        * as this column grows on wide screens. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        {/* Article body — click-to-jump when playing */}
         <div className="bg-card border border-border rounded-2xl p-6 space-y-4">
-          {paragraphChunks.map((chunk, i) => {
-            const chunkSentences: ParagraphSentence[] = articleSentences
-              .map((s, globalIndex) => ({ s, globalIndex }))
-              .filter(({ s }) => s.start >= chunk.start && s.start < chunk.end)
-              .map(({ s, globalIndex }) => ({ text: s.text, globalIndex }));
-            return (
-              <SentenceParagraph
-                key={i}
-                sentences={chunkSentences}
-                items={words}
-                sentenceItems={highlightPatterns ? sentenceItems : []}
-                onJump={jumpToItem}
-                playerActive={playerActive}
-                playerCurrentIndex={playerCurrentIndex}
-                onPlayerJump={playerJumpTo}
-                registerSpanRef={registerSpanRef}
-              />
-            );
-          })}
+          <div className="max-w-[75ch] space-y-4">
+            {paragraphChunks.map((chunk, i) => {
+              const chunkSentences: ParagraphSentence[] = articleSentences
+                .map((s, globalIndex) => ({ s, globalIndex }))
+                .filter(({ s }) => s.start >= chunk.start && s.start < chunk.end)
+                .map(({ s, globalIndex }) => ({ text: s.text, globalIndex }));
+              return (
+                <SentenceParagraph
+                  key={i}
+                  sentences={chunkSentences}
+                  playerActive={playerActive}
+                  playerCurrentIndex={playerCurrentIndex}
+                  onPlayerJump={playerJumpTo}
+                  registerSpanRef={registerSpanRef}
+                />
+              );
+            })}
+          </div>
         </div>
 
-        {/* Extracted items panel */}
+        {/* AI notes — the search/save tools moved up into the sticky header
+          * bar (with Reanalyze/Translate/Listen), so this column is free to
+          * be entirely notes. Sticky + internally scrollable so it fills the
+          * viewport rather than pushing the page's own scrollbar. */}
         {/* top offset clears the sticky lesson header above (≤2-line title) */}
-        <div className="space-y-4 lg:sticky lg:top-36 lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto">
-          <WordSearchBox />
-          {article.items.length === 0 && (
-            <div className="bg-card border border-border rounded-2xl p-6 text-center text-xs text-muted-foreground">
-              {t("reading.noItems")}
-            </div>
-          )}
-          {words.length > 0 && (
-            <div className="bg-card border border-border rounded-2xl overflow-hidden">
-              <div className="px-4 py-2.5 border-b border-border flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-primary" />
-                <span className="text-xs font-semibold">{t("reading.words")}</span>
-                <span className="text-[11px] font-mono text-muted-foreground">{words.length}</span>
-              </div>
-              <div className="divide-y divide-border">
-                {words.map((it) => (
-                  <ItemCard
-                    key={it.id}
-                    item={it}
-                    onAction={handleAction}
-                    flash={flashId === it.id}
-                    innerRef={(el) => { if (el) cardRefs.current.set(it.id, el); }}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Highlight sentences / reusable patterns */}
-          {sentenceItems.length > 0 && (
-            <div className="bg-card border border-border rounded-2xl overflow-hidden">
-              <div className="px-4 py-2.5 border-b border-border flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-amber-500" />
-                <span className="text-xs font-semibold">{t("reading.patterns")}</span>
-                <span className="text-[11px] font-mono text-muted-foreground">{sentenceItems.length}</span>
-              </div>
-              <div className="divide-y divide-border">
-                {sentenceItems.map((it) => (
-                  <div
-                    key={it.id}
-                    ref={(el) => { if (el) cardRefs.current.set(it.id, el); }}
-                    className={`px-4 py-3 space-y-1.5 transition-all ${
-                      flashId === it.id ? "ring-2 ring-amber-500/50 bg-amber-500/5" : ""
-                    }`}
-                  >
-                    <p className="text-[13px] font-serif italic leading-relaxed text-foreground flex items-start gap-1">
-                      <span>“{it.text}”</span>
-                      <SpeakButton text={it.text} className="w-3 h-3 mt-1 shrink-0" />
-                    </p>
-                    {it.context_sentence && (
-                      <p className="text-[11px] font-mono text-amber-600 dark:text-amber-400">
-                        {it.context_sentence}
-                      </p>
-                    )}
-                    {it.zh && <p className="text-xs text-muted-foreground">{it.zh}</p>}
-                    {it.note && <p className="text-xs text-muted-foreground/80 leading-relaxed">{it.note}</p>}
-                  </div>
-                ))}
-              </div>
-            </div>
+        <div className="bg-card border border-border rounded-2xl p-4 lg:sticky lg:top-36 lg:max-h-[calc(100vh-10rem)] overflow-y-auto">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="w-2 h-2 rounded-full bg-primary" />
+            <span className="text-xs font-semibold">{t("reading.notesTitle")}</span>
+          </div>
+          {article.analysis_markdown.trim() ? (
+            <Markdown text={article.analysis_markdown} />
+          ) : (
+            <p className="text-xs text-muted-foreground">{t("reading.notesEmpty")}</p>
           )}
         </div>
       </div>
@@ -518,6 +316,13 @@ export function LessonView({ articleId, onBack, onDeleted, onReanalyzed }: Props
           setConfirmReanalyze(false);
           handleReanalyze();
         }}
+      />
+
+      <TranslateModal
+        open={translateOpen}
+        onClose={() => setTranslateOpen(false)}
+        title={article.title}
+        articleText={article.content}
       />
     </div>
   );

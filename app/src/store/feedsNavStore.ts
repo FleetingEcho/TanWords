@@ -6,6 +6,7 @@ export interface PendingBrowse {
   domain: string;
   audioUrl: string | null;
   feedTitle: string;
+  hnItemId: number | null;
 }
 
 interface FeedsNavState {

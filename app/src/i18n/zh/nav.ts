@@ -24,6 +24,7 @@ export const nav: Dict = {
     "command.search": "搜索命令与页面",
     "command.searchPlaceholder": "输入命令或页面…",
     "command.conversationNote": "生成对话笔记",
+    "command.analyzing": "分析中…",
     "command.mcpRunning": "MCP 服务运行中",
     "command.mcpStopped": "MCP 服务未运行",
     "command.aiConnected": "AI 已连接",

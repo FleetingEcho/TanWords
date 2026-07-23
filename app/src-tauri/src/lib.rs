@@ -7,6 +7,7 @@ pub mod tts;
 pub mod reader;
 pub mod secrets;
 pub mod rss;
+pub mod hn;
 pub mod music;
 pub mod native_audio;
 pub mod localdocs;
@@ -98,9 +99,11 @@ pub fn run() {
             db::db_get_articles,
             db::db_get_article,
             db::db_delete_article,
-            db::db_update_item_status,
             db::db_add_known_words,
             db::db_get_known_words,
+            db::db_add_saved_sentence,
+            db::db_get_saved_sentences,
+            db::db_delete_saved_sentence,
             db::db_dashboard_stats,
             db::db_get_db_path,
             db::db_get_db_size,
@@ -140,6 +143,9 @@ pub fn run() {
             tts::engine::tts_engine_status,
             tts::download::tts_download_model,
             reader::fetch_article,
+            hn::fetch_hn_comments,
+            hn::fetch_hn_section,
+            hn::search_hn,
             secrets::secret_get,
             secrets::secret_set,
             secrets::secret_delete,

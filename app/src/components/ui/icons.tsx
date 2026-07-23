@@ -22,6 +22,12 @@ import {
   ArrowPathRoundedSquareIcon,
   ArrowsRightLeftIcon,
   ArrowUpCircleIcon,
+  ChatBubbleLeftIcon,
+  ArrowUpIcon,
+  UserGroupIcon,
+  ChevronDownIcon as ChevronDownIconOutline,
+  PlusCircleIcon,
+  LanguageIcon,
 } from "@heroicons/react/24/outline";
 import {
   ArrowPathIcon,
@@ -179,4 +185,28 @@ export function SkipNextIcon({ className }: IconProps) {
 
 export function CloseIcon({ className }: IconProps) {
   return <XMarkIcon className={className} />;
+}
+
+export function ReplyIcon({ className }: IconProps) {
+  return <ChatBubbleLeftIcon className={className} />;
+}
+
+export function UpvoteIcon({ className }: IconProps) {
+  return <ArrowUpIcon className={className} />;
+}
+
+export function PeopleIcon({ className }: IconProps) {
+  return <UserGroupIcon className={className} />;
+}
+
+export function ChevronDownIcon({ className }: IconProps) {
+  return <ChevronDownIconOutline className={className} />;
+}
+
+export function LoadMoreIcon({ className }: IconProps) {
+  return <PlusCircleIcon className={className} />;
+}
+
+export function TranslateIcon({ className }: IconProps) {
+  return <LanguageIcon className={className} />;
 }

@@ -5,6 +5,9 @@ export type Theme = "light" | "dark" | "system";
 export type SidebarTabId = Exclude<NavPage, "settings">;
 export type TopBarItemId = "history" | "new" | "search" | "context" | "mcp" | "ai" | "language" | "theme" | "updates" | "github";
 
+/** Feeds page tab selector: a specific RSS feed, "all" of them, or the native Hacker News browser. */
+export type RssTabSelection = number | "all" | "hackernews";
+
 export const DEFAULT_SIDEBAR_TABS: SidebarTabId[] = [
   "dashboard", "feeds", "reading", "scene-lab", "vocabulary", "documents", "music", "chat",
 ];
@@ -34,6 +37,11 @@ interface SettingsState {
   visibleSidebarTabs: SidebarTabId[];
   /** User-selected controls visible in the global command bar. */
   visibleTopBarItems: TopBarItemId[];
+  /** RSS feed tab selected by default when opening Feeds — "all" or a specific feed's id.
+   *  Lets a user who mainly reads one source (e.g. Hacker News) skip loading every channel. */
+  defaultRssTab: RssTabSelection;
+  /** Card = magazine layout with cover art; list = dense one-line-per-entry, for feeds with many items. */
+  feedsViewMode: "card" | "list";
   isLoaded: boolean;
 
   setTheme: (theme: Theme) => void;
@@ -50,6 +58,8 @@ interface SettingsState {
   setShowGithubLink: (v: boolean) => void;
   setSidebarTabVisible: (tab: SidebarTabId, visible: boolean) => void;
   setTopBarItemVisible: (item: TopBarItemId, visible: boolean) => void;
+  setDefaultRssTab: (tab: RssTabSelection) => void;
+  setFeedsViewMode: (mode: "card" | "list") => void;
   loadFromDB: () => Promise<void>;
 }
 
@@ -106,6 +116,39 @@ function cacheTopBarItems(items: TopBarItemId[]) {
   try { localStorage.setItem(TOPBAR_ITEMS_CACHE_KEY, JSON.stringify(items)); } catch {}
 }
 
+const DEFAULT_RSS_TAB_CACHE_KEY = "tanwords_default_rss_tab_cache";
+
+/** FeedsPage reads this synchronously on mount, before loadFromDB()'s async
+ * round-trip resolves, so it doesn't flash "All" then jump to the real default. */
+function cachedDefaultRssTab(): RssTabSelection {
+  try {
+    const raw = localStorage.getItem(DEFAULT_RSS_TAB_CACHE_KEY);
+    if (raw === null) return "hackernews";
+    const parsed = JSON.parse(raw);
+    return parsed === "all" || parsed === "hackernews" || typeof parsed === "number" ? parsed : "hackernews";
+  } catch {
+    return "hackernews";
+  }
+}
+
+function cacheDefaultRssTab(tab: RssTabSelection) {
+  try { localStorage.setItem(DEFAULT_RSS_TAB_CACHE_KEY, JSON.stringify(tab)); } catch {}
+}
+
+const FEEDS_VIEW_MODE_CACHE_KEY = "tanwords_feeds_view_mode_cache";
+
+function cachedFeedsViewMode(): "card" | "list" {
+  try {
+    return localStorage.getItem(FEEDS_VIEW_MODE_CACHE_KEY) === "list" ? "list" : "card";
+  } catch {
+    return "card";
+  }
+}
+
+function cacheFeedsViewMode(mode: "card" | "list") {
+  try { localStorage.setItem(FEEDS_VIEW_MODE_CACHE_KEY, mode); } catch {}
+}
+
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   theme: "system",
   defaultAiProvider: "openai",
@@ -121,6 +164,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   showGithubLink: true,
   visibleSidebarTabs: cachedSidebarTabs(),
   visibleTopBarItems: cachedTopBarItems(),
+  defaultRssTab: cachedDefaultRssTab(),
+  feedsViewMode: cachedFeedsViewMode(),
   isLoaded: false,
 
   setTheme: (theme) => {
@@ -169,6 +214,18 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ visibleTopBarItems: next });
     cacheTopBarItems(next);
     saveSetting("visible_topbar_items", JSON.stringify(next));
+  },
+
+  setDefaultRssTab: (tab) => {
+    set({ defaultRssTab: tab });
+    cacheDefaultRssTab(tab);
+    saveSetting("default_rss_tab", JSON.stringify(tab));
+  },
+
+  setFeedsViewMode: (mode) => {
+    set({ feedsViewMode: mode });
+    cacheFeedsViewMode(mode);
+    saveSetting("feeds_view_mode", JSON.stringify(mode));
   },
 
   setTargetLevels: (levels) => {
@@ -225,6 +282,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         "show_github_link",
         "visible_sidebar_tabs",
         "visible_topbar_items",
+        "default_rss_tab",
+        "feeds_view_mode",
       ];
 
       const values: Record<string, string> = {};
@@ -254,6 +313,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         : DEFAULT_TOPBAR_ITEMS;
       cacheTopBarItems(resolvedTopBarItems);
 
+      const rawDefaultRssTab = values.default_rss_tab as unknown;
+      const resolvedDefaultRssTab: RssTabSelection =
+        rawDefaultRssTab === "all" || rawDefaultRssTab === "hackernews" || typeof rawDefaultRssTab === "number"
+          ? (rawDefaultRssTab as RssTabSelection)
+          : "hackernews";
+      cacheDefaultRssTab(resolvedDefaultRssTab);
+
+      const resolvedFeedsViewMode: "card" | "list" = values.feeds_view_mode === "list" ? "list" : "card";
+      cacheFeedsViewMode(resolvedFeedsViewMode);
+
       set({
         theme: (values.theme as Theme) || "system",
         defaultAiProvider: values.default_ai_provider || "openai",
@@ -275,6 +344,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         showGithubLink: (values.show_github_link as unknown) !== false && values.show_github_link !== "false",
         visibleSidebarTabs: resolvedSidebarTabs,
         visibleTopBarItems: resolvedTopBarItems,
+        defaultRssTab: resolvedDefaultRssTab,
+        feedsViewMode: resolvedFeedsViewMode,
         isLoaded: true,
       });
 

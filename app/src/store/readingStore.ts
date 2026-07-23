@@ -5,6 +5,8 @@ export interface ReadingDraft {
   text: string;
   sourceUrl: string;
   origin: "pasted" | "hackernews" | "rss";
+  /** Flattened HN comment text, when loaded — analyzed separately (native/colloquial usage prompt). */
+  commentsText?: string;
 }
 
 interface ReadingState {

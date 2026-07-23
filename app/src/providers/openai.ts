@@ -1,6 +1,7 @@
 import { AIProvider, TranslateParams, ExplainParams, buildSystemPrompt, buildEnrichSystemPrompt, buildEnrichUserPrompt, ToolDef, ApiMessage, ToolCallResponse, ContentBlock } from "./base";
 import { logUsage } from "@/store/usageStore";
 import { useSettingsStore } from "@/store/settingsStore";
+import { ThinkTagFilter } from "./thinkTagFilter";
 
 export class OpenAIProvider implements AIProvider {
   id = "openai";
@@ -121,6 +122,7 @@ export class OpenAIProvider implements AIProvider {
     let textContent = "";
     const partialToolCalls: Record<number, { id: string; name: string; argsJson: string }> = {};
     let stopReason: ToolCallResponse["stopReason"] = "end_turn";
+    const thinkFilter = new ThinkTagFilter();
 
     try {
       while (true) {
@@ -138,7 +140,10 @@ export class OpenAIProvider implements AIProvider {
             const p = JSON.parse(data);
             const delta = p.choices?.[0]?.delta;
             const finishReason = p.choices?.[0]?.finish_reason;
-            if (delta?.content) { textContent += delta.content; onText?.(delta.content); }
+            if (delta?.content) {
+              const out = thinkFilter.push(delta.content);
+              if (out) { textContent += out; onText?.(out); }
+            }
             if (delta?.tool_calls) {
               for (const tc of delta.tool_calls) {
                 if (!partialToolCalls[tc.index]) {
@@ -154,6 +159,8 @@ export class OpenAIProvider implements AIProvider {
         }
       }
     } finally { reader.cancel(); }
+    const restText = thinkFilter.flush();
+    if (restText) { textContent += restText; onText?.(restText); }
 
     const toolCalls = Object.values(partialToolCalls).map(tc => {
       let input: Record<string, unknown> = {};
@@ -188,8 +195,9 @@ export class OpenAIProvider implements AIProvider {
     if (!reader) throw new Error("No response body");
     const decoder = new TextDecoder();
     let buffer = "";
+    const thinkFilter = new ThinkTagFilter();
     try {
-      while (true) {
+      outer: while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
@@ -199,14 +207,19 @@ export class OpenAIProvider implements AIProvider {
           const trimmed = line.trim();
           if (!trimmed || !trimmed.startsWith("data: ")) continue;
           const data = trimmed.slice(6);
-          if (data === "[DONE]") return;
+          if (data === "[DONE]") break outer;
           try {
             const parsed = JSON.parse(data);
             const content = parsed.choices?.[0]?.delta?.content;
-            if (content) yield content;
+            if (content) {
+              const out = thinkFilter.push(content);
+              if (out) yield out;
+            }
           } catch {}
         }
       }
     } finally { reader.cancel(); }
+    const rest = thinkFilter.flush();
+    if (rest) yield rest;
   }
 }

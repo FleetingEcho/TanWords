@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "@/hooks/useT";
-import { CloseIcon, RefreshIcon } from "@/components/ui/icons";
+import { CloseIcon, RefreshIcon, GridIcon, ListIcon } from "@/components/ui/icons";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import type { RssFeed } from "@/hooks/useDB.types";
+import type { RssTabSelection } from "@/store/settingsStore";
+import type { FeedViewMode } from "./EntryGrid";
 import { domainOf } from "./feedUtils";
 import { Button } from "@/components/ui/button";
 
@@ -11,13 +13,15 @@ interface Props {
   unreadByFeed: Map<number, number>;
   /** Feed ids whose last background sync failed. */
   failedFeeds: Set<number>;
-  selected: number | "all";
+  selected: RssTabSelection;
   syncing: boolean;
-  onSelect: (id: number | "all") => void;
+  onSelect: (id: RssTabSelection) => void;
   onDelete: (id: number) => void;
   onPreferences: (id: number, category: "article" | "podcast" | null, isPinned: boolean) => Promise<void>;
   onAdd: () => void;
   onRefresh: () => void;
+  viewMode: FeedViewMode;
+  onSetViewMode: (mode: FeedViewMode) => void;
 }
 
 function UnreadBadge({ n }: { n: number }) {
@@ -30,7 +34,7 @@ function UnreadBadge({ n }: { n: number }) {
 }
 
 /** Single-row switcher: pinned feeds stay visible; the full categorized library lives in More. */
-export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, onSelect, onDelete, onPreferences, onAdd, onRefresh }: Props) {
+export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, onSelect, onDelete, onPreferences, onAdd, onRefresh, viewMode, onSetViewMode }: Props) {
   const t = useT();
   const totalUnread = [...unreadByFeed.values()].reduce((a, b) => a + b, 0);
   const [pendingDelete, setPendingDelete] = useState<RssFeed | null>(null);
@@ -79,6 +83,11 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
         <button onClick={() => onSelect("all")} className={pill(selected === "all")}>
           {t("feeds.all")}
           <UnreadBadge n={totalUnread} />
+        </button>
+
+        <button onClick={() => onSelect("hackernews")} className={pill(selected === "hackernews")}>
+          <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm bg-orange-500 text-[9px] font-bold leading-none text-white">Y</span>
+          {t("hn.tab")}
         </button>
 
         {visibleFeeds.map((f) => {
@@ -159,6 +168,32 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
           </div>
         )}
         {syncing && <span className="text-[11px] text-muted-foreground">{t("feeds.refreshing")}</span>}
+        <div className="flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
+          <Button
+            variant="ghost"
+            onClick={() => onSetViewMode("card")}
+            title={t("feeds.viewCard")}
+            aria-label={t("feeds.viewCard")}
+            aria-pressed={viewMode === "card"}
+            className={`flex h-6 w-6 items-center justify-center rounded-md p-0 transition-colors hover:bg-transparent ${
+              viewMode === "card" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <GridIcon className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => onSetViewMode("list")}
+            title={t("feeds.viewList")}
+            aria-label={t("feeds.viewList")}
+            aria-pressed={viewMode === "list"}
+            className={`flex h-6 w-6 items-center justify-center rounded-md p-0 transition-colors hover:bg-transparent ${
+              viewMode === "list" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <ListIcon className="h-3.5 w-3.5" />
+          </Button>
+        </div>
         <button onClick={onAdd} className="flex h-8 items-center rounded-full border border-dashed border-border px-3 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary">
           + {t("feeds.addFeed")}
         </button>

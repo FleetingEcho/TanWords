@@ -16,6 +16,7 @@ import { NavPage, useNavStore } from "@/store/navStore";
 import { useWordModalStore } from "@/store/wordModalStore";
 import { UpdateButton } from "@/components/Layout/UpdateButton";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useAnalysisStore } from "@/store/analysisStore";
 import { GitHubIcon } from "@/components/ui/icons";
 
 type McpState = { status: { running: boolean; error: string | null } };
@@ -38,6 +39,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   const setTheme = useSettingsStore((state) => state.setTheme);
   const visibleItems = useSettingsStore((state) => state.visibleTopBarItems);
   const visible = (item: import("@/store/settingsStore").TopBarItemId) => visibleItems.includes(item);
+  const isAnalyzing = useAnalysisStore((state) => state.isAnalyzing);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [wordOpen, setWordOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -129,6 +131,23 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
         {visible("search") && <button onClick={() => setPaletteOpen(true)} className="ml-1 flex h-8 min-w-0 max-w-72 flex-1 items-center gap-2 rounded-lg border border-border bg-muted/35 px-2.5 text-xs text-muted-foreground transition hover:bg-muted/60 hover:text-foreground"><Search className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{t("command.search")}</span><kbd className="ml-auto hidden rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] md:inline">⌘K</kbd></button>}
 
         {visible("context") && context && <><div className="mx-1 hidden h-5 w-px bg-border sm:block" /><Button variant="ghost" onClick={context.run} className="h-8 gap-2 rounded-lg px-2.5 text-xs font-medium text-foreground"><context.icon className="h-4 w-4 text-primary" /><span className="hidden lg:inline">{context.label}</span></Button></>}
+
+        {/* Learn/analyze keeps running in the background if you navigate away from
+          * Reading — this stays visible everywhere so you know it's still working
+          * and can jump back to it. */}
+        {isAnalyzing && (
+          <>
+            <div className="mx-1 hidden h-5 w-px bg-border sm:block" />
+            <button
+              onClick={() => navigate("reading")}
+              title={t("command.analyzing")}
+              className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+            >
+              <Sparkles className="h-3.5 w-3.5 animate-pulse" />
+              <span className="hidden sm:inline">{t("command.analyzing")}</span>
+            </button>
+          </>
+        )}
 
         <div className="ml-auto flex items-center gap-0.5 border-l border-border pl-2">
           {visible("mcp") && <Button variant="ghost" size="icon" onClick={() => navigate("settings")} title={mcp.error || (mcp.running ? t("command.mcpRunning") : t("command.mcpStopped"))} className={`relative h-8 w-8 rounded-lg ${mcp.error ? "text-amber-500" : mcp.running ? "text-foreground" : "text-muted-foreground"}`}><Server className="h-4 w-4" />{mcp.running && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />}</Button>}

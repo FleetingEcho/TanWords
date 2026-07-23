@@ -22,22 +22,6 @@ export interface ArticleListItem {
   source_url: string;
   origin: string;
   created_at: string;
-  item_count: number;
-  accepted_count: number;
-}
-
-export interface ExtractedItem {
-  id: number;
-  article_id: number;
-  /** "word": vocabulary; "sentence": a highlight sentence / advanced pattern —
-   * text is the verbatim sentence, context_sentence holds the pattern skeleton. */
-  kind: "word" | "sentence";
-  text: string;
-  zh: string;
-  note: string;
-  level: string;
-  context_sentence: string;
-  status: "candidate" | "accepted" | "known" | "dismissed";
 }
 
 export interface ArticleDetail {
@@ -47,16 +31,21 @@ export interface ArticleDetail {
   origin: string;
   content: string;
   created_at: string;
-  items: ExtractedItem[];
+  /** The AI's write-up of notable words/sentences from the article (and HN
+   * comments, when loaded), as markdown — read, not operated on. */
+  analysis_markdown: string;
 }
 
-export interface NewExtractedItem {
-  kind: "word" | "sentence";
+export interface SavedSentence {
+  id: number;
   text: string;
   zh: string;
   note: string;
-  level: string;
-  context: string;
+  /** Null once the source article has been deleted; article_title is kept
+   * regardless so provenance still shows in the global saved list. */
+  article_id: number | null;
+  article_title: string;
+  created_at: string;
 }
 
 export interface WordListItem {
@@ -208,6 +197,8 @@ export interface RssEntry {
   audio_url?: string | null;
   /** Episode length in seconds, when the feed provides it. */
   audio_duration?: number | null;
+  /** Hacker News item id, when this entry came from an hnrss.org-style feed. */
+  hn_item_id?: number | null;
 }
 
 export interface RssFeed {
@@ -239,6 +230,8 @@ export interface RssEntryRow {
   audio_url?: string | null;
   /** Episode length in seconds, when the feed provides it. */
   audio_duration?: number | null;
+  /** Hacker News item id, when this entry came from an hnrss.org-style feed. */
+  hn_item_id?: number | null;
   published: string;
   is_read: boolean;
   fetched_at: string;
