@@ -5,7 +5,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
 import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
-import { SettingRow } from "./SettingsPage";
+import { SettingRow } from "./SettingsShared";
 import { RecommendedTtsModel } from "@/lib/recommendedTtsModels";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { RecommendedModelsList } from "./RecommendedModelsList";
