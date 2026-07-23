@@ -3,24 +3,11 @@ import { useT } from "@/hooks/useT";
 import { relativeTime, placeholderGradient } from "@/components/Feeds/feedUtils";
 import { ReplyIcon, PeopleIcon } from "@/components/ui/icons";
 import { StatBadge } from "@/components/ui/StatBadge";
-import { fetchHnComments, type HnComment } from "@/lib/hnComments";
-
-function countComments(comments: HnComment[]): number {
-  return comments.reduce((n, c) => n + 1 + countComments(c.children), 0);
-}
-
-/** Unique commenters — HN's APIs don't expose this directly, but we already
- *  fetch every node in the tree to render it, so it's free to derive. */
-function countUniqueAuthors(comments: HnComment[], seen: Set<string> = new Set()): number {
-  for (const c of comments) {
-    if (c.by) seen.add(c.by);
-    countUniqueAuthors(c.children, seen);
-  }
-  return seen.size;
-}
+import { countHnComments, countHnCommentAuthors, type HnComment } from "@/lib/hnComments";
+import { useHnCommentsStore } from "@/store/hnCommentsStore";
 
 /** Replies use a slightly smaller avatar — frees up room in the indented gutter and reinforces the hierarchy. */
-function Avatar({ name, small }: { name: string; small?: boolean }) {
+export function Avatar({ name, small }: { name: string; small?: boolean }) {
   return (
     <div
       aria-hidden="true"
@@ -35,7 +22,7 @@ function Avatar({ name, small }: { name: string; small?: boolean }) {
 function CommentNode({ comment, depth, parentAuthor }: { comment: HnComment; depth: number; parentAuthor?: string }) {
   const t = useT();
   const [collapsed, setCollapsed] = useState(false);
-  const replyCount = countComments(comment.children);
+  const replyCount = countHnComments(comment.children);
   const author = comment.by || t("hn.comments.anonymous");
 
   return (
@@ -87,28 +74,33 @@ function CommentNode({ comment, depth, parentAuthor }: { comment: HnComment; dep
  *  the parent needing to fetch it a second time. */
 export function HnComments({ storyId, onLoaded }: { storyId: number; onLoaded?: (comments: HnComment[]) => void }) {
   const t = useT();
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [comments, setComments] = useState<HnComment[]>([]);
+  const cached = useHnCommentsStore((s) => s.byStoryId[storyId]);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
+    setError(false);
+    if (cached) {
+      onLoaded?.(cached);
+      return;
+    }
     let cancelled = false;
-    setStatus("loading");
-    setComments([]);
-    fetchHnComments(storyId)
+    useHnCommentsStore
+      .getState()
+      .fetch(storyId)
       .then((c) => {
-        if (cancelled) return;
-        setComments(c);
-        setStatus("ready");
-        onLoaded?.(c);
+        if (!cancelled) onLoaded?.(c);
       })
       .catch(() => {
-        if (!cancelled) setStatus("error");
+        if (!cancelled) setError(true);
       });
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- onLoaded is a fresh closure every render; keying only on storyId avoids refetching when the parent re-renders.
-  }, [storyId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onLoaded is a fresh closure every render; keying on storyId/cached avoids refetching when the parent re-renders.
+  }, [storyId, cached]);
+
+  const comments = cached ?? [];
+  const status: "loading" | "ready" | "error" = error ? "error" : cached ? "ready" : "loading";
 
   return (
     <div className="mt-10 border-t border-border pt-6">
@@ -119,10 +111,10 @@ export function HnComments({ storyId, onLoaded }: { storyId: number; onLoaded?: 
       {status === "ready" && comments.length > 0 && (
         <div className="mt-1.5 flex items-center gap-1.5">
           <StatBadge icon={<ReplyIcon className="w-3 h-3" />} className="text-muted-foreground">
-            {countComments(comments)}
+            {countHnComments(comments)}
           </StatBadge>
           <StatBadge icon={<PeopleIcon className="w-3 h-3" />} className="text-muted-foreground">
-            {countUniqueAuthors(comments)}
+            {countHnCommentAuthors(comments)}
           </StatBadge>
         </div>
       )}

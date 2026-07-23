@@ -7,6 +7,9 @@ export interface ReadingDraft {
   origin: "pasted" | "hackernews" | "rss";
   /** Flattened HN comment text, when loaded — analyzed separately (native/colloquial usage prompt). */
   commentsText?: string;
+  /** Set for entries from Hacker News (or hnrss-style feeds) — carried through so the
+   * saved lesson can show the original discussion thread, not just its AI analysis. */
+  hnItemId?: number | null;
 }
 
 interface ReadingState {

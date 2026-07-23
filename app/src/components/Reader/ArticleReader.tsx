@@ -4,10 +4,11 @@ import { useT } from "@/hooks/useT";
 import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
 import { usePodcastPlayerStore, type PodcastTrack } from "@/store/podcastPlayerStore";
 import { usePlayerOriginStore } from "@/store/playerOriginStore";
-import { SpeakerIcon, SparkIcon } from "@/components/ui/icons";
+import { SpeakerIcon, SparkIcon, TranslateIcon, ReplyIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { HnComments } from "@/components/Reader/HnComments";
-import { flattenHnComments, type HnComment } from "@/lib/hnComments";
+import { TranslationPane } from "@/components/Reading/TranslationPane";
+import { flattenHnComments, commentsToSpeechText, type HnComment } from "@/lib/hnComments";
 
 export interface FetchedArticle {
   title: string;
@@ -42,6 +43,11 @@ export function ArticleReader({ url, domain, onLearn, onOpenExternal, audio, hnI
   const [errorMsg, setErrorMsg] = useState("");
   const [fontStep, setFontStep] = useState(1);
   const [hnComments, setHnComments] = useState<HnComment[] | null>(null);
+  const [showTranslation, setShowTranslation] = useState(false);
+  /** Fraction of the split's width given to the original article (vs. translation) —
+   *  dragged via the divider between them. */
+  const [splitRatio, setSplitRatio] = useState(0.5);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
   const requestSeq = useRef(0);
   const playerSourceKey = useTtsPlayerStore((s) => s.sourceKey);
   const playerStart = useTtsPlayerStore((s) => s.start);
@@ -49,8 +55,10 @@ export function ArticleReader({ url, domain, onLearn, onOpenExternal, audio, hnI
   const podcastTrackUrl = usePodcastPlayerStore((s) => s.track?.audioUrl);
   const podcastStatus = usePodcastPlayerStore((s) => s.status);
   const sourceKey = `reader-${url}`;
+  const commentsSourceKey = `reader-comments-${url}`;
   const podcastActive = !!audio && podcastStatus !== "idle" && podcastTrackUrl === audio.audioUrl;
   const playerActive = podcastActive || playerSourceKey === sourceKey;
+  const commentsPlayerActive = playerSourceKey === commentsSourceKey;
 
   const handleListen = () => {
     if (audio) {
@@ -69,6 +77,16 @@ export function ArticleReader({ url, domain, onLearn, onOpenExternal, audio, hnI
     }
   };
 
+  const handleListenComments = () => {
+    if (commentsPlayerActive) {
+      playerToggle();
+      return;
+    }
+    if (!hnComments || hnComments.length === 0) return;
+    playerStart(commentsSourceKey, commentsToSpeechText(hnComments));
+    setReaderOrigin();
+  };
+
   const setReaderOrigin = () => {
     if (!article) return;
     usePlayerOriginStore.getState().setOrigin({
@@ -80,6 +98,27 @@ export function ArticleReader({ url, domain, onLearn, onOpenExternal, audio, hnI
       feedTitle: audio?.feedTitle ?? "",
       hnItemId: hnItemId ?? null,
     });
+  };
+
+  const handleSplitDragStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const container = splitContainerRef.current;
+    if (!container) return;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    const onMove = (ev: MouseEvent) => {
+      const rect = container.getBoundingClientRect();
+      const ratio = (ev.clientX - rect.left) / rect.width;
+      setSplitRatio(Math.min(0.75, Math.max(0.25, ratio)));
+    };
+    const onUp = () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
   };
 
   useEffect(() => {
@@ -126,70 +165,122 @@ export function ArticleReader({ url, domain, onLearn, onOpenExternal, audio, hnI
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
-      <div className="max-w-[68ch] mx-auto px-6 py-10">
-        {/* Font size control */}
-        <div className="flex items-center justify-end gap-1 mb-6 -mt-2">
-          <Button
-            variant="ghost"
-            onClick={() => setFontStep((s) => Math.max(0, s - 1))}
-            disabled={fontStep === 0}
-            className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 transition-colors text-xs font-bold"
-            title={t("reader.fontSmaller")}
-          >
-            A-
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={() => setFontStep((s) => Math.min(FONT_STEPS.length - 1, s + 1))}
-            disabled={fontStep === FONT_STEPS.length - 1}
-            className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 transition-colors text-sm font-bold"
-            title={t("reader.fontLarger")}
-          >
-            A+
-          </Button>
-        </div>
-
-        <h1 className="text-[1.9em] font-bold leading-tight text-foreground">{article.title}</h1>
-        {(article.byline || article.site_name) && (
-          <p className="text-xs text-muted-foreground mt-3">
-            {[article.byline, article.site_name].filter(Boolean).join(" · ")}
-          </p>
-        )}
-
-        <div className="mt-6 flex items-center gap-2">
-          <Button
-            onClick={() =>
-              onLearn({
-                title: article.title,
-                text: article.text_content,
-                commentsText: hnComments ? flattenHnComments(hnComments) : undefined,
-              })
-            }
-            className="h-9 px-4 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors inline-flex items-center gap-1.5"
-          >
-            <SparkIcon className="w-3.5 h-3.5" /> {t("hn.learn")}
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={handleListen}
-            className={`h-9 px-4 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-colors ${
-              playerActive
-                ? "bg-primary/10 text-primary hover:bg-primary/10"
-                : "border border-input text-muted-foreground hover:text-foreground hover:bg-muted"
-            }`}
-          >
-            <SpeakerIcon className="w-4 h-4" />
-            {audio ? t("podcast.listenEpisode") : t("tts.listenToArticle")}
-          </Button>
-        </div>
-
+      <div ref={splitContainerRef} className={showTranslation ? "flex px-6 py-10" : "px-6 py-10"}>
         <div
-          className="reader-article-content text-foreground mt-8"
-          style={{ fontSize: `${FONT_STEPS[fontStep]}px`, lineHeight: 1.85 }}
-          dangerouslySetInnerHTML={{ __html: article.content_html }}
-        />
+          className={showTranslation ? "min-w-0" : "max-w-[68ch] mx-auto"}
+          style={showTranslation ? { width: `${splitRatio * 100}%` } : undefined}
+        >
+          {/* Font size control */}
+          <div className="flex items-center justify-end gap-1 mb-6 -mt-2">
+            <Button
+              variant="ghost"
+              onClick={() => setFontStep((s) => Math.max(0, s - 1))}
+              disabled={fontStep === 0}
+              className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 transition-colors text-xs font-bold"
+              title={t("reader.fontSmaller")}
+            >
+              A-
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => setFontStep((s) => Math.min(FONT_STEPS.length - 1, s + 1))}
+              disabled={fontStep === FONT_STEPS.length - 1}
+              className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 transition-colors text-sm font-bold"
+              title={t("reader.fontLarger")}
+            >
+              A+
+            </Button>
+          </div>
 
-        {hnItemId != null && <HnComments storyId={hnItemId} onLoaded={setHnComments} />}
+          <h1 className="text-[1.9em] font-bold leading-tight text-foreground">{article.title}</h1>
+          {(article.byline || article.site_name) && (
+            <p className="text-xs text-muted-foreground mt-3">
+              {[article.byline, article.site_name].filter(Boolean).join(" · ")}
+            </p>
+          )}
+
+          <div className="mt-6 flex items-center gap-2">
+            <Button
+              onClick={() =>
+                onLearn({
+                  title: article.title,
+                  text: article.text_content,
+                  commentsText: hnComments ? flattenHnComments(hnComments) : undefined,
+                })
+              }
+              title={t("hn.learn")}
+              aria-label={t("hn.learn")}
+              className="w-9 h-9 p-0 rounded-lg flex items-center justify-center bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+            >
+              <SparkIcon className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={handleListen}
+              title={audio ? t("podcast.listenEpisode") : t("tts.listenToArticle")}
+              aria-label={audio ? t("podcast.listenEpisode") : t("tts.listenToArticle")}
+              className={`w-9 h-9 p-0 rounded-lg flex items-center justify-center transition-colors ${
+                playerActive
+                  ? "bg-primary/10 text-primary hover:bg-primary/10"
+                  : "border border-input text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              <SpeakerIcon className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => setShowTranslation((v) => !v)}
+              aria-pressed={showTranslation}
+              title={t("reading.translate.button")}
+              aria-label={t("reading.translate.button")}
+              className={`w-9 h-9 p-0 rounded-lg flex items-center justify-center transition-colors ${
+                showTranslation
+                  ? "bg-primary/10 text-primary hover:bg-primary/10"
+                  : "border border-input text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              <TranslateIcon className="w-4 h-4" />
+            </Button>
+            {hnItemId != null && (
+              <Button
+                variant="ghost"
+                onClick={handleListenComments}
+                disabled={!hnComments || hnComments.length === 0}
+                title={t("hn.comments.listen")}
+                aria-label={t("hn.comments.listen")}
+                className={`w-9 h-9 p-0 rounded-lg flex items-center justify-center transition-colors disabled:opacity-40 ${
+                  commentsPlayerActive
+                    ? "bg-primary/10 text-primary hover:bg-primary/10"
+                    : "border border-input text-muted-foreground hover:text-foreground hover:bg-muted"
+                }`}
+              >
+                <ReplyIcon className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
+
+          <div
+            className="reader-article-content text-foreground mt-8"
+            style={{ fontSize: `${FONT_STEPS[fontStep]}px`, lineHeight: 1.85 }}
+            dangerouslySetInnerHTML={{ __html: article.content_html }}
+          />
+
+          {hnItemId != null && <HnComments storyId={hnItemId} onLoaded={setHnComments} />}
+        </div>
+
+        {showTranslation && (
+          <>
+            <div
+              onMouseDown={handleSplitDragStart}
+              role="separator"
+              aria-orientation="vertical"
+              className="mx-3 w-1 shrink-0 cursor-col-resize self-stretch rounded-full bg-border transition-colors hover:bg-primary/40 active:bg-primary/60"
+            />
+            <div className="min-w-0 flex-1 sticky top-0 h-[calc(100vh-3rem)] flex flex-col overflow-hidden">
+              <TranslationPane articleText={article.text_content} hnItemId={hnItemId ?? null} />
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

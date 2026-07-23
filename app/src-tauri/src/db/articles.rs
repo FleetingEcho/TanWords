@@ -23,6 +23,10 @@ pub struct ArticleDetail {
     pub content: String,
     pub created_at: String,
     pub analysis_markdown: String,
+    /// Set when this lesson came from a Hacker News (or hnrss-style) entry —
+    /// lets the Reading page show the original discussion thread, not just
+    /// the AI's analysis of it.
+    pub hn_item_id: Option<i64>,
 }
 
 #[derive(Serialize)]
@@ -43,13 +47,14 @@ pub fn db_save_article_analysis(
     origin: String,
     content: String,
     analysis_markdown: String,
+    hn_item_id: Option<i64>,
     conn: State<'_, AppState>,
 ) -> Result<i64, String> {
     let db = db::lock_db(&conn)?;
 
     db.execute(
-        "INSERT INTO articles (title, source_url, origin, content, analysis_markdown) VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![title, source_url, origin, content, analysis_markdown],
+        "INSERT INTO articles (title, source_url, origin, content, analysis_markdown, hn_item_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![title, source_url, origin, content, analysis_markdown, hn_item_id],
     )
     .map_err(|e| e.to_string())?;
 
@@ -99,7 +104,7 @@ pub fn db_get_article(id: i64, conn: State<'_, AppState>) -> Result<ArticleDetai
     let db = db::lock_db(&conn)?;
 
     db.query_row(
-        "SELECT id, title, source_url, origin, content, created_at, analysis_markdown FROM articles WHERE id = ?1",
+        "SELECT id, title, source_url, origin, content, created_at, analysis_markdown, hn_item_id FROM articles WHERE id = ?1",
         params![id],
         |row| {
             Ok(ArticleDetail {
@@ -110,6 +115,7 @@ pub fn db_get_article(id: i64, conn: State<'_, AppState>) -> Result<ArticleDetai
                 content: row.get(4)?,
                 created_at: row.get(5)?,
                 analysis_markdown: row.get(6)?,
+                hn_item_id: row.get(7)?,
             })
         },
     )

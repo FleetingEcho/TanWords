@@ -11,3 +11,5 @@ dist-releases/
 .superpowers/
 
 app/docs/
+.claude/
+./**/*/.claude/

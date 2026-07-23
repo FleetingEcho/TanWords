@@ -14,7 +14,7 @@ export class AnthropicProvider implements AIProvider {
   ) {}
 
   async *translate(params: TranslateParams): AsyncGenerator<string> {
-    const systemPrompt = buildSystemPrompt(params.mode);
+    const systemPrompt = buildSystemPrompt(params.mode, { preserveMarkers: params.preserveMarkers });
     const userPrompt = params.sourceLang
       ? `Translate from ${params.sourceLang} to ${params.targetLang}:\n\n${params.text}`
       : `Translate to ${params.targetLang}:\n\n${params.text}`;

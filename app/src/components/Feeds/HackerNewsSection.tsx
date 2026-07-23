@@ -5,6 +5,8 @@ import type { RssFeed } from "@/hooks/useDB.types";
 import { SearchIcon, CloseIcon } from "@/components/ui/icons";
 import { EntryGrid, type FeedViewMode } from "./EntryGrid";
 import type { DisplayEntry } from "./EntryCard";
+import { titleTranslateKey } from "./feedUtils";
+import { useTitleTranslateStore } from "@/store/titleTranslateStore";
 
 type HnSection = "top" | "new" | "best";
 
@@ -72,12 +74,16 @@ interface Props {
   onLearn: (entry: DisplayEntry) => void;
   onTranslate?: (entry: DisplayEntry) => void;
   translatingId?: number | null;
+  onAnalyzeBackground?: (entry: DisplayEntry) => void;
+  analyzingBackgroundIds?: Set<number>;
+  showTitleTranslations?: boolean;
+  titleTranslations?: Record<string, string>;
 }
 
 /** Native Hacker News browser — New/Top/Best via HN's Firebase API, or search via
  *  Algolia's HN Search API, both paginated via an explicit "More" click. Nothing
  *  here is persisted: no read tracking, no offline cache. */
-export function HackerNewsSection({ viewMode, learningId, onOpen, onLearn, onTranslate, translatingId }: Props) {
+export function HackerNewsSection({ viewMode, learningId, onOpen, onLearn, onTranslate, translatingId, onAnalyzeBackground, analyzingBackgroundIds, showTitleTranslations, titleTranslations }: Props) {
   const t = useT();
   const [section, setSection] = useState<HnSection>("top");
   const [query, setQuery] = useState("");
@@ -138,6 +144,16 @@ export function HackerNewsSection({ viewMode, learningId, onOpen, onLearn, onTra
   };
 
   const entries = stories.map(toEntryRow);
+
+  // Same idempotent re-queue as FeedsPage's RSS list, but for this section's own
+  // (separately paginated) story list — Top/New/Best/search each swap `stories`
+  // out entirely, and "load more" appends to it.
+  useEffect(() => {
+    if (!showTitleTranslations || stories.length === 0) return;
+    useTitleTranslateStore.getState().translateBatch(
+      stories.map((s) => ({ key: titleTranslateKey({ id: s.id, hn_item_id: s.id }), title: s.title }))
+    );
+  }, [showTitleTranslations, stories]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -202,6 +218,9 @@ export function HackerNewsSection({ viewMode, learningId, onOpen, onLearn, onTra
             onPlay={() => {}}
             onTranslate={onTranslate}
             translatingId={translatingId}
+            onAnalyzeBackground={onAnalyzeBackground}
+            analyzingBackgroundIds={analyzingBackgroundIds}
+            titleTranslations={titleTranslations}
             viewMode={viewMode}
             trackRead={false}
             coverColor={HN_COVER_COLOR}

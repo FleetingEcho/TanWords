@@ -14,6 +14,7 @@ export const hackernews: Dict = {
     "hn.comments.anonymous": "[deleted]",
     "hn.comments.replyingTo": "Replying to @{name}",
     "hn.comments.replyCount": "{n} replies",
+    "hn.comments.listen": "Listen to comments",
     "hn.tab": "Hacker News",
     "hn.section.top": "Top",
     "hn.section.new": "New",

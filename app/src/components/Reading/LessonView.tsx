@@ -7,12 +7,13 @@ import { SentenceParagraph, ParagraphSentence } from "./SentenceParagraph";
 import { splitSentences } from "@/lib/sentences";
 import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
 import { usePlayerOriginStore } from "@/store/playerOriginStore";
-import { SpeakerIcon, FeedIcon, RefreshIcon, TranslateIcon, SearchIcon, PinIcon } from "@/components/ui/icons";
+import { SpeakerIcon, FeedIcon, RefreshIcon, TranslateIcon, SearchIcon, BookmarkIcon, ChevronIcon } from "@/components/ui/icons";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useAnalyzeArticle } from "@/hooks/useAnalyzeArticle";
+import { HnComments } from "@/components/Reader/HnComments";
+import { TranslationPane } from "./TranslationPane";
 import { WordSearchBox } from "./WordSearchBox";
 import { SaveSentenceBox } from "./SaveSentenceBox";
-import { TranslateModal } from "./TranslateModal";
 import { Markdown } from "@/components/AiChat/Markdown";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
@@ -47,15 +48,78 @@ function splitParagraphsWithOffsets(content: string): ParagraphChunk[] {
   return chunks;
 }
 
+type PaneKey = "article" | "notes" | "translation";
+
+/** Collapsed panes shrink to this fixed-width strip (title + expand chevron)
+ *  instead of participating in the flex-weight split below. */
+function CollapsedPaneStrip({ label, onExpand }: { label: string; onExpand: () => void }) {
+  return (
+    <button
+      onClick={onExpand}
+      title={label}
+      className="shrink-0 w-9 flex flex-col items-center gap-2 py-3 rounded-2xl border border-border bg-card/60 text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors lg:sticky lg:top-36"
+    >
+      <ChevronIcon direction="right" className="w-3 h-3" />
+      <span className="[writing-mode:vertical-rl] text-[11px] font-semibold tracking-wide">{label}</span>
+    </button>
+  );
+}
+
+/** Small header row shown atop an expanded pane — label plus a collapse toggle,
+ *  consistent across Article/Notes/Translation instead of three different affordances. */
+function PaneHeader({ label, onCollapse }: { label: string; onCollapse: () => void }) {
+  return (
+    <div className="flex items-center justify-between mb-2">
+      <span className="text-xs font-semibold text-muted-foreground">{label}</span>
+      <button onClick={onCollapse} title={label} className="text-muted-foreground hover:text-foreground transition-colors">
+        <ChevronIcon direction="left" className="w-3 h-3" />
+      </button>
+    </div>
+  );
+}
+
+/** Draggable divider between two adjacent expanded panes — a plain (non-draggable)
+ *  gap is rendered instead whenever either neighbor is collapsed, since there's
+ *  nothing meaningful to resize against a fixed-width strip. */
+function PaneDivider({ onDragStart }: { onDragStart?: (e: React.MouseEvent) => void }) {
+  if (!onDragStart) return <div className="w-3 shrink-0" />;
+  return (
+    <div
+      onMouseDown={onDragStart}
+      role="separator"
+      aria-orientation="vertical"
+      className="mx-1.5 w-1 shrink-0 cursor-col-resize self-stretch rounded-full bg-border transition-colors hover:bg-primary/40 active:bg-primary/60"
+    />
+  );
+}
+
 export function LessonView({ articleId, onBack, onDeleted, onReanalyzed }: Props) {
   const db = useDB();
   const t = useT();
   const { analyze, isAnalyzing } = useAnalyzeArticle();
   const [confirmReanalyze, setConfirmReanalyze] = useState(false);
-  const [translateOpen, setTranslateOpen] = useState(false);
   const [article, setArticle] = useState<ArticleDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const sentenceSpanRefs = useRef<Map<number, HTMLSpanElement>>(new Map());
+
+  // Three-pane layout: Article | AI notes | Translation (the last only once toggled
+  // on). Each pane can collapse to a slim strip and, when both neighbors are
+  // expanded, be resized by dragging the divider between them — weights are plain
+  // flex-grow ratios (1/1/1 = even thirds), so collapsing a pane just removes it
+  // from the split and the rest redistribute automatically via flexbox.
+  const [showTranslation, setShowTranslation] = useState(false);
+  const [articleCollapsed, setArticleCollapsed] = useState(false);
+  const [notesCollapsed, setNotesCollapsed] = useState(false);
+  const [translationCollapsed, setTranslationCollapsed] = useState(false);
+  const [weights, setWeights] = useState<Record<PaneKey, number>>({ article: 1, notes: 1, translation: 1 });
+  const articlePaneRef = useRef<HTMLDivElement>(null);
+  const notesPaneRef = useRef<HTMLDivElement>(null);
+  const translationPaneRef = useRef<HTMLDivElement>(null);
+  const paneRefs: Record<PaneKey, React.RefObject<HTMLDivElement>> = {
+    article: articlePaneRef,
+    notes: notesPaneRef,
+    translation: translationPaneRef,
+  };
 
   const sourceKey = `lesson-${articleId}`;
   const playerSourceKey = useTtsPlayerStore((s) => s.sourceKey);
@@ -101,6 +165,35 @@ export function LessonView({ articleId, onBack, onDeleted, onReanalyzed }: Props
       playerStart(sourceKey, article.content);
       usePlayerOriginStore.getState().setOrigin({ kind: "lesson", articleId });
     }
+  };
+
+  const startPaneDrag = (e: React.MouseEvent, a: PaneKey, b: PaneKey) => {
+    e.preventDefault();
+    const elA = paneRefs[a].current;
+    const elB = paneRefs[b].current;
+    if (!elA || !elB) return;
+    const startX = e.clientX;
+    const wA0 = elA.getBoundingClientRect().width;
+    const wB0 = elB.getBoundingClientRect().width;
+    const totalPx = wA0 + wB0;
+    const weightSum = weights[a] + weights[b];
+    const minPx = 220;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    const onMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - startX;
+      const newWidthA = Math.min(totalPx - minPx, Math.max(minPx, wA0 + dx));
+      const newWeightA = weightSum * (newWidthA / totalPx);
+      setWeights((w) => ({ ...w, [a]: newWeightA, [b]: weightSum - newWeightA }));
+    };
+    const onUp = () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
   };
 
   /** Re-run the AI analysis on the same text. Creates the replacement article
@@ -176,7 +269,11 @@ export function LessonView({ articleId, onBack, onDeleted, onReanalyzed }: Props
           >
             ← {t("reading.back")}
           </Button>
-          <h2 className="text-xl font-bold leading-snug mt-1 line-clamp-2">{article.title}</h2>
+          {/* min-h reserves space for a 2-line title even when it's shorter,
+            * so the header renders at a constant height — the notes panel's
+            * sticky top offset below assumes that height and would
+            * otherwise leave a gap above it for short (1-line) titles. */}
+          <h2 className="text-xl font-bold leading-snug mt-1 line-clamp-2 min-h-[3.5rem]">{article.title}</h2>
           <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
             {article.origin === "hackernews" && (
               <span className="inline-flex items-center gap-1">
@@ -223,7 +320,7 @@ export function LessonView({ articleId, onBack, onDeleted, onReanalyzed }: Props
                 title={t("reading.saveSentence.title")}
                 className="w-8 h-8 p-0 rounded-lg border border-input flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
               >
-                <PinIcon className="w-3.5 h-3.5" />
+                <BookmarkIcon className="w-3.5 h-3.5" />
               </Button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-80 p-3 max-h-[70vh] overflow-y-auto">
@@ -241,9 +338,14 @@ export function LessonView({ articleId, onBack, onDeleted, onReanalyzed }: Props
         </Button>
         <Button
           variant="outline"
-          onClick={() => setTranslateOpen(true)}
+          onClick={() => setShowTranslation((v) => !v)}
+          aria-pressed={showTranslation}
           title={t("reading.translate.button")}
-          className="w-8 h-8 p-0 rounded-lg border border-input flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+          className={`w-8 h-8 p-0 rounded-lg border flex items-center justify-center transition-colors shrink-0 ${
+            showTranslation
+              ? "border-primary/40 bg-primary/10 text-primary hover:bg-primary/10"
+              : "border-input text-muted-foreground hover:text-foreground hover:bg-muted"
+          }`}
         >
           <TranslateIcon className="w-3.5 h-3.5" />
         </Button>
@@ -262,48 +364,89 @@ export function LessonView({ articleId, onBack, onDeleted, onReanalyzed }: Props
         </div>
       </div>
 
-      {/* Two-column lesson, split evenly — article prose is capped at a
-        * readable measure internally so it doesn't stretch into long lines
-        * as this column grows on wide screens. */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-        {/* Article body — click-to-jump when playing */}
-        <div className="bg-card border border-border rounded-2xl p-6 space-y-4">
-          <div className="max-w-[75ch] space-y-4">
-            {paragraphChunks.map((chunk, i) => {
-              const chunkSentences: ParagraphSentence[] = articleSentences
-                .map((s, globalIndex) => ({ s, globalIndex }))
-                .filter(({ s }) => s.start >= chunk.start && s.start < chunk.end)
-                .map(({ s, globalIndex }) => ({ text: s.text, globalIndex }));
-              return (
-                <SentenceParagraph
-                  key={i}
-                  sentences={chunkSentences}
-                  playerActive={playerActive}
-                  playerCurrentIndex={playerCurrentIndex}
-                  onPlayerJump={playerJumpTo}
-                  registerSpanRef={registerSpanRef}
-                />
-              );
-            })}
+      {/* Article | AI notes | Translation (once toggled on) — each collapsible to a
+        * slim strip, and resizable via the divider between any two expanded
+        * neighbors. Defaults to even thirds (or halves with translation hidden). */}
+      <div className="flex items-start gap-3">
+        {articleCollapsed ? (
+          <CollapsedPaneStrip label={t("reading.article")} onExpand={() => setArticleCollapsed(false)} />
+        ) : (
+          <div
+            ref={articlePaneRef}
+            style={{ flex: `${weights.article} 1 0%` }}
+            className="min-w-0 bg-card border border-border rounded-2xl p-6"
+          >
+            <PaneHeader label={t("reading.article")} onCollapse={() => setArticleCollapsed(true)} />
+            <div className="max-w-[75ch] space-y-4">
+              {paragraphChunks.map((chunk, i) => {
+                const chunkSentences: ParagraphSentence[] = articleSentences
+                  .map((s, globalIndex) => ({ s, globalIndex }))
+                  .filter(({ s }) => s.start >= chunk.start && s.start < chunk.end)
+                  .map(({ s, globalIndex }) => ({ text: s.text, globalIndex }));
+                return (
+                  <SentenceParagraph
+                    key={i}
+                    sentences={chunkSentences}
+                    playerActive={playerActive}
+                    playerCurrentIndex={playerCurrentIndex}
+                    onPlayerJump={playerJumpTo}
+                    registerSpanRef={registerSpanRef}
+                  />
+                );
+              })}
+              {/* Only Hacker News (or hnrss-style) lessons carry an hn_item_id — every
+                * other origin (plain RSS, pasted text) has none, so this simply doesn't
+                * render for them instead of showing an empty/broken comments section. */}
+              {article.hn_item_id != null && <HnComments storyId={article.hn_item_id} />}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* AI notes — the search/save tools moved up into the sticky header
-          * bar (with Reanalyze/Translate/Listen), so this column is free to
-          * be entirely notes. Sticky + internally scrollable so it fills the
-          * viewport rather than pushing the page's own scrollbar. */}
-        {/* top offset clears the sticky lesson header above (≤2-line title) */}
-        <div className="bg-card border border-border rounded-2xl p-4 lg:sticky lg:top-36 lg:max-h-[calc(100vh-10rem)] overflow-y-auto">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="w-2 h-2 rounded-full bg-primary" />
-            <span className="text-xs font-semibold">{t("reading.notesTitle")}</span>
+        <PaneDivider onDragStart={!articleCollapsed && !notesCollapsed ? (e) => startPaneDrag(e, "article", "notes") : undefined} />
+
+        {notesCollapsed ? (
+          <CollapsedPaneStrip label={t("reading.notesTitle")} onExpand={() => setNotesCollapsed(false)} />
+        ) : (
+          <div
+            ref={notesPaneRef}
+            style={{ flex: `${weights.notes} 1 0%` }}
+            className="min-w-0 bg-card border border-border rounded-2xl p-4 lg:sticky lg:top-36 lg:max-h-[calc(100vh-10rem)] overflow-y-auto"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-primary" />
+                <span className="text-xs font-semibold">{t("reading.notesTitle")}</span>
+              </div>
+              <button onClick={() => setNotesCollapsed(true)} title={t("reading.notesTitle")} className="text-muted-foreground hover:text-foreground transition-colors">
+                <ChevronIcon direction="left" className="w-3 h-3" />
+              </button>
+            </div>
+            {article.analysis_markdown.trim() ? (
+              <Markdown text={article.analysis_markdown} />
+            ) : (
+              <p className="text-xs text-muted-foreground">{t("reading.notesEmpty")}</p>
+            )}
           </div>
-          {article.analysis_markdown.trim() ? (
-            <Markdown text={article.analysis_markdown} />
-          ) : (
-            <p className="text-xs text-muted-foreground">{t("reading.notesEmpty")}</p>
-          )}
-        </div>
+        )}
+
+        {showTranslation && (
+          <>
+            <PaneDivider onDragStart={!notesCollapsed && !translationCollapsed ? (e) => startPaneDrag(e, "notes", "translation") : undefined} />
+
+            {translationCollapsed ? (
+              <CollapsedPaneStrip label={t("reading.translate.button")} onExpand={() => setTranslationCollapsed(false)} />
+            ) : (
+              <div
+                ref={translationPaneRef}
+                style={{ flex: `${weights.translation} 1 0%` }}
+                className="min-w-0 flex flex-col lg:sticky lg:top-36 lg:h-[calc(100vh-10rem)] overflow-hidden"
+              >
+                <PaneHeader label={t("reading.translate.button")} onCollapse={() => setTranslationCollapsed(true)} />
+                <TranslationPane articleText={article.content} hnItemId={article.hn_item_id} />
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       <ConfirmModal
@@ -316,13 +459,6 @@ export function LessonView({ articleId, onBack, onDeleted, onReanalyzed }: Props
           setConfirmReanalyze(false);
           handleReanalyze();
         }}
-      />
-
-      <TranslateModal
-        open={translateOpen}
-        onClose={() => setTranslateOpen(false)}
-        title={article.title}
-        articleText={article.content}
       />
     </div>
   );

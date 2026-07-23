@@ -2,7 +2,7 @@ import React from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import {
-  ArrowLeft, ArrowRight, BookPlus, BrainCircuit, Check, ChevronDown, FilePlus2, Languages,
+  BookPlus, BrainCircuit, Check, ChevronDown, FilePlus2, Languages,
   MessageSquarePlus, Monitor, Moon, Search, Server, Settings, Sparkles, Sun, Unplug, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -26,10 +26,6 @@ const PAGE_IDS: NavPage[] = ["feeds", "reading", "vocabulary", "documents", "cha
 export function CommandBar({ activePage }: { activePage: NavPage }) {
   const t = useT();
   const navigate = useNavStore((state) => state.navigate);
-  const goBack = useNavStore((state) => state.goBack);
-  const goForward = useNavStore((state) => state.goForward);
-  const canGoBack = useNavStore((state) => state.canGoBack());
-  const canGoForward = useNavStore((state) => state.canGoForward());
   const openWord = useWordModalStore((state) => state.openWordModal);
   const defaultProvider = useSettingsStore((state) => state.defaultAiProvider);
   const setDefaultProvider = useSettingsStore((state) => state.setDefaultAiProvider);
@@ -40,6 +36,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   const visibleItems = useSettingsStore((state) => state.visibleTopBarItems);
   const visible = (item: import("@/store/settingsStore").TopBarItemId) => visibleItems.includes(item);
   const isAnalyzing = useAnalysisStore((state) => state.isAnalyzing);
+  const analyzingCount = useAnalysisStore((state) => state.jobs.length);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [wordOpen, setWordOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -113,11 +110,6 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   return (
     <>
       <header className="flex h-12 shrink-0 select-none items-center gap-1.5 border-b border-border/80 bg-background/90 px-3 backdrop-blur-xl">
-        {visible("history") && <div className="flex items-center gap-0.5 border-r border-border pr-2">
-          <Button variant="ghost" size="icon" disabled={!canGoBack} onClick={goBack} className="h-8 w-8 rounded-lg"><ArrowLeft className="h-4 w-4" /></Button>
-          <Button variant="ghost" size="icon" disabled={!canGoForward} onClick={goForward} className="h-8 w-8 rounded-lg"><ArrowRight className="h-4 w-4" /></Button>
-        </div>}
-
         {visible("new") && <DropdownMenu>
           <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 gap-2 rounded-lg px-2.5 text-xs font-medium"><FilePlus2 className="h-4 w-4" /><span className="hidden sm:inline">{t("command.new")}</span><ChevronDown className="h-3 w-3 text-muted-foreground" /></Button></DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-52">
@@ -133,8 +125,8 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
         {visible("context") && context && <><div className="mx-1 hidden h-5 w-px bg-border sm:block" /><Button variant="ghost" onClick={context.run} className="h-8 gap-2 rounded-lg px-2.5 text-xs font-medium text-foreground"><context.icon className="h-4 w-4 text-primary" /><span className="hidden lg:inline">{context.label}</span></Button></>}
 
         {/* Learn/analyze keeps running in the background if you navigate away from
-          * Reading — this stays visible everywhere so you know it's still working
-          * and can jump back to it. */}
+          * Reading (or if it was queued straight from the Feeds list) — this stays
+          * visible everywhere so you know it's still working and can jump back to it. */}
         {isAnalyzing && (
           <>
             <div className="mx-1 hidden h-5 w-px bg-border sm:block" />
@@ -144,7 +136,10 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
               className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
             >
               <Sparkles className="h-3.5 w-3.5 animate-pulse" />
-              <span className="hidden sm:inline">{t("command.analyzing")}</span>
+              <span className="hidden sm:inline">
+                {t("command.analyzing")}
+                {analyzingCount > 1 ? ` (${analyzingCount})` : ""}
+              </span>
             </button>
           </>
         )}
