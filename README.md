@@ -55,6 +55,17 @@ episode" to start it in the bottom player bar without leaving the page:
 
 ![Feeds page — podcast episode detail](static/images/Play_Episode.png)
 
+### Hacker News — built-in reader, no browser tab needed
+
+Browse Top/New/Best right inside the app:
+
+![Hacker News page — front page listing](static/images/Hacker_News.png)
+
+Open any story to read it alongside its full threaded comments, then send it
+straight into Reading to extract vocabulary and patterns:
+
+![Hacker News page — story with threaded comments](static/images/Hacker_News_Comments.png)
+
 ### Music — learn while listening to your local library
 
 Browse local music by artist and album, play or shuffle a collection, and
@@ -71,15 +82,15 @@ speed — all speech synthesis runs on-device, no network call at speak-time.
 
 ![Settings page — TTS voice model setup](static/images/TTS_Model_Setup.png)
 
-### Documents & AI Chat — always one click away
+### Documents & AI Chat — first-class pages in the nav
 
-A floating tools button opens a draggable window with a personal notes
-editor (BlockNote, full-text search, tags) and a multi-session AI chat —
-available from any page without leaving what you're reading.
+Docs and AI Chat live right in the sidebar: a personal notes editor
+(BlockNote, full-text search, tags) and a multi-session AI chat, both a
+single click away from anywhere in the app.
 
-![Floating tools window — Documents tab](static/images/Documents.png)
+![Docs page — local folder view](static/images/Documents.png)
 
-![Floating tools window — AI Chat tab](static/images/AI%20Chat.png)
+![AI Chat page — conversation with tool use](static/images/AI_Chat.png)
 
 ## Repo layout
 
@@ -117,13 +128,13 @@ admin/   # Standalone local admin tool for the same SQLite DB — table CRUD and
 |---|---|
 | Dashboard | Resume an in-progress article, recent words/patterns/docs, quick actions. |
 | Reading | Paste an article → AI extracts words + sentence patterns → accept individually or in bulk; click-any-sentence close reading; "listen to article" plays it back sentence-by-sentence with the embedded TTS engine, highlighting as it goes. |
-| Feeds | Subscribe to RSS articles and podcasts side by side; browse HN, pull an article into Reading via an in-app reader or paste-back; the in-app reader also has "listen to article"; podcast episodes play in a persistent bottom player bar. |
+| Feeds | Subscribe to RSS articles and podcasts side by side; browse Hacker News (Top/New/Best, full threaded comments) in-app; pull an article into Reading via an in-app reader or paste-back; the in-app reader also has "listen to article"; podcast episodes play in a persistent bottom player bar. |
 | Knowledge Map | Enter any word, scene, or topic and build a persistent 2.5D map of related vocabulary and phrases; expand any branch progressively and add selected items to Vocabulary/FSRS. |
 | Vocabulary | Master-detail word browser with full AI enrichment (freeform explanation, examples, collocations, etymology, mnemonics), FSRS review, time-range filtering (added/updated), and a speak button on every word/example. |
 | Patterns | A parallel library for sentence patterns (skeleton + slots), tagged by rhetorical function, backed by real example sentences from the articles they came from. |
 | Discover | Generate a themed vocabulary batch by topic, or explore a word family from a root/affix. |
-| Documents | Personal notes editor (BlockNote), full-text search (SQLite FTS5), tags, pinning — also reachable from any page via the floating tools window. |
-| AI Chat | Multi-session chat with tool-use that can write directly into the app's data — also reachable from any page via the floating tools window. |
+| Documents | Personal notes editor (BlockNote), full-text search (SQLite FTS5), tags, pinning. |
+| AI Chat | Multi-session chat with tool-use that can write directly into the app's data. |
 | Settings | Provider config, CEFR target level, TTS voice model/speed (scan directories, download recommended Kokoro/Piper voices, add custom directories), switchable DB location, backup export. |
 
 ## Getting started
