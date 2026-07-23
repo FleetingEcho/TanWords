@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
 import { invoke } from "@tauri-apps/api/core";
@@ -22,80 +22,13 @@ import {
   importLocalDocs,
   exportLocalDocs,
 } from "@/lib/localDocs";
-import { LazyLocalDocEditor } from "./LazyLocalDocEditor";
-import { LocalDocTree } from "./LocalDocTree";
 import { SaveStatus } from "./useDocumentEditor";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
-import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Download, FileInput, FileText, FolderOpen, Loader2, MoreHorizontal, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { blocksToStorage, markdownToBlocks } from "@/lib/docFormat";
 import { liftMermaid } from "./mermaidTransforms";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ExportMarkdownDialog } from "./ExportMarkdownDialog";
-
-function HighlightMatch({ text, query }: { text: string; query: string }) {
-  const lower = text.toLowerCase();
-  const needle = query.toLowerCase();
-  const parts: React.ReactNode[] = [];
-  let cursor = 0;
-  let index = lower.indexOf(needle);
-  while (needle && index >= 0) {
-    parts.push(text.slice(cursor, index));
-    parts.push(<mark key={index} className="rounded-sm bg-yellow-300/70 px-0.5 text-inherit dark:bg-yellow-500/40">{text.slice(index, index + needle.length)}</mark>);
-    cursor = index + needle.length;
-    index = lower.indexOf(needle, cursor);
-  }
-  parts.push(text.slice(cursor));
-  return <>{parts}</>;
-}
-
-function HighlightFuzzy({ text, query }: { text: string; query: string }) {
-  const chars = [...text];
-  const needle = [...query.trim().toLowerCase()];
-  const matched = new Set<number>();
-  let cursor = 0;
-  for (const target of needle) {
-    const index = chars.findIndex((char, i) => i >= cursor && char.toLowerCase() === target);
-    if (index < 0) return <>{text}</>;
-    matched.add(index);
-    cursor = index + 1;
-  }
-  return <>{chars.map((char, index) => matched.has(index)
-    ? <mark key={index} className="rounded-sm bg-yellow-300/70 text-inherit dark:bg-yellow-500/40">{char}</mark>
-    : char)}</>;
-}
-
-function SearchResults({ results, query, activePath, onOpen }: {
-  results: LocalDocSearchResult[];
-  query: string;
-  activePath: string | null;
-  onOpen: (path: string) => void;
-}) {
-  return <div className="space-y-1.5">
-    {results.map((result) => (
-      <Button
-        key={result.rel_path}
-        type="button"
-        variant="ghost"
-        onClick={() => onOpen(result.rel_path)}
-        className={`h-auto w-full items-start justify-start gap-2 px-2 py-2 text-left ${activePath === result.rel_path ? "bg-primary/10" : ""}`}
-      >
-        <FileText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-xs font-medium"><HighlightFuzzy text={result.name.replace(/\.(md|markdown)$/i, "")} query={query} /></span>
-          <span className="block truncate text-[10px] font-normal text-muted-foreground"><HighlightFuzzy text={result.rel_path} query={query} /></span>
-          {result.hits.map((hit) => (
-            <span key={`${hit.line_number}-${hit.line_text}`} className="mt-1 block line-clamp-2 whitespace-normal text-[11px] font-normal leading-4 text-muted-foreground">
-              <span className="mr-1 font-mono opacity-50">{hit.line_number}</span>
-              <HighlightMatch text={hit.line_text} query={query} />
-            </span>
-          ))}
-        </span>
-      </Button>
-    ))}
-  </div>;
-}
+import { LocalDocsSidebar } from "./LocalDocsSidebar";
+import { LocalDocsEditorPane } from "./LocalDocsEditorPane";
 
 /** The "local folder" source of the Documents page: mount a folder, then
  *  list/edit/create/delete the markdown files inside it. */
@@ -331,150 +264,43 @@ export function LocalDocsView() {
     <div className={`flex h-full overflow-hidden bg-background ${zenMode ? "fixed inset-0 z-50" : ""}`}>
       {/* Sidebar */}
       {!zenMode && (
-      <Collapsible open={sidebarOpen} onOpenChange={setSidebarOpen} asChild>
-      <div className={`${sidebarOpen ? "w-80" : "w-11"} h-full shrink-0 border-r border-border bg-sidebar transition-[width] duration-200`}>
-        {!sidebarOpen && (
-          <div className="flex justify-center pt-3">
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8" title={t("doc.expandFiles")} aria-label={t("doc.expandFiles")}>
-                <PanelLeftOpen className="h-4 w-4" />
-              </Button>
-            </CollapsibleTrigger>
-          </div>
-        )}
-        <CollapsibleContent className="h-full">
-        <div className="flex flex-col h-full">
-        <div className="px-3 pt-4 pb-2 space-y-2 shrink-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1">
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-6 w-6" title={t("doc.collapseFiles")} aria-label={t("doc.collapseFiles")}>
-                  <PanelLeftClose className="h-3.5 w-3.5" />
-                </Button>
-              </CollapsibleTrigger>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t("doc.tabLocal")}</p>
-            </div>
-            {root && (
-              <div className="flex items-center gap-1">
-                <Button onClick={() => void handleNewFile()} className="h-6 px-2.5 rounded-lg bg-primary text-white text-[11px] font-semibold hover:bg-primary/90">+ {t("doc.newFile")}</Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-6 w-6"><MoreHorizontal className="h-3.5 w-3.5" /></Button></DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onSelect={() => void handleNewFile("")}><FileText className="h-3.5 w-3.5" /> {t("doc.newFileHere")}</DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => void handleImportFiles()}><FileInput className="h-3.5 w-3.5" /> {t("doc.importMarkdown")}</DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => setExportPickerOpen(true)}><Download className="h-3.5 w-3.5" /> {t("doc.exportAllMarkdown")}</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            )}
-          </div>
-
-          {root && (
-            <>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={handleMount}
-                title={root}
-                className="w-full h-7 justify-start gap-1.5 px-1 text-[11px] text-muted-foreground hover:text-foreground"
-              >
-                <FolderOpen className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate font-mono">{root}</span>
-                <span className="ml-auto shrink-0 underline decoration-dotted">{t("doc.changeFolder")}</span>
-              </Button>
-
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={t("doc.searchFilesAndContent")}
-                className="w-full h-7 px-2.5 text-xs rounded-lg border border-border bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
-              />
-            </>
-          )}
-        </div>
-
-        {/* File list / empty states */}
-        <div className="flex-1 overflow-y-auto px-2 py-1 space-y-0.5 min-h-0">
-          {!root ? (
-            <div className="flex flex-col items-center justify-center py-14 text-center text-muted-foreground gap-3 px-4">
-              <p className="text-sm">{t("doc.noFolderMounted")}</p>
-              <p className="text-xs opacity-60">{t("doc.noFolderHint")}</p>
-              <Button
-                onClick={handleMount}
-                className="h-7 px-3 rounded-lg bg-primary text-white text-xs font-semibold hover:bg-primary/90 transition-colors"
-              >
-                {t("doc.mountFolder")}
-              </Button>
-            </div>
-          ) : search.trim() ? (
-            searching ? (
-              <div className="flex items-center justify-center gap-2 py-10 text-xs text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" /> {t("doc.searching")}
-              </div>
-            ) : searchResults.length > 0 ? (
-              <SearchResults results={searchResults} query={search.trim()} activePath={activePath} onOpen={handleOpen} />
-            ) : (
-              <div className="py-12 text-center text-xs text-muted-foreground">{t("doc.noSearchResults")}</div>
-            )
-          ) : files.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground gap-1">
-              <p className="text-sm">{t("doc.noLocalFiles")}</p>
-              <p className="text-xs opacity-60">{t("doc.noLocalFilesHint")}</p>
-            </div>
-          ) : (
-            <LocalDocTree
-              files={files}
-              activePath={activePath}
-              onOpen={handleOpen}
-              onDelete={setPendingDelete}
-              onImport={(relPath) => void requestImportToDatabase(relPath)}
-              onExport={(relPath) => void handleExportFiles([relPath])}
-              onMove={(relPath, targetDir) => void handleMoveFile(relPath, targetDir)}
-              onCreateInFolder={(directory) => void handleNewFile(directory)}
-            />
-          )}
-        </div>
-
-        {root && files.length > 0 && (
-          <div className="px-3 py-2 border-t border-border shrink-0">
-            <span className="text-[10px] text-muted-foreground">{t("doc.total", { n: files.length })}</span>
-          </div>
-        )}
-        </div>
-        </CollapsibleContent>
-      </div>
-      </Collapsible>
+        <LocalDocsSidebar
+          sidebarOpen={sidebarOpen}
+          onSidebarOpenChange={setSidebarOpen}
+          root={root}
+          onMount={handleMount}
+          onNewFile={(directory) => void handleNewFile(directory)}
+          onImportFiles={() => void handleImportFiles()}
+          onOpenExportPicker={() => setExportPickerOpen(true)}
+          search={search}
+          onSearchChange={setSearch}
+          searching={searching}
+          searchResults={searchResults}
+          files={files}
+          activePath={activePath}
+          onOpen={handleOpen}
+          onDelete={setPendingDelete}
+          onImport={(relPath) => void requestImportToDatabase(relPath)}
+          onExport={(relPath) => void handleExportFiles([relPath])}
+          onMove={(relPath, targetDir) => void handleMoveFile(relPath, targetDir)}
+        />
       )}
 
       {/* Editor pane */}
-      <div className="flex-1 overflow-hidden">
-        {activePath !== null && activeContent !== null && activeRawContent !== null ? (
-          <LazyLocalDocEditor
-            key={editorKey}
-            relPath={activePath}
-            initialMarkdown={activeContent}
-            initialRawMarkdown={activeRawContent}
-            modifiedMs={activeMeta?.modified_ms ?? 0}
-            saveStatus={saveStatus}
-            onSave={handleSave}
-            toRawMarkdown={(markdown) => mdFromDisplay(markdown, root!, activePath)}
-            toDisplayMarkdown={(markdown) => mdToDisplay(markdown, root!, activePath)}
-            onRename={handleRename}
-            zenMode={zenMode}
-            onZenModeChange={setZenMode}
-          />
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2">
-            <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-14 h-14 opacity-20">
-              <path d="M6 12a3 3 0 013-3h8l4 4h18a3 3 0 013 3v20a3 3 0 01-3 3H9a3 3 0 01-3-3V12z" strokeLinejoin="round" />
-              <path d="M18 24h12M18 30h8" strokeLinecap="round" />
-            </svg>
-            <p className="text-sm">{t("doc.noFileSelected")}</p>
-            <p className="text-xs opacity-60">{t("doc.noFileHint")}</p>
-          </div>
-        )}
-      </div>
+      <LocalDocsEditorPane
+        editorKey={editorKey}
+        activePath={activePath}
+        activeContent={activeContent}
+        activeRawContent={activeRawContent}
+        modifiedMs={activeMeta?.modified_ms ?? 0}
+        saveStatus={saveStatus}
+        onSave={handleSave}
+        toRawMarkdown={(markdown) => mdFromDisplay(markdown, root!, activePath!)}
+        toDisplayMarkdown={(markdown) => mdToDisplay(markdown, root!, activePath!)}
+        onRename={handleRename}
+        zenMode={zenMode}
+        onZenModeChange={setZenMode}
+      />
 
       <ConfirmModal
         open={pendingDelete !== null}
