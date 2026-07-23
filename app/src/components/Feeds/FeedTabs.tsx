@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "@/hooks/useT";
-import { CloseIcon, RefreshIcon, GridIcon, ListIcon } from "@/components/ui/icons";
+import { CloseIcon, RefreshIcon, GridIcon, ListIcon, TranslateIcon } from "@/components/ui/icons";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import type { RssFeed } from "@/hooks/useDB.types";
 import type { RssTabSelection } from "@/store/settingsStore";
 import type { FeedViewMode } from "./EntryGrid";
 import { domainOf } from "./feedUtils";
+import { useTitleTranslateStore } from "@/store/titleTranslateStore";
 import { Button } from "@/components/ui/button";
 
 interface Props {
@@ -22,6 +23,11 @@ interface Props {
   onRefresh: () => void;
   viewMode: FeedViewMode;
   onSetViewMode: (mode: FeedViewMode) => void;
+  /** One-click "translate every visible title to Chinese" — shows a Chinese line
+   *  under each English title (current tab/section only) instead of navigating
+   *  anywhere. Persists across tab switches so it stays on until toggled off. */
+  showTitleTranslations: boolean;
+  onToggleTitleTranslations: () => void;
 }
 
 function UnreadBadge({ n }: { n: number }) {
@@ -34,9 +40,10 @@ function UnreadBadge({ n }: { n: number }) {
 }
 
 /** Single-row switcher: pinned feeds stay visible; the full categorized library lives in More. */
-export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, onSelect, onDelete, onPreferences, onAdd, onRefresh, viewMode, onSetViewMode }: Props) {
+export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, onSelect, onDelete, onPreferences, onAdd, onRefresh, viewMode, onSetViewMode, showTitleTranslations, onToggleTitleTranslations }: Props) {
   const t = useT();
   const totalUnread = [...unreadByFeed.values()].reduce((a, b) => a + b, 0);
+  const translatingTitles = useTitleTranslateStore((s) => s.pending.size > 0);
   const [pendingDelete, setPendingDelete] = useState<RssFeed | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -168,6 +175,22 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
           </div>
         )}
         {syncing && <span className="text-[11px] text-muted-foreground">{t("feeds.refreshing")}</span>}
+        <Button
+          variant="ghost"
+          onClick={onToggleTitleTranslations}
+          title={t("feeds.translateTitles")}
+          aria-label={t("feeds.translateTitles")}
+          aria-pressed={showTitleTranslations}
+          className={`flex h-7 w-7 items-center justify-center rounded-md p-0 transition-colors ${
+            showTitleTranslations ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}
+        >
+          {showTitleTranslations && translatingTitles ? (
+            <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+          ) : (
+            <TranslateIcon className="h-4 w-4" />
+          )}
+        </Button>
         <div className="flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
           <Button
             variant="ghost"

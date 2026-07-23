@@ -3,6 +3,10 @@ export interface TranslateParams {
   targetLang: string;
   sourceLang?: string;
   mode: "translate" | "polish" | "summarize";
+  /** Set when `text` is a batch of segments delimited by `@@id@@` markers (see
+   * lib/hnComments.ts's serializeCommentsForTranslation) — asks the model to
+   * preserve every marker verbatim so the response can be split back apart. */
+  preserveMarkers?: boolean;
 }
 
 export interface ExplainParams {
@@ -90,13 +94,16 @@ export function buildEnrichUserPrompt(word: string, targetLevel: string): string
   return `请讲解这个英文单词："${word}"（学习者目标水平：${targetLevel}）`;
 }
 
-export function buildSystemPrompt(mode: TranslateParams["mode"]): string {
+export function buildSystemPrompt(mode: TranslateParams["mode"], opts?: { preserveMarkers?: boolean }): string {
+  const markerNote = opts?.preserveMarkers
+    ? " The text is a batch of separate segments, each preceded by a marker on its own line looking like @@123@@. Copy every marker exactly as-is (same characters, same line, never translated, reformatted, merged, reordered, added, or dropped) immediately before that segment's translation, so the segments can be matched back up by marker afterwards."
+    : "";
   switch (mode) {
     case "translate":
-      return "You are a professional translator. Translate the following text accurately and naturally. Return ONLY the translation, no explanations.";
+      return "You are a professional translator. Translate the following text accurately and naturally, verbatim — even if it looks repetitive, disjointed, or like it mixes in unrelated content. Never comment on, summarize, fix, reorganize, or omit any part of the source; translate exactly what is given, in the same order. Return ONLY the translation, with no commentary, notes, or explanations of any kind." + markerNote;
     case "polish":
-      return "You are a professional editor. Polish the following text to improve its clarity, style, and naturalness while preserving the original meaning. Return ONLY the polished text.";
+      return "You are a professional editor. Polish the following text to improve its clarity, style, and naturalness while preserving the original meaning. Return ONLY the polished text." + markerNote;
     case "summarize":
-      return "You are a professional summarizer. Summarize the following text concisely in the target language. Return ONLY the summary.";
+      return "You are a professional summarizer. Summarize the following text concisely in the target language. Return ONLY the summary." + markerNote;
   }
 }

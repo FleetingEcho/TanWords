@@ -49,7 +49,7 @@ export function ReadingPage() {
   // become harmless no-ops; setPendingArticleId + the toast's "View" action are
   // what let them find and open the finished lesson from wherever they ended up.
   const runAnalysis = useCallback(
-    async (opts: { text: string; title?: string; sourceUrl?: string; origin?: string; commentsText?: string }) => {
+    async (opts: { text: string; title?: string; sourceUrl?: string; origin?: string; commentsText?: string; hnItemId?: number | null }) => {
       const toastId = toast.loading(t("reading.analyzing"));
       try {
         const result = await analyze(opts);
@@ -82,7 +82,7 @@ export function ReadingPage() {
     clearDraft();
     setTitle(d.title);
     setText(d.text);
-    runAnalysis({ text: d.text, title: d.title, sourceUrl: d.sourceUrl, origin: d.origin, commentsText: d.commentsText });
+    runAnalysis({ text: d.text, title: d.title, sourceUrl: d.sourceUrl, origin: d.origin, commentsText: d.commentsText, hnItemId: d.hnItemId });
   }, [draft]);
 
   const handleAnalyze = () => {

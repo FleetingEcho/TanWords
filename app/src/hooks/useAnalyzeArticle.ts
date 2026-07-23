@@ -66,6 +66,10 @@ export function useAnalyzeArticle() {
   // if the caller (e.g. ReadingPage) unmounts mid-analysis — it's just a plain async
   // function, not tied to React lifecycle — but local state wouldn't stay observable
   // once that happens. This makes progress visible from anywhere (see CommandBar).
+  // Each call gets its own job id, so several can run concurrently (e.g. a few
+  // queued from the Feeds list in the background) without clobbering each
+  // other's progress — `isAnalyzing`/`progress` here just reflect "is anything
+  // running" / "the most recently updated job", for simple single-job UI.
   const isAnalyzing = useAnalysisStore((s) => s.isAnalyzing);
   const progress = useAnalysisStore((s) => s.progress);
 
@@ -78,9 +82,13 @@ export function useAnalyzeArticle() {
       /** Flattened HN comment text, when loaded — run through a separate
        * native/colloquial-usage prompt instead of the article's formal-prose one. */
       commentsText?: string;
+      /** Set for entries from Hacker News (or hnrss-style feeds) — saved alongside the
+       * lesson so it can show the original discussion thread, not just its analysis. */
+      hnItemId?: number | null;
     }): Promise<AnalysisResult> => {
+      const jobId = crypto.randomUUID();
       const { start, setProgress, finish } = useAnalysisStore.getState();
-      start();
+      start(jobId, opts.title?.trim() || "Untitled");
       try {
         const provider = findBestProvider();
         if (!provider) throw new Error("未找到 AI 提供商，请在设置中注册");
@@ -98,7 +106,7 @@ export function useAnalyzeArticle() {
           for await (const chunk of provider.generate(systemPrompt, userPrompt)) {
             chunks.push(chunk);
             received += chunk.length;
-            setProgress(received);
+            setProgress(jobId, received);
           }
           return chunks.join("").trim();
         };
@@ -121,7 +129,8 @@ export function useAnalyzeArticle() {
           opts.sourceUrl ?? "",
           opts.origin ?? "pasted",
           opts.text,
-          markdown
+          markdown,
+          opts.hnItemId ?? null
         );
         return { articleId, title };
       } catch (e: any) {
@@ -130,7 +139,7 @@ export function useAnalyzeArticle() {
         }
         throw e;
       } finally {
-        finish();
+        finish(jobId);
       }
     },
     [db]

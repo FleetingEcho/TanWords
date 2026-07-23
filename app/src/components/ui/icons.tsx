@@ -28,6 +28,8 @@ import {
   ChevronDownIcon as ChevronDownIconOutline,
   PlusCircleIcon,
   LanguageIcon,
+  BookmarkIcon as BookmarkIconOutline,
+  CloudArrowUpIcon,
 } from "@heroicons/react/24/outline";
 import {
   ArrowPathIcon,
@@ -152,6 +154,14 @@ export function RefreshIcon({ className }: IconProps) {
 
 export function PinIcon({ filled = false, className }: IconProps & { filled?: boolean }) {
   return filled ? <MapPinIconSolid className={className} /> : <MapPinIconOutline className={className} />;
+}
+
+export function BookmarkIcon({ className }: IconProps) {
+  return <BookmarkIconOutline className={className} />;
+}
+
+export function AnalyzeBackgroundIcon({ className }: IconProps) {
+  return <CloudArrowUpIcon className={className} />;
 }
 
 export function SpeakerIcon({ className }: IconProps) {

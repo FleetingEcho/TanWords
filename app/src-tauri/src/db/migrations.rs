@@ -446,6 +446,13 @@ const MIGRATIONS: &[Migration] = &[
             CREATE INDEX IF NOT EXISTS idx_saved_sentences_created ON saved_sentences(created_at DESC);
         ",
     },
+    Migration {
+        version: 21,
+        description: "add hn_item_id to articles so the Reading lesson can show the original HN discussion, not just the AI's analysis of it",
+        sql: "
+            ALTER TABLE articles ADD COLUMN hn_item_id INTEGER;
+        ",
+    },
 ];
 
 pub fn run(conn: &Connection) -> SqlResult<()> {

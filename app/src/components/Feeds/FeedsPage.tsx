@@ -6,6 +6,7 @@ import { useT } from "@/hooks/useT";
 import { useDB } from "@/hooks/useDB";
 import { useNavStore } from "@/store/navStore";
 import { useReadingStore } from "@/store/readingStore";
+import { useAnalyzeArticle } from "@/hooks/useAnalyzeArticle";
 import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
 import { usePlayerOriginStore } from "@/store/playerOriginStore";
 import { useFeedsNavStore } from "@/store/feedsNavStore";
@@ -18,8 +19,10 @@ import { AddFeedDialog } from "./AddFeedDialog";
 import { EntryGrid } from "./EntryGrid";
 import { HackerNewsSection } from "./HackerNewsSection";
 import { TranslateModal } from "@/components/Reading/TranslateModal";
-import { fetchHnComments, flattenHnComments } from "@/lib/hnComments";
-import { domainOf } from "./feedUtils";
+import { flattenHnComments } from "@/lib/hnComments";
+import { useHnCommentsStore } from "@/store/hnCommentsStore";
+import { useTitleTranslateStore } from "@/store/titleTranslateStore";
+import { domainOf, titleTranslateKey } from "./feedUtils";
 import { DEFAULT_FEEDS } from "./defaultFeeds";
 import { Button } from "@/components/ui/button";
 
@@ -78,6 +81,7 @@ export function FeedsPage() {
   const db = useDB();
   const { navigate } = useNavStore();
   const { setDraft } = useReadingStore();
+  const { analyze } = useAnalyzeArticle();
   const feedsViewMode = useSettingsStore((s) => s.feedsViewMode);
   const setFeedsViewMode = useSettingsStore((s) => s.setFeedsViewMode);
 
@@ -91,7 +95,17 @@ export function FeedsPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [learningId, setLearningId] = useState<number | null>(null);
   const [translatingId, setTranslatingId] = useState<number | null>(null);
-  const [translateTarget, setTranslateTarget] = useState<{ title: string; articleText: string; commentsText?: string } | null>(null);
+  /** Entries currently queued for background analysis — a set (not a single id)
+   *  since several can run at once without blocking the UI or each other. */
+  const [analyzingBackgroundIds, setAnalyzingBackgroundIds] = useState<Set<number>>(new Set());
+  /** "Show Chinese titles" toggle (FeedTabs) — stays on across tab switches; a
+   *  batch translate is (re-)queued below for whatever's currently on screen. */
+  const [showTitleTranslations, setShowTitleTranslations] = useState(false);
+  const cachedTitleTranslations = useTitleTranslateStore((s) => s.byKey);
+  // Cache stays intact when toggled off (so switching back on is instant again) —
+  // only what's actually rendered is gated by the toggle.
+  const titleTranslations = showTitleTranslations ? cachedTitleTranslations : undefined;
+  const [translateTarget, setTranslateTarget] = useState<{ title: string; articleText: string; hnItemId: number | null } | null>(null);
   const [browse, setBrowse] = useState<{
     url: string;
     title: string;
@@ -119,6 +133,25 @@ export function FeedsPage() {
     const counts = await db.getRssUnreadCounts();
     setUnreadByFeed(new Map(counts));
   }, [db]);
+
+  // Re-queues (idempotently — translateBatch skips anything already cached/in-flight)
+  // whenever the toggle is on and the visible RSS list changes, e.g. a tab switch or
+  // background sync bringing in new entries. HackerNewsSection does the same for its
+  // own (separately paginated) story list when that tab is selected instead.
+  useEffect(() => {
+    if (!showTitleTranslations || entries.length === 0) return;
+    useTitleTranslateStore.getState().translateBatch(
+      entries.map((e) => ({ key: titleTranslateKey(e), title: e.title }))
+    );
+  }, [showTitleTranslations, entries]);
+
+  // Surfaces the one failure mode translateBatch can't report on its own (no AI
+  // provider configured) — otherwise toggling the button on would just silently
+  // do nothing, with no indication of why.
+  const noTitleProvider = useTitleTranslateStore((s) => s.noProvider);
+  useEffect(() => {
+    if (showTitleTranslations && noTitleProvider) toast(t("reading.translate.noProvider"));
+  }, [showTitleTranslations, noTitleProvider, t]);
 
   /** Sync sequentially in the backend, then update the visible cache once for the whole batch. */
   const syncFeeds = useCallback(async (targets: RssFeed[]) => {
@@ -269,8 +302,8 @@ export function FeedsPage() {
     });
   };
 
-  const goToReading = (title: string, text: string, sourceUrl: string, commentsText?: string) => {
-    setDraft({ title, text, sourceUrl, origin: "rss", commentsText });
+  const goToReading = (title: string, text: string, sourceUrl: string, commentsText?: string, hnItemId?: number | null) => {
+    setDraft({ title, text, sourceUrl, origin: "rss", commentsText, hnItemId });
     navigate("reading");
   };
 
@@ -293,12 +326,12 @@ export function FeedsPage() {
       let commentsText: string | undefined;
       if (entry.hn_item_id) {
         try {
-          commentsText = flattenHnComments(await fetchHnComments(entry.hn_item_id)) || undefined;
+          commentsText = flattenHnComments(await useHnCommentsStore.getState().fetch(entry.hn_item_id)) || undefined;
         } catch {
           // Comments are a bonus pass — never block Learn on them.
         }
       }
-      goToReading(article.title || entry.title, article.text_content, entry.url, commentsText);
+      goToReading(article.title || entry.title, article.text_content, entry.url, commentsText, entry.hn_item_id ?? null);
     } catch {
       // Extraction failed (paywall etc.) — fall back to the reader so the user sees why.
       toast(t("reader.extractFailed"));
@@ -308,25 +341,70 @@ export function FeedsPage() {
     }
   };
 
-  /** One-click "translate to Chinese": fetches the article (and comments, if HN) and opens TranslateModal. */
+  /** One-click "translate to Chinese": fetches the article and opens TranslateModal — the
+   *  modal fetches (or reuses the cached) HN comments itself via hnCommentsStore, given
+   *  hnItemId, so there's no need to pre-fetch them here too. */
   const translateEntry = async (entry: RssEntryRow) => {
     if (translatingId !== null) return;
     setTranslatingId(entry.id);
     try {
       const article = await invoke<FetchedArticle>("fetch_article", { url: entry.url });
-      let commentsText: string | undefined;
-      if (entry.hn_item_id) {
-        try {
-          commentsText = flattenHnComments(await fetchHnComments(entry.hn_item_id)) || undefined;
-        } catch {
-          // Comments are a bonus — never block translation on them.
-        }
-      }
-      setTranslateTarget({ title: article.title || entry.title, articleText: article.text_content, commentsText });
+      setTranslateTarget({
+        title: article.title || entry.title,
+        articleText: article.text_content,
+        hnItemId: entry.hn_item_id ?? null,
+      });
     } catch {
       toast(t("reader.extractFailed"));
     } finally {
       setTranslatingId(null);
+    }
+  };
+
+  /** Queue this article (and its comments, if HN) for AI analysis in the background —
+   *  stays on the Feeds page instead of navigating to Reading like the regular Learn
+   *  button does; a toast reports completion with a "View" action once it's ready.
+   *  Several entries can run concurrently (tracked as a set, not a single id) since
+   *  fetch_article and the AI call are plain async I/O — nothing here blocks the UI. */
+  const analyzeInBackground = async (entry: RssEntryRow) => {
+    if (analyzingBackgroundIds.has(entry.id)) return;
+    setAnalyzingBackgroundIds((prev) => new Set(prev).add(entry.id));
+    try {
+      const article = await invoke<FetchedArticle>("fetch_article", { url: entry.url });
+      markRead(entry);
+      let commentsText: string | undefined;
+      if (entry.hn_item_id) {
+        try {
+          commentsText = flattenHnComments(await useHnCommentsStore.getState().fetch(entry.hn_item_id)) || undefined;
+        } catch {
+          // Comments are a bonus pass — never block analysis on them.
+        }
+      }
+      const result = await analyze({
+        text: article.text_content,
+        title: article.title || entry.title,
+        sourceUrl: entry.url,
+        origin: "rss",
+        commentsText,
+        hnItemId: entry.hn_item_id ?? null,
+      });
+      toast.success(t("feeds.analyzeBackground.done", { title: result.title }), {
+        action: {
+          label: t("feeds.analyzeBackground.view"),
+          onClick: () => {
+            useReadingStore.getState().setPendingArticleId(result.articleId);
+            navigate("reading");
+          },
+        },
+      });
+    } catch (e: any) {
+      toast.error(e?.message || t("feeds.analyzeBackground.failed", { title: entry.title }));
+    } finally {
+      setAnalyzingBackgroundIds((prev) => {
+        const next = new Set(prev);
+        next.delete(entry.id);
+        return next;
+      });
     }
   };
 
@@ -377,6 +455,8 @@ export function FeedsPage() {
         onRefresh={handleRefresh}
         viewMode={feedsViewMode}
         onSetViewMode={setFeedsViewMode}
+        showTitleTranslations={showTitleTranslations}
+        onToggleTitleTranslations={() => setShowTitleTranslations((v) => !v)}
       />
 
       <div className="flex-1 min-w-0 min-h-0 flex flex-col">
@@ -392,7 +472,7 @@ export function FeedsPage() {
             }
             onBack={() => setBrowse(null)}
             onOpenExternal={() => openExternal(browse.url)}
-            onLearn={({ title, text, commentsText }) => goToReading(title, text, browse.url, commentsText)}
+            onLearn={({ title, text, commentsText }) => goToReading(title, text, browse.url, commentsText, browse.hnItemId)}
             hnItemId={browse.hnItemId}
           />
         ) : selected === "hackernews" ? (
@@ -403,6 +483,10 @@ export function FeedsPage() {
             onLearn={learnEntry}
             onTranslate={translateEntry}
             translatingId={translatingId}
+            onAnalyzeBackground={analyzeInBackground}
+            analyzingBackgroundIds={analyzingBackgroundIds}
+            showTitleTranslations={showTitleTranslations}
+            titleTranslations={titleTranslations}
           />
         ) : (
           <>
@@ -435,6 +519,9 @@ export function FeedsPage() {
                   onPlay={playEntry}
                   onTranslate={translateEntry}
                   translatingId={translatingId}
+                  onAnalyzeBackground={analyzeInBackground}
+                  analyzingBackgroundIds={analyzingBackgroundIds}
+                  titleTranslations={titleTranslations}
                   viewMode={feedsViewMode}
                 />
               )}
@@ -455,7 +542,7 @@ export function FeedsPage() {
         onClose={() => setTranslateTarget(null)}
         title={translateTarget?.title ?? ""}
         articleText={translateTarget?.articleText ?? ""}
-        commentsText={translateTarget?.commentsText}
+        hnItemId={translateTarget?.hnItemId ?? null}
       />
     </div>
   );

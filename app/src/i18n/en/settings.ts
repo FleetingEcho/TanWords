@@ -108,7 +108,6 @@ export const settings: Dict = {
     "settings.topBarItems": "Top navigation controls",
     "settings.topBarItemsSub": "Choose which shortcuts appear in the top navigation. Hidden commands remain available with Command-K.",
     "settings.topBarItemsSelected": "{n} visible",
-    "settings.topBar.history": "Back / forward",
     "settings.topBar.new": "New",
     "settings.topBar.search": "Command search",
     "settings.topBar.context": "Page action",

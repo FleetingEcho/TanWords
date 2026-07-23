@@ -3,7 +3,7 @@ import { useT } from "@/hooks/useT";
 import type { RssFeed } from "@/hooks/useDB.types";
 import { ChevronDownIcon, LoadMoreIcon } from "@/components/ui/icons";
 import { EntryCard, EntryListRow, type DisplayEntry } from "./EntryCard";
-import { dateGroupOf, type DateGroup } from "./feedUtils";
+import { dateGroupOf, titleTranslateKey, type DateGroup } from "./feedUtils";
 
 export type FeedViewMode = "card" | "list";
 
@@ -20,6 +20,12 @@ interface Props {
   onTranslate?: (entry: DisplayEntry) => void;
   /** Entry id currently being fetched for onTranslate, if any. */
   translatingId?: number | null;
+  /** Queue for background analysis — omit to hide the button entirely. Several can
+   *  run at once, so entries in flight are tracked as a set rather than a single id. */
+  onAnalyzeBackground?: (entry: DisplayEntry) => void;
+  analyzingBackgroundIds?: Set<number>;
+  /** key (titleTranslateKey) -> Chinese title, shown under the English one when present. */
+  titleTranslations?: Record<string, string>;
   /** "list" trades cover art and the hero layout for a dense one-line-per-entry view. */
   viewMode: FeedViewMode;
   /** False for sources with no real read-tracking (e.g. the live HN browser). Default true. */
@@ -84,7 +90,7 @@ function GroupHeader({
 
 /** Magazine flow: date-grouped sections; the very first entry renders as a hero card.
  *  In list mode, groups collapse into a dense one-line-per-entry list instead (no hero, no cover art). */
-export function EntryGrid({ entries, feedsById, learningId, onOpen, onLearn, onPlay, onTranslate, translatingId = null, viewMode, trackRead = true, coverColor, coverLetter, hasMore = false, loadingMore = false, onLoadMore }: Props) {
+export function EntryGrid({ entries, feedsById, learningId, onOpen, onLearn, onPlay, onTranslate, translatingId = null, onAnalyzeBackground, analyzingBackgroundIds, titleTranslations, viewMode, trackRead = true, coverColor, coverLetter, hasMore = false, loadingMore = false, onLoadMore }: Props) {
   const t = useT();
   const [collapsedGroups, setCollapsedGroups] = useState<Set<DateGroup>>(new Set());
 
@@ -143,6 +149,9 @@ export function EntryGrid({ entries, feedsById, learningId, onOpen, onLearn, onP
                   onPlay={e.audio_url ? () => onPlay(e) : undefined}
                   onTranslate={onTranslate ? () => onTranslate(e) : undefined}
                   translating={translatingId === e.id}
+                  onAnalyzeBackground={onAnalyzeBackground ? () => onAnalyzeBackground(e) : undefined}
+                  analyzingBackground={analyzingBackgroundIds?.has(e.id) ?? false}
+                  chineseTitle={titleTranslations?.[titleTranslateKey(e)]}
                   trackRead={trackRead}
                 />
               ))
@@ -159,6 +168,9 @@ export function EntryGrid({ entries, feedsById, learningId, onOpen, onLearn, onP
                     onPlay={hero.audio_url ? () => onPlay(hero) : undefined}
                     onTranslate={onTranslate ? () => onTranslate(hero) : undefined}
                     translating={translatingId === hero.id}
+                    onAnalyzeBackground={onAnalyzeBackground ? () => onAnalyzeBackground(hero) : undefined}
+                    analyzingBackground={analyzingBackgroundIds?.has(hero.id) ?? false}
+                    chineseTitle={titleTranslations?.[titleTranslateKey(hero)]}
                     trackRead={trackRead}
                     coverColor={coverColor}
                     coverLetter={coverLetter}
@@ -177,6 +189,9 @@ export function EntryGrid({ entries, feedsById, learningId, onOpen, onLearn, onP
                         onPlay={e.audio_url ? () => onPlay(e) : undefined}
                         onTranslate={onTranslate ? () => onTranslate(e) : undefined}
                         translating={translatingId === e.id}
+                        onAnalyzeBackground={onAnalyzeBackground ? () => onAnalyzeBackground(e) : undefined}
+                        analyzingBackground={analyzingBackgroundIds?.has(e.id) ?? false}
+                        chineseTitle={titleTranslations?.[titleTranslateKey(e)]}
                         trackRead={trackRead}
                         coverColor={coverColor}
                         coverLetter={coverLetter}

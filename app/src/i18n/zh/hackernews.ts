@@ -14,6 +14,7 @@ export const hackernews: Dict = {
     "hn.comments.anonymous": "[已删除]",
     "hn.comments.replyingTo": "回复 @{name}",
     "hn.comments.replyCount": "{n} 条回复",
+    "hn.comments.listen": "朗读评论",
     "hn.tab": "Hacker News",
     "hn.section.top": "热门",
     "hn.section.new": "最新",

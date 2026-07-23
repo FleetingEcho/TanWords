@@ -82,7 +82,8 @@ export function useDBExtra() {
       sourceUrl: string,
       origin: string,
       content: string,
-      analysisMarkdown: string
+      analysisMarkdown: string,
+      hnItemId?: number | null
     ): Promise<number> => {
       try {
         return await invoke<number>("db_save_article_analysis", {
@@ -91,6 +92,7 @@ export function useDBExtra() {
           origin,
           content,
           analysisMarkdown,
+          hnItemId: hnItemId ?? null,
         });
       } catch (e) {
         // Caller (ReadingPage) already surfaces a toast with the specific

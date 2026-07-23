@@ -3,7 +3,7 @@ import type { NavPage } from "@/store/navStore";
 
 export type Theme = "light" | "dark" | "system";
 export type SidebarTabId = Exclude<NavPage, "settings">;
-export type TopBarItemId = "history" | "new" | "search" | "context" | "mcp" | "ai" | "language" | "theme" | "updates" | "github";
+export type TopBarItemId = "new" | "search" | "context" | "mcp" | "ai" | "language" | "theme" | "updates" | "github";
 
 /** Feeds page tab selector: a specific RSS feed, "all" of them, or the native Hacker News browser. */
 export type RssTabSelection = number | "all" | "hackernews";
@@ -12,7 +12,7 @@ export const DEFAULT_SIDEBAR_TABS: SidebarTabId[] = [
   "dashboard", "feeds", "reading", "scene-lab", "vocabulary", "documents", "music", "chat",
 ];
 export const DEFAULT_TOPBAR_ITEMS: TopBarItemId[] = [
-  "history", "new", "search", "context", "mcp", "ai", "language", "theme", "updates", "github",
+  "new", "search", "context", "mcp", "ai", "language", "theme", "updates", "github",
 ];
 
 interface SettingsState {

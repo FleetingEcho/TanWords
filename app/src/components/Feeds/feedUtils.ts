@@ -49,3 +49,10 @@ export function placeholderGradient(name: string): string {
   const h = feedHue(name || "?");
   return `linear-gradient(135deg, hsl(${h} 45% 58%), hsl(${(h + 50) % 360} 50% 38%))`;
 }
+
+/** Stable cache key for title translation (titleTranslateStore) — namespaced by
+ *  source since a native HN story id and an RSS entry's DB row id are drawn from
+ *  unrelated id spaces and could otherwise collide. */
+export function titleTranslateKey(entry: { id: number; hn_item_id?: number | null }): string {
+  return entry.hn_item_id != null ? `hn:${entry.hn_item_id}` : `rss:${entry.id}`;
+}
