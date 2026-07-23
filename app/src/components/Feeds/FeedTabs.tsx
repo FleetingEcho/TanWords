@@ -86,13 +86,13 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
 
   return (
     <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-2.5">
-      <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
-        <button onClick={() => onSelect("all")} className={pill(selected === "all")}>
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <button onClick={() => onSelect("all")} className={`${pill(selected === "all")} shrink-0`}>
           {t("feeds.all")}
           <UnreadBadge n={totalUnread} />
         </button>
 
-        <button onClick={() => onSelect("hackernews")} className={pill(selected === "hackernews")}>
+        <button onClick={() => onSelect("hackernews")} className={`${pill(selected === "hackernews")} shrink-0`}>
           <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm bg-orange-500 text-[9px] font-bold leading-none text-white">Y</span>
           {t("hn.tab")}
         </button>
@@ -100,7 +100,7 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
         {visibleFeeds.map((f) => {
           const active = selected === f.id;
           return (
-            <button key={f.id} onClick={() => onSelect(f.id)} className={`${pill(active)} group min-w-0`} title={domainOf(f.url)}>
+            <button key={f.id} onClick={() => onSelect(f.id)} className={`${pill(active)} group shrink-0`} title={domainOf(f.url)}>
               {f.is_podcast && <span className="shrink-0 text-[10px] leading-none" aria-label={t("feeds.section.podcasts")}>🎧</span>}
               <span className="min-w-0 max-w-44 truncate">{f.title || domainOf(f.url)}</span>
               {failedFeeds.has(f.id) && (
