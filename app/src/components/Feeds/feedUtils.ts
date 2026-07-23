@@ -1,5 +1,15 @@
 /** Shared helpers for the Feeds magazine layout. */
 
+const STALE_MS = 15 * 60 * 1000;
+
+/** SQLite datetime('now') is UTC without a zone marker — parse it as UTC. */
+export function isStale(lastFetchedAt: string | null): boolean {
+  if (!lastFetchedAt) return true;
+  const iso = lastFetchedAt.includes("T") ? lastFetchedAt : lastFetchedAt.replace(" ", "T") + "Z";
+  const t = new Date(iso).getTime();
+  return isNaN(t) || Date.now() - t > STALE_MS;
+}
+
 export function domainOf(url: string): string {
   try {
     return new URL(url).hostname.replace(/^www\./, "");

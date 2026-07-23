@@ -11,70 +11,23 @@ import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
 import { usePlayerOriginStore } from "@/store/playerOriginStore";
 import { useFeedsNavStore } from "@/store/feedsNavStore";
 import { useSettingsStore, type RssTabSelection } from "@/store/settingsStore";
-import { ReaderView } from "@/components/Reader/ReaderView";
 import type { FetchedArticle } from "@/components/Reader/ArticleReader";
 import type { RssEntryRow, RssFeed } from "@/hooks/useDB.types";
 import { FeedTabs } from "./FeedTabs";
 import { AddFeedDialog } from "./AddFeedDialog";
-import { EntryGrid } from "./EntryGrid";
-import { HackerNewsSection } from "./HackerNewsSection";
+import { FeedsMainContent, type BrowseTarget } from "./FeedsMainContent";
 import { TranslateModal } from "@/components/Reading/TranslateModal";
 import { flattenHnComments } from "@/lib/hnComments";
 import { useHnCommentsStore } from "@/store/hnCommentsStore";
 import { useTitleTranslateStore } from "@/store/titleTranslateStore";
-import { domainOf, titleTranslateKey } from "./feedUtils";
-import { DEFAULT_FEEDS } from "./defaultFeeds";
-import { Button } from "@/components/ui/button";
-
-const STALE_MS = 15 * 60 * 1000;
-const SEEDED_FLAG = "rss_defaults_seeded";
-
-/** Default feeds added in a later release, after existing installs had already
- * run the one-time SEEDED_FLAG seeding — those installs need a follow-up
- * seeding pass so JS Party / Syntax still show up as real subscriptions (not
- * just AddFeedDialog suggestions) without re-adding anything the user has
- * since unsubscribed from the original batch. */
-const SEEDED_FLAG_V2 = "rss_defaults_seeded_v2";
-const V2_DEFAULT_URLS = new Set([
-  "https://changelog.com/jsparty/feed",
-  "https://feed.syntax.fm",
-]);
+import { domainOf, isStale, titleTranslateKey } from "./feedUtils";
+import { seedDefaults } from "./feedSeeding";
 
 /** One-time cleanup: the hnrss.org RSS subscription is superseded by the
  * native Hacker News section (New/Top/Best via HN's own API) — drop it from
  * existing installs so it doesn't keep showing up as a regular feed tab. */
 const HN_RSS_URL = "https://hnrss.org/frontpage?points=100";
 const HN_NATIVE_MIGRATED_FLAG = "tanwords_hn_native_migrated";
-
-/** Pulse placeholders shown while the first DB read is in flight, so opening
- * the page never sits on a blank screen while feeds/entries load. */
-function EntrySkeleton() {
-  return (
-    <div className="max-w-4xl mx-auto px-6 py-5 space-y-4 animate-fade-in">
-      <div className="h-4 w-24 rounded bg-muted animate-pulse" />
-      <div className="w-full aspect-[21/9] rounded-2xl bg-muted animate-pulse" />
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="rounded-2xl border border-border overflow-hidden">
-            <div className="w-full aspect-[16/9] bg-muted animate-pulse" />
-            <div className="p-3.5 space-y-2">
-              <div className="h-3.5 w-3/4 rounded bg-muted animate-pulse" />
-              <div className="h-3 w-1/2 rounded bg-muted animate-pulse" />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/** SQLite datetime('now') is UTC without a zone marker — parse it as UTC. */
-function isStale(lastFetchedAt: string | null): boolean {
-  if (!lastFetchedAt) return true;
-  const iso = lastFetchedAt.includes("T") ? lastFetchedAt : lastFetchedAt.replace(" ", "T") + "Z";
-  const t = new Date(iso).getTime();
-  return isNaN(t) || Date.now() - t > STALE_MS;
-}
 
 export function FeedsPage() {
   const t = useT();
@@ -106,16 +59,7 @@ export function FeedsPage() {
   // only what's actually rendered is gated by the toggle.
   const titleTranslations = showTitleTranslations ? cachedTitleTranslations : undefined;
   const [translateTarget, setTranslateTarget] = useState<{ title: string; articleText: string; hnItemId: number | null } | null>(null);
-  const [browse, setBrowse] = useState<{
-    url: string;
-    title: string;
-    domain: string;
-    /** Set for podcast entries — the reader's listen button plays this instead of TTS. */
-    audioUrl: string | null;
-    feedTitle: string;
-    /** Set for entries from hnrss.org-style feeds — shows HN comments below the article. */
-    hnItemId: number | null;
-  } | null>(null);
+  const [browse, setBrowse] = useState<BrowseTarget | null>(null);
   const syncingRef = useRef(false);
   // The live selection, readable from long-running background syncs — their
   // captured `selected` would otherwise be stale and yank the view back.
@@ -173,49 +117,13 @@ export function FeedsPage() {
     setSyncing(false);
   }, [db, refreshEntries]);
 
-  /** First run only: subscribe the curated defaults (user can unsubscribe freely).
-   *  The flag ensures deleted defaults never come back. */
-  const seedDefaults = async (existing: RssFeed[]): Promise<RssFeed[]> => {
-    try {
-      const seeded = await invoke<string | null>("db_get_setting", { key: SEEDED_FLAG });
-      if (!seeded) {
-        if (existing.length === 0) {
-          for (const p of DEFAULT_FEEDS) {
-            await db.addRssFeed(p.url, p.title, "", p.desc);
-          }
-        }
-        await invoke("db_set_setting", { key: SEEDED_FLAG, value: "true" });
-        return existing.length === 0 ? await db.getRssFeeds() : existing;
-      }
-      return await seedV2Defaults(existing);
-    } catch {
-      return existing; // web mode / settings unavailable — skip seeding
-    }
-  };
-
-  /** One-time follow-up for installs that already ran the original seeding
-   * before this batch of defaults existed. Adds any of V2_DEFAULT_URLS not
-   * already subscribed, then never touches them again. */
-  const seedV2Defaults = async (existing: RssFeed[]): Promise<RssFeed[]> => {
-    const seededV2 = await invoke<string | null>("db_get_setting", { key: SEEDED_FLAG_V2 });
-    if (seededV2) return existing;
-
-    const subscribedUrls = new Set(existing.map((f) => f.url));
-    const toAdd = DEFAULT_FEEDS.filter((p) => V2_DEFAULT_URLS.has(p.url) && !subscribedUrls.has(p.url));
-    for (const p of toAdd) {
-      await db.addRssFeed(p.url, p.title, "", p.desc);
-    }
-    await invoke("db_set_setting", { key: SEEDED_FLAG_V2, value: "true" });
-    return toAdd.length > 0 ? await db.getRssFeeds() : existing;
-  };
-
   // Initial load: paint cached data first. Network refresh starts after a short
   // idle window so app launch/navigation remains responsive.
   useEffect(() => {
     let syncTimer: number | undefined;
     (async () => {
       try {
-        let list = await seedDefaults(await db.getRssFeeds());
+        let list = await seedDefaults(db, await db.getRssFeeds());
         if (!localStorage.getItem(HN_NATIVE_MIGRATED_FLAG)) {
           const legacyHn = list.find((f) => f.url === HN_RSS_URL);
           if (legacyHn) {
@@ -460,74 +368,32 @@ export function FeedsPage() {
       />
 
       <div className="flex-1 min-w-0 min-h-0 flex flex-col">
-        {browse ? (
-          <ReaderView
-            url={browse.url}
-            title={browse.title}
-            domain={browse.domain}
-            audio={
-              browse.audioUrl
-                ? { audioUrl: browse.audioUrl, title: browse.title, feedTitle: browse.feedTitle }
-                : undefined
-            }
-            onBack={() => setBrowse(null)}
-            onOpenExternal={() => openExternal(browse.url)}
-            onLearn={({ title, text, commentsText }) => goToReading(title, text, browse.url, commentsText, browse.hnItemId)}
-            hnItemId={browse.hnItemId}
-          />
-        ) : selected === "hackernews" ? (
-          <HackerNewsSection
-            viewMode={feedsViewMode}
-            learningId={learningId}
-            onOpen={openEntry}
-            onLearn={learnEntry}
-            onTranslate={translateEntry}
-            translatingId={translatingId}
-            onAnalyzeBackground={analyzeInBackground}
-            analyzingBackgroundIds={analyzingBackgroundIds}
-            showTitleTranslations={showTitleTranslations}
-            titleTranslations={titleTranslations}
-          />
-        ) : (
-          <>
-            <div className="flex-1 min-h-0 overflow-y-auto">
-              {booting && entries.length === 0 ? (
-                <EntrySkeleton />
-              ) : feeds.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center gap-3 text-center px-6">
-                  <p className="text-sm text-muted-foreground max-w-sm">{t("feeds.noFeeds")}</p>
-                  <Button
-                    onClick={() => setShowAdd(true)}
-                    className="h-9 px-4 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-                  >
-                    + {t("feeds.addFeed")}
-                  </Button>
-                </div>
-              ) : entries.length === 0 ? (
-                <div className="h-full flex items-center justify-center">
-                  <p className="text-sm text-muted-foreground">
-                    {syncing ? t("feeds.refreshing") : t("feeds.noArticles")}
-                  </p>
-                </div>
-              ) : (
-                <EntryGrid
-                  entries={entries}
-                  feedsById={feedsById}
-                  learningId={learningId}
-                  onOpen={openEntry}
-                  onLearn={learnEntry}
-                  onPlay={playEntry}
-                  onTranslate={translateEntry}
-                  translatingId={translatingId}
-                  onAnalyzeBackground={analyzeInBackground}
-                  analyzingBackgroundIds={analyzingBackgroundIds}
-                  titleTranslations={titleTranslations}
-                  viewMode={feedsViewMode}
-                />
-              )}
-            </div>
-          </>
-        )}
+        <FeedsMainContent
+          browse={browse}
+          onCloseBrowse={() => setBrowse(null)}
+          onOpenExternal={openExternal}
+          onLearnFromReader={({ title, text, commentsText }) =>
+            goToReading(title, text, browse!.url, commentsText, browse!.hnItemId)
+          }
+          selected={selected}
+          feedsViewMode={feedsViewMode}
+          booting={booting}
+          syncing={syncing}
+          feeds={feeds}
+          entries={entries}
+          feedsById={feedsById}
+          learningId={learningId}
+          translatingId={translatingId}
+          analyzingBackgroundIds={analyzingBackgroundIds}
+          showTitleTranslations={showTitleTranslations}
+          titleTranslations={titleTranslations}
+          onOpenEntry={openEntry}
+          onLearnEntry={learnEntry}
+          onPlayEntry={playEntry}
+          onTranslateEntry={translateEntry}
+          onAnalyzeBackground={analyzeInBackground}
+          onShowAdd={() => setShowAdd(true)}
+        />
       </div>
 
       <AddFeedDialog
