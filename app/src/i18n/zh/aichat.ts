@@ -11,6 +11,7 @@ export const aichat: Dict = {
     "aichat.group.earlier": "更早",
     "aichat.preset.english-tutor": "英语导师",
     "aichat.preset.reading-tutor": "阅读导师",
+    "aichat.preset.vocab-map": "词汇拓展",
     "aichat.preset.grammar-expert": "语法专家",
     "aichat.preset.writing-coach": "写作教练",
     "aichat.preset.custom": "自定义",

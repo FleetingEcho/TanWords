@@ -18,6 +18,7 @@ export const reading: Dict = {
     "reading.search.placeholder": "Search or add a word…",
     "reading.search.inVocab": "In vocabulary",
     "reading.search.add": "Add \"{word}\" to vocabulary",
+    "reading.search.addShort": "Add to vocabulary",
     "reading.search.adding": "Adding…",
     "reading.search.added": "Added \"{word}\"",
     "reading.search.quickFetching": "Looking it up…",

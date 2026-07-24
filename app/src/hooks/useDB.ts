@@ -13,7 +13,6 @@ import { useDBCore } from "./useDB.core";
 import { useDBExtra } from "./useDB.extra";
 import { useDBSceneLab } from "./useDB.sceneLab";
 import { useDBPatterns } from "./useDB.patterns";
-import { useDBKnowledgeMap } from "./useDB.knowledgeMap";
 
 export * from "./useDB.types";
 
@@ -21,8 +20,7 @@ export function useDB() {
   const core = useDBCore();
   const extra = useDBExtra();
   const sceneLab = useDBSceneLab();
-  const knowledgeMap = useDBKnowledgeMap();
   const patterns = useDBPatterns();
 
-  return useMemo(() => ({ ...core, ...extra, ...sceneLab, ...knowledgeMap, ...patterns }), [core, extra, sceneLab, knowledgeMap, patterns]);
+  return useMemo(() => ({ ...core, ...extra, ...sceneLab, ...patterns }), [core, extra, sceneLab, patterns]);
 }
