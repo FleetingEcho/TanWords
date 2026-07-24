@@ -61,7 +61,7 @@ export interface AIProvider {
    * final accumulated text with `parseEnrichmentStream`. */
   enrich(word: string, signal?: AbortSignal): AsyncGenerator<string>;
   /** Free-form streaming chat with a custom system prompt */
-  generate(systemPrompt: string, userPrompt: string): AsyncGenerator<string>;
+  generate(systemPrompt: string, userPrompt: string, signal?: AbortSignal): AsyncGenerator<string>;
   /** Multi-turn streaming chat */
   chat(messages: Array<{ role: "user" | "assistant"; content: string }>, systemPrompt: string, signal?: AbortSignal): AsyncGenerator<string>;
   /** Multi-turn chat with tool calling support. Streams text via onText callback, returns collected tool calls. */

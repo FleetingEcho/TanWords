@@ -3,7 +3,6 @@ import { create } from "zustand";
 export type NavPage =
   | "dashboard"
   | "feeds"
-  | "reading"
   | "scene-lab"
   | "music"
   | "vocabulary"

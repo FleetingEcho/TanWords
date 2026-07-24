@@ -1,12 +1,12 @@
-/** AI Chat sessions, reading/articles, dashboard, SRS review, search history,
- *  and data management — see useDB.ts for the composed public hook,
- *  useDB.core.ts for vocabulary/translations/settings/documents. */
+/** AI Chat sessions, article-analysis persistence, dashboard, SRS review,
+ *  search history, and data management — see useDB.ts for the composed
+ *  public hook, useDB.core.ts for vocabulary/translations/settings/documents. */
 
 import { useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { logError, reportWriteError } from "./useDB.errors";
 import {
-  ChatSessionItem, ChatSessionDetail, ArticleListItem, ArticleDetail, SavedSentence,
+  ChatSessionItem, ChatSessionDetail,
   DashboardStats, DueCard, ReviewResult, SrsRating, SearchHistoryItem,
   RssFeedMeta, RssFeed, RssEntryRow,
 } from "./useDB.types";
@@ -74,7 +74,7 @@ export function useDBExtra() {
     }
   }, []);
 
-  // ── Reading Lessons (articles + AI notes + saved sentences) ───────────
+  // ── Article analysis (persisted alongside the RSS reader's inline AI notes) ──
 
   const saveArticleAnalysis = useCallback(
     async (
@@ -95,40 +95,14 @@ export function useDBExtra() {
           hnItemId: hnItemId ?? null,
         });
       } catch (e) {
-        // Caller (ReadingPage) already surfaces a toast with the specific
-        // error message — just log here to avoid a duplicate toast.
+        // Caller already surfaces a toast with the specific error message —
+        // just log here to avoid a duplicate toast.
         logError("saveArticleAnalysis", e);
         throw e;
       }
     },
     []
   );
-
-  const getArticles = useCallback(async (page = 0, limit = 50): Promise<ArticleListItem[]> => {
-    try {
-      return await invoke<ArticleListItem[]>("db_get_articles", { page, limit });
-    } catch (e) {
-      logError("getArticles", e);
-      return [];
-    }
-  }, []);
-
-  const getArticle = useCallback(async (id: number): Promise<ArticleDetail | null> => {
-    try {
-      return await invoke<ArticleDetail>("db_get_article", { id });
-    } catch (e) {
-      logError("getArticle", e);
-      return null;
-    }
-  }, []);
-
-  const deleteArticle = useCallback(async (id: number): Promise<void> => {
-    try {
-      await invoke("db_delete_article", { id });
-    } catch (e) {
-      reportWriteError("deleteArticle", e, "删除文章失败");
-    }
-  }, []);
 
   const addKnownWords = useCallback(async (words: string[], source = "marked"): Promise<void> => {
     try {
@@ -144,47 +118,6 @@ export function useDBExtra() {
     } catch (e) {
       logError("getKnownWords", e);
       return [];
-    }
-  }, []);
-
-  const addSavedSentence = useCallback(
-    async (
-      text: string,
-      zh: string,
-      note: string,
-      articleId: number | null,
-      articleTitle: string
-    ): Promise<number> => {
-      try {
-        return await invoke<number>("db_add_saved_sentence", {
-          text,
-          zh,
-          note,
-          articleId,
-          articleTitle,
-        });
-      } catch (e) {
-        reportWriteError("addSavedSentence", e, "保存句子失败");
-        throw e;
-      }
-    },
-    []
-  );
-
-  const getSavedSentences = useCallback(async (): Promise<SavedSentence[]> => {
-    try {
-      return await invoke<SavedSentence[]>("db_get_saved_sentences");
-    } catch (e) {
-      logError("getSavedSentences", e);
-      return [];
-    }
-  }, []);
-
-  const deleteSavedSentence = useCallback(async (id: number): Promise<void> => {
-    try {
-      await invoke("db_delete_saved_sentence", { id });
-    } catch (e) {
-      reportWriteError("deleteSavedSentence", e, "删除句子失败");
     }
   }, []);
 
@@ -391,8 +324,7 @@ export function useDBExtra() {
 
   return useMemo(() => ({
     listChatSessions, getChatSession, upsertChatSession, deleteChatSession, searchChatSessions,
-    saveArticleAnalysis, getArticles, getArticle, deleteArticle, addKnownWords, getKnownWords,
-    addSavedSentence, getSavedSentences, deleteSavedSentence,
+    saveArticleAnalysis, addKnownWords, getKnownWords,
     getDashboardStats,
     getDueCards, reviewCard,
     addSearchHistory, getSearchHistory, clearSearchHistory,
@@ -401,8 +333,7 @@ export function useDBExtra() {
     getDbPath, getDbSize, exportBackup, switchDbPath, clearTranslations,
   }), [
     listChatSessions, getChatSession, upsertChatSession, deleteChatSession, searchChatSessions,
-    saveArticleAnalysis, getArticles, getArticle, deleteArticle, addKnownWords, getKnownWords,
-    addSavedSentence, getSavedSentences, deleteSavedSentence,
+    saveArticleAnalysis, addKnownWords, getKnownWords,
     getDashboardStats,
     getDueCards, reviewCard,
     addSearchHistory, getSearchHistory, clearSearchHistory,

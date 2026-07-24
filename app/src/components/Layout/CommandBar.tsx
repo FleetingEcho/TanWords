@@ -2,13 +2,15 @@ import React from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import {
-  BookPlus, BrainCircuit, Check, ChevronDown, FilePlus2, Languages,
+  BookPlus, BrainCircuit, Check, FilePlus2, Languages,
   MessageSquarePlus, Monitor, Moon, Search, Server, Settings, Sparkles, Sun, Unplug, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { WordSearchBox } from "@/components/shared/WordSearchBox";
 import { useT } from "@/hooks/useT";
 import { findBestProvider } from "@/providers/select";
 import { getAllProviders, type AIProvider } from "@/providers";
@@ -21,7 +23,7 @@ import { GitHubIcon } from "@/components/ui/icons";
 
 type McpState = { status: { running: boolean; error: string | null } };
 
-const PAGE_IDS: NavPage[] = ["feeds", "reading", "vocabulary", "documents", "chat", "dashboard", "scene-lab", "music", "settings"];
+const PAGE_IDS: NavPage[] = ["feeds", "vocabulary", "documents", "chat", "dashboard", "scene-lab", "music", "settings"];
 
 export function CommandBar({ activePage }: { activePage: NavPage }) {
   const t = useT();
@@ -36,7 +38,9 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   const visibleItems = useSettingsStore((state) => state.visibleTopBarItems);
   const visible = (item: import("@/store/settingsStore").TopBarItemId) => visibleItems.includes(item);
   const isAnalyzing = useAnalysisStore((state) => state.isAnalyzing);
-  const analyzingCount = useAnalysisStore((state) => state.jobs.length);
+  const analyzingJobs = useAnalysisStore((state) => state.jobs);
+  const cancelAnalyzing = useAnalysisStore((state) => state.cancel);
+  const [analyzingOpen, setAnalyzingOpen] = React.useState(false);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [wordOpen, setWordOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -110,37 +114,53 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   return (
     <>
       <header className="flex h-12 shrink-0 select-none items-center gap-1.5 border-b border-border/80 bg-background/90 px-3 backdrop-blur-xl">
-        {visible("new") && <DropdownMenu>
-          <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 gap-2 rounded-lg px-2.5 text-xs font-medium"><FilePlus2 className="h-4 w-4" /><span className="hidden sm:inline">{t("command.new")}</span><ChevronDown className="h-3 w-3 text-muted-foreground" /></Button></DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-52">
-            <DropdownMenuItem onClick={newDocument}><FilePlus2 className="mr-2 h-4 w-4" />{t("command.newDocument")}</DropdownMenuItem>
-            <DropdownMenuItem onClick={newChat}><MessageSquarePlus className="mr-2 h-4 w-4" />{t("command.newChat")}</DropdownMenuItem>
-            <div className="my-1 h-px bg-border" />
-            <DropdownMenuItem onClick={() => setWordOpen(true)}><BookPlus className="mr-2 h-4 w-4" />{t("command.addVocabulary")}</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>}
-
-        {visible("search") && <button onClick={() => setPaletteOpen(true)} className="ml-1 flex h-8 min-w-0 max-w-72 flex-1 items-center gap-2 rounded-lg border border-border bg-muted/35 px-2.5 text-xs text-muted-foreground transition hover:bg-muted/60 hover:text-foreground"><Search className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{t("command.search")}</span><kbd className="ml-auto hidden rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[9px] md:inline">⌘K</kbd></button>}
+        {visible("search") && <div className="min-w-0 max-w-72 flex-1"><WordSearchBox variant="inline" /></div>}
 
         {visible("context") && context && <><div className="mx-1 hidden h-5 w-px bg-border sm:block" /><Button variant="ghost" onClick={context.run} className="h-8 gap-2 rounded-lg px-2.5 text-xs font-medium text-foreground"><context.icon className="h-4 w-4 text-primary" /><span className="hidden lg:inline">{context.label}</span></Button></>}
 
         {/* Learn/analyze keeps running in the background if you navigate away from
-          * Reading (or if it was queued straight from the Feeds list) — this stays
-          * visible everywhere so you know it's still working and can jump back to it. */}
+          * Reading (or if it was queued straight from the Feeds list or the reader's
+          * quick-analyze button) — this stays visible everywhere so you know it's
+          * still working. Hovering summarizes what's running; clicking opens the
+          * list so any job can be cancelled individually. */}
         {isAnalyzing && (
           <>
             <div className="mx-1 hidden h-5 w-px bg-border sm:block" />
-            <button
-              onClick={() => navigate("reading")}
-              title={t("command.analyzing")}
-              className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
-            >
-              <Sparkles className="h-3.5 w-3.5 animate-pulse" />
-              <span className="hidden sm:inline">
-                {t("command.analyzing")}
-                {analyzingCount > 1 ? ` (${analyzingCount})` : ""}
-              </span>
-            </button>
+            <Popover open={analyzingOpen} onOpenChange={setAnalyzingOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  title={analyzingJobs.length > 1 ? t("command.analyzingHint", { n: analyzingJobs.length }) : analyzingJobs[0]?.title}
+                  className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+                >
+                  <span className="h-3.5 w-3.5 shrink-0 rounded-full border-2 border-primary/25 border-t-primary animate-spin" />
+                  <span className="hidden sm:inline">
+                    {t("command.analyzing")}
+                    {analyzingJobs.length > 1 ? ` (${analyzingJobs.length})` : ""}
+                  </span>
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-72 p-2">
+                <p className="px-1.5 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t("command.analyzing")}</p>
+                <div className="space-y-0.5">
+                  {analyzingJobs.map((job) => (
+                    <div key={job.id} className="flex items-center gap-2 rounded-lg py-1 pl-1.5 pr-1">
+                      <span className="h-3 w-3 shrink-0 rounded-full border-2 border-primary/25 border-t-primary animate-spin" />
+                      <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground" title={job.title}>{job.title}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => cancelAnalyzing(job.id)}
+                        title={t("settings.cancel")}
+                        aria-label={t("settings.cancel")}
+                        className="h-6 w-6 shrink-0 rounded-md text-muted-foreground hover:text-destructive"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
           </>
         )}
 

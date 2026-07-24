@@ -23,7 +23,6 @@ interface Props {
   browse: BrowseTarget | null;
   onCloseBrowse: () => void;
   onOpenExternal: (url: string) => void;
-  onLearnFromReader: (args: { title: string; text: string; commentsText?: string }) => void;
 
   selected: RssTabSelection;
   feedsViewMode: FeedViewMode;
@@ -54,7 +53,6 @@ export function FeedsMainContent({
   browse,
   onCloseBrowse,
   onOpenExternal,
-  onLearnFromReader,
   selected,
   feedsViewMode,
   booting,
@@ -89,7 +87,6 @@ export function FeedsMainContent({
         }
         onBack={onCloseBrowse}
         onOpenExternal={() => onOpenExternal(browse.url)}
-        onLearn={onLearnFromReader}
         hnItemId={browse.hnItemId}
       />
     );

@@ -42,8 +42,8 @@ export class AnthropicProvider implements AIProvider {
     logUsage(this.id, this.modelId, inputChars, full.length);
   }
 
-  async *generate(systemPrompt: string, userPrompt: string): AsyncGenerator<string> {
-    yield* this.streamMessages(systemPrompt, userPrompt);
+  async *generate(systemPrompt: string, userPrompt: string, signal?: AbortSignal): AsyncGenerator<string> {
+    yield* this.streamMessages(systemPrompt, userPrompt, signal);
   }
 
   async *chat(

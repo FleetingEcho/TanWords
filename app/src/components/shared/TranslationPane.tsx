@@ -108,13 +108,13 @@ function TranslatedCommentRow({ item, translated }: { item: FlatHnComment; trans
 }
 
 /** The actual translation UI — reused by TranslateModal (as a popup) and ArticleReader's
- *  inline split view (50/50 alongside the original). Article and comments translate
- *  concurrently and independently (own retry, own collapse); comments are translated
- *  per-comment (not flattened into one blob) so the translated view keeps the same
- *  structure as the live thread — author, depth, "replying to X", reply counts — via
- *  @@id@@ markers the model is asked to preserve (see providers/base.ts). The actual
- *  translation lives in translateStore, keyed by the text being translated, so it keeps
- *  running (and stays cached) independent of whether this component is even mounted. */
+ *  inline split view. Article and comments translate concurrently and independently
+ *  (own retry, own collapse); comments are translated per-comment (not flattened into
+ *  one blob) so the translated view keeps the same structure as the live thread —
+ *  author, depth, "replying to X", reply counts — via @@id@@ markers the model is asked
+ *  to preserve (see providers/base.ts). The actual translation lives in translateStore,
+ *  keyed by the text being translated, so it keeps running (and stays cached) independent
+ *  of whether this component is even mounted. */
 export function TranslationPane({ articleText, hnItemId }: Props) {
   const t = useT();
   const hasHn = hnItemId != null;

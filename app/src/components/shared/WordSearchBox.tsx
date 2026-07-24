@@ -6,11 +6,14 @@ import { useWordModalStore } from "@/store/wordModalStore";
 import { SearchIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 
-/** Vocabulary lookup box for the lesson panel: type any word from the article
- * (not just the AI's picks) to see whether it's already collected — click
- * through to its detail — or add it on the spot. Lives inside a popover (see
- * LessonView) so it doesn't take permanent space away from the AI notes panel. */
-export function WordSearchBox() {
+/** Global vocabulary lookup box: type any word to see whether it's already
+ * collected — click through to its detail — or add it on the spot.
+ * `variant="inline"` renders the results as a floating dropdown so it can sit
+ * directly in a fixed-height bar (the top CommandBar) without growing it;
+ * the default `"popover"` stacks results in normal flow for use inside a
+ * Popover (see the Reading lesson panel). */
+export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "inline" }) {
+  const inline = variant === "inline";
   const db = useDB();
   const t = useT();
   const openWordModal = useWordModalStore((s) => s.openWordModal);
@@ -72,10 +75,11 @@ export function WordSearchBox() {
   };
 
   return (
-    <div className="space-y-2">
+    <div className={inline ? "relative" : "space-y-2"}>
       <div className="relative">
         <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
         <input
+          autoFocus={!inline}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
@@ -87,7 +91,7 @@ export function WordSearchBox() {
       </div>
 
       {q && searched && (
-        <div className="space-y-1">
+        <div className={inline ? "absolute left-0 right-0 top-full z-50 mt-2 space-y-1 rounded-xl border border-border bg-popover p-2 shadow-2xl" : "space-y-1"}>
           {matches.map((w) => (
             <Button
               key={w.id}

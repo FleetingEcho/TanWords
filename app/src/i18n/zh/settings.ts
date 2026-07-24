@@ -109,7 +109,7 @@ export const settings: Dict = {
     "settings.topBarItemsSub": "选择顶部导航中显示的快捷入口；隐藏后仍可通过 Command-K 使用命令。",
     "settings.topBarItemsSelected": "已显示 {n} 项",
     "settings.topBar.new": "新建",
-    "settings.topBar.search": "命令搜索",
+    "settings.topBar.search": "单词搜索",
     "settings.topBar.context": "页面操作",
     "settings.topBar.mcp": "MCP 状态",
     "settings.topBar.ai": "AI 模型",
