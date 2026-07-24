@@ -5,7 +5,6 @@ import { toast } from "sonner";
 import { useT } from "@/hooks/useT";
 import { useDB } from "@/hooks/useDB";
 import { useNavStore } from "@/store/navStore";
-import { useReadingStore } from "@/store/readingStore";
 import { useAnalyzeArticle } from "@/hooks/useAnalyzeArticle";
 import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
 import { usePlayerOriginStore } from "@/store/playerOriginStore";
@@ -16,7 +15,7 @@ import type { RssEntryRow, RssFeed } from "@/hooks/useDB.types";
 import { FeedTabs } from "./FeedTabs";
 import { AddFeedDialog } from "./AddFeedDialog";
 import { FeedsMainContent, type BrowseTarget } from "./FeedsMainContent";
-import { TranslateModal } from "@/components/Reading/TranslateModal";
+import { TranslateModal } from "@/components/shared/TranslateModal";
 import { flattenHnComments } from "@/lib/hnComments";
 import { useHnCommentsStore } from "@/store/hnCommentsStore";
 import { useTitleTranslateStore } from "@/store/titleTranslateStore";
@@ -33,7 +32,6 @@ export function FeedsPage() {
   const t = useT();
   const db = useDB();
   const { navigate } = useNavStore();
-  const { setDraft } = useReadingStore();
   const { analyze } = useAnalyzeArticle();
   const feedsViewMode = useSettingsStore((s) => s.feedsViewMode);
   const setFeedsViewMode = useSettingsStore((s) => s.setFeedsViewMode);
@@ -210,9 +208,12 @@ export function FeedsPage() {
     });
   };
 
-  const goToReading = (title: string, text: string, sourceUrl: string, commentsText?: string, hnItemId?: number | null) => {
-    setDraft({ title, text, sourceUrl, origin: "rss", commentsText, hnItemId });
-    navigate("reading");
+  /** "Learn": opens a new AI Chat conversation with the Reading Tutor preset,
+   *  pasting the article straight in as the first message — there's no
+   *  standalone Reading page to hand articles off to anymore. */
+  const learnViaChat = (title: string, text: string, commentsText?: string) => {
+    window.dispatchEvent(new CustomEvent("tanwords:learn-article", { detail: { title, text, commentsText } }));
+    navigate("chat");
   };
 
   const openExternal = async (url: string) => {
@@ -239,7 +240,7 @@ export function FeedsPage() {
           // Comments are a bonus pass — never block Learn on them.
         }
       }
-      goToReading(article.title || entry.title, article.text_content, entry.url, commentsText, entry.hn_item_id ?? null);
+      learnViaChat(article.title || entry.title, article.text_content, commentsText);
     } catch {
       // Extraction failed (paywall etc.) — fall back to the reader so the user sees why.
       toast(t("reader.extractFailed"));
@@ -270,10 +271,10 @@ export function FeedsPage() {
   };
 
   /** Queue this article (and its comments, if HN) for AI analysis in the background —
-   *  stays on the Feeds page instead of navigating to Reading like the regular Learn
-   *  button does; a toast reports completion with a "View" action once it's ready.
-   *  Several entries can run concurrently (tracked as a set, not a single id) since
-   *  fetch_article and the AI call are plain async I/O — nothing here blocks the UI. */
+   *  stays on the Feeds page instead of opening a chat like the "Learn" button does;
+   *  a toast just reports completion. Several entries can run concurrently (tracked
+   *  as a set, not a single id) since fetch_article and the AI call are plain async
+   *  I/O — nothing here blocks the UI. */
   const analyzeInBackground = async (entry: RssEntryRow) => {
     if (analyzingBackgroundIds.has(entry.id)) return;
     setAnalyzingBackgroundIds((prev) => new Set(prev).add(entry.id));
@@ -296,15 +297,7 @@ export function FeedsPage() {
         commentsText,
         hnItemId: entry.hn_item_id ?? null,
       });
-      toast.success(t("feeds.analyzeBackground.done", { title: result.title }), {
-        action: {
-          label: t("feeds.analyzeBackground.view"),
-          onClick: () => {
-            useReadingStore.getState().setPendingArticleId(result.articleId);
-            navigate("reading");
-          },
-        },
-      });
+      toast.success(t("feeds.analyzeBackground.done", { title: result.title }));
     } catch (e: any) {
       toast.error(e?.message || t("feeds.analyzeBackground.failed", { title: entry.title }));
     } finally {
@@ -372,9 +365,6 @@ export function FeedsPage() {
           browse={browse}
           onCloseBrowse={() => setBrowse(null)}
           onOpenExternal={openExternal}
-          onLearnFromReader={({ title, text, commentsText }) =>
-            goToReading(title, text, browse!.url, commentsText, browse!.hnItemId)
-          }
           selected={selected}
           feedsViewMode={feedsViewMode}
           booting={booting}

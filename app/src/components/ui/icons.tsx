@@ -6,7 +6,6 @@ import {
   DocumentTextIcon,
   ChatBubbleLeftRightIcon,
   Cog6ToothIcon,
-  NewspaperIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   ArrowTopRightOnSquareIcon,
@@ -30,6 +29,8 @@ import {
   LanguageIcon,
   BookmarkIcon as BookmarkIconOutline,
   CloudArrowUpIcon,
+  LightBulbIcon,
+  CheckIcon as HeroCheckIcon,
 } from "@heroicons/react/24/outline";
 import {
   ArrowPathIcon,
@@ -130,10 +131,6 @@ export function FeedIcon({ className }: IconProps) {
   return <RssIcon className={className} />;
 }
 
-export function ReadingIcon({ className }: IconProps) {
-  return <NewspaperIcon className={className} />;
-}
-
 // ── Actions & misc ─────────────────────────────────────────────────────────
 
 export function ChevronIcon({ className, direction }: IconProps & { direction: "left" | "right" }) {
@@ -162,6 +159,14 @@ export function BookmarkIcon({ className }: IconProps) {
 
 export function AnalyzeBackgroundIcon({ className }: IconProps) {
   return <CloudArrowUpIcon className={className} />;
+}
+
+export function NotesIcon({ className }: IconProps) {
+  return <LightBulbIcon className={className} />;
+}
+
+export function CheckIcon({ className }: IconProps) {
+  return <HeroCheckIcon className={className} />;
 }
 
 export function SpeakerIcon({ className }: IconProps) {

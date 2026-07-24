@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useDB } from "@/hooks/useDB";
 import { SpeakButton } from "@/components/ui/SpeakButton";
@@ -40,6 +40,31 @@ export function VocabExtractionCard({ items }: { items: ExtractedVocabItem[] }) 
   const [statuses, setStatuses] = useState<Record<number, ItemStatus>>({});
   const [addingAll, setAddingAll] = useState(false);
 
+  // Reopening a saved chat re-renders this card from the tool call's raw
+  // input — it has no memory of what got added last time, so check the
+  // vocabulary/known lists once on mount rather than always starting pending.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const [words, known] = await Promise.all([db.getWords(), db.getKnownWords()]);
+      if (cancelled) return;
+      const savedSet = new Set(words.map((w) => w.word.toLowerCase()));
+      const knownSet = new Set(known.map((w) => w.toLowerCase()));
+      setStatuses((prev) => {
+        const next = { ...prev };
+        items.forEach((item, i) => {
+          if (next[i]) return; // an action already taken this session wins
+          const lower = item.word.toLowerCase();
+          if (savedSet.has(lower)) next[i] = "added";
+          else if (knownSet.has(lower)) next[i] = "known";
+        });
+        return next;
+      });
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const pendingCount = items.filter((_, i) => !statuses[i]).length;
 
   const addOne = async (i: number) => {
@@ -70,7 +95,7 @@ export function VocabExtractionCard({ items }: { items: ExtractedVocabItem[] }) 
   };
 
   return (
-    <div className="my-1 rounded-2xl border border-border overflow-hidden bg-card max-w-lg">
+    <div className="my-1 w-full rounded-2xl border border-border overflow-hidden bg-card">
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border bg-muted/30">
         <SparkIcon className="w-3.5 h-3.5 text-primary" />
         <span className="text-xs font-semibold flex-1">提取到 {items.length} 个词条</span>

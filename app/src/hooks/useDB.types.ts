@@ -16,42 +16,6 @@ export interface ChatSessionDetail extends ChatSessionItem {
   system_prompt: string;
 }
 
-export interface ArticleListItem {
-  id: number;
-  title: string;
-  source_url: string;
-  origin: string;
-  created_at: string;
-}
-
-export interface ArticleDetail {
-  id: number;
-  title: string;
-  source_url: string;
-  origin: string;
-  content: string;
-  created_at: string;
-  /** The AI's write-up of notable words/sentences from the article (and HN
-   * comments, when loaded), as markdown — read, not operated on. */
-  analysis_markdown: string;
-  /** Set when this lesson came from a Hacker News (or hnrss-style) entry —
-   * lets the Reading page show the original discussion thread below the
-   * article, not just the AI's analysis of it. */
-  hn_item_id: number | null;
-}
-
-export interface SavedSentence {
-  id: number;
-  text: string;
-  zh: string;
-  note: string;
-  /** Null once the source article has been deleted; article_title is kept
-   * regardless so provenance still shows in the global saved list. */
-  article_id: number | null;
-  article_title: string;
-  created_at: string;
-}
-
 export interface WordListItem {
   id: number;
   word: string;

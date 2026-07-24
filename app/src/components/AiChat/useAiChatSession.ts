@@ -156,6 +156,30 @@ export function useAiChatSession() {
     localStorage.removeItem(ACTIVE_SESSION_KEY);
   };
 
+  // Deferred to a render tick (see the effect below) rather than sent inline —
+  // sendMessage reads selectedPreset/systemPrompt/activeId from this closure,
+  // which is still the *previous* render's until React actually commits the
+  // setSelectedPreset/setActiveId calls just made in startWithArticle.
+  const [pendingArticleSend, setPendingArticleSend] = useState<string | null>(null);
+
+  /** Opens a fresh conversation with the Reading Tutor preset and the given
+   *  article as the first message — the "Learn" action's new home now that
+   *  there's no standalone Reading page to hand articles off to. */
+  const startWithArticle = (article: { title: string; text: string; commentsText?: string }) => {
+    startNew();
+    selectPreset("reading-tutor");
+    const body = article.commentsText
+      ? `${article.title}\n\n${article.text}\n\n---\n\nComments:\n${article.commentsText}`
+      : `${article.title}\n\n${article.text}`;
+    setPendingArticleSend(body);
+  };
+
+  useEffect(() => {
+    if (pendingArticleSend === null) return;
+    setPendingArticleSend(null);
+    sendMessage(pendingArticleSend);
+  }, [pendingArticleSend]);
+
   const selectPreset = (presetId: string) => {
     setSelectedPreset(presetId);
     setCustomPrompt(presetId === "custom" ? "" : buildPresetPrompt(presetId, targetLevel));
@@ -475,7 +499,7 @@ export function useAiChatSession() {
   return {
     // sidebar
     displaySessions, grouped: groupSessions(displaySessions), searchQuery, setSearchQuery,
-    activeId, switchSession, deleteSession, startNew,
+    activeId, switchSession, deleteSession, startNew, startWithArticle,
     // active session
     displayItems, activeTitle, isNewSession, streaming,
     tokenCount: estimateTokens(displayItems),

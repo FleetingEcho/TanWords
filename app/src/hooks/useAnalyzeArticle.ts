@@ -58,12 +58,13 @@ ${text}
 export interface AnalysisResult {
   articleId: number;
   title: string;
+  markdown: string;
 }
 
 export function useAnalyzeArticle() {
   const db = useDB();
   // Global rather than local useState: the underlying AI call already keeps running
-  // if the caller (e.g. ReadingPage) unmounts mid-analysis — it's just a plain async
+  // if the caller (e.g. ArticleReader) unmounts mid-analysis — it's just a plain async
   // function, not tied to React lifecycle — but local state wouldn't stay observable
   // once that happens. This makes progress visible from anywhere (see CommandBar).
   // Each call gets its own job id, so several can run concurrently (e.g. a few
@@ -87,8 +88,9 @@ export function useAnalyzeArticle() {
       hnItemId?: number | null;
     }): Promise<AnalysisResult> => {
       const jobId = crypto.randomUUID();
+      const controller = new AbortController();
       const { start, setProgress, finish } = useAnalysisStore.getState();
-      start(jobId, opts.title?.trim() || "Untitled");
+      start(jobId, opts.title?.trim() || "Untitled", controller);
       try {
         const provider = findBestProvider();
         if (!provider) throw new Error("未找到 AI 提供商，请在设置中注册");
@@ -103,7 +105,7 @@ export function useAnalyzeArticle() {
         let received = 0;
         const runPrompt = async (systemPrompt: string, userPrompt: string): Promise<string> => {
           const chunks: string[] = [];
-          for await (const chunk of provider.generate(systemPrompt, userPrompt)) {
+          for await (const chunk of provider.generate(systemPrompt, userPrompt, controller.signal)) {
             chunks.push(chunk);
             received += chunk.length;
             setProgress(jobId, received);
@@ -118,8 +120,11 @@ export function useAnalyzeArticle() {
           try {
             const commentsMarkdown = await runPrompt(system, buildCommentsPrompt(opts.commentsText, excludeWords, targetLevel));
             markdown += `\n\n---\n\n## From the comments\n\n${commentsMarkdown}`;
-          } catch {
-            // The comments pass is a bonus — a flaky/short response there shouldn't sink the whole Learn action.
+          } catch (e: any) {
+            // The comments pass is a bonus — a flaky/short response there shouldn't sink the whole
+            // Learn action. A cancellation is different: it means the whole job should stop, not
+            // silently save an article-only result as if nothing happened.
+            if (e?.name === "AbortError") throw e;
           }
         }
 
@@ -132,7 +137,7 @@ export function useAnalyzeArticle() {
           markdown,
           opts.hnItemId ?? null
         );
-        return { articleId, title };
+        return { articleId, title, markdown };
       } catch (e: any) {
         if (e.message === "Load failed" || e.message === "Failed to fetch") {
           throw new Error("网络请求失败。请检查 API Key 与网络连接");

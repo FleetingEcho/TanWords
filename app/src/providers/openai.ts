@@ -49,11 +49,11 @@ export class OpenAIProvider implements AIProvider {
     logUsage(this.id, this.modelId, inputChars, full.length);
   }
 
-  async *generate(systemPrompt: string, userPrompt: string): AsyncGenerator<string> {
+  async *generate(systemPrompt: string, userPrompt: string, signal?: AbortSignal): AsyncGenerator<string> {
     yield* this.streamChat([
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
-    ]);
+    ], signal);
   }
 
   async *chat(

@@ -3,7 +3,7 @@ import { useLayoutStore } from "@/store/layoutStore";
 import { useT } from "@/hooks/useT";
 import {
   GridIcon, BookIcon, DocIcon, ChatIcon,
-  FeedIcon, ReadingIcon, ChevronIcon, CompassIcon, MusicIcon,
+  FeedIcon, ChevronIcon, CompassIcon, MusicIcon,
 } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { useSettingsStore, type SidebarTabId } from "@/store/settingsStore";
@@ -23,7 +23,6 @@ interface NavItemDef {
 const NAV_ITEM_DEFS: Omit<NavItemDef, "label">[] = [
   { id: "dashboard", icon: GridIcon },
   { id: "feeds", icon: FeedIcon },
-  { id: "reading", icon: ReadingIcon },
   { id: "scene-lab", icon: CompassIcon },
   { id: "vocabulary", icon: BookIcon, showCount: "word" },
   { id: "documents", icon: DocIcon },

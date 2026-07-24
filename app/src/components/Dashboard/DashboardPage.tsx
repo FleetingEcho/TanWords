@@ -2,9 +2,8 @@ import React, { useEffect, useState } from "react";
 import { useDB, DashboardStats } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { useNavStore } from "@/store/navStore";
-import { useReadingStore } from "@/store/readingStore";
 import { useSettingsStore } from "@/store/settingsStore";
-import { ReadingIcon, ChatIcon, FeedIcon } from "@/components/ui/icons";
+import { ChatIcon, FeedIcon } from "@/components/ui/icons";
 import { RssWidget } from "./RssWidget";
 import { Button } from "@/components/ui/button";
 
@@ -48,7 +47,6 @@ export function DashboardPage() {
   const t = useT();
   const lang = useSettingsStore((s) => s.uiLanguage);
   const navigate = useNavStore((s) => s.navigate);
-  const setPendingArticleId = useReadingStore((s) => s.setPendingArticleId);
   const [stats, setStats] = useState<DashboardStats | null>(null);
 
   useEffect(() => {
@@ -73,13 +71,6 @@ export function DashboardPage() {
     weekday: "long",
   });
 
-  const resumeLesson = (articleId: number) => {
-    setPendingArticleId(articleId);
-    navigate("reading");
-  };
-
-  const resume = stats?.resume ?? null;
-
   return (
     <div className="p-6 space-y-5 animate-fade-in w-full">
       {/* Greeting */}
@@ -87,55 +78,6 @@ export function DashboardPage() {
         <h1 className="text-2xl font-bold">{greeting}</h1>
         <p className="text-sm text-muted-foreground mt-1">{dateLabel}</p>
       </div>
-
-      {/* Hero: resume the unfinished lesson, or start a new one */}
-      {resume ? (
-        <Button
-          variant="ghost"
-          onClick={() => resumeLesson(resume.article_id)}
-          className="h-auto group w-full block text-left bg-gradient-to-br from-primary to-indigo-700 text-primary-foreground rounded-2xl p-6 relative overflow-hidden transition-transform hover:scale-[1.005] hover:bg-gradient-to-br hover:from-primary hover:to-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-        >
-          <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest opacity-80">
-            {resume.origin === "hackernews" && (
-              <span className="w-4 h-4 rounded-sm bg-white/20 text-[9px] font-bold flex items-center justify-center">Y</span>
-            )}
-            {resume.origin === "rss" && (
-              <span className="w-4 h-4 rounded-sm bg-white/20 flex items-center justify-center">
-                <FeedIcon className="w-2.5 h-2.5" />
-              </span>
-            )}
-            {t("dash.resume.eyebrow")}
-          </div>
-          <p className="text-xl font-bold leading-snug mt-2 pr-32 line-clamp-2">{resume.title}</p>
-          <div className="mt-4 max-w-md">
-            <div className="h-1.5 rounded-full bg-white/20 overflow-hidden">
-              <div
-                className="h-full rounded-full bg-white/90 transition-all"
-                style={{ width: `${Math.round((resume.processed / Math.max(resume.total, 1)) * 100)}%` }}
-              />
-            </div>
-            <p className="text-xs opacity-80 mt-1.5 tabular-nums">
-              {t("dash.resume.progress", { done: resume.processed, total: resume.total })}
-            </p>
-          </div>
-          <span className="absolute right-6 bottom-6 inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-white/15 backdrop-blur text-sm font-semibold group-hover:bg-white/25 transition-colors">
-            {t("dash.resume.cta")} →
-          </span>
-        </Button>
-      ) : (
-        <Button
-          variant="ghost"
-          onClick={() => navigate("reading")}
-          className="h-auto group w-full block text-left bg-gradient-to-br from-primary to-indigo-700 text-primary-foreground rounded-2xl p-6 relative overflow-hidden transition-transform hover:scale-[1.005] hover:bg-gradient-to-br hover:from-primary hover:to-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-        >
-          <p className="text-[11px] font-bold uppercase tracking-widest opacity-80">{t("dash.start.eyebrow")}</p>
-          <p className="text-xl font-bold leading-snug mt-2">{t("dash.start.title")}</p>
-          <p className="text-sm opacity-80 mt-1">{t("dash.start.sub")}</p>
-          <span className="absolute right-6 bottom-6 inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-white/15 backdrop-blur text-sm font-semibold group-hover:bg-white/25 transition-colors">
-            {t("dash.start.cta")} →
-          </span>
-        </Button>
-      )}
 
       {/* Stat tiles: what has been collected, not how diligently */}
       <div className="grid grid-cols-3 gap-3">
@@ -149,9 +91,8 @@ export function DashboardPage() {
         <div className="space-y-3">
           {/* Quick actions */}
           <div className="bg-card border border-border rounded-2xl p-4">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {[
-                { icon: ReadingIcon, label: t("dash.quick.reading"), go: () => navigate("reading") },
                 { icon: FeedIcon, label: t("dash.quick.feeds"), go: () => navigate("feeds") },
                 { icon: ChatIcon, label: t("dash.quick.chat"), go: () => navigate("chat") },
               ].map((a) => (

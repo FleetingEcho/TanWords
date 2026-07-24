@@ -33,13 +33,25 @@ export function AiChatPage() {
   React.useEffect(() => {
     const onNewChat = () => s.startNew();
     const onDigest = () => setDigestOpen(true);
+    const onLearnArticle = (e: Event) => {
+      const detail = (e as CustomEvent<{ title: string; text: string; commentsText?: string }>).detail;
+      if (detail) s.startWithArticle(detail);
+    };
+    const onOpenChat = (e: Event) => {
+      const detail = (e as CustomEvent<{ sessionId: string }>).detail;
+      if (detail?.sessionId) s.switchSession(detail.sessionId);
+    };
     window.addEventListener("tanwords:new-chat", onNewChat);
     window.addEventListener("tanwords:conversation-note", onDigest);
+    window.addEventListener("tanwords:learn-article", onLearnArticle);
+    window.addEventListener("tanwords:open-chat", onOpenChat);
     return () => {
       window.removeEventListener("tanwords:new-chat", onNewChat);
       window.removeEventListener("tanwords:conversation-note", onDigest);
+      window.removeEventListener("tanwords:learn-article", onLearnArticle);
+      window.removeEventListener("tanwords:open-chat", onOpenChat);
     };
-  }, [s.startNew]);
+  }, [s.startNew, s.startWithArticle, s.switchSession]);
 
   return (
     <div className="flex h-full overflow-hidden bg-background bg-[radial-gradient(circle_at_55%_-20%,hsl(var(--primary)/.09),transparent_38%)]">
@@ -115,16 +127,23 @@ export function AiChatPage() {
               if (item.kind === "tool_block") {
                 const extractCalls = item.calls.filter((c) => c.name === "extract_vocabulary");
                 const otherCalls = item.calls.filter((c) => c.name !== "extract_vocabulary");
+                // Mirrors MessageBubble's own box model exactly (avatar-width
+                // spacer + gap-3, content capped at max-w-[82%]) so a tool call
+                // sitting between two AI messages lines up on both edges, not
+                // just the left one.
                 return (
-                  <React.Fragment key={idx}>
-                    {extractCalls.map((c) => (
-                      <VocabExtractionCard
-                        key={c.id}
-                        items={((c.input.items as ExtractedVocabItem[]) ?? [])}
-                      />
-                    ))}
-                    {otherCalls.length > 0 && <ToolCallCard calls={otherCalls} />}
-                  </React.Fragment>
+                  <div key={idx} className="flex gap-3">
+                    <div className="w-6 h-6 shrink-0" />
+                    <div className="min-w-0 max-w-[82%] flex flex-col gap-5">
+                      {extractCalls.map((c) => (
+                        <VocabExtractionCard
+                          key={c.id}
+                          items={((c.input.items as ExtractedVocabItem[]) ?? [])}
+                        />
+                      ))}
+                      {otherCalls.length > 0 && <ToolCallCard calls={otherCalls} />}
+                    </div>
+                  </div>
                 );
               }
               const isTyping =
@@ -132,6 +151,9 @@ export function AiChatPage() {
                 idx === s.displayItems.length - 1 &&
                 item.msg.role === "assistant" &&
                 !item.msg.content;
+              // A turn that was purely a tool call (see tool_block above) has no
+              // text of its own — nothing to render once it's done streaming.
+              if (!isTyping && item.msg.role === "assistant" && !item.msg.content.trim()) return null;
               return <MessageBubble key={idx} msg={item.msg} isTyping={isTyping} />;
             })
           )}

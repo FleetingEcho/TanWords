@@ -6,7 +6,6 @@ import { VocabularyPage } from "@/components/Vocabulary/VocabularyPage";
 import { SettingsPage } from "@/components/Settings/SettingsPage";
 import { DocumentsPage } from "@/components/Documents/DocumentsPage";
 import { FeedsPage } from "@/components/Feeds/FeedsPage";
-import { ReadingPage } from "@/components/Reading/ReadingPage";
 import { AiChatPage } from "@/components/AiChat/AiChatPage";
 import { WordDetailModal } from "@/components/WordDetailModal";
 import { PlayerBar } from "@/components/ui/PlayerBar";
@@ -116,8 +115,6 @@ function App() {
         return <DashboardPage />;
       case "feeds":
         return <FeedsPage />;
-      case "reading":
-        return <ReadingPage />;
       case "scene-lab":
         return <React.Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-muted-foreground">Loading Knowledge Map…</div>}><KnowledgeMapPage /></React.Suspense>;
       case "music":
