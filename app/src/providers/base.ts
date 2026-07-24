@@ -94,6 +94,22 @@ export function buildEnrichUserPrompt(word: string, targetLevel: string): string
   return `请讲解这个英文单词："${word}"（学习者目标水平：${targetLevel}）`;
 }
 
+/** Short-form counterpart to DEFAULT_ENRICH_SYSTEM_PROMPT: a one-line gloss
+ * plus 2 examples instead of the full breakdown, for a fast inline preview
+ * before the learner commits to adding the word or asking for the deep
+ * analysis (see buildEnrichSystemPrompt). Same META line convention so the
+ * result can be parsed with parseEnrichmentStream and rendered with
+ * EnrichmentText like any other enrichment. */
+export const QUICK_LOOKUP_SYSTEM_PROMPT = `你是一位英语词汇助手，用中文为学习者快速讲解一个英文单词或短语。
+
+第一行必须是固定格式的元数据行：\`META: <CEFR等级，如 C1> | <10字以内的中文短释义>\`，然后空一行，再开始正文。
+
+正文务必简短快速：先一到两句中文释义（多义词只挑最常用的一个），紧接着给 2 条例句，不展开讲搭配、词源等内容。英文例句一律写成 markdown blockquote（\`> \` 开头），一条 blockquote 一句英文例句，可在同一 blockquote 内下一行附中文翻译。`;
+
+export function buildQuickLookupUserPrompt(word: string, targetLevel: string): string {
+  return `请快速讲解这个英文单词或短语："${word}"（学习者目标水平：${targetLevel}）`;
+}
+
 export function buildSystemPrompt(mode: TranslateParams["mode"], opts?: { preserveMarkers?: boolean }): string {
   const markerNote = opts?.preserveMarkers
     ? " The text is a batch of separate segments, each preceded by a marker on its own line looking like @@123@@. Copy every marker exactly as-is (same characters, same line, never translated, reformatted, merged, reordered, added, or dropped) immediately before that segment's translation, so the segments can be matched back up by marker afterwards."

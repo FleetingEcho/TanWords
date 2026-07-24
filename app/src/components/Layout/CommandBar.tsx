@@ -2,7 +2,7 @@ import React from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import {
-  BookPlus, BrainCircuit, Check, FilePlus2, Languages,
+  BrainCircuit, Check, FilePlus2, Languages,
   MessageSquarePlus, Monitor, Moon, Search, Server, Settings, Sparkles, Sun, Unplug, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,6 @@ import { useT } from "@/hooks/useT";
 import { findBestProvider } from "@/providers/select";
 import { getAllProviders, type AIProvider } from "@/providers";
 import { NavPage, useNavStore } from "@/store/navStore";
-import { useWordModalStore } from "@/store/wordModalStore";
 import { UpdateButton } from "@/components/Layout/UpdateButton";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useAnalysisStore } from "@/store/analysisStore";
@@ -28,7 +27,6 @@ const PAGE_IDS: NavPage[] = ["feeds", "vocabulary", "documents", "chat", "dashbo
 export function CommandBar({ activePage }: { activePage: NavPage }) {
   const t = useT();
   const navigate = useNavStore((state) => state.navigate);
-  const openWord = useWordModalStore((state) => state.openWordModal);
   const defaultProvider = useSettingsStore((state) => state.defaultAiProvider);
   const setDefaultProvider = useSettingsStore((state) => state.setDefaultAiProvider);
   const language = useSettingsStore((state) => state.uiLanguage);
@@ -42,9 +40,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   const cancelAnalyzing = useAnalysisStore((state) => state.cancel);
   const [analyzingOpen, setAnalyzingOpen] = React.useState(false);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
-  const [wordOpen, setWordOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
-  const [word, setWord] = React.useState("");
   const [mcp, setMcp] = React.useState<{ running: boolean; error: string | null }>({ running: false, error: null });
   const [providerConnected, setProviderConnected] = React.useState(() => Boolean(findBestProvider()));
   const [availableProviders, setAvailableProviders] = React.useState<AIProvider[]>(() => getAllProviders().filter((provider) => provider.apiKey));
@@ -87,33 +83,21 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
     const url = "https://github.com/FleetingEcho/TanWords";
     try { await openUrl(url); } catch { window.open(url, "_blank", "noopener,noreferrer"); }
   };
-  const addWord = () => {
-    const value = word.trim();
-    if (!value) return;
-    navigate("vocabulary");
-    openWord(value);
-    setWord("");
-    setWordOpen(false);
-  };
-
   const commands = [
     ...PAGE_IDS.map((page) => ({ label: t(`nav.${page}`), icon: Search, run: () => navigate(page) })),
     { label: t("command.newDocument"), icon: FilePlus2, run: newDocument },
     { label: t("command.newChat"), icon: MessageSquarePlus, run: newChat },
-    { label: t("command.addVocabulary"), icon: BookPlus, run: () => setWordOpen(true) },
   ].filter((command) => command.label.toLowerCase().includes(query.toLowerCase()));
 
   const context = activePage === "documents"
     ? { label: t("command.newDocument"), icon: FilePlus2, run: newDocument }
     : activePage === "chat"
       ? { label: t("command.conversationNote"), icon: Sparkles, run: digest }
-      : activePage === "vocabulary"
-        ? { label: t("command.addVocabulary"), icon: BookPlus, run: () => setWordOpen(true) }
-        : null;
+      : null;
 
   return (
     <>
-      <header className="flex h-12 shrink-0 select-none items-center gap-1.5 border-b border-border/80 bg-background/90 px-3 backdrop-blur-xl">
+      <header className="relative z-20 flex h-12 shrink-0 select-none items-center gap-1.5 border-b border-border/80 bg-background/90 px-3 backdrop-blur-xl">
         {visible("search") && <div className="min-w-0 max-w-72 flex-1"><WordSearchBox variant="inline" /></div>}
 
         {visible("context") && context && <><div className="mx-1 hidden h-5 w-px bg-border sm:block" /><Button variant="ghost" onClick={context.run} className="h-8 gap-2 rounded-lg px-2.5 text-xs font-medium text-foreground"><context.icon className="h-4 w-4 text-primary" /><span className="hidden lg:inline">{context.label}</span></Button></>}
@@ -210,8 +194,6 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
       </header>
 
       {paletteOpen && <div className="fixed inset-0 z-[100] flex justify-center bg-black/45 px-4 pt-[14vh] backdrop-blur-sm" onMouseDown={() => setPaletteOpen(false)}><div className="h-fit w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-popover shadow-2xl" onMouseDown={(event) => event.stopPropagation()}><div className="flex h-12 items-center gap-3 border-b border-border px-4"><Search className="h-4 w-4 text-muted-foreground" /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.key === "Escape" && setPaletteOpen(false)} placeholder={t("command.searchPlaceholder")} className="min-w-0 flex-1 bg-transparent text-sm outline-none" /><button onClick={() => setPaletteOpen(false)}><X className="h-4 w-4 text-muted-foreground" /></button></div><div className="max-h-80 overflow-y-auto p-2">{commands.map((command, index) => <button key={`${command.label}-${index}`} onClick={() => { command.run(); setPaletteOpen(false); setQuery(""); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-muted"><command.icon className="h-4 w-4 text-muted-foreground" /><span>{command.label}</span></button>)}</div></div></div>}
-
-      {wordOpen && <div className="fixed inset-0 z-[110] flex items-start justify-center bg-black/45 px-4 pt-[22vh] backdrop-blur-sm" onMouseDown={() => setWordOpen(false)}><form onSubmit={(event) => { event.preventDefault(); addWord(); }} onMouseDown={(event) => event.stopPropagation()} className="w-full max-w-md rounded-2xl border border-border bg-popover p-5 shadow-2xl"><div className="mb-4 flex items-center gap-3"><div className="grid h-9 w-9 place-items-center rounded-xl bg-primary/10 text-primary"><BookPlus className="h-4 w-4" /></div><div><p className="text-sm font-semibold">{t("command.addVocabulary")}</p><p className="text-xs text-muted-foreground">{t("command.addVocabularyHint")}</p></div></div><input autoFocus value={word} onChange={(event) => setWord(event.target.value)} placeholder={t("command.wordPlaceholder")} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/25" /><div className="mt-4 flex justify-end gap-2"><Button type="button" variant="ghost" onClick={() => setWordOpen(false)}>{t("settings.cancel")}</Button><Button type="submit" disabled={!word.trim()}>{t("settings.add")}</Button></div></form></div>}
     </>
   );
 }
