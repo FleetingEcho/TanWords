@@ -40,58 +40,58 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
   const [adding, setAdding] = useState(false);
   const [markingKnown, setMarkingKnown] = useState(false);
   const [markedKnown, setMarkedKnown] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const quickAbortRef = useRef<AbortController>();
 
   const q = query.trim();
   const exactMatch = matches.find((w) => w.word.toLowerCase() === q.toLowerCase());
 
+  // Editing the query invalidates whatever was last searched — reset instead
+  // of re-searching automatically, so the AI quick-lookup only ever fires on
+  // an explicit Enter (see runSearch) instead of once per keystroke pause.
   useEffect(() => {
-    clearTimeout(debounceRef.current);
     quickAbortRef.current?.abort();
+    setSearched(false);
+    setMatches([]);
     setMarkedKnown(false);
     setQuick(null);
     setQuickError(null);
     setQuickLoading(false);
     setNoProvider(false);
-    if (!q) {
-      setMatches([]);
-      setSearched(false);
+  }, [query]);
+
+  useEffect(() => () => quickAbortRef.current?.abort(), []);
+
+  const runSearch = async () => {
+    if (!q) return;
+    quickAbortRef.current?.abort();
+    const rows = await db.getWords({ search: q });
+    setMatches(rows.slice(0, 4));
+    setSearched(true);
+    if (rows.some((w) => w.word.toLowerCase() === q.toLowerCase())) return;
+    if (q.length < 2) return;
+
+    const provider = findBestProvider();
+    if (!provider) {
+      setNoProvider(true);
       return;
     }
-    debounceRef.current = setTimeout(async () => {
-      const rows = await db.getWords({ search: q });
-      setMatches(rows.slice(0, 4));
-      setSearched(true);
-      if (rows.some((w) => w.word.toLowerCase() === q.toLowerCase())) return;
-      if (q.length < 2) return;
-
-      const provider = findBestProvider();
-      if (!provider) {
-        setNoProvider(true);
-        return;
+    const controller = new AbortController();
+    quickAbortRef.current = controller;
+    setQuickLoading(true);
+    setQuickError(null);
+    let raw = "";
+    try {
+      for await (const chunk of provider.generate(QUICK_LOOKUP_SYSTEM_PROMPT, buildQuickLookupUserPrompt(q, targetLevel), controller.signal)) {
+        if (controller.signal.aborted) return;
+        raw += chunk;
+        setQuick(parseEnrichmentStream(raw));
       }
-      const controller = new AbortController();
-      quickAbortRef.current = controller;
-      setQuickLoading(true);
-      let raw = "";
-      try {
-        for await (const chunk of provider.generate(QUICK_LOOKUP_SYSTEM_PROMPT, buildQuickLookupUserPrompt(q, targetLevel), controller.signal)) {
-          if (controller.signal.aborted) return;
-          raw += chunk;
-          setQuick(parseEnrichmentStream(raw));
-        }
-      } catch (e: any) {
-        if (e?.name !== "AbortError") setQuickError(t("reading.search.quickFailed"));
-      } finally {
-        if (!controller.signal.aborted) setQuickLoading(false);
-      }
-    }, 250);
-    return () => {
-      clearTimeout(debounceRef.current);
-      quickAbortRef.current?.abort();
-    };
-  }, [query, db, targetLevel]);
+    } catch (e: any) {
+      if (e?.name !== "AbortError") setQuickError(t("reading.search.quickFailed"));
+    } finally {
+      if (!controller.signal.aborted) setQuickLoading(false);
+    }
+  };
 
   const handleAdd = async () => {
     if (!q || adding) return;
@@ -131,11 +131,16 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && q && searched && !exactMatch) handleAdd();
+            if (e.key === "Enter") { e.preventDefault(); void runSearch(); }
           }}
           placeholder={t("reading.search.placeholder")}
-          className="w-full h-8 pl-8 pr-2.5 rounded-lg border border-input bg-background text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground"
+          className="w-full h-8 pl-8 pr-7 rounded-lg border border-input bg-background text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground"
         />
+        {q && (
+          <kbd className="absolute right-2 top-1/2 -translate-y-1/2 rounded border border-border bg-muted px-1 py-0.5 font-mono text-[9px] leading-none text-muted-foreground pointer-events-none">
+            ↵
+          </kbd>
+        )}
       </div>
 
       {q && searched && (
@@ -178,18 +183,18 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
                   variant="ghost"
                   onClick={handleAdd}
                   disabled={adding}
-                  className="h-auto flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-primary hover:bg-primary/10 disabled:opacity-50 transition-colors"
+                  className="h-auto min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-primary hover:bg-primary/10 disabled:opacity-50 transition-colors"
                 >
-                  <BookPlus className="h-3.5 w-3.5" />
-                  {adding ? t("reading.search.adding") : t("reading.search.add", { word: q })}
+                  <BookPlus className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{adding ? t("reading.search.adding") : t("reading.search.addShort")}</span>
                 </Button>
                 <Button
                   variant="ghost"
                   onClick={() => openWordModal(q)}
-                  className="h-auto flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted transition-colors"
+                  className="h-auto min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted transition-colors"
                 >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  {t("reading.search.deepAnalyze")}
+                  <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{t("reading.search.deepAnalyze")}</span>
                 </Button>
               </div>
 

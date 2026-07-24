@@ -21,7 +21,6 @@ import { initProviders } from "@/lib/initProviders";
 import { invoke } from "@tauri-apps/api/core";
 import { ENRICHED_SEED_WORDS, BASIC_SEED_WORDS } from "@/data/seedWords";
 
-const KnowledgeMapPage = React.lazy(() => import("@/components/KnowledgeMap/KnowledgeMapPage"));
 const MusicPage = React.lazy(() => import("@/components/Music/MusicPage"));
 
 function App() {
@@ -115,8 +114,6 @@ function App() {
         return <DashboardPage />;
       case "feeds":
         return <FeedsPage />;
-      case "scene-lab":
-        return <React.Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-muted-foreground">Loading Knowledge Map…</div>}><KnowledgeMapPage /></React.Suspense>;
       case "music":
         return <React.Suspense fallback={null}><MusicPage /></React.Suspense>;
       case "vocabulary":

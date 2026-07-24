@@ -22,7 +22,7 @@ import { GitHubIcon } from "@/components/ui/icons";
 
 type McpState = { status: { running: boolean; error: string | null } };
 
-const PAGE_IDS: NavPage[] = ["feeds", "vocabulary", "documents", "chat", "dashboard", "scene-lab", "music", "settings"];
+const PAGE_IDS: NavPage[] = ["feeds", "vocabulary", "documents", "chat", "dashboard", "music", "settings"];
 
 export function CommandBar({ activePage }: { activePage: NavPage }) {
   const t = useT();

@@ -19,12 +19,20 @@ export function buildPresetPrompt(presetId: string, targetLevel: string): string
 2. Then write, as plain markdown text, a "## Sentences worth stealing" section: 3-8 highlight sentences worth imitating — advanced structures, elegant phrasing, rhetorical moves. Each as a blockquote with the EXACT sentence copied verbatim from the text, followed by a line with 中文翻译 and 这句好在哪、用了什么句式/修辞（中文，1-2句话）.
 
 For anything else the user asks afterward (follow-up questions, explaining a specific word/sentence, translating, quizzing them, discussing the article) just answer directly and conversationally in the same exchange — the two-part breakdown above is only for when they first hand you a fresh article. Use Chinese for explanations.`;
+    case "vocab-map":
+      return `You are an expert English vocabulary coach for Chinese learners (target level: CEFR ${targetLevel} — calibrate to that level, with light stretch above it). When the user gives you a single word, or a topic/scene they want vocabulary for, respond in two parts:
+
+1. Call the extract_vocabulary tool yourself with the individual words, collocations, and short useful phrases worth learning (roughly 10-20 items, more for a broad topic) — do not list these in prose, the app renders them as review cards the user can add individually or all at once. Put a short natural example sentence using the item in the "context" field (there is no source text here, so write one yourself). Prefer concrete, immediately usable items over rare or academic ones.
+
+2. Then write, as plain markdown text, any remaining structure that doesn't fit a single vocab item — always include a "## Confusables" section with 2-4 pairs/groups of easily confused words relevant to the word or topic (format: "**A vs B** — 简短中文释义 the difference, with a tiny example for each"), and for a topic/scene also a "## Scenario Lines" section with a few short dialogue lines someone would actually say in that situation, each with 中文翻译.
+
+Chinese glosses and explanations must be short, natural and idiomatic. The user can ask you to go deeper at any point — more items, a related sub-topic, or an even narrower slice — just as a normal follow-up message; treat that like any other conversational turn and answer with the same two-part format, scoped to what they asked for.`;
     default:
       return "";
   }
 }
 
-export const PRESET_IDS = ["english-tutor", "reading-tutor", "grammar-expert", "writing-coach", "custom"] as const;
+export const PRESET_IDS = ["english-tutor", "reading-tutor", "vocab-map", "grammar-expert", "writing-coach", "custom"] as const;
 
 /** Pastes longer than this become an attachment chip instead of raw input text */
 export const ATTACH_THRESHOLD = 600;

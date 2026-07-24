@@ -12,6 +12,7 @@ export interface PatternItem {
   created_at: string;
   examples: PatternExampleItem[];
 }
+export interface SavePatternResult { pattern_id: number; created: boolean }
 
 export function useDBPatterns() {
   const listPatterns = useCallback(async (): Promise<PatternItem[]> => {
@@ -22,5 +23,11 @@ export function useDBPatterns() {
     try { await invoke("db_delete_pattern", { patternId }); return true; }
     catch (e) { reportWriteError("deletePattern", e, "删除句式失败"); return false; }
   }, []);
-  return useMemo(() => ({ listPatterns, deletePattern }), [listPatterns, deletePattern]);
+  const saveSentencePattern = useCallback(async (
+    sentence: string, zh: string, skeleton: string, note: string, level: string, source: string
+  ): Promise<SavePatternResult | null> => {
+    try { return await invoke("db_save_sentence_pattern", { sentence, zh, skeleton, note, level, source }); }
+    catch (e) { reportWriteError("saveSentencePattern", e, "收藏句式失败"); return null; }
+  }, []);
+  return useMemo(() => ({ listPatterns, deletePattern, saveSentencePattern }), [listPatterns, deletePattern, saveSentencePattern]);
 }

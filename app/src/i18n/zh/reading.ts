@@ -18,6 +18,7 @@ export const reading: Dict = {
     "reading.search.placeholder": "查询或添加单词…",
     "reading.search.inVocab": "已在词库",
     "reading.search.add": "添加「{word}」到词库",
+    "reading.search.addShort": "加入词库",
     "reading.search.adding": "添加中…",
     "reading.search.added": "已添加「{word}」",
     "reading.search.quickFetching": "快速查询中…",

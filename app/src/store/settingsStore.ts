@@ -9,7 +9,7 @@ export type TopBarItemId = "search" | "context" | "mcp" | "ai" | "language" | "t
 export type RssTabSelection = number | "all" | "hackernews";
 
 export const DEFAULT_SIDEBAR_TABS: SidebarTabId[] = [
-  "dashboard", "feeds", "scene-lab", "vocabulary", "documents", "music", "chat",
+  "dashboard", "feeds", "vocabulary", "documents", "music", "chat",
 ];
 export const DEFAULT_TOPBAR_ITEMS: TopBarItemId[] = [
   "search", "context", "mcp", "ai", "language", "theme", "updates", "github",
