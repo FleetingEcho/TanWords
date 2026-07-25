@@ -149,6 +149,7 @@ pub fn run() {
             rss::db_mark_rss_entry_read,
             rss::db_get_rss_unread_counts,
             music::music_scan_library,
+            native_audio::native_audio_probe_duration,
             native_audio::native_audio_load,
             native_audio::native_audio_play,
             native_audio::native_audio_pause,

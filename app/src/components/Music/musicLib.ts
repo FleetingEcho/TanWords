@@ -1,42 +1,22 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
-import { toPlayableSrc } from "@/lib/localAudioSrc";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useSettingsStore } from "@/store/settingsStore";
 import { usePodcastPlayerStore, PodcastTrack } from "@/store/podcastPlayerStore";
 import { usePlayerOriginStore } from "@/store/playerOriginStore";
 import { MusicCollection } from "./types";
 
+/** Reads a local track's duration via the same native decoder used for actual
+ *  playback (see native_audio_probe_duration) instead of a plain HTML5 `<audio>`
+ *  element — WebKit's own demuxer has the same mp4-family duration bugs rodio's
+ *  does, so probing with `<audio>` could report no duration for a file that then
+ *  plays back (via the native path) with a perfectly correct one. */
 export async function probeAudioDuration(path: string): Promise<number | null> {
-  let blobUrl: string | null = null;
   try {
-    blobUrl = await toPlayableSrc(convertFileSrc(path));
+    const seconds = await invoke<number>("native_audio_probe_duration", { path });
+    return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
   } catch {
     return null;
   }
-  const src = blobUrl;
-  return new Promise((resolve) => {
-    const audio = new Audio();
-    let settled = false;
-    const finish = (duration: number | null) => {
-      if (settled) return;
-      settled = true;
-      window.clearTimeout(timeout);
-      audio.removeAttribute("src");
-      audio.load();
-      if (src.startsWith("blob:")) URL.revokeObjectURL(src);
-      resolve(duration);
-    };
-    const timeout = window.setTimeout(() => finish(null), 10_000);
-
-    audio.preload = "metadata";
-    audio.addEventListener(
-      "loadedmetadata",
-      () => finish(Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : null),
-      { once: true }
-    );
-    audio.addEventListener("error", () => finish(null), { once: true });
-    audio.src = src;
-  });
 }
 
 export async function fillMissingDurations(collections: MusicCollection[]): Promise<MusicCollection[]> {

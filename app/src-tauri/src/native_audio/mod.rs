@@ -47,6 +47,24 @@ impl NativeAudioState {
     }
 }
 
+/// Reads just the duration of a local file via the same decoder used for actual
+/// playback (open_decoder — CoreAudio/ExtAudioFile for mp4/m4a/aac on macOS, etc.),
+/// without touching playback state. The music library's list view previously probed
+/// duration with a plain HTML5 `<audio>` element instead, which (like rodio's own
+/// Symphonia demuxer) can misjudge duration for mp4-family containers — especially
+/// "video" files that are really just audio (e.g. a song shipped as .mp4) — leaving
+/// the list showing no duration for a track that plays back with a perfectly correct
+/// one. Reusing the real decoder keeps the two guaranteed to agree.
+#[tauri::command]
+pub fn native_audio_probe_duration(path: String) -> Result<f64, String> {
+    let path = PathBuf::from(path);
+    if !path.is_absolute() || !path.is_file() {
+        return Err("invalid local audio path".into());
+    }
+    let decoder = open_decoder(&path)?;
+    Ok(decoder.total_duration().map(|d| d.as_secs_f64()).unwrap_or(0.0))
+}
+
 #[tauri::command]
 pub fn native_audio_load(
     path: String,
