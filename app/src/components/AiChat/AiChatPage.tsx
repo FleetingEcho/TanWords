@@ -2,7 +2,8 @@ import React from "react";
 import { useT } from "@/hooks/useT";
 import { MessageBubble } from "./MessageBubble";
 import { ToolCallCard } from "./ToolCallCard";
-import { VocabExtractionCard, ExtractedVocabItem } from "./VocabExtractionCard";
+import { VocabExtractionCard, VOCAB_CARD_TOOL_NAMES, vocabItemsFromToolInput } from "./VocabExtractionCard";
+import { SentenceExtractionCard, SENTENCE_CARD_TOOL_NAMES, sentenceItemsFromToolInput } from "./SentenceExtractionCard";
 import { AiChatSidebar } from "./AiChatSidebar";
 import { AiChatComposer } from "./AiChatComposer";
 import { useAiChatSession, PRESET_IDS } from "./useAiChatSession";
@@ -125,8 +126,9 @@ export function AiChatPage() {
           ) : (
             s.displayItems.map((item, idx) => {
               if (item.kind === "tool_block") {
-                const extractCalls = item.calls.filter((c) => c.name === "extract_vocabulary");
-                const otherCalls = item.calls.filter((c) => c.name !== "extract_vocabulary");
+                const extractCalls = item.calls.filter((c) => VOCAB_CARD_TOOL_NAMES.has(c.name));
+                const sentenceCalls = item.calls.filter((c) => SENTENCE_CARD_TOOL_NAMES.has(c.name));
+                const otherCalls = item.calls.filter((c) => !VOCAB_CARD_TOOL_NAMES.has(c.name) && !SENTENCE_CARD_TOOL_NAMES.has(c.name));
                 // Mirrors MessageBubble's own box model exactly (avatar-width
                 // spacer + gap-3, content capped at max-w-[82%]) so a tool call
                 // sitting between two AI messages lines up on both edges, not
@@ -134,11 +136,17 @@ export function AiChatPage() {
                 return (
                   <div key={idx} className="flex gap-3">
                     <div className="w-6 h-6 shrink-0" />
-                    <div className="min-w-0 max-w-[82%] flex flex-col gap-5">
+                    <div className="min-w-0 flex-1 max-w-[82%] flex flex-col gap-5">
                       {extractCalls.map((c) => (
                         <VocabExtractionCard
                           key={c.id}
-                          items={((c.input.items as ExtractedVocabItem[]) ?? [])}
+                          items={vocabItemsFromToolInput(c.input)}
+                        />
+                      ))}
+                      {sentenceCalls.map((c) => (
+                        <SentenceExtractionCard
+                          key={c.id}
+                          items={sentenceItemsFromToolInput(c.input)}
                         />
                       ))}
                       {otherCalls.length > 0 && <ToolCallCard calls={otherCalls} />}
@@ -154,7 +162,11 @@ export function AiChatPage() {
               // A turn that was purely a tool call (see tool_block above) has no
               // text of its own — nothing to render once it's done streaming.
               if (!isTyping && item.msg.role === "assistant" && !item.msg.content.trim()) return null;
-              return <MessageBubble key={idx} msg={item.msg} isTyping={isTyping} />;
+              // A message right after a tool card (e.g. the vocab card's follow-up
+              // explanation) fills the same width instead of shrink-wrapping, so
+              // the two line up as one continuous block.
+              const fillCardWidth = idx > 0 && s.displayItems[idx - 1]?.kind === "tool_block";
+              return <MessageBubble key={idx} msg={item.msg} isTyping={isTyping} fillCardWidth={fillCardWidth} />;
             })
           )}
           <div ref={s.bottomRef} />

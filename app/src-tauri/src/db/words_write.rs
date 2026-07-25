@@ -72,6 +72,35 @@ pub fn db_delete_word(
 }
 
 #[tauri::command]
+pub fn db_delete_words_batch(
+    word_ids: Vec<i64>,
+    conn: State<'_, AppState>,
+) -> Result<(), String> {
+    let mut db = db::lock_db(&conn)?;
+    let tx = db.transaction().map_err(|e| e.to_string())?;
+    for word_id in word_ids {
+        tx.execute("DELETE FROM words WHERE id = ?1", params![word_id])
+            .map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn db_set_word_starred(
+    word_id: i64,
+    starred: bool,
+    conn: State<'_, AppState>,
+) -> Result<(), String> {
+    let db = db::lock_db(&conn)?;
+    db.execute(
+        "UPDATE words SET starred = ?1 WHERE id = ?2",
+        params![starred, word_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn db_add_word_enriched(
     word: String,
     _zh: String,

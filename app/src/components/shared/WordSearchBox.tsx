@@ -67,7 +67,6 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
     const rows = await db.getWords({ search: q });
     setMatches(rows.slice(0, 4));
     setSearched(true);
-    if (rows.some((w) => w.word.toLowerCase() === q.toLowerCase())) return;
     if (q.length < 2) return;
 
     const provider = findBestProvider();
@@ -159,26 +158,26 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
             </Button>
           ))}
 
-          {!exactMatch && (
-            <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-2">
-              {quickLoading && !quick && <p className="px-1 text-xs text-muted-foreground animate-pulse">{t("reading.search.quickFetching")}</p>}
-              {quickError && <p className="px-1 text-xs text-destructive">{quickError}</p>}
-              {noProvider && <p className="px-1 text-xs text-muted-foreground">{t("modal.noProvider")}</p>}
+          <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-2">
+            {quickLoading && !quick && <p className="px-1 text-xs text-muted-foreground animate-pulse">{t("reading.search.quickFetching")}</p>}
+            {quickError && <p className="px-1 text-xs text-destructive">{quickError}</p>}
+            {noProvider && <p className="px-1 text-xs text-muted-foreground">{t("modal.noProvider")}</p>}
 
-              {quick?.text && (
-                <div className="space-y-1 px-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-foreground">{q}</span>
-                    {quick.zhShort && <span className="text-xs text-muted-foreground">{quick.zhShort}</span>}
-                    {quick.level && <span className="ml-auto shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">{quick.level}</span>}
-                  </div>
-                  <div className="text-xs leading-relaxed [&_blockquote]:my-1 [&_blockquote]:text-[11px]">
-                    <EnrichmentText text={quick.text} />
-                  </div>
+            {quick?.text && (
+              <div className="space-y-1 px-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-foreground">{q}</span>
+                  {quick.zhShort && <span className="text-xs text-muted-foreground">{quick.zhShort}</span>}
+                  {quick.level && <span className="ml-auto shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">{quick.level}</span>}
                 </div>
-              )}
+                <div className="text-xs leading-relaxed [&_blockquote]:my-1 [&_blockquote]:text-[11px]">
+                  <EnrichmentText text={quick.text} />
+                </div>
+              </div>
+            )}
 
-              <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5">
+              {!exactMatch && (
                 <Button
                   variant="ghost"
                   onClick={handleAdd}
@@ -188,16 +187,18 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
                   <BookPlus className="h-3.5 w-3.5 shrink-0" />
                   <span className="truncate">{adding ? t("reading.search.adding") : t("reading.search.addShort")}</span>
                 </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => openWordModal(q)}
-                  className="h-auto min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted transition-colors"
-                >
-                  <Sparkles className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">{t("reading.search.deepAnalyze")}</span>
-                </Button>
-              </div>
+              )}
+              <Button
+                variant="ghost"
+                onClick={() => openWordModal(q)}
+                className="h-auto min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted transition-colors"
+              >
+                <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{t("reading.search.deepAnalyze")}</span>
+              </Button>
+            </div>
 
+            {!exactMatch && (
               <button
                 onClick={handleMarkKnown}
                 disabled={markingKnown || markedKnown}
@@ -209,8 +210,8 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
                   ? t("reading.search.marking")
                   : t("reading.search.markKnown", { word: q })}
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
     </div>

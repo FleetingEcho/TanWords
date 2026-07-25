@@ -15,6 +15,11 @@ pub struct WordListItem {
     pub created_at: String,
     pub updated_at: String,
     pub source: String,
+    /// Whether this word already has an AI-generated enrichment_text —
+    /// lets the vocabulary page find "un-analyzed" words without a
+    /// per-word detail fetch.
+    pub enriched: bool,
+    pub starred: bool,
 }
 
 #[derive(Serialize)]

@@ -17,6 +17,7 @@ const TOOL_ICONS: Record<string, React.FC<{ className?: string }>> = {
   search_vocabulary:   SearchIcon,
   extract_vocabulary:  SparkIcon,
   add_words_to_vocab:  BookIcon,
+  generate_sentences:  SparkIcon,
   list_documents:      ClipboardListIcon,
   insert_into_document: DocIcon,
 };
@@ -26,6 +27,7 @@ const TOOL_LABELS: Record<string, string> = {
   search_vocabulary:   "Search vocabulary",
   extract_vocabulary:  "Extract vocabulary",
   add_words_to_vocab:  "Add words to vocabulary",
+  generate_sentences:  "Generate sentences",
   list_documents:      "List documents",
   insert_into_document:"Insert into document",
 };
@@ -36,6 +38,7 @@ function inputSummary(name: string, input: Record<string, unknown>): string {
     case "search_vocabulary":   return `"${input.query}"`;
     case "extract_vocabulary":  return `${(input.items as unknown[])?.length ?? 0} items`;
     case "add_words_to_vocab":  return `${(input.words as unknown[])?.length ?? 0} words`;
+    case "generate_sentences":  return `${(input.items as unknown[])?.length ?? 0} sentences`;
     case "list_documents":      return "";
     case "insert_into_document":return `doc #${input.doc_id}`;
     default: return JSON.stringify(input).slice(0, 60);

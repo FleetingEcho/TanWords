@@ -24,7 +24,9 @@ pub fn db_get_words(
                 sr.next_review_at,
                 w.created_at,
                 w.updated_at,
-                COALESCE(w.source, 'manual') as source
+                COALESCE(w.source, 'manual') as source,
+                (w.enrichment_text IS NOT NULL) as enriched,
+                w.starred
          FROM words w
          LEFT JOIN srs_records sr ON sr.entity_id = w.id AND sr.entity_type = 'word'
          WHERE 1=1"
@@ -89,6 +91,8 @@ pub fn db_get_words(
                 created_at: row.get(8)?,
                 updated_at: row.get(9)?,
                 source: row.get(10)?,
+                enriched: row.get(11)?,
+                starred: row.get(12)?,
             })
         })
         .map_err(|e| e.to_string())?;

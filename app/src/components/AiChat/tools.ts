@@ -19,7 +19,7 @@ export interface ToolResult {
 // ── Tool Groups ────────────────────────────────────────────────────────────
 
 export const TOOL_GROUPS = {
-  vocabulary: { label: "Vocabulary", tools: ["save_word", "search_vocabulary", "extract_vocabulary", "add_words_to_vocab"] },
+  vocabulary: { label: "Vocabulary", tools: ["save_word", "search_vocabulary", "extract_vocabulary", "add_words_to_vocab", "generate_sentences"] },
   documents:  { label: "Documents",  tools: ["list_documents", "insert_into_document"] },
 } as const;
 
@@ -106,6 +106,32 @@ const ALL_TOOL_DEFS: Record<string, ToolDef> = {
     },
   },
 
+  generate_sentences: {
+    name: "generate_sentences",
+    description: "Generate example sentences worth saving to the user's sentence library, for a word, topic, or reusable pattern they want to practice. Call this when the user asks you to generate/give them example sentences or sentence patterns — do the generation yourself and pass the results as structured items; do not just list them in prose. The results are shown to the user as review cards, not saved automatically.",
+    input_schema: {
+      type: "object",
+      properties: {
+        items: {
+          type: "array",
+          description: "Generated example sentences, each built on a distinct reusable sentence pattern",
+          items: {
+            type: "object",
+            properties: {
+              sentence: { type: "string", description: "The English sentence" },
+              zh:       { type: "string", description: "Natural Chinese translation" },
+              level:    { type: "string", enum: ["A2", "B1", "B2", "C1", "C2"], description: "Estimated CEFR level" },
+              skeleton: { type: "string", description: "Reusable sentence pattern skeleton, e.g. 'be shortlisted for + noun'" },
+              note:     { type: "string", description: "Short Chinese note on the scenario or register this pattern fits" },
+            },
+            required: ["sentence", "zh"],
+          },
+        },
+      },
+      required: ["items"],
+    },
+  },
+
   list_documents: {
     name: "list_documents",
     description: "List the user's documents (id and title). Use to find a document ID before inserting content.",
@@ -175,6 +201,14 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
           tool_use_id: id,
           content: `✓ Added ${result.added} word${result.added === 1 ? "" : "s"}${result.skipped > 0 ? `, skipped ${result.skipped} already in vocabulary` : ""}.`,
         };
+      }
+
+      case "generate_sentences": {
+        // No DB write here — the caller renders these as interactive review
+        // cards (SentenceExtractionCard) and the user accepts individually.
+        const { items } = input as { items: unknown[] };
+        const n = Array.isArray(items) ? items.length : 0;
+        return { tool_use_id: id, content: `✓ Generated ${n} sentence${n === 1 ? "" : "s"} — review the cards below.` };
       }
 
       case "list_documents": {

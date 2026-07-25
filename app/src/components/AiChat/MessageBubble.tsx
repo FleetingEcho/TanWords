@@ -15,13 +15,17 @@ interface Props {
   compact?: boolean;
   /** Show typing indicator dots instead of content (last AI message while streaming) */
   isTyping?: boolean;
+  /** When true, fills the max-w cap instead of shrink-wrapping to content —
+   *  used for the message immediately following a tool card so the two line
+   *  up as one continuous block instead of two independently-sized boxes. */
+  fillCardWidth?: boolean;
 }
 
 /** User messages longer than this render collapsed (pasted articles etc.) */
 const COLLAPSE_THRESHOLD = 700;
 const COLLAPSE_PREVIEW = 350;
 
-export const MessageBubble = React.memo(function MessageBubble({ msg, compact = false, isTyping = false }: Props) {
+export const MessageBubble = React.memo(function MessageBubble({ msg, compact = false, isTyping = false, fillCardWidth = false }: Props) {
   const t = useT();
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -52,7 +56,7 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, compact = 
       )}
 
       <div
-        className={`relative max-w-[82%] rounded-[20px] px-4 py-3 ${textSize} leading-7 shadow-sm ${
+        className={`relative max-w-[82%] ${fillCardWidth ? "w-full" : ""} rounded-[20px] px-4 py-3 ${textSize} leading-7 shadow-sm ${
           msg.role === "user"
             ? "bg-gradient-to-br from-primary to-primary/90 text-primary-foreground rounded-br-md shadow-primary/10"
             : "border border-border/55 bg-card/80 text-foreground rounded-bl-md backdrop-blur-sm"
@@ -76,7 +80,7 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, compact = 
             <Button
               variant="link"
               onClick={() => setExpanded(true)}
-              className="h-auto p-0 mt-1.5 text-[11px] font-semibold underline underline-offset-2 opacity-80 hover:opacity-100"
+              className="h-auto p-0 mt-1.5 text-[11px] font-semibold text-primary-foreground underline underline-offset-2 opacity-80 hover:opacity-100"
             >
               {t("aichat.expand", { n: msg.content.length })}
             </Button>
@@ -88,7 +92,7 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, compact = 
               <Button
                 variant="link"
                 onClick={() => setExpanded(false)}
-                className="h-auto p-0 mt-1.5 text-[11px] font-semibold underline underline-offset-2 opacity-80 hover:opacity-100"
+                className="h-auto p-0 mt-1.5 text-[11px] font-semibold text-primary-foreground underline underline-offset-2 opacity-80 hover:opacity-100"
               >
                 {t("aichat.collapse")}
               </Button>

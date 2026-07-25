@@ -58,3 +58,23 @@ export async function generateSentences(provider: AIProvider, query: string, tar
   }));
   return parseGeneratedSentences(raw);
 }
+
+const ANALYZE_SYSTEM_PROMPT =
+  "You are an expert English coach for Chinese learners. Given one sentence the learner already has, you analyze it — you do not rewrite, correct, or replace it. Return ONLY a JSON array with exactly one 5-element array in the exact requested format — no markdown fences, no commentary.";
+
+/** Analyzes one user-supplied sentence (quick-add flow) instead of inventing
+ *  new ones — same output shape as generateSentences so both feed the same
+ *  save path, but the sentence itself is echoed back verbatim. */
+export async function analyzeSentence(provider: AIProvider, sentence: string, targetLevels: string, signal?: AbortSignal): Promise<GeneratedSentence> {
+  const user = [
+    `Sentence: "${sentence}"`,
+    `Learner level: CEFR ${targetLevels || "B1/B2"}.`,
+    `Analyze this exact sentence — do not paraphrase or correct it. Identify the reusable sentence pattern it demonstrates.`,
+    `Format — a JSON array containing exactly one 5-element array: [["${sentence.replace(/"/g, '\\"')}","自然中文翻译","A2|B1|B2|C1|C2","reusable pattern skeleton, e.g. 'be shortlisted for + noun'","一行中文注释：句式的使用场景或语气"]].`,
+  ].join("\n");
+  const raw = await collect(provider, ANALYZE_SYSTEM_PROMPT, user, signal);
+  const [result] = parseGeneratedSentences(raw);
+  // The model is instructed to echo the sentence verbatim, but never trust
+  // that literally — always save what the learner actually typed.
+  return result ? { ...result, sentence } : { sentence, zh: "", level: "", skeleton: "", note: "" };
+}

@@ -28,6 +28,9 @@ export interface WordListItem {
   created_at: string;
   updated_at: string;
   source: string;
+  /** Whether this word already has an AI-generated enrichment. */
+  enriched: boolean;
+  starred: boolean;
 }
 
 export interface WordDetail {

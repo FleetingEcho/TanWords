@@ -71,6 +71,8 @@ pub fn run() {
             db::db_get_word_detail,
             db::db_add_word,
             db::db_delete_word,
+            db::db_delete_words_batch,
+            db::db_set_word_starred,
             db::db_get_setting,
             db::db_set_setting,
             db::db_save_translation,
