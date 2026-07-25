@@ -15,4 +15,9 @@ export const reader: Dict = {
     "reader.learnOpen": "在 AI 对话中打开",
     "reader.learnDone": "「{title}」已生成，可以在 AI 对话中查看",
     "reader.learnFailed": "「{title}」分析失败",
+    "reader.learnTruncated": "文章内容过长，已自动精简以适配当前模型的上下文窗口",
+    "reader.learnContextOverflow": "文章超出当前模型的上下文窗口，请更换支持更大上下文的模型，或选择更短的文章",
+    "reader.pastePrompt": "把复制的文章内容粘贴到下面，我们会继续帮你处理。",
+    "reader.pastePlaceholder": "粘贴你复制的文章…",
+    "reader.pasteSubmit": "使用这段文字",
 };

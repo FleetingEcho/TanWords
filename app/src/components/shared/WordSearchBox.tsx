@@ -8,6 +8,7 @@ import { useSettingsStore } from "@/store/settingsStore";
 import { findBestProvider } from "@/providers/select";
 import { QUICK_LOOKUP_SYSTEM_PROMPT, buildQuickLookupUserPrompt } from "@/providers/base";
 import { parseEnrichmentStream, ParsedEnrichment } from "@/lib/enrichMeta";
+import { fetchBasicInfo, BasicInfo } from "@/lib/basicInfo";
 import { EnrichmentText } from "@/components/EnrichmentText";
 import { SearchIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,7 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
   const [matches, setMatches] = useState<WordListItem[]>([]);
   const [searched, setSearched] = useState(false);
   const [quick, setQuick] = useState<ParsedEnrichment | null>(null);
+  const [quickBasicInfo, setQuickBasicInfo] = useState<BasicInfo>({});
   const [quickLoading, setQuickLoading] = useState(false);
   const [quickError, setQuickError] = useState<string | null>(null);
   const [noProvider, setNoProvider] = useState(false);
@@ -54,6 +56,7 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
     setMatches([]);
     setMarkedKnown(false);
     setQuick(null);
+    setQuickBasicInfo({});
     setQuickError(null);
     setQuickLoading(false);
     setNoProvider(false);
@@ -80,6 +83,9 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
     setQuickError(null);
     let raw = "";
     try {
+      fetchBasicInfo(provider, q, targetLevel, controller.signal).then((info) => {
+        if (!controller.signal.aborted) setQuickBasicInfo(info);
+      });
       for await (const chunk of provider.generate(QUICK_LOOKUP_SYSTEM_PROMPT, buildQuickLookupUserPrompt(q, targetLevel), controller.signal)) {
         if (controller.signal.aborted) return;
         raw += chunk;
@@ -96,9 +102,10 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
     if (!q || adding) return;
     setAdding(true);
     try {
+      const zhShort = quickBasicInfo.zh || quick?.zhShort;
       const result = quick?.text
-        ? await db.addWordEnriched(q, quick.zhShort || q, null, { text: quick.text, zhShort: quick.zhShort, level: quick.level })
-        : await db.addWord(q, quick?.zhShort || "");
+        ? await db.addWordEnriched(q, zhShort || q, quickBasicInfo.wordType || null, { text: quick.text, zhShort, level: quickBasicInfo.level || quick.level })
+        : await db.addWord(q, zhShort || "");
       if (result.id > 0) {
         window.dispatchEvent(new CustomEvent("vocab-updated"));
         toast.success(t("reading.search.added", { word: q }));
@@ -167,8 +174,8 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
               <div className="space-y-1 px-1">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-semibold text-foreground">{q}</span>
-                  {quick.zhShort && <span className="text-xs text-muted-foreground">{quick.zhShort}</span>}
-                  {quick.level && <span className="ml-auto shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">{quick.level}</span>}
+                  {(quickBasicInfo.zh || quick.zhShort) && <span className="text-xs text-muted-foreground">{quickBasicInfo.zh || quick.zhShort}</span>}
+                  {(quickBasicInfo.level || quick.level) && <span className="ml-auto shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">{quickBasicInfo.level || quick.level}</span>}
                 </div>
                 <div className="text-xs leading-relaxed [&_blockquote]:my-1 [&_blockquote]:text-[11px]">
                   <EnrichmentText text={quick.text} />

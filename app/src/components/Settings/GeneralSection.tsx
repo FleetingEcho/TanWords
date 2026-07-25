@@ -1,11 +1,402 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { Eye, Trash2, Upload } from "lucide-react";
 import { DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, useSettingsStore, Theme } from "@/store/settingsStore";
 import { useT } from "@/hooks/useT";
 import { useDB } from "@/hooks/useDB";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog } from "@/components/ui/dialog";
+import { CloseIcon } from "@/components/ui/icons";
 import type { RssFeed } from "@/hooks/useDB.types";
 import { SettingRow, ToggleGroup } from "./SettingsShared";
+
+const MAX_AVATAR_UPLOAD_BYTES = 5 * 1024 * 1024;
+const MAX_BANNER_UPLOAD_BYTES = 8 * 1024 * 1024;
+const MAX_APP_BG_UPLOAD_BYTES = 12 * 1024 * 1024;
+/** Stored well above the largest on-screen size (the 256px preview modal) so it's always downscaled, never upscaled. */
+const AVATAR_OUTPUT_SIZE = 512;
+/** ~4.8:1, wide enough to cover the dashboard banner (100% width x 200px) without upscaling on most screens. */
+const BANNER_OUTPUT_WIDTH = 1920;
+const BANNER_OUTPUT_HEIGHT = 400;
+/** Full-app background: covers arbitrarily-sized/shaped displays via object-fit: cover at
+ *  render time, so unlike the avatar/banner this is downscaled only — never center-cropped —
+ *  preserving the source aspect ratio. Capped comfortably above typical desktop resolutions. */
+const APP_BG_MAX_DIMENSION = 2400;
+
+/** Center-crops (object-fit: cover semantics) an arbitrary image file down to a target size and re-encodes it as a compact JPEG data URL. */
+function fileToCroppedDataUrl(file: File, targetW: number, targetH: number, quality: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("invalid image"));
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return reject(new Error("no canvas context"));
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        const targetRatio = targetW / targetH;
+        const srcRatio = img.width / img.height;
+        let sw = img.width, sh = img.height, sx = 0, sy = 0;
+        if (srcRatio > targetRatio) {
+          sw = img.height * targetRatio;
+          sx = (img.width - sw) / 2;
+        } else {
+          sh = img.width / targetRatio;
+          sy = (img.height - sh) / 2;
+        }
+        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, targetW, targetH);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/** Downscales (never crops) an arbitrary image file so its longer edge is at most
+ *  `maxDimension`, re-encoded as a compact JPEG data URL. Images already smaller are
+ *  left at their original size. */
+function fileToDownscaledDataUrl(file: File, maxDimension: number, quality: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("invalid image"));
+      img.onload = () => {
+        const scale = Math.min(1, maxDimension / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return reject(new Error("no canvas context"));
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function AppBackgroundSetting() {
+  const t = useT();
+  const image = useSettingsStore((s) => s.appBackgroundImage);
+  const setImage = useSettingsStore((s) => s.setAppBackgroundImage);
+  const blur = useSettingsStore((s) => s.appBackgroundBlur);
+  const setBlur = useSettingsStore((s) => s.setAppBackgroundBlur);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = async (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error(t("settings.userAvatarInvalidType"));
+      return;
+    }
+    if (file.size > MAX_APP_BG_UPLOAD_BYTES) {
+      toast.error(t("settings.userAvatarTooLarge"));
+      return;
+    }
+    try {
+      const dataUrl = await fileToDownscaledDataUrl(file, APP_BG_MAX_DIMENSION, 0.85);
+      setImage(dataUrl);
+    } catch {
+      toast.error(t("settings.userAvatarInvalidType"));
+    }
+  };
+
+  return (
+    <SettingRow label={t("settings.appBackground")} sub={t("settings.appBackgroundSub")}>
+      <div className="flex flex-col gap-2 w-48">
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            className="group relative flex-1 h-16 rounded-lg bg-muted/80 ring-1 ring-border/60 overflow-hidden"
+          >
+            {image ? (
+              <img src={image} alt="" className="w-full h-full object-cover" style={{ filter: `blur(${Math.min(blur, 8)}px)` }} />
+            ) : (
+              <span className="w-full h-full flex items-center justify-center text-[11px] text-muted-foreground">
+                {t("settings.appBackgroundNone")}
+              </span>
+            )}
+            <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity">
+              <Upload className="w-4 h-4 text-white" />
+            </div>
+          </button>
+          {image && (
+            <Button
+              variant="ghost"
+              onClick={() => setImage("")}
+              title={t("settings.userAvatarRemove")}
+              className="h-16 w-7 p-0 ml-1 shrink-0 text-muted-foreground hover:text-destructive"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </Button>
+          )}
+        </div>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => handleFile(e.target.files?.[0])}
+        />
+
+        <div>
+          <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+            <span>{t("settings.appBackgroundBlur")}</span>
+            <span className="tabular-nums">{blur}px</span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={40}
+            step={1}
+            value={blur}
+            disabled={!image}
+            onChange={(e) => setBlur(Number(e.target.value))}
+            className="w-full accent-primary disabled:opacity-40"
+          />
+        </div>
+      </div>
+    </SettingRow>
+  );
+}
+
+function NicknameSetting() {
+  const t = useT();
+  const nickname = useSettingsStore((s) => s.nickname);
+  const setNickname = useSettingsStore((s) => s.setNickname);
+  const [draft, setDraft] = useState(nickname);
+
+  useEffect(() => setDraft(nickname), [nickname]);
+
+  const commit = () => {
+    const trimmed = draft.trim();
+    setDraft(trimmed);
+    if (trimmed !== nickname) setNickname(trimmed);
+  };
+
+  return (
+    <SettingRow label={t("settings.nickname")} sub={t("settings.nicknameSub")}>
+      <input
+        type="text"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+        placeholder={t("settings.nicknamePlaceholder")}
+        maxLength={30}
+        className="h-9 w-48 px-3 rounded-lg border border-input bg-background text-sm text-right focus:outline-none focus:ring-2 focus:ring-primary/30"
+      />
+    </SettingRow>
+  );
+}
+
+function UserAvatarSetting() {
+  const t = useT();
+  const userAvatar = useSettingsStore((s) => s.userAvatar);
+  const setUserAvatar = useSettingsStore((s) => s.setUserAvatar);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  const handleFile = async (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error(t("settings.userAvatarInvalidType"));
+      return;
+    }
+    if (file.size > MAX_AVATAR_UPLOAD_BYTES) {
+      toast.error(t("settings.userAvatarTooLarge"));
+      return;
+    }
+    try {
+      const dataUrl = await fileToCroppedDataUrl(file, AVATAR_OUTPUT_SIZE, AVATAR_OUTPUT_SIZE, 0.94);
+      setUserAvatar(dataUrl);
+    } catch {
+      toast.error(t("settings.userAvatarInvalidType"));
+    }
+  };
+
+  return (
+    <SettingRow label={t("settings.userAvatar")} sub={t("settings.userAvatarSub")}>
+      <div className="group relative w-16 h-16 rounded-xl bg-muted/80 ring-1 ring-border/60 overflow-hidden shrink-0">
+        {userAvatar ? (
+          <img src={userAvatar} alt="" className="w-full h-full object-cover" />
+        ) : (
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            className="w-full h-full flex items-center justify-center hover:bg-muted transition-colors"
+          >
+            <svg viewBox="0 0 16 16" fill="currentColor" className="w-6 h-6 text-muted-foreground">
+              <path fillRule="evenodd" d="M8 8a3 3 0 100-6 3 3 0 000 6zm-4.5 8a4.5 4.5 0 019 0H3.5z" />
+            </svg>
+          </button>
+        )}
+        {userAvatar && (
+          <div className="absolute inset-0 flex items-center justify-center gap-1.5 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              title={t("settings.userAvatarUpload")}
+              className="w-7 h-7 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center text-white transition-colors"
+            >
+              <Upload className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setPreviewOpen(true)}
+              title={t("settings.dashboardBannerReview")}
+              className="w-7 h-7 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center text-white transition-colors"
+            >
+              <Eye className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => handleFile(e.target.files?.[0])}
+      />
+
+      <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="max-w-none" className="w-[50vw] h-[50vh] top-1/2 -translate-y-1/2">
+        <div className="absolute right-3 top-3 flex items-center gap-1.5">
+          <Button
+            variant="ghost"
+            onClick={() => { setUserAvatar(""); setPreviewOpen(false); }}
+            title={t("settings.userAvatarRemove")}
+            className="w-7 h-7 p-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-destructive transition-colors"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => setPreviewOpen(false)}
+            className="w-7 h-7 p-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          >
+            <CloseIcon className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+        <div className="w-full h-full p-8 flex items-center justify-center">
+          {userAvatar && <img src={userAvatar} alt="" className="max-w-full max-h-full aspect-square rounded-2xl object-cover shadow-lg" />}
+        </div>
+      </Dialog>
+    </SettingRow>
+  );
+}
+
+function DashboardBannerSetting() {
+  const t = useT();
+  const dashboardBanner = useSettingsStore((s) => s.dashboardBanner);
+  const setDashboardBanner = useSettingsStore((s) => s.setDashboardBanner);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  const handleFile = async (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast.error(t("settings.userAvatarInvalidType"));
+      return;
+    }
+    if (file.size > MAX_BANNER_UPLOAD_BYTES) {
+      toast.error(t("settings.userAvatarTooLarge"));
+      return;
+    }
+    try {
+      const dataUrl = await fileToCroppedDataUrl(file, BANNER_OUTPUT_WIDTH, BANNER_OUTPUT_HEIGHT, 0.88);
+      setDashboardBanner(dataUrl);
+    } catch {
+      toast.error(t("settings.userAvatarInvalidType"));
+    }
+  };
+
+  return (
+    <SettingRow label={t("settings.dashboardBanner")} sub={t("settings.dashboardBannerSub")}>
+      <div
+        className="group relative w-64 h-16 rounded-lg bg-muted/80 ring-1 ring-border/60 overflow-hidden shrink-0"
+      >
+        {dashboardBanner ? (
+          <img src={dashboardBanner} alt="" className="w-full h-full object-cover" />
+        ) : (
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            className="w-full h-full flex items-center justify-center text-[11px] text-muted-foreground hover:bg-muted transition-colors"
+          >
+            {t("settings.dashboardBannerNone")}
+          </button>
+        )}
+        {dashboardBanner && (
+          <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              title={t("settings.userAvatarUpload")}
+              className="w-8 h-8 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center text-white transition-colors"
+            >
+              <Upload className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setPreviewOpen(true)}
+              title={t("settings.dashboardBannerReview")}
+              className="w-8 h-8 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center text-white transition-colors"
+            >
+              <Eye className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => handleFile(e.target.files?.[0])}
+      />
+
+      <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="max-w-none" className="w-[70vw] h-fit top-1/2 -translate-y-1/2">
+        <div className="absolute right-3 top-3 flex items-center gap-1.5">
+          <Button
+            variant="ghost"
+            onClick={() => { setDashboardBanner(""); setPreviewOpen(false); }}
+            title={t("settings.userAvatarRemove")}
+            className="w-7 h-7 p-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-destructive transition-colors"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => setPreviewOpen(false)}
+            className="w-7 h-7 p-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          >
+            <CloseIcon className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+        <div className="w-full p-6">
+          {dashboardBanner && <img src={dashboardBanner} alt="" className="w-full h-auto rounded-2xl object-cover shadow-lg" />}
+        </div>
+      </Dialog>
+    </SettingRow>
+  );
+}
 
 function DefaultRssTabSetting() {
   const t = useT();
@@ -45,6 +436,10 @@ export function GeneralSection() {
 
   return (
     <div className="bg-card border border-border rounded-xl px-5 divide-y divide-border">
+      <NicknameSetting />
+      <UserAvatarSetting />
+      <DashboardBannerSetting />
+      <AppBackgroundSetting />
       <SettingRow label={t("settings.uiLanguage")} sub={t("settings.uiLanguageSub")}>
         <ToggleGroup
           options={[{ id: "zh", label: "中文" }, { id: "en", label: "English" }]}

@@ -121,7 +121,7 @@ export interface DashboardStats {
     total: number;
     processed: number;
   } | null;
-  recent_words: { id: number; word: string; zh: string; level: string; created_at: string }[];
+  recent_words: { id: number; word: string; zh: string; level: string; updated_at: string }[];
   recent_docs: { id: number; title: string; updated_at: string }[];
 }
 

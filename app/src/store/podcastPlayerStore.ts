@@ -176,10 +176,36 @@ function getAudio(): HTMLAudioElement {
   return audio;
 }
 
+// Tauri doesn't guarantee that concurrent command invocations settle in the order they
+// were issued — open_decoder() alone (real file I/O) can take longer for one track than
+// another. Firing native_audio_load for a new track while a previous call for a
+// *different* track is still in flight let the stale call's Rust-side session-replace
+// "win" after a newer one had already taken over: the store (and the bar) showed the new
+// track's title while the old track kept playing underneath it — the exact "song and
+// name don't match" bug. Serializing every playAt() through this chain, and skipping a
+// call outright if a newer one was queued behind it before its turn came up, guarantees
+// only one load is ever in flight and only the most recent request actually executes.
+let loadChain: Promise<void> = Promise.resolve();
+let loadRequestSeq = 0;
+
+async function playAt(index: number) {
+  const mySeq = ++loadRequestSeq;
+  const previous = loadChain;
+  let resolveGate!: () => void;
+  loadChain = new Promise((resolve) => { resolveGate = resolve; });
+  await previous;
+  try {
+    if (mySeq !== loadRequestSeq) return;
+    await playAtInner(index);
+  } finally {
+    resolveGate();
+  }
+}
+
 /** Loads and plays playlist[index]. Always resets src — unlike play(), which
  * treats a same-URL call as resume, a queue jump to the same track (loop-one)
  * must restart from the top. */
-async function playAt(index: number) {
+async function playAtInner(index: number) {
   const el = getAudio();
   const s = usePodcastPlayerStore.getState();
   const track = s.playlist?.[index];

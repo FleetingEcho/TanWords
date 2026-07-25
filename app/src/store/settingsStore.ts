@@ -9,7 +9,7 @@ export type TopBarItemId = "search" | "context" | "mcp" | "ai" | "language" | "t
 export type RssTabSelection = number | "all" | "hackernews";
 
 export const DEFAULT_SIDEBAR_TABS: SidebarTabId[] = [
-  "dashboard", "feeds", "vocabulary", "documents", "music", "chat",
+  "dashboard", "feeds", "documents", "vocabulary", "chat", "music",
 ];
 export const DEFAULT_TOPBAR_ITEMS: TopBarItemId[] = [
   "search", "context", "mcp", "ai", "language", "theme", "updates", "github",
@@ -42,6 +42,16 @@ interface SettingsState {
   defaultRssTab: RssTabSelection;
   /** Card = magazine layout with cover art; list = dense one-line-per-entry, for feeds with many items. */
   feedsViewMode: "card" | "list";
+  /** User's custom avatar as a data URL, shown in place of the default icon in chat bubbles etc. Empty = default icon. */
+  userAvatar: string;
+  /** Custom banner image (data URL) shown at the top of the Dashboard page. Empty = no banner. */
+  dashboardBanner: string;
+  /** Shown in the Dashboard greeting ("Good evening, {nickname}"). Empty = just "Good evening". */
+  nickname: string;
+  /** Custom full-app background image (data URL). Empty = none — just the theme's flat background. */
+  appBackgroundImage: string;
+  /** Blur radius in px applied to appBackgroundImage. */
+  appBackgroundBlur: number;
   isLoaded: boolean;
 
   setTheme: (theme: Theme) => void;
@@ -60,6 +70,11 @@ interface SettingsState {
   setTopBarItemVisible: (item: TopBarItemId, visible: boolean) => void;
   setDefaultRssTab: (tab: RssTabSelection) => void;
   setFeedsViewMode: (mode: "card" | "list") => void;
+  setUserAvatar: (dataUrl: string) => void;
+  setDashboardBanner: (dataUrl: string) => void;
+  setNickname: (name: string) => void;
+  setAppBackgroundImage: (dataUrl: string) => void;
+  setAppBackgroundBlur: (px: number) => void;
   loadFromDB: () => Promise<void>;
 }
 
@@ -166,6 +181,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   visibleTopBarItems: cachedTopBarItems(),
   defaultRssTab: cachedDefaultRssTab(),
   feedsViewMode: cachedFeedsViewMode(),
+  userAvatar: "",
+  dashboardBanner: "",
+  nickname: "",
+  appBackgroundImage: "",
+  appBackgroundBlur: 20,
   isLoaded: false,
 
   setTheme: (theme) => {
@@ -228,6 +248,31 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     saveSetting("feeds_view_mode", JSON.stringify(mode));
   },
 
+  setUserAvatar: (dataUrl) => {
+    set({ userAvatar: dataUrl });
+    saveSetting("user_avatar", JSON.stringify(dataUrl));
+  },
+
+  setDashboardBanner: (dataUrl) => {
+    set({ dashboardBanner: dataUrl });
+    saveSetting("dashboard_banner", JSON.stringify(dataUrl));
+  },
+
+  setNickname: (name) => {
+    set({ nickname: name });
+    saveSetting("nickname", JSON.stringify(name));
+  },
+
+  setAppBackgroundImage: (dataUrl) => {
+    set({ appBackgroundImage: dataUrl });
+    saveSetting("app_background_image", JSON.stringify(dataUrl));
+  },
+
+  setAppBackgroundBlur: (px) => {
+    set({ appBackgroundBlur: px });
+    saveSetting("app_background_blur", JSON.stringify(px));
+  },
+
   setTargetLevels: (levels) => {
     if (levels.length === 0) return; // always keep at least one level
     set({ targetLevels: levels });
@@ -284,6 +329,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         "visible_topbar_items",
         "default_rss_tab",
         "feeds_view_mode",
+        "user_avatar",
+        "dashboard_banner",
+        "nickname",
+        "app_background_image",
+        "app_background_blur",
       ];
 
       const values: Record<string, string> = {};
@@ -346,6 +396,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         visibleTopBarItems: resolvedTopBarItems,
         defaultRssTab: resolvedDefaultRssTab,
         feedsViewMode: resolvedFeedsViewMode,
+        userAvatar: values.user_avatar || "",
+        dashboardBanner: values.dashboard_banner || "",
+        nickname: values.nickname || "",
+        appBackgroundImage: values.app_background_image || "",
+        appBackgroundBlur: values.app_background_blur !== undefined ? Number(values.app_background_blur) : 20,
         isLoaded: true,
       });
 

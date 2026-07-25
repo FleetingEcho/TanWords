@@ -82,6 +82,38 @@ export function estimateTokens(items: DisplayItem[]) {
   return Math.ceil(chars / 4);
 }
 
+/** True for the "request exceeds context window" family of errors — OpenAI's
+ *  context_length_exceeded, and the equivalent messages local llama.cpp/ollama
+ *  servers return when their configured n_ctx is smaller than the request.
+ *  Small-context local models are common enough (4k, 8k) that a long article
+ *  routinely overflows them; matching this lets callers retry with a
+ *  truncated prompt instead of just failing. */
+export function isContextOverflowError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err ?? "");
+  return /context_length_exceeded|exceeds the available context|context size|maximum context length|n_ctx/i.test(msg);
+}
+
+/** Builds the "title\n\ntext\n\n---\n\nComments:\n..." body used to hand an
+ *  article to the AI, trimmed to roughly fit `maxChars`. Comments are dropped
+ *  first (least essential), then the article body itself is cut — always
+ *  keeping the title and the front of the article, since that's where the
+ *  headline claim/context usually lives. */
+export function buildArticleBody(
+  article: { title: string; text: string; commentsText?: string },
+  maxChars = Infinity
+): string {
+  const full = article.commentsText
+    ? `${article.title}\n\n${article.text}\n\n---\n\nComments:\n${article.commentsText}`
+    : `${article.title}\n\n${article.text}`;
+  if (full.length <= maxChars) return full;
+
+  const withoutComments = `${article.title}\n\n${article.text}`;
+  if (withoutComments.length <= maxChars) return withoutComments;
+
+  const budget = Math.max(maxChars - article.title.length - 10, 200);
+  return `${article.title}\n\n${article.text.slice(0, budget)}…`;
+}
+
 export function serializeItems(items: DisplayItem[]): string {
   return JSON.stringify(items);
 }

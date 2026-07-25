@@ -3,10 +3,11 @@ import { LocalDocItem, LocalDocSearchResult } from "@/lib/localDocs";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Download, FileInput, FileText, FolderOpen, Loader2, MoreHorizontal, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, Download, FileInput, FileText, FolderOpen, Loader2, MoreHorizontal } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { LocalDocTree } from "./LocalDocTree";
 import { LocalDocSearchResults } from "./LocalDocSearchResults";
+import { LIST_PANEL_WIDTH, LIST_PANEL_COLLAPSED_WIDTH, LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
 
 interface Props {
   sidebarOpen: boolean;
@@ -21,6 +22,9 @@ interface Props {
   searching: boolean;
   searchResults: LocalDocSearchResult[];
   files: LocalDocItem[];
+  /** True while the mounted folder's file list is being (re)built — a folder with
+   *  1000+ files can take a moment, and without this the sidebar just looks empty. */
+  filesLoading: boolean;
   activePath: string | null;
   onOpen: (relPath: string) => void;
   onDelete: (relPath: string) => void;
@@ -42,6 +46,7 @@ export function LocalDocsSidebar({
   searching,
   searchResults,
   files,
+  filesLoading,
   activePath,
   onOpen,
   onDelete,
@@ -53,12 +58,12 @@ export function LocalDocsSidebar({
 
   return (
     <Collapsible open={sidebarOpen} onOpenChange={onSidebarOpenChange} asChild>
-      <div className={`${sidebarOpen ? "w-80" : "w-11"} h-full shrink-0 border-r border-border bg-sidebar transition-[width] duration-200`}>
+      <div className={`${sidebarOpen ? LIST_PANEL_WIDTH : LIST_PANEL_COLLAPSED_WIDTH} h-full shrink-0 border-r border-border bg-card transition-[width] duration-200`}>
         {!sidebarOpen && (
           <div className="flex justify-center pt-3">
             <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8" title={t("doc.expandFiles")} aria-label={t("doc.expandFiles")}>
-                <PanelLeftOpen className="h-4 w-4" />
+              <Button variant="ghost" size="icon" className={`h-7 w-7 ${LIST_PANEL_TOGGLE_CLASS}`} title={t("doc.expandFiles")} aria-label={t("doc.expandFiles")}>
+                <ChevronsRight className="h-3.5 w-3.5" />
               </Button>
             </CollapsibleTrigger>
           </div>
@@ -69,8 +74,8 @@ export function LocalDocsSidebar({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1">
               <CollapsibleTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-6 w-6" title={t("doc.collapseFiles")} aria-label={t("doc.collapseFiles")}>
-                  <PanelLeftClose className="h-3.5 w-3.5" />
+                <Button variant="ghost" size="icon" className={`h-6 w-6 ${LIST_PANEL_TOGGLE_CLASS}`} title={t("doc.collapseFiles")} aria-label={t("doc.collapseFiles")}>
+                  <ChevronsLeft className="h-3.5 w-3.5" />
                 </Button>
               </CollapsibleTrigger>
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t("doc.tabLocal")}</p>
@@ -138,6 +143,10 @@ export function LocalDocsSidebar({
             ) : (
               <div className="py-12 text-center text-xs text-muted-foreground">{t("doc.noSearchResults")}</div>
             )
+          ) : filesLoading && files.length === 0 ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-xs text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> {t("doc.loadingFiles")}
+            </div>
           ) : files.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground gap-1">
               <p className="text-sm">{t("doc.noLocalFiles")}</p>

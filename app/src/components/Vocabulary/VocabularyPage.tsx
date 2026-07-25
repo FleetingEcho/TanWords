@@ -8,10 +8,11 @@ import { toast } from "sonner";
 import { useSelectedWordStore } from "@/store/selectedWordStore";
 import { WordListPanel, LevelFilter, DateField } from "./WordListPanel";
 import { WordDetailPanel } from "./WordDetailPanel";
-import { GenerateVocabModal } from "./GenerateVocabModal";
 import { PatternLibrary } from "./PatternLibrary";
 import { parseEnrichmentStream, ParsedEnrichment } from "@/lib/enrichMeta";
+import { fetchBasicInfo, BasicInfo } from "@/lib/basicInfo";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { useVocabEnrichStore } from "@/store/vocabEnrichStore";
 
 interface SelectedWordData {
   word: WordListItem;
@@ -24,6 +25,7 @@ interface SelectedWordData {
 interface LookupData {
   word: string;
   enriched: ParsedEnrichment | null;
+  basicInfo: BasicInfo;
   added: boolean;
   wordId: number | null;
 }
@@ -33,23 +35,24 @@ const PAGE_SIZE = 50;
 export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
   const db = useDB();
   const openWordModal = useWordModalStore((s) => s.openWordModal);
+  const targetLevel = useSettingsStore((s) => s.targetLevels.join("/"));
 
   // Data
   const [words, setWords] = useState<WordListItem[]>([]);
   const [selected, setSelected] = useState<SelectedWordData | null>(null);
+  const selectedRef = useRef<SelectedWordData | null>(null);
+  useEffect(() => { selectedRef.current = selected; }, [selected]);
   const [lookup, setLookup] = useState<LookupData | null>(null);
   const [notes, setNotes] = useState("");
 
   // Filters
   const [levelFilter, setLevelFilter] = useState<LevelFilter>("all");
-  const [sourceFilter, setSourceFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dateField, setDateField] = useState<DateField>("created");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(0);
-  const [generateOpen, setGenerateOpen] = useState(false);
   const [view, setView] = useState<"words" | "patterns">("words");
   const [patternSeed, setPatternSeed] = useState<string | null>(null);
   const [listCollapsed, setListCollapsed] = useState(() => localStorage.getItem("vocab-wordlist-collapsed") === "1");
@@ -59,6 +62,7 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
   });
 
   // ── Multi-select (header actions: reanalyze / delete selected) ─────────
+  const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const toggleWordSelect = (id: number) => setSelectedIds((prev) => {
     const next = new Set(prev);
@@ -67,6 +71,14 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
   });
   const clearWordSelection = () => setSelectedIds(new Set());
   const selectAllWords = () => setSelectedIds(new Set(visibleWords.map((w) => w.id)));
+  const toggleWordSelectMode = () => {
+    setSelectMode((v) => !v);
+    clearWordSelection();
+  };
+  const exitWordSelectMode = () => {
+    setSelectMode(false);
+    clearWordSelection();
+  };
   const [deleteSelectedOpen, setDeleteSelectedOpen] = useState(false);
 
   // ── Star / unstar (optimistic — the toggle should feel instant) ────────
@@ -91,20 +103,29 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
   const enrichControllerRef = useRef<AbortController | null>(null);
   const t = useT();
 
-  useEffect(() => {
-    return () => enrichControllerRef.current?.abort();
-  }, []);
+  // Reactive fallback for `enriching`: a single-word re-analyze started before this
+  // component (re)mounted — e.g. the user navigated away and back — has no local state
+  // to reflect it, but vocabEnrichStore does. Falls back to false once selected is null.
+  const selectedWordJobRunning = useVocabEnrichStore(
+    (s) => (selected ? s.singleJobs[selected.word.word]?.status === "running" : false)
+  );
+  const effectiveEnriching = enriching || selectedWordJobRunning;
+
+  // Deliberately no unmount cleanup that aborts enrichControllerRef/bulkAbortRef — analysis
+  // (single-word or bulk) must keep running in the background even after the user navigates
+  // to another page, same as the reader's "Learn" flow. The async functions below aren't
+  // tied to this component's lifecycle: once started, they run to completion and persist to
+  // the DB regardless of whether VocabularyPage is still mounted to show their progress.
 
   // ── Bulk enrichment (header buttons: enrich un-analyzed / re-analyze all) ──
+  // Progress lives in vocabEnrichStore (not component state) so it survives navigating
+  // away mid-run — CommandBar's "Analyzing" indicator reads the same store, so the job
+  // stays visible (and cancelable) from anywhere, not just while this page is mounted.
 
-  const [bulkRunning, setBulkRunning] = useState(false);
-  const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
+  const bulk = useVocabEnrichStore((s) => s.bulk);
+  const bulkRunning = bulk.running;
+  const bulkProgress = { done: bulk.done, total: bulk.total };
   const [reanalyzeConfirmOpen, setReanalyzeConfirmOpen] = useState(false);
-  const bulkAbortRef = useRef<AbortController | null>(null);
-
-  useEffect(() => {
-    return () => bulkAbortRef.current?.abort();
-  }, []);
 
   const runBulkEnrich = async (targets: WordListItem[]) => {
     const provider = findBestProvider();
@@ -117,40 +138,66 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
       return;
     }
 
-    const controller = new AbortController();
-    bulkAbortRef.current = controller;
-    setBulkRunning(true);
-    setBulkProgress({ done: 0, total: targets.length });
+    const controller = useVocabEnrichStore.getState().startBulk(targets.length);
 
     let succeeded = 0;
     let failed = 0;
+    let done = 0;
     for (const w of targets) {
       if (controller.signal.aborted) break;
+      // If this word's detail panel happens to be open, clear its stale
+      // explanation and show the loading state while its turn runs.
+      const isOpen = selectedRef.current?.word.id === w.id;
+      if (isOpen) {
+        setEnriching(true);
+        setSelected((prev) => prev ? { ...prev, enriched: null, legacy: false } : prev);
+      }
       try {
-        let raw = "";
-        for await (const chunk of provider.enrich(w.word, controller.signal)) {
-          if (controller.signal.aborted) break;
-          raw += chunk;
-        }
+        const [raw, basicInfo] = await Promise.all([
+          (async () => {
+            let acc = "";
+            for await (const chunk of provider.enrich(w.word, controller.signal)) {
+              if (controller.signal.aborted) break;
+              acc += chunk;
+              if (isOpen) {
+                const parsed = parseEnrichmentStream(acc);
+                setSelected((prev) => prev && prev.word.id === w.id ? { ...prev, enriched: parsed } : prev);
+              }
+            }
+            return acc;
+          })(),
+          fetchBasicInfo(provider, w.word, targetLevel, controller.signal),
+        ]);
         if (controller.signal.aborted) break;
         const final = parseEnrichmentStream(raw);
-        await db.addWordEnriched(w.word, final.zhShort || w.word, null, {
+        const zhShort = basicInfo.zh || final.zhShort;
+        const level = basicInfo.level || final.level;
+        await db.addWordEnriched(w.word, zhShort || w.word, basicInfo.wordType || null, {
           text: final.text,
-          zhShort: final.zhShort,
-          level: final.level,
+          zhShort,
+          level,
         });
+        setWords((prev) => prev.map((x) => x.id === w.id
+          ? { ...x, zh: zhShort || x.zh, level: level || x.level, word_type: basicInfo.wordType || x.word_type }
+          : x));
+        if (isOpen) {
+          setSelected((prev) => prev && prev.word.id === w.id
+            ? { ...prev, enriched: final, word: { ...prev.word, zh: zhShort || prev.word.zh, level: level || prev.word.level, word_type: basicInfo.wordType || prev.word.word_type } }
+            : prev);
+        }
         succeeded++;
       } catch (e: any) {
         if (e?.name === "AbortError") break;
         failed++;
       } finally {
-        setBulkProgress((prev) => ({ ...prev, done: prev.done + 1 }));
+        done++;
+        useVocabEnrichStore.getState().setBulkProgress(done);
+        if (isOpen) setEnriching(false);
       }
     }
 
     const aborted = controller.signal.aborted;
-    bulkAbortRef.current = null;
-    setBulkRunning(false);
+    useVocabEnrichStore.getState().finishBulk();
     loadWords();
     loadAllWordsSet();
     if (succeeded > 0) window.dispatchEvent(new CustomEvent("vocab-updated"));
@@ -175,12 +222,12 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
     runBulkEnrich(all);
   };
 
-  const stopBulkEnrich = () => bulkAbortRef.current?.abort();
+  const stopBulkEnrich = () => useVocabEnrichStore.getState().bulk.controller?.abort();
 
   const reanalyzeSelected = async () => {
     if (bulkRunning) return;
     const targets = words.filter((w) => selectedIds.has(w.id));
-    clearWordSelection();
+    exitWordSelectMode();
     await runBulkEnrich(targets);
   };
 
@@ -191,7 +238,7 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
     if (ok) {
       toast.success(t("vocab.wordsDeleted", { n: selectedIds.size }));
       if (selected && selectedIds.has(selected.word.id)) setSelected(null);
-      clearWordSelection();
+      exitWordSelectMode();
       await loadWords();
       await loadAllWordsSet();
     }
@@ -213,8 +260,7 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
 
   useEffect(() => { loadWords(); }, [levelFilter, debouncedSearch, dateField, dateFrom, dateTo]);
 
-  // Full, unfiltered vocabulary set — used for dedup in GenerateVocabModal, which
-  // must check against the whole vocabulary regardless of the list's current filters.
+  // Full, unfiltered vocabulary set — its size drives the "re-analyze all" confirm count.
   const [allWordsSet, setAllWordsSet] = useState<Set<string>>(new Set());
   const loadAllWordsSet = async () => {
     const all = await db.getWords();
@@ -228,15 +274,7 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
     return () => window.removeEventListener("vocab-updated", handler);
   }, [levelFilter, debouncedSearch, dateField, dateFrom, dateTo]);
 
-  // Source filtering is client-side: getWords returns the full result set
-  const sources = useMemo(
-    () => [...new Set(words.map((w) => w.source))].sort(),
-    [words]
-  );
-  const visibleWords = useMemo(
-    () => (sourceFilter === "all" ? words : words.filter((w) => w.source === sourceFilter)),
-    [words, sourceFilter]
-  );
+  const visibleWords = words;
 
   // Dictionary behavior: the searched term isn't in the vocabulary → offer AI lookup
   const showAiLookup = useMemo(() => {
@@ -284,32 +322,84 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
       return;
     }
     enrichControllerRef.current?.abort();
-    const controller = new AbortController();
+    const controller = useVocabEnrichStore.getState().startSingle(word);
     enrichControllerRef.current = controller;
 
     setEnriching(true);
     setEnrichError("");
-    setSelected((prev) => prev ? { ...prev, legacy: false } : prev);
+    setSelected((prev) => prev ? { ...prev, enriched: null, legacy: false } : prev);
 
     let raw = "";
     try {
+      // Update the list item (and the detail header) as soon as this resolves —
+      // don't make it wait for the much slower full-explanation stream to finish.
+      const basicInfoPromise = fetchBasicInfo(provider, word, targetLevel, controller.signal).then((info) => {
+        if (controller.signal.aborted) return info;
+        if (info.zh || info.level || info.wordType) {
+          setWords((prev) => prev.map((w) => w.word === word
+            ? { ...w, zh: info.zh || w.zh, level: info.level || w.level, word_type: info.wordType || w.word_type }
+            : w));
+          setSelected((prev) => prev && prev.word.word === word
+            ? { ...prev, word: { ...prev.word, zh: info.zh || prev.word.zh, level: info.level || prev.word.level, word_type: info.wordType || prev.word.word_type } }
+            : prev);
+        }
+        return info;
+      });
+      // The enrich stream is prompted to open with a `META: <level> | <short gloss>` line
+      // (see parseEnrichmentStream) before the much longer explanation body — so the short
+      // gloss is usually available within the first chunk or two. Apply it to the list/detail
+      // state as soon as it shows up, once, rather than waiting for the whole stream (which
+      // can take a while) to finish.
+      let appliedStreamMeta = false;
       for await (const chunk of provider.enrich(word, controller.signal)) {
         if (controller.signal.aborted) break;
         raw += chunk;
         const parsed = parseEnrichmentStream(raw);
         setSelected((prev) => prev?.word.word === word ? { ...prev, enriched: parsed } : prev);
+        if (!appliedStreamMeta && (parsed.zhShort || parsed.level)) {
+          appliedStreamMeta = true;
+          const backfillZh = (current: string | null) => (current?.trim() ? current : parsed.zhShort || word);
+          setWords((prev) => prev.map((w) => w.word === word
+            ? { ...w, zh: backfillZh(w.zh), level: parsed.level || w.level }
+            : w));
+          setSelected((prev) => prev && prev.word.word === word
+            ? { ...prev, word: { ...prev.word, zh: backfillZh(prev.word.zh), level: parsed.level || prev.word.level } }
+            : prev);
+        }
       }
       if (controller.signal.aborted) return;
 
       const final = parseEnrichmentStream(raw);
-      await db.addWordEnriched(word, final.zhShort || word, null, {
+      const basicInfo = await basicInfoPromise;
+      const zhShort = basicInfo.zh || final.zhShort;
+      const wordType = basicInfo.wordType || null;
+      const level = basicInfo.level || final.level;
+      await db.addWordEnriched(word, zhShort || word, wordType, {
         text: final.text,
-        zhShort: final.zhShort,
-        level: final.level,
+        zhShort,
+        level,
       }).catch(() => {});
+
+      // The earlier optimistic update (right after basicInfoPromise resolves) only applied
+      // info.zh — if that came back empty but the full enrichment stream's zhShort didn't,
+      // the list would stay stuck showing no gloss even though the DB write above (which
+      // uses that same zhShort fallback) succeeded. Sync the list/detail state to exactly
+      // what got persisted so the two can never drift apart — including the "no gloss
+      // already, and the AI didn't produce one either" case, where the backend backfills
+      // the word itself rather than leaving the definition permanently blank.
+      const backfillZh = (current: string | null) => (current?.trim() ? current : zhShort || word);
+      if (zhShort || level || wordType) {
+        setWords((prev) => prev.map((w) => w.word === word
+          ? { ...w, zh: backfillZh(w.zh), level: level || w.level, word_type: wordType || w.word_type }
+          : w));
+        setSelected((prev) => prev && prev.word.word === word
+          ? { ...prev, word: { ...prev.word, zh: backfillZh(prev.word.zh), level: level || prev.word.level, word_type: wordType || prev.word.word_type } }
+          : prev);
+      }
 
       toast.success(`「${word}」AI 分析完成`);
       window.dispatchEvent(new CustomEvent("vocab-updated"));
+      useVocabEnrichStore.getState().finishSingle(word, "done");
     } catch (e: any) {
       if (e?.name === "AbortError") return;
       const errMsg = e.message?.includes("Load failed") || e.message?.includes("fetch")
@@ -317,6 +407,7 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
         : (e.message || t("vocab.aiError"));
       setEnrichError(errMsg);
       toast.error(errMsg);
+      useVocabEnrichStore.getState().finishSingle(word, "error");
     } finally {
       if (!controller.signal.aborted) setEnriching(false);
     }
@@ -339,12 +430,15 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
     enrichControllerRef.current = controller;
 
     setSelected(null);
-    setLookup({ word, enriched: null, added: false, wordId: null });
+    setLookup({ word, enriched: null, basicInfo: {}, added: false, wordId: null });
     setEnriching(true);
     setEnrichError("");
 
     let raw = "";
     try {
+      fetchBasicInfo(provider, word, targetLevel, controller.signal).then((basicInfo) => {
+        setLookup((prev) => prev?.word === word ? { ...prev, basicInfo } : prev);
+      });
       for await (const chunk of provider.enrich(word, controller.signal)) {
         if (controller.signal.aborted) break;
         raw += chunk;
@@ -366,10 +460,11 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
   const addLookupToVocab = async () => {
     if (!lookup?.enriched || lookup.added) return;
     try {
-      const result = await db.addWordEnriched(lookup.word, lookup.enriched.zhShort || lookup.word, null, {
+      const zhShort = lookup.basicInfo.zh || lookup.enriched.zhShort;
+      const result = await db.addWordEnriched(lookup.word, zhShort || lookup.word, lookup.basicInfo.wordType || null, {
         text: lookup.enriched.text,
-        zhShort: lookup.enriched.zhShort,
-        level: lookup.enriched.level,
+        zhShort,
+        level: lookup.basicInfo.level || lookup.enriched.level,
       });
       setLookup((prev) => prev ? { ...prev, added: true, wordId: result.id } : prev);
       window.dispatchEvent(new CustomEvent("vocab-updated"));
@@ -429,16 +524,18 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-10 shrink-0 items-center gap-1 border-b px-3">
-        {(["words", "patterns"] as const).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setView(tab)}
-            className={`rounded-lg px-3 py-1 text-sm font-medium transition ${view === tab ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
-          >
-            {t(tab === "words" ? "vocab.tabWords" : "vocab.tabPatterns")}
-          </button>
-        ))}
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2.5 bg-background">
+        <div className="flex items-center gap-1">
+          {(["words", "patterns"] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setView(tab)}
+              className={`h-7 rounded-lg px-3 text-xs font-semibold transition-colors ${view === tab ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+            >
+              {t(tab === "words" ? "vocab.tabWords" : "vocab.tabPatterns")}
+            </button>
+          ))}
+        </div>
       </div>
       {view === "patterns" ? <PatternLibrary initialQuery={patternSeed} onSeedConsumed={() => setPatternSeed(null)} /> : (
       <div className="flex min-h-0 flex-1">
@@ -447,8 +544,6 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
         selectedId={selected?.word.id ?? null}
         search={search}
         levelFilter={levelFilter}
-        sourceFilter={sourceFilter}
-        sources={sources}
         page={page}
         pageSize={PAGE_SIZE}
         showAiLookup={showAiLookup}
@@ -458,7 +553,6 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
         dateTo={dateTo}
         onSearchChange={(v) => { setSearch(v); setPage(0); }}
         onFilterChange={setLevelFilter}
-        onSourceFilterChange={setSourceFilter}
         onDateFieldChange={setDateField}
         onDateFromChange={setDateFrom}
         onDateToChange={setDateTo}
@@ -466,7 +560,6 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
         onPageChange={setPage}
         onDoubleClick={(word) => openWordModal(word)}
         onAiLookup={startLookup}
-        onOpenGenerate={() => setGenerateOpen(true)}
         bulkRunning={bulkRunning}
         bulkProgress={bulkProgress}
         onEnrichUnanalyzed={enrichUnanalyzed}
@@ -481,19 +574,21 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
         onReanalyzeSelected={reanalyzeSelected}
         onDeleteSelected={() => setDeleteSelectedOpen(true)}
         onToggleStar={toggleWordStar}
+        selectMode={selectMode}
+        onToggleSelectMode={toggleWordSelectMode}
       />
 
       <WordDetailPanel
         selected={{
           word: lookup ? lookup.word : selected?.word.word ?? "",
-          zh: lookup ? lookup.enriched?.zhShort ?? null : selected?.word.zh ?? null,
-          wordType: lookup ? null : selected?.word.word_type ?? null,
-          level: lookup ? lookup.enriched?.level ?? null : selected?.word.level ?? null,
+          zh: lookup ? lookup.basicInfo.zh ?? lookup.enriched?.zhShort ?? null : selected?.word.zh ?? null,
+          wordType: lookup ? lookup.basicInfo.wordType ?? null : selected?.word.word_type ?? null,
+          level: lookup ? lookup.basicInfo.level ?? lookup.enriched?.level ?? null : selected?.word.level ?? null,
           ipa: "",
         }}
         wordId={lookup ? null : selected?.word.id ?? null}
         enriched={activeEnriched}
-        enriching={enriching}
+        enriching={lookup ? enriching : effectiveEnriching}
         enrichError={enrichError}
         legacy={lookup ? false : selected?.legacy ?? false}
         notes={notes}
@@ -511,13 +606,6 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
       />
       </div>
       )}
-
-      <GenerateVocabModal
-        open={generateOpen}
-        onClose={() => setGenerateOpen(false)}
-        existingWords={allWordsSet}
-        onAdded={() => { loadWords(); loadAllWordsSet(); }}
-      />
 
       <ConfirmModal
         open={reanalyzeConfirmOpen}

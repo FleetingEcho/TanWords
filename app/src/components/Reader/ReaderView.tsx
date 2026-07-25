@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { open as openShell } from "@tauri-apps/plugin-shell";
 import { toast } from "sonner";
+import { Maximize2, Minimize2 } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { ArticleReader } from "@/components/Reader/ArticleReader";
-import { ExternalIcon, NotesIcon } from "@/components/ui/icons";
+import { ExternalIcon, NotesIcon, ChevronIcon } from "@/components/ui/icons";
 import type { PodcastTrack } from "@/store/podcastPlayerStore";
 import { Button } from "@/components/ui/button";
 import { useReaderNotesStore } from "@/store/readerNotesStore";
@@ -32,6 +33,18 @@ export function ReaderView({ url, title, domain, onBack, onOpenExternal, audio, 
   // need article + player state that lives there) but they render up here, in the
   // reader bar, via this slot — set once the div mounts, portaled into from below.
   const [toolbarSlot, setToolbarSlot] = useState<HTMLDivElement | null>(null);
+  // Full-screen distraction-free mode, same idea (and same fixed-inset-0-overlay trick,
+  // no separate Dialog) as Docs' zen mode — covers the whole app, sidebar included.
+  const [zenMode, setZenMode] = useState(false);
+
+  useEffect(() => {
+    if (!zenMode) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setZenMode(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [zenMode]);
 
   const openHnDiscussion = async () => {
     const hnUrl = `https://news.ycombinator.com/item?id=${hnItemId}`;
@@ -82,15 +95,17 @@ export function ReaderView({ url, title, domain, onBack, onOpenExternal, audio, 
   };
 
   return (
-    <div className="h-full flex flex-col animate-fade-in">
+    <div className={`flex flex-col animate-fade-in ${zenMode ? "fixed inset-0 z-50 bg-background" : "h-full"}`}>
       {/* Reader bar */}
       <div className="flex items-center gap-3 px-4 h-12 border-b border-border shrink-0">
         <Button
           variant="ghost"
           onClick={onBack}
-          className="h-7 px-2.5 rounded-md flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          title={t("hn.reader.back")}
+          aria-label={t("hn.reader.back")}
+          className="w-7 h-7 p-0 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
         >
-          ← {t("hn.reader.back")}
+          <ChevronIcon direction="left" className="w-4 h-4" />
         </Button>
         <div className="w-px h-4 bg-border" />
         {hnItemId != null ? (
@@ -134,6 +149,15 @@ export function ReaderView({ url, title, domain, onBack, onOpenExternal, audio, 
             )}
           </Button>
         )}
+        <Button
+          variant="ghost"
+          onClick={() => setZenMode((v) => !v)}
+          title={zenMode ? t("doc.exitZenMode") : t("doc.zenMode")}
+          aria-label={zenMode ? t("doc.exitZenMode") : t("doc.zenMode")}
+          className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+        >
+          {zenMode ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+        </Button>
       </div>
 
       <ArticleReader url={url} domain={domain} onOpenExternal={onOpenExternal} audio={audio} hnItemId={hnItemId} toolbarSlot={toolbarSlot} />

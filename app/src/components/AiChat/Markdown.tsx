@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 
 const INLINE_RE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*)|(\[[^\]\n]+\]\([^)\s]+\))/g;
 
-function renderInline(text: string, keyBase: string): React.ReactNode[] {
+export function renderInline(text: string, keyBase: string, boldClassName?: string): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
   let last = 0;
   let i = 0;
@@ -30,7 +30,7 @@ function renderInline(text: string, keyBase: string): React.ReactNode[] {
         </code>
       );
     } else if (tok.startsWith("**")) {
-      nodes.push(<strong key={key}>{renderInline(tok.slice(2, -2), key)}</strong>);
+      nodes.push(<strong key={key} className={boldClassName}>{renderInline(tok.slice(2, -2), key, boldClassName)}</strong>);
     } else if (tok.startsWith("*")) {
       nodes.push(<em key={key}>{renderInline(tok.slice(1, -1), key)}</em>);
     } else {
@@ -96,7 +96,7 @@ interface ListItem {
   indent: number;
 }
 
-function renderList(items: ListItem[], ordered: boolean, keyBase: string): React.ReactNode {
+function renderList(items: ListItem[], ordered: boolean, keyBase: string, boldClassName?: string): React.ReactNode {
   // Two-level nesting: group consecutive indented items under the previous top-level item
   const Tag = ordered ? "ol" : "ul";
   const cls = ordered ? "list-decimal" : "list-disc";
@@ -109,11 +109,11 @@ function renderList(items: ListItem[], ordered: boolean, keyBase: string): React
     <Tag key={keyBase} className={`${cls} pl-5 my-1.5 space-y-1`}>
       {roots.map((r, i) => (
         <li key={i}>
-          {renderInline(r.text, `${keyBase}-${i}`)}
+          {renderInline(r.text, `${keyBase}-${i}`, boldClassName)}
           {r.children.length > 0 && (
             <ul className="list-[circle] pl-4 mt-1 space-y-0.5">
               {r.children.map((c, j) => (
-                <li key={j}>{renderInline(c, `${keyBase}-${i}-${j}`)}</li>
+                <li key={j}>{renderInline(c, `${keyBase}-${i}-${j}`, boldClassName)}</li>
               ))}
             </ul>
           )}
@@ -123,7 +123,7 @@ function renderList(items: ListItem[], ordered: boolean, keyBase: string): React
   );
 }
 
-function renderTable(rows: string[][], keyBase: string): React.ReactNode {
+function renderTable(rows: string[][], keyBase: string, boldClassName?: string): React.ReactNode {
   const [head, ...body] = rows;
   return (
     <div key={keyBase} className="my-2 overflow-x-auto">
@@ -132,7 +132,7 @@ function renderTable(rows: string[][], keyBase: string): React.ReactNode {
           <tr>
             {head.map((c, i) => (
               <th key={i} className="border border-border px-2 py-1 text-left font-semibold bg-black/5 dark:bg-white/5">
-                {renderInline(c, `${keyBase}-h${i}`)}
+                {renderInline(c, `${keyBase}-h${i}`, boldClassName)}
               </th>
             ))}
           </tr>
@@ -142,7 +142,7 @@ function renderTable(rows: string[][], keyBase: string): React.ReactNode {
             <tr key={i}>
               {row.map((c, j) => (
                 <td key={j} className="border border-border px-2 py-1 align-top">
-                  {renderInline(c, `${keyBase}-${i}-${j}`)}
+                  {renderInline(c, `${keyBase}-${i}-${j}`, boldClassName)}
                 </td>
               ))}
             </tr>
@@ -162,11 +162,15 @@ const TABLE_SEP_RE = /^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?$/;
 export function Markdown({
   text,
   renderBlockquote,
+  boldClassName,
 }: {
   text: string;
   /** Override how a blockquote's lines render (default: quoted paragraphs).
    * Used by EnrichmentText to attach a speak button to example sentences. */
   renderBlockquote?: (lines: string[], key: string) => React.ReactNode;
+  /** Extra class(es) applied to every **bold** span — lets a caller (e.g. EnrichmentText)
+   * highlight emphasized text instead of leaving it plain bold black/white. */
+  boldClassName?: string;
 }) {
   const lines = text.split("\n");
   const out: React.ReactNode[] = [];
@@ -200,7 +204,7 @@ export function Markdown({
       const sizes = ["text-[1.15em]", "text-[1.08em]", "text-[1.02em]", "text-[1em]"];
       out.push(
         <p key={key++} className={`font-bold mt-3 mb-1 ${sizes[level - 1]}`}>
-          {renderInline(h[2], `h${key}`)}
+          {renderInline(h[2], `h${key}`, boldClassName)}
         </p>
       );
       i++;
@@ -228,7 +232,7 @@ export function Markdown({
         ) : (
           <blockquote key={bqKey} className="border-l-2 border-border pl-3 my-2 text-muted-foreground italic">
             {quote.map((q, j) => (
-              <p key={j}>{renderInline(q, `q${bqKey}-${j}`)}</p>
+              <p key={j}>{renderInline(q, `q${bqKey}-${j}`, boldClassName)}</p>
             ))}
           </blockquote>
         )
@@ -244,7 +248,7 @@ export function Markdown({
         rows.push(splitTableRow(lines[i]));
         i++;
       }
-      out.push(renderTable(rows, `t${key++}`));
+      out.push(renderTable(rows, `t${key++}`, boldClassName));
       continue;
     }
 
@@ -259,7 +263,7 @@ export function Markdown({
         items.push({ indent: m[1].length, text: m[3] });
         i++;
       }
-      out.push(renderList(items, ordered, `l${key++}`));
+      out.push(renderList(items, ordered, `l${key++}`, boldClassName));
       continue;
     }
 
@@ -283,7 +287,7 @@ export function Markdown({
         {para.map((p, j) => (
           <React.Fragment key={j}>
             {j > 0 && <br />}
-            {renderInline(p, `p${key}-${j}`)}
+            {renderInline(p, `p${key}-${j}`, boldClassName)}
           </React.Fragment>
         ))}
       </p>

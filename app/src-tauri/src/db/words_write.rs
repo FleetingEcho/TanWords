@@ -1,4 +1,4 @@
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
 use tauri::State;
 
 use crate::db;
@@ -103,7 +103,7 @@ pub fn db_set_word_starred(
 #[tauri::command]
 pub fn db_add_word_enriched(
     word: String,
-    _zh: String,
+    zh: String,
     word_type: Option<String>,
     enrichment: WordEnrichmentInput,
     conn: State<'_, AppState>,
@@ -126,25 +126,38 @@ pub fn db_add_word_enriched(
             .map_err(|e| e.to_string())?
     };
 
-    // Don't clobber a level a caller (e.g. Reading) already supplied.
+    // Don't clobber a level/word_type a caller (e.g. Reading) already supplied.
     if !is_new {
         db.execute(
-            "UPDATE words SET level = COALESCE(level, ?1) WHERE id = ?2",
-            params![enrichment.level, word_id],
+            "UPDATE words SET level = COALESCE(level, ?1), word_type = COALESCE(word_type, ?2) WHERE id = ?3",
+            params![enrichment.level, word_type, word_id],
         ).map_err(|e| e.to_string())?;
     }
 
-    // Only seed a short gloss for quiz cards if this word doesn't have one yet.
-    if let Some(ref zh_short) = enrichment.zh_short {
-        let has_def: bool = db.query_row(
-            "SELECT EXISTS(SELECT 1 FROM word_definitions WHERE word_id = ?1)",
-            params![word_id],
-            |row| row.get(0),
-        ).map_err(|e| e.to_string())?;
-        if !has_def {
+    // Seed (or backfill) a short gloss for quiz cards. Prefer the AI-parsed gloss, but
+    // fall back to the caller-supplied `zh` (e.g. the word itself) so a model that
+    // returns no usable gloss still leaves the word with *some* gloss instead of a
+    // permanently blank list entry. Only skip existing definitions that already carry
+    // a non-empty gloss — otherwise a word whose very first definition row landed empty
+    // (e.g. an earlier failed enrichment) could never be fixed by re-analyzing, since
+    // the row's mere existence would keep blocking every future write.
+    let existing_zh: Option<String> = db.query_row(
+        "SELECT zh FROM word_definitions WHERE word_id = ?1 ORDER BY sort_order LIMIT 1",
+        params![word_id],
+        |row| row.get(0),
+    ).optional().map_err(|e| e.to_string())?;
+    let needs_gloss = existing_zh.as_deref().map(|z| z.trim().is_empty()).unwrap_or(true);
+    if needs_gloss {
+        let gloss = enrichment.zh_short.as_deref().filter(|s| !s.trim().is_empty()).unwrap_or(zh.as_str());
+        if existing_zh.is_some() {
+            db.execute(
+                "UPDATE word_definitions SET zh = ?1 WHERE word_id = ?2 AND (zh IS NULL OR TRIM(zh) = '')",
+                params![gloss, word_id],
+            ).map_err(|e| e.to_string())?;
+        } else {
             db.execute(
                 "INSERT INTO word_definitions (word_id, pos, zh, sort_order) VALUES (?1, 'other', ?2, 0)",
-                params![word_id, zh_short],
+                params![word_id, gloss],
             ).map_err(|e| e.to_string())?;
         }
     }

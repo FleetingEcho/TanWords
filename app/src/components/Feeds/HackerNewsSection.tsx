@@ -7,18 +7,7 @@ import { EntryGrid, type FeedViewMode } from "./EntryGrid";
 import type { DisplayEntry } from "./EntryCard";
 import { titleTranslateKey } from "./feedUtils";
 import { useTitleTranslateStore } from "@/store/titleTranslateStore";
-
-type HnSection = "top" | "new" | "best";
-
-interface HnStorySummary {
-  id: number;
-  title: string;
-  url: string;
-  by: string | null;
-  score: number | null;
-  time: number | null;
-  descendants: number | null;
-}
+import { useHnBrowseStore, type HnSection, type HnStorySummary } from "@/store/hnBrowseStore";
 
 interface HnSectionPage {
   stories: HnStorySummary[];
@@ -69,9 +58,7 @@ function toEntryRow(story: HnStorySummary): DisplayEntry {
 
 interface Props {
   viewMode: FeedViewMode;
-  learningId: number | null;
   onOpen: (entry: DisplayEntry) => void;
-  onLearn: (entry: DisplayEntry) => void;
   onTranslate?: (entry: DisplayEntry) => void;
   translatingId?: number | null;
   onAnalyzeBackground?: (entry: DisplayEntry) => void;
@@ -83,17 +70,31 @@ interface Props {
 /** Native Hacker News browser — New/Top/Best via HN's Firebase API, or search via
  *  Algolia's HN Search API, both paginated via an explicit "More" click. Nothing
  *  here is persisted: no read tracking, no offline cache. */
-export function HackerNewsSection({ viewMode, learningId, onOpen, onLearn, onTranslate, translatingId, onAnalyzeBackground, analyzingBackgroundIds, showTitleTranslations, titleTranslations }: Props) {
+export function HackerNewsSection({ viewMode, onOpen, onTranslate, translatingId, onAnalyzeBackground, analyzingBackgroundIds, showTitleTranslations, titleTranslations }: Props) {
   const t = useT();
-  const [section, setSection] = useState<HnSection>("top");
-  const [query, setQuery] = useState("");
-  const [activeQuery, setActiveQuery] = useState("");
-  const [stories, setStories] = useState<HnStorySummary[]>([]);
-  const [hasMore, setHasMore] = useState(false);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const section = useHnBrowseStore((s) => s.section);
+  const setSection = useHnBrowseStore((s) => s.setSection);
+  const query = useHnBrowseStore((s) => s.query);
+  const setQuery = useHnBrowseStore((s) => s.setQuery);
+  const activeQuery = useHnBrowseStore((s) => s.activeQuery);
+  const setActiveQuery = useHnBrowseStore((s) => s.setActiveQuery);
+  const stories = useHnBrowseStore((s) => s.stories);
+  const setStories = useHnBrowseStore((s) => s.setStories);
+  const hasMore = useHnBrowseStore((s) => s.hasMore);
+  const setHasMore = useHnBrowseStore((s) => s.setHasMore);
+  const status = useHnBrowseStore((s) => s.status);
+  const setStatus = useHnBrowseStore((s) => s.setStatus);
+  const setLoadedKey = useHnBrowseStore((s) => s.setLoadedKey);
   const [loadingMore, setLoadingMore] = useState(false);
   const requestSeq = useRef(0);
-  const nextSearchPage = useRef(0);
+  // Mirrors the store's nextSearchPage so loadMore can read/advance it synchronously
+  // within the same tick (zustand's set() isn't visible until the next render).
+  const nextSearchPage = useRef(useHnBrowseStore.getState().nextSearchPage);
+  // Captured once at mount — lets the fetch effect below skip re-fetching only on the very
+  // first run (i.e. remounting onto an already-cached section/search after browsing an
+  // article), while any section/search change made *during* this mount still fetches fresh.
+  const initialLoadedKey = useRef(useHnBrowseStore.getState().loadedKey);
+  const isFirstRun = useRef(true);
 
   const isSearching = activeQuery.trim().length > 0;
 
@@ -111,6 +112,7 @@ export function HackerNewsSection({ viewMode, learningId, onOpen, onLearn, onTra
       if (seq !== requestSeq.current) return;
       setStories((prev) => (reset ? result.stories : [...prev, ...result.stories]));
       nextSearchPage.current = result.page + 1;
+      useHnBrowseStore.getState().setNextSearchPage(nextSearchPage.current);
       setHasMore(result.page + 1 < result.total_pages);
     } else {
       const offset = reset ? 0 : stories.length;
@@ -123,13 +125,20 @@ export function HackerNewsSection({ viewMode, learningId, onOpen, onLearn, onTra
 
   // Section switch or a new committed search: start a fresh request "session"
   // so any in-flight response for the view the user just left can't land after the fact.
+  // Skipped when `stories` is already cached for this exact section/search (e.g. the user
+  // just returned from reading an article) — refetching on every remount is what reset the
+  // tab back to "Top" before this state lived in a store instead of local useState.
   useEffect(() => {
+    const key = isSearching ? `search:${activeQuery}` : `section:${section}`;
+    const skip = isFirstRun.current && initialLoadedKey.current === key;
+    isFirstRun.current = false;
+    if (skip) return;
     const seq = ++requestSeq.current;
     setStatus("loading");
     setStories([]);
     setHasMore(false);
     loadMore(seq, true)
-      .then(() => { if (seq === requestSeq.current) setStatus("ready"); })
+      .then(() => { if (seq === requestSeq.current) { setStatus("ready"); setLoadedKey(key); } })
       .catch(() => { if (seq === requestSeq.current) setStatus("error"); });
   }, [section, activeQuery]);
 
@@ -157,7 +166,7 @@ export function HackerNewsSection({ viewMode, learningId, onOpen, onLearn, onTra
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2.5">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-background/90 backdrop-blur-xl px-4 py-2.5">
         <div className="flex items-center gap-1.5">
           {SECTIONS.map((s) => (
             <button
@@ -212,9 +221,7 @@ export function HackerNewsSection({ viewMode, learningId, onOpen, onLearn, onTra
           <EntryGrid
             entries={entries}
             feedsById={EMPTY_FEEDS_BY_ID}
-            learningId={learningId}
             onOpen={onOpen}
-            onLearn={onLearn}
             onPlay={() => {}}
             onTranslate={onTranslate}
             translatingId={translatingId}

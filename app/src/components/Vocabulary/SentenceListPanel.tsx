@@ -4,33 +4,50 @@ import { useT } from "@/hooks/useT";
 import { LevelBadge } from "@/components/shared/LevelBadge";
 import { SpeakButton } from "@/components/ui/SpeakButton";
 import { Button } from "@/components/ui/button";
-import { Plus, Sparkles } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { LevelDateFilter, LevelFilter } from "@/components/shared/LevelDateFilter";
+import { Plus, Sparkles, ListChecks, Trash2, X } from "lucide-react";
 
 interface Props {
   items: PatternItem[];
   selectedId: number | null;
   search: string;
+  levelFilter: LevelFilter;
+  dateFrom: string;
+  dateTo: string;
   page: number;
   pageSize: number;
   onSearchChange: (v: string) => void;
+  onLevelFilterChange: (v: LevelFilter) => void;
+  onDateFromChange: (v: string) => void;
+  onDateToChange: (v: string) => void;
   onSelect: (item: PatternItem) => void;
   onPageChange: (p: number) => void;
   onOpenAdd: () => void;
   onOpenGenerate: () => void;
+  selectMode: boolean;
+  onToggleSelectMode: () => void;
+  selectedIds: Set<number>;
+  onToggleSelect: (id: number) => void;
+  onSelectAll: () => void;
+  onClearSelection: () => void;
+  onDeleteSelected: () => void;
 }
 
 /** Sentence library list — mirrors WordListPanel's layout so the Sentences
  *  tab reads like a sibling of the Words tab instead of a bolted-on page. */
 export function SentenceListPanel({
-  items, selectedId, search, page, pageSize,
-  onSearchChange, onSelect, onPageChange, onOpenAdd, onOpenGenerate,
+  items, selectedId, search, levelFilter, dateFrom, dateTo, page, pageSize,
+  onSearchChange, onLevelFilterChange, onDateFromChange, onDateToChange,
+  onSelect, onPageChange, onOpenAdd, onOpenGenerate,
+  selectMode, onToggleSelectMode, selectedIds, onToggleSelect, onSelectAll, onClearSelection, onDeleteSelected,
 }: Props) {
   const t = useT();
   const totalPages = Math.ceil(items.length / pageSize);
   const paged = items.slice(page * pageSize, (page + 1) * pageSize);
 
   return (
-    <div className="w-80 shrink-0 border-r border-border bg-card flex flex-col h-full">
+    <div className="w-80 shrink-0 border-r border-border flex flex-col h-full">
       <div className="px-4 pt-5 pb-3 space-y-2.5">
         <div className="flex items-baseline gap-2">
           <h2 className="text-lg font-bold">{t("vocab.patterns.title")}</h2>
@@ -52,8 +69,48 @@ export function SentenceListPanel({
             >
               <Sparkles className="w-3.5 h-3.5" />
             </Button>
+            <Button
+              variant="ghost"
+              onClick={onToggleSelectMode}
+              title={selectMode ? t("vocab.exitSelectMode") : t("vocab.enterSelectMode")}
+              className={`w-6 h-6 p-0 rounded-md flex items-center justify-center transition-colors shrink-0 ${
+                selectMode ? "bg-primary/15 text-primary hover:bg-primary/20" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              <ListChecks className="w-3.5 h-3.5" />
+            </Button>
           </div>
         </div>
+
+        {selectMode && (
+          <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-2 py-1.5">
+            <Checkbox
+              checked={selectedIds.size === items.length && items.length > 0}
+              onCheckedChange={() => (selectedIds.size === items.length ? onClearSelection() : onSelectAll())}
+              title={selectedIds.size === items.length ? t("vocab.unselectAll") : t("vocab.selectAll")}
+            />
+            <span className="text-[11px] font-medium text-muted-foreground">{t("vocab.selectedCount", { n: selectedIds.size })}</span>
+            <div className="ml-auto flex items-center gap-1">
+              <Button
+                variant="ghost"
+                onClick={onDeleteSelected}
+                disabled={selectedIds.size === 0}
+                title={t("vocab.deleteSelected")}
+                className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-destructive hover:bg-destructive/10 disabled:opacity-30 transition-colors shrink-0"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={onToggleSelectMode}
+                title={t("vocab.exitSelectMode")}
+                className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0"
+              >
+                <X className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+          </div>
+        )}
 
         <div className="relative">
           <input
@@ -67,6 +124,15 @@ export function SentenceListPanel({
             <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
           </svg>
         </div>
+
+        <LevelDateFilter
+          levelFilter={levelFilter}
+          onLevelFilterChange={onLevelFilterChange}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          onDateFromChange={onDateFromChange}
+          onDateToChange={onDateToChange}
+        />
       </div>
 
       <div className="flex-1 overflow-y-auto divide-y divide-border">
@@ -80,10 +146,18 @@ export function SentenceListPanel({
           return (
             <div
               key={item.id}
-              onClick={() => onSelect(item)}
-              className={`px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors ${selectedId === item.id ? "bg-accent/50" : ""}`}
+              onClick={() => (selectMode ? onToggleSelect(item.id) : onSelect(item))}
+              className={`px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors ${selectedIds.has(item.id) || selectedId === item.id ? "bg-accent/50" : ""}`}
             >
               <div className="flex items-center gap-1.5 min-w-0">
+                {selectMode && (
+                  <Checkbox
+                    checked={selectedIds.has(item.id)}
+                    onCheckedChange={() => onToggleSelect(item.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="shrink-0"
+                  />
+                )}
                 <span className="font-semibold text-sm truncate">{sentence}</span>
                 <LevelBadge level={item.level} />
                 <SpeakButton text={sentence} className="w-3.5 h-3.5" />

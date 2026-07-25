@@ -3,6 +3,7 @@ import type { Dict } from "../types";
 export const documents: Dict = {
     "doc.newDoc": "新建文档",
     "doc.search": "搜索文档...",
+    "doc.filters": "筛选",
     "doc.sortModified": "最近修改",
     "doc.sortCreated": "创建时间",
     "doc.sortTitle": "标题排序",
@@ -41,6 +42,7 @@ export const documents: Dict = {
     "doc.newFileHere": "在此新建文档",
     "doc.dragToMove": "拖动文件",
     "doc.fileMoved": "文件已移动",
+    "doc.loadingFiles": "正在加载文件…",
     "doc.noLocalFiles": "没有 Markdown 文件",
     "doc.noLocalFilesHint": "点击「新建文件」，或向该文件夹添加 .md 文件",
     "doc.noFileSelected": "选择或新建一个文件",

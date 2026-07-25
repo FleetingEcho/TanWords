@@ -15,6 +15,7 @@ export const reading: Dict = {
     "reading.translate.comments": "Comments",
     "reading.translate.close": "Close",
     "reading.translate.retry": "Try again",
+    "reading.translate.truncated": "Shortened to fit your model's context window",
     "reading.search.placeholder": "Search or add a word…",
     "reading.search.inVocab": "In vocabulary",
     "reading.search.add": "Add \"{word}\" to vocabulary",

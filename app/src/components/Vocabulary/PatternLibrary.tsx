@@ -4,6 +4,7 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useDB } from "@/hooks/useDB";
 import type { PatternItem } from "@/hooks/useDB.patterns";
 import { useT } from "@/hooks/useT";
+import { LevelFilter } from "@/components/shared/LevelDateFilter";
 import { SentenceListPanel } from "./SentenceListPanel";
 import { SentenceDetailPanel } from "./SentenceDetailPanel";
 import { SentenceModal } from "./SentenceModal";
@@ -23,6 +24,9 @@ export function PatternLibrary({ initialQuery, onSeedConsumed }: { initialQuery?
 
   const [patterns, setPatterns] = useState<PatternItem[]>([]);
   const [search, setSearch] = useState("");
+  const [levelFilter, setLevelFilter] = useState<LevelFilter>("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(0);
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
@@ -33,9 +37,36 @@ export function PatternLibrary({ initialQuery, onSeedConsumed }: { initialQuery?
   const [deleteTarget, setDeleteTarget] = useState<PatternItem | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // ── Multi-select (header action: delete selected) ──────────────────────
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const toggleSelect = (id: number) => setSelectedIds((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+  const clearSelection = () => setSelectedIds(new Set());
+  const selectAll = () => setSelectedIds(new Set(visible.map((p) => p.id)));
+  const toggleSelectMode = () => {
+    setSelectMode((v) => !v);
+    clearSelection();
+  };
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    clearSelection();
+  };
+  const [deleteSelectedOpen, setDeleteSelectedOpen] = useState(false);
+  const [deletingSelected, setDeletingSelected] = useState(false);
+
   const load = () => db.listPatterns().then(setPatterns);
   useEffect(() => { load(); }, []);
-  useEffect(() => { setPage(0); }, [search]);
+  useEffect(() => { setPage(0); }, [search, levelFilter, dateFrom, dateTo]);
+
+  // Picks up sentences quick-added from the top CommandBar's SentenceSearchBox.
+  useEffect(() => {
+    window.addEventListener("patterns-updated", load);
+    return () => window.removeEventListener("patterns-updated", load);
+  }, []);
 
   // A word picked in the Words tab ("generate sentences" button) seeds a run.
   useEffect(() => {
@@ -48,10 +79,16 @@ export function PatternLibrary({ initialQuery, onSeedConsumed }: { initialQuery?
 
   const visible = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return patterns;
-    return patterns.filter((item) =>
-      `${item.pattern} ${item.zh} ${item.note} ${item.examples.map((e) => e.sentence).join(" ")}`.toLowerCase().includes(query));
-  }, [patterns, search]);
+    return patterns.filter((item) => {
+      if (query && !`${item.pattern} ${item.zh} ${item.note} ${item.examples.map((e) => e.sentence).join(" ")}`.toLowerCase().includes(query)) return false;
+      if (levelFilter !== "all") {
+        if (levelFilter === "B1-" ? !["B1", "A2", "A1"].includes(item.level ?? "") : item.level !== levelFilter) return false;
+      }
+      if (dateFrom && item.created_at < dateFrom) return false;
+      if (dateTo && item.created_at > `${dateTo} 23:59:59`) return false;
+      return true;
+    });
+  }, [patterns, search, levelFilter, dateFrom, dateTo]);
 
   // Deleting the last item of the last page must not leave an empty page.
   useEffect(() => {
@@ -78,8 +115,25 @@ export function PatternLibrary({ initialQuery, onSeedConsumed }: { initialQuery?
       if (selectedId === deleteTarget.id) setSelectedId(null);
       setDeleteTarget(null);
       await load();
+      window.dispatchEvent(new CustomEvent("patterns-updated"));
     }
     setDeleting(false);
+  };
+
+  const deleteSelected = async () => {
+    if (deletingSelected) return;
+    setDeletingSelected(true);
+    const results = await Promise.all([...selectedIds].map((id) => db.deletePattern(id)));
+    const deletedCount = results.filter(Boolean).length;
+    if (deletedCount > 0) {
+      toast.success(t("vocab.patterns.selectedDeleted", { n: deletedCount }));
+      if (selectedId !== null && selectedIds.has(selectedId)) setSelectedId(null);
+      exitSelectMode();
+      await load();
+      window.dispatchEvent(new CustomEvent("patterns-updated"));
+    }
+    setDeletingSelected(false);
+    setDeleteSelectedOpen(false);
   };
 
   return (
@@ -88,13 +142,26 @@ export function PatternLibrary({ initialQuery, onSeedConsumed }: { initialQuery?
         items={visible}
         selectedId={selectedId}
         search={search}
+        levelFilter={levelFilter}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
         page={page}
         pageSize={PAGE_SIZE}
         onSearchChange={setSearch}
+        onLevelFilterChange={setLevelFilter}
+        onDateFromChange={setDateFrom}
+        onDateToChange={setDateTo}
         onSelect={(item) => setSelectedId(item.id)}
         onPageChange={setPage}
         onOpenAdd={() => { setModalMode("add"); setModalSeed(null); setModalOpen(true); }}
         onOpenGenerate={() => { setModalMode("generate"); setModalSeed(null); setModalOpen(true); }}
+        selectMode={selectMode}
+        onToggleSelectMode={toggleSelectMode}
+        selectedIds={selectedIds}
+        onToggleSelect={toggleSelect}
+        onSelectAll={selectAll}
+        onClearSelection={clearSelection}
+        onDeleteSelected={() => setDeleteSelectedOpen(true)}
       />
 
       <SentenceDetailPanel
@@ -108,7 +175,7 @@ export function PatternLibrary({ initialQuery, onSeedConsumed }: { initialQuery?
         initialMode={modalMode}
         initialQuery={modalSeed}
         existingSentences={existingSentences}
-        onAdded={load}
+        onAdded={() => { load(); window.dispatchEvent(new CustomEvent("patterns-updated")); }}
       />
 
       <ConfirmModal
@@ -119,6 +186,17 @@ export function PatternLibrary({ initialQuery, onSeedConsumed }: { initialQuery?
         confirmDisabled={deleting}
         onConfirm={remove}
         onCancel={() => !deleting && setDeleteTarget(null)}
+      />
+
+      <ConfirmModal
+        open={deleteSelectedOpen}
+        title={t("vocab.patterns.deleteSelectedConfirmTitle", { n: selectedIds.size })}
+        message={t("vocab.patterns.deleteSelectedConfirmMessage")}
+        confirmLabel={deletingSelected ? t("vocab.patterns.deleting") : t("vocab.patterns.deleteSelectedConfirmConfirm")}
+        confirmDisabled={deletingSelected}
+        danger
+        onConfirm={deleteSelected}
+        onCancel={() => !deletingSelected && setDeleteSelectedOpen(false)}
       />
     </div>
   );

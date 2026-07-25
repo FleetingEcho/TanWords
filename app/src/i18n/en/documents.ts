@@ -3,6 +3,7 @@ import type { Dict } from "../types";
 export const documents: Dict = {
     "doc.newDoc": "New Doc",
     "doc.search": "Search docs...",
+    "doc.filters": "Filters",
     "doc.sortModified": "Last Modified",
     "doc.sortCreated": "Created",
     "doc.sortTitle": "Title A-Z",
@@ -41,6 +42,7 @@ export const documents: Dict = {
     "doc.newFileHere": "New file here",
     "doc.dragToMove": "Drag to move",
     "doc.fileMoved": "File moved",
+    "doc.loadingFiles": "Loading files…",
     "doc.noLocalFiles": "No markdown files here",
     "doc.noLocalFilesHint": "Click New File, or add .md files to the folder",
     "doc.noFileSelected": "Select or create a file",

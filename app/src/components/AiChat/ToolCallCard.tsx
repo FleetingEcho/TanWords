@@ -20,9 +20,11 @@ const TOOL_ICONS: Record<string, React.FC<{ className?: string }>> = {
   generate_sentences:  SparkIcon,
   list_documents:      ClipboardListIcon,
   insert_into_document: DocIcon,
+  summarize_conversation: SparkIcon,
+  save_note_as_document: DocIcon,
 };
 
-const TOOL_LABELS: Record<string, string> = {
+export const TOOL_LABELS: Record<string, string> = {
   save_word:           "Save word",
   search_vocabulary:   "Search vocabulary",
   extract_vocabulary:  "Extract vocabulary",
@@ -30,6 +32,8 @@ const TOOL_LABELS: Record<string, string> = {
   generate_sentences:  "Generate sentences",
   list_documents:      "List documents",
   insert_into_document:"Insert into document",
+  summarize_conversation:"Summarize to note",
+  save_note_as_document:"Save note",
 };
 
 function inputSummary(name: string, input: Record<string, unknown>): string {
@@ -41,6 +45,7 @@ function inputSummary(name: string, input: Record<string, unknown>): string {
     case "generate_sentences":  return `${(input.items as unknown[])?.length ?? 0} sentences`;
     case "list_documents":      return "";
     case "insert_into_document":return `doc #${input.doc_id}`;
+    case "save_note_as_document":return `"${input.title}"`;
     default: return JSON.stringify(input).slice(0, 60);
   }
 }

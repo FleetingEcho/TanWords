@@ -15,4 +15,9 @@ export const reader: Dict = {
     "reader.learnOpen": "Open in AI Chat",
     "reader.learnDone": "\"{title}\" is ready — open it in AI Chat",
     "reader.learnFailed": "Couldn't analyze \"{title}\"",
+    "reader.learnTruncated": "The article was shortened to fit your model's context window",
+    "reader.learnContextOverflow": "The article is too long for your model's context window — try a model with a larger context size, or a shorter article",
+    "reader.pastePrompt": "Paste the article text below and we'll pick it up from there.",
+    "reader.pastePlaceholder": "Paste the article you copied…",
+    "reader.pasteSubmit": "Use this text",
 };

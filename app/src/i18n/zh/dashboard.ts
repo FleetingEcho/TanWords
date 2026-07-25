@@ -16,6 +16,7 @@ export const dashboard: Dict = {
     "dash.quick.title": "快捷入口",
     "dash.quick.feeds": "逛订阅源",
     "dash.quick.chat": "问 AI 导师",
+    "dash.recentlyRead.title": "最近阅读",
     "dash.rss.title": "订阅动态",
     "dash.rss.summary": "{articles} 个文章源 · {podcasts} 个播客 · {unread} 未读",
     "dash.rss.empty": "还没有订阅任何 RSS 源",

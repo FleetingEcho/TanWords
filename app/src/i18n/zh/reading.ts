@@ -15,6 +15,7 @@ export const reading: Dict = {
     "reading.translate.comments": "评论",
     "reading.translate.close": "关闭",
     "reading.translate.retry": "重新翻译",
+    "reading.translate.truncated": "内容过长，已自动精简以适配当前模型的上下文窗口",
     "reading.search.placeholder": "查询或添加单词…",
     "reading.search.inVocab": "已在词库",
     "reading.search.add": "添加「{word}」到词库",

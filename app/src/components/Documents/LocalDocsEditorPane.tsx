@@ -5,6 +5,7 @@ import { SaveStatus } from "./useDocumentEditor";
 
 interface Props {
   editorKey: number;
+  loading: boolean;
   activePath: string | null;
   activeContent: string | null;
   activeRawContent: string | null;
@@ -20,6 +21,7 @@ interface Props {
 
 export function LocalDocsEditorPane({
   editorKey,
+  loading,
   activePath,
   activeContent,
   activeRawContent,
@@ -51,6 +53,10 @@ export function LocalDocsEditorPane({
           zenMode={zenMode}
           onZenModeChange={onZenModeChange}
         />
+      ) : loading ? (
+        <div className="flex items-center justify-center h-full">
+          <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+        </div>
       ) : (
         <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2">
           <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-14 h-14 opacity-20">

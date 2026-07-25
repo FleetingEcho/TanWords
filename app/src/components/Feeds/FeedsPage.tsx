@@ -5,7 +5,8 @@ import { toast } from "sonner";
 import { useT } from "@/hooks/useT";
 import { useDB } from "@/hooks/useDB";
 import { useNavStore } from "@/store/navStore";
-import { useAnalyzeArticle } from "@/hooks/useAnalyzeArticle";
+import { useLearnArticle } from "@/hooks/useLearnArticle";
+import { useLearnChatStore } from "@/store/learnChatStore";
 import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
 import { usePlayerOriginStore } from "@/store/playerOriginStore";
 import { useFeedsNavStore } from "@/store/feedsNavStore";
@@ -16,11 +17,13 @@ import { FeedTabs } from "./FeedTabs";
 import { AddFeedDialog } from "./AddFeedDialog";
 import { FeedsMainContent, type BrowseTarget } from "./FeedsMainContent";
 import { TranslateModal } from "@/components/shared/TranslateModal";
+import { AiChatModal } from "@/components/AiChat/AiChatModal";
 import { flattenHnComments } from "@/lib/hnComments";
 import { useHnCommentsStore } from "@/store/hnCommentsStore";
 import { useTitleTranslateStore } from "@/store/titleTranslateStore";
 import { domainOf, isStale, titleTranslateKey } from "./feedUtils";
 import { seedDefaults } from "./feedSeeding";
+import { addRecentlyRead, getRecentlyRead, clearRecentlyRead, removeRecentlyRead, type RecentlyReadItem } from "@/lib/recentlyRead";
 
 /** One-time cleanup: the hnrss.org RSS subscription is superseded by the
  * native Hacker News section (New/Top/Best via HN's own API) — drop it from
@@ -32,7 +35,7 @@ export function FeedsPage() {
   const t = useT();
   const db = useDB();
   const { navigate } = useNavStore();
-  const { analyze } = useAnalyzeArticle();
+  const { startLearn } = useLearnArticle();
   const feedsViewMode = useSettingsStore((s) => s.feedsViewMode);
   const setFeedsViewMode = useSettingsStore((s) => s.setFeedsViewMode);
 
@@ -44,7 +47,6 @@ export function FeedsPage() {
   const [booting, setBooting] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
-  const [learningId, setLearningId] = useState<number | null>(null);
   const [translatingId, setTranslatingId] = useState<number | null>(null);
   /** Entries currently queued for background analysis — a set (not a single id)
    *  since several can run at once without blocking the UI or each other. */
@@ -57,7 +59,9 @@ export function FeedsPage() {
   // only what's actually rendered is gated by the toggle.
   const titleTranslations = showTitleTranslations ? cachedTitleTranslations : undefined;
   const [translateTarget, setTranslateTarget] = useState<{ title: string; articleText: string; hnItemId: number | null } | null>(null);
+  const [chatModalSessionId, setChatModalSessionId] = useState<string | null>(null);
   const [browse, setBrowse] = useState<BrowseTarget | null>(null);
+  const [recentlyRead, setRecentlyRead] = useState<RecentlyReadItem[]>(() => getRecentlyRead());
   const syncingRef = useRef(false);
   // The live selection, readable from long-running background syncs — their
   // captured `selected` would otherwise be stale and yank the view back.
@@ -198,22 +202,29 @@ export function FeedsPage() {
 
   const openEntry = (entry: RssEntryRow) => {
     markRead(entry);
-    setBrowse({
+    const target: BrowseTarget = {
       url: entry.url,
       title: entry.title,
       domain: domainOf(entry.url),
       audioUrl: entry.audio_url ?? null,
       feedTitle: feedsById.get(entry.feed_id)?.title ?? domainOf(entry.url),
       hnItemId: entry.hn_item_id ?? null,
-    });
+    };
+    setBrowse(target);
+    addRecentlyRead(target);
+    setRecentlyRead(getRecentlyRead());
   };
 
-  /** "Learn": opens a new AI Chat conversation with the Reading Tutor preset,
-   *  pasting the article straight in as the first message — there's no
-   *  standalone Reading page to hand articles off to anymore. */
-  const learnViaChat = (title: string, text: string, commentsText?: string) => {
-    window.dispatchEvent(new CustomEvent("tanwords:learn-article", { detail: { title, text, commentsText } }));
-    navigate("chat");
+  const openRecent = (item: RecentlyReadItem) => setBrowse(item);
+
+  const clearRecent = () => {
+    clearRecentlyRead();
+    setRecentlyRead([]);
+  };
+
+  const removeRecent = (url: string) => {
+    removeRecentlyRead(url);
+    setRecentlyRead((prev) => prev.filter((r) => r.url !== url));
   };
 
   const openExternal = async (url: string) => {
@@ -221,32 +232,6 @@ export function FeedsPage() {
       await openShell(url);
     } catch {
       window.open(url, "_blank");
-    }
-  };
-
-  /** One-click learn: extract the article text and hand it straight to Reading.
-   *  HN entries also pull in their comments (analyzed separately, native/colloquial usage). */
-  const learnEntry = async (entry: RssEntryRow) => {
-    if (learningId !== null) return;
-    setLearningId(entry.id);
-    try {
-      const article = await invoke<FetchedArticle>("fetch_article", { url: entry.url });
-      markRead(entry);
-      let commentsText: string | undefined;
-      if (entry.hn_item_id) {
-        try {
-          commentsText = flattenHnComments(await useHnCommentsStore.getState().fetch(entry.hn_item_id)) || undefined;
-        } catch {
-          // Comments are a bonus pass — never block Learn on them.
-        }
-      }
-      learnViaChat(article.title || entry.title, article.text_content, commentsText);
-    } catch {
-      // Extraction failed (paywall etc.) — fall back to the reader so the user sees why.
-      toast(t("reader.extractFailed"));
-      openEntry(entry);
-    } finally {
-      setLearningId(null);
     }
   };
 
@@ -270,13 +255,18 @@ export function FeedsPage() {
     }
   };
 
-  /** Queue this article (and its comments, if HN) for AI analysis in the background —
-   *  stays on the Feeds page instead of opening a chat like the "Learn" button does;
-   *  a toast just reports completion. Several entries can run concurrently (tracked
-   *  as a set, not a single id) since fetch_article and the AI call are plain async
-   *  I/O — nothing here blocks the UI. */
+  /** Queue this article (and its comments, if HN) for AI analysis in the background — stays
+   *  on the Feeds page, same headless job as ArticleReader's "Learn" button (useLearnArticle),
+   *  keyed by URL in learnChatStore so it survives navigating away and multiple entries can
+   *  run at once without affecting each other. Once done, clicking the card's button again
+   *  (rather than re-analyzing) opens the resulting AI Chat conversation. */
   const analyzeInBackground = async (entry: RssEntryRow) => {
-    if (analyzingBackgroundIds.has(entry.id)) return;
+    const job = useLearnChatStore.getState().jobs[entry.url];
+    if (job?.status === "running" || analyzingBackgroundIds.has(entry.id)) return;
+    if (job?.status === "done" && job.sessionId) {
+      setChatModalSessionId(job.sessionId);
+      return;
+    }
     setAnalyzingBackgroundIds((prev) => new Set(prev).add(entry.id));
     try {
       const article = await invoke<FetchedArticle>("fetch_article", { url: entry.url });
@@ -289,15 +279,11 @@ export function FeedsPage() {
           // Comments are a bonus pass — never block analysis on them.
         }
       }
-      const result = await analyze({
-        text: article.text_content,
+      startLearn(entry.url, {
         title: article.title || entry.title,
-        sourceUrl: entry.url,
-        origin: "rss",
+        text: article.text_content,
         commentsText,
-        hnItemId: entry.hn_item_id ?? null,
       });
-      toast.success(t("feeds.analyzeBackground.done", { title: result.title }));
     } catch (e: any) {
       toast.error(e?.message || t("feeds.analyzeBackground.failed", { title: entry.title }));
     } finally {
@@ -358,6 +344,10 @@ export function FeedsPage() {
         onSetViewMode={setFeedsViewMode}
         showTitleTranslations={showTitleTranslations}
         onToggleTitleTranslations={() => setShowTitleTranslations((v) => !v)}
+        recentlyRead={recentlyRead}
+        onOpenRecent={openRecent}
+        onClearRecentlyRead={clearRecent}
+        onRemoveRecent={removeRecent}
       />
 
       <div className="flex-1 min-w-0 min-h-0 flex flex-col">
@@ -372,13 +362,11 @@ export function FeedsPage() {
           feeds={feeds}
           entries={entries}
           feedsById={feedsById}
-          learningId={learningId}
           translatingId={translatingId}
           analyzingBackgroundIds={analyzingBackgroundIds}
           showTitleTranslations={showTitleTranslations}
           titleTranslations={titleTranslations}
           onOpenEntry={openEntry}
-          onLearnEntry={learnEntry}
           onPlayEntry={playEntry}
           onTranslateEntry={translateEntry}
           onAnalyzeBackground={analyzeInBackground}
@@ -399,6 +387,12 @@ export function FeedsPage() {
         title={translateTarget?.title ?? ""}
         articleText={translateTarget?.articleText ?? ""}
         hnItemId={translateTarget?.hnItemId ?? null}
+      />
+
+      <AiChatModal
+        open={chatModalSessionId !== null}
+        onClose={() => setChatModalSessionId(null)}
+        sessionId={chatModalSessionId ?? undefined}
       />
     </div>
   );

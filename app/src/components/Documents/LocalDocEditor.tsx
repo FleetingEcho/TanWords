@@ -45,6 +45,11 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
   const [mode, setMode] = useState<EditorMode>("rich");
   const [rawMarkdown, setRawMarkdown] = useState(initialRawMarkdown);
   const [switchingMode, setSwitchingMode] = useState(false);
+  // useCreateBlockNote starts with an empty document — content only lands once the
+  // (off-thread, so genuinely async) parse below resolves. Without this, the editor
+  // area renders blank in between: the title/path header is already there, but the
+  // body looks empty rather than loading, for however long the parse takes.
+  const [richLoading, setRichLoading] = useState(true);
   const titleRef = useRef<HTMLInputElement>(null);
   const loaded = useRef(false);
   const dirty = useRef(false);
@@ -70,7 +75,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
       if (cancelled) return;
       const blocks = liftMermaid(parsed);
       if (blocks.length > 0) editor.replaceBlocks(editor.document, blocks);
-      requestAnimationFrame(() => { loaded.current = true; });
+      requestAnimationFrame(() => { loaded.current = true; setRichLoading(false); });
     });
     return () => { cancelled = true; };
   }, []);
@@ -111,6 +116,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
         setMode("raw");
       } else {
         loaded.current = false;
+        setRichLoading(true);
         const parsed = liftMermaid(await markdownToBlocksOffThread(toDisplayMarkdown(rawMarkdown)));
         editor.replaceBlocks(editor.document, parsed.length ? parsed : [{ type: "paragraph" }]);
         if (dirty.current && rawMarkdown !== lastSavedRaw.current) {
@@ -119,7 +125,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
         }
         dirty.current = false;
         setMode("rich");
-        requestAnimationFrame(() => { loaded.current = true; });
+        requestAnimationFrame(() => { loaded.current = true; setRichLoading(false); });
       }
     } finally {
       setSwitchingMode(false);
@@ -185,7 +191,12 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
       </div>
 
       {mode === "rich" ? (
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto relative">
+          {richLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-10">
+              <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+            </div>
+          )}
           <BlockNoteView editor={editor} theme={isDark ? "dark" : "light"} onChange={handleChange} className="tanwords-editor" />
         </div>
       ) : (

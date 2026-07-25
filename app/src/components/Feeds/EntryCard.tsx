@@ -1,11 +1,12 @@
 import React, { useState } from "react";
 import { open as openShell } from "@tauri-apps/plugin-shell";
 import { useT } from "@/hooks/useT";
-import { SparkIcon, PlayIcon, UpvoteIcon, ReplyIcon, ExternalIcon, TranslateIcon, AnalyzeBackgroundIcon } from "@/components/ui/icons";
+import { PlayIcon, UpvoteIcon, ReplyIcon, ExternalIcon, TranslateIcon, AnalyzeBackgroundIcon, CheckIcon } from "@/components/ui/icons";
 import { StatBadge } from "@/components/ui/StatBadge";
 import type { RssEntryRow } from "@/hooks/useDB.types";
 import { domainOf, relativeTime, placeholderGradient } from "./feedUtils";
 import { Button } from "@/components/ui/button";
+import { useLearnChatStore } from "@/store/learnChatStore";
 
 /** Opens the entry's original URL in the system browser, without triggering the card/row's own onOpen (in-app reader). */
 function openSource(e: React.MouseEvent, url: string) {
@@ -25,20 +26,18 @@ interface Props {
   feedTitle: string;
   /** Hero = full-width cover card with the headline set over the image. */
   hero?: boolean;
-  /** True while fetch_article runs for this card's Learn action. */
-  learning: boolean;
   onOpen: () => void;
-  onLearn: () => void;
   /** Present only for podcast entries (entry.audio_url set) — starts playback. */
   onPlay?: () => void;
   /** One-click "translate to Chinese" — fetches the article (and comments, if HN) and opens TranslateModal. */
   onTranslate?: () => void;
   /** True while onTranslate's fetch is in flight for this card. */
   translating?: boolean;
-  /** Queue this article (and its comments, if HN) for analysis in the background —
-   *  stays on this page; a toast reports completion instead of navigating to Reading. */
+  /** Queue this article (and its comments, if HN) for analysis in the background — stays on
+   *  this page. Once done, clicking again opens the resulting AI Chat conversation instead. */
   onAnalyzeBackground?: () => void;
-  /** True while this card's background analysis is in flight (fetch + AI call). */
+  /** True while this card's background analysis is in flight (fetch phase only — the AI call
+   *  itself is tracked per-URL in learnChatStore, read directly below for the "done" state). */
   analyzingBackground?: boolean;
   /** Chinese translation of the title (see FeedTabs' "show Chinese titles" toggle) —
    *  shown as a second line under the English title when present. */
@@ -128,20 +127,41 @@ function TranslateButton({ translating, onTranslate, label }: { translating: boo
   );
 }
 
-function AnalyzeBackgroundButton({ analyzing, onAnalyze, label }: { analyzing: boolean; onAnalyze: (e: React.MouseEvent) => void; label: string }) {
+/** Reads the shared learnChatStore job for this entry's URL — the same store ArticleReader's
+ *  "Learn" button uses — so the checkmark survives navigating away and back, and clicking it
+ *  once done opens the very chat conversation the background analysis produced. */
+function AnalyzeBackgroundButton({ url, analyzing, onAnalyze, analyzeLabel, doneLabel }: {
+  url: string;
+  analyzing: boolean;
+  onAnalyze: (e: React.MouseEvent) => void;
+  analyzeLabel: string;
+  doneLabel: string;
+}) {
+  const job = useLearnChatStore((s) => s.jobs[url]);
+  const done = job?.status === "done";
+  // `analyzing` only covers the initial fetch_article call — the AI generation itself runs
+  // as a headless job tracked by URL in learnChatStore, so the spinner needs both to stay
+  // lit for the whole operation instead of dropping the instant fetch_article resolves.
+  const running = analyzing || job?.status === "running";
   return (
     <Button
       variant="ghost"
       onClick={onAnalyze}
-      disabled={analyzing}
-      title={label}
-      aria-label={label}
-      className="h-8 w-8 p-0 inline-flex items-center justify-center rounded-full shadow-sm transition-all
-        bg-card/90 text-foreground border border-border hover:bg-card disabled:opacity-60
-        opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+      disabled={running}
+      title={done ? doneLabel : analyzeLabel}
+      aria-label={done ? doneLabel : analyzeLabel}
+      className={`h-8 w-8 p-0 inline-flex items-center justify-center rounded-full shadow-sm transition-all border disabled:opacity-60 ${
+        done
+          ? "bg-emerald-500 text-white border-emerald-600 hover:bg-emerald-500/90 opacity-100"
+          : running
+            ? "bg-card/90 text-foreground border-border opacity-100"
+            : "bg-card/90 text-foreground border-border hover:bg-card opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+      }`}
     >
-      {analyzing ? (
+      {running ? (
         <span className="w-3.5 h-3.5 rounded-full border-2 border-muted-foreground/30 border-t-foreground animate-spin" />
+      ) : done ? (
+        <CheckIcon className="w-3.5 h-3.5" />
       ) : (
         <AnalyzeBackgroundIcon className="w-3.5 h-3.5" />
       )}
@@ -149,27 +169,7 @@ function AnalyzeBackgroundButton({ analyzing, onAnalyze, label }: { analyzing: b
   );
 }
 
-function LearnButton({ learning, onLearn, label }: { learning: boolean; onLearn: (e: React.MouseEvent) => void; label: string }) {
-  return (
-    <Button
-      variant="ghost"
-      onClick={onLearn}
-      disabled={learning}
-      className={`h-8 px-3 inline-flex items-center gap-1.5 rounded-full text-xs font-semibold shadow-sm transition-all
-        bg-primary text-primary-foreground hover:bg-primary/90
-        ${learning ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`}
-    >
-      {learning ? (
-        <span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-      ) : (
-        <SparkIcon className="w-3.5 h-3.5" />
-      )}
-      {label}
-    </Button>
-  );
-}
-
-export function EntryCard({ entry, feedTitle, hero = false, learning, onOpen, onLearn, onPlay, onTranslate, translating = false, onAnalyzeBackground, analyzingBackground = false, chineseTitle, trackRead = true, coverColor, coverLetter }: Props) {
+export function EntryCard({ entry, feedTitle, hero = false, onOpen, onPlay, onTranslate, translating = false, onAnalyzeBackground, analyzingBackground = false, chineseTitle, trackRead = true, coverColor, coverLetter }: Props) {
   const t = useT();
   const unread = trackRead && !entry.is_read;
   const meta = (
@@ -194,11 +194,6 @@ export function EntryCard({ entry, feedTitle, hero = false, learning, onOpen, on
       )}
     </>
   );
-
-  const learn = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onLearn();
-  };
 
   const play = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -246,9 +241,14 @@ export function EntryCard({ entry, feedTitle, hero = false, learning, onOpen, on
           {onPlay && <PlayButton onPlay={play} label={t("feeds.playEpisode")} />}
           {onTranslate && <TranslateButton translating={translating} onTranslate={translate} label={t("feeds.translate")} />}
           {onAnalyzeBackground && (
-            <AnalyzeBackgroundButton analyzing={analyzingBackground} onAnalyze={analyzeBackground} label={t("feeds.analyzeBackground")} />
+            <AnalyzeBackgroundButton
+              url={entry.url}
+              analyzing={analyzingBackground}
+              onAnalyze={analyzeBackground}
+              analyzeLabel={t("feeds.analyzeBackground")}
+              doneLabel={t("feeds.analyzeBackgroundDone")}
+            />
           )}
-          <LearnButton learning={learning} onLearn={learn} label={t("feeds.learnThis")} />
         </div>
       </div>
     );
@@ -281,23 +281,26 @@ export function EntryCard({ entry, feedTitle, hero = false, learning, onOpen, on
         {onPlay && <PlayButton onPlay={play} label={t("feeds.playEpisode")} />}
         {onTranslate && <TranslateButton translating={translating} onTranslate={translate} label={t("feeds.translate")} />}
         {onAnalyzeBackground && (
-          <AnalyzeBackgroundButton analyzing={analyzingBackground} onAnalyze={analyzeBackground} label={t("feeds.analyzeBackground")} />
+          <AnalyzeBackgroundButton
+            url={entry.url}
+            analyzing={analyzingBackground}
+            onAnalyze={analyzeBackground}
+            analyzeLabel={t("feeds.analyzeBackground")}
+            doneLabel={t("feeds.analyzeBackgroundDone")}
+          />
         )}
-        <LearnButton learning={learning} onLearn={learn} label={t("feeds.learnThis")} />
       </div>
     </div>
   );
 }
 
 /** Dense one-line row for list mode — many entries (e.g. a 60-item HN page) at a glance, no cover art. */
-export function EntryListRow({ entry, feedTitle, learning, onOpen, onLearn, onPlay, onTranslate, translating = false, onAnalyzeBackground, analyzingBackground = false, chineseTitle, trackRead = true }: Props) {
+export function EntryListRow({ entry, feedTitle, onOpen, onPlay, onTranslate, translating = false, onAnalyzeBackground, analyzingBackground = false, chineseTitle, trackRead = true }: Props) {
   const t = useT();
   const unread = trackRead && !entry.is_read;
-
-  const learn = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onLearn();
-  };
+  const backgroundJobStatus = useLearnChatStore((s) => s.jobs[entry.url]?.status);
+  const backgroundDone = backgroundJobStatus === "done";
+  const backgroundRunning = analyzingBackground || backgroundJobStatus === "running";
 
   const play = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -353,6 +356,17 @@ export function EntryListRow({ entry, feedTitle, learning, onOpen, onLearn, onPl
       <span className="shrink-0 w-9 text-right text-[11px] font-mono tabular-nums text-muted-foreground">
         {relativeTime(entry.published)}
       </span>
+      {onAnalyzeBackground && backgroundDone && (
+        <Button
+          variant="ghost"
+          onClick={analyzeBackground}
+          title={t("feeds.analyzeBackgroundDone")}
+          aria-label={t("feeds.analyzeBackgroundDone")}
+          className="h-6 w-6 p-0 rounded-full flex items-center justify-center shrink-0 text-emerald-500 hover:bg-emerald-500/10 transition-colors"
+        >
+          <CheckIcon className="w-3 h-3" />
+        </Button>
+      )}
       <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
         {onPlay && (
           <Button
@@ -381,36 +395,22 @@ export function EntryListRow({ entry, feedTitle, learning, onOpen, onLearn, onPl
             )}
           </Button>
         )}
-        {onAnalyzeBackground && (
+        {onAnalyzeBackground && !backgroundDone && (
           <Button
             variant="ghost"
             onClick={analyzeBackground}
-            disabled={analyzingBackground}
+            disabled={backgroundRunning}
             title={t("feeds.analyzeBackground")}
             aria-label={t("feeds.analyzeBackground")}
             className="h-6 w-6 p-0 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
           >
-            {analyzingBackground ? (
+            {backgroundRunning ? (
               <span className="w-3 h-3 rounded-full border-2 border-muted-foreground/30 border-t-foreground animate-spin" />
             ) : (
               <AnalyzeBackgroundIcon className="w-3 h-3" />
             )}
           </Button>
         )}
-        <Button
-          variant="ghost"
-          onClick={learn}
-          disabled={learning}
-          title={t("feeds.learnThis")}
-          aria-label={t("feeds.learnThis")}
-          className="h-6 w-6 p-0 rounded-full flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
-        >
-          {learning ? (
-            <span className="w-3 h-3 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
-          ) : (
-            <SparkIcon className="w-3 h-3" />
-          )}
-        </Button>
       </div>
     </div>
   );

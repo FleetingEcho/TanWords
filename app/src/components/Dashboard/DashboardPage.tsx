@@ -5,6 +5,7 @@ import { useNavStore } from "@/store/navStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { ChatIcon, FeedIcon } from "@/components/ui/icons";
 import { RssWidget } from "./RssWidget";
+import { RecentlyReadWidget } from "./RecentlyReadWidget";
 import { Button } from "@/components/ui/button";
 
 const LEVEL_COLORS: Record<string, string> = {
@@ -46,6 +47,8 @@ export function DashboardPage() {
   const db = useDB();
   const t = useT();
   const lang = useSettingsStore((s) => s.uiLanguage);
+  const dashboardBanner = useSettingsStore((s) => s.dashboardBanner);
+  const nickname = useSettingsStore((s) => s.nickname);
   const navigate = useNavStore((s) => s.navigate);
   const [stats, setStats] = useState<DashboardStats | null>(null);
 
@@ -63,8 +66,9 @@ export function DashboardPage() {
   }, []);
 
   const hour = new Date().getHours();
-  const greeting =
+  const baseGreeting =
     hour < 12 ? t("dash.greeting.morning") : hour < 18 ? t("dash.greeting.afternoon") : t("dash.greeting.evening");
+  const greeting = nickname.trim() ? `${baseGreeting}, ${nickname.trim()}` : baseGreeting;
   const dateLabel = new Date().toLocaleDateString(lang === "zh" ? "zh-CN" : "en-US", {
     month: "long",
     day: "numeric",
@@ -73,6 +77,12 @@ export function DashboardPage() {
 
   return (
     <div className="p-6 space-y-5 animate-fade-in w-full">
+      {dashboardBanner && (
+        <div className="w-full h-[200px] rounded-2xl overflow-hidden border border-border">
+          <img src={dashboardBanner} alt="" className="w-full h-full object-cover" />
+        </div>
+      )}
+
       {/* Greeting */}
       <div>
         <h1 className="text-2xl font-bold">{greeting}</h1>
@@ -94,7 +104,14 @@ export function DashboardPage() {
             <div className="grid grid-cols-2 gap-2">
               {[
                 { icon: FeedIcon, label: t("dash.quick.feeds"), go: () => navigate("feeds") },
-                { icon: ChatIcon, label: t("dash.quick.chat"), go: () => navigate("chat") },
+                {
+                  icon: ChatIcon,
+                  label: t("dash.quick.chat"),
+                  go: () => {
+                    navigate("chat");
+                    window.setTimeout(() => window.dispatchEvent(new CustomEvent("tanwords:new-chat")), 0);
+                  },
+                },
               ].map((a) => (
                 <Button
                   key={a.label}
@@ -111,9 +128,7 @@ export function DashboardPage() {
 
           {/* Feed subscriptions at a glance */}
           <RssWidget />
-        </div>
 
-        <div className="space-y-3">
           {/* Latest words */}
           <div className="bg-card border border-border rounded-2xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
@@ -145,6 +160,11 @@ export function DashboardPage() {
               </div>
             )}
           </div>
+        </div>
+
+        <div className="space-y-3">
+          {/* Last few articles opened in the reader */}
+          <RecentlyReadWidget />
 
           {/* Recent documents */}
           <div className="bg-card border border-border rounded-2xl overflow-hidden">

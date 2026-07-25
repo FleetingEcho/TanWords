@@ -20,8 +20,7 @@ interface NavState {
 }
 
 export const useNavStore = create<NavState>((set, get) => ({
-  // Feeds is the app's home page — reading sources come first.
-  page: "feeds",
+  page: "dashboard",
   wordId: undefined,
 
   currentPage: () => get().page,

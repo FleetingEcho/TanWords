@@ -1,5 +1,8 @@
 import { create } from "zustand";
 import { findBestProvider } from "@/providers/select";
+import type { AIProvider } from "@/providers/base";
+import { isContextOverflowError } from "@/components/AiChat/aiChatHelpers";
+import { truncateMarkedBatch } from "@/lib/markerBatch";
 
 export type TranslateStatus = "loading" | "ready" | "error" | "no-provider";
 
@@ -7,9 +10,13 @@ export interface TranslateJob {
   articleTranslation: string;
   articleStatus: TranslateStatus;
   articleError: string;
+  /** True once a retry with a shorter body succeeded — small local models with a tiny
+   *  context window (e.g. 4k tokens) can't take a full article/comment thread in one go. */
+  articleTruncated: boolean;
   commentsTranslation: string;
   commentsStatus: TranslateStatus;
   commentsError: string;
+  commentsTruncated: boolean;
 }
 
 interface TranslateState {
@@ -31,6 +38,38 @@ function errorMessage(e: unknown): string {
   return String(e);
 }
 
+// Local models often run with a small context window (4k/8k tokens) — retry
+// progressively shorter instead of just failing, same budgets as useLearnArticle.
+const CHAR_BUDGETS = [Infinity, 6000, 2500];
+
+/** Streams a translation, retrying with a shorter `body` (per CHAR_BUDGETS) whenever the
+ *  provider reports the request overflowed the model's context window. `buildBody` gets the
+ *  char budget and must produce the text to send — callers truncate however is safe for
+ *  their content (plain slice for prose, whole-item drops for marker-delimited batches). */
+async function translateWithRetry(
+  provider: AIProvider,
+  buildBody: (maxChars: number) => string,
+  opts: { preserveMarkers?: boolean },
+  onChunk: (acc: string) => void
+): Promise<{ truncated: boolean }> {
+  for (let i = 0; i < CHAR_BUDGETS.length; i++) {
+    const body = buildBody(CHAR_BUDGETS[i]);
+    try {
+      let acc = "";
+      for await (const chunk of provider.translate({ text: body, targetLang: "Chinese", mode: "translate", preserveMarkers: opts.preserveMarkers })) {
+        acc += chunk;
+        onChunk(acc);
+      }
+      return { truncated: i > 0 };
+    } catch (e) {
+      const isLastAttempt = i === CHAR_BUDGETS.length - 1;
+      if (!isContextOverflowError(e) || isLastAttempt) throw e;
+      onChunk(""); // clear the partial stream before retrying with a shorter body
+    }
+  }
+  throw new Error("unreachable");
+}
+
 function runJob(
   key: string,
   { articleText, commentsText }: { articleText: string; commentsText?: string },
@@ -44,9 +83,11 @@ function runJob(
         articleTranslation: "",
         articleStatus: "loading",
         articleError: "",
+        articleTruncated: false,
         commentsTranslation: "",
         commentsStatus: hasComments ? "loading" : "ready",
         commentsError: "",
+        commentsTruncated: false,
       },
     },
   }));
@@ -69,12 +110,13 @@ function runJob(
 
   (async () => {
     try {
-      let acc = "";
-      for await (const chunk of provider.translate({ text: articleText, targetLang: "Chinese", mode: "translate" })) {
-        acc += chunk;
-        patchJob({ articleTranslation: acc });
-      }
-      patchJob({ articleStatus: "ready" });
+      const { truncated } = await translateWithRetry(
+        provider,
+        (maxChars) => (maxChars === Infinity ? articleText : articleText.slice(0, maxChars)),
+        {},
+        (acc) => patchJob({ articleTranslation: acc })
+      );
+      patchJob({ articleStatus: "ready", articleTruncated: truncated });
     } catch (e) {
       patchJob({ articleStatus: "error", articleError: errorMessage(e) });
     }
@@ -83,15 +125,18 @@ function runJob(
   if (hasComments) {
     (async () => {
       try {
-        let acc = "";
         // preserveMarkers: commentsText is a batch of @@id@@-delimited comment segments
         // (see lib/hnComments.ts's serializeCommentsForTranslation) — the modal splits
         // the result back apart by those markers to re-render each comment individually.
-        for await (const chunk of provider.translate({ text: commentsText!, targetLang: "Chinese", mode: "translate", preserveMarkers: true })) {
-          acc += chunk;
-          patchJob({ commentsTranslation: acc });
-        }
-        patchJob({ commentsStatus: "ready" });
+        // truncateMarkedBatch (rather than a plain slice) drops whole trailing comments
+        // instead of cutting a marker in half, which would silently lose that comment.
+        const { truncated } = await translateWithRetry(
+          provider,
+          (maxChars) => (maxChars === Infinity ? commentsText! : truncateMarkedBatch(commentsText!, maxChars)),
+          { preserveMarkers: true },
+          (acc) => patchJob({ commentsTranslation: acc })
+        );
+        patchJob({ commentsStatus: "ready", commentsTruncated: truncated });
       } catch (e) {
         patchJob({ commentsStatus: "error", commentsError: errorMessage(e) });
       }

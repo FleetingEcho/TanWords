@@ -21,41 +21,54 @@ interface Props {
    *  (or reused from cache, via hnCommentsStore) internally and translated as a
    *  separate section, same as the article. */
   hnItemId?: number | null;
+  /** Adds a collapse/expand toggle to each section's header — for TranslateModal's
+   *  popup, where the article and comments can both be long and the user may want
+   *  to shrink one to focus on the other. Off for ArticleReader's inline split view,
+   *  which is already a dedicated half of the screen with no need to collapse further. */
+  collapsible?: boolean;
 }
 
-/** One collapsible, independently-scrollable panel — Article and Comments each
- *  get a fixed share of the available height (splitting it evenly when both are
- *  expanded) instead of stacking into one ever-growing shared scroll area. A
- *  small retry icon lets either section be re-translated on its own. */
+/** One section (Article or Comments), sized to its own content — both stack
+ *  into a single shared scroll area (see the container in TranslationPane)
+ *  rather than each claiming a fixed, independently-scrolling half. A small
+ *  retry icon lets either section be re-translated on its own; an optional
+ *  collapse toggle (TranslateModal only) lets it be shrunk to just its header. */
 function Section({
   title,
   badges,
-  collapsed,
-  onToggle,
   onRetry,
   retrying,
+  collapsible,
+  collapsed,
+  onToggleCollapse,
   children,
 }: {
   title: string;
   badges?: React.ReactNode;
-  collapsed: boolean;
-  onToggle: () => void;
   onRetry?: () => void;
   retrying?: boolean;
+  collapsible?: boolean;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
   children: React.ReactNode;
 }) {
   const t = useT();
   return (
-    <div className={`flex min-h-0 flex-col ${collapsed ? "shrink-0" : "flex-1"}`}>
-      <div className="flex shrink-0 items-center gap-2 pr-2">
-        <button
-          onClick={onToggle}
-          className="flex flex-1 items-center gap-2 px-5 py-2.5 text-left transition-colors hover:bg-muted/40"
-        >
-          <ChevronDownIcon className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${collapsed ? "-rotate-90" : ""}`} />
-          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</span>
-          {badges}
-        </button>
+    <div>
+      <div className="flex items-center gap-2 px-5 py-2.5">
+        {collapsible ? (
+          <button
+            onClick={onToggleCollapse}
+            aria-expanded={!collapsed}
+            className="flex flex-1 items-center gap-1.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ChevronDownIcon className={`h-3 w-3 shrink-0 transition-transform ${collapsed ? "-rotate-90" : ""}`} />
+            {title}
+          </button>
+        ) : (
+          <span className="flex-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</span>
+        )}
+        {badges}
         {onRetry && (
           <button
             onClick={onRetry}
@@ -68,7 +81,7 @@ function Section({
           </button>
         )}
       </div>
-      {!collapsed && <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 pb-4">{children}</div>}
+      {!collapsed && <div className="space-y-3 px-5 pb-4">{children}</div>}
     </div>
   );
 }
@@ -115,7 +128,7 @@ function TranslatedCommentRow({ item, translated }: { item: FlatHnComment; trans
  *  to preserve (see providers/base.ts). The actual translation lives in translateStore,
  *  keyed by the text being translated, so it keeps running (and stays cached) independent
  *  of whether this component is even mounted. */
-export function TranslationPane({ articleText, hnItemId }: Props) {
+export function TranslationPane({ articleText, hnItemId, collapsible = false }: Props) {
   const t = useT();
   const hasHn = hnItemId != null;
   const cachedComments = useHnCommentsStore((s) => (hasHn ? s.byStoryId[hnItemId!] : undefined));
@@ -151,18 +164,21 @@ export function TranslationPane({ articleText, hnItemId }: Props) {
   const articleTranslation = job?.articleTranslation ?? "";
   const articleStatus = job?.articleStatus ?? "loading";
   const articleError = job?.articleError ?? "";
+  const articleTruncated = job?.articleTruncated ?? false;
   const commentsStatus = job?.commentsStatus ?? "loading";
   const commentsError = job?.commentsError ?? "";
+  const commentsTruncated = job?.commentsTruncated ?? false;
   const translatedById = job?.commentsTranslation ? parseTranslatedComments(job.commentsTranslation) : undefined;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col divide-y divide-border">
+    <div className="min-h-0 flex-1 divide-y divide-border overflow-y-auto">
       <Section
         title={t("reading.translate.article")}
-        collapsed={articleCollapsed}
-        onToggle={() => setArticleCollapsed((c) => !c)}
         onRetry={() => retry(key, { articleText, commentsText })}
         retrying={articleStatus === "loading"}
+        collapsible={collapsible}
+        collapsed={collapsible && articleCollapsed}
+        onToggleCollapse={() => setArticleCollapsed((v) => !v)}
       >
         {articleStatus === "loading" && !articleTranslation && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -180,15 +196,19 @@ export function TranslationPane({ articleText, hnItemId }: Props) {
         {articleTranslation && (
           <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{articleTranslation}</p>
         )}
+        {articleStatus === "ready" && articleTruncated && (
+          <p className="text-[11px] text-muted-foreground/70">{t("reading.translate.truncated")}</p>
+        )}
       </Section>
 
       {hasHn && (
         <Section
           title={t("reading.translate.comments")}
-          collapsed={commentsCollapsed}
-          onToggle={() => setCommentsCollapsed((c) => !c)}
           onRetry={commentsReady ? () => retry(key, { articleText, commentsText }) : undefined}
           retrying={commentsStatus === "loading"}
+          collapsible={collapsible}
+          collapsed={collapsible && commentsCollapsed}
+          onToggleCollapse={() => setCommentsCollapsed((v) => !v)}
           badges={
             cachedComments && cachedComments.length > 0 ? (
               <div className="flex items-center gap-1.5">
@@ -232,6 +252,9 @@ export function TranslationPane({ articleText, hnItemId }: Props) {
           {flatComments.map((item) => (
             <TranslatedCommentRow key={item.id} item={item} translated={translatedById?.get(item.id)} />
           ))}
+          {commentsStatus === "ready" && commentsTruncated && (
+            <p className="text-[11px] text-muted-foreground/70">{t("reading.translate.truncated")}</p>
+          )}
         </Section>
       )}
     </div>

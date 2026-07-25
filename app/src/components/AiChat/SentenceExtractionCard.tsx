@@ -54,6 +54,8 @@ export function SentenceExtractionCard({ items }: { items: GeneratedSentenceItem
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  if (items.length === 0) return null;
+
   const pendingCount = items.filter((_, i) => !added[i]).length;
 
   const addOne = async (i: number) => {

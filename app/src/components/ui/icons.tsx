@@ -28,7 +28,6 @@ import {
   PlusCircleIcon,
   LanguageIcon,
   BookmarkIcon as BookmarkIconOutline,
-  CloudArrowUpIcon,
   LightBulbIcon,
   CheckIcon as HeroCheckIcon,
 } from "@heroicons/react/24/outline";
@@ -158,7 +157,10 @@ export function BookmarkIcon({ className }: IconProps) {
 }
 
 export function AnalyzeBackgroundIcon({ className }: IconProps) {
-  return <CloudArrowUpIcon className={className} />;
+  // Same icon as SparkIcon (ArticleReader's "Learn" button) — both trigger the exact
+  // same headless learnChatStore job, just from different entry points (in-reader vs
+  // the RSS/HN card), so they should read as the same feature at a glance.
+  return <SparklesIcon className={className} />;
 }
 
 export function NotesIcon({ className }: IconProps) {
