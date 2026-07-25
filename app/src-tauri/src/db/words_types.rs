@@ -70,13 +70,13 @@ pub struct WordExtras {
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WordEnrichmentInput {
-    /// The freeform AI-generated markdown explanation (META line already
-    /// stripped by the frontend).
+    /// The freeform AI-generated markdown explanation.
     pub text: String,
-    /// Short (<=10 char) Chinese gloss parsed from the META line, used for
-    /// quiz card generation. Only written if the word doesn't already have one.
+    /// Short (<=10 char) Chinese gloss from the separate structured
+    /// "basic info" call (see src/lib/basicInfo.ts). Only written if the
+    /// word doesn't already have one.
     pub zh_short: Option<String>,
-    /// CEFR level parsed from the META line. Only written if the word
+    /// CEFR level from the "basic info" call. Only written if the word
     /// doesn't already have one (e.g. Reading already supplied it).
     pub level: Option<String>,
 }

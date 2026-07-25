@@ -5,7 +5,9 @@ import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
 import { findBestProvider } from "@/providers/select";
 import { useLearnChatStore } from "@/store/learnChatStore";
-import { buildPresetPrompt, genId, serializeItems, type DisplayItem } from "@/components/AiChat/aiChatHelpers";
+import {
+  buildArticleBody, buildPresetPrompt, genId, isContextOverflowError, serializeItems, type DisplayItem,
+} from "@/components/AiChat/aiChatHelpers";
 import { getEnabledTools, executeTool, type ToolCall, type ToolGroupKey } from "@/components/AiChat/tools";
 import type { ToolCallDisplay } from "@/components/AiChat/ToolCallCard";
 import type { ApiMessage } from "@/providers/base";
@@ -38,69 +40,111 @@ export function useLearnArticle() {
       const controller = new AbortController();
       store.start(articleUrl, controller);
 
+      const sysPrompt = buildPresetPrompt("reading-tutor", targetLevel);
+      const tools = getEnabledTools(ENABLED_GROUPS);
+
+      /** One attempt at the full tool-calling exchange for a given (possibly
+       *  truncated) article body. Thrown context-overflow errors are handled
+       *  by the caller, which retries with a shorter body. */
+      const runExchange = async (userText: string) => {
+        let items: DisplayItem[] = [{ kind: "message", msg: { role: "user", content: userText } }];
+        let apiMsgs: ApiMessage[] = [{ role: "user", content: userText }];
+        let lastAssistantText = "";
+
+        if (tools.length > 0 && provider.chatWithTools) {
+          for (let iter = 0; iter < MAX_ITER; iter++) {
+            const response = await provider.chatWithTools(apiMsgs, sysPrompt, tools, controller.signal);
+            lastAssistantText = response.textContent;
+            // A turn that's purely a tool call (the reading-tutor prompt asks for
+            // vocab via extract_vocabulary with no prose) has no text to show —
+            // skip the bubble rather than rendering an empty one.
+            if (response.textContent.trim()) {
+              items = [...items, { kind: "message", msg: { role: "assistant", content: response.textContent } }];
+            }
+
+            if (response.toolCalls.length === 0 || response.stopReason !== "tool_use") break;
+
+            const results = await Promise.all(response.toolCalls.map((tc) => executeTool(tc as ToolCall)));
+
+            // extract_vocabulary deliberately makes no DB write of its own — in the live chat
+            // UI the results render as review cards the user accepts individually. This run is
+            // headless (no chat UI is ever shown), so nothing would ever click those cards —
+            // save the extracted items directly here instead, or they'd silently vanish into
+            // the saved transcript and never reach the vocabulary list/Dashboard.
+            for (const tc of response.toolCalls) {
+              if (tc.name !== "extract_vocabulary") continue;
+              const items = (tc.input as { items?: { word: string; zh: string; word_type?: string; level?: string; context?: string }[] })?.items;
+              if (!Array.isArray(items) || items.length === 0) continue;
+              const result = await db.addWordsBatch(items, "reading-tutor");
+              if (result.added > 0) window.dispatchEvent(new CustomEvent("vocab-updated"));
+            }
+
+            const calls: ToolCallDisplay[] = response.toolCalls.map((tc, i) => ({
+              id: tc.id,
+              name: tc.name,
+              input: tc.input,
+              result: results[i].content,
+              is_error: results[i].is_error,
+              status: results[i].is_error ? "error" : "done",
+            }));
+            items = [...items, { kind: "tool_block", calls }];
+
+            apiMsgs = [
+              ...apiMsgs,
+              {
+                role: "assistant",
+                content: [
+                  ...(response.textContent ? [{ type: "text" as const, text: response.textContent }] : []),
+                  ...response.toolCalls.map((tc) => ({
+                    type: "tool_use" as const, id: tc.id, name: tc.name, input: tc.input,
+                  })),
+                ],
+              },
+              {
+                role: "user",
+                content: results.map((r) => ({
+                  type: "tool_result" as const, tool_use_id: r.tool_use_id, content: r.content, is_error: r.is_error,
+                })),
+              },
+            ];
+          }
+        } else {
+          for await (const chunk of provider.chat([{ role: "user", content: userText }], sysPrompt, controller.signal)) {
+            lastAssistantText += chunk;
+          }
+          if (lastAssistantText.trim()) {
+            items = [...items, { kind: "message", msg: { role: "assistant", content: lastAssistantText } }];
+          }
+        }
+
+        return { items, lastAssistantText };
+      };
+
+      // Local models often run with a small context window (4k/8k). If the
+      // full article overflows it, retry with progressively shorter bodies
+      // instead of just failing — comments get dropped first, then the
+      // article text itself is cut down.
+      const CHAR_BUDGETS = [Infinity, 6000, 2500];
+
       (async () => {
         try {
-          const userText = article.commentsText
-            ? `${article.title}\n\n${article.text}\n\n---\n\nComments:\n${article.commentsText}`
-            : `${article.title}\n\n${article.text}`;
-          const sysPrompt = buildPresetPrompt("reading-tutor", targetLevel);
-          const tools = getEnabledTools(ENABLED_GROUPS);
-
-          let items: DisplayItem[] = [{ kind: "message", msg: { role: "user", content: userText } }];
-          let apiMsgs: ApiMessage[] = [{ role: "user", content: userText }];
+          let userText = "";
+          let items: DisplayItem[] = [];
           let lastAssistantText = "";
+          let truncated = false;
 
-          if (tools.length > 0 && provider.chatWithTools) {
-            for (let iter = 0; iter < MAX_ITER; iter++) {
-              const response = await provider.chatWithTools(apiMsgs, sysPrompt, tools, controller.signal);
-              lastAssistantText = response.textContent;
-              // A turn that's purely a tool call (the reading-tutor prompt asks for
-              // vocab via extract_vocabulary with no prose) has no text to show —
-              // skip the bubble rather than rendering an empty one.
-              if (response.textContent.trim()) {
-                items = [...items, { kind: "message", msg: { role: "assistant", content: response.textContent } }];
-              }
-
-              if (response.toolCalls.length === 0 || response.stopReason !== "tool_use") break;
-
-              const results = await Promise.all(response.toolCalls.map((tc) => executeTool(tc as ToolCall)));
-              const calls: ToolCallDisplay[] = response.toolCalls.map((tc, i) => ({
-                id: tc.id,
-                name: tc.name,
-                input: tc.input,
-                result: results[i].content,
-                is_error: results[i].is_error,
-                status: results[i].is_error ? "error" : "done",
-              }));
-              items = [...items, { kind: "tool_block", calls }];
-
-              apiMsgs = [
-                ...apiMsgs,
-                {
-                  role: "assistant",
-                  content: [
-                    ...(response.textContent ? [{ type: "text" as const, text: response.textContent }] : []),
-                    ...response.toolCalls.map((tc) => ({
-                      type: "tool_use" as const, id: tc.id, name: tc.name, input: tc.input,
-                    })),
-                  ],
-                },
-                {
-                  role: "user",
-                  content: results.map((r) => ({
-                    type: "tool_result" as const, tool_use_id: r.tool_use_id, content: r.content, is_error: r.is_error,
-                  })),
-                },
-              ];
-            }
-          } else {
-            for await (const chunk of provider.chat([{ role: "user", content: userText }], sysPrompt, controller.signal)) {
-              lastAssistantText += chunk;
-            }
-            if (lastAssistantText.trim()) {
-              items = [...items, { kind: "message", msg: { role: "assistant", content: lastAssistantText } }];
+          for (let i = 0; i < CHAR_BUDGETS.length; i++) {
+            userText = buildArticleBody(article, CHAR_BUDGETS[i]);
+            try {
+              ({ items, lastAssistantText } = await runExchange(userText));
+              break;
+            } catch (e: any) {
+              const isLastAttempt = i === CHAR_BUDGETS.length - 1;
+              if (e?.name === "AbortError" || !isContextOverflowError(e) || isLastAttempt) throw e;
+              truncated = true;
             }
           }
+          if (truncated) toast.info(t("reader.learnTruncated"));
 
           let title = article.title.slice(0, 50) + (article.title.length > 50 ? "…" : "");
           try {
@@ -134,7 +178,11 @@ export function useLearnArticle() {
             return;
           }
           useLearnChatStore.getState().finishError(articleUrl);
-          toast.error(e?.message || t("reader.learnFailed", { title: article.title }));
+          toast.error(
+            isContextOverflowError(e)
+              ? t("reader.learnContextOverflow")
+              : e?.message || t("reader.learnFailed", { title: article.title })
+          );
         }
       })();
     },

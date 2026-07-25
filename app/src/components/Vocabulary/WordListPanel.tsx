@@ -4,23 +4,18 @@ import { useT } from "@/hooks/useT";
 import { LevelBadge } from "@/components/shared/LevelBadge";
 import { SpeakButton } from "@/components/ui/SpeakButton";
 import { SparkIcon } from "@/components/ui/icons";
-import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Wand2, RefreshCw, Loader2, ChevronsLeft, ChevronsRight, Trash2, X, Star } from "lucide-react";
-
-type LevelFilter = "all" | "C2" | "C1" | "B2" | "B1-";
-type DateField = "created" | "updated";
-
-const LEVEL_CHIPS: LevelFilter[] = ["all", "C2", "C1", "B2", "B1-"];
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { LevelDateFilter, LevelFilter, DateField } from "@/components/shared/LevelDateFilter";
+import { LIST_PANEL_WIDTH, LIST_PANEL_COLLAPSED_WIDTH, LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
+import { Wand2, RefreshCw, Loader2, ChevronsLeft, ChevronsRight, Trash2, X, Star, ListChecks } from "lucide-react";
 
 interface Props {
   words: WordListItem[];
   selectedId: number | null;
   search: string;
   levelFilter: LevelFilter;
-  sourceFilter: string;
-  sources: string[];
   page: number;
   pageSize: number;
   /** The searched term isn't in the vocabulary — offer an AI dictionary lookup */
@@ -31,7 +26,6 @@ interface Props {
   dateTo: string;
   onSearchChange: (v: string) => void;
   onFilterChange: (v: LevelFilter) => void;
-  onSourceFilterChange: (v: string) => void;
   onDateFieldChange: (v: DateField) => void;
   onDateFromChange: (v: string) => void;
   onDateToChange: (v: string) => void;
@@ -39,7 +33,6 @@ interface Props {
   onPageChange: (p: number) => void;
   onDoubleClick: (word: string) => void;
   onAiLookup: (q: string) => void;
-  onOpenGenerate: () => void;
   /** True while a bulk enrichment (un-analyzed or re-analyze-all) is running */
   bulkRunning: boolean;
   bulkProgress: { done: number; total: number };
@@ -55,32 +48,32 @@ interface Props {
   onReanalyzeSelected: () => void;
   onDeleteSelected: () => void;
   onToggleStar: (id: number) => void;
+  selectMode: boolean;
+  onToggleSelectMode: () => void;
 }
 
 export function WordListPanel({
-  words, selectedId, search, levelFilter, sourceFilter, sources, page, pageSize,
+  words, selectedId, search, levelFilter, page, pageSize,
   showAiLookup, lookupActive, dateField, dateFrom, dateTo,
-  onSearchChange, onFilterChange, onSourceFilterChange,
+  onSearchChange, onFilterChange,
   onDateFieldChange, onDateFromChange, onDateToChange,
-  onSelect, onPageChange, onDoubleClick, onAiLookup, onOpenGenerate,
+  onSelect, onPageChange, onDoubleClick, onAiLookup,
   bulkRunning, bulkProgress, onEnrichUnanalyzed, onReanalyzeAll, onStopBulkEnrich,
   collapsed, onToggleCollapsed, selectedIds, onToggleSelect, onSelectAll, onClearSelection,
-  onReanalyzeSelected, onDeleteSelected, onToggleStar,
+  onReanalyzeSelected, onDeleteSelected, onToggleStar, selectMode, onToggleSelectMode,
 }: Props) {
   const t = useT();
   const totalPages = Math.ceil(words.length / pageSize);
   const paged = words.slice(page * pageSize, (page + 1) * pageSize);
-  const activeFilters = (levelFilter !== "all" ? 1 : 0) + (sourceFilter !== "all" ? 1 : 0) + (dateFrom || dateTo ? 1 : 0);
-  const [filtersOpen, setFiltersOpen] = React.useState(false);
 
   if (collapsed) {
     return (
-      <div className="w-11 shrink-0 border-r border-border bg-card flex flex-col items-center py-3">
+      <div className={`${LIST_PANEL_COLLAPSED_WIDTH} shrink-0 border-r border-border bg-card flex flex-col items-center py-3`}>
         <Button
           variant="ghost"
           onClick={onToggleCollapsed}
           title={t("vocab.expandList")}
-          className="w-7 h-7 p-0 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          className={`w-7 h-7 p-0 rounded-lg flex items-center justify-center ${LIST_PANEL_TOGGLE_CLASS}`}
         >
           <ChevronsRight className="w-3.5 h-3.5" />
         </Button>
@@ -89,14 +82,14 @@ export function WordListPanel({
   }
 
   return (
-    <div className="w-80 shrink-0 border-r border-border bg-card flex flex-col h-full">
+    <div className={`${LIST_PANEL_WIDTH} shrink-0 border-r border-border bg-card flex flex-col h-full`}>
       <div className="px-4 pt-5 pb-3 space-y-2.5">
         <div className="flex items-baseline gap-2">
           <Button
             variant="ghost"
             onClick={onToggleCollapsed}
             title={t("vocab.collapseList")}
-            className="-ml-1 w-6 h-6 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
+            className={`-ml-1 w-6 h-6 p-0 rounded-md flex items-center justify-center shrink-0 ${LIST_PANEL_TOGGLE_CLASS}`}
           >
             <ChevronsLeft className="w-3.5 h-3.5" />
           </Button>
@@ -104,15 +97,21 @@ export function WordListPanel({
           <span className="text-sm text-muted-foreground">{words.length}</span>
           <div className="ml-auto flex items-center gap-1">
             {bulkRunning ? (
-              <Button
-                variant="ghost"
-                onClick={onStopBulkEnrich}
-                title={t("vocab.bulkEnrichStop")}
-                className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-destructive hover:bg-destructive/10 transition-colors shrink-0"
-              >
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              </Button>
-            ) : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    onClick={onStopBulkEnrich}
+                    className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-destructive hover:bg-destructive/10 transition-colors shrink-0"
+                  >
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {t("vocab.bulkEnrichProgress", { done: bulkProgress.done, total: bulkProgress.total })} · {t("vocab.bulkEnrichStop")}
+                </TooltipContent>
+              </Tooltip>
+            ) : !selectMode && (
               <>
                 <Button
                   variant="ghost"
@@ -134,25 +133,18 @@ export function WordListPanel({
             )}
             <Button
               variant="ghost"
-              onClick={onOpenGenerate}
-              title={t("vocab.generateBtn")}
-              className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-primary hover:bg-primary/10 transition-colors shrink-0"
+              onClick={onToggleSelectMode}
+              title={selectMode ? t("vocab.exitSelectMode") : t("vocab.enterSelectMode")}
+              className={`w-6 h-6 p-0 rounded-md flex items-center justify-center transition-colors shrink-0 ${
+                selectMode ? "bg-primary/15 text-primary hover:bg-primary/20" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
             >
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3.5 h-3.5">
-                <path d="M10 4v12M4 10h12" strokeLinecap="round" />
-              </svg>
+              <ListChecks className="w-3.5 h-3.5" />
             </Button>
           </div>
         </div>
 
-        {bulkRunning && (
-          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <Loader2 className="w-3 h-3 animate-spin shrink-0" />
-            <span className="truncate">{t("vocab.bulkEnrichProgress", { done: bulkProgress.done, total: bulkProgress.total })}</span>
-          </div>
-        )}
-
-        {selectedIds.size > 0 && (
+        {selectMode && (
           <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-2 py-1.5">
             <Checkbox
               checked={selectedIds.size === words.length && words.length > 0}
@@ -164,23 +156,25 @@ export function WordListPanel({
               <Button
                 variant="ghost"
                 onClick={onReanalyzeSelected}
+                disabled={selectedIds.size === 0}
                 title={t("vocab.reanalyzeSelected")}
-                className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-primary hover:bg-primary/10 transition-colors shrink-0"
+                className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-primary hover:bg-primary/10 disabled:opacity-30 transition-colors shrink-0"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
               </Button>
               <Button
                 variant="ghost"
                 onClick={onDeleteSelected}
+                disabled={selectedIds.size === 0}
                 title={t("vocab.deleteSelected")}
-                className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-destructive hover:bg-destructive/10 transition-colors shrink-0"
+                className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-destructive hover:bg-destructive/10 disabled:opacity-30 transition-colors shrink-0"
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </Button>
               <Button
                 variant="ghost"
-                onClick={onClearSelection}
-                title={t("vocab.clearSelection")}
+                onClick={onToggleSelectMode}
+                title={t("vocab.exitSelectMode")}
                 className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0"
               >
                 <X className="w-3.5 h-3.5" />
@@ -206,92 +200,16 @@ export function WordListPanel({
           </svg>
         </div>
 
-        {/* Collapsible filters — most sessions never touch them */}
-        <button
-          onClick={() => setFiltersOpen((v) => !v)}
-          className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
-        >
-          {t("vocab.filters")}
-          {activeFilters > 0 && <span className="rounded-full bg-primary/15 px-1.5 py-px text-[10px] font-bold text-primary">{activeFilters}</span>}
-          <svg viewBox="0 0 12 12" className={`w-2.5 h-2.5 shrink-0 transition-transform ${filtersOpen ? "rotate-90" : ""}`}>
-            <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" />
-          </svg>
-        </button>
-
-        {filtersOpen && <>
-        {/* Level chips */}
-        <div className="flex gap-1 flex-wrap">
-          {LEVEL_CHIPS.map((lv) => (
-            <Button
-              key={lv}
-              variant="ghost"
-              onClick={() => onFilterChange(lv)}
-              className={`h-auto px-2 py-0.5 rounded-full text-[10px] font-semibold border transition-colors ${
-                levelFilter === lv
-                  ? "bg-primary text-primary-foreground border-primary hover:bg-primary/90"
-                  : "border-border text-muted-foreground hover:border-primary/40 hover:bg-transparent"
-              }`}
-            >
-              {lv === "all" ? t("vocab.levelAll") : lv === "B1-" ? t("vocab.levelB1minus") : lv}
-            </Button>
-          ))}
-        </div>
-
-        {/* Source chips — only when the vocabulary has more than one origin */}
-        {sources.length > 1 && (
-          <div className="flex gap-1 flex-wrap">
-            <Button
-              variant="ghost"
-              onClick={() => onSourceFilterChange("all")}
-              className={`h-auto px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors ${
-                sourceFilter === "all"
-                  ? "bg-muted text-foreground border-transparent hover:bg-muted"
-                  : "border-border text-muted-foreground hover:border-primary/40 hover:bg-transparent"
-              }`}
-            >
-              {t("vocab.source.all")}
-            </Button>
-            {sources.map((s) => (
-              <Button
-                key={s}
-                variant="ghost"
-                onClick={() => onSourceFilterChange(s)}
-                className={`h-auto px-2 py-0.5 rounded-full text-[10px] font-medium border transition-colors ${
-                  sourceFilter === s
-                    ? "bg-muted text-foreground border-transparent hover:bg-muted"
-                    : "border-border text-muted-foreground hover:border-primary/40 hover:bg-transparent"
-                }`}
-              >
-                {t(`vocab.source.${s}`)}
-              </Button>
-            ))}
-          </div>
-        )}
-
-        {/* Time-range filter — added vs. last-updated, each with a date range */}
-        <div className="flex items-center gap-1.5">
-          <div className="flex items-center gap-0.5 bg-muted p-0.5 rounded-lg shrink-0">
-            {(["created", "updated"] as DateField[]).map((f) => (
-              <Button
-                key={f}
-                variant="ghost"
-                onClick={() => onDateFieldChange(f)}
-                className={`h-auto px-2 py-0.5 rounded-md text-[10px] font-medium transition-colors hover:bg-transparent ${
-                  dateField === f ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {f === "created" ? t("vocab.dateAdded") : t("vocab.dateUpdated")}
-              </Button>
-            ))}
-          </div>
-          <DateRangePicker
-            from={dateFrom}
-            to={dateTo}
-            onChange={(from, to) => { onDateFromChange(from); onDateToChange(to); }}
-            placeholder={t("vocab.dateRangePlaceholder")}
-          />
-        </div>
-        </>}
+        <LevelDateFilter
+          levelFilter={levelFilter}
+          onLevelFilterChange={onFilterChange}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          onDateFromChange={onDateFromChange}
+          onDateToChange={onDateToChange}
+          dateField={dateField}
+          onDateFieldChange={onDateFieldChange}
+        />
       </div>
 
       <div className="flex-1 overflow-y-auto divide-y divide-border">
@@ -319,18 +237,20 @@ export function WordListPanel({
           <div
             key={w.id}
             onDoubleClick={() => onDoubleClick(w.word)}
-            onClick={() => onSelect(w)}
+            onClick={() => (selectMode ? onToggleSelect(w.id) : onSelect(w))}
             className={`border-l-2 px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors ${
               w.starred ? "border-l-yellow-400" : "border-l-transparent"
-            } ${selectedId === w.id && !lookupActive ? "bg-accent/50" : ""}`}
+            } ${selectedIds.has(w.id) || (selectedId === w.id && !lookupActive) ? "bg-accent/50" : ""}`}
           >
             <div className="flex items-center gap-1.5 min-w-0">
-              <Checkbox
-                checked={selectedIds.has(w.id)}
-                onCheckedChange={() => onToggleSelect(w.id)}
-                onClick={(e) => e.stopPropagation()}
-                className="shrink-0"
-              />
+              {selectMode && (
+                <Checkbox
+                  checked={selectedIds.has(w.id)}
+                  onCheckedChange={() => onToggleSelect(w.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  className="shrink-0"
+                />
+              )}
               <span className="font-semibold text-sm truncate">{w.word}</span>
               <LevelBadge level={w.level} />
               <SpeakButton text={w.word} className="w-3.5 h-3.5" />

@@ -4,25 +4,24 @@ import { MessageBubble } from "./MessageBubble";
 import { ToolCallCard } from "./ToolCallCard";
 import { VocabExtractionCard, VOCAB_CARD_TOOL_NAMES, vocabItemsFromToolInput } from "./VocabExtractionCard";
 import { SentenceExtractionCard, SENTENCE_CARD_TOOL_NAMES, sentenceItemsFromToolInput } from "./SentenceExtractionCard";
+import { NoteCard, NOTE_CARD_TOOL_NAMES, noteFromToolInput } from "./NoteCard";
 import { AiChatSidebar } from "./AiChatSidebar";
 import { AiChatComposer } from "./AiChatComposer";
 import { useAiChatSession, PRESET_IDS } from "./useAiChatSession";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChatDigestPanel } from "./ChatDigestPanel";
-import { Bot, Eraser, PanelRightOpen, PlugZap, Settings, Sparkles, Unplug } from "lucide-react";
+import { Bot, Eraser, PlugZap, Settings, Unplug } from "lucide-react";
 import { useNavStore } from "@/store/navStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
 import { buildPresetPrompt } from "./aiChatHelpers";
 
-export function AiChatPage() {
+export function AiChatPage({ initialSessionId }: { initialSessionId?: string } = {}) {
   const t = useT();
-  const s = useAiChatSession();
+  const s = useAiChatSession(initialSessionId);
   const navigate = useNavStore((state) => state.navigate);
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(() => localStorage.getItem("aichat-sidebar-collapsed") === "1");
-  const [digestOpen, setDigestOpen] = React.useState(false);
   const [confirmClear, setConfirmClear] = React.useState(false);
   const [promptOpen, setPromptOpen] = React.useState(false);
   const messages = React.useMemo(() => s.displayItems.flatMap((item) => item.kind === "message" ? [item.msg] : []), [s.displayItems]);
@@ -33,7 +32,6 @@ export function AiChatPage() {
   });
   React.useEffect(() => {
     const onNewChat = () => s.startNew();
-    const onDigest = () => setDigestOpen(true);
     const onLearnArticle = (e: Event) => {
       const detail = (e as CustomEvent<{ title: string; text: string; commentsText?: string }>).detail;
       if (detail) s.startWithArticle(detail);
@@ -43,12 +41,10 @@ export function AiChatPage() {
       if (detail?.sessionId) s.switchSession(detail.sessionId);
     };
     window.addEventListener("tanwords:new-chat", onNewChat);
-    window.addEventListener("tanwords:conversation-note", onDigest);
     window.addEventListener("tanwords:learn-article", onLearnArticle);
     window.addEventListener("tanwords:open-chat", onOpenChat);
     return () => {
       window.removeEventListener("tanwords:new-chat", onNewChat);
-      window.removeEventListener("tanwords:conversation-note", onDigest);
       window.removeEventListener("tanwords:learn-article", onLearnArticle);
       window.removeEventListener("tanwords:open-chat", onOpenChat);
     };
@@ -89,9 +85,6 @@ export function AiChatPage() {
           </Button>
           <div className="mx-0.5 h-5 w-px bg-border/70" />
           {activeProvider ? <div title={t("aichat.providerConnected")} aria-label={t("aichat.providerConnected")} className="grid h-9 w-9 place-items-center rounded-xl text-emerald-500"><PlugZap className="h-4 w-4" /><span className="sr-only">{t("aichat.providerConnected")}</span></div> : <Button variant="ghost" onClick={() => navigate("settings")} title={t("aichat.providerDisconnected")} aria-label={t("aichat.providerDisconnected")} className="h-9 w-9 rounded-xl p-0 text-amber-500 hover:bg-amber-500/10 hover:text-amber-500"><Unplug className="h-4 w-4" /></Button>}
-          <Button variant="ghost" onClick={() => setDigestOpen(true)} disabled={messages.length < 2 || s.streaming} title={t("aichat.createDigest")} aria-label={t("aichat.createDigest")} className="h-9 w-9 rounded-xl p-0 text-primary hover:bg-primary/10">
-            {digestOpen ? <PanelRightOpen className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
-          </Button>
           {s.displayItems.length > 0 && (
             <Button variant="ghost" onClick={() => setConfirmClear(true)} title={t("aichat.clear")} aria-label={t("aichat.clear")} className="h-9 w-9 rounded-xl p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive shrink-0">
               <Eraser className="h-4 w-4" />
@@ -128,14 +121,17 @@ export function AiChatPage() {
               if (item.kind === "tool_block") {
                 const extractCalls = item.calls.filter((c) => VOCAB_CARD_TOOL_NAMES.has(c.name));
                 const sentenceCalls = item.calls.filter((c) => SENTENCE_CARD_TOOL_NAMES.has(c.name));
-                const otherCalls = item.calls.filter((c) => !VOCAB_CARD_TOOL_NAMES.has(c.name) && !SENTENCE_CARD_TOOL_NAMES.has(c.name));
+                const noteCalls = item.calls.filter((c) => NOTE_CARD_TOOL_NAMES.has(c.name));
+                const otherCalls = item.calls.filter((c) =>
+                  !VOCAB_CARD_TOOL_NAMES.has(c.name) && !SENTENCE_CARD_TOOL_NAMES.has(c.name) && !NOTE_CARD_TOOL_NAMES.has(c.name)
+                );
                 // Mirrors MessageBubble's own box model exactly (avatar-width
                 // spacer + gap-3, content capped at max-w-[82%]) so a tool call
                 // sitting between two AI messages lines up on both edges, not
                 // just the left one.
                 return (
                   <div key={idx} className="flex gap-3">
-                    <div className="w-6 h-6 shrink-0" />
+                    <div className="w-8 h-8 shrink-0" />
                     <div className="min-w-0 flex-1 max-w-[82%] flex flex-col gap-5">
                       {extractCalls.map((c) => (
                         <VocabExtractionCard
@@ -148,6 +144,9 @@ export function AiChatPage() {
                           key={c.id}
                           items={sentenceItemsFromToolInput(c.input)}
                         />
+                      ))}
+                      {noteCalls.map((c) => (
+                        <NoteCard key={c.id} note={noteFromToolInput(c.input)} />
                       ))}
                       {otherCalls.length > 0 && <ToolCallCard calls={otherCalls} />}
                     </div>
@@ -192,7 +191,6 @@ export function AiChatPage() {
           textareaRef={s.textareaRef}
         />
       </main>
-      <ChatDigestPanel open={digestOpen} onClose={() => setDigestOpen(false)} messages={messages} provider={activeProvider} sessionTitle={s.activeTitle} />
       <ConfirmModal
         open={confirmClear}
         title={t("aichat.clearConfirmTitle")}

@@ -18,7 +18,7 @@ pub struct RecentWord {
     pub word: String,
     pub zh: String,
     pub level: String,
-    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(serde::Serialize)]
@@ -89,8 +89,8 @@ pub fn db_dashboard_stats(conn: State<'_, AppState>) -> Result<DashboardStats, S
                         COALESCE((SELECT zh FROM word_definitions d
                                   WHERE d.word_id = w.id ORDER BY d.sort_order, d.id LIMIT 1), ''),
                         COALESCE(w.level, ''),
-                        w.created_at
-                 FROM words w ORDER BY w.created_at DESC, w.id DESC LIMIT 5",
+                        w.updated_at
+                 FROM words w ORDER BY w.updated_at DESC, w.id DESC LIMIT 5",
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
@@ -100,7 +100,7 @@ pub fn db_dashboard_stats(conn: State<'_, AppState>) -> Result<DashboardStats, S
                     word: row.get(1)?,
                     zh: row.get(2)?,
                     level: row.get(3)?,
-                    created_at: row.get(4)?,
+                    updated_at: row.get(4)?,
                 })
             })
             .map_err(|e| e.to_string())?;

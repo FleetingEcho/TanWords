@@ -22,3 +22,18 @@ export function parseMarkedBatch(raw: string): Map<string, string> {
   }
   return map;
 }
+
+/** Shrinks a serializeMarkedBatch block to fit a small-model context window — drops whole
+ *  trailing items rather than cutting text mid-item, since a truncated @@key@@ marker or
+ *  item body would just silently disappear from parseMarkedBatch's output. */
+export function truncateMarkedBatch(raw: string, maxChars: number): string {
+  if (raw.length <= maxChars) return raw;
+  const items = raw.split(/\n\n(?=@@)/);
+  let acc = "";
+  for (const item of items) {
+    const next = acc ? `${acc}\n\n${item}` : item;
+    if (next.length > maxChars) break;
+    acc = next;
+  }
+  return acc || items[0].slice(0, maxChars);
+}

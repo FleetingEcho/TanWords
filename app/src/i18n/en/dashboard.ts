@@ -16,6 +16,7 @@ export const dashboard: Dict = {
     "dash.quick.title": "Quick actions",
     "dash.quick.feeds": "Browse feeds",
     "dash.quick.chat": "Ask the AI tutor",
+    "dash.recentlyRead.title": "Recently read",
     "dash.rss.title": "Feed updates",
     "dash.rss.summary": "{articles} article feeds · {podcasts} podcasts · {unread} unread",
     "dash.rss.empty": "No RSS feeds yet",

@@ -12,6 +12,9 @@ export function useDocumentEditor() {
   const [doc, setDoc] = useState<DocumentDetail | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [refreshKey, setRefreshKey] = useState(0);
+  /** True while a doc's content is being fetched — a large document can take a
+   *  second or two, and without this the page just goes blank in between. */
+  const [loading, setLoading] = useState(false);
 
   const pendingSave = useRef<{ content: string; contentText: string; wordCount: number } | null>(null);
 
@@ -19,13 +22,19 @@ export function useDocumentEditor() {
     if (id < 0) {
       setActiveId(null);
       setDoc(null);
+      setLoading(false);
       return;
     }
-    const detail = await db.getDocument(id);
-    if (detail) {
-      setDoc(detail);
-      setActiveId(id);
-      setSaveStatus("idle");
+    setLoading(true);
+    try {
+      const detail = await db.getDocument(id);
+      if (detail) {
+        setDoc(detail);
+        setActiveId(id);
+        setSaveStatus("idle");
+      }
+    } finally {
+      setLoading(false);
     }
   }, [db]);
 
@@ -79,7 +88,7 @@ export function useDocumentEditor() {
   }, []);
 
   return {
-    activeId, doc, saveStatus, refreshKey,
+    activeId, doc, saveStatus, refreshKey, loading,
     loadDoc, handleNewDoc, handleSave, handleTitleChange, handleTagsChange, handlePinToggle,
     reset,
   };

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { History } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { CloseIcon, RefreshIcon, GridIcon, ListIcon, TranslateIcon } from "@/components/ui/icons";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
@@ -7,6 +8,7 @@ import type { RssTabSelection } from "@/store/settingsStore";
 import type { FeedViewMode } from "./EntryGrid";
 import { domainOf } from "./feedUtils";
 import { useTitleTranslateStore } from "@/store/titleTranslateStore";
+import type { RecentlyReadItem } from "@/lib/recentlyRead";
 import { Button } from "@/components/ui/button";
 
 interface Props {
@@ -28,6 +30,23 @@ interface Props {
    *  anywhere. Persists across tab switches so it stays on until toggled off. */
   showTitleTranslations: boolean;
   onToggleTitleTranslations: () => void;
+  /** Recently-opened articles (localStorage-backed, see lib/recentlyRead) shown
+   *  in a quick-jump dropdown so the user can get back to something they read
+   *  a few tabs/feeds ago without hunting through the entry list again. */
+  recentlyRead: RecentlyReadItem[];
+  onOpenRecent: (item: RecentlyReadItem) => void;
+  onClearRecentlyRead: () => void;
+  onRemoveRecent: (url: string) => void;
+}
+
+function formatTimeAgo(t: (key: string, vars?: Record<string, string | number>) => string, ts: number): string {
+  const minutes = Math.max(0, Math.round((Date.now() - ts) / 60000));
+  if (minutes < 1) return t("feeds.recentlyRead.justNow");
+  if (minutes < 60) return t("feeds.recentlyRead.minutesAgo", { n: minutes });
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return t("feeds.recentlyRead.hoursAgo", { n: hours });
+  const days = Math.round(hours / 24);
+  return t("feeds.recentlyRead.daysAgo", { n: days });
 }
 
 function UnreadBadge({ n }: { n: number }) {
@@ -40,15 +59,17 @@ function UnreadBadge({ n }: { n: number }) {
 }
 
 /** Single-row switcher: pinned feeds stay visible; the full categorized library lives in More. */
-export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, onSelect, onDelete, onPreferences, onAdd, onRefresh, viewMode, onSetViewMode, showTitleTranslations, onToggleTitleTranslations }: Props) {
+export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, onSelect, onDelete, onPreferences, onAdd, onRefresh, viewMode, onSetViewMode, showTitleTranslations, onToggleTitleTranslations, recentlyRead, onOpenRecent, onClearRecentlyRead, onRemoveRecent }: Props) {
   const t = useT();
   const totalUnread = [...unreadByFeed.values()].reduce((a, b) => a + b, 0);
   const translatingTitles = useTitleTranslateStore((s) => s.pending.size > 0);
   const [pendingDelete, setPendingDelete] = useState<RssFeed | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [recentOpen, setRecentOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [savingId, setSavingId] = useState<number | null>(null);
   const moreRef = useRef<HTMLDivElement>(null);
+  const recentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!moreOpen) return;
@@ -58,6 +79,15 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [moreOpen]);
+
+  useEffect(() => {
+    if (!recentOpen) return;
+    const close = (e: MouseEvent) => {
+      if (!recentRef.current?.contains(e.target as Node)) setRecentOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [recentOpen]);
 
   const visibleFeeds = useMemo(() => {
     const pinned = feeds.filter((f) => f.is_pinned).slice(0, 5);
@@ -85,7 +115,7 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
     }`;
 
   return (
-    <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-2.5">
+    <div className="flex shrink-0 items-center gap-3 border-b border-border bg-background/90 backdrop-blur-xl px-4 py-2.5">
       <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <button onClick={() => onSelect("all")} className={`${pill(selected === "all")} shrink-0`}>
           {t("feeds.all")}
@@ -175,6 +205,61 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
           </div>
         )}
         {syncing && <span className="text-[11px] text-muted-foreground">{t("feeds.refreshing")}</span>}
+        <div ref={recentRef} className="relative shrink-0">
+          <Button
+            variant="ghost"
+            onClick={() => setRecentOpen((v) => !v)}
+            title={t("feeds.recentlyRead.button")}
+            aria-label={t("feeds.recentlyRead.button")}
+            aria-pressed={recentOpen}
+            className={`flex h-7 w-7 items-center justify-center rounded-md p-0 transition-colors ${
+              recentOpen ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            <History className="h-4 w-4" />
+          </Button>
+          {recentOpen && (
+            <div className="absolute right-0 top-10 z-50 w-80 overflow-hidden rounded-xl border border-border bg-card shadow-xl">
+              <div className="flex items-center justify-between border-b border-border px-3 py-2">
+                <span className="text-xs font-semibold">{t("feeds.recentlyRead.title")}</span>
+                {recentlyRead.length > 0 && (
+                  <button onClick={onClearRecentlyRead} className="text-[11px] text-muted-foreground hover:text-foreground">
+                    {t("feeds.recentlyRead.clear")}
+                  </button>
+                )}
+              </div>
+              <div className="max-h-96 overflow-y-auto p-1.5">
+                {recentlyRead.length === 0 ? (
+                  <p className="px-2 py-6 text-center text-xs text-muted-foreground">{t("feeds.recentlyRead.empty")}</p>
+                ) : (
+                  recentlyRead.map((item) => (
+                    <div key={item.url} className="group relative flex items-center rounded-lg hover:bg-muted">
+                      <button
+                        onClick={() => { onOpenRecent(item); setRecentOpen(false); }}
+                        className="flex min-w-0 flex-1 flex-col items-start gap-0.5 px-2.5 py-2 text-left"
+                      >
+                        <span className="w-full truncate pr-5 text-xs font-medium text-foreground">{item.title}</span>
+                        <span className="flex w-full items-center gap-1.5 text-[10px] text-muted-foreground">
+                          <span className="truncate">{item.feedTitle || item.domain}</span>
+                          <span className="shrink-0">·</span>
+                          <span className="shrink-0">{formatTimeAgo(t, item.readAt)}</span>
+                        </span>
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onRemoveRecent(item.url); }}
+                        title={t("feeds.recentlyRead.remove")}
+                        aria-label={t("feeds.recentlyRead.remove")}
+                        className="absolute right-1.5 top-1/2 hidden h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/15 hover:text-destructive group-hover:flex"
+                      >
+                        <CloseIcon className="h-2.5 w-2.5" />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
         <Button
           variant="ghost"
           onClick={onToggleTitleTranslations}

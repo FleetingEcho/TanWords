@@ -32,14 +32,12 @@ interface Props {
   entries: RssEntryRow[];
   feedsById: Map<number, RssFeed>;
 
-  learningId: number | null;
   translatingId: number | null;
   analyzingBackgroundIds: Set<number>;
   showTitleTranslations: boolean;
   titleTranslations: Record<string, string> | undefined;
 
   onOpenEntry: (entry: RssEntryRow) => void;
-  onLearnEntry: (entry: RssEntryRow) => void;
   onPlayEntry: (entry: RssEntryRow) => void;
   onTranslateEntry: (entry: RssEntryRow) => void;
   onAnalyzeBackground: (entry: RssEntryRow) => void;
@@ -60,13 +58,11 @@ export function FeedsMainContent({
   feeds,
   entries,
   feedsById,
-  learningId,
   translatingId,
   analyzingBackgroundIds,
   showTitleTranslations,
   titleTranslations,
   onOpenEntry,
-  onLearnEntry,
   onPlayEntry,
   onTranslateEntry,
   onAnalyzeBackground,
@@ -96,9 +92,7 @@ export function FeedsMainContent({
     return (
       <HackerNewsSection
         viewMode={feedsViewMode}
-        learningId={learningId}
         onOpen={onOpenEntry}
-        onLearn={onLearnEntry}
         onTranslate={onTranslateEntry}
         translatingId={translatingId}
         onAnalyzeBackground={onAnalyzeBackground}
@@ -133,9 +127,7 @@ export function FeedsMainContent({
         <EntryGrid
           entries={entries}
           feedsById={feedsById}
-          learningId={learningId}
           onOpen={onOpenEntry}
-          onLearn={onLearnEntry}
           onPlay={onPlayEntry}
           onTranslate={onTranslateEntry}
           translatingId={translatingId}

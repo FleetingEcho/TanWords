@@ -6,17 +6,21 @@ import { useWordModalStore } from "@/store/wordModalStore";
 import { findBestProvider } from "@/providers/select";
 import { useDB } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
+import { useSettingsStore } from "@/store/settingsStore";
 import { toast } from "sonner";
 import { LoadingSkeleton, ErrorState } from "@/components/WordDetailContent";
 import { EnrichmentText } from "@/components/EnrichmentText";
 import { parseEnrichmentStream, ParsedEnrichment } from "@/lib/enrichMeta";
+import { fetchBasicInfo, BasicInfo } from "@/lib/basicInfo";
 import { CloseIcon } from "@/components/ui/icons";
 
 export function WordDetailModal() {
   const { word, closeWordModal } = useWordModalStore();
   const db = useDB();
   const t = useT();
+  const targetLevel = useSettingsStore((s) => s.targetLevels.join("/"));
   const [parsed, setParsed] = useState<ParsedEnrichment | null>(null);
+  const [basicInfo, setBasicInfo] = useState<BasicInfo>({});
   const [streaming, setStreaming] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,8 +38,12 @@ export function WordDetailModal() {
     setError(null);
     setLoading(false);
     setStreaming(true);
+    setBasicInfo({});
     let raw = "";
     try {
+      fetchBasicInfo(provider, w, targetLevel, signal).then((info) => {
+        if (!signal?.aborted) setBasicInfo(info);
+      });
       for await (const chunk of provider.enrich(w, signal)) {
         if (signal?.aborted) break;
         raw += chunk;
@@ -47,11 +55,12 @@ export function WordDetailModal() {
     } finally {
       setStreaming(false);
     }
-  }, [t]);
+  }, [t, targetLevel]);
 
   useEffect(() => {
     if (!word) return;
     setParsed(null);
+    setBasicInfo({});
     setStreaming(false);
     setError(null);
     setLegacy(false);
@@ -89,10 +98,11 @@ export function WordDetailModal() {
   const handleAddToVocabulary = async () => {
     if (!word || !parsed) return;
     try {
-      const result = await db.addWordEnriched(word, parsed.zhShort || word, null, {
+      const zhShort = basicInfo.zh || parsed.zhShort;
+      const result = await db.addWordEnriched(word, zhShort || word, basicInfo.wordType || null, {
         text: parsed.text,
-        zhShort: parsed.zhShort,
-        level: parsed.level,
+        zhShort,
+        level: basicInfo.level || parsed.level,
       });
       setAdded(true);
       if (result.isNew) {
@@ -140,7 +150,7 @@ export function WordDetailModal() {
             <div className="space-y-3">
               <div className="flex items-center gap-3">
                 <DialogTitle className="text-2xl font-bold">{word}</DialogTitle>
-                {parsed.level && <Badge variant="default" className="text-xs">{parsed.level}</Badge>}
+                {(basicInfo.level || parsed.level) && <Badge variant="default" className="text-xs">{basicInfo.level || parsed.level}</Badge>}
               </div>
               <EnrichmentText text={parsed.text} />
               {streaming && <p className="text-xs text-muted-foreground animate-pulse">{t("modal.fetching")}</p>}

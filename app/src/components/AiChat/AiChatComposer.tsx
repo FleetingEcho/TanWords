@@ -1,8 +1,10 @@
 import React from "react";
 import { useT } from "@/hooks/useT";
 import { TOOL_GROUPS, ToolGroupKey } from "./tools";
+import { TOOL_LABELS } from "./ToolCallCard";
 import { BookIcon, DocIcon, CloseIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { ShieldCheck } from "lucide-react";
 
 const GROUP_ICONS: Record<ToolGroupKey, React.FC<{ className?: string }>> = {
@@ -79,51 +81,57 @@ export function AiChatComposer({
         />
 
         <div className="flex items-center gap-2 px-1">
-        <div className="relative">
-          <Button
-            variant="ghost"
-            onClick={onToggleTools}
-            title={t("aichat.accessTitle")}
-            className={`h-8 gap-1.5 rounded-xl px-2.5 text-[11px] font-medium transition-colors ${
-              enabledGroups.size > 0
-                ? "bg-primary/[0.08] text-primary hover:bg-primary/[0.12]"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
-            }`}
-          >
-            <ShieldCheck className="h-3.5 w-3.5" />
-            <span>{t("aichat.accessButton")}</span>
-            {enabledGroups.size > 0 && <span className="grid h-4 min-w-4 place-items-center rounded-full bg-primary/10 px-1 text-[9px] font-bold">{enabledGroups.size}</span>}
-          </Button>
-          {showTools && (
-            <>
-              <div className="fixed inset-0 z-10" onClick={onToggleTools} />
-              <div className="absolute bottom-10 left-0 z-20 w-72 overflow-hidden rounded-2xl border border-border/70 bg-card shadow-2xl">
-                <div className="border-b border-border/60 px-4 py-3.5">
-                  <div className="flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary"><ShieldCheck className="h-3.5 w-3.5" /></span><div><p className="text-xs font-semibold">{t("aichat.accessTitle")}</p><p className="mt-0.5 text-[10px] text-muted-foreground">{t("aichat.accessSubtitle")}</p></div></div>
-                </div>
-                <div className="space-y-1 p-2">
-                {(Object.keys(TOOL_GROUPS) as ToolGroupKey[]).map((g) => {
-                  const active = enabledGroups.has(g);
-                  return (
-                    <button
-                      key={g}
-                      onClick={() => onToggleGroup(g)}
-                      role="switch"
-                      aria-checked={active}
-                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-muted/60"
-                    >
-                      <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl ${active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>{React.createElement(GROUP_ICONS[g], { className: "w-4 h-4" })}</span>
-                      <span className="min-w-0 flex-1"><span className="block text-xs font-medium">{t(`aichat.access.${g}.title`)}</span><span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">{t(`aichat.access.${g}.description`)}</span></span>
-                      <span className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${active ? "bg-primary" : "bg-muted-foreground/25"}`}><span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${active ? "translate-x-[18px]" : "translate-x-0.5"}`} /></span>
-                    </button>
-                  );
-                })}
-                </div>
-                <div className="border-t border-border/60 bg-muted/20 px-4 py-2.5"><p className="text-[9px] leading-4 text-muted-foreground">{enabledGroups.size === 0 ? t("aichat.accessNone") : t("aichat.accessHint")}</p></div>
-              </div>
-            </>
-          )}
-        </div>
+        <Popover open={showTools} onOpenChange={() => onToggleTools()}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              title={t("aichat.accessTitle")}
+              className={`h-8 gap-1.5 rounded-xl px-2.5 text-[11px] font-medium transition-colors ${
+                enabledGroups.size > 0
+                  ? "bg-primary/[0.08] text-primary hover:bg-primary/[0.12]"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              <ShieldCheck className="h-3.5 w-3.5" />
+              <span>{t("aichat.accessButton")}</span>
+              {enabledGroups.size > 0 && <span className="grid h-4 min-w-4 place-items-center rounded-full bg-primary/10 px-1 text-[9px] font-bold">{enabledGroups.size}</span>}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" side="top" sideOffset={8} className="w-80 overflow-hidden rounded-2xl border-border/70 bg-card p-0 shadow-2xl">
+            <div className="border-b border-border/60 px-4 py-3.5">
+              <div className="flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary"><ShieldCheck className="h-3.5 w-3.5" /></span><div><p className="text-xs font-semibold">{t("aichat.accessTitle")}</p><p className="mt-0.5 text-[10px] text-muted-foreground">{t("aichat.accessSubtitle")}</p></div></div>
+            </div>
+            <div className="space-y-1 p-2">
+            {(Object.keys(TOOL_GROUPS) as ToolGroupKey[]).map((g) => {
+              const active = enabledGroups.has(g);
+              return (
+                <button
+                  key={g}
+                  onClick={() => onToggleGroup(g)}
+                  role="switch"
+                  aria-checked={active}
+                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-muted/60"
+                >
+                  <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl ${active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>{React.createElement(GROUP_ICONS[g], { className: "w-4 h-4" })}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-xs font-medium">{t(`aichat.access.${g}.title`)}</span>
+                    <span className="mt-0.5 block text-[10px] leading-4 text-muted-foreground">{t(`aichat.access.${g}.description`)}</span>
+                    <span className="mt-1.5 flex flex-wrap gap-1">
+                      {TOOL_GROUPS[g].tools.map((toolName) => (
+                        <span key={toolName} className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground/80">
+                          {TOOL_LABELS[toolName] ?? toolName}
+                        </span>
+                      ))}
+                    </span>
+                  </span>
+                  <span className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${active ? "bg-primary" : "bg-muted-foreground/25"}`}><span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${active ? "translate-x-[18px]" : "translate-x-0.5"}`} /></span>
+                </button>
+              );
+            })}
+            </div>
+            <div className="border-t border-border/60 bg-muted/20 px-4 py-2.5"><p className="text-[9px] leading-4 text-muted-foreground">{enabledGroups.size === 0 ? t("aichat.accessNone") : t("aichat.accessHint")}</p></div>
+          </PopoverContent>
+        </Popover>
         <span className="ml-auto hidden text-[10px] text-muted-foreground/45 sm:block">{t("aichat.inputHint")}</span>
 
         {streaming ? (

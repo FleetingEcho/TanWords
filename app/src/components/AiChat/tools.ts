@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { ToolDef } from "@/providers/base";
-import { contentToBlocks, markdownToBlocks, blocksToText } from "@/lib/docFormat";
+import { contentToBlocks, markdownToBlocks, blocksToText, blocksToStorage } from "@/lib/docFormat";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -20,7 +20,7 @@ export interface ToolResult {
 
 export const TOOL_GROUPS = {
   vocabulary: { label: "Vocabulary", tools: ["save_word", "search_vocabulary", "extract_vocabulary", "add_words_to_vocab", "generate_sentences"] },
-  documents:  { label: "Documents",  tools: ["list_documents", "insert_into_document"] },
+  documents:  { label: "Documents",  tools: ["list_documents", "insert_into_document", "summarize_conversation", "save_note_as_document"] },
 } as const;
 
 export type ToolGroupKey = keyof typeof TOOL_GROUPS;
@@ -150,6 +150,32 @@ const ALL_TOOL_DEFS: Record<string, ToolDef> = {
       required: ["doc_id", "content"],
     },
   },
+
+  summarize_conversation: {
+    name: "summarize_conversation",
+    description: "Turn the conversation so far (or the text/article the user shared) into a structured note — a title and a polished markdown summary. Call this when the user asks you to summarize this into a note (e.g. '总结成笔记', 'summarize this to a note'). This only prepares the note for the user to review; it is NOT saved anywhere yet — call save_note_as_document separately when the user then asks you to save it.",
+    input_schema: {
+      type: "object",
+      properties: {
+        title:   { type: "string", description: "Short, descriptive note title" },
+        content: { type: "string", description: "Markdown-formatted note body: # heading, ## subheading, - bullet, plain text" },
+      },
+      required: ["title", "content"],
+    },
+  },
+
+  save_note_as_document: {
+    name: "save_note_as_document",
+    description: "Save a note as a brand-new document in the user's Documents library. Call this when the user asks you to save, keep, or file away a note (e.g. 'save it', '存起来', '保存为文档') — typically right after summarize_conversation produced one; pass that same title/content, not a re-summary. Do not use this to append to an existing document; use insert_into_document for that.",
+    input_schema: {
+      type: "object",
+      properties: {
+        title:   { type: "string", description: "Short, descriptive document title" },
+        content: { type: "string", description: "Markdown-formatted note content: # heading, ## subheading, - bullet, plain text" },
+      },
+      required: ["title", "content"],
+    },
+  },
 };
 
 export function getEnabledTools(groups: Set<ToolGroupKey>): ToolDef[] {
@@ -244,6 +270,26 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
           wordCount,
         });
         return { tool_use_id: id, content: `✓ Appended content to "${doc.title}".` };
+      }
+
+      case "summarize_conversation": {
+        // No DB write here — the caller renders this as a preview card (NoteCard)
+        // that save_note_as_document persists once the user asks to save it.
+        return { tool_use_id: id, content: `✓ Note ready — review below.` };
+      }
+
+      case "save_note_as_document": {
+        const { title, content: mdContent } = input as { title: string; content: string };
+        const blocks = await markdownToBlocks(mdContent);
+        const storage = blocksToStorage(blocks);
+        const docId: number = await invoke("db_create_document_with_content", {
+          title,
+          content: storage.content,
+          contentText: storage.contentText,
+          tags: JSON.stringify(["ai-chat-note"]),
+          wordCount: storage.wordCount,
+        });
+        return { tool_use_id: id, content: `✓ Saved "${title}" to Documents (#${docId}).` };
       }
 
       default:

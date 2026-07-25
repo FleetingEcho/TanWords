@@ -2,8 +2,8 @@ import React from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import {
-  BrainCircuit, Check, FilePlus2, Languages,
-  MessageSquarePlus, Monitor, Moon, Search, Server, Settings, Sparkles, Sun, Unplug, X,
+  BrainCircuit, Check, ChevronsLeft, ChevronsRight, FilePlus2, Languages,
+  MessageSquarePlus, Monitor, Moon, Quote, Search, Server, Settings, Sun, Type, Unplug, User, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { WordSearchBox } from "@/components/shared/WordSearchBox";
+import { SentenceSearchBox } from "@/components/shared/SentenceSearchBox";
 import { useT } from "@/hooks/useT";
 import { findBestProvider } from "@/providers/select";
 import { getAllProviders, type AIProvider } from "@/providers";
@@ -18,6 +19,7 @@ import { NavPage, useNavStore } from "@/store/navStore";
 import { UpdateButton } from "@/components/Layout/UpdateButton";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useAnalysisStore } from "@/store/analysisStore";
+import { useVocabEnrichStore } from "@/store/vocabEnrichStore";
 import { GitHubIcon } from "@/components/ui/icons";
 
 type McpState = { status: { running: boolean; error: string | null } };
@@ -34,13 +36,51 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   const theme = useSettingsStore((state) => state.theme);
   const setTheme = useSettingsStore((state) => state.setTheme);
   const visibleItems = useSettingsStore((state) => state.visibleTopBarItems);
+  const userAvatar = useSettingsStore((state) => state.userAvatar);
   const visible = (item: import("@/store/settingsStore").TopBarItemId) => visibleItems.includes(item);
-  const isAnalyzing = useAnalysisStore((state) => state.isAnalyzing);
-  const analyzingJobs = useAnalysisStore((state) => state.jobs);
+  const analysisJobs = useAnalysisStore((state) => state.jobs);
   const cancelAnalyzing = useAnalysisStore((state) => state.cancel);
+  const vocabBulk = useVocabEnrichStore((state) => state.bulk);
+  const vocabSingleJobs = useVocabEnrichStore((state) => state.singleJobs);
+  // Everything that can be running in the background, from any page, normalized into one
+  // list — Reading's Learn/analyze (useAnalysisStore) and Vocabulary's single/bulk
+  // re-analyze (useVocabEnrichStore) are tracked in separate stores since they're
+  // unrelated features, but they share this one always-visible indicator + cancel UI.
+  const runningJobs = React.useMemo(() => {
+    const jobs = analysisJobs.map((j) => ({ id: j.id, title: j.title, cancel: () => cancelAnalyzing(j.id) }));
+    if (vocabBulk.running) {
+      jobs.push({
+        id: "vocab-bulk",
+        title: t("vocab.bulkEnrichProgress", { done: vocabBulk.done, total: vocabBulk.total }),
+        cancel: () => vocabBulk.controller?.abort(),
+      });
+    }
+    for (const [word, job] of Object.entries(vocabSingleJobs)) {
+      if (job.status !== "running") continue;
+      jobs.push({ id: `vocab-word-${word}`, title: t("vocab.reanalyzeWordTitle", { word }), cancel: () => job.controller.abort() });
+    }
+    return jobs;
+  }, [analysisJobs, cancelAnalyzing, vocabBulk, vocabSingleJobs, t]);
+  const isAnalyzing = runningJobs.length > 0;
   const [analyzingOpen, setAnalyzingOpen] = React.useState(false);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
+  const [searchMode, setSearchMode] = React.useState<"word" | "sentence">(
+    () => (localStorage.getItem("commandbar-search-mode") === "sentence" ? "sentence" : "word")
+  );
+  const toggleSearchMode = () => setSearchMode((mode) => {
+    const next = mode === "word" ? "sentence" : "word";
+    localStorage.setItem("commandbar-search-mode", next);
+    return next;
+  });
+  const [iconsCollapsed, setIconsCollapsed] = React.useState(
+    () => localStorage.getItem("commandbar-icons-collapsed") === "1"
+  );
+  const toggleIconsCollapsed = () => setIconsCollapsed((collapsed) => {
+    const next = !collapsed;
+    localStorage.setItem("commandbar-icons-collapsed", next ? "1" : "0");
+    return next;
+  });
   const [mcp, setMcp] = React.useState<{ running: boolean; error: string | null }>({ running: false, error: null });
   const [providerConnected, setProviderConnected] = React.useState(() => Boolean(findBestProvider()));
   const [availableProviders, setAvailableProviders] = React.useState<AIProvider[]>(() => getAllProviders().filter((provider) => provider.apiKey));
@@ -78,7 +118,6 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   const dispatch = (name: string) => window.dispatchEvent(new CustomEvent(name));
   const newDocument = () => { navigate("documents"); window.setTimeout(() => dispatch("tanwords:new-document"), 0); };
   const newChat = () => { navigate("chat"); window.setTimeout(() => dispatch("tanwords:new-chat"), 0); };
-  const digest = () => dispatch("tanwords:conversation-note");
   const openGitHub = async () => {
     const url = "https://github.com/FleetingEcho/TanWords";
     try { await openUrl(url); } catch { window.open(url, "_blank", "noopener,noreferrer"); }
@@ -91,14 +130,27 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
 
   const context = activePage === "documents"
     ? { label: t("command.newDocument"), icon: FilePlus2, run: newDocument }
-    : activePage === "chat"
-      ? { label: t("command.conversationNote"), icon: Sparkles, run: digest }
-      : null;
+    : null;
 
   return (
     <>
       <header className="relative z-20 flex h-12 shrink-0 select-none items-center gap-1.5 border-b border-border/80 bg-background/90 px-3 backdrop-blur-xl">
-        {visible("search") && <div className="min-w-0 max-w-72 flex-1"><WordSearchBox variant="inline" /></div>}
+        {visible("search") && (
+          <div className="flex min-w-0 max-w-80 flex-1 items-center gap-1">
+            <div className="min-w-0 flex-1">
+              {searchMode === "word" ? <WordSearchBox variant="inline" /> : <SentenceSearchBox variant="inline" />}
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleSearchMode}
+              title={searchMode === "word" ? t("command.switchToSentenceSearch") : t("command.switchToWordSearch")}
+              className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground"
+            >
+              {searchMode === "word" ? <Quote className="h-4 w-4" /> : <Type className="h-4 w-4" />}
+            </Button>
+          </div>
+        )}
 
         {visible("context") && context && <><div className="mx-1 hidden h-5 w-px bg-border sm:block" /><Button variant="ghost" onClick={context.run} className="h-8 gap-2 rounded-lg px-2.5 text-xs font-medium text-foreground"><context.icon className="h-4 w-4 text-primary" /><span className="hidden lg:inline">{context.label}</span></Button></>}
 
@@ -113,27 +165,27 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
             <Popover open={analyzingOpen} onOpenChange={setAnalyzingOpen}>
               <PopoverTrigger asChild>
                 <button
-                  title={analyzingJobs.length > 1 ? t("command.analyzingHint", { n: analyzingJobs.length }) : analyzingJobs[0]?.title}
+                  title={runningJobs.length > 1 ? t("command.analyzingHint", { n: runningJobs.length }) : runningJobs[0]?.title}
                   className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
                 >
                   <span className="h-3.5 w-3.5 shrink-0 rounded-full border-2 border-primary/25 border-t-primary animate-spin" />
                   <span className="hidden sm:inline">
                     {t("command.analyzing")}
-                    {analyzingJobs.length > 1 ? ` (${analyzingJobs.length})` : ""}
+                    {runningJobs.length > 1 ? ` (${runningJobs.length})` : ""}
                   </span>
                 </button>
               </PopoverTrigger>
               <PopoverContent align="start" className="w-72 p-2">
                 <p className="px-1.5 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{t("command.analyzing")}</p>
                 <div className="space-y-0.5">
-                  {analyzingJobs.map((job) => (
+                  {runningJobs.map((job) => (
                     <div key={job.id} className="flex items-center gap-2 rounded-lg py-1 pl-1.5 pr-1">
                       <span className="h-3 w-3 shrink-0 rounded-full border-2 border-primary/25 border-t-primary animate-spin" />
                       <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground" title={job.title}>{job.title}</span>
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => cancelAnalyzing(job.id)}
+                        onClick={job.cancel}
                         title={t("settings.cancel")}
                         aria-label={t("settings.cancel")}
                         className="h-6 w-6 shrink-0 rounded-md text-muted-foreground hover:text-destructive"
@@ -149,6 +201,16 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
         )}
 
         <div className="ml-auto flex items-center gap-0.5 border-l border-border pl-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleIconsCollapsed}
+            title={iconsCollapsed ? t("command.expandIcons") : t("command.collapseIcons")}
+            className="h-8 w-8 rounded-lg text-muted-foreground"
+          >
+            {iconsCollapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
+          </Button>
+          {!iconsCollapsed && <>
           {visible("mcp") && <Button variant="ghost" size="icon" onClick={() => navigate("settings")} title={mcp.error || (mcp.running ? t("command.mcpRunning") : t("command.mcpStopped"))} className={`relative h-8 w-8 rounded-lg ${mcp.error ? "text-amber-500" : mcp.running ? "text-foreground" : "text-muted-foreground"}`}><Server className="h-4 w-4" />{mcp.running && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />}</Button>}
           {visible("ai") && <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -190,6 +252,10 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
           {visible("updates") && <UpdateButton placement="toolbar" />}
           {visible("github") && <Button variant="ghost" size="icon" onClick={() => void openGitHub()} title="GitHub" className="h-8 w-8 rounded-lg text-muted-foreground"><GitHubIcon className="h-4 w-4" /></Button>}
           <Button variant="ghost" size="icon" onClick={() => navigate("settings")} title={t("nav.settings")} className="h-8 w-8 rounded-lg text-muted-foreground"><Settings className="h-4 w-4" /></Button>
+          </>}
+          <Button variant="ghost" size="icon" onClick={() => navigate("settings")} title={t("command.profile")} className="h-8 w-8 rounded-full p-0 overflow-hidden ring-1 ring-border/60 text-muted-foreground">
+            {userAvatar ? <img src={userAvatar} alt="" className="h-full w-full object-cover" /> : <User className="h-4 w-4" />}
+          </Button>
         </div>
       </header>
 

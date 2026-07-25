@@ -5,7 +5,7 @@ import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
 import { usePlayerOriginStore } from "@/store/playerOriginStore";
 import { useLayoutStore, SIDEBAR_WIDTH, SIDEBAR_WIDTH_COLLAPSED } from "@/store/layoutStore";
 import {
-  PlayIcon, PauseIcon, CloseIcon, RefreshIcon, SkipPrevIcon, SkipNextIcon, ChevronIcon,
+  PlayIcon, PauseIcon, CloseIcon, RefreshIcon, SkipPrevIcon, SkipNextIcon, ChevronIcon, MusicIcon,
 } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { PLAY_MODES } from "@/features/music/queue";
@@ -105,10 +105,20 @@ export function PodcastPlayerBar() {
         <Button
           variant="ghost"
           onClick={toggle}
-          className="w-9 h-9 p-0 rounded-full flex items-center justify-center bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shrink-0"
+          className="group w-9 h-9 p-0 rounded-full flex items-center justify-center bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shrink-0"
           title={isPlaying ? t("podcast.pause") : t("podcast.play")}
         >
-          {isPlaying ? <PauseIcon className="w-4 h-4" /> : <PlayIcon className="w-4 h-4" />}
+          {isPlaying ? (
+            <>
+              {/* A static pause icon is a little dull for "this is actively playing" — spin a
+                * music note instead, swapping to the actual pause icon on hover so the click
+                * target stays obvious. */}
+              <MusicIcon className="w-4 h-4 animate-[spin_12s_linear_infinite] group-hover:hidden" />
+              <PauseIcon className="w-4 h-4 hidden group-hover:block" />
+            </>
+          ) : (
+            <PlayIcon className="w-4 h-4" />
+          )}
         </Button>
       )}
 

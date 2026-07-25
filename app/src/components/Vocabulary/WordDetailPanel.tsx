@@ -50,13 +50,6 @@ export function WordDetailPanel({
 
   return (
     <div className="flex-1 overflow-y-auto bg-background">
-      {/* Enriching banner */}
-      {enriching && (
-        <div className="flex items-center gap-2 px-6 pt-4 pb-0">
-          <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin shrink-0" />
-          <span className="text-xs text-muted-foreground">{t("vocab.analyzing")}</span>
-        </div>
-      )}
       {!enriching && enrichError && !enriched && (
         <div className="flex items-center gap-2 px-6 pt-4 pb-0">
           <span className="text-xs text-destructive inline-flex items-center gap-1"><ExclamationTriangleIcon className="w-3.5 h-3.5" /> {enrichError}</span>
@@ -108,6 +101,13 @@ export function WordDetailPanel({
             <Button variant="link" onClick={onReenrich} className="h-auto p-0 font-semibold text-primary hover:underline inline-flex items-center gap-1">
               <SparkIcon className="w-3 h-3" /> {t("vocab.reenrich")}
             </Button>
+          </div>
+        )}
+
+        {enriching && (
+          <div className="flex items-center gap-2 py-4">
+            <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin shrink-0" />
+            <span className="text-xs text-muted-foreground">{t("vocab.analyzing")}</span>
           </div>
         )}
 

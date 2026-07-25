@@ -16,7 +16,6 @@ export const nav: Dict = {
     "command.newDocument": "新建文档",
     "command.newChat": "新建 AI 对话",
     "command.searchPlaceholder": "输入命令或页面…",
-    "command.conversationNote": "生成对话笔记",
     "command.analyzing": "分析中…",
     "command.analyzingHint": "{n} 篇文章分析中 — 点击查看或取消",
     "command.mcpRunning": "MCP 服务运行中",
@@ -28,4 +27,9 @@ export const nav: Dict = {
     "command.globalModelHint": "用于词汇、AI Chat 和其他 AI 功能",
     "command.noModels": "暂无已配置模型",
     "command.manageModels": "管理模型…",
+    "command.switchToSentenceSearch": "切换到句子搜索",
+    "command.switchToWordSearch": "切换到单词搜索",
+    "command.profile": "个人资料",
+    "command.collapseIcons": "折叠工具栏图标",
+    "command.expandIcons": "展开工具栏图标",
 };

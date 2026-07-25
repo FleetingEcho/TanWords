@@ -38,7 +38,7 @@ export function TranslateModal({ open, onClose, title, articleText, hnItemId }: 
           </button>
         </div>
 
-        <TranslationPane articleText={articleText} hnItemId={hnItemId} />
+        <TranslationPane articleText={articleText} hnItemId={hnItemId} collapsible />
       </div>
     </div>
   );

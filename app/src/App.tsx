@@ -12,6 +12,7 @@ import { PlayerBar } from "@/components/ui/PlayerBar";
 import { PodcastPlayerBar } from "@/components/ui/PodcastPlayerBar";
 import { ToolsBall } from "@/components/ui/ToolsBall";
 import { ToolsModal } from "@/components/ui/ToolsModal";
+import { AppBackground } from "@/components/Layout/AppBackground";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useUpdaterStore } from "@/store/updaterStore";
 import { useNavStore } from "@/store/navStore";
@@ -131,6 +132,7 @@ function App() {
 
   return (
     <>
+    <AppBackground />
     <MainLayout
       activeNav={page}
       onNavigate={(id) => navigate(id as any)}

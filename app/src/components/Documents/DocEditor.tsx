@@ -36,6 +36,11 @@ export function DocEditor({ doc, onSave, onTitleChange, onTagsChange, onPinToggl
   const [mode, setMode] = useState<"rich" | "raw">("rich");
   const [rawMarkdown, setRawMarkdown] = useState("");
   const [switchingMode, setSwitchingMode] = useState(false);
+  // useCreateBlockNote starts with an empty document — content only lands once the
+  // (off-thread, so genuinely async) parse below resolves. Without this, the editor
+  // area renders blank in between: the title/tags header is already there, but the
+  // body looks empty rather than loading, for however long the parse takes.
+  const [richLoading, setRichLoading] = useState(true);
   const titleRef = useRef<HTMLInputElement>(null);
   const loaded = useRef(false);
   const rawDirty = useRef(false);
@@ -51,7 +56,7 @@ export function DocEditor({ doc, onSave, onTitleChange, onTagsChange, onPinToggl
       const blocks = liftMermaid(parsed);
       if (blocks.length > 0) editor.replaceBlocks(editor.document, blocks);
       // Enable saving only after initial content is in place
-      requestAnimationFrame(() => { loaded.current = true; });
+      requestAnimationFrame(() => { loaded.current = true; setRichLoading(false); });
     });
     return () => { cancelled = true; };
   }, []);
@@ -74,6 +79,7 @@ export function DocEditor({ doc, onSave, onTitleChange, onTagsChange, onPinToggl
         setRawMarkdown(await editor.blocksToMarkdownLossy(lowerMermaid(editor.document) as any));
       } else {
         loaded.current = false;
+        setRichLoading(true);
         const blocks = liftMermaid(await markdownToBlocksOffThread(rawMarkdown));
         editor.replaceBlocks(editor.document, blocks.length ? blocks : [{ type: "paragraph" }]);
         if (rawDirty.current) {
@@ -81,7 +87,7 @@ export function DocEditor({ doc, onSave, onTitleChange, onTagsChange, onPinToggl
           onSave(content, contentText, wordCount);
           rawDirty.current = false;
         }
-        requestAnimationFrame(() => { loaded.current = true; });
+        requestAnimationFrame(() => { loaded.current = true; setRichLoading(false); });
       }
       setMode(next);
     } finally {
@@ -179,7 +185,12 @@ export function DocEditor({ doc, onSave, onTitleChange, onTagsChange, onPinToggl
       </div>
 
       {mode === "rich" ? (
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto relative">
+          {richLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-10">
+              <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+            </div>
+          )}
           <BlockNoteView editor={editor} theme={isDark ? "dark" : "light"} onChange={handleChange} className="tanwords-editor" />
         </div>
       ) : (

@@ -10,10 +10,7 @@ export type FeedViewMode = "card" | "list";
 interface Props {
   entries: DisplayEntry[];
   feedsById: Map<number, RssFeed>;
-  /** Entry id currently being fetched for one-click learn, if any. */
-  learningId: number | null;
   onOpen: (entry: DisplayEntry) => void;
-  onLearn: (entry: DisplayEntry) => void;
   /** Podcast playback — only wired onto cards whose entry has an audio_url. */
   onPlay: (entry: DisplayEntry) => void;
   /** One-click "translate to Chinese" — omit to hide the translate button entirely. */
@@ -90,7 +87,7 @@ function GroupHeader({
 
 /** Magazine flow: date-grouped sections; the very first entry renders as a hero card.
  *  In list mode, groups collapse into a dense one-line-per-entry list instead (no hero, no cover art). */
-export function EntryGrid({ entries, feedsById, learningId, onOpen, onLearn, onPlay, onTranslate, translatingId = null, onAnalyzeBackground, analyzingBackgroundIds, titleTranslations, viewMode, trackRead = true, coverColor, coverLetter, hasMore = false, loadingMore = false, onLoadMore }: Props) {
+export function EntryGrid({ entries, feedsById, onOpen, onPlay, onTranslate, translatingId = null, onAnalyzeBackground, analyzingBackgroundIds, titleTranslations, viewMode, trackRead = true, coverColor, coverLetter, hasMore = false, loadingMore = false, onLoadMore }: Props) {
   const t = useT();
   const [collapsedGroups, setCollapsedGroups] = useState<Set<DateGroup>>(new Set());
 
@@ -143,9 +140,7 @@ export function EntryGrid({ entries, feedsById, learningId, onOpen, onLearn, onP
                   key={e.id}
                   entry={e}
                   feedTitle={feedsById.get(e.feed_id)?.title ?? ""}
-                  learning={learningId === e.id}
                   onOpen={() => onOpen(e)}
-                  onLearn={() => onLearn(e)}
                   onPlay={e.audio_url ? () => onPlay(e) : undefined}
                   onTranslate={onTranslate ? () => onTranslate(e) : undefined}
                   translating={translatingId === e.id}
@@ -162,9 +157,7 @@ export function EntryGrid({ entries, feedsById, learningId, onOpen, onLearn, onP
                     entry={hero}
                     feedTitle={feedsById.get(hero.feed_id)?.title ?? ""}
                     hero
-                    learning={learningId === hero.id}
                     onOpen={() => onOpen(hero)}
-                    onLearn={() => onLearn(hero)}
                     onPlay={hero.audio_url ? () => onPlay(hero) : undefined}
                     onTranslate={onTranslate ? () => onTranslate(hero) : undefined}
                     translating={translatingId === hero.id}
@@ -183,9 +176,7 @@ export function EntryGrid({ entries, feedsById, learningId, onOpen, onLearn, onP
                         key={e.id}
                         entry={e}
                         feedTitle={feedsById.get(e.feed_id)?.title ?? ""}
-                        learning={learningId === e.id}
                         onOpen={() => onOpen(e)}
-                        onLearn={() => onLearn(e)}
                         onPlay={e.audio_url ? () => onPlay(e) : undefined}
                         onTranslate={onTranslate ? () => onTranslate(e) : undefined}
                         translating={translatingId === e.id}

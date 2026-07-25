@@ -7,13 +7,13 @@ import { usePodcastPlayerStore, type PodcastTrack } from "@/store/podcastPlayerS
 import { usePlayerOriginStore } from "@/store/playerOriginStore";
 import { useReaderNotesStore } from "@/store/readerNotesStore";
 import { useLearnChatStore } from "@/store/learnChatStore";
-import { useNavStore } from "@/store/navStore";
 import { useLearnArticle } from "@/hooks/useLearnArticle";
-import { SpeakerIcon, SparkIcon, TranslateIcon, ReplyIcon, CheckIcon } from "@/components/ui/icons";
+import { SpeakerIcon, SparkIcon, TranslateIcon, ReplyIcon, CheckIcon, PlayIcon, PauseIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { HnComments } from "@/components/Reader/HnComments";
 import { TranslationPane } from "@/components/shared/TranslationPane";
 import { Markdown } from "@/components/AiChat/Markdown";
+import { AiChatModal } from "@/components/AiChat/AiChatModal";
 import { flattenHnComments, commentsToSpeechText, type HnComment } from "@/lib/hnComments";
 
 export interface FetchedArticle {
@@ -43,18 +43,42 @@ interface Props {
 
 const FONT_STEPS = [15, 16, 17.5, 19, 21] as const;
 
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** Turns a plain-text paste into the same shape `fetch_article` returns, so the rest of
+ *  the reader (font size, TTS, translation, notes) doesn't need to know the source. */
+function articleFromPastedText(text: string, domain: string): FetchedArticle {
+  const content_html = text
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => `<p>${escapeHtml(p).replace(/\n/g, "<br />")}</p>`)
+    .join("");
+  return {
+    title: domain,
+    byline: null,
+    site_name: domain,
+    content_html,
+    text_content: text,
+    excerpt: null,
+  };
+}
+
 export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, toolbarSlot }: Props) {
   const t = useT();
   const { startLearn } = useLearnArticle();
   const learnJob = useLearnChatStore((s) => s.jobs[url]);
   const cancelLearn = useLearnChatStore((s) => s.cancel);
-  const navigate = useNavStore((s) => s.navigate);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [article, setArticle] = useState<FetchedArticle | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [fontStep, setFontStep] = useState(1);
   const [hnComments, setHnComments] = useState<HnComment[] | null>(null);
+  const [pastedText, setPastedText] = useState("");
   const [showTranslation, setShowTranslation] = useState(false);
+  const [chatModalSessionId, setChatModalSessionId] = useState<string | null>(null);
   // The analyze trigger lives in the reader bar now (see ReaderView) — this page
   // only publishes its article there and renders whatever comes back.
   const showNotes = useReaderNotesStore((s) => s.showNotes);
@@ -106,9 +130,7 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
       return;
     }
     if (learnJob?.status === "done" && learnJob.sessionId) {
-      const sessionId = learnJob.sessionId;
-      navigate("chat");
-      window.setTimeout(() => window.dispatchEvent(new CustomEvent("tanwords:open-chat", { detail: { sessionId } })), 0);
+      setChatModalSessionId(learnJob.sessionId);
       return;
     }
     startLearn(url, {
@@ -126,6 +148,21 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
     if (!hnComments || hnComments.length === 0) return;
     playerStart(commentsSourceKey, commentsToSpeechText(hnComments));
     setReaderOrigin();
+  };
+
+  const handlePasteSubmit = () => {
+    const text = pastedText.trim();
+    if (!text) return;
+    const built = articleFromPastedText(text, domain);
+    setArticle(built);
+    setStatus("ready");
+    setErrorMsg("");
+    useReaderNotesStore.getState().setArticle({
+      url,
+      title: built.title,
+      text: built.text_content,
+      hnItemId: hnItemId ?? null,
+    });
   };
 
   const handleHnCommentsLoaded = (comments: HnComment[]) => {
@@ -193,15 +230,43 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
 
   if (status === "error" || !article) {
     return (
-      <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
-        <p className="text-sm text-muted-foreground max-w-md">{t("reader.extractFailed")}</p>
-        {errorMsg && <p className="text-[11px] font-mono text-muted-foreground/50 max-w-md truncate">{errorMsg}</p>}
-        <Button
-          onClick={onOpenExternal}
-          className="h-9 px-4 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          {t("hn.reader.external")}
-        </Button>
+      <div className="flex-1 min-h-0 overflow-y-auto px-6 py-10">
+        <div className="max-w-[68ch] mx-auto flex flex-col items-center gap-3 text-center">
+          <p className="text-sm text-muted-foreground max-w-md">{t("reader.extractFailed")}</p>
+          {errorMsg && <p className="text-[11px] font-mono text-muted-foreground/50 max-w-md truncate">{errorMsg}</p>}
+          <Button
+            onClick={onOpenExternal}
+            className="h-9 px-4 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            {t("hn.reader.external")}
+          </Button>
+
+          <div className="w-full mt-6 text-left">
+            <p className="text-xs text-muted-foreground mb-2">{t("reader.pastePrompt")}</p>
+            <textarea
+              value={pastedText}
+              onChange={(e) => setPastedText(e.target.value)}
+              placeholder={t("reader.pastePlaceholder")}
+              rows={10}
+              className="w-full rounded-xl border border-border/60 bg-muted/30 px-4 py-3 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/50 resize-y outline-none transition-colors focus:border-primary/50 focus:bg-background"
+            />
+            <div className="mt-3 flex justify-end">
+              <Button
+                onClick={handlePasteSubmit}
+                disabled={!pastedText.trim()}
+                className="h-9 px-4 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 transition-colors"
+              >
+                {t("reader.pasteSubmit")}
+              </Button>
+            </div>
+          </div>
+
+          {hnItemId != null && (
+            <div className="w-full text-left">
+              <HnComments storyId={hnItemId} onLoaded={handleHnCommentsLoaded} />
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -244,6 +309,7 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
         {toolbarSlot && createPortal(
           <>
             <Button
+              variant="ghost"
               onClick={handleLearnClick}
               title={
                 learnJob?.status === "running" ? t("reader.learnCancel")
@@ -258,11 +324,11 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
               className={`w-7 h-7 p-0 rounded-md flex items-center justify-center transition-colors shrink-0 ${
                 learnJob?.status === "done"
                   ? "bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/15"
-                  : "bg-primary text-primary-foreground hover:bg-primary/90"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
               }`}
             >
               {learnJob?.status === "running" ? (
-                <span className="w-3.5 h-3.5 rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground animate-spin" />
+                <span className="w-3.5 h-3.5 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />
               ) : learnJob?.status === "done" ? (
                 <CheckIcon className="w-4 h-4" />
               ) : (
@@ -280,7 +346,15 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
                   : "text-muted-foreground hover:text-foreground hover:bg-muted"
               }`}
             >
-              <SpeakerIcon className="w-4 h-4" />
+              {audio ? (
+                podcastActive && podcastStatus === "playing" ? (
+                  <PauseIcon className="w-4 h-4" />
+                ) : (
+                  <PlayIcon className="w-4 h-4" />
+                )
+              ) : (
+                <SpeakerIcon className="w-4 h-4" />
+              )}
             </Button>
             <Button
               variant="ghost"
@@ -337,7 +411,7 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
           </div>
 
           {hasSidePanes && (
-            <div className="min-w-0 flex-1 sticky top-0 h-[calc(100vh-3rem)] flex flex-col overflow-hidden rounded-lg border border-border bg-card">
+            <div className="min-w-0 flex-1 sticky top-0 h-[calc(100vh-3rem)] flex flex-col overflow-hidden border-l border-border/40 pl-4">
               {showNotes && showTranslation && (
                 <div className="flex items-center gap-1 border-b border-border p-1.5 shrink-0">
                   <button
@@ -379,6 +453,12 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
           )}
         </div>
       </div>
+
+      <AiChatModal
+        open={chatModalSessionId !== null}
+        onClose={() => setChatModalSessionId(null)}
+        sessionId={chatModalSessionId ?? undefined}
+      />
     </div>
   );
 }

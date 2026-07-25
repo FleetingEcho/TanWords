@@ -7,12 +7,13 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { PanelLeftClose } from "lucide-react";
+import { ChevronsLeft, Filter } from "lucide-react";
 import { Download, FileInput, MoreHorizontal } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { exportMarkdownFiles, readMarkdownFiles } from "@/lib/localDocs";
 import { blocksToMarkdown, blocksToStorage, contentToBlocks, markdownToBlocks } from "@/lib/docFormat";
+import { LIST_PANEL_WIDTH, LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
 import { liftMermaid, lowerMermaid } from "./mermaidTransforms";
 import { ExportMarkdownDialog, MarkdownExportChoice } from "./ExportMarkdownDialog";
 
@@ -39,6 +40,7 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, onCollap
   const [dateTo, setDateTo] = useState("");
   const [allTags, setAllTags] = useState<string[]>([]);
   const [tagFilter, setTagFilter] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [exportChoices, setExportChoices] = useState<MarkdownExportChoice[] | null>(null);
@@ -157,14 +159,14 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, onCollap
   };
 
   return (
-    <div className="flex flex-col h-full border-r border-border w-80 shrink-0 bg-sidebar">
+    <div className={`flex flex-col h-full border-r border-border ${LIST_PANEL_WIDTH} shrink-0 bg-card`}>
       {/* Header */}
       <div className="px-3 pt-4 pb-2 space-y-2 shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1">
             {onCollapse && (
-              <Button variant="ghost" size="icon" onClick={onCollapse} className="h-6 w-6" title={t("doc.collapseFiles")}>
-                <PanelLeftClose className="h-3.5 w-3.5" />
+              <Button variant="ghost" size="icon" onClick={onCollapse} className={`h-6 w-6 ${LIST_PANEL_TOGGLE_CLASS}`} title={t("doc.collapseFiles")}>
+                <ChevronsLeft className="h-3.5 w-3.5" />
               </Button>
             )}
           </div>
@@ -195,41 +197,63 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, onCollap
           />
         </div>
 
-        {/* Sort + tag filter */}
-        <div className="flex gap-1.5">
-          <Select value={sort} onValueChange={setSort}>
-            <SelectTrigger className="flex-1 h-6 text-[11px] rounded-lg border border-border bg-card text-foreground focus:outline-none px-1.5 gap-1 [&_svg]:h-3 [&_svg]:w-3">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="modified">{t("doc.sortModified")}</SelectItem>
-              <SelectItem value="created">{t("doc.sortCreated")}</SelectItem>
-              <SelectItem value="title">{t("doc.sortTitle")}</SelectItem>
-            </SelectContent>
-          </Select>
-          {allTags.length > 0 && (
-            <Select value={tagFilter || "__all__"} onValueChange={(v) => setTagFilter(v === "__all__" ? "" : v)}>
-              <SelectTrigger className="flex-1 h-6 text-[11px] rounded-lg border border-border bg-card text-foreground focus:outline-none px-1.5 gap-1 [&_svg]:h-3 [&_svg]:w-3">
-                <SelectValue placeholder={t("doc.allTags")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">{t("doc.allTags")}</SelectItem>
-                {allTags.map((tag) => (
-                  <SelectItem key={tag} value={tag}>{tag}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        {/* Sort + tag + date filters — collapsed by default, same pattern as
+          * Vocabulary's LevelDateFilter, so the list gets more room by default. */}
+        <div>
+          <button
+            onClick={() => setFiltersOpen((v) => !v)}
+            className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <Filter className="w-3 h-3" />
+            {t("doc.filters")}
+            {(sort !== "modified" || tagFilter || dateFrom || dateTo) && (
+              <span className="rounded-full bg-primary/15 px-1.5 py-px text-[10px] font-bold text-primary">
+                {[sort !== "modified", !!tagFilter, !!(dateFrom || dateTo)].filter(Boolean).length}
+              </span>
+            )}
+            <svg viewBox="0 0 12 12" className={`w-2.5 h-2.5 shrink-0 transition-transform ${filtersOpen ? "rotate-90" : ""}`}>
+              <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+            </svg>
+          </button>
+
+          {filtersOpen && (
+            <div className="space-y-2 pt-2.5">
+              <div className="flex gap-1.5">
+                <Select value={sort} onValueChange={setSort}>
+                  <SelectTrigger className="flex-1 h-6 text-[11px] rounded-lg border border-border bg-card text-foreground focus:outline-none px-1.5 gap-1 [&_svg]:h-3 [&_svg]:w-3">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="modified">{t("doc.sortModified")}</SelectItem>
+                    <SelectItem value="created">{t("doc.sortCreated")}</SelectItem>
+                    <SelectItem value="title">{t("doc.sortTitle")}</SelectItem>
+                  </SelectContent>
+                </Select>
+                {allTags.length > 0 && (
+                  <Select value={tagFilter || "__all__"} onValueChange={(v) => setTagFilter(v === "__all__" ? "" : v)}>
+                    <SelectTrigger className="flex-1 h-6 text-[11px] rounded-lg border border-border bg-card text-foreground focus:outline-none px-1.5 gap-1 [&_svg]:h-3 [&_svg]:w-3">
+                      <SelectValue placeholder={t("doc.allTags")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">{t("doc.allTags")}</SelectItem>
+                      {allTags.map((tag) => (
+                        <SelectItem key={tag} value={tag}>{tag}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+
+              <DateRangePicker
+                from={dateFrom}
+                to={dateTo}
+                onChange={(from, to) => { setDateFrom(from); setDateTo(to); }}
+                placeholder={t("doc.dateRangePlaceholder")}
+                className="w-full"
+              />
+            </div>
           )}
         </div>
-
-        {/* Date range */}
-        <DateRangePicker
-          from={dateFrom}
-          to={dateTo}
-          onChange={(from, to) => { setDateFrom(from); setDateTo(to); }}
-          placeholder={t("doc.dateRangePlaceholder")}
-          className="w-full"
-        />
       </div>
 
       {/* Doc list */}

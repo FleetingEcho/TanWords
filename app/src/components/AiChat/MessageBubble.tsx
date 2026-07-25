@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { toast } from "sonner";
 import { useT } from "@/hooks/useT";
+import { useSettingsStore } from "@/store/settingsStore";
 import { Markdown } from "./Markdown";
 import { Button } from "@/components/ui/button";
 
@@ -27,6 +28,7 @@ const COLLAPSE_PREVIEW = 350;
 
 export const MessageBubble = React.memo(function MessageBubble({ msg, compact = false, isTyping = false, fillCardWidth = false }: Props) {
   const t = useT();
+  const userAvatar = useSettingsStore((s) => s.userAvatar);
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
@@ -41,7 +43,7 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, compact = 
   };
 
   const textSize = compact ? "text-xs" : "text-sm";
-  const avatarSize = compact ? "w-5 h-5 text-[9px]" : "w-6 h-6 text-[10px]";
+  const avatarSize = compact ? "w-7 h-7 text-[11px]" : "w-8 h-8 text-xs";
 
   const isLongUserMsg = msg.role === "user" && msg.content.length > COLLAPSE_THRESHOLD;
 
@@ -123,11 +125,15 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, compact = 
 
       {msg.role === "user" && (
         <div
-          className={`${avatarSize} rounded-xl bg-muted/80 ring-1 ring-border/60 flex items-center justify-center shrink-0 mt-1`}
+          className={`${avatarSize} rounded-xl bg-muted/80 ring-1 ring-border/60 flex items-center justify-center shrink-0 mt-1 overflow-hidden`}
         >
-          <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 text-muted-foreground">
-            <path fillRule="evenodd" d="M8 8a3 3 0 100-6 3 3 0 000 6zm-4.5 8a4.5 4.5 0 019 0H3.5z" />
-          </svg>
+          {userAvatar ? (
+            <img src={userAvatar} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-muted-foreground">
+              <path fillRule="evenodd" d="M8 8a3 3 0 100-6 3 3 0 000 6zm-4.5 8a4.5 4.5 0 019 0H3.5z" />
+            </svg>
+          )}
         </div>
       )}
     </div>

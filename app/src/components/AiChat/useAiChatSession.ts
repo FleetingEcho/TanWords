@@ -8,13 +8,14 @@ import { AIProvider, ApiMessage } from "@/providers/base";
 import { useDB, ChatSessionItem } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useLearnChatStore } from "@/store/learnChatStore";
 import { AiMessage } from "./MessageBubble";
 import { ToolCallDisplay } from "./ToolCallCard";
 import { ToolCall, ToolGroupKey, getEnabledTools, executeTool } from "./tools";
 import {
   DisplayItem, PRESET_IDS, ATTACH_THRESHOLD,
   buildPresetPrompt, groupSessions, genId, estimateTokens,
-  serializeItems, deserializeItems, buildApiHistory,
+  serializeItems, deserializeItems, buildApiHistory, isContextOverflowError,
 } from "./aiChatHelpers";
 
 const QUICK_CARDS: { icon: FC<{ className?: string }>; titleKey: string; prefillKey: string }[] = [
@@ -26,7 +27,7 @@ const QUICK_CARDS: { icon: FC<{ className?: string }>; titleKey: string; prefill
 
 /** All state and business logic behind AiChatPage — split out so the page
  *  component itself only has to worry about rendering. */
-export function useAiChatSession() {
+export function useAiChatSession(initialSessionId?: string) {
   const db = useDB();
   const t = useT();
   const targetLevel = useSettingsStore((s) => s.targetLevels.join("/"));
@@ -69,6 +70,15 @@ export function useAiChatSession() {
   // user has since switched away from the session it's naming.
   const activeIdRef = useRef<string | null>(null);
   activeIdRef.current = activeId;
+  // Set by startNew()/switchSession() so the mount-time auto-restore below —
+  // whose loadSessions() call is async and can resolve after either of those
+  // — knows to bail instead of clobbering whatever the user/caller already
+  // did with an older, no-longer-relevant session's messages.
+  const skipAutoRestoreRef = useRef(false);
+  // Bumped by every switchSession()/startNew() call. switchSession's DB fetch
+  // is async — if startNew() (or a newer switchSession) runs while one is still
+  // in flight, its continuation must not apply the stale session it fetched.
+  const sessionEpochRef = useRef(0);
 
   // Keep the effective prompt explicit and editable for every role. Presets are
   // starting points, not opaque behavior that users cannot inspect or change.
@@ -90,12 +100,18 @@ export function useAiChatSession() {
 
   useEffect(() => {
     loadSessions().then((items) => {
+      if (skipAutoRestoreRef.current) return; // startNew/switchSession already won this mount
       if (items.length === 0) return;
+      // A caller that wants a specific session opened up front (e.g. the
+      // reader's "Open in AI Chat" modal) wins over the remembered last-active one.
       const remembered = localStorage.getItem(ACTIVE_SESSION_KEY);
-      const target = items.find((item) => item.id === remembered) ?? items[0];
+      const target = items.find((item) => item.id === initialSessionId)
+        ?? items.find((item) => item.id === remembered)
+        ?? items[0];
       switchSession(target.id);
     });
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSessionId]);
 
   useEffect(() => {
     if (!selectedProviderId && providers.length > 0) setSelectedProviderId(providers[0].id);
@@ -126,6 +142,8 @@ export function useAiChatSession() {
   // ── Session management ─────────────────────────────────────────────────
 
   const switchSession = useCallback(async (id: string) => {
+    const epoch = ++sessionEpochRef.current;
+    skipAutoRestoreRef.current = true;
     controllerRef.current?.abort();
     setStreaming(false);
     setActiveId(id);
@@ -134,15 +152,20 @@ export function useAiChatSession() {
     setAttachment(null);
     const detail = await db.getChatSession(id);
     if (!detail) return;
+    // A newer switchSession/startNew ran while this fetch was in flight —
+    // applying this stale result now would clobber whatever it set up.
+    if (sessionEpochRef.current !== epoch) return;
     localStorage.setItem(ACTIVE_SESSION_KEY, id);
     setItems(deserializeItems(detail.messages));
     setActiveTitle(detail.title);
     setSelectedPreset(detail.preset_id);
     setCustomPrompt(detail.system_prompt || buildPresetPrompt(detail.preset_id, targetLevel));
     setSelectedProviderId(detail.provider_id || providers[0]?.id || "");
-  }, [db, providers, setItems]);
+  }, [db, providers, setItems, targetLevel]);
 
   const startNew = () => {
+    sessionEpochRef.current++;
+    skipAutoRestoreRef.current = true;
     controllerRef.current?.abort();
     setStreaming(false);
     setActiveId(genId());
@@ -188,6 +211,10 @@ export function useAiChatSession() {
   const deleteSession = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     await db.deleteChatSession(id);
+    // A "Learn"/"Analyze in background" job may still be pointing at this session
+    // (its checkmark on the reader/RSS card) — clear it so that button reverts to
+    // idle instead of opening a chat that no longer exists.
+    useLearnChatStore.getState().dismissBySessionId(id);
     setSessions((p) => p.filter((s) => s.id !== id));
     setSearchResults((p) => p?.filter((s) => s.id !== id) ?? null);
     if (activeId === id) {
@@ -464,8 +491,11 @@ export function useAiChatSession() {
       if (renderTimer !== null) window.clearTimeout(renderTimer);
       if (e?.name === "AbortError") return; // handleStop already saved partial content
       const msg = e?.message ?? "Request failed";
-      toast.error(msg.includes("401") ? t("aichat.invalidKey") : t("aichat.requestFailed"));
-      updateLastAssistant(`❌ ${msg}`);
+      const friendlyMsg = isContextOverflowError(e)
+        ? t("aichat.contextOverflow")
+        : msg.includes("401") ? t("aichat.invalidKey") : t("aichat.requestFailed");
+      toast.error(friendlyMsg);
+      updateLastAssistant(`❌ ${friendlyMsg}`);
     }
 
     if (!controller.signal.aborted) {

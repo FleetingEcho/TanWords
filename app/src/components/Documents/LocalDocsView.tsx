@@ -30,6 +30,8 @@ import { ExportMarkdownDialog } from "./ExportMarkdownDialog";
 import { LocalDocsSidebar } from "./LocalDocsSidebar";
 import { LocalDocsEditorPane } from "./LocalDocsEditorPane";
 
+const LAST_LOCAL_PATH_KEY = "tanwords_doc_last_local_path";
+
 /** The "local folder" source of the Documents page: mount a folder, then
  *  list/edit/create/delete the markdown files inside it. */
 export function LocalDocsView() {
@@ -39,6 +41,9 @@ export function LocalDocsView() {
   const [root, setRoot] = useState<string | null>(null);
   const [rootLoaded, setRootLoaded] = useState(false);
   const [files, setFiles] = useState<LocalDocItem[]>([]);
+  /** A folder with 1000+ files can take a moment to list — without this, the sidebar
+   *  shows "no files here" (files.length === 0) while it's still loading, not actually empty. */
+  const [filesLoading, setFilesLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState<LocalDocSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -46,16 +51,26 @@ export function LocalDocsView() {
   const [activePath, setActivePath] = useState<string | null>(null);
   const [activeContent, setActiveContent] = useState<string | null>(null);
   const [activeRawContent, setActiveRawContent] = useState<string | null>(null);
+  /** True while a file's content is being read — a large file can take a moment,
+   *  same reasoning as the database tab's `loading` in useDocumentEditor. */
+  const [fileLoading, setFileLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const saveStatusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [pendingImport, setPendingImport] = useState<{ relPath: string; markdown: string; duplicate: boolean } | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpenState] = useState(() => localStorage.getItem("tanwords_doc_local_sidebar_collapsed") !== "1");
+  const setSidebarOpen = (open: boolean) => {
+    localStorage.setItem("tanwords_doc_local_sidebar_collapsed", open ? "0" : "1");
+    setSidebarOpenState(open);
+  };
   const [zenMode, setZenMode] = useState(false);
   const [exportPickerOpen, setExportPickerOpen] = useState(false);
   // Bumped only when a file is opened — NOT on rename, which changes
   // activePath but must keep the editor (and its unsaved state) mounted.
   const [editorKey, setEditorKey] = useState(0);
+  // True once the initial auto-reopen (below) has been attempted, so mounting a *new*
+  // folder later via handleMount doesn't retrigger it with the stale previous path.
+  const autoOpenedRef = useRef(false);
 
   useEffect(() => {
     db.getSetting(LOCAL_DOCS_ROOT_KEY).then((v) => {
@@ -64,13 +79,29 @@ export function LocalDocsView() {
     });
   }, []);
 
+  // Reopen whichever local file was open last session, once the mounted folder is known.
+  useEffect(() => {
+    if (!root || autoOpenedRef.current) return;
+    autoOpenedRef.current = true;
+    const lastPath = localStorage.getItem(LAST_LOCAL_PATH_KEY);
+    if (lastPath) handleOpen(lastPath, { silent: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handleOpen is a fresh closure every render; only root gates this one-shot restore.
+  }, [root]);
+
+  useEffect(() => {
+    if (activePath) localStorage.setItem(LAST_LOCAL_PATH_KEY, activePath);
+  }, [activePath]);
+
   const refresh = useCallback(async (r = root) => {
     if (!r) return;
+    setFilesLoading(true);
     try {
       setFiles(await listLocalDocs(r));
     } catch (e) {
       toast.error(String(e));
       setFiles([]);
+    } finally {
+      setFilesLoading(false);
     }
   }, [root]);
 
@@ -121,8 +152,9 @@ export function LocalDocsView() {
     await db.setSetting(LOCAL_DOCS_ROOT_KEY, picked);
   };
 
-  const handleOpen = async (relPath: string) => {
+  const handleOpen = async (relPath: string, opts?: { silent?: boolean }) => {
     if (!root) return;
+    setFileLoading(true);
     try {
       const content = await readLocalDoc(root, relPath);
       setActivePath(relPath);
@@ -131,7 +163,11 @@ export function LocalDocsView() {
       setSaveStatus("idle");
       setEditorKey((k) => k + 1);
     } catch (e) {
-      toast.error(String(e));
+      // Auto-reopen on mount fails silently if the file moved/was deleted since
+      // last session — not worth greeting the user with an error toast on launch.
+      if (!opts?.silent) toast.error(String(e));
+    } finally {
+      setFileLoading(false);
     }
   };
 
@@ -277,6 +313,7 @@ export function LocalDocsView() {
           searching={searching}
           searchResults={searchResults}
           files={files}
+          filesLoading={filesLoading}
           activePath={activePath}
           onOpen={handleOpen}
           onDelete={setPendingDelete}
@@ -289,6 +326,7 @@ export function LocalDocsView() {
       {/* Editor pane */}
       <LocalDocsEditorPane
         editorKey={editorKey}
+        loading={fileLoading}
         activePath={activePath}
         activeContent={activeContent}
         activeRawContent={activeRawContent}
