@@ -6,11 +6,12 @@ import { useSettingsStore } from "@/store/settingsStore";
 import { useT } from "@/hooks/useT";
 import { toast } from "sonner";
 import { useSelectedWordStore } from "@/store/selectedWordStore";
-import { WordListPanel, LevelFilter, SortBy, DateField } from "./WordListPanel";
+import { WordListPanel, LevelFilter, DateField } from "./WordListPanel";
 import { WordDetailPanel } from "./WordDetailPanel";
 import { GenerateVocabModal } from "./GenerateVocabModal";
 import { PatternLibrary } from "./PatternLibrary";
 import { parseEnrichmentStream, ParsedEnrichment } from "@/lib/enrichMeta";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 
 interface SelectedWordData {
   word: WordListItem;
@@ -42,7 +43,6 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
   // Filters
   const [levelFilter, setLevelFilter] = useState<LevelFilter>("all");
   const [sourceFilter, setSourceFilter] = useState("all");
-  const [sortBy, setSortBy] = useState<SortBy>("recent");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dateField, setDateField] = useState<DateField>("created");
@@ -52,6 +52,33 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
   const [generateOpen, setGenerateOpen] = useState(false);
   const [view, setView] = useState<"words" | "patterns">("words");
   const [patternSeed, setPatternSeed] = useState<string | null>(null);
+  const [listCollapsed, setListCollapsed] = useState(() => localStorage.getItem("vocab-wordlist-collapsed") === "1");
+  const toggleListCollapsed = () => setListCollapsed((current) => {
+    localStorage.setItem("vocab-wordlist-collapsed", current ? "0" : "1");
+    return !current;
+  });
+
+  // ── Multi-select (header actions: reanalyze / delete selected) ─────────
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const toggleWordSelect = (id: number) => setSelectedIds((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+  const clearWordSelection = () => setSelectedIds(new Set());
+  const selectAllWords = () => setSelectedIds(new Set(visibleWords.map((w) => w.id)));
+  const [deleteSelectedOpen, setDeleteSelectedOpen] = useState(false);
+
+  // ── Star / unstar (optimistic — the toggle should feel instant) ────────
+  const toggleWordStar = async (id: number) => {
+    const target = words.find((w) => w.id === id);
+    if (!target) return;
+    const next = !target.starred;
+    setWords((prev) => prev.map((w) => (w.id === id ? { ...w, starred: next } : w)));
+    const ok = await db.setWordStarred(id, next);
+    if (!ok) setWords((prev) => prev.map((w) => (w.id === id ? { ...w, starred: !next } : w)));
+  };
+  const [deletingSelected, setDeletingSelected] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 250);
@@ -68,11 +95,114 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
     return () => enrichControllerRef.current?.abort();
   }, []);
 
+  // ── Bulk enrichment (header buttons: enrich un-analyzed / re-analyze all) ──
+
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
+  const [reanalyzeConfirmOpen, setReanalyzeConfirmOpen] = useState(false);
+  const bulkAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => bulkAbortRef.current?.abort();
+  }, []);
+
+  const runBulkEnrich = async (targets: WordListItem[]) => {
+    const provider = findBestProvider();
+    if (!provider) {
+      toast.error(t("vocab.noApiKey"));
+      return;
+    }
+    if (targets.length === 0) {
+      toast.info(t("vocab.bulkEnrichNoneNeeded"));
+      return;
+    }
+
+    const controller = new AbortController();
+    bulkAbortRef.current = controller;
+    setBulkRunning(true);
+    setBulkProgress({ done: 0, total: targets.length });
+
+    let succeeded = 0;
+    let failed = 0;
+    for (const w of targets) {
+      if (controller.signal.aborted) break;
+      try {
+        let raw = "";
+        for await (const chunk of provider.enrich(w.word, controller.signal)) {
+          if (controller.signal.aborted) break;
+          raw += chunk;
+        }
+        if (controller.signal.aborted) break;
+        const final = parseEnrichmentStream(raw);
+        await db.addWordEnriched(w.word, final.zhShort || w.word, null, {
+          text: final.text,
+          zhShort: final.zhShort,
+          level: final.level,
+        });
+        succeeded++;
+      } catch (e: any) {
+        if (e?.name === "AbortError") break;
+        failed++;
+      } finally {
+        setBulkProgress((prev) => ({ ...prev, done: prev.done + 1 }));
+      }
+    }
+
+    const aborted = controller.signal.aborted;
+    bulkAbortRef.current = null;
+    setBulkRunning(false);
+    loadWords();
+    loadAllWordsSet();
+    if (succeeded > 0) window.dispatchEvent(new CustomEvent("vocab-updated"));
+    if (!aborted) {
+      toast.success(
+        t("vocab.bulkEnrichDone", { done: succeeded }) +
+          (failed > 0 ? t("vocab.bulkEnrichFailedSuffix", { failed }) : "")
+      );
+    }
+  };
+
+  const enrichUnanalyzed = async () => {
+    if (bulkRunning) return;
+    const all = await db.getWords();
+    runBulkEnrich(all.filter((w) => !w.enriched));
+  };
+
+  const reanalyzeAll = async () => {
+    setReanalyzeConfirmOpen(false);
+    if (bulkRunning) return;
+    const all = await db.getWords();
+    runBulkEnrich(all);
+  };
+
+  const stopBulkEnrich = () => bulkAbortRef.current?.abort();
+
+  const reanalyzeSelected = async () => {
+    if (bulkRunning) return;
+    const targets = words.filter((w) => selectedIds.has(w.id));
+    clearWordSelection();
+    await runBulkEnrich(targets);
+  };
+
+  const deleteSelected = async () => {
+    if (deletingSelected) return;
+    setDeletingSelected(true);
+    const ok = await db.deleteWordsBatch([...selectedIds]);
+    if (ok) {
+      toast.success(t("vocab.wordsDeleted", { n: selectedIds.size }));
+      if (selected && selectedIds.has(selected.word.id)) setSelected(null);
+      clearWordSelection();
+      await loadWords();
+      await loadAllWordsSet();
+    }
+    setDeletingSelected(false);
+    setDeleteSelectedOpen(false);
+  };
+
   const loadWords = async () => {
     const results = await db.getWords({
       search: debouncedSearch || undefined,
       levelFilter: levelFilter === "all" ? undefined : levelFilter,
-      sortBy,
       dateField,
       dateFrom: dateFrom || undefined,
       dateTo: dateTo || undefined,
@@ -81,7 +211,7 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
     setPage(0);
   };
 
-  useEffect(() => { loadWords(); }, [levelFilter, sortBy, debouncedSearch, dateField, dateFrom, dateTo]);
+  useEffect(() => { loadWords(); }, [levelFilter, debouncedSearch, dateField, dateFrom, dateTo]);
 
   // Full, unfiltered vocabulary set — used for dedup in GenerateVocabModal, which
   // must check against the whole vocabulary regardless of the list's current filters.
@@ -96,7 +226,7 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
     const handler = () => { loadWords(); loadAllWordsSet(); };
     window.addEventListener("vocab-updated", handler);
     return () => window.removeEventListener("vocab-updated", handler);
-  }, [levelFilter, sortBy, debouncedSearch, dateField, dateFrom, dateTo]);
+  }, [levelFilter, debouncedSearch, dateField, dateFrom, dateTo]);
 
   // Source filtering is client-side: getWords returns the full result set
   const sources = useMemo(
@@ -316,7 +446,6 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
         words={visibleWords}
         selectedId={selected?.word.id ?? null}
         search={search}
-        sortBy={sortBy}
         levelFilter={levelFilter}
         sourceFilter={sourceFilter}
         sources={sources}
@@ -328,7 +457,6 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
         dateFrom={dateFrom}
         dateTo={dateTo}
         onSearchChange={(v) => { setSearch(v); setPage(0); }}
-        onSortChange={setSortBy}
         onFilterChange={setLevelFilter}
         onSourceFilterChange={setSourceFilter}
         onDateFieldChange={setDateField}
@@ -339,6 +467,20 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
         onDoubleClick={(word) => openWordModal(word)}
         onAiLookup={startLookup}
         onOpenGenerate={() => setGenerateOpen(true)}
+        bulkRunning={bulkRunning}
+        bulkProgress={bulkProgress}
+        onEnrichUnanalyzed={enrichUnanalyzed}
+        onReanalyzeAll={() => setReanalyzeConfirmOpen(true)}
+        onStopBulkEnrich={stopBulkEnrich}
+        collapsed={listCollapsed}
+        onToggleCollapsed={toggleListCollapsed}
+        selectedIds={selectedIds}
+        onToggleSelect={toggleWordSelect}
+        onSelectAll={selectAllWords}
+        onClearSelection={clearWordSelection}
+        onReanalyzeSelected={reanalyzeSelected}
+        onDeleteSelected={() => setDeleteSelectedOpen(true)}
+        onToggleStar={toggleWordStar}
       />
 
       <WordDetailPanel
@@ -375,6 +517,27 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
         onClose={() => setGenerateOpen(false)}
         existingWords={allWordsSet}
         onAdded={() => { loadWords(); loadAllWordsSet(); }}
+      />
+
+      <ConfirmModal
+        open={reanalyzeConfirmOpen}
+        title={t("vocab.reanalyzeConfirmTitle")}
+        message={t("vocab.reanalyzeConfirmMessage", { n: allWordsSet.size })}
+        confirmLabel={t("vocab.reanalyzeConfirmConfirm")}
+        danger
+        onConfirm={reanalyzeAll}
+        onCancel={() => setReanalyzeConfirmOpen(false)}
+      />
+
+      <ConfirmModal
+        open={deleteSelectedOpen}
+        title={t("vocab.deleteSelectedConfirmTitle", { n: selectedIds.size })}
+        message={t("vocab.deleteSelectedConfirmMessage")}
+        confirmLabel={deletingSelected ? t("vocab.deleting") : t("vocab.deleteSelectedConfirmConfirm")}
+        confirmDisabled={deletingSelected}
+        danger
+        onConfirm={deleteSelected}
+        onCancel={() => !deletingSelected && setDeleteSelectedOpen(false)}
       />
     </div>
   );

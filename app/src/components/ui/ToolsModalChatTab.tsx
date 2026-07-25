@@ -2,7 +2,8 @@ import React from "react";
 import { useT } from "@/hooks/useT";
 import { MessageBubble } from "@/components/AiChat/MessageBubble";
 import { ToolCallCard } from "@/components/AiChat/ToolCallCard";
-import { VocabExtractionCard, ExtractedVocabItem } from "@/components/AiChat/VocabExtractionCard";
+import { VocabExtractionCard, VOCAB_CARD_TOOL_NAMES, vocabItemsFromToolInput } from "@/components/AiChat/VocabExtractionCard";
+import { SentenceExtractionCard, SENTENCE_CARD_TOOL_NAMES, sentenceItemsFromToolInput } from "@/components/AiChat/SentenceExtractionCard";
 import { AiChatComposer } from "@/components/AiChat/AiChatComposer";
 import { useAiChatSession, PRESET_IDS } from "@/components/AiChat/useAiChatSession";
 import { Button } from "@/components/ui/button";
@@ -84,14 +85,21 @@ export function ToolsModalChatTab({ active, chat }: ToolsModalChatTabProps) {
         ) : (
           chat.displayItems.map((item, idx) => {
             if (item.kind === "tool_block") {
-              const extractCalls = item.calls.filter((c) => c.name === "extract_vocabulary");
-              const otherCalls = item.calls.filter((c) => c.name !== "extract_vocabulary");
+              const extractCalls = item.calls.filter((c) => VOCAB_CARD_TOOL_NAMES.has(c.name));
+              const sentenceCalls = item.calls.filter((c) => SENTENCE_CARD_TOOL_NAMES.has(c.name));
+              const otherCalls = item.calls.filter((c) => !VOCAB_CARD_TOOL_NAMES.has(c.name) && !SENTENCE_CARD_TOOL_NAMES.has(c.name));
               return (
                 <React.Fragment key={idx}>
                   {extractCalls.map((c) => (
                     <VocabExtractionCard
                       key={c.id}
-                      items={((c.input.items as ExtractedVocabItem[]) ?? [])}
+                      items={vocabItemsFromToolInput(c.input)}
+                    />
+                  ))}
+                  {sentenceCalls.map((c) => (
+                    <SentenceExtractionCard
+                      key={c.id}
+                      items={sentenceItemsFromToolInput(c.input)}
                     />
                   ))}
                   {otherCalls.length > 0 && <ToolCallCard calls={otherCalls} />}
@@ -103,7 +111,8 @@ export function ToolsModalChatTab({ active, chat }: ToolsModalChatTabProps) {
               idx === chat.displayItems.length - 1 &&
               item.msg.role === "assistant" &&
               !item.msg.content;
-            return <MessageBubble key={idx} msg={item.msg} isTyping={isTyping} />;
+            const fillCardWidth = idx > 0 && chat.displayItems[idx - 1]?.kind === "tool_block";
+            return <MessageBubble key={idx} msg={item.msg} isTyping={isTyping} fillCardWidth={fillCardWidth} />;
           })
         )}
         <div ref={chat.bottomRef} />

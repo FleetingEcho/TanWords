@@ -4,6 +4,7 @@ import { DocumentListItem } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { PinIcon, DocIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
+import { parseDbTimestamp } from "@/lib/dbTime";
 
 interface Props {
   doc: DocumentListItem;
@@ -20,7 +21,7 @@ interface Props {
 const MENU_WIDTH = 160;
 
 function formatDate(iso: string): string {
-  const d = new Date(iso);
+  const d = parseDbTimestamp(iso);
   const now = new Date();
   const diff = (now.getTime() - d.getTime()) / 1000;
   if (diff < 60) return "just now";

@@ -9,6 +9,7 @@ import { DocumentDetail } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { useIsDark } from "@/hooks/useIsDark";
 import { blocksToStorageOffThread, contentToBlocksOffThread, markdownToBlocksOffThread } from "@/lib/documentWorkerClient";
+import { parseDbTimestamp } from "@/lib/dbTime";
 import { liftMermaid, lowerMermaid } from "./mermaidTransforms";
 import { PinIcon } from "@/components/ui/icons";
 import { CheckIcon } from "@heroicons/react/24/solid";
@@ -198,7 +199,7 @@ export function DocEditor({ doc, onSave, onTitleChange, onTagsChange, onPinToggl
           ) : null}
         </span>
         <span className="ml-auto">{t("doc.wordCount", { n: doc.word_count })}</span>
-        <span>{new Date(doc.updated_at).toLocaleDateString()}</span>
+        <span>{parseDbTimestamp(doc.updated_at).toLocaleDateString()}</span>
       </div>
     </div>
   );

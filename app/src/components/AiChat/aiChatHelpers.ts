@@ -2,6 +2,7 @@ import { ApiMessage, ContentBlock } from "@/providers/base";
 import { ChatSessionItem } from "@/hooks/useDB";
 import { AiMessage } from "./MessageBubble";
 import { ToolCallDisplay } from "./ToolCallCard";
+import { parseDbTimestamp } from "@/lib/dbTime";
 
 // Prompts stay English (they instruct the model); preset names are i18n keys.
 export function buildPresetPrompt(presetId: string, targetLevel: string): string {
@@ -49,8 +50,8 @@ type DateGroup = "today" | "yesterday" | "week" | "earlier";
 
 function getGroup(updatedAt: string): DateGroup {
   const now = Date.now();
-  const ts = new Date(updatedAt).getTime();
-  const d = new Date(updatedAt);
+  const d = parseDbTimestamp(updatedAt);
+  const ts = d.getTime();
   const today = new Date();
   if (d.toDateString() === today.toDateString()) return "today";
   if (now - ts < 2 * 86400000) return "yesterday";

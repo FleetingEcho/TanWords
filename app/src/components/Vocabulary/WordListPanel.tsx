@@ -6,30 +6,18 @@ import { SpeakButton } from "@/components/ui/SpeakButton";
 import { SparkIcon } from "@/components/ui/icons";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PencilIcon, ChatBubbleLeftIcon, RectangleStackIcon, LightBulbIcon, StarIcon } from "@heroicons/react/24/outline";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Wand2, RefreshCw, Loader2, ChevronsLeft, ChevronsRight, Trash2, X, Star } from "lucide-react";
 
 type LevelFilter = "all" | "C2" | "C1" | "B2" | "B1-";
-type SortBy = "recent" | "freq" | "alpha";
 type DateField = "created" | "updated";
 
 const LEVEL_CHIPS: LevelFilter[] = ["all", "C2", "C1", "B2", "B1-"];
-
-/** Small origin marker so "where did this word come from" is visible at a glance */
-const SOURCE_ICONS: Record<string, React.FC<{ className?: string }>> = {
-  manual: PencilIcon,
-  ai: SparkIcon,
-  chat: ChatBubbleLeftIcon,
-  batch: RectangleStackIcon,
-  discover: LightBulbIcon,
-  seed: StarIcon,
-};
 
 interface Props {
   words: WordListItem[];
   selectedId: number | null;
   search: string;
-  sortBy: SortBy;
   levelFilter: LevelFilter;
   sourceFilter: string;
   sources: string[];
@@ -42,7 +30,6 @@ interface Props {
   dateFrom: string;
   dateTo: string;
   onSearchChange: (v: string) => void;
-  onSortChange: (v: SortBy) => void;
   onFilterChange: (v: LevelFilter) => void;
   onSourceFilterChange: (v: string) => void;
   onDateFieldChange: (v: DateField) => void;
@@ -53,14 +40,32 @@ interface Props {
   onDoubleClick: (word: string) => void;
   onAiLookup: (q: string) => void;
   onOpenGenerate: () => void;
+  /** True while a bulk enrichment (un-analyzed or re-analyze-all) is running */
+  bulkRunning: boolean;
+  bulkProgress: { done: number; total: number };
+  onEnrichUnanalyzed: () => void;
+  onReanalyzeAll: () => void;
+  onStopBulkEnrich: () => void;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
+  selectedIds: Set<number>;
+  onToggleSelect: (id: number) => void;
+  onSelectAll: () => void;
+  onClearSelection: () => void;
+  onReanalyzeSelected: () => void;
+  onDeleteSelected: () => void;
+  onToggleStar: (id: number) => void;
 }
 
 export function WordListPanel({
-  words, selectedId, search, sortBy, levelFilter, sourceFilter, sources, page, pageSize,
+  words, selectedId, search, levelFilter, sourceFilter, sources, page, pageSize,
   showAiLookup, lookupActive, dateField, dateFrom, dateTo,
-  onSearchChange, onSortChange, onFilterChange, onSourceFilterChange,
+  onSearchChange, onFilterChange, onSourceFilterChange,
   onDateFieldChange, onDateFromChange, onDateToChange,
   onSelect, onPageChange, onDoubleClick, onAiLookup, onOpenGenerate,
+  bulkRunning, bulkProgress, onEnrichUnanalyzed, onReanalyzeAll, onStopBulkEnrich,
+  collapsed, onToggleCollapsed, selectedIds, onToggleSelect, onSelectAll, onClearSelection,
+  onReanalyzeSelected, onDeleteSelected, onToggleStar,
 }: Props) {
   const t = useT();
   const totalPages = Math.ceil(words.length / pageSize);
@@ -68,33 +73,121 @@ export function WordListPanel({
   const activeFilters = (levelFilter !== "all" ? 1 : 0) + (sourceFilter !== "all" ? 1 : 0) + (dateFrom || dateTo ? 1 : 0);
   const [filtersOpen, setFiltersOpen] = React.useState(false);
 
+  if (collapsed) {
+    return (
+      <div className="w-11 shrink-0 border-r border-border bg-card flex flex-col items-center py-3">
+        <Button
+          variant="ghost"
+          onClick={onToggleCollapsed}
+          title={t("vocab.expandList")}
+          className="w-7 h-7 p-0 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+        >
+          <ChevronsRight className="w-3.5 h-3.5" />
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="w-80 shrink-0 border-r border-border bg-card flex flex-col h-full">
       <div className="px-4 pt-5 pb-3 space-y-2.5">
         <div className="flex items-baseline gap-2">
-          <h2 className="text-lg font-bold">{t("vocab.title")}</h2>
-          <span className="text-sm text-muted-foreground">{words.length}</span>
           <Button
             variant="ghost"
-            onClick={onOpenGenerate}
-            title={t("vocab.generateBtn")}
-            className="ml-auto w-6 h-6 p-0 rounded-md flex items-center justify-center text-primary hover:bg-primary/10 transition-colors shrink-0"
+            onClick={onToggleCollapsed}
+            title={t("vocab.collapseList")}
+            className="-ml-1 w-6 h-6 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
           >
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3.5 h-3.5">
-              <path d="M10 4v12M4 10h12" strokeLinecap="round" />
-            </svg>
+            <ChevronsLeft className="w-3.5 h-3.5" />
           </Button>
-          <Select value={sortBy} onValueChange={(v) => onSortChange(v as SortBy)}>
-            <SelectTrigger className="h-6 w-auto gap-1 px-1.5 py-0 rounded-md border border-input bg-background text-[11px] text-muted-foreground focus:outline-none [&_svg]:h-3 [&_svg]:w-3">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="recent">{t("vocab.sortRecent")}</SelectItem>
-              <SelectItem value="freq">{t("vocab.sortFreq")}</SelectItem>
-              <SelectItem value="alpha">{t("vocab.sortAlpha")}</SelectItem>
-            </SelectContent>
-          </Select>
+          <h2 className="text-lg font-bold">{t("vocab.title")}</h2>
+          <span className="text-sm text-muted-foreground">{words.length}</span>
+          <div className="ml-auto flex items-center gap-1">
+            {bulkRunning ? (
+              <Button
+                variant="ghost"
+                onClick={onStopBulkEnrich}
+                title={t("vocab.bulkEnrichStop")}
+                className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-destructive hover:bg-destructive/10 transition-colors shrink-0"
+              >
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="ghost"
+                  onClick={onEnrichUnanalyzed}
+                  title={t("vocab.enrichUnanalyzed")}
+                  className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-primary hover:bg-primary/10 transition-colors shrink-0"
+                >
+                  <Wand2 className="w-3.5 h-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={onReanalyzeAll}
+                  title={t("vocab.reanalyzeAll")}
+                  className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </Button>
+              </>
+            )}
+            <Button
+              variant="ghost"
+              onClick={onOpenGenerate}
+              title={t("vocab.generateBtn")}
+              className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-primary hover:bg-primary/10 transition-colors shrink-0"
+            >
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3.5 h-3.5">
+                <path d="M10 4v12M4 10h12" strokeLinecap="round" />
+              </svg>
+            </Button>
+          </div>
         </div>
+
+        {bulkRunning && (
+          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <Loader2 className="w-3 h-3 animate-spin shrink-0" />
+            <span className="truncate">{t("vocab.bulkEnrichProgress", { done: bulkProgress.done, total: bulkProgress.total })}</span>
+          </div>
+        )}
+
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-2 py-1.5">
+            <Checkbox
+              checked={selectedIds.size === words.length && words.length > 0}
+              onCheckedChange={() => (selectedIds.size === words.length ? onClearSelection() : onSelectAll())}
+              title={selectedIds.size === words.length ? t("vocab.unselectAll") : t("vocab.selectAll")}
+            />
+            <span className="text-[11px] font-medium text-muted-foreground">{t("vocab.selectedCount", { n: selectedIds.size })}</span>
+            <div className="ml-auto flex items-center gap-1">
+              <Button
+                variant="ghost"
+                onClick={onReanalyzeSelected}
+                title={t("vocab.reanalyzeSelected")}
+                className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-primary hover:bg-primary/10 transition-colors shrink-0"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={onDeleteSelected}
+                title={t("vocab.deleteSelected")}
+                className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-destructive hover:bg-destructive/10 transition-colors shrink-0"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={onClearSelection}
+                title={t("vocab.clearSelection")}
+                className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0"
+              >
+                <X className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Dictionary search — hits the vocabulary first, AI lookup as fallback */}
         <div className="relative">
@@ -118,10 +211,11 @@ export function WordListPanel({
           onClick={() => setFiltersOpen((v) => !v)}
           className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
-          <svg viewBox="0 0 20 20" fill="currentColor" className="h-3 w-3"><path d="M2.5 4.5A.5.5 0 013 4h14a.5.5 0 01.4.8L12 11.5V16a.5.5 0 01-.7.46l-3-1.3A.5.5 0 018 14.7v-3.2L2.6 4.8a.5.5 0 01-.1-.3z" /></svg>
           {t("vocab.filters")}
           {activeFilters > 0 && <span className="rounded-full bg-primary/15 px-1.5 py-px text-[10px] font-bold text-primary">{activeFilters}</span>}
-          <span className="text-[9px]">{filtersOpen ? "▲" : "▼"}</span>
+          <svg viewBox="0 0 12 12" className={`w-2.5 h-2.5 shrink-0 transition-transform ${filtersOpen ? "rotate-90" : ""}`}>
+            <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+          </svg>
         </button>
 
         {filtersOpen && <>
@@ -168,7 +262,7 @@ export function WordListPanel({
                     : "border-border text-muted-foreground hover:border-primary/40 hover:bg-transparent"
                 }`}
               >
-                {SOURCE_ICONS[s] ? React.createElement(SOURCE_ICONS[s], { className: "w-2.5 h-2.5 inline" }) : "·"} {t(`vocab.source.${s}`)}
+                {t(`vocab.source.${s}`)}
               </Button>
             ))}
           </div>
@@ -226,17 +320,28 @@ export function WordListPanel({
             key={w.id}
             onDoubleClick={() => onDoubleClick(w.word)}
             onClick={() => onSelect(w)}
-            className={`px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors ${
-              selectedId === w.id && !lookupActive ? "bg-accent/50" : ""
-            }`}
+            className={`border-l-2 px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors ${
+              w.starred ? "border-l-yellow-400" : "border-l-transparent"
+            } ${selectedId === w.id && !lookupActive ? "bg-accent/50" : ""}`}
           >
             <div className="flex items-center gap-1.5 min-w-0">
+              <Checkbox
+                checked={selectedIds.has(w.id)}
+                onCheckedChange={() => onToggleSelect(w.id)}
+                onClick={(e) => e.stopPropagation()}
+                className="shrink-0"
+              />
               <span className="font-semibold text-sm truncate">{w.word}</span>
               <LevelBadge level={w.level} />
               <SpeakButton text={w.word} className="w-3.5 h-3.5" />
-              <span className="ml-auto text-muted-foreground/50 shrink-0">
-                {SOURCE_ICONS[w.source] && React.createElement(SOURCE_ICONS[w.source], { className: "w-3 h-3" })}
-              </span>
+              <Button
+                variant="ghost"
+                onClick={(e) => { e.stopPropagation(); onToggleStar(w.id); }}
+                title={w.starred ? t("vocab.unstar") : t("vocab.star")}
+                className="ml-auto w-5 h-5 p-0 rounded flex items-center justify-center shrink-0 hover:bg-transparent"
+              >
+                <Star className={`w-3.5 h-3.5 ${w.starred ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground/50"}`} />
+              </Button>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5 truncate">
               {w.word_type && <span className="mr-1">{w.word_type}.</span>}
@@ -277,4 +382,4 @@ export function WordListPanel({
   );
 }
 
-export type { LevelFilter, SortBy, DateField };
+export type { LevelFilter, DateField };

@@ -121,6 +121,26 @@ export function useDBCore() {
     }
   }, []);
 
+  const deleteWordsBatch = useCallback(async (wordIds: number[]): Promise<boolean> => {
+    try {
+      await invoke("db_delete_words_batch", { wordIds });
+      return true;
+    } catch (e) {
+      reportWriteError("deleteWordsBatch", e, "删除单词失败");
+      return false;
+    }
+  }, []);
+
+  const setWordStarred = useCallback(async (wordId: number, starred: boolean): Promise<boolean> => {
+    try {
+      await invoke("db_set_word_starred", { wordId, starred });
+      return true;
+    } catch (e) {
+      reportWriteError("setWordStarred", e, "更新星标失败");
+      return false;
+    }
+  }, []);
+
   const saveTranslation = useCallback(
     async (opts: {
       sourceText: string;
@@ -333,7 +353,7 @@ export function useDBCore() {
   return useMemo(() => ({
     getWordCount, getTranslationCount, getReviewCount,
     getWords, getWordDetail, getWordDetailByWord,
-    addWord, deleteWord,
+    addWord, deleteWord, deleteWordsBatch, setWordStarred,
     saveTranslation, getTranslations,
     addWordEnriched, getWordExtras,
     saveWordNotes, saveWordChat,
@@ -344,7 +364,7 @@ export function useDBCore() {
   }), [
     getWordCount, getTranslationCount, getReviewCount,
     getWords, getWordDetail, getWordDetailByWord,
-    addWord, deleteWord,
+    addWord, deleteWord, deleteWordsBatch, setWordStarred,
     saveTranslation, getTranslations,
     addWordEnriched, getWordExtras,
     saveWordNotes, saveWordChat,
