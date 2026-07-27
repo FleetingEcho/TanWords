@@ -23,12 +23,36 @@ function serializeChatSession(s: {
 }
 
 export function useDBExtra() {
-  const listChatSessions = useCallback(async (page = 0, limit = 100): Promise<ChatSessionItem[]> => {
+  const listChatSessions = useCallback(async (
+    page = 0,
+    limit = 100,
+    opts?: {
+      /** Which shelf: false = active, true = archived, omitted = both. */
+      archived?: boolean;
+      /** Last-activity range, YYYY-MM-DD; `to` includes that whole day. */
+      dateFrom?: string;
+      dateTo?: string;
+    },
+  ): Promise<ChatSessionItem[]> => {
     try {
-      return await invoke<ChatSessionItem[]>("db_list_chat_sessions", { page, limit });
+      return await invoke<ChatSessionItem[]>("db_list_chat_sessions", {
+        page,
+        limit,
+        archived: opts?.archived ?? null,
+        dateFrom: opts?.dateFrom || null,
+        dateTo: opts?.dateTo || null,
+      });
     } catch (e) {
       logError("listChatSessions", e);
       return [];
+    }
+  }, []);
+
+  const setChatSessionArchived = useCallback(async (id: string, archived: boolean): Promise<void> => {
+    try {
+      await invoke("db_set_chat_session_archived", { id, archived });
+    } catch (e) {
+      reportWriteError("setChatSessionArchived", e, "归档对话失败");
     }
   }, []);
 
@@ -323,7 +347,7 @@ export function useDBExtra() {
   }, []);
 
   return useMemo(() => ({
-    listChatSessions, getChatSession, upsertChatSession, deleteChatSession, searchChatSessions,
+    listChatSessions, setChatSessionArchived, getChatSession, upsertChatSession, deleteChatSession, searchChatSessions,
     saveArticleAnalysis, addKnownWords, getKnownWords,
     getDashboardStats,
     getDueCards, reviewCard,
@@ -332,7 +356,7 @@ export function useDBExtra() {
     syncRssFeed, getRssEntries, markRssEntryRead, getRssUnreadCounts,
     getDbPath, getDbSize, exportBackup, switchDbPath, clearTranslations,
   }), [
-    listChatSessions, getChatSession, upsertChatSession, deleteChatSession, searchChatSessions,
+    listChatSessions, setChatSessionArchived, getChatSession, upsertChatSession, deleteChatSession, searchChatSessions,
     saveArticleAnalysis, addKnownWords, getKnownWords,
     getDashboardStats,
     getDueCards, reviewCard,

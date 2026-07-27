@@ -6,8 +6,14 @@ use super::config::{load_config, mcp_generate_token, save_config, McpConfig};
 use super::controller::McpController;
 use super::tools::TanWordsMcp;
 use super::types::{
-    AddVocabulary, AppendDocument, CreateDocument, GetDocument, SearchVocabulary,
+    AddArticle, AddArticleComment, AddPattern, AddVocabulary, AppendDocument, CreateDocument, GetDocument, SearchDocuments,
+    ListArticles, SearchPatterns, SearchVocabulary, UpdateVocabulary,
 };
+
+/// Change notifications go to a callback, so tests need no Tauri runtime.
+fn test_server(path: String) -> TanWordsMcp {
+    TanWordsMcp::new(path, std::sync::Arc::new(|_| {}))
+}
 
 fn test_database() -> String {
     let path = std::env::temp_dir().join(format!("tanwords-mcp-{}.db", mcp_generate_token()));
@@ -19,7 +25,7 @@ fn test_database() -> String {
 #[tokio::test]
 async fn vocabulary_and_document_tools_round_trip() {
     let path = test_database();
-    let server = TanWordsMcp::new(path.clone());
+    let server = test_server(path.clone());
 
     let added = server
         .vocabulary_add(Parameters(AddVocabulary {
@@ -87,8 +93,10 @@ async fn server_can_restart_on_the_same_custom_port() {
     let controller = McpController::default();
     let config = McpConfig { enabled: true, port, token: mcp_generate_token() };
 
-    assert!(controller.restart(config.clone(), path.clone()).await.unwrap().running);
-    assert!(controller.restart(config, path.clone()).await.unwrap().running);
+    let app = tauri::test::mock_app();
+    let handle = app.handle().clone();
+    assert!(controller.restart(config.clone(), path.clone(), handle.clone()).await.unwrap().running);
+    assert!(controller.restart(config, path.clone(), handle).await.unwrap().running);
     controller.stop().await;
     assert!(!controller.status().running);
 
@@ -110,4 +118,137 @@ fn config_round_trip_and_token_strength() {
     assert!(loaded.enabled);
     assert_eq!(loaded.port, 49152);
     assert_eq!(loaded.token, config.token);
+}
+
+#[tokio::test]
+async fn document_search_ranks_by_relevance_instead_of_matching_everything() {
+    let path = test_database();
+    let server = test_server(path.clone());
+
+    server.documents_create(Parameters(CreateDocument {
+        title: "Rate limiting the API".into(),
+        content: "Token buckets and leaky buckets for API traffic.".into(),
+        tags: vec![],
+    })).await;
+    server.documents_create(Parameters(CreateDocument {
+        title: "Apricot jam".into(),
+        // Contains a, p, i in order — the old character-interleaved LIKE
+        // matched this for the query "api"; full-text search must not.
+        content: "A recipe with apricots, pectin and simmering.".into(),
+        tags: vec![],
+    })).await;
+
+    let found = server.documents_search(Parameters(SearchDocuments {
+        query: "api".into(),
+        tag: None,
+        limit: 20,
+    })).await;
+    assert!(found.contains("Rate limiting the API"));
+    assert!(!found.contains("Apricot jam"));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[tokio::test]
+async fn vocabulary_can_be_corrected_and_removed() {
+    let path = test_database();
+    let server = test_server(path.clone());
+
+    let added = server.vocabulary_add(Parameters(AddVocabulary {
+        word: "hedge".into(),
+        zh: "树篱".into(),
+        word_type: None,
+        level: None,
+        context: None,
+    })).await;
+    let id = serde_json::from_str::<Value>(&added).unwrap()["items"][0]["id"].as_i64().unwrap();
+
+    server.vocabulary_update(Parameters(UpdateVocabulary {
+        id,
+        zh: Some("对冲，规避风险".into()),
+        word_type: Some("v".into()),
+        level: Some("C1".into()),
+        notes: None,
+    })).await;
+    let found = server.vocabulary_search(Parameters(SearchVocabulary { query: "对冲".into(), limit: 20 })).await;
+    assert!(found.contains("hedge"));
+
+    let deleted = server.vocabulary_delete(Parameters(super::types::GetVocabulary { id })).await;
+    assert!(deleted.contains("deleted"));
+    let gone = server.vocabulary_search(Parameters(SearchVocabulary { query: "hedge".into(), limit: 20 })).await;
+    assert!(!gone.contains("hedge"));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[tokio::test]
+async fn patterns_deduplicate_and_collect_examples() {
+    let path = test_database();
+    let server = test_server(path.clone());
+
+    let first = server.patterns_add(Parameters(AddPattern {
+        pattern: "be shortlisted for + noun".into(),
+        zh: "入围……".into(),
+        note: "求职、评奖场景".into(),
+        level: Some("C1".into()),
+        example: Some("She was shortlisted for the role.".into()),
+    })).await;
+    assert!(first.contains("\"created\": true"));
+
+    let again = server.patterns_add(Parameters(AddPattern {
+        pattern: "be shortlisted for + noun".into(),
+        zh: "入围……".into(),
+        note: "".into(),
+        level: None,
+        example: Some("Three teams were shortlisted for the grant.".into()),
+    })).await;
+    assert!(again.contains("\"created\": false"));
+
+    let found = server.patterns_search(Parameters(SearchPatterns { query: "shortlisted".into(), limit: 20 })).await;
+    assert!(found.contains("She was shortlisted"));
+    assert!(found.contains("Three teams were shortlisted"));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[tokio::test]
+async fn articles_are_deduplicated_searchable_and_annotatable() {
+    let path = test_database();
+    let server = test_server(path.clone());
+
+    let added = server.articles_add(Parameters(AddArticle {
+        title: "How PostgreSQL plans a query".into(),
+        content: "The planner weighs sequential scans against index scans using the cost model.".into(),
+        source_url: Some("https://example.com/pg".into()),
+        tags: vec!["postgres".into()],
+    })).await;
+    let id = serde_json::from_str::<Value>(&added).unwrap()["id"].as_i64().unwrap();
+    assert!(added.contains("\"created\": true"));
+
+    // An agent handed the same article twice must not fill the library with
+    // copies — it re-reads the existing entry instead.
+    let again = server.articles_add(Parameters(AddArticle {
+        title: "How PostgreSQL plans a query".into(),
+        content: "The planner weighs sequential scans against index scans using the cost model.".into(),
+        source_url: None,
+        tags: vec![],
+    })).await;
+    assert!(again.contains("\"created\": false"));
+    assert_eq!(serde_json::from_str::<Value>(&again).unwrap()["id"].as_i64().unwrap(), id);
+
+    server.articles_comment(Parameters(AddArticleComment {
+        article_id: id,
+        body: "值得记的是 cost model 这个说法".into(),
+        anchor_text: Some("The planner weighs sequential scans against index scans using the cost model.".into()),
+    })).await;
+
+    let listed = server.articles_list(Parameters(ListArticles { query: Some("planner".into()), limit: 20 })).await;
+    assert!(listed.contains("How PostgreSQL plans a query"));
+    assert!(listed.contains("\"commentCount\": 1"));
+
+    let fetched = server.articles_get(Parameters(super::types::GetArticle { id, with_comments: true })).await;
+    assert!(fetched.contains("cost model 这个说法"));
+    assert!(fetched.contains("anchorText"));
+
+    let _ = std::fs::remove_file(path);
 }

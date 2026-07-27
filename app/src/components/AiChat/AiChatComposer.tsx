@@ -40,7 +40,7 @@ export function AiChatComposer({
   const t = useT();
 
   return (
-    <div className="shrink-0 border-t border-border/60 bg-background/75 px-2 py-3 backdrop-blur-xl">
+    <div className="shrink-0 bg-background/75 px-2 py-3 backdrop-blur-xl">
       <div className="mx-auto max-w-full">
       {/* Attachment chip */}
       {attachment && (
@@ -73,11 +73,13 @@ export function AiChatComposer({
           value={input}
           onChange={(e) => onInputChange(e.target.value)}
           onPaste={onPaste}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onSend(); } }}
+          // Stays editable while the answer streams — you can line up the next
+          // message instead of waiting. Enter is swallowed until the turn
+          // finishes (sendMessage would refuse it anyway).
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!streaming) onSend(); } }}
           placeholder={enabledGroups.size > 0 ? t("aichat.placeholder") : t("aichat.placeholderPlain")}
-          rows={1}
-          disabled={streaming}
-          className="block min-h-[42px] max-h-40 w-full resize-none bg-transparent px-3 pb-2 pt-2 text-sm leading-6 placeholder:text-muted-foreground/35 focus:outline-none disabled:opacity-50"
+          rows={3}
+          className="block min-h-[92px] max-h-[240px] w-full resize-none bg-transparent px-3 pb-2 pt-2 text-sm leading-6 placeholder:text-muted-foreground/35 focus:outline-none"
         />
 
         <div className="flex items-center gap-2 px-1">

@@ -4,6 +4,8 @@ import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
 import { Markdown } from "./Markdown";
 import { Button } from "@/components/ui/button";
+import { Pencil, RotateCw } from "lucide-react";
+import { AI_MESSAGE_ATTR } from "@/components/shared/SelectionAsk";
 
 export interface AiMessage {
   role: "user" | "assistant";
@@ -20,13 +22,24 @@ interface Props {
    *  used for the message immediately following a tool card so the two line
    *  up as one continuous block instead of two independently-sized boxes. */
   fillCardWidth?: boolean;
+  /** Position in the conversation, passed back to onEdit. */
+  index?: number;
+  /** Pull this user message back into the composer, dropping everything after
+   *  it — set only for user messages, and only when nothing is streaming.
+   *  Takes the index rather than closing over it so the callback identity
+   *  stays stable and React.memo keeps holding: a streaming answer commits
+   *  every 50ms, and a fresh closure per message would re-render the whole
+   *  transcript each time. */
+  onEdit?: (index: number) => void;
+  /** Re-run the last user turn — set only on the final assistant message. */
+  onRegenerate?: () => void;
 }
 
 /** User messages longer than this render collapsed (pasted articles etc.) */
 const COLLAPSE_THRESHOLD = 700;
 const COLLAPSE_PREVIEW = 350;
 
-export const MessageBubble = React.memo(function MessageBubble({ msg, compact = false, isTyping = false, fillCardWidth = false }: Props) {
+export const MessageBubble = React.memo(function MessageBubble({ msg, compact = false, isTyping = false, fillCardWidth = false, index = 0, onEdit, onRegenerate }: Props) {
   const t = useT();
   const userAvatar = useSettingsStore((s) => s.userAvatar);
   const [copied, setCopied] = useState(false);
@@ -58,6 +71,7 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, compact = 
       )}
 
       <div
+        {...(msg.role === "assistant" ? { [AI_MESSAGE_ATTR]: "" } : {})}
         className={`relative max-w-[82%] ${fillCardWidth ? "w-full" : ""} rounded-[20px] px-4 py-3 ${textSize} leading-7 shadow-sm ${
           msg.role === "user"
             ? "bg-gradient-to-br from-primary to-primary/90 text-primary-foreground rounded-br-md shadow-primary/10"
@@ -103,10 +117,31 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, compact = 
         )}
 
         {!isTyping && msg.content && (
+          <div className={`absolute -top-2 ${msg.role === "user" ? "-left-2" : "-right-2"} flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity`}>
+          {onEdit && (
+            <Button
+              variant="ghost"
+              onClick={() => onEdit(index)}
+              className="w-5 h-5 p-0 rounded-full bg-background border border-border flex items-center justify-center shadow-sm hover:bg-background"
+              title={t("aichat.editMessage")}
+            >
+              <Pencil className="w-2.5 h-2.5 text-muted-foreground" />
+            </Button>
+          )}
+          {onRegenerate && (
+            <Button
+              variant="ghost"
+              onClick={onRegenerate}
+              className="w-5 h-5 p-0 rounded-full bg-background border border-border flex items-center justify-center shadow-sm hover:bg-background"
+              title={t("aichat.regenerate")}
+            >
+              <RotateCw className="w-2.5 h-2.5 text-muted-foreground" />
+            </Button>
+          )}
           <Button
             variant="ghost"
             onClick={copy}
-            className={`absolute -top-2 ${msg.role === "user" ? "-left-2" : "-right-2"} w-5 h-5 p-0 rounded-full bg-background border border-border flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-background`}
+            className="w-5 h-5 p-0 rounded-full bg-background border border-border flex items-center justify-center shadow-sm hover:bg-background"
             title={t("chat.copy")}
           >
             {copied ? (
@@ -120,6 +155,7 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, compact = 
               </svg>
             )}
           </Button>
+          </div>
         )}
       </div>
 

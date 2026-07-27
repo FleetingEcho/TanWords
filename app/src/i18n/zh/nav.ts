@@ -6,7 +6,7 @@ export const nav: Dict = {
     "nav.search": "搜索",
     "nav.vocabulary": "词库",
     "nav.documents": "文档",
-    "nav.chat": "AI Chat",
+    "nav.chat": "对话",
     "nav.editDoc": "编辑文档",
     "nav.collapse": "收起导航",
     "nav.expand": "展开导航",
@@ -24,7 +24,7 @@ export const nav: Dict = {
     "command.aiDisconnected": "AI 尚未配置",
     "command.switchModel": "切换全局模型",
     "command.globalModel": "全局 AI 模型",
-    "command.globalModelHint": "用于词汇、AI Chat 和其他 AI 功能",
+    "command.globalModelHint": "用于词汇、AI 对话 和其他 AI 功能",
     "command.noModels": "暂无已配置模型",
     "command.manageModels": "管理模型…",
     "command.switchToSentenceSearch": "切换到句子搜索",
@@ -32,4 +32,5 @@ export const nav: Dict = {
     "command.profile": "个人资料",
     "command.collapseIcons": "折叠工具栏图标",
     "command.expandIcons": "展开工具栏图标",
+    "nav.reading": "精读",
 };

@@ -32,4 +32,5 @@ export const nav: Dict = {
     "command.profile": "Your profile",
     "command.collapseIcons": "Collapse toolbar icons",
     "command.expandIcons": "Expand toolbar icons",
+    "nav.reading": "Reading",
 };

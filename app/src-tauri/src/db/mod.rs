@@ -21,6 +21,7 @@ pub mod translations;
 pub mod quiz;
 pub mod documents;
 pub mod chat;
+mod reading;
 pub mod articles;
 pub mod dashboard;
 pub mod migrations;
@@ -37,6 +38,7 @@ pub use translations::*;
 pub use quiz::*;
 pub use documents::*;
 pub use chat::*;
+pub use reading::*;
 pub use articles::*;
 pub use dashboard::*;
 pub use srs::*;
@@ -114,6 +116,8 @@ pub fn init_db(conn: &Connection) -> SqlResult<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_ai_chat_sessions_updated ON ai_chat_sessions(updated_at DESC);"
     ).ok();
+    // Archived conversations stay searchable but fold out of the main list.
+    conn.execute("ALTER TABLE ai_chat_sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0", []).ok();
 
     // Reading lessons: articles + extracted items + known words
     conn.execute_batch(

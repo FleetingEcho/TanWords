@@ -1,8 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import type { FC } from "react";
 import { toast } from "sonner";
-import { SparkIcon } from "@/components/ui/icons";
-import { PencilSquareIcon, LanguageIcon, EnvelopeIcon } from "@heroicons/react/24/outline";
 import { getAllProviders } from "@/providers";
 import { AIProvider, ApiMessage } from "@/providers/base";
 import { useDB, ChatSessionItem } from "@/hooks/useDB";
@@ -14,16 +11,11 @@ import { ToolCallDisplay } from "./ToolCallCard";
 import { ToolCall, ToolGroupKey, getEnabledTools, executeTool } from "./tools";
 import {
   DisplayItem, PRESET_IDS, ATTACH_THRESHOLD,
-  buildPresetPrompt, groupSessions, genId, estimateTokens,
+  buildPresetPrompt, genId, estimateTokens,
   serializeItems, deserializeItems, buildApiHistory, isContextOverflowError,
+  buildArticleBody, trimItemsToBudget,
 } from "./aiChatHelpers";
 
-const QUICK_CARDS: { icon: FC<{ className?: string }>; titleKey: string; prefillKey: string }[] = [
-  { icon: SparkIcon, titleKey: "aichat.quick.extract", prefillKey: "aichat.quick.extract.prefill" },
-  { icon: PencilSquareIcon, titleKey: "aichat.quick.polish", prefillKey: "aichat.quick.polish.prefill" },
-  { icon: LanguageIcon, titleKey: "aichat.quick.compare", prefillKey: "aichat.quick.compare.prefill" },
-  { icon: EnvelopeIcon, titleKey: "aichat.quick.email", prefillKey: "aichat.quick.email.prefill" },
-];
 
 /** All state and business logic behind AiChatPage — split out so the page
  *  component itself only has to worry about rendering. */
@@ -35,7 +27,11 @@ export function useAiChatSession(initialSessionId?: string) {
 
   // Sidebar
   const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
+  const [archivedSessions, setArchivedSessions] = useState<ChatSessionItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  // Last-activity range filter, YYYY-MM-DD. Empty = no bound.
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [searchResults, setSearchResults] = useState<ChatSessionItem[] | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -61,6 +57,11 @@ export function useAiChatSession(initialSessionId?: string) {
   const [streaming, setStreaming] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollHostRef = useRef<HTMLDivElement>(null);
+  // False once the user scrolls away from the bottom, so a long answer that
+  // keeps streaming can't yank them back to it while they're reading earlier
+  // parts of the conversation.
+  const stickToBottomRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const controllerRef = useRef<AbortController | null>(null);
   // Mirrors displayItems so an aborted stream can still save what arrived
@@ -83,7 +84,6 @@ export function useAiChatSession(initialSessionId?: string) {
   // Keep the effective prompt explicit and editable for every role. Presets are
   // starting points, not opaque behavior that users cannot inspect or change.
   const systemPrompt = customPrompt || buildPresetPrompt(selectedPreset, targetLevel);
-  const ACTIVE_SESSION_KEY = "tanwords_ai_chat_active_session";
 
   const setItems = useCallback((items: DisplayItem[]) => {
     itemsRef.current = items;
@@ -93,22 +93,44 @@ export function useAiChatSession(initialSessionId?: string) {
   // ── Load ───────────────────────────────────────────────────────────────
 
   const loadSessions = useCallback(async () => {
-    const items = await db.listChatSessions(0, 200);
-    setSessions(items);
-    return items;
-  }, [db]);
+    const [active, archived] = await Promise.all([
+      db.listChatSessions(0, 200, { archived: false, dateFrom, dateTo }),
+      db.listChatSessions(0, 200, { archived: true, dateFrom, dateTo }),
+    ]);
+    setSessions(active);
+    setArchivedSessions(archived);
+    return active;
+  }, [db, dateFrom, dateTo]);
 
+  // Re-query when the range changes. The mount-time load below runs this too,
+  // so this only fires on an actual filter change.
+  useEffect(() => { void loadSessions(); }, [dateFrom, dateTo]);
+
+  const saveSession = useCallback(async (
+    id: string, title: string, items: DisplayItem[], sysPrompt: string, presetId: string, providerId: string
+  ) => {
+    const msgCount = items.filter((i) => i.kind === "message").length;
+    await db.upsertChatSession({
+      id, title,
+      messages: serializeItems(items),
+      systemPrompt: sysPrompt,
+      presetId,
+      providerId,
+      messageCount: msgCount,
+    });
+    await loadSessions();
+  }, [db, loadSessions]);
+
+  // Opening the page lands on an empty new conversation. Only an explicit
+  // request opens history: a caller naming a session (the reader's "Open in
+  // AI Chat"), or the user clicking one in the sidebar. Auto-restoring the
+  // last-active chat means every visit starts mid-conversation in something
+  // the user didn't ask for.
   useEffect(() => {
     loadSessions().then((items) => {
       if (skipAutoRestoreRef.current) return; // startNew/switchSession already won this mount
-      if (items.length === 0) return;
-      // A caller that wants a specific session opened up front (e.g. the
-      // reader's "Open in AI Chat" modal) wins over the remembered last-active one.
-      const remembered = localStorage.getItem(ACTIVE_SESSION_KEY);
-      const target = items.find((item) => item.id === initialSessionId)
-        ?? items.find((item) => item.id === remembered)
-        ?? items[0];
-      switchSession(target.id);
+      const target = initialSessionId && items.find((item) => item.id === initialSessionId);
+      if (target) switchSession(target.id);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSessionId]);
@@ -118,14 +140,34 @@ export function useAiChatSession(initialSessionId?: string) {
   }, [providers.length]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [displayItems.length]);
+    const host = scrollHostRef.current;
+    if (!host) return;
+    const onScroll = () => {
+      stickToBottomRef.current = host.scrollHeight - host.scrollTop - host.clientHeight < 120;
+    };
+    host.addEventListener("scroll", onScroll, { passive: true });
+    return () => host.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Follows the answer as it streams, not just when a new bubble appears: a
+  // streaming turn grows the *content* of the last item without changing the
+  // item count, so keying this on length alone left the user scrolling by
+  // hand for the whole response. Jumps instantly while streaming — a smooth
+  // animation every 50ms commit never finishes and looks like drift.
+  const tail = displayItems[displayItems.length - 1];
+  const tailLength = tail?.kind === "message" ? tail.msg.content.length : 0;
+  useEffect(() => {
+    if (!stickToBottomRef.current) return;
+    bottomRef.current?.scrollIntoView({ behavior: streaming ? "auto" : "smooth" });
+  }, [displayItems.length, tailLength, streaming]);
 
   useEffect(() => {
     const ta = textareaRef.current;
     if (!ta) return;
     ta.style.height = "auto";
-    ta.style.height = Math.min(ta.scrollHeight, 160) + "px";
+    // Cap matches the composer's max-h; min-h keeps it from shrinking below
+    // the resting size, so short messages don't collapse the box.
+    ta.style.height = Math.min(ta.scrollHeight, 240) + "px";
   }, [input]);
 
   // ── Search ─────────────────────────────────────────────────────────────
@@ -144,6 +186,7 @@ export function useAiChatSession(initialSessionId?: string) {
   const switchSession = useCallback(async (id: string) => {
     const epoch = ++sessionEpochRef.current;
     skipAutoRestoreRef.current = true;
+    stickToBottomRef.current = true;
     controllerRef.current?.abort();
     setStreaming(false);
     setActiveId(id);
@@ -155,7 +198,6 @@ export function useAiChatSession(initialSessionId?: string) {
     // A newer switchSession/startNew ran while this fetch was in flight —
     // applying this stale result now would clobber whatever it set up.
     if (sessionEpochRef.current !== epoch) return;
-    localStorage.setItem(ACTIVE_SESSION_KEY, id);
     setItems(deserializeItems(detail.messages));
     setActiveTitle(detail.title);
     setSelectedPreset(detail.preset_id);
@@ -166,6 +208,7 @@ export function useAiChatSession(initialSessionId?: string) {
   const startNew = () => {
     sessionEpochRef.current++;
     skipAutoRestoreRef.current = true;
+    stickToBottomRef.current = true;
     controllerRef.current?.abort();
     setStreaming(false);
     setActiveId(genId());
@@ -176,14 +219,14 @@ export function useAiChatSession(initialSessionId?: string) {
     setAttachment(null);
     setSearchQuery("");
     setSearchResults(null);
-    localStorage.removeItem(ACTIVE_SESSION_KEY);
   };
 
   // Deferred to a render tick (see the effect below) rather than sent inline —
-  // sendMessage reads selectedPreset/systemPrompt/activeId from this closure,
-  // which is still the *previous* render's until React actually commits the
-  // setSelectedPreset/setActiveId calls just made in startWithArticle.
-  const [pendingArticleSend, setPendingArticleSend] = useState<string | null>(null);
+  // sendMessage reads selectedPreset/systemPrompt/activeId/displayItems from
+  // this closure, which is still the *previous* render's until React actually
+  // commits the setState calls its caller just made (a new preset in
+  // startWithArticle, a truncated history in regenerate).
+  const [pendingSend, setPendingSend] = useState<string | null>(null);
 
   /** Opens a fresh conversation with the Reading Tutor preset and the given
    *  article as the first message — the "Learn" action's new home now that
@@ -191,21 +234,78 @@ export function useAiChatSession(initialSessionId?: string) {
   const startWithArticle = (article: { title: string; text: string; commentsText?: string }) => {
     startNew();
     selectPreset("reading-tutor");
-    const body = article.commentsText
-      ? `${article.title}\n\n${article.text}\n\n---\n\nComments:\n${article.commentsText}`
-      : `${article.title}\n\n${article.text}`;
-    setPendingArticleSend(body);
+    setPendingSend(buildArticleBody(article));
   };
 
   useEffect(() => {
-    if (pendingArticleSend === null) return;
-    setPendingArticleSend(null);
-    sendMessage(pendingArticleSend);
-  }, [pendingArticleSend]);
+    if (pendingSend === null) return;
+    setPendingSend(null);
+    sendMessage(pendingSend);
+  }, [pendingSend]);
+
+  /** Index of the last user message, or -1. */
+  const lastUserIndex = () => {
+    for (let i = displayItems.length - 1; i >= 0; i--) {
+      const item = displayItems[i];
+      if (item.kind === "message" && item.msg.role === "user") return i;
+    }
+    return -1;
+  };
+
+  // The two callbacks below read the transcript from itemsRef rather than the
+  // render's displayItems, so they don't have to list it as a dependency —
+  // that would change their identity on every streaming commit and re-render
+  // every bubble in the conversation (see MessageBubble's memo).
+
+  /** Cuts the conversation back to `index` (exclusive) and persists it, so a
+   *  regenerate/edit doesn't leave the discarded turns to reappear the next
+   *  time the session is opened. */
+  const truncateTo = useCallback((index: number) => {
+    const kept = itemsRef.current.slice(0, index);
+    setItems(kept);
+    if (activeId && !isNewSession) {
+      void saveSession(activeId, activeTitle, kept, systemPrompt, selectedPreset, selectedProviderId);
+    }
+    return kept;
+  }, [activeId, isNewSession, activeTitle, systemPrompt, selectedPreset, selectedProviderId, saveSession, setItems]);
+
+  /** Re-runs the last user turn: drops the answer (and any tool cards it
+   *  produced) and asks again with the same message. */
+  const regenerate = useCallback(() => {
+    if (streaming) return;
+    const items = itemsRef.current;
+    let idx = -1;
+    for (let i = items.length - 1; i >= 0; i--) {
+      const item = items[i];
+      if (item.kind === "message" && item.msg.role === "user") { idx = i; break; }
+    }
+    const item = idx >= 0 ? items[idx] : null;
+    if (!item || item.kind !== "message") return;
+    truncateTo(idx);
+    setPendingSend(item.msg.content);
+  }, [streaming, truncateTo]);
+
+  /** Moves a user message back into the composer and drops everything from
+   *  it onward, so it can be reworded and re-sent instead of retyped. */
+  const editUserMessage = useCallback((index: number) => {
+    if (streaming) return;
+    const item = itemsRef.current[index];
+    if (item?.kind !== "message" || item.msg.role !== "user") return;
+    truncateTo(index);
+    setInput(item.msg.content);
+    window.setTimeout(() => textareaRef.current?.focus(), 0);
+  }, [streaming, truncateTo]);
 
   const selectPreset = (presetId: string) => {
     setSelectedPreset(presetId);
     setCustomPrompt(presetId === "custom" ? "" : buildPresetPrompt(presetId, targetLevel));
+  };
+
+  /** Moves a conversation to (or out of) the archive: it stays searchable and
+   *  openable, just folded away from the working list. */
+  const toggleArchived = async (id: string, archived: boolean) => {
+    await db.setChatSessionArchived(id, archived);
+    await loadSessions();
   };
 
   const deleteSession = async (id: string, e: React.MouseEvent) => {
@@ -216,13 +316,11 @@ export function useAiChatSession(initialSessionId?: string) {
     // idle instead of opening a chat that no longer exists.
     useLearnChatStore.getState().dismissBySessionId(id);
     setSessions((p) => p.filter((s) => s.id !== id));
+    setArchivedSessions((p) => p.filter((s) => s.id !== id));
     setSearchResults((p) => p?.filter((s) => s.id !== id) ?? null);
-    if (activeId === id) {
-      localStorage.removeItem(ACTIVE_SESSION_KEY);
-      const rest = sessions.filter((s) => s.id !== id);
-      if (rest.length > 0) switchSession(rest[0].id);
-      else startNew();
-    }
+    // Deleting the open chat drops back to an empty new one rather than
+    // pulling up the next history entry, which the user didn't pick either.
+    if (activeId === id) startNew();
   };
 
   const clearMessages = async () => {
@@ -235,21 +333,6 @@ export function useAiChatSession(initialSessionId?: string) {
     }
   };
 
-  const saveSession = useCallback(async (
-    id: string, title: string, items: DisplayItem[], sysPrompt: string, presetId: string, providerId: string
-  ) => {
-    const msgCount = items.filter((i) => i.kind === "message").length;
-    await db.upsertChatSession({
-      id, title,
-      messages: serializeItems(items),
-      systemPrompt: sysPrompt,
-      presetId,
-      providerId,
-      messageCount: msgCount,
-    });
-    localStorage.setItem(ACTIVE_SESSION_KEY, id);
-    await loadSessions();
-  }, [db, loadSessions]);
 
   // Persist partial streaming output as well as completed turns. A long AI
   // response can take minutes; closing the window must not discard it.
@@ -264,8 +347,7 @@ export function useAiChatSession(initialSessionId?: string) {
         presetId: selectedPreset, providerId: selectedProviderId,
         messageCount: items.filter((item) => item.kind === "message").length,
       });
-      localStorage.setItem(ACTIVE_SESSION_KEY, id);
-    }, 6000);
+      }, 6000);
     return () => window.clearInterval(timer);
   }, [streaming, db, systemPrompt, selectedPreset, selectedProviderId]);
 
@@ -350,10 +432,7 @@ export function useAiChatSession(initialSessionId?: string) {
     setStreaming(true);
     setIsNewSession(false);
 
-    // Rebuild the API message history from display items, preserving any
-    // prior tool_use/tool_result turns so the model keeps that context.
-    const historyMsgs = buildApiHistory(displayItems);
-    let currentApiMsgs: ApiMessage[] = [...historyMsgs, { role: "user", content: fullText }];
+    let currentApiMsgs: ApiMessage[] = [];
 
     const tools = getEnabledTools(enabledGroups);
     const sysPrompt = systemPrompt || buildPresetPrompt("english-tutor", targetLevel);
@@ -394,7 +473,16 @@ export function useAiChatSession(initialSessionId?: string) {
       commitLastAssistant();
     };
 
-    try {
+    /** One full assistant turn (streaming + up to MAX_ITER tool rounds),
+     *  starting from the given history. Factored out so a context-overflow
+     *  failure can replay the same turn against a trimmed history instead of
+     *  dead-ending the session. */
+    const runTurn = async (history: ApiMessage[]) => {
+      currentItems = [...displayItems, userItem, assistantItem];
+      setItems(currentItems);
+      pendingAssistant = "";
+      currentApiMsgs = [...history, { role: "user", content: fullText }];
+
       const MAX_ITER = 5;
       for (let iter = 0; iter < MAX_ITER; iter++) {
         let textContent = "";
@@ -487,6 +575,23 @@ export function useAiChatSession(initialSessionId?: string) {
           break; // no tool loop for plain chat
         }
       }
+    };
+
+    try {
+      try {
+        await runTurn(buildApiHistory(displayItems));
+      } catch (e: any) {
+        // The model's context window can't hold the whole conversation any
+        // more. Rather than dead-ending the session — which used to mean
+        // "start a new chat and lose the thread" — drop the oldest turns and
+        // replay this one exactly once against the shorter history.
+        const historyChars = estimateTokens(displayItems) * 4;
+        if (!isContextOverflowError(e) || controller.signal.aborted || historyChars === 0) throw e;
+        const { items: kept, droppedTurns } = trimItemsToBudget(displayItems, Math.floor(historyChars / 2));
+        if (droppedTurns === 0) throw e;
+        toast.info(t("aichat.contextTrimmed", { n: droppedTurns }));
+        await runTurn(buildApiHistory(kept));
+      }
     } catch (e: any) {
       if (renderTimer !== null) window.clearTimeout(renderTimer);
       if (e?.name === "AbortError") return; // handleStop already saved partial content
@@ -495,7 +600,16 @@ export function useAiChatSession(initialSessionId?: string) {
         ? t("aichat.contextOverflow")
         : msg.includes("401") ? t("aichat.invalidKey") : t("aichat.requestFailed");
       toast.error(friendlyMsg);
-      updateLastAssistant(`❌ ${friendlyMsg}`);
+      // Write the failure into the bubble itself, not just a toast: the
+      // save below persists `currentItems`, so anything left only in the
+      // render-coalescing buffer would be overwritten and the turn would
+      // reopen later as a blank assistant message.
+      currentItems = currentItems.map((item, idx) =>
+        idx === currentItems.length - 1 && item.kind === "message" && item.msg.role === "assistant"
+          ? { kind: "message" as const, msg: { role: "assistant" as const, content: `❌ ${friendlyMsg}` } }
+          : item
+      );
+      setItems(currentItems);
     }
 
     if (!controller.signal.aborted) {
@@ -519,17 +633,13 @@ export function useAiChatSession(initialSessionId?: string) {
     }
   };
 
-  const applyQuickCard = (prefillKey: string) => {
-    setInput(t(prefillKey));
-    textareaRef.current?.focus();
-  };
-
   const displaySessions = searchResults ?? sessions;
 
   return {
     // sidebar
-    displaySessions, grouped: groupSessions(displaySessions), searchQuery, setSearchQuery,
-    activeId, switchSession, deleteSession, startNew, startWithArticle,
+    displaySessions, archivedSessions, searchQuery, setSearchQuery,
+    dateFrom, dateTo, setDateRange: (from: string, to: string) => { setDateFrom(from); setDateTo(to); },
+    activeId, switchSession, deleteSession, toggleArchived, startNew, startWithArticle,
     // active session
     displayItems, activeTitle, isNewSession, streaming,
     tokenCount: estimateTokens(displayItems),
@@ -541,8 +651,8 @@ export function useAiChatSession(initialSessionId?: string) {
     // composer
     input, setInput, attachment, setAttachment, showAttachment, setShowAttachment,
     handlePaste, handleStop, sendMessage,
-    QUICK_CARDS, applyQuickCard,
-    bottomRef, textareaRef,
+    regenerate, editUserMessage, canRegenerate: !streaming && lastUserIndex() >= 0,
+    bottomRef, scrollHostRef, textareaRef,
   };
 }
 

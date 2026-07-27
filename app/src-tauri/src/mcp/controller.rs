@@ -17,6 +17,8 @@ use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
 
 use super::config::{load_config, save_config, McpConfig, McpStatus};
+use tauri::Emitter;
+
 use super::tools::TanWordsMcp;
 
 #[derive(Default)]
@@ -54,7 +56,13 @@ impl McpController {
         }
     }
 
-    pub async fn restart(&self, config: McpConfig, db_path: String) -> Result<McpStatus, String> {
+    /// Generic over the Tauri runtime so tests can drive it with the mock one.
+    pub async fn restart<R: tauri::Runtime>(
+        &self,
+        config: McpConfig,
+        db_path: String,
+        app: tauri::AppHandle<R>,
+    ) -> Result<McpStatus, String> {
         self.stop().await;
         if !config.enabled {
             return Ok(self.status());
@@ -89,8 +97,11 @@ impl McpController {
 
         let controller = self.clone();
         let task = tauri::async_runtime::spawn(async move {
+            let notifier: super::tools::ChangeNotifier = Arc::new(move |event: &str| {
+                let _ = app.emit(event, ());
+            });
             let service = StreamableHttpService::new(
-                move || Ok(TanWordsMcp::new(db_path.clone())),
+                move || Ok(TanWordsMcp::new(db_path.clone(), notifier.clone())),
                 LocalSessionManager::default().into(),
                 Default::default(),
             );
@@ -147,6 +158,7 @@ pub async fn mcp_get_config(
 #[tauri::command]
 pub async fn mcp_apply_config(
     config: McpConfig,
+    app: tauri::AppHandle,
     state: tauri::State<'_, crate::AppState>,
     controller: tauri::State<'_, McpController>,
 ) -> Result<McpStatus, String> {
@@ -155,7 +167,7 @@ pub async fn mcp_apply_config(
         .lock()
         .map_err(|error| error.to_string())?
         .clone();
-    let status = controller.restart(config.clone(), db_path).await?;
+    let status = controller.restart(config.clone(), db_path, app).await?;
     {
         let conn = crate::db::lock_db(&state)?;
         save_config(&conn, &config)?;

@@ -3,16 +3,16 @@ import type { NavPage } from "@/store/navStore";
 
 export type Theme = "light" | "dark" | "system";
 export type SidebarTabId = Exclude<NavPage, "settings">;
-export type TopBarItemId = "search" | "context" | "mcp" | "ai" | "language" | "theme" | "updates" | "github";
+export type TopBarItemId = "search" | "context" | "scratch" | "mcp" | "ai" | "language" | "theme" | "updates" | "github";
 
 /** Feeds page tab selector: a specific RSS feed, "all" of them, or the native Hacker News browser. */
 export type RssTabSelection = number | "all" | "hackernews";
 
 export const DEFAULT_SIDEBAR_TABS: SidebarTabId[] = [
-  "dashboard", "feeds", "documents", "vocabulary", "chat", "music",
+  "dashboard", "feeds", "reading", "documents", "vocabulary", "chat", "music",
 ];
 export const DEFAULT_TOPBAR_ITEMS: TopBarItemId[] = [
-  "search", "context", "mcp", "ai", "language", "theme", "updates", "github",
+  "search", "context", "scratch", "mcp", "ai", "language", "theme", "updates", "github",
 ];
 
 interface SettingsState {
@@ -33,6 +33,9 @@ interface SettingsState {
   showQuickDoc: boolean;
   /** Show the project GitHub link in the sidebar footer. */
   showGithubLink: boolean;
+  /** Pop the lookup/translate/save toolbar over selected English text. Off
+   *  means selecting text does nothing special, anywhere in the app. */
+  selectionActions: boolean;
   /** Main navigation tabs visible in the sidebar. Settings is always visible. */
   visibleSidebarTabs: SidebarTabId[];
   /** User-selected controls visible in the global command bar. */
@@ -66,6 +69,7 @@ interface SettingsState {
   setTtsSpeed: (speed: number) => void;
   setShowQuickDoc: (v: boolean) => void;
   setShowGithubLink: (v: boolean) => void;
+  setSelectionActions: (v: boolean) => void;
   setSidebarTabVisible: (tab: SidebarTabId, visible: boolean) => void;
   setTopBarItemVisible: (item: TopBarItemId, visible: boolean) => void;
   setDefaultRssTab: (tab: RssTabSelection) => void;
@@ -177,6 +181,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   ttsSpeed: 1,
   showQuickDoc: true,
   showGithubLink: true,
+  selectionActions: true,
   visibleSidebarTabs: cachedSidebarTabs(),
   visibleTopBarItems: cachedTopBarItems(),
   defaultRssTab: cachedDefaultRssTab(),
@@ -209,6 +214,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setShowQuickDoc: (v) => {
     set({ showQuickDoc: v });
     saveSetting("quick_doc_ball", JSON.stringify(v));
+  },
+
+  setSelectionActions: (v) => {
+    set({ selectionActions: v });
+    saveSetting("selection_actions", JSON.stringify(v));
   },
 
   setShowGithubLink: (v) => {
@@ -392,6 +402,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         // JSON.parse turns the stored string into a real boolean; default on.
         showQuickDoc: (values.quick_doc_ball as unknown) !== false && values.quick_doc_ball !== "false",
         showGithubLink: (values.show_github_link as unknown) !== false && values.show_github_link !== "false",
+        selectionActions: (values.selection_actions as unknown) !== false && values.selection_actions !== "false",
         visibleSidebarTabs: resolvedSidebarTabs,
         visibleTopBarItems: resolvedTopBarItems,
         defaultRssTab: resolvedDefaultRssTab,

@@ -2,7 +2,7 @@ import React from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import {
-  BrainCircuit, Check, ChevronsLeft, ChevronsRight, FilePlus2, Languages,
+  BrainCircuit, Check, ChevronsLeft, ChevronsRight, ClipboardPaste, FilePlus2, Languages,
   MessageSquarePlus, Monitor, Moon, Quote, Search, Server, Settings, Sun, Type, Unplug, User, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -122,10 +122,13 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
     const url = "https://github.com/FleetingEcho/TanWords";
     try { await openUrl(url); } catch { window.open(url, "_blank", "noopener,noreferrer"); }
   };
+  const openScratch = () => navigate("reading");
+
   const commands = [
     ...PAGE_IDS.map((page) => ({ label: t(`nav.${page}`), icon: Search, run: () => navigate(page) })),
     { label: t("command.newDocument"), icon: FilePlus2, run: newDocument },
     { label: t("command.newChat"), icon: MessageSquarePlus, run: newChat },
+    { label: t("scratch.open"), icon: ClipboardPaste, run: openScratch },
   ].filter((command) => command.label.toLowerCase().includes(query.toLowerCase()));
 
   const context = activePage === "documents"
@@ -200,7 +203,26 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
           </>
         )}
 
-        <div className="ml-auto flex items-center gap-0.5 border-l border-border pl-2">
+        {/* One flexible spacer, so everything after it sits at the right edge.
+          * Auto margins can't do this job here: two of them (on the button and
+          * on the icon cluster) split the free space between themselves, which
+          * left the button drifting toward the middle as the window widened. */}
+        <div className="flex-1" />
+
+        {/* Paste-in reader: read and mine any text that isn't in a feed.
+          * Hideable like any other top-bar control; the command palette entry
+          * stays either way. */}
+        {visible("scratch") && <Button
+          variant="ghost"
+          onClick={openScratch}
+          title={t("scratch.open")}
+          className="h-8 shrink-0 gap-2 rounded-lg px-2.5 text-xs font-medium text-foreground"
+        >
+          <ClipboardPaste className="h-4 w-4 text-primary" />
+          <span className="hidden lg:inline">{t("scratch.open")}</span>
+        </Button>}
+
+        <div className="flex items-center gap-0.5 border-l border-border pl-2">
           <Button
             variant="ghost"
             size="icon"
@@ -251,7 +273,6 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
           </DropdownMenu>}
           {visible("updates") && <UpdateButton placement="toolbar" />}
           {visible("github") && <Button variant="ghost" size="icon" onClick={() => void openGitHub()} title="GitHub" className="h-8 w-8 rounded-lg text-muted-foreground"><GitHubIcon className="h-4 w-4" /></Button>}
-          <Button variant="ghost" size="icon" onClick={() => navigate("settings")} title={t("nav.settings")} className="h-8 w-8 rounded-lg text-muted-foreground"><Settings className="h-4 w-4" /></Button>
           </>}
           <Button variant="ghost" size="icon" onClick={() => navigate("settings")} title={t("command.profile")} className="h-8 w-8 rounded-full p-0 overflow-hidden ring-1 ring-border/60 text-muted-foreground">
             {userAvatar ? <img src={userAvatar} alt="" className="h-full w-full object-cover" /> : <User className="h-4 w-4" />}
