@@ -23,6 +23,7 @@ export const music: Dict = {
   "music.scanErrorTitle": "音乐文件夹读取失败",
   "music.scanErrorCta": "打开设置",
   "music.noTracks": "这个文件夹里没有找到音频文件。",
+  "music.scanning": "正在扫描音乐文件夹…",
   "music.nowPlaying": "正在播放",
   "music.mode.order": "顺序播放",
   "music.mode.loop-one": "单曲循环",

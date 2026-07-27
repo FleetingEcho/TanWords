@@ -23,6 +23,7 @@ export const music: Dict = {
   "music.scanErrorTitle": "Couldn't read the music folder",
   "music.scanErrorCta": "Open settings",
   "music.noTracks": "No audio files found in this folder.",
+  "music.scanning": "Scanning your music folder…",
   "music.nowPlaying": "Now playing",
   "music.mode.order": "In order",
   "music.mode.loop-one": "Repeat one",

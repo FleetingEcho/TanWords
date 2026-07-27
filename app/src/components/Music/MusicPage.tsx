@@ -95,7 +95,22 @@ export default function MusicPage() {
     );
   }
 
-  const open = collections?.find((c) => c.name === openName);
+  // First scan of the session: there is nothing to render yet. Falling through
+  // instead would paint the full page chrome around a misleading
+  // "0 tracks · 0 collections" and an empty grid. A *re*scan deliberately does
+  // not land here — the existing list stays put and the Rescan button spins.
+  if (!collections) {
+    return (
+      <div className="h-full flex items-center justify-center animate-fade-in">
+        <div className="text-center">
+          <div className="w-8 h-8 mx-auto mb-4 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+          <p className="text-sm text-muted-foreground">{t("music.scanning")}</p>
+        </div>
+      </div>
+    );
+  }
+
+  const open = collections.find((c) => c.name === openName);
   if (open) {
     return (
       <CollectionView
@@ -106,13 +121,13 @@ export default function MusicPage() {
     );
   }
 
-  const totalTracks = collections?.reduce((n, c) => n + c.tracks.length, 0) ?? 0;
+  const totalTracks = collections.reduce((n, c) => n + c.tracks.length, 0);
 
   // A non-empty query flattens both view modes into one result list: a match
   // keeps a track if its title/artist — or its whole collection's name — hits.
   const q = query.trim().toLowerCase();
   const results = q
-    ? (collections ?? [])
+    ? collections
         .map((c) => {
           const displayName = c.name || t("music.uncategorized");
           const wholeCollection = displayName.toLowerCase().includes(q);
@@ -141,7 +156,7 @@ export default function MusicPage() {
           <div className="min-w-0">
             <h1 className="text-2xl font-bold tracking-tight">{t("music.title")}</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              {t("music.stats", { tracks: String(totalTracks), collections: String(collections?.length ?? 0) })}
+              {t("music.stats", { tracks: String(totalTracks), collections: String(collections.length) })}
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -196,7 +211,7 @@ export default function MusicPage() {
           />
         </div>
 
-        {collections && collections.length === 0 && (
+        {collections.length === 0 && (
           <p className="text-sm text-muted-foreground">{t("music.noTracks")}</p>
         )}
 
@@ -221,7 +236,7 @@ export default function MusicPage() {
           )
         ) : viewMode === "cards" ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6">
-            {(collections ?? []).map((c) => (
+            {collections.map((c) => (
               <CollectionCard
                 key={c.name}
                 collection={c}
@@ -232,7 +247,7 @@ export default function MusicPage() {
           </div>
         ) : (
           <div className="space-y-8">
-            {(collections ?? []).map((c) => (
+            {collections.map((c) => (
               <CollectionListSection
                 key={c.name}
                 collection={c}

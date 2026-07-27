@@ -55,7 +55,14 @@ impl NativeAudioState {
 /// "video" files that are really just audio (e.g. a song shipped as .mp4) — leaving
 /// the list showing no duration for a track that plays back with a perfectly correct
 /// one. Reusing the real decoder keeps the two guaranteed to agree.
-#[tauri::command]
+/// `(async)` — not because the body is async, but because a plain
+/// `#[tauri::command]` fn runs on the main thread, which on Linux is the GTK/
+/// WebKit UI thread. Opening a decoder is file I/O plus (for MP3) a GStreamer
+/// pipeline, so running it there froze the whole window while the music
+/// library filled in missing durations. This variant runs on Tauri's blocking
+/// threadpool instead, which also makes the library's concurrent probes
+/// actually concurrent rather than serialized behind one thread.
+#[tauri::command(async)]
 pub fn native_audio_probe_duration(path: String) -> Result<f64, String> {
     let path = PathBuf::from(path);
     if !path.is_absolute() || !path.is_file() {
@@ -65,6 +72,13 @@ pub fn native_audio_probe_duration(path: String) -> Result<f64, String> {
     Ok(decoder.total_duration().map(|d| d.as_secs_f64()).unwrap_or(0.0))
 }
 
+/// Deliberately NOT `#[tauri::command(async)]`, unlike probe_duration above.
+/// Running on the main thread is what keeps this atomic against the other
+/// session commands: between taking the old session and installing the new one
+/// there is a window where `session` is None, and a native_audio_stop landing
+/// inside it would be silently dropped, leaving the track playing. The
+/// frontend's load-serializing chain (podcastPlayerStore) assumes that too.
+/// open_decoder is fast enough here to not be worth that risk.
 #[tauri::command]
 pub fn native_audio_load(
     path: String,

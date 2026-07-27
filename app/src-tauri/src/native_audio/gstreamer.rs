@@ -171,7 +171,7 @@ impl GstreamerDecoder {
             return Err("GStreamer could not read decoded MP3 audio".into());
         }
         let first_bytes = unsafe { std::slice::from_raw_parts(first_map.data, first_map.size) };
-        let first_samples = first_bytes
+        let mut prerolled: Vec<f32> = first_bytes
             .chunks_exact(4)
             .map(|bytes| f32::from_le_bytes(bytes.try_into().unwrap()))
             .collect();
@@ -183,6 +183,12 @@ impl GstreamerDecoder {
         const GST_FORMAT_TIME: c_int = 3;
         let mut duration_ns = 0i64;
         let mut has_duration = false;
+        // decodebin only reports a duration once it has parsed enough of the
+        // stream, but appsink's max-buffers=2 stalls the pipeline the moment it
+        // fills. Keep pulling while polling — and keep what we pull, so no
+        // audible PCM is skipped. Sleeping here instead deadlocked the two
+        // against each other: headerless VBR MP3s burned the whole poll budget
+        // (~2s each, on the UI thread) and still ended up with no duration.
         for _ in 0..100 {
             if unsafe { query_duration(pipeline, GST_FORMAT_TIME, &mut duration_ns) } != 0
                 && duration_ns > 0
@@ -190,7 +196,26 @@ impl GstreamerDecoder {
                 has_duration = true;
                 break;
             }
-            std::thread::sleep(Duration::from_millis(20));
+            let sample = unsafe { pull_sample(sink) };
+            if sample.is_null() {
+                break;
+            }
+            let buffer = unsafe { sample_get_buffer(sample) };
+            let mut map: GstMapInfo = unsafe { std::mem::zeroed() };
+            if buffer.is_null() || unsafe { buffer_map(buffer, &mut map, 1) } == 0 {
+                unsafe { sample_unref(sample) };
+                break;
+            }
+            let bytes = unsafe { std::slice::from_raw_parts(map.data, map.size) };
+            prerolled.extend(
+                bytes
+                    .chunks_exact(4)
+                    .map(|bytes| f32::from_le_bytes(bytes.try_into().unwrap())),
+            );
+            unsafe {
+                buffer_unmap(buffer, &mut map);
+                sample_unref(sample);
+            }
         }
         if !has_duration {
             if let Ok(decoder) = Decoder::try_from(File::open(path).map_err(|e| e.to_string())?) {
@@ -225,7 +250,7 @@ impl GstreamerDecoder {
             },
             pipeline,
             sink,
-            samples: first_samples,
+            samples: prerolled,
             offset: 0,
             duration: Duration::from_nanos(duration_ns as u64),
         })
