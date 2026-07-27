@@ -15,7 +15,7 @@ function isEnglishLine(line: string): boolean {
 function ExampleBlockquote({ lines, quoteKey }: { lines: string[]; quoteKey: string }) {
   const englishText = lines.filter(isEnglishLine).join(" ").trim();
   return (
-    <blockquote className="border-l-2 border-primary/40 pl-3 my-2 text-foreground/90">
+    <blockquote className="border-l-2 border-primary/40 pl-3.5 my-4 py-0.5 space-y-1 text-foreground/90 leading-relaxed">
       {lines.map((line, j) => (
         <p key={`${quoteKey}-${j}`} className="flex items-start gap-1.5">
           {/* Example lines can carry their own bold/code emphasis (e.g. the word

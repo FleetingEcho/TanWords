@@ -6,7 +6,7 @@ import { LevelBadge } from "@/components/shared/LevelBadge";
 import { SpeakButton } from "@/components/ui/SpeakButton";
 import { LazyWordNotesEditor } from "@/components/LazyWordNotesEditor";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
-import { SparkIcon } from "@/components/ui/icons";
+import { SparkIcon, RefreshIcon } from "@/components/ui/icons";
 import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
 import { Button } from "@/components/ui/button";
 
@@ -57,7 +57,7 @@ export function WordDetailPanel({
         </div>
       )}
 
-      <div className="p-6 space-y-5 animate-fade-in w-full">
+      <div className="px-6 pt-6 pb-10 space-y-7 animate-fade-in w-full">
         {/* Word header */}
         <div>
           <div className="flex items-center gap-3 flex-wrap">
@@ -68,7 +68,7 @@ export function WordDetailPanel({
             {selected.wordType && (
               <span className="text-xs font-medium text-muted-foreground border border-border px-2 py-0.5 rounded">{selected.wordType}</span>
             )}
-            <div className="ml-auto flex items-center gap-3">
+            <div className="ml-auto flex items-center gap-2">
               {onGeneratePatterns && (
                 <Button variant="link" onClick={onGeneratePatterns} className="h-auto p-0 text-xs text-muted-foreground hover:text-primary transition-colors">✨ {t("vocab.genPatterns")}</Button>
               )}
@@ -87,7 +87,17 @@ export function WordDetailPanel({
                 )
               ) : (
                 enriched && !enriching && (
-                  <Button variant="link" onClick={onReenrich} className="h-auto p-0 text-xs text-muted-foreground hover:text-primary transition-colors">{t("vocab.reenrich")}</Button>
+                  // Icon-only: the label lives in title/aria-label so the action
+                  // stays discoverable without competing with "Generate sentences".
+                  <Button
+                    variant="ghost"
+                    onClick={onReenrich}
+                    title={t("vocab.reenrich")}
+                    aria-label={t("vocab.reenrich")}
+                    className="h-8 w-8 p-0 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  >
+                    <RefreshIcon className="w-4 h-4" />
+                  </Button>
                 )
               )}
             </div>
@@ -116,7 +126,7 @@ export function WordDetailPanel({
         {/* My Notes (only for saved words) */}
         {!lookupMode && (
         <section>
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-3">
             <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{t("vocab.myNotes")}</p>
             {notes && (
               <Button variant="link" onClick={() => setConfirmClearOpen(true)} className="h-auto p-0 text-[11px] text-muted-foreground hover:text-destructive transition-colors">{t("vocab.clear")}</Button>
