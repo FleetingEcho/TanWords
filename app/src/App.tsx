@@ -125,7 +125,17 @@ function App() {
       case "reading":
         return <ReadingPage />;
       case "music":
-        return <React.Suspense fallback={null}><MusicPage /></React.Suspense>;
+        return (
+          <React.Suspense
+            fallback={
+              <div className="h-full flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+              </div>
+            }
+          >
+            <MusicPage />
+          </React.Suspense>
+        );
       case "vocabulary":
         return <VocabularyPage initialWordId={wordId} />;
       case "documents":
