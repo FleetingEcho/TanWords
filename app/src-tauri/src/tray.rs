@@ -110,6 +110,10 @@ fn handle_menu_event(app: &AppHandle, id: &str) {
 pub fn show_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
+        // A minimized window stays minimized through show()/set_focus() alone,
+        // which is a likely state for both callers: the tray menu and a second
+        // launch of the app.
+        let _ = window.unminimize();
         let _ = window.set_focus();
     }
 }

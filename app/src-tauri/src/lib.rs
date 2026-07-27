@@ -44,7 +44,22 @@ pub fn run() {
     let startup_mcp_controller = mcp_controller.clone();
     let startup_db_path = db_path.clone();
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Must be registered before every other plugin: a second launch forwards its
+    // argv to the running instance and exits from inside this plugin's setup, so
+    // anything registered earlier would already have run in the doomed process.
+    // That matters here beyond mere tidiness — a second instance would open its
+    // own SQLite connection to the same file, add a duplicate tray icon, and try
+    // to bind the MCP server to an already-taken port.
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        // Clicking the launcher again should surface the app, and the window may
+        // legitimately be hidden — closing it only hides to tray (see
+        // on_window_event below), so `show` here is load-bearing, not just focus.
+        tray::show_main_window(app);
+    }));
+
+    builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
