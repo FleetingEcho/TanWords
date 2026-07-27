@@ -10,6 +10,7 @@
     "test:run": "vitest run",
     "preview": "vite preview",
     "tauri": "tauri",
+    "dev:linux": "PKG_CONFIG_PATH=\"/usr/local/lib/x86_64-linux-gnu/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:$PKG_CONFIG_PATH\" tauri dev",
     "build:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1",
     "build:windows:portable": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1 -Portable",
     "build:appimage": "PKG_CONFIG_PATH=\"/usr/local/lib/x86_64-linux-gnu/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:$PKG_CONFIG_PATH\" tauri build --bundles appimage",
