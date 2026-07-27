@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
-import { getAllProviders } from "@/providers";
 import { AIProvider, ApiMessage } from "@/providers/base";
+import { useProviderStatus } from "@/hooks/useProviderStatus";
 import { useDB, ChatSessionItem } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -23,7 +23,9 @@ export function useAiChatSession(initialSessionId?: string) {
   const db = useDB();
   const t = useT();
   const targetLevel = useSettingsStore((s) => s.targetLevels.join("/"));
-  const providers = getAllProviders().filter((p) => p.apiKey);
+  // Subscribed, not sampled: on a cold start the registry is still empty while
+  // initProviders() reads the keychain, and this list has to fill in when it lands.
+  const { available: providers } = useProviderStatus();
 
   // Sidebar
   const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
