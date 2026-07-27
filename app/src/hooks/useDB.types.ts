@@ -9,6 +9,8 @@ export interface ChatSessionItem {
   created_at: string;
   updated_at: string;
   content_text: string;
+  /** Folded out of the main list into the archive section. */
+  archived: boolean;
 }
 
 export interface ChatSessionDetail extends ChatSessionItem {
@@ -89,6 +91,8 @@ export interface DocumentListItem {
   created_at: string;
   updated_at: string;
   content_text: string;
+  /** Folded out of the main list into the archive section. */
+  archived: boolean;
 }
 
 export interface DocumentDetail {

@@ -8,6 +8,8 @@ import { DocumentsPage } from "@/components/Documents/DocumentsPage";
 import { FeedsPage } from "@/components/Feeds/FeedsPage";
 import { AiChatPage } from "@/components/AiChat/AiChatPage";
 import { WordDetailModal } from "@/components/WordDetailModal";
+import { ReadingPage } from "@/components/Reader/ReadingPage";
+import { SelectionAsk } from "@/components/shared/SelectionAsk";
 import { PlayerBar } from "@/components/ui/PlayerBar";
 import { PodcastPlayerBar } from "@/components/ui/PodcastPlayerBar";
 import { ToolsBall } from "@/components/ui/ToolsBall";
@@ -18,6 +20,8 @@ import { useUpdaterStore } from "@/store/updaterStore";
 import { useNavStore } from "@/store/navStore";
 import { useDB } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
+import { useTraySync } from "@/hooks/useTraySync";
+import { useMcpSync } from "@/hooks/useMcpSync";
 import { initProviders } from "@/lib/initProviders";
 import { invoke } from "@tauri-apps/api/core";
 import { ENRICHED_SEED_WORDS, BASIC_SEED_WORDS } from "@/data/seedWords";
@@ -31,6 +35,9 @@ function App() {
   const { currentPage, currentWordId, navigate } = useNavStore();
 
   const [wordCount, setWordCount] = React.useState(0);
+
+  useTraySync();
+  useMcpSync();
 
   // Initialize providers from keychain (with localStorage fallback/migration) on startup
   useEffect(() => {
@@ -115,6 +122,8 @@ function App() {
         return <DashboardPage />;
       case "feeds":
         return <FeedsPage />;
+      case "reading":
+        return <ReadingPage />;
       case "music":
         return <React.Suspense fallback={null}><MusicPage /></React.Suspense>;
       case "vocabulary":
@@ -141,6 +150,7 @@ function App() {
       {renderPage()}
     </MainLayout>
     <WordDetailModal />
+    <SelectionAsk />
     <ToolsModal />
     <PlayerBar />
     <PodcastPlayerBar />

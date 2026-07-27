@@ -1,5 +1,5 @@
 import React from "react";
-import { PanelLeft, Settings } from "lucide-react";
+import { ClipboardPaste, PanelLeft, Settings } from "lucide-react";
 import { useLayoutStore } from "@/store/layoutStore";
 import { useT } from "@/hooks/useT";
 import {
@@ -24,6 +24,7 @@ interface NavItemDef {
 const NAV_ITEM_DEFS: Omit<NavItemDef, "label">[] = [
   { id: "dashboard", icon: GridIcon },
   { id: "feeds", icon: FeedIcon },
+  { id: "reading", icon: ClipboardPaste },
   { id: "documents", icon: DocIcon },
   { id: "vocabulary", icon: BookIcon, showCount: "word" },
   { id: "chat", icon: ChatIcon },

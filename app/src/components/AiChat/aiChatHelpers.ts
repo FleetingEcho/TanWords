@@ -1,8 +1,7 @@
 import { ApiMessage, ContentBlock } from "@/providers/base";
-import { ChatSessionItem } from "@/hooks/useDB";
 import { AiMessage } from "./MessageBubble";
 import { ToolCallDisplay } from "./ToolCallCard";
-import { parseDbTimestamp } from "@/lib/dbTime";
+import { collapseBlankLines } from "@/lib/textCleanup";
 
 // Prompts stay English (they instruct the model); preset names are i18n keys.
 export function buildPresetPrompt(presetId: string, targetLevel: string): string {
@@ -44,42 +43,55 @@ export type DisplayItem =
   | { kind: "message"; msg: AiMessage }
   | { kind: "tool_block"; calls: ToolCallDisplay[] };
 
-// ── Date grouping ──────────────────────────────────────────────────────────
-
-type DateGroup = "today" | "yesterday" | "week" | "earlier";
-
-function getGroup(updatedAt: string): DateGroup {
-  const now = Date.now();
-  const d = parseDbTimestamp(updatedAt);
-  const ts = d.getTime();
-  const today = new Date();
-  if (d.toDateString() === today.toDateString()) return "today";
-  if (now - ts < 2 * 86400000) return "yesterday";
-  if (now - ts < 7 * 86400000) return "week";
-  return "earlier";
-}
-
-export function groupSessions(sessions: ChatSessionItem[]): [DateGroup, ChatSessionItem[]][] {
-  const order: DateGroup[] = ["today", "yesterday", "week", "earlier"];
-  const map = new Map<DateGroup, ChatSessionItem[]>();
-  for (const s of sessions) {
-    const g = getGroup(s.updated_at);
-    if (!map.has(g)) map.set(g, []);
-    map.get(g)!.push(s);
-  }
-  return order.filter((g) => map.has(g)).map((g) => [g, map.get(g)!]);
-}
-
 export function genId() {
   return `chat_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 }
 
+/** Characters this item contributes to the prompt. Tool blocks count too:
+ *  a 15-item extract_vocabulary call is a few thousand tokens of JSON that
+ *  buildApiHistory faithfully replays to the model, so leaving them out made
+ *  the counter read "plenty of room" right up to a context-overflow error. */
+function itemChars(item: DisplayItem): number {
+  if (item.kind === "message") return item.msg.content.length;
+  return item.calls.reduce(
+    (sum, c) => sum + JSON.stringify(c.input ?? {}).length + (c.result?.length ?? 0),
+    0
+  );
+}
+
 export function estimateTokens(items: DisplayItem[]) {
   let chars = 0;
-  for (const it of items) {
-    if (it.kind === "message") chars += it.msg.content.length;
-  }
+  for (const it of items) chars += itemChars(it);
   return Math.ceil(chars / 4);
+}
+
+/**
+ * Drops whole turns off the front of the history until it fits `maxChars`.
+ *
+ * Cuts only immediately before a user message, because buildApiHistory emits
+ * an assistant(tool_use) + user(tool_result) pair for every tool block —
+ * slicing mid-turn would leave an orphan tool_result that the API rejects.
+ * The most recent turn is always kept, however long it is: if even that
+ * doesn't fit, no amount of trimming will help and the caller should surface
+ * the error rather than send an empty conversation.
+ */
+export function trimItemsToBudget(items: DisplayItem[], maxChars: number): {
+  items: DisplayItem[];
+  droppedTurns: number;
+} {
+  const isUserTurn = (i: number) => items[i]?.kind === "message" && (items[i] as { msg: AiMessage }).msg.role === "user";
+  const total = (from: number) => items.slice(from).reduce((sum, it) => sum + itemChars(it), 0);
+
+  let start = 0;
+  let dropped = 0;
+  while (total(start) > maxChars) {
+    let next = start + 1;
+    while (next < items.length && !isUserTurn(next)) next++;
+    if (next >= items.length) break; // only the latest turn left — keep it
+    start = next;
+    dropped++;
+  }
+  return { items: items.slice(start), droppedTurns: dropped };
 }
 
 /** True for the "request exceeds context window" family of errors — OpenAI's
@@ -98,20 +110,29 @@ export function isContextOverflowError(err: unknown): boolean {
  *  first (least essential), then the article body itself is cut — always
  *  keeping the title and the front of the article, since that's where the
  *  headline claim/context usually lives. */
+/** Builds the article body sent both to the AI and shown as the chat bubble.
+ *  `article.text`/`commentsText` come from Readability extraction or scraped
+ *  comment threads, whose source markup often leaves long runs of blank lines
+ *  that add no content — collapse those here so neither the prompt nor the
+ *  bubble is padded with them. Never applied to text the user typed themselves. */
 export function buildArticleBody(
   article: { title: string; text: string; commentsText?: string },
   maxChars = Infinity
 ): string {
-  const full = article.commentsText
-    ? `${article.title}\n\n${article.text}\n\n---\n\nComments:\n${article.commentsText}`
-    : `${article.title}\n\n${article.text}`;
+  const title = collapseBlankLines(article.title);
+  const text = collapseBlankLines(article.text);
+  const commentsText = article.commentsText ? collapseBlankLines(article.commentsText) : undefined;
+
+  const full = commentsText
+    ? `${title}\n\n${text}\n\n---\n\nComments:\n${commentsText}`
+    : `${title}\n\n${text}`;
   if (full.length <= maxChars) return full;
 
-  const withoutComments = `${article.title}\n\n${article.text}`;
+  const withoutComments = `${title}\n\n${text}`;
   if (withoutComments.length <= maxChars) return withoutComments;
 
-  const budget = Math.max(maxChars - article.title.length - 10, 200);
-  return `${article.title}\n\n${article.text.slice(0, budget)}…`;
+  const budget = Math.max(maxChars - title.length - 10, 200);
+  return `${title}\n\n${text.slice(0, budget)}…`;
 }
 
 export function serializeItems(items: DisplayItem[]): string {

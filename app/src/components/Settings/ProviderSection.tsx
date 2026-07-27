@@ -1,19 +1,23 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { registerBuiltInProviders, registerCustomProvider, removeProvider } from "@/providers";
 import { getSecret, setSecret, secretDelete } from "@/lib/secrets";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useT } from "@/hooks/useT";
 import { loadProviderModels, saveProviderModel } from "@/providers/modelPreferences";
 import { BUILT_IN_PROVIDERS, PRESET_PROVIDERS, ProviderDef, loadCustomProvidersMeta, saveCustomProvidersMeta } from "./providerConstants";
-import { ProviderPicker } from "./ProviderPicker";
+import { ProviderRow } from "./ProviderList";
 import { ProviderKeyModelPanel } from "./ProviderKeyModelPanel";
 import { CustomProviderPanel } from "./CustomProviderPanel";
 import { CustomProviderAddForm } from "./CustomProviderAddForm";
 
 export function ProviderSection() {
   const t = useT();
-  const [selectedProvider, setSelectedProvider] = useState("openai");
+  // Which row is open. Purely a viewing state: the default provider is set
+  // by its own button, so you can inspect a key without switching to it.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [openaiKey, setOpenaiKey] = useState("");
   const [claudeKey, setClaudeKey] = useState("");
   const [customProviders, setCustomProviders] = useState<
@@ -31,9 +35,7 @@ export function ProviderSection() {
   const [providerModels, setProviderModels] = useState<Record<string, string>>(() => loadProviderModels());
   const globalDefaultProvider = useSettingsStore((state) => state.defaultAiProvider);
 
-  useEffect(() => {
-    if (keysLoaded && globalDefaultProvider) setSelectedProvider(globalDefaultProvider);
-  }, [globalDefaultProvider, keysLoaded]);
+
 
   // Debounce timers for keychain writes (per key)
   const debounceRefs = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -96,26 +98,15 @@ export function ProviderSection() {
         presetResult[currentDefault] ||
         loadedCustom.find((p) => p.id === currentDefault)?.apiKey;
 
-      if (currentDefaultHasKey) {
-        setSelectedProvider(currentDefault);
-      } else if (loadedOpenai) {
-        setSelectedProvider("openai");
-        useSettingsStore.getState().setDefaultAiProvider("openai");
-      } else if (loadedClaude) {
-        setSelectedProvider("claude");
-        useSettingsStore.getState().setDefaultAiProvider("claude");
-      } else if (loadedCustom.some((p) => p.apiKey)) {
-        const first = loadedCustom.find((p) => p.apiKey);
-        if (first) {
-          setSelectedProvider(first.id);
-          useSettingsStore.getState().setDefaultAiProvider(first.id);
-        }
-      } else {
-        const presetWithKey = Object.entries(presetResult).find(([, v]) => v);
-        if (presetWithKey) {
-          setSelectedProvider(presetWithKey[0]);
-          useSettingsStore.getState().setDefaultAiProvider(presetWithKey[0]);
-        }
+      // Repair a default that points at a provider with no key — otherwise
+      // every AI call silently falls back to whichever one happens to work.
+      if (!currentDefaultHasKey) {
+        const firstWithKey =
+          (loadedOpenai && "openai") ||
+          (loadedClaude && "claude") ||
+          loadedCustom.find((p) => p.apiKey)?.id ||
+          Object.entries(presetResult).find(([, v]) => v)?.[0];
+        if (firstWithKey) useSettingsStore.getState().setDefaultAiProvider(firstWithKey);
       }
 
       setKeysLoaded(true);
@@ -250,6 +241,10 @@ export function ProviderSection() {
     }
     setNewProvider({ name: "", apiBase: "", apiKey: "", modelId: "" });
     setShowAddCustom(false);
+    setExpandedId(id);
+    // A provider you just took the trouble to add is almost certainly the one
+    // you want used — but only if it can actually answer.
+    if (p.apiKey) useSettingsStore.getState().setDefaultAiProvider(id);
   };
 
   const removeCustom = async (id: string) => {
@@ -290,118 +285,117 @@ export function ProviderSection() {
     ...customProviders.map((p) => ({ id: p.id, name: p.name, model: p.modelId, dot: "#6366f1", isCustom: true, apiBase: p.apiBase })),
   ];
 
-  const selectedKey =
-    selectedProvider === "openai"
-      ? openaiKey
-      : selectedProvider === "claude"
-        ? claudeKey
-        : presetKeys[selectedProvider] ||
-          customProviders.find((p) => p.id === selectedProvider)?.apiKey ||
-          "";
-  const isConnected = !!selectedKey;
-  const selectedDot = allCards.find((p) => p.id === selectedProvider)?.dot ?? "#6366f1";
+  /** The stored key for any provider, wherever it lives. */
+  const keyFor = (id: string): string =>
+    id === "openai" ? openaiKey
+    : id === "claude" ? claudeKey
+    : presetKeys[id] || customProviders.find((p) => p.id === id)?.apiKey || "";
+
+  /** The config form for one provider — same three panels as before, picked
+   *  by id instead of by what the dropdown had selected. */
+  const panelFor = (id: string) => {
+    if (id === "openai") {
+      return (
+        <ProviderKeyModelPanel
+          apiKeyValue={openaiKey}
+          onApiKeyChange={handleOpenaiKeyChange}
+          apiKeyPlaceholder="sk-..."
+          modelValue={providerModels.openai || ""}
+          onModelChange={(model) => updateProviderModel("openai", model)}
+          fetchingModels={fetchingModels}
+          onFetchModels={() => void fetchModels("openai", "https://api.openai.com/v1", openaiKey, (model) => updateProviderModel("openai", model), providerModels.openai || "")}
+          onTest={() => testConnection("openai", "https://api.openai.com/v1", openaiKey, providerModels.openai)}
+          testStatus={testStatus}
+          t={t}
+        />
+      );
+    }
+    if (id === "claude") {
+      return (
+        <ProviderKeyModelPanel
+          apiKeyValue={claudeKey}
+          onApiKeyChange={handleClaudeKeyChange}
+          apiKeyPlaceholder="sk-ant-..."
+          modelValue={providerModels.claude || ""}
+          onModelChange={(model) => updateProviderModel("claude", model)}
+          fetchingModels={fetchingModels}
+          onFetchModels={() => void fetchModels("claude", "https://api.anthropic.com", claudeKey, (model) => updateProviderModel("claude", model), providerModels.claude || "")}
+          onTest={() => testConnection("claude", "https://api.anthropic.com", claudeKey, providerModels.claude)}
+          testStatus={testStatus}
+          t={t}
+        />
+      );
+    }
+    const preset = PRESET_PROVIDERS.find((p) => p.id === id);
+    if (preset) {
+      return (
+        <ProviderKeyModelPanel
+          apiKeyValue={presetKeys[preset.id] || ""}
+          onApiKeyChange={(value) => handlePresetKeyChange(preset.id, value)}
+          apiKeyPlaceholder="API Key"
+          modelValue={providerModels[preset.id] || ""}
+          onModelChange={(model) => updateProviderModel(preset.id, model)}
+          fetchingModels={fetchingModels}
+          onFetchModels={() => void fetchModels(preset.id, preset.apiBase!, presetKeys[preset.id] || "", (model) => updateProviderModel(preset.id, model), providerModels[preset.id] || "")}
+          onTest={() => testConnection(preset.id, preset.apiBase!, presetKeys[preset.id] || "", providerModels[preset.id] || preset.model)}
+          testStatus={testStatus}
+          t={t}
+        />
+      );
+    }
+    const custom = customProviders.find((p) => p.id === id);
+    if (!custom) return null;
+    return (
+      <CustomProviderPanel
+        provider={custom}
+        editingId={editingId}
+        editForm={editForm}
+        onEditFormChange={setEditForm}
+        onSaveEdit={saveEdit}
+        onCancelEdit={() => setEditingId(null)}
+        onStartEdit={(provider) => { setEditingId(provider.id); setEditForm({ name: provider.name, apiBase: provider.apiBase, apiKey: provider.apiKey, modelId: provider.modelId }); }}
+        fetchingModels={fetchingModels}
+        onFetchModelsForEdit={() => void fetchModels(custom.id, editForm.apiBase, editForm.apiKey, (model) => setEditForm((prev) => ({ ...prev, modelId: model })), editForm.modelId)}
+        onTest={(provider) => testConnection(provider.id, provider.apiBase, provider.apiKey, provider.modelId)}
+        testStatus={testStatus}
+        onRemove={async (removeId) => { await removeCustom(removeId); setExpandedId(null); }}
+        t={t}
+      />
+    );
+  };
 
   return (
     <section>
       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-3">{t("settings.providers")}</p>
 
-      <ProviderPicker
-        allCards={allCards}
-        selectedProvider={selectedProvider}
-        selectedDot={selectedDot}
-        fetchedModels={fetchedModels}
-        t={t}
-        onChange={(v) => {
-          setSelectedProvider(v);
-          setShowAddCustom(v === "__new__");
-          if (v !== "__new__") useSettingsStore.getState().setDefaultAiProvider(v);
-        }}
-      />
+      {/* Every provider at once, with its model, whether it has a key, and
+        * which one is the default — the old dropdown hid all of that one
+        * click deep, and made browsing a config change the default. */}
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
+        {allCards.map((provider) => (
+          <ProviderRow
+            key={provider.id}
+            provider={provider}
+            connected={!!keyFor(provider.id)}
+            isDefault={provider.id === globalDefaultProvider}
+            expanded={expandedId === provider.id}
+            onToggleExpanded={() => setExpandedId((current) => (current === provider.id ? null : provider.id))}
+            onSetDefault={() => useSettingsStore.getState().setDefaultAiProvider(provider.id)}
+            t={t}
+          >
+            {panelFor(provider.id)}
+          </ProviderRow>
+        ))}
 
-      {selectedProvider !== "__new__" && (
-        <div className="mt-4 bg-card border border-border rounded-xl p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold">
-              {t("settings.config", { name: allCards.find((p) => p.id === selectedProvider)?.name || selectedProvider })}
-            </h3>
-            {isConnected && (
-              <span className="flex items-center gap-1 text-xs text-green-600 font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                {t("settings.connected")}
-              </span>
-            )}
-          </div>
+        <button
+          onClick={() => setShowAddCustom((v) => !v)}
+          className="flex w-full items-center gap-2 border-t border-border/60 px-4 py-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {t("settings.addCustomTitle")}
+        </button>
+      </div>
 
-          {selectedProvider === "openai" && (
-            <ProviderKeyModelPanel
-              apiKeyValue={openaiKey}
-              onApiKeyChange={handleOpenaiKeyChange}
-              apiKeyPlaceholder="sk-..."
-              modelValue={providerModels.openai || ""}
-              onModelChange={(model) => updateProviderModel("openai", model)}
-              fetchingModels={fetchingModels}
-              onFetchModels={() => void fetchModels("openai", "https://api.openai.com/v1", openaiKey, (model) => updateProviderModel("openai", model), providerModels.openai || "")}
-              onTest={() => testConnection("openai", "https://api.openai.com/v1", openaiKey, providerModels.openai)}
-              testStatus={testStatus}
-              t={t}
-            />
-          )}
-
-          {selectedProvider === "claude" && (
-            <ProviderKeyModelPanel
-              apiKeyValue={claudeKey}
-              onApiKeyChange={handleClaudeKeyChange}
-              apiKeyPlaceholder="sk-ant-..."
-              modelValue={providerModels.claude || ""}
-              onModelChange={(model) => updateProviderModel("claude", model)}
-              fetchingModels={fetchingModels}
-              onFetchModels={() => void fetchModels("claude", "https://api.anthropic.com", claudeKey, (model) => updateProviderModel("claude", model), providerModels.claude || "")}
-              onTest={() => testConnection("claude", "https://api.anthropic.com", claudeKey, providerModels.claude)}
-              testStatus={testStatus}
-              t={t}
-            />
-          )}
-
-          {PRESET_PROVIDERS.map((preset) =>
-            selectedProvider === preset.id && (
-              <ProviderKeyModelPanel
-                key={preset.id}
-                apiKeyValue={presetKeys[preset.id] || ""}
-                onApiKeyChange={(value) => handlePresetKeyChange(preset.id, value)}
-                apiKeyPlaceholder="API Key"
-                modelValue={providerModels[preset.id] || ""}
-                onModelChange={(model) => updateProviderModel(preset.id, model)}
-                fetchingModels={fetchingModels}
-                onFetchModels={() => void fetchModels(preset.id, preset.apiBase!, presetKeys[preset.id] || "", (model) => updateProviderModel(preset.id, model), providerModels[preset.id] || "")}
-                onTest={() => testConnection(preset.id, preset.apiBase!, presetKeys[preset.id] || "", providerModels[preset.id] || preset.model)}
-                testStatus={testStatus}
-                t={t}
-              />
-            )
-          )}
-
-          {customProviders.filter((p) => p.id === selectedProvider).map((p) => (
-            <CustomProviderPanel
-              key={p.id}
-              provider={p}
-              editingId={editingId}
-              editForm={editForm}
-              onEditFormChange={setEditForm}
-              onSaveEdit={saveEdit}
-              onCancelEdit={() => setEditingId(null)}
-              onStartEdit={(provider) => { setEditingId(provider.id); setEditForm({ name: provider.name, apiBase: provider.apiBase, apiKey: provider.apiKey, modelId: provider.modelId }); }}
-              fetchingModels={fetchingModels}
-              onFetchModelsForEdit={() => void fetchModels(p.id, editForm.apiBase, editForm.apiKey, (model) => setEditForm((prev) => ({ ...prev, modelId: model })), editForm.modelId)}
-              onTest={(provider) => testConnection(provider.id, provider.apiBase, provider.apiKey, provider.modelId)}
-              testStatus={testStatus}
-              onRemove={removeCustom}
-              t={t}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Custom provider add form */}
       {showAddCustom && (
         <CustomProviderAddForm
           newProvider={newProvider}
@@ -413,6 +407,9 @@ export function ProviderSection() {
           t={t}
         />
       )}
+
+      {/* Model suggestions from "fetch models", shared by every panel above. */}
+      <datalist id="provider-model-options">{fetchedModels.map((model) => <option key={model} value={model} />)}</datalist>
     </section>
   );
 }

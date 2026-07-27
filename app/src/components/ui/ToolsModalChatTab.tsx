@@ -63,24 +63,9 @@ export function ToolsModalChatTab({ active, chat }: ToolsModalChatTabProps) {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 min-h-0">
         {chat.displayItems.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-4">
-            <div className="text-center">
-              <p className="text-sm font-semibold text-foreground/80">{t("aichat.emptyTitle")}</p>
-              <p className="text-xs text-muted-foreground mt-1">{t("aichat.emptyHint")}</p>
-            </div>
-            <div className="grid grid-cols-2 gap-2 w-full max-w-[360px]">
-              {chat.QUICK_CARDS.map((c) => (
-                <Button
-                  key={c.titleKey}
-                  variant="ghost"
-                  onClick={() => chat.applyQuickCard(c.prefillKey)}
-                  className="h-auto flex items-center justify-start gap-2 px-3 py-2.5 rounded-xl border border-border bg-card text-left hover:border-primary/40 hover:bg-muted/40 transition-colors"
-                >
-                  <c.icon className="w-3.5 h-3.5 text-primary" />
-                  <span className="text-[11px] font-medium">{t(c.titleKey)}</span>
-                </Button>
-              ))}
-            </div>
+          <div className="flex h-full flex-col items-center justify-center">
+            <p className="text-sm font-semibold text-foreground/80">{t("aichat.emptyTitle")}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{t("aichat.emptyHint")}</p>
           </div>
         ) : (
           chat.displayItems.map((item, idx) => {

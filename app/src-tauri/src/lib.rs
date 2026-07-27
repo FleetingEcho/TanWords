@@ -1,5 +1,6 @@
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
+use tauri::Manager;
 
 pub mod appconfig;
 pub mod db;
@@ -12,6 +13,7 @@ pub mod music;
 pub mod native_audio;
 pub mod localdocs;
 pub mod mcp;
+pub mod tray;
 
 pub struct AppState {
     pub db: Mutex<Connection>,
@@ -47,13 +49,35 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
-        .setup(move |_| {
+        .setup(move |app| {
             if mcp_config.enabled {
+                let handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
-                    let _ = startup_mcp_controller.restart(mcp_config, startup_db_path).await;
+                    let _ = startup_mcp_controller
+                        .restart(mcp_config, startup_db_path, handle)
+                        .await;
                 });
             }
+            tray::build_tray(app.handle())?;
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            // With a tray icon present, the red close button should hide the
+            // window (menu-bar-app convention) instead of quitting — only the
+            // tray's Quit item (or Cmd+Q) actually exits.
+            if window.label() != "main" {
+                return;
+            }
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let quitting = window
+                    .app_handle()
+                    .try_state::<tray::TrayState>()
+                    .is_some_and(|s| s.quitting.load(std::sync::atomic::Ordering::SeqCst));
+                if !quitting {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
         })
         .manage(AppState {
             db: Mutex::new(conn),
@@ -96,6 +120,14 @@ pub fn run() {
             db::db_get_chat_session,
             db::db_upsert_chat_session,
             db::db_delete_chat_session,
+            db::db_set_chat_session_archived,
+            db::db_save_reading_article,
+            db::db_list_reading_articles,
+            db::db_get_reading_article,
+            db::db_delete_reading_article,
+            db::db_list_reading_comments,
+            db::db_add_reading_comment,
+            db::db_delete_reading_comment,
             db::db_search_chat_sessions,
             db::db_save_article_analysis,
             db::db_add_known_words,
@@ -172,9 +204,26 @@ pub fn run() {
             mcp::mcp_get_config,
             mcp::mcp_apply_config,
             mcp::mcp_generate_token,
+            tray::tray_update_now_playing,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // Cmd+Q (and any other app-level exit request) should back off to
+            // "hide to tray" too, same as the window's close button — only the
+            // tray's Quit item sets `quitting` and is allowed through.
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                let quitting = app_handle
+                    .try_state::<tray::TrayState>()
+                    .is_some_and(|s| s.quitting.load(std::sync::atomic::Ordering::SeqCst));
+                if !quitting {
+                    api.prevent_exit();
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        let _ = window.hide();
+                    }
+                }
+            }
+        });
 }
 
 fn get_db_path() -> String {

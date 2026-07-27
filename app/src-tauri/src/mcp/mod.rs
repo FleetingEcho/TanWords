@@ -11,4 +11,4 @@ mod tests;
 // too — `tauri::generate_handler!` looks them up at `crate::mcp::<name>`.
 pub use config::*;
 pub use controller::*;
-pub use tools::TanWordsMcp;
+pub use tools::{ChangeNotifier, TanWordsMcp};

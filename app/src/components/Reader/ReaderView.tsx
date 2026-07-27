@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { open as openShell } from "@tauri-apps/plugin-shell";
 import { toast } from "sonner";
-import { Maximize2, Minimize2 } from "lucide-react";
+import { Maximize2, Minimize2, X } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { ArticleReader } from "@/components/Reader/ArticleReader";
 import { ExternalIcon, NotesIcon, ChevronIcon } from "@/components/ui/icons";
@@ -15,15 +15,23 @@ interface Props {
   title: string;
   domain: string;
   onBack: () => void;
-  onOpenExternal: () => void;
+  /** Omitted by the paste-in reader — there is no original page to open. */
+  onOpenExternal?: () => void;
   /** Podcast episodes: the entry's own audio enclosure, passed through to the reader. */
   audio?: PodcastTrack;
   /** Set when this entry came from an hnrss.org-style feed — shows the HN discussion below the article. */
   hnItemId?: number | null;
+  /** The paste-in reader already covers the whole app, so its top-right
+   *  button closes the reader instead of toggling a zen mode that would do
+   *  nothing visible. */
+  fullscreen?: boolean;
+  /** Drops the reader bar entirely — for the blank paste sheet, which has no
+   *  title, no source and nothing to go back to yet. */
+  hideBar?: boolean;
 }
 
 /** In-app reader mode: top bar (back / title / domain / open-external) over the extracted article. */
-export function ReaderView({ url, title, domain, onBack, onOpenExternal, audio, hnItemId }: Props) {
+export function ReaderView({ url, title, domain, onBack, onOpenExternal, audio, hnItemId, fullscreen = false, hideBar = false }: Props) {
   const t = useT();
   const { analyze } = useAnalyzeArticle();
   const readerArticle = useReaderNotesStore((state) => state.article);
@@ -97,7 +105,7 @@ export function ReaderView({ url, title, domain, onBack, onOpenExternal, audio, 
   return (
     <div className={`flex flex-col animate-fade-in ${zenMode ? "fixed inset-0 z-50 bg-background" : "h-full"}`}>
       {/* Reader bar */}
-      <div className="flex items-center gap-3 px-4 h-12 border-b border-border shrink-0">
+      {!hideBar && <div className="flex items-center gap-3 px-4 h-12 border-b border-border shrink-0">
         <Button
           variant="ghost"
           onClick={onBack}
@@ -122,14 +130,16 @@ export function ReaderView({ url, title, domain, onBack, onOpenExternal, audio, 
         <span className="text-[10px] font-mono text-muted-foreground bg-muted rounded px-1.5 py-0.5 shrink-0">
           {domain}
         </span>
-        <Button
-          variant="ghost"
-          onClick={onOpenExternal}
-          title={t("hn.reader.external")}
-          className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
-        >
-          <ExternalIcon className="w-4 h-4" />
-        </Button>
+        {onOpenExternal && (
+          <Button
+            variant="ghost"
+            onClick={onOpenExternal}
+            title={t("hn.reader.external")}
+            className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+          >
+            <ExternalIcon className="w-4 h-4" />
+          </Button>
+        )}
         <div ref={setToolbarSlot} className="flex items-center gap-1 shrink-0 empty:hidden" />
         {readerArticle && (
           <Button
@@ -151,16 +161,16 @@ export function ReaderView({ url, title, domain, onBack, onOpenExternal, audio, 
         )}
         <Button
           variant="ghost"
-          onClick={() => setZenMode((v) => !v)}
-          title={zenMode ? t("doc.exitZenMode") : t("doc.zenMode")}
-          aria-label={zenMode ? t("doc.exitZenMode") : t("doc.zenMode")}
+          onClick={fullscreen ? onBack : () => setZenMode((v) => !v)}
+          title={fullscreen ? t("common.close") : zenMode ? t("doc.exitZenMode") : t("doc.zenMode")}
+          aria-label={fullscreen ? t("common.close") : zenMode ? t("doc.exitZenMode") : t("doc.zenMode")}
           className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
         >
-          {zenMode ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+          {fullscreen ? <X className="w-4 h-4" /> : zenMode ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
         </Button>
-      </div>
+      </div>}
 
-      <ArticleReader url={url} domain={domain} onOpenExternal={onOpenExternal} audio={audio} hnItemId={hnItemId} toolbarSlot={toolbarSlot} />
+      <ArticleReader url={url} domain={domain} onOpenExternal={onOpenExternal ?? (() => {})} audio={audio} hnItemId={hnItemId} toolbarSlot={toolbarSlot} />
     </div>
   );
 }

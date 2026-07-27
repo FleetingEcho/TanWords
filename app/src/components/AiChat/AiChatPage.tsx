@@ -26,6 +26,9 @@ export function AiChatPage({ initialSessionId }: { initialSessionId?: string } =
   const [promptOpen, setPromptOpen] = React.useState(false);
   const messages = React.useMemo(() => s.displayItems.flatMap((item) => item.kind === "message" ? [item.msg] : []), [s.displayItems]);
   const activeProvider = s.providers.find((provider) => provider.id === s.selectedProviderId) ?? s.providers[0];
+  // With a wallpaper set, the app canvas is transparent (see AppBackground) —
+  // this page must not paint over it. Without one it still needs a surface.
+  const hasCustomAppBackground = useSettingsStore((state) => !!state.appBackgroundImage);
   const toggleSidebar = () => setSidebarCollapsed((current) => {
     localStorage.setItem("aichat-sidebar-collapsed", current ? "0" : "1");
     return !current;
@@ -36,6 +39,14 @@ export function AiChatPage({ initialSessionId }: { initialSessionId?: string } =
       const detail = (e as CustomEvent<{ title: string; text: string; commentsText?: string }>).detail;
       if (detail) s.startWithArticle(detail);
     };
+    // Raised by the global selection toolbar when the text was picked out of
+    // an AI reply — that follow-up belongs in the conversation, not in a card.
+    const onAskSelection = (e: Event) => {
+      const detail = (e as CustomEvent<{ text: string }>).detail;
+      if (!detail?.text) return;
+      s.setInput(t("sel.askPrefill", { text: detail.text }));
+      s.textareaRef.current?.focus();
+    };
     const onOpenChat = (e: Event) => {
       const detail = (e as CustomEvent<{ sessionId: string }>).detail;
       if (detail?.sessionId) s.switchSession(detail.sessionId);
@@ -43,23 +54,29 @@ export function AiChatPage({ initialSessionId }: { initialSessionId?: string } =
     window.addEventListener("tanwords:new-chat", onNewChat);
     window.addEventListener("tanwords:learn-article", onLearnArticle);
     window.addEventListener("tanwords:open-chat", onOpenChat);
+    window.addEventListener("tanwords:ask-selection", onAskSelection);
     return () => {
       window.removeEventListener("tanwords:new-chat", onNewChat);
       window.removeEventListener("tanwords:learn-article", onLearnArticle);
       window.removeEventListener("tanwords:open-chat", onOpenChat);
+      window.removeEventListener("tanwords:ask-selection", onAskSelection);
     };
   }, [s.startNew, s.startWithArticle, s.switchSession]);
 
   return (
-    <div className="flex h-full overflow-hidden bg-background bg-[radial-gradient(circle_at_55%_-20%,hsl(var(--primary)/.09),transparent_38%)]">
+    <div className={`flex h-full overflow-hidden ${hasCustomAppBackground ? "" : "bg-background"}`}>
       <AiChatSidebar
         displaySessions={s.displaySessions}
-        grouped={s.grouped}
+        archivedSessions={s.archivedSessions}
         searchQuery={s.searchQuery}
         onSearchChange={s.setSearchQuery}
+        dateFrom={s.dateFrom}
+        dateTo={s.dateTo}
+        onDateRangeChange={s.setDateRange}
         activeId={s.activeId}
         onSwitchSession={s.switchSession}
         onDeleteSession={s.deleteSession}
+        onToggleArchived={s.toggleArchived}
         onNewChat={s.startNew}
         collapsed={sidebarCollapsed}
         onToggleCollapsed={toggleSidebar}
@@ -80,11 +97,38 @@ export function AiChatPage({ initialSessionId }: { initialSessionId?: string } =
               ))}
             </SelectContent>
           </Select>
+          {/* The selector is the connection indicator: it already names the
+            * provider in use, so a separate "connected" light beside it said
+            * the same thing twice and squeezed the model name into an
+            * ellipsis. The plug lives in the trigger instead, and the label
+            * shows the model id — that's what you're actually choosing. */}
+          {s.providers.length > 0 ? (
+            <Select value={s.selectedProviderId} onValueChange={s.setSelectedProviderId}>
+              <SelectTrigger
+                title={activeProvider ? `${activeProvider.name} · ${activeProvider.modelId}` : t("aichat.toolbarModel")}
+                aria-label={t("aichat.toolbarModel")}
+                className="h-9 w-auto max-w-[240px] gap-2 rounded-xl border-border/70 bg-card/70 px-2.5 text-xs shadow-none focus:ring-1 focus:ring-primary/20 shrink-0"
+              >
+                <PlugZap className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                <SelectValue>{activeProvider?.modelId || activeProvider?.name}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {s.providers.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    <span className="flex items-baseline gap-2"><span>{p.name}</span><span className="text-[10px] text-muted-foreground">{p.modelId}</span></span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Button variant="ghost" onClick={() => navigate("settings")} title={t("aichat.providerDisconnected")} aria-label={t("aichat.providerDisconnected")} className="h-9 gap-2 rounded-xl px-2.5 text-xs font-medium text-amber-500 hover:bg-amber-500/10 hover:text-amber-500 shrink-0">
+              <Unplug className="h-3.5 w-3.5" />
+              {t("aichat.providerDisconnected")}
+            </Button>
+          )}
           <Button variant="ghost" onClick={() => setPromptOpen(true)} title={t("aichat.promptView")} aria-label={t("aichat.promptView")} className="h-9 w-9 rounded-xl p-0 text-muted-foreground hover:bg-primary/10 hover:text-primary shrink-0">
             <Settings className="h-4 w-4" />
           </Button>
-          <div className="mx-0.5 h-5 w-px bg-border/70" />
-          {activeProvider ? <div title={t("aichat.providerConnected")} aria-label={t("aichat.providerConnected")} className="grid h-9 w-9 place-items-center rounded-xl text-emerald-500"><PlugZap className="h-4 w-4" /><span className="sr-only">{t("aichat.providerConnected")}</span></div> : <Button variant="ghost" onClick={() => navigate("settings")} title={t("aichat.providerDisconnected")} aria-label={t("aichat.providerDisconnected")} className="h-9 w-9 rounded-xl p-0 text-amber-500 hover:bg-amber-500/10 hover:text-amber-500"><Unplug className="h-4 w-4" /></Button>}
           {s.displayItems.length > 0 && (
             <Button variant="ghost" onClick={() => setConfirmClear(true)} title={t("aichat.clear")} aria-label={t("aichat.clear")} className="h-9 w-9 rounded-xl p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive shrink-0">
               <Eraser className="h-4 w-4" />
@@ -94,27 +138,12 @@ export function AiChatPage({ initialSessionId }: { initialSessionId?: string } =
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-5 py-7 min-h-0 scroll-smooth">
+        <div ref={s.scrollHostRef} className="flex-1 overflow-y-auto px-5 py-7 min-h-0">
           <div className="mx-auto max-w-3xl space-y-5">
           {s.displayItems.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full gap-5">
-              <div className="text-center">
-                <p className="text-sm font-semibold text-foreground/80">{t("aichat.emptyTitle")}</p>
-                <p className="text-xs text-muted-foreground mt-1">{t("aichat.emptyHint")}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-2.5 w-full max-w-md">
-                {s.QUICK_CARDS.map((c) => (
-                  <Button
-                    key={c.titleKey}
-                    variant="ghost"
-                    onClick={() => s.applyQuickCard(c.prefillKey)}
-                    className="h-auto flex items-center justify-start gap-2.5 px-4 py-3 rounded-xl border border-border bg-card text-left hover:border-primary/40 hover:bg-muted/40 transition-colors"
-                  >
-                    <c.icon className="w-4 h-4 text-primary" />
-                    <span className="text-xs font-medium">{t(c.titleKey)}</span>
-                  </Button>
-                ))}
-              </div>
+            <div className="flex h-full flex-col items-center justify-center">
+              <p className="text-sm font-semibold text-foreground/80">{t("aichat.emptyTitle")}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{t("aichat.emptyHint")}</p>
             </div>
           ) : (
             s.displayItems.map((item, idx) => {
@@ -165,12 +194,24 @@ export function AiChatPage({ initialSessionId }: { initialSessionId?: string } =
               // explanation) fills the same width instead of shrink-wrapping, so
               // the two line up as one continuous block.
               const fillCardWidth = idx > 0 && s.displayItems[idx - 1]?.kind === "tool_block";
-              return <MessageBubble key={idx} msg={item.msg} isTyping={isTyping} fillCardWidth={fillCardWidth} />;
+              const isLastAssistant = item.msg.role === "assistant" && idx === s.displayItems.length - 1;
+              return (
+                <MessageBubble
+                  key={idx}
+                  msg={item.msg}
+                  isTyping={isTyping}
+                  fillCardWidth={fillCardWidth}
+                  index={idx}
+                  onEdit={item.msg.role === "user" && !s.streaming ? s.editUserMessage : undefined}
+                  onRegenerate={isLastAssistant && s.canRegenerate ? s.regenerate : undefined}
+                />
+              );
             })
           )}
           <div ref={s.bottomRef} />
           </div>
         </div>
+
 
         <AiChatComposer
           input={s.input}

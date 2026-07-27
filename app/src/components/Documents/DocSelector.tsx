@@ -65,6 +65,15 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, onCollap
 
   useEffect(() => { load(0); setPage(0); }, [search, sort, dateFrom, dateTo, tagFilter, refreshKey]);
   useEffect(() => { load(page); }, [page]);
+
+  // An outside agent can write documents through the MCP server while this
+  // list is on screen (see hooks/useMcpSync) — reload rather than showing a
+  // list that silently disagrees with the database.
+  useEffect(() => {
+    const onExternalChange = () => { void load(page); };
+    window.addEventListener("docs-updated", onExternalChange);
+    return () => window.removeEventListener("docs-updated", onExternalChange);
+  }, [load, page]);
   useEffect(() => { db.getAllTags().then(setAllTags); }, [refreshKey]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
