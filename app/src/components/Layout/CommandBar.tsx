@@ -13,8 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { WordSearchBox } from "@/components/shared/WordSearchBox";
 import { SentenceSearchBox } from "@/components/shared/SentenceSearchBox";
 import { useT } from "@/hooks/useT";
-import { findBestProvider } from "@/providers/select";
-import { getAllProviders, type AIProvider } from "@/providers";
+import { useProviderStatus } from "@/hooks/useProviderStatus";
 import { NavPage, useNavStore } from "@/store/navStore";
 import { UpdateButton } from "@/components/Layout/UpdateButton";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -82,8 +81,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
     return next;
   });
   const [mcp, setMcp] = React.useState<{ running: boolean; error: string | null }>({ running: false, error: null });
-  const [providerConnected, setProviderConnected] = React.useState(() => Boolean(findBestProvider()));
-  const [availableProviders, setAvailableProviders] = React.useState<AIProvider[]>(() => getAllProviders().filter((provider) => provider.apiKey));
+  const { ready: providersReady, connected: providerConnected, available: availableProviders } = useProviderStatus();
 
   const refreshMcp = React.useCallback(() => {
     invoke<McpState>("mcp_get_config").then((result) => setMcp(result.status)).catch(() => {});
@@ -91,16 +89,11 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
 
   React.useEffect(() => {
     refreshMcp();
-    const refreshStatus = () => {
-      refreshMcp();
-      setProviderConnected(Boolean(findBestProvider()));
-      setAvailableProviders(getAllProviders().filter((provider) => provider.apiKey));
-    };
-    const timer = window.setInterval(refreshStatus, 5000);
-    window.addEventListener("tanwords:mcp-status-changed", refreshStatus);
+    const timer = window.setInterval(refreshMcp, 5000);
+    window.addEventListener("tanwords:mcp-status-changed", refreshMcp);
     return () => {
       window.clearInterval(timer);
-      window.removeEventListener("tanwords:mcp-status-changed", refreshStatus);
+      window.removeEventListener("tanwords:mcp-status-changed", refreshMcp);
     };
   }, [refreshMcp]);
 
@@ -130,6 +123,16 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
     { label: t("command.newChat"), icon: MessageSquarePlus, run: newChat },
     { label: t("scratch.open"), icon: ClipboardPaste, run: openScratch },
   ].filter((command) => command.label.toLowerCase().includes(query.toLowerCase()));
+
+  // Three states, not two: until the keychain read finishes there is no
+  // registry to judge, and flashing the amber "not configured" warning at a
+  // user who *has* configured a key is worse than saying nothing.
+  const aiTitle = !providersReady
+    ? t("command.aiLoading")
+    : providerConnected ? t("command.switchModel") : t("command.aiDisconnected");
+  const aiTone = !providersReady
+    ? "text-muted-foreground"
+    : providerConnected ? "text-foreground" : "text-amber-500";
 
   const context = activePage === "documents"
     ? { label: t("command.newDocument"), icon: FilePlus2, run: newDocument }
@@ -236,9 +239,9 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
           {visible("mcp") && <Button variant="ghost" size="icon" onClick={() => navigate("settings")} title={mcp.error || (mcp.running ? t("command.mcpRunning") : t("command.mcpStopped"))} className={`relative h-8 w-8 rounded-lg ${mcp.error ? "text-amber-500" : mcp.running ? "text-foreground" : "text-muted-foreground"}`}><Server className="h-4 w-4" />{mcp.running && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />}</Button>}
           {visible("ai") && <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" title={providerConnected ? t("command.switchModel") : t("command.aiDisconnected")} className={`relative h-8 w-8 rounded-lg ${providerConnected ? "text-foreground" : "text-amber-500"}`}>
-                {providerConnected ? <BrainCircuit className="h-4 w-4" /> : <Unplug className="h-4 w-4" />}
-                {providerConnected && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />}
+              <Button variant="ghost" size="icon" title={aiTitle} className={`relative h-8 w-8 rounded-lg ${aiTone}`}>
+                {providerConnected || !providersReady ? <BrainCircuit className="h-4 w-4" /> : <Unplug className="h-4 w-4" />}
+                {providersReady && providerConnected && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-72">
