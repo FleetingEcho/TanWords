@@ -85,6 +85,23 @@
   .font-sans { font-family: var(--app-font); }
   .font-mono { font-family: var(--code-font); }
   .font-manuscript { font-family: var(--manuscript-font); }
+
+  /* `==highlight==` from the markdown renderer. Both properties are set from
+   * the user's chosen colour at runtime (applyHighlightColor in settingsStore);
+   * the values here are the fallback used before settings load, and if the DB
+   * is unavailable. Tailwind's preflight leaves <mark> alone, so the browser
+   * default (black on yellow) would otherwise survive into dark mode — hence
+   * the explicit colour: inherit. */
+  :root {
+    --highlight: #d97706;
+    --highlight-bg: #d9770633;
+  }
+  mark {
+    background-color: var(--highlight-bg);
+    color: inherit;
+    border-radius: 0.25em;
+    padding: 0.05em 0.2em;
+  }
 }
 
 ::-webkit-scrollbar { width: 5px; height: 5px; }

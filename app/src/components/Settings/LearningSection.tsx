@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useSettingsStore } from "@/store/settingsStore";
+import { useSettingsStore, HIGHLIGHT_PRESETS } from "@/store/settingsStore";
 import { DEFAULT_ENRICH_SYSTEM_PROMPT } from "@/providers/base";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
@@ -52,6 +52,45 @@ function EnrichPromptEditor() {
   );
 }
 
+function HighlightColorSetting() {
+  const t = useT();
+  const highlightColor = useSettingsStore((s) => s.highlightColor);
+  const setHighlightColor = useSettingsStore((s) => s.setHighlightColor);
+
+  return (
+    <SettingRow label={t("settings.highlightColor")} sub={t("settings.highlightColorSub")}>
+      <div className="flex items-center gap-2">
+        {/* Live sample, so the choice is judged against the real <mark> styling
+         * (translucent wash, inherited text colour) rather than a solid chip. */}
+        <mark className="text-xs">{t("settings.highlightSample")}</mark>
+        <div className="flex items-center gap-1">
+          {HIGHLIGHT_PRESETS.map((hex) => (
+            <Button
+              key={hex}
+              variant="ghost"
+              onClick={() => setHighlightColor(hex)}
+              title={hex}
+              aria-label={hex}
+              className={`h-5 w-5 p-0 rounded-full shrink-0 hover:bg-transparent ring-offset-2 ring-offset-card transition-shadow ${
+                highlightColor.toLowerCase() === hex.toLowerCase() ? "ring-2 ring-foreground/60" : ""
+              }`}
+              style={{ backgroundColor: hex }}
+            />
+          ))}
+        </div>
+        <input
+          type="color"
+          value={highlightColor}
+          onChange={(e) => setHighlightColor(e.target.value)}
+          title={t("settings.highlightColorCustom")}
+          aria-label={t("settings.highlightColorCustom")}
+          className="h-6 w-8 rounded border border-input bg-background p-0.5 cursor-pointer"
+        />
+      </div>
+    </SettingRow>
+  );
+}
+
 export function LearningSection() {
   const settings = useSettingsStore();
   const t = useT();
@@ -83,6 +122,7 @@ export function LearningSection() {
           })}
         </div>
       </SettingRow>
+      <HighlightColorSetting />
       <EnrichPromptEditor />
     </div>
   );

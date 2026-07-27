@@ -12,9 +12,19 @@ import { Button } from "@/components/ui/button";
 
 // ── Inline parsing ──────────────────────────────────────────────────────────
 
-const INLINE_RE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*)|(\[[^\]\n]+\]\([^)\s]+\))/g;
+// `==highlight==` is the Obsidian/extended-markdown highlight token. It is not
+// in CommonMark or GFM, but it is what models emit when asked to highlight, and
+// it maps cleanly onto <mark>. Following Obsidian, the delimiters must hug their
+// content — otherwise prose comparing values ("a == b == c") would render its
+// middle term as a highlight. Inline code is matched first, so `x == y == z`
+// inside backticks stays code.
+const HIGHLIGHT = String.raw`==(?![\s=])[^=\n]*[^\s=]==`;
+const INLINE_RE = new RegExp(
+  String.raw`(\`[^\`\n]+\`)|(${HIGHLIGHT})|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*)|(\[[^\]\n]+\]\([^)\s]+\))`,
+  "g"
+);
 
-export function renderInline(text: string, keyBase: string, boldClassName?: string): React.ReactNode[] {
+export function renderInline(text: string, keyBase: string): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
   let last = 0;
   let i = 0;
@@ -29,8 +39,13 @@ export function renderInline(text: string, keyBase: string, boldClassName?: stri
           {tok.slice(1, -1)}
         </code>
       );
+    } else if (tok.startsWith("==")) {
+      // Colour lives in one CSS custom property (see index.css / applyHighlightColor)
+      // rather than a className threaded down from callers — the user can recolour
+      // every highlight in the app without this renderer knowing the setting exists.
+      nodes.push(<mark key={key}>{renderInline(tok.slice(2, -2), key)}</mark>);
     } else if (tok.startsWith("**")) {
-      nodes.push(<strong key={key} className={boldClassName}>{renderInline(tok.slice(2, -2), key, boldClassName)}</strong>);
+      nodes.push(<strong key={key}>{renderInline(tok.slice(2, -2), key)}</strong>);
     } else if (tok.startsWith("*")) {
       nodes.push(<em key={key}>{renderInline(tok.slice(1, -1), key)}</em>);
     } else {
@@ -96,7 +111,7 @@ interface ListItem {
   indent: number;
 }
 
-function renderList(items: ListItem[], ordered: boolean, keyBase: string, boldClassName?: string): React.ReactNode {
+function renderList(items: ListItem[], ordered: boolean, keyBase: string): React.ReactNode {
   // Two-level nesting: group consecutive indented items under the previous top-level item
   const Tag = ordered ? "ol" : "ul";
   const cls = ordered ? "list-decimal" : "list-disc";
@@ -109,11 +124,11 @@ function renderList(items: ListItem[], ordered: boolean, keyBase: string, boldCl
     <Tag key={keyBase} className={`${cls} pl-5 my-1.5 space-y-1`}>
       {roots.map((r, i) => (
         <li key={i}>
-          {renderInline(r.text, `${keyBase}-${i}`, boldClassName)}
+          {renderInline(r.text, `${keyBase}-${i}`)}
           {r.children.length > 0 && (
             <ul className="list-[circle] pl-4 mt-1 space-y-0.5">
               {r.children.map((c, j) => (
-                <li key={j}>{renderInline(c, `${keyBase}-${i}-${j}`, boldClassName)}</li>
+                <li key={j}>{renderInline(c, `${keyBase}-${i}-${j}`)}</li>
               ))}
             </ul>
           )}
@@ -123,7 +138,7 @@ function renderList(items: ListItem[], ordered: boolean, keyBase: string, boldCl
   );
 }
 
-function renderTable(rows: string[][], keyBase: string, boldClassName?: string): React.ReactNode {
+function renderTable(rows: string[][], keyBase: string): React.ReactNode {
   const [head, ...body] = rows;
   return (
     <div key={keyBase} className="my-2 overflow-x-auto">
@@ -132,7 +147,7 @@ function renderTable(rows: string[][], keyBase: string, boldClassName?: string):
           <tr>
             {head.map((c, i) => (
               <th key={i} className="border border-border px-2 py-1 text-left font-semibold bg-black/5 dark:bg-white/5">
-                {renderInline(c, `${keyBase}-h${i}`, boldClassName)}
+                {renderInline(c, `${keyBase}-h${i}`)}
               </th>
             ))}
           </tr>
@@ -142,7 +157,7 @@ function renderTable(rows: string[][], keyBase: string, boldClassName?: string):
             <tr key={i}>
               {row.map((c, j) => (
                 <td key={j} className="border border-border px-2 py-1 align-top">
-                  {renderInline(c, `${keyBase}-${i}-${j}`, boldClassName)}
+                  {renderInline(c, `${keyBase}-${i}-${j}`)}
                 </td>
               ))}
             </tr>
@@ -162,15 +177,11 @@ const TABLE_SEP_RE = /^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?$/;
 export function Markdown({
   text,
   renderBlockquote,
-  boldClassName,
 }: {
   text: string;
   /** Override how a blockquote's lines render (default: quoted paragraphs).
    * Used by EnrichmentText to attach a speak button to example sentences. */
   renderBlockquote?: (lines: string[], key: string) => React.ReactNode;
-  /** Extra class(es) applied to every **bold** span — lets a caller (e.g. EnrichmentText)
-   * highlight emphasized text instead of leaving it plain bold black/white. */
-  boldClassName?: string;
 }) {
   const lines = text.split("\n");
   const out: React.ReactNode[] = [];
@@ -204,7 +215,7 @@ export function Markdown({
       const sizes = ["text-[1.15em]", "text-[1.08em]", "text-[1.02em]", "text-[1em]"];
       out.push(
         <p key={key++} className={`font-bold mt-3 mb-1 ${sizes[level - 1]}`}>
-          {renderInline(h[2], `h${key}`, boldClassName)}
+          {renderInline(h[2], `h${key}`)}
         </p>
       );
       i++;
@@ -232,7 +243,7 @@ export function Markdown({
         ) : (
           <blockquote key={bqKey} className="border-l-2 border-border pl-3 my-2 text-muted-foreground italic">
             {quote.map((q, j) => (
-              <p key={j}>{renderInline(q, `q${bqKey}-${j}`, boldClassName)}</p>
+              <p key={j}>{renderInline(q, `q${bqKey}-${j}`)}</p>
             ))}
           </blockquote>
         )
@@ -248,7 +259,7 @@ export function Markdown({
         rows.push(splitTableRow(lines[i]));
         i++;
       }
-      out.push(renderTable(rows, `t${key++}`, boldClassName));
+      out.push(renderTable(rows, `t${key++}`));
       continue;
     }
 
@@ -263,7 +274,7 @@ export function Markdown({
         items.push({ indent: m[1].length, text: m[3] });
         i++;
       }
-      out.push(renderList(items, ordered, `l${key++}`, boldClassName));
+      out.push(renderList(items, ordered, `l${key++}`));
       continue;
     }
 
@@ -287,7 +298,7 @@ export function Markdown({
         {para.map((p, j) => (
           <React.Fragment key={j}>
             {j > 0 && <br />}
-            {renderInline(p, `p${key}-${j}`, boldClassName)}
+            {renderInline(p, `p${key}-${j}`)}
           </React.Fragment>
         ))}
       </p>

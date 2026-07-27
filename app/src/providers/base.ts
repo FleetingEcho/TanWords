@@ -84,6 +84,8 @@ export const DEFAULT_ENRICH_SYSTEM_PROMPT = `你是一位资深词汇讲解者�
 
 英文例句一律写成 markdown blockquote（\`> \` 开头），一条 blockquote 一句英文例句，可在同一 blockquote 内下一行附中文翻译。
 
+真正关键的地方用 \`==高亮==\` 标出（markdown 高亮语法，两个等号包裹）：比如核心释义里最能定性的那几个字、最值得记住的搭配、最容易踩的坑。只标最重要的，一段最多一两处，标太多等于没标。不要用 \`==\` 包裹整句话或整条例句。
+
 直接从讲解正文开始，不要有任何与词义无关的内容：不要开场白（如"当然可以""我们来深度拆解一下"之类的寒暄或过渡句），不要结尾互动语（如反问学习者最近的经历、邀请学习者造句、"轮到你了"之类的话术）。整段内容从头到尾都必须是词汇讲解本身。`;
 
 export function buildEnrichSystemPrompt(customPrompt?: string): string {
@@ -103,6 +105,8 @@ export function buildEnrichUserPrompt(word: string, targetLevel: string): string
 export const QUICK_LOOKUP_SYSTEM_PROMPT = `你是一位英语词汇助手，用中文为学习者快速讲解一个英文单词或短语。
 
 正文务必简短快速：先一到两句中文释义（多义词只挑最常用的一个），紧接着给 2 条例句，不展开讲搭配、词源等内容。英文例句一律写成 markdown blockquote（\`> \` 开头），一条 blockquote 一句英文例句，可在同一 blockquote 内下一行附中文翻译。
+
+释义里最关键的几个字用 \`==高亮==\` 标出（markdown 高亮语法，两个等号包裹），全文最多一处。
 
 直接从释义开始，不要任何开场白或结尾互动语（寒暄、"轮到你了"之类邀请学习者造句/分享经历的话术），全程只讲这个词。`;
 
