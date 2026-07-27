@@ -90,7 +90,7 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
     } catch {}
   };
   return (
-    <div className="relative group/code my-2 rounded-lg overflow-hidden border border-black/10 dark:border-white/10">
+    <div className="relative group/code my-3 rounded-lg overflow-hidden border border-black/10 dark:border-white/10">
       <div className="flex items-center justify-between px-3 py-1 bg-black/10 dark:bg-white/5 text-[10px] font-mono text-muted-foreground">
         <span>{lang || "code"}</span>
         <Button variant="link" onClick={copy} className="h-auto p-0 text-[10px] font-mono text-muted-foreground hover:text-foreground transition-colors">
@@ -121,12 +121,12 @@ function renderList(items: ListItem[], ordered: boolean, keyBase: string): React
     else roots.push({ text: it.text, children: [] });
   }
   return (
-    <Tag key={keyBase} className={`${cls} pl-5 my-1.5 space-y-1`}>
+    <Tag key={keyBase} className={`${cls} pl-5 my-2.5 space-y-1.5 leading-relaxed`}>
       {roots.map((r, i) => (
         <li key={i}>
           {renderInline(r.text, `${keyBase}-${i}`)}
           {r.children.length > 0 && (
-            <ul className="list-[circle] pl-4 mt-1 space-y-0.5">
+            <ul className="list-[circle] pl-4 mt-1.5 space-y-1">
               {r.children.map((c, j) => (
                 <li key={j}>{renderInline(c, `${keyBase}-${i}-${j}`)}</li>
               ))}
@@ -141,7 +141,7 @@ function renderList(items: ListItem[], ordered: boolean, keyBase: string): React
 function renderTable(rows: string[][], keyBase: string): React.ReactNode {
   const [head, ...body] = rows;
   return (
-    <div key={keyBase} className="my-2 overflow-x-auto">
+    <div key={keyBase} className="my-3 overflow-x-auto">
       <table className="w-full text-[0.92em] border-collapse">
         <thead>
           <tr>
@@ -214,7 +214,7 @@ export function Markdown({
       const level = h[1].length;
       const sizes = ["text-[1.15em]", "text-[1.08em]", "text-[1.02em]", "text-[1em]"];
       out.push(
-        <p key={key++} className={`font-bold mt-3 mb-1 ${sizes[level - 1]}`}>
+        <p key={key++} className={`font-bold mt-5 mb-2 first:mt-0 ${sizes[level - 1]}`}>
           {renderInline(h[2], `h${key}`)}
         </p>
       );
@@ -224,7 +224,7 @@ export function Markdown({
 
     // Horizontal rule
     if (/^(---+|\*\*\*+)$/.test(line.trim())) {
-      out.push(<hr key={key++} className="my-3 border-border" />);
+      out.push(<hr key={key++} className="my-4 border-border" />);
       i++;
       continue;
     }
@@ -241,7 +241,7 @@ export function Markdown({
         renderBlockquote ? (
           <React.Fragment key={bqKey}>{renderBlockquote(quote, bqKey)}</React.Fragment>
         ) : (
-          <blockquote key={bqKey} className="border-l-2 border-border pl-3 my-2 text-muted-foreground italic">
+          <blockquote key={bqKey} className="border-l-2 border-border pl-3.5 my-3 leading-relaxed text-muted-foreground italic">
             {quote.map((q, j) => (
               <p key={j}>{renderInline(q, `q${bqKey}-${j}`)}</p>
             ))}
@@ -294,7 +294,7 @@ export function Markdown({
       i++;
     }
     out.push(
-      <p key={key++} className="my-1.5 first:mt-0 last:mb-0">
+      <p key={key++} className="my-2.5 leading-relaxed first:mt-0 last:mb-0">
         {para.map((p, j) => (
           <React.Fragment key={j}>
             {j > 0 && <br />}

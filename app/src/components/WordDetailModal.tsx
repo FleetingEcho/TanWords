@@ -147,7 +147,7 @@ export function WordDetailModal() {
             </div>
           )}
           {parsed && !loading && !legacy && (
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div className="flex items-center gap-3">
                 <DialogTitle className="text-2xl font-bold">{word}</DialogTitle>
                 {(basicInfo.level || parsed.level) && <Badge variant="default" className="text-xs">{basicInfo.level || parsed.level}</Badge>}
