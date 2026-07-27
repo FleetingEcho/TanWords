@@ -43,11 +43,17 @@ async function collect(provider: AIProvider, system: string, user: string, signa
 const SYSTEM_PROMPT =
   "You are an expert English coach for Chinese learners. You produce natural, high-value example sentences people genuinely say — not stiff textbook prose. Vary register (formal/casual), sense, and grammatical role; calibrate to the learner's CEFR level with some stretch one level above. Chinese translations must be natural and idiomatic. Return ONLY a JSON array in the exact requested format — no markdown fences, no commentary.";
 
+/** Sentences per generation. "+ More" in the sentence modal calls this again
+ *  with the batch so far in `exclude`, so this is the step size, not a cap —
+ *  a smaller batch returns sooner and lets the learner ask for more rather
+ *  than facing a wall of candidates. */
+const SENTENCE_BATCH_SIZE = 5;
+
 export async function generateSentences(provider: AIProvider, query: string, targetLevels: string, exclude: string[] = [], signal?: AbortSignal, onPartial?: (items: GeneratedSentence[]) => void): Promise<GeneratedSentence[]> {
   const user = [
     `Word or topic: ${query}`,
     `Learner level: CEFR ${targetLevels || "B1/B2"}.`,
-    `Generate 15 natural English sentences using or about it, each built on a reusable sentence pattern worth learning. Cover different senses, collocations, registers and scenarios — no two sentences should share the same pattern.`,
+    `Generate ${SENTENCE_BATCH_SIZE} natural English sentences using or about it, each built on a reusable sentence pattern worth learning. Cover different senses, collocations, registers and scenarios — no two sentences should share the same pattern.`,
     exclude.length ? `Do NOT repeat or closely paraphrase any of these sentences: ${exclude.slice(0, 60).map((s) => `"${s}"`).join(", ")}.` : "",
     `Format — a JSON array of 5-element arrays: [["the English sentence","自然中文翻译","A2|B1|B2|C1|C2","reusable pattern skeleton, e.g. 'be shortlisted for + noun'","一行中文注释：句式的使用场景或语气"]].`,
   ].filter(Boolean).join("\n");

@@ -71,8 +71,12 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
   const [genTopic, setGenTopic] = useState("");
   const [candidates, setCandidates] = useState<GeneratedSentence[]>([]);
   const [genBusy, setGenBusy] = useState(false);
-  // sentence → pattern_id for auto-saved candidates of this session
+  const [addBusy, setAddBusy] = useState(false);
+  // sentence → pattern_id, for candidates saved during this session
   const [savedMap, setSavedMap] = useState<Map<string, number>>(new Map());
+  // Sentences ticked for saving. Nothing is written to the library until the
+  // user confirms — generating is a preview, not a commit.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const generate = async (more: boolean, queryOverride?: string) => {
     const query = (queryOverride ?? (more ? genTopic : genQuery)).trim();
@@ -82,28 +86,63 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
     setGenBusy(true);
     setGenTopic(query);
     const base = more ? candidates : [];
-    const baseMap = more ? savedMap : new Map<string, number>();
-    if (!more) { setCandidates([]); setSavedMap(new Map()); }
+    if (!more) { setCandidates([]); setSavedMap(new Map()); setSelected(new Set()); }
     try {
       const existing = new Set([...base.map((c) => c.sentence), ...existingSentences]);
-      const applyBatch = (batch: GeneratedSentence[]) =>
-        setCandidates([...base, ...batch.filter((c) => !existing.has(c.sentence))]);
+      // Fresh candidates arrive pre-ticked so the common "keep them all" case is
+      // still one click, but the write only happens when the user says so.
+      const tick = (batch: GeneratedSentence[]) =>
+        setSelected((current) => {
+          const next = new Set(current);
+          for (const c of batch) next.add(c.sentence);
+          return next;
+        });
+      const applyBatch = (batch: GeneratedSentence[]) => {
+        const fresh = batch.filter((c) => !existing.has(c.sentence));
+        setCandidates([...base, ...fresh]);
+        tick(fresh);
+      };
       const generated = (await generateSentences(provider, query, levels, [...existing], undefined, applyBatch))
         .filter((c) => !existing.has(c.sentence));
       if (!generated.length) throw new Error(t("vocab.patterns.genEmpty"));
       setCandidates([...base, ...generated]);
-      const entries = new Map(baseMap);
-      let count = 0;
-      for (const candidate of generated) {
-        const saved = await db.saveSentencePattern(candidate.sentence, candidate.zh, candidate.skeleton, candidate.note, candidate.level, "generated");
-        if (saved) { entries.set(candidate.sentence, saved.pattern_id); count += 1; }
-      }
-      setSavedMap(entries);
-      if (count) { toast.success(t("vocab.patterns.autoSaved", { count })); onAdded(); }
+      tick(generated);
     } catch (error: any) {
       setCandidates(base);
       toast.error(error?.message || t("vocab.patterns.genFailed"));
     } finally { setGenBusy(false); }
+  };
+
+  /** Candidates the user could still act on — already-saved ones are frozen. */
+  const selectable = candidates.filter((c) => !savedMap.has(c.sentence));
+  const selectedCount = selectable.filter((c) => selected.has(c.sentence)).length;
+  const allSelected = selectable.length > 0 && selectedCount === selectable.length;
+
+  const toggleOne = (sentence: string) =>
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(sentence)) next.delete(sentence);
+      else next.add(sentence);
+      return next;
+    });
+
+  const toggleAll = () =>
+    setSelected(allSelected ? new Set() : new Set(selectable.map((c) => c.sentence)));
+
+  const addSelected = async () => {
+    const toAdd = selectable.filter((c) => selected.has(c.sentence));
+    if (!toAdd.length || addBusy) return;
+    setAddBusy(true);
+    try {
+      const entries = new Map(savedMap);
+      let count = 0;
+      for (const candidate of toAdd) {
+        const saved = await db.saveSentencePattern(candidate.sentence, candidate.zh, candidate.skeleton, candidate.note, candidate.level, "generated");
+        if (saved) { entries.set(candidate.sentence, saved.pattern_id); count += 1; }
+      }
+      setSavedMap(entries);
+      if (count) { toast.success(t("vocab.patterns.savedMany", { count })); onAdded(); }
+    } finally { setAddBusy(false); }
   };
 
   useEffect(() => {
@@ -116,16 +155,7 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const saveOne = async (candidate: GeneratedSentence) => {
-    if (savedMap.has(candidate.sentence)) return;
-    const saved = await db.saveSentencePattern(candidate.sentence, candidate.zh, candidate.skeleton, candidate.note, candidate.level, "generated");
-    if (saved) {
-      setSavedMap((current) => new Map(current).set(candidate.sentence, saved.pattern_id));
-      toast.success(t("vocab.patterns.savedOne"));
-      onAdded();
-    }
-  };
-
+  /** Undo for a candidate already written to the library this session. */
   const removeCandidate = async (candidate: GeneratedSentence) => {
     const patternId = savedMap.get(candidate.sentence);
     if (patternId !== undefined) {
@@ -134,6 +164,7 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
     }
     setCandidates((current) => current.filter((c) => c.sentence !== candidate.sentence));
     setSavedMap((current) => { const next = new Map(current); next.delete(candidate.sentence); return next; });
+    setSelected((current) => { const next = new Set(current); next.delete(candidate.sentence); return next; });
     toast.success(t("vocab.patterns.deleted"));
     onAdded();
   };
@@ -145,6 +176,7 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
     setGenTopic("");
     setCandidates([]);
     setSavedMap(new Map());
+    setSelected(new Set());
   };
 
   return (
@@ -237,10 +269,15 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs text-muted-foreground">{t("vocab.patterns.candidates", { count: candidates.length, topic: genTopic })}</span>
                   <div className="flex items-center gap-2">
+                    {selectable.length > 0 && (
+                      <button disabled={genBusy} onClick={toggleAll} className="text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40">
+                        {allSelected ? t("vocab.patterns.unselectAll") : t("vocab.patterns.selectAll")}
+                      </button>
+                    )}
                     <button disabled={genBusy} onClick={() => void generate(true)} className="text-xs font-medium text-primary disabled:opacity-40">
                       {genBusy ? t("vocab.patterns.generating") : t("vocab.patterns.genMore")}
                     </button>
-                    <button disabled={genBusy} onClick={() => { setCandidates([]); setSavedMap(new Map()); }} className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-40">
+                    <button disabled={genBusy} onClick={() => { setCandidates([]); setSavedMap(new Map()); setSelected(new Set()); }} className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-40">
                       {t("vocab.patterns.genClear")}
                     </button>
                   </div>
@@ -248,8 +285,29 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
                 <div className="space-y-1.5">
                   {candidates.map((candidate) => {
                     const saved = savedMap.has(candidate.sentence);
+                    const isSelected = selected.has(candidate.sentence);
                     return (
-                      <div key={candidate.sentence} className="group flex items-start gap-3 rounded-xl border bg-card px-3 py-2">
+                      <div
+                        key={candidate.sentence}
+                        onClick={saved ? undefined : () => toggleOne(candidate.sentence)}
+                        className={`group flex items-start gap-3 rounded-xl border bg-card px-3 py-2 transition-colors ${
+                          saved
+                            ? "border-emerald-500/30"
+                            : `cursor-pointer ${isSelected ? "border-primary/50 bg-primary/5" : "hover:border-border/80"}`
+                        }`}
+                      >
+                        {saved ? (
+                          <span className="mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-[10px] font-bold text-emerald-500">✓</span>
+                        ) : (
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleOne(candidate.sentence)}
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label={candidate.sentence}
+                            className="mt-1 h-4 w-4 shrink-0 cursor-pointer accent-primary"
+                          />
+                        )}
                         <div className="min-w-0 flex-1">
                           <strong className="min-w-0 break-words font-serif text-[15px] block">{candidate.sentence}</strong>
                           <span className="mt-0.5 block text-sm text-muted-foreground">{candidate.zh}</span>
@@ -260,22 +318,18 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
                           )}
                         </div>
                         <LevelBadge level={candidate.level} />
-                        {saved && <span className="mt-1 shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-500">✓</span>}
-                        <SpeakButton text={candidate.sentence} className="mt-1.5 h-4 w-4 shrink-0" />
-                        {saved ? (
-                          <button
-                            onClick={() => void removeCandidate(candidate)}
-                            title={t("vocab.patterns.delete")}
-                            className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border bg-background text-xs text-muted-foreground transition hover:border-destructive hover:bg-destructive/10 hover:text-destructive"
-                          >×</button>
-                        ) : (
-                          <button
-                            disabled={genBusy}
-                            onClick={() => void saveOne(candidate)}
-                            title={t("vocab.patterns.add")}
-                            className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border bg-background text-xs text-muted-foreground transition hover:border-primary hover:text-primary disabled:opacity-40"
-                          >+</button>
-                        )}
+                        {/* Row click toggles selection, so anything interactive
+                          * inside it has to keep its click to itself. */}
+                        <span onClick={(e) => e.stopPropagation()} className="contents">
+                          <SpeakButton text={candidate.sentence} className="mt-1.5 h-4 w-4 shrink-0" />
+                          {saved && (
+                            <button
+                              onClick={() => void removeCandidate(candidate)}
+                              title={t("vocab.patterns.delete")}
+                              className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border bg-background text-xs text-muted-foreground transition hover:border-destructive hover:bg-destructive/10 hover:text-destructive"
+                            >×</button>
+                          )}
+                        </span>
                       </div>
                     );
                   })}
@@ -285,6 +339,23 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
           </>
         )}
       </div>
+
+      {/* Outside the scroll area: with a long candidate list the confirm action
+        * must not scroll out of reach. */}
+      {mode === "generate" && candidates.length > 0 && (
+        <div className="flex items-center justify-between gap-3 border-t border-border px-6 py-3">
+          <span className="text-xs text-muted-foreground">
+            {t("vocab.patterns.selectedCount", { count: selectedCount })}
+          </span>
+          <Button
+            onClick={addSelected}
+            disabled={genBusy || addBusy || selectedCount === 0}
+            className="h-9 px-5 rounded-lg text-sm font-semibold bg-primary text-white hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          >
+            {addBusy ? t("vocab.patterns.adding") : t("vocab.patterns.addSelected", { count: selectedCount })}
+          </Button>
+        </div>
+      )}
     </Dialog>
   );
 }
