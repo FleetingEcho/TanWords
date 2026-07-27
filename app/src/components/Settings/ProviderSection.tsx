@@ -305,6 +305,7 @@ export function ProviderSection() {
           fetchingModels={fetchingModels}
           onFetchModels={() => void fetchModels("openai", "https://api.openai.com/v1", openaiKey, (model) => updateProviderModel("openai", model), providerModels.openai || "")}
           onTest={() => testConnection("openai", "https://api.openai.com/v1", openaiKey, providerModels.openai)}
+          onClear={() => { handleOpenaiKeyChange(""); updateProviderModel("openai", ""); }}
           testStatus={testStatus}
           t={t}
         />
@@ -321,6 +322,7 @@ export function ProviderSection() {
           fetchingModels={fetchingModels}
           onFetchModels={() => void fetchModels("claude", "https://api.anthropic.com", claudeKey, (model) => updateProviderModel("claude", model), providerModels.claude || "")}
           onTest={() => testConnection("claude", "https://api.anthropic.com", claudeKey, providerModels.claude)}
+          onClear={() => { handleClaudeKeyChange(""); updateProviderModel("claude", ""); }}
           testStatus={testStatus}
           t={t}
         />
@@ -338,6 +340,7 @@ export function ProviderSection() {
           fetchingModels={fetchingModels}
           onFetchModels={() => void fetchModels(preset.id, preset.apiBase!, presetKeys[preset.id] || "", (model) => updateProviderModel(preset.id, model), providerModels[preset.id] || "")}
           onTest={() => testConnection(preset.id, preset.apiBase!, presetKeys[preset.id] || "", providerModels[preset.id] || preset.model)}
+          onClear={() => { handlePresetKeyChange(preset.id, ""); updateProviderModel(preset.id, ""); }}
           testStatus={testStatus}
           t={t}
         />

@@ -1,12 +1,59 @@
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { invoke } from "@tauri-apps/api/core";
-import { Check, Copy, Eye, EyeOff, RefreshCw, Server, ShieldCheck } from "lucide-react";
+import { Check, ChevronDown, Copy, Eye, EyeOff, RefreshCw, Server, ShieldCheck } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 
 type McpConfig = { enabled: boolean; port: number; token: string };
 type McpStatus = { running: boolean; endpoint: string | null; error: string | null };
+
+/** Grouped by the resource each tool acts on, mirroring src-tauri/src/mcp/tools.rs. */
+const MCP_TOOL_GROUPS: { key: string; tools: string[] }[] = [
+  { key: "vocabulary", tools: ["vocabulary_search", "vocabulary_get", "vocabulary_add", "vocabulary_add_batch", "vocabulary_update", "vocabulary_delete"] },
+  { key: "documents", tools: ["documents_search", "documents_get", "documents_create", "documents_update", "documents_append", "documents_delete"] },
+  { key: "patterns", tools: ["patterns_search", "patterns_add"] },
+  { key: "articles", tools: ["articles_add", "articles_list", "articles_get", "articles_comment"] },
+];
+
+function McpToolsDetail({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="rounded-lg border border-border/60">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <span>{t("settings.mcpTools")}</span>
+        <span className="flex items-center gap-1 shrink-0">
+          {expanded ? t("settings.mcpToolsCollapse") : t("settings.mcpToolsExpand")}
+          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />
+        </span>
+      </button>
+      {expanded && (
+        <div className="space-y-3 border-t border-border/60 px-3 py-3">
+          {MCP_TOOL_GROUPS.map((group) => (
+            <div key={group.key}>
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {t(`settings.mcpToolGroup.${group.key}`)}
+              </p>
+              <ul className="space-y-1">
+                {group.tools.map((tool) => (
+                  <li key={tool} className="flex flex-wrap items-baseline gap-x-2 text-xs">
+                    <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground">{tool}</code>
+                    <span className="text-muted-foreground">{t(`settings.mcpTool.${tool}`)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function McpSection() {
   const t = useT();
@@ -106,7 +153,9 @@ export function McpSection() {
 
           <div className="rounded-lg border border-border bg-muted/25 p-3"><div className="mb-2 flex items-center justify-between"><span className="text-xs font-medium">{t("settings.mcpClientConfig")}</span><Button variant="ghost" onClick={() => copy(clientConfig, "config")} className="h-7 gap-1.5 px-2 text-xs">{copied === "config" ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}{t("settings.mcpCopy")}</Button></div><pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed text-muted-foreground">{clientConfig}</pre></div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-muted-foreground">{t("settings.mcpTools")}</p><Button onClick={() => void apply()} disabled={loading || saving || !config.enabled} className="h-9 rounded-lg px-4 text-xs font-semibold">{saving ? t("settings.mcpApplying") : t("settings.mcpApply")}</Button></div>
+          <McpToolsDetail t={t} />
+
+          <div className="flex flex-wrap items-center justify-end gap-3"><Button onClick={() => void apply()} disabled={loading || saving || !config.enabled} className="h-9 rounded-lg px-4 text-xs font-semibold">{saving ? t("settings.mcpApplying") : t("settings.mcpApply")}</Button></div>
           {status.error && <p className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive">{status.error}</p>}
         </div>
       </div>

@@ -1,6 +1,7 @@
-import React from "react";
-import { Loader2, ListRestart, PlugZap } from "lucide-react";
+import React, { useState } from "react";
+import { Loader2, ListRestart, PlugZap, Trash2 } from "lucide-react";
 import { ProviderIconButton, TestStatusBadge } from "./ProviderFormControls";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 
 interface ProviderKeyModelPanelProps {
   apiKeyValue: string;
@@ -11,6 +12,7 @@ interface ProviderKeyModelPanelProps {
   fetchingModels: boolean;
   onFetchModels: () => void;
   onTest: () => void;
+  onClear: () => void;
   testStatus: { ok: boolean | null; text: string } | null;
   t: (key: string) => string;
 }
@@ -27,9 +29,12 @@ export function ProviderKeyModelPanel({
   fetchingModels,
   onFetchModels,
   onTest,
+  onClear,
   testStatus,
   t,
 }: ProviderKeyModelPanelProps) {
+  const [confirmClear, setConfirmClear] = useState(false);
+
   return (
     <div className="space-y-3">
       <div>
@@ -45,8 +50,20 @@ export function ProviderKeyModelPanel({
           </ProviderIconButton>
         </div>
       </div>
-      <ProviderIconButton label={t("settings.testConnection")} onClick={onTest}><PlugZap className="h-4 w-4" /></ProviderIconButton>
+      <div className="flex items-center gap-1">
+        <ProviderIconButton label={t("settings.testConnection")} onClick={onTest}><PlugZap className="h-4 w-4" /></ProviderIconButton>
+        <ProviderIconButton label={t("settings.clearConfig")} danger onClick={() => setConfirmClear(true)}><Trash2 className="h-4 w-4" /></ProviderIconButton>
+      </div>
       {testStatus && <TestStatusBadge status={testStatus} />}
+
+      <ConfirmModal
+        open={confirmClear}
+        title={t("settings.clearConfigTitle")}
+        message={t("settings.clearConfigMessage")}
+        confirmLabel={t("settings.clearConfig")}
+        onConfirm={() => { onClear(); setConfirmClear(false); }}
+        onCancel={() => setConfirmClear(false)}
+      />
     </div>
   );
 }
