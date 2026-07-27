@@ -15,6 +15,13 @@ export const DEFAULT_TOPBAR_ITEMS: TopBarItemId[] = [
   "search", "context", "scratch", "mcp", "ai", "language", "theme", "updates", "github",
 ];
 
+/** Amber, matching the emphasis colour word notes used before highlights had
+ *  their own `==` syntax. Kept in sync with the fallback in index.css. */
+export const DEFAULT_HIGHLIGHT_COLOR = "#d97706";
+
+/** Mid-tone hues that stay legible as a translucent wash in both themes. */
+export const HIGHLIGHT_PRESETS = ["#d97706", "#eab308", "#22c55e", "#0ea5e9", "#8b5cf6", "#ec4899"] as const;
+
 interface SettingsState {
   theme: Theme;
   defaultAiProvider: string;
@@ -55,6 +62,10 @@ interface SettingsState {
   appBackgroundImage: string;
   /** Blur radius in px applied to appBackgroundImage. */
   appBackgroundBlur: number;
+  /** Hex colour (`#rrggbb`) for `==highlighted==` spans in AI-written markdown.
+   *  Applied as a CSS custom property, so nothing that renders a highlight has
+   *  to know this setting exists. */
+  highlightColor: string;
   isLoaded: boolean;
 
   setTheme: (theme: Theme) => void;
@@ -79,6 +90,7 @@ interface SettingsState {
   setNickname: (name: string) => void;
   setAppBackgroundImage: (dataUrl: string) => void;
   setAppBackgroundBlur: (px: number) => void;
+  setHighlightColor: (hex: string) => void;
   loadFromDB: () => Promise<void>;
 }
 
@@ -191,6 +203,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   nickname: "",
   appBackgroundImage: "",
   appBackgroundBlur: 20,
+  highlightColor: DEFAULT_HIGHLIGHT_COLOR,
   isLoaded: false,
 
   setTheme: (theme) => {
@@ -283,6 +296,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     saveSetting("app_background_blur", JSON.stringify(px));
   },
 
+  setHighlightColor: (hex) => {
+    set({ highlightColor: hex });
+    applyHighlightColor(hex);
+    saveSetting("highlight_color", JSON.stringify(hex));
+  },
+
   setTargetLevels: (levels) => {
     if (levels.length === 0) return; // always keep at least one level
     set({ targetLevels: levels });
@@ -344,6 +363,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         "nickname",
         "app_background_image",
         "app_background_blur",
+        "highlight_color",
       ];
 
       const values: Record<string, string> = {};
@@ -412,10 +432,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         nickname: values.nickname || "",
         appBackgroundImage: values.app_background_image || "",
         appBackgroundBlur: values.app_background_blur !== undefined ? Number(values.app_background_blur) : 20,
+        highlightColor: values.highlight_color || DEFAULT_HIGHLIGHT_COLOR,
         isLoaded: true,
       });
 
       applyTheme(get().theme);
+      applyHighlightColor(get().highlightColor);
     } catch (e) {
       console.warn("Settings not loaded from DB (may be web mode):", e);
       applyTheme(get().theme);
@@ -432,6 +454,19 @@ async function saveSetting(key: string, value: string) {
     // Web mode fallback
     localStorage.setItem(`tanwords_${key}`, value);
   }
+}
+
+/** Pushes the chosen colour into the two custom properties <mark> reads (see
+ *  index.css). The background is the same colour at 20% alpha via an 8-digit
+ *  hex rather than color-mix()/hsl-slash, so it works on every WebView version
+ *  Tauri ships against. A malformed stored value falls back to the default
+ *  instead of writing an invalid property that would silently disable
+ *  highlights. */
+function applyHighlightColor(hex: string) {
+  const safe = /^#[0-9a-f]{6}$/i.test(hex) ? hex : DEFAULT_HIGHLIGHT_COLOR;
+  const root = document.documentElement;
+  root.style.setProperty("--highlight", safe);
+  root.style.setProperty("--highlight-bg", `${safe}33`);
 }
 
 function applyTheme(theme: Theme) {
