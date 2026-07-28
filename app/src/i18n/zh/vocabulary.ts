@@ -9,6 +9,8 @@ export const vocabulary: Dict = {
     "vocab.analyzing": "AI 分析中，请稍候...",
     "vocab.retry": "重试",
     "vocab.myNotes": "我的笔记",
+    "vocab.notesEmptyHint": "还没有笔记——点击写点什么",
+    "vocab.outlineTop": "开头",
     "vocab.notesPlaceholder": "写下你对这个词的理解、联想、例句…",
     "vocab.save": "保存",
     "vocab.saving": "保存中…",
