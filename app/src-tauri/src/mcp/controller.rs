@@ -19,7 +19,7 @@ use tokio_util::sync::CancellationToken;
 use super::config::{load_config, save_config, McpConfig, McpStatus};
 use tauri::Emitter;
 
-use super::tools::TanWordsMcp;
+use super::tools::{ConnProvider, TanWordsMcp};
 
 #[derive(Default)]
 struct RuntimeState {
@@ -57,10 +57,13 @@ impl McpController {
     }
 
     /// Generic over the Tauri runtime so tests can drive it with the mock one.
+    /// `conn` is resolved per request rather than captured once — see
+    /// `ConnProvider` — so switching databases doesn't strand the MCP server
+    /// on the old one.
     pub async fn restart<R: tauri::Runtime>(
         &self,
         config: McpConfig,
-        db_path: String,
+        conn: ConnProvider,
         app: tauri::AppHandle<R>,
     ) -> Result<McpStatus, String> {
         self.stop().await;
@@ -101,7 +104,7 @@ impl McpController {
                 let _ = app.emit(event, ());
             });
             let service = StreamableHttpService::new(
-                move || Ok(TanWordsMcp::new(db_path.clone(), notifier.clone())),
+                move || Ok(TanWordsMcp::new(conn.clone(), notifier.clone())),
                 LocalSessionManager::default().into(),
                 Default::default(),
             );
@@ -150,8 +153,8 @@ pub async fn mcp_get_config(
     state: tauri::State<'_, crate::AppState>,
     controller: tauri::State<'_, McpController>,
 ) -> Result<Value, String> {
-    let conn = crate::db::lock_db(&state)?;
-    let config = load_config(&conn);
+    let conn = crate::db::conn(&state)?;
+    let config = load_config(&conn).await;
     Ok(json!({ "config": config, "status": controller.status() }))
 }
 
@@ -162,15 +165,24 @@ pub async fn mcp_apply_config(
     state: tauri::State<'_, crate::AppState>,
     controller: tauri::State<'_, McpController>,
 ) -> Result<McpStatus, String> {
-    let db_path = state
-        .db_path
-        .lock()
-        .map_err(|error| error.to_string())?
-        .clone();
-    let status = controller.restart(config.clone(), db_path, app).await?;
-    {
-        let conn = crate::db::lock_db(&state)?;
-        save_config(&conn, &config)?;
-    }
+    let provider = state_conn_provider(app.clone());
+    let status = controller.restart(config.clone(), provider, app).await?;
+    let conn = crate::db::conn(&state)?;
+    save_config(&conn, &config).await?;
     Ok(status)
+}
+
+/// A `ConnProvider` backed by the app's managed `AppState`, so every MCP
+/// request reads whichever database is active at that moment.
+pub fn state_conn_provider<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> ConnProvider {
+    use tauri::Manager;
+    Arc::new(move || {
+        let state = app
+            .try_state::<crate::AppState>()
+            .ok_or_else(|| "database is not ready".to_string())?;
+        // Bound to a local so the `State` guard outlives the lock+clone rather
+        // than being dropped mid-expression.
+        let conn = state.db.lock().map_err(|e| e.to_string())?.conn();
+        Ok(conn)
+    })
 }

@@ -1,8 +1,7 @@
 //! `#[tauri::command]` entry points for feed subscription management and the
 //! `rss_entries` cache (DB reads/writes).
 
-use std::time::Duration;
-
+use libsql::params;
 use tauri::State;
 
 use crate::db;
@@ -12,38 +11,34 @@ use super::parse::fetch_feed_meta;
 use super::types::{RssEntryRow, RssFeed};
 
 #[tauri::command]
-pub fn db_add_rss_feed(
+pub async fn db_add_rss_feed(
     url: String,
     title: String,
     site_link: String,
     description: String,
     conn: State<'_, AppState>,
 ) -> Result<i64, String> {
-    let db = db::lock_db(&conn)?;
-    db.execute(
-        "INSERT OR IGNORE INTO rss_feeds (url, title, site_link, description) VALUES (?1, ?2, ?3, ?4)",
-        rusqlite::params![url, title, site_link, description],
-    )
-    .map_err(|e| e.to_string())?;
-    let inserted = db.changes() > 0;
+    let db = db::conn(&conn)?;
+    let inserted = db
+        .execute(
+            "INSERT OR IGNORE INTO rss_feeds (url, title, site_link, description) VALUES (?1, ?2, ?3, ?4)",
+            params![url.clone(), title.clone(), site_link.clone(), description.clone()],
+        )
+        .await
+        .map_err(|e| e.to_string())?
+        > 0;
     db.execute(
         "UPDATE rss_feeds SET title=?2, site_link=?3, description=?4 WHERE url=?1",
-        rusqlite::params![url, title, site_link, description],
+        params![url.clone(), title, site_link, description],
     )
+    .await
     .map_err(|e| e.to_string())?;
-    let id: i64 = db
-        .query_row("SELECT id FROM rss_feeds WHERE url=?1", [&url], |r| {
-            r.get(0)
-        })
-        .map_err(|e| e.to_string())?;
+    let id: i64 = db::fetch_one(&db, "SELECT id FROM rss_feeds WHERE url=?1", [url], |r| {
+        r.get(0)
+    })
+    .await?;
     if inserted {
-        let pinned: i64 = db
-            .query_row(
-                "SELECT COUNT(*) FROM rss_feeds WHERE is_pinned=1",
-                [],
-                |r| r.get(0),
-            )
-            .map_err(|e| e.to_string())?;
+        let pinned = db::scalar_i64(&db, "SELECT COUNT(*) FROM rss_feeds WHERE is_pinned=1", ()).await?;
         if pinned < 5 {
             db.execute(
                 "UPDATE rss_feeds SET is_pinned=1,
@@ -51,6 +46,7 @@ pub fn db_add_rss_feed(
                   WHERE id=?1",
                 [id],
             )
+            .await
             .map_err(|e| e.to_string())?;
         }
     }
@@ -58,21 +54,19 @@ pub fn db_add_rss_feed(
 }
 
 #[tauri::command]
-pub fn db_get_rss_feeds(conn: State<'_, AppState>) -> Result<Vec<RssFeed>, String> {
-    let db = db::lock_db(&conn)?;
-    let mut stmt = db
-        .prepare(
-            "SELECT id, title, url, site_link, description, last_fetched_at, created_at,
-                    EXISTS(SELECT 1 FROM rss_entries e WHERE e.feed_id = rss_feeds.id AND e.audio_url IS NOT NULL),
-                    COALESCE(category_override, CASE WHEN EXISTS(
-                        SELECT 1 FROM rss_entries e WHERE e.feed_id = rss_feeds.id AND e.audio_url IS NOT NULL
-                    ) THEN 'podcast' ELSE 'article' END),
-                    category_override, is_pinned, pin_order
-             FROM rss_feeds ORDER BY is_pinned DESC, pin_order ASC, created_at DESC",
-        )
-        .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([], |row| {
+pub async fn db_get_rss_feeds(conn: State<'_, AppState>) -> Result<Vec<RssFeed>, String> {
+    let db = db::conn(&conn)?;
+    db::fetch_all(
+        &db,
+        "SELECT id, title, url, site_link, description, last_fetched_at, created_at,
+                EXISTS(SELECT 1 FROM rss_entries e WHERE e.feed_id = rss_feeds.id AND e.audio_url IS NOT NULL),
+                COALESCE(category_override, CASE WHEN EXISTS(
+                    SELECT 1 FROM rss_entries e WHERE e.feed_id = rss_feeds.id AND e.audio_url IS NOT NULL
+                ) THEN 'podcast' ELSE 'article' END),
+                category_override, is_pinned, pin_order
+         FROM rss_feeds ORDER BY is_pinned DESC, pin_order ASC, created_at DESC",
+        (),
+        |row| {
             Ok(RssFeed {
                 id: row.get(0)?,
                 title: row.get(1)?,
@@ -87,14 +81,13 @@ pub fn db_get_rss_feeds(conn: State<'_, AppState>) -> Result<Vec<RssFeed>, Strin
                 is_pinned: row.get(10)?,
                 pin_order: row.get(11)?,
             })
-        })
-        .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())
+        },
+    )
+    .await
 }
 
 #[tauri::command]
-pub fn db_update_rss_feed_preferences(
+pub async fn db_update_rss_feed_preferences(
     id: i64,
     category: Option<String>,
     is_pinned: bool,
@@ -106,15 +99,14 @@ pub fn db_update_rss_feed_preferences(
     ) {
         return Err("invalid feed category".into());
     }
-    let db = db::lock_db(&conn)?;
+    let db = db::conn(&conn)?;
     if is_pinned {
-        let pinned: i64 = db
-            .query_row(
-                "SELECT COUNT(*) FROM rss_feeds WHERE is_pinned = 1 AND id != ?1",
-                [id],
-                |r| r.get(0),
-            )
-            .map_err(|e| e.to_string())?;
+        let pinned = db::scalar_i64(
+            &db,
+            "SELECT COUNT(*) FROM rss_feeds WHERE is_pinned = 1 AND id != ?1",
+            [id],
+        )
+        .await?;
         if pinned >= 5 {
             return Err("at most five feeds can be pinned".into());
         }
@@ -129,31 +121,34 @@ pub fn db_update_rss_feed_preferences(
                     ELSE NULL
                 END
           WHERE id = ?3",
-        rusqlite::params![category, is_pinned, id],
+        params![category, is_pinned, id],
     )
+    .await
     .map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
-pub fn db_update_rss_feed_title(
+pub async fn db_update_rss_feed_title(
     id: i64,
     title: String,
     conn: State<'_, AppState>,
 ) -> Result<(), String> {
-    let db = db::lock_db(&conn)?;
+    let db = db::conn(&conn)?;
     db.execute(
         "UPDATE rss_feeds SET title = ?1 WHERE id = ?2",
-        rusqlite::params![title, id],
+        params![title, id],
     )
+    .await
     .map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
-pub fn db_delete_rss_feed(id: i64, conn: State<'_, AppState>) -> Result<(), String> {
-    let db = db::lock_db(&conn)?;
-    db.execute("DELETE FROM rss_feeds WHERE id = ?1", rusqlite::params![id])
+pub async fn db_delete_rss_feed(id: i64, conn: State<'_, AppState>) -> Result<(), String> {
+    let db = db::conn(&conn)?;
+    db.execute("DELETE FROM rss_feeds WHERE id = ?1", params![id])
+        .await
         .map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -163,34 +158,30 @@ pub fn db_delete_rss_feed(id: i64, conn: State<'_, AppState>) -> Result<(), Stri
 /// metadata that was empty at subscribe time. Returns the number of newly-inserted entries.
 #[tauri::command]
 pub async fn db_sync_rss_feed(feed_id: i64, conn: State<'_, AppState>) -> Result<i64, String> {
-    let url = {
-        let db = db::lock_db(&conn)?;
-        db.query_row(
-            "SELECT url FROM rss_feeds WHERE id = ?1",
-            rusqlite::params![feed_id],
-            |row| row.get::<_, String>(0),
-        )
-        .map_err(|e| e.to_string())?
-    };
+    let db = db::conn(&conn)?;
+    let url: String = db::fetch_one(
+        &db,
+        "SELECT url FROM rss_feeds WHERE id = ?1",
+        params![feed_id],
+        |row| row.get::<String>(0),
+    )
+    .await?;
 
     let meta = fetch_feed_meta(&url).await?;
-    // RSS may write dozens of entries. Use a separate WAL connection and one
-    // transaction so a background refresh never holds the app-wide DB mutex
-    // or performs one autocommit per article.
-    let db_path = conn.db_path.lock().map_err(|e| e.to_string())?.clone();
-    tauri::async_runtime::spawn_blocking(move || -> Result<i64, String> {
-    let mut rss_db = rusqlite::Connection::open(db_path).map_err(|e| e.to_string())?;
-    rss_db.busy_timeout(Duration::from_secs(5)).map_err(|e| e.to_string())?;
-    rss_db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;").map_err(|e| e.to_string())?;
-    let tx = rss_db.transaction().map_err(|e| e.to_string())?;
 
-    let before: i64 = tx
-        .query_row(
-            "SELECT COUNT(*) FROM rss_entries WHERE feed_id = ?1",
-            rusqlite::params![feed_id],
-            |row| row.get(0),
-        )
-        .unwrap_or(0);
+    // Dozens of entries go in per refresh, so they share one transaction rather
+    // than paying an autocommit each. This used to need a second connection on a
+    // blocking thread to avoid holding the app-wide DB mutex for the duration;
+    // with an async driver the connection handle is shared and nothing blocks.
+    let tx = db.transaction().await.map_err(|e| e.to_string())?;
+
+    let before = db::scalar_i64(
+        &tx,
+        "SELECT COUNT(*) FROM rss_entries WHERE feed_id = ?1",
+        params![feed_id],
+    )
+    .await
+    .unwrap_or(0);
 
     for e in &meta.entries {
         if e.url.is_empty() {
@@ -205,29 +196,30 @@ pub async fn db_sync_rss_feed(feed_id: i64, conn: State<'_, AppState>) -> Result
                audio_url=excluded.audio_url, audio_duration=excluded.audio_duration,
                hn_item_id=excluded.hn_item_id,
                published=excluded.published, fetched_at=excluded.fetched_at",
-            rusqlite::params![
+            params![
                 feed_id,
-                e.title,
-                e.url,
-                e.author,
-                e.summary,
-                e.image_url,
-                e.audio_url,
+                e.title.clone(),
+                e.url.clone(),
+                e.author.clone(),
+                e.summary.clone(),
+                e.image_url.clone(),
+                e.audio_url.clone(),
                 e.audio_duration,
                 e.hn_item_id,
-                e.published
+                e.published.clone()
             ],
         )
+        .await
         .map_err(|e| e.to_string())?;
     }
 
-    let after: i64 = tx
-        .query_row(
-            "SELECT COUNT(*) FROM rss_entries WHERE feed_id = ?1",
-            rusqlite::params![feed_id],
-            |row| row.get(0),
-        )
-        .unwrap_or(0);
+    let after = db::scalar_i64(
+        &tx,
+        "SELECT COUNT(*) FROM rss_entries WHERE feed_id = ?1",
+        params![feed_id],
+    )
+    .await
+    .unwrap_or(0);
 
     tx.execute(
         "UPDATE rss_feeds SET
@@ -236,16 +228,16 @@ pub async fn db_sync_rss_feed(feed_id: i64, conn: State<'_, AppState>) -> Result
            site_link = CASE WHEN site_link = '' THEN ?3 ELSE site_link END,
            description = CASE WHEN description = '' THEN ?4 ELSE description END
          WHERE id = ?1",
-        rusqlite::params![feed_id, meta.title, meta.site_link, meta.description],
+        params![feed_id, meta.title, meta.site_link, meta.description],
     )
+    .await
     .map_err(|e| e.to_string())?;
 
-    tx.commit().map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
     Ok(after - before)
-    }).await.map_err(|e| e.to_string())?
 }
 
-fn map_rss_entry_row(row: &rusqlite::Row) -> rusqlite::Result<RssEntryRow> {
+fn map_rss_entry_row(row: &libsql::Row) -> libsql::Result<RssEntryRow> {
     Ok(RssEntryRow {
         id: row.get(0)?,
         feed_id: row.get(1)?,
@@ -268,64 +260,52 @@ const RSS_ENTRY_COLUMNS: &str =
 
 /// Read cached entries from the DB; `feed_id = None` returns entries across all feeds.
 #[tauri::command]
-pub fn db_get_rss_entries(
+pub async fn db_get_rss_entries(
     feed_id: Option<i64>,
     limit: Option<i64>,
     offset: Option<i64>,
     conn: State<'_, AppState>,
 ) -> Result<Vec<RssEntryRow>, String> {
-    let db = db::lock_db(&conn)?;
+    let db = db::conn(&conn)?;
     let lim = limit.unwrap_or(200);
     let off = offset.unwrap_or(0);
 
-    let rows: Vec<RssEntryRow> = if let Some(fid) = feed_id {
-        let sql = format!(
-            "SELECT {RSS_ENTRY_COLUMNS} FROM rss_entries WHERE feed_id = ?1 ORDER BY published DESC LIMIT ?2 OFFSET ?3"
-        );
-        let mut stmt = db.prepare(&sql).map_err(|e| e.to_string())?;
-        let mapped = stmt
-            .query_map(rusqlite::params![fid, lim, off], map_rss_entry_row)
-            .map_err(|e| e.to_string())?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| e.to_string())?;
-        mapped
-    } else {
-        let sql = format!(
-            "SELECT {RSS_ENTRY_COLUMNS} FROM rss_entries ORDER BY published DESC LIMIT ?1 OFFSET ?2"
-        );
-        let mut stmt = db.prepare(&sql).map_err(|e| e.to_string())?;
-        let mapped = stmt
-            .query_map(rusqlite::params![lim, off], map_rss_entry_row)
-            .map_err(|e| e.to_string())?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| e.to_string())?;
-        mapped
-    };
-
-    Ok(rows)
+    match feed_id {
+        Some(fid) => {
+            let sql = format!(
+                "SELECT {RSS_ENTRY_COLUMNS} FROM rss_entries WHERE feed_id = ?1 ORDER BY published DESC LIMIT ?2 OFFSET ?3"
+            );
+            db::fetch_all(&db, &sql, params![fid, lim, off], map_rss_entry_row).await
+        }
+        None => {
+            let sql = format!(
+                "SELECT {RSS_ENTRY_COLUMNS} FROM rss_entries ORDER BY published DESC LIMIT ?1 OFFSET ?2"
+            );
+            db::fetch_all(&db, &sql, params![lim, off], map_rss_entry_row).await
+        }
+    }
 }
 
 #[tauri::command]
-pub fn db_mark_rss_entry_read(id: i64, conn: State<'_, AppState>) -> Result<(), String> {
-    let db = db::lock_db(&conn)?;
-    db.execute(
-        "UPDATE rss_entries SET is_read = 1 WHERE id = ?1",
-        rusqlite::params![id],
-    )
-    .map_err(|e| e.to_string())?;
+pub async fn db_mark_rss_entry_read(id: i64, conn: State<'_, AppState>) -> Result<(), String> {
+    let db = db::conn(&conn)?;
+    db.execute("UPDATE rss_entries SET is_read = 1 WHERE id = ?1", params![id])
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
 /// Unread entry count per feed, as `[feed_id, count]` pairs (feeds with zero unread are omitted).
 #[tauri::command]
-pub fn db_get_rss_unread_counts(conn: State<'_, AppState>) -> Result<Vec<(i64, i64)>, String> {
-    let db = db::lock_db(&conn)?;
-    let mut stmt = db
-        .prepare("SELECT feed_id, COUNT(*) FROM rss_entries WHERE is_read = 0 GROUP BY feed_id")
-        .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))
-        .map_err(|e| e.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())
+pub async fn db_get_rss_unread_counts(
+    conn: State<'_, AppState>,
+) -> Result<Vec<(i64, i64)>, String> {
+    let db = db::conn(&conn)?;
+    db::fetch_all(
+        &db,
+        "SELECT feed_id, COUNT(*) FROM rss_entries WHERE is_read = 0 GROUP BY feed_id",
+        (),
+        |row| Ok((row.get::<i64>(0)?, row.get::<i64>(1)?)),
+    )
+    .await
 }

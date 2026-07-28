@@ -100,7 +100,7 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
   // Enrichment
   const [enriching, setEnriching] = useState(false);
   const [enrichError, setEnrichError] = useState("");
-  const enrichControllerRef = useRef<AbortController | null>(null);
+  const lookupControllerRef = useRef<AbortController | null>(null);
   const t = useT();
 
   // Reactive fallback for `enriching`: a single-word re-analyze started before this
@@ -111,7 +111,18 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
   );
   const effectiveEnriching = enriching || selectedWordJobRunning;
 
-  // Deliberately no unmount cleanup that aborts enrichControllerRef/bulkAbortRef — analysis
+  // Same idea for the streamed text itself: while a job for the selected word is running,
+  // its partial output lives in the store, so selecting another word and coming back shows
+  // everything that arrived in between instead of an empty panel.
+  const selectedWordJobText = useVocabEnrichStore(
+    (s) => (selected ? s.singleTexts[selected.word.word] ?? "" : "")
+  );
+  const streamingEnriched = useMemo(
+    () => (selectedWordJobRunning && selectedWordJobText ? parseEnrichmentStream(selectedWordJobText) : null),
+    [selectedWordJobRunning, selectedWordJobText]
+  );
+
+  // Deliberately no unmount cleanup that aborts the running enrich/bulk controllers — analysis
   // (single-word or bulk) must keep running in the background even after the user navigates
   // to another page, same as the reader's "Learn" flow. The async functions below aren't
   // tied to this component's lifecycle: once started, they run to completion and persist to
@@ -286,7 +297,10 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
   // ── Select word (from the vocabulary list) ───────────────────────────────
 
   const selectWord = async (w: WordListItem) => {
-    enrichControllerRef.current?.abort();
+    // Only the throwaway lookup stream is cancelled here. A saved word's enrichment keeps
+    // running in the background (vocabEnrichStore tracks it, CommandBar shows it) so that
+    // switching words mid-analysis doesn't discard work — coming back re-attaches to it.
+    lookupControllerRef.current?.abort();
     setEnriching(false);
     setEnrichError("");
     setLookup(null);
@@ -321,9 +335,7 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
       setEnrichError(t("vocab.noApiKey"));
       return;
     }
-    enrichControllerRef.current?.abort();
     const controller = useVocabEnrichStore.getState().startSingle(word);
-    enrichControllerRef.current = controller;
 
     setEnriching(true);
     setEnrichError("");
@@ -355,6 +367,7 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
         if (controller.signal.aborted) break;
         raw += chunk;
         const parsed = parseEnrichmentStream(raw);
+        useVocabEnrichStore.getState().setSingleText(word, raw);
         setSelected((prev) => prev?.word.word === word ? { ...prev, enriched: parsed } : prev);
         if (!appliedStreamMeta && (parsed.zhShort || parsed.level)) {
           appliedStreamMeta = true;
@@ -367,7 +380,10 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
             : prev);
         }
       }
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted) {
+        useVocabEnrichStore.getState().clearSingle(word, controller);
+        return;
+      }
 
       const final = parseEnrichmentStream(raw);
       const basicInfo = await basicInfoPromise;
@@ -392,22 +408,35 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
         setWords((prev) => prev.map((w) => w.word === word
           ? { ...w, zh: backfillZh(w.zh), level: level || w.level, word_type: wordType || w.word_type }
           : w));
-        setSelected((prev) => prev && prev.word.word === word
-          ? { ...prev, word: { ...prev.word, zh: backfillZh(prev.word.zh), level: level || prev.word.level, word_type: wordType || prev.word.word_type } }
-          : prev);
       }
+      // Also re-apply the finished text: the user may have re-selected this word after the
+      // last chunk landed, in which case `selected` was rebuilt from a DB row that didn't
+      // have the enrichment yet, and nothing else would fill it in.
+      setSelected((prev) => prev && prev.word.word === word
+        ? {
+            ...prev,
+            enriched: final,
+            legacy: false,
+            word: { ...prev.word, zh: backfillZh(prev.word.zh), level: level || prev.word.level, word_type: wordType || prev.word.word_type },
+          }
+        : prev);
 
       toast.success(`「${word}」AI 分析完成`);
       window.dispatchEvent(new CustomEvent("vocab-updated"));
-      useVocabEnrichStore.getState().finishSingle(word, "done");
+      useVocabEnrichStore.getState().finishSingle(word, "done", controller);
     } catch (e: any) {
-      if (e?.name === "AbortError") return;
+      if (e?.name === "AbortError") {
+        // Cancelled (by the user, or by a newer re-analyze of this word taking over) —
+        // drop the job so it can't leave the panel and the header stuck on "Analyzing".
+        useVocabEnrichStore.getState().clearSingle(word, controller);
+        return;
+      }
       const errMsg = e.message?.includes("Load failed") || e.message?.includes("fetch")
         ? t("vocab.networkError")
         : (e.message || t("vocab.aiError"));
-      setEnrichError(errMsg);
+      if (selectedRef.current?.word.word === word) setEnrichError(errMsg);
       toast.error(errMsg);
-      useVocabEnrichStore.getState().finishSingle(word, "error");
+      useVocabEnrichStore.getState().finishSingle(word, "error", controller);
     } finally {
       if (!controller.signal.aborted) setEnriching(false);
     }
@@ -425,9 +454,9 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
       return;
     }
 
-    enrichControllerRef.current?.abort();
+    lookupControllerRef.current?.abort();
     const controller = new AbortController();
-    enrichControllerRef.current = controller;
+    lookupControllerRef.current = controller;
 
     setSelected(null);
     setLookup({ word, enriched: null, basicInfo: {}, added: false, wordId: null });
@@ -510,7 +539,7 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
 
   // ── Render ──────────────────────────────────────────────────────────────
 
-  const activeEnriched = lookup ? lookup.enriched : selected?.enriched ?? null;
+  const activeEnriched = lookup ? lookup.enriched : selected?.enriched ?? streamingEnriched;
   const chatWord = lookup ? lookup.word : selected?.word.word ?? "";
   const chatWordId = lookup ? lookup.wordId : selected?.word.id ?? null;
 
@@ -590,7 +619,7 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
         enriched={activeEnriched}
         enriching={lookup ? enriching : effectiveEnriching}
         enrichError={enrichError}
-        legacy={lookup ? false : selected?.legacy ?? false}
+        legacy={lookup || selectedWordJobRunning ? false : selected?.legacy ?? false}
         notes={notes}
         lookupMode={!!lookup}
         lookupAdded={lookup?.added ?? false}

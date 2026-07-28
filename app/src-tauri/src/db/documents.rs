@@ -1,4 +1,4 @@
-use rusqlite::params;
+use libsql::params;
 use serde::Serialize;
 use tauri::State;
 
@@ -84,17 +84,19 @@ fn build_doc_where(
 }
 
 #[tauri::command]
-pub fn db_create_document(conn: State<'_, AppState>) -> Result<i64, String> {
-    let db = db::lock_db(&conn)?;
+pub async fn db_create_document(conn: State<'_, AppState>) -> Result<i64, String> {
+    let db = db::conn(&conn)?;
     db.execute(
         "INSERT INTO documents (title, content, content_text, tags) VALUES ('Untitled', '{}', '', '[]')",
-        [],
-    ).map_err(|e| e.to_string())?;
+        (),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
     Ok(db.last_insert_rowid())
 }
 
 #[tauri::command]
-pub fn db_create_document_with_content(
+pub async fn db_create_document_with_content(
     title: String,
     content: String,
     content_text: String,
@@ -102,27 +104,30 @@ pub fn db_create_document_with_content(
     word_count: i64,
     conn: State<'_, AppState>,
 ) -> Result<i64, String> {
-    let db = db::lock_db(&conn)?;
+    let db = db::conn(&conn)?;
     db.execute(
         "INSERT INTO documents (title,content,content_text,tags,pinned,word_count) VALUES (?1,?2,?3,?4,0,?5)",
         params![title, content, content_text, tags, word_count],
-    ).map_err(|e| e.to_string())?;
+    )
+    .await
+    .map_err(|e| e.to_string())?;
     Ok(db.last_insert_rowid())
 }
 
 #[tauri::command]
-pub fn db_document_title_exists(title: String, conn: State<'_, AppState>) -> Result<bool, String> {
-    let db = db::lock_db(&conn)?;
-    db.query_row(
+pub async fn db_document_title_exists(title: String, conn: State<'_, AppState>) -> Result<bool, String> {
+    let db = db::conn(&conn)?;
+    Ok(db::scalar_i64(
+        &db,
         "SELECT EXISTS(SELECT 1 FROM documents WHERE LOWER(title) = LOWER(?1))",
         [title],
-        |row| row.get(0),
     )
-    .map_err(|e| e.to_string())
+    .await?
+        != 0)
 }
 
 #[tauri::command]
-pub fn db_get_documents(
+pub async fn db_get_documents(
     search: Option<String>,
     date_from: Option<String>,
     date_to: Option<String>,
@@ -131,7 +136,7 @@ pub fn db_get_documents(
     page: Option<i64>,
     conn: State<'_, AppState>,
 ) -> Result<DocumentListResult, String> {
-    let db = db::lock_db(&conn)?;
+    let db = db::conn(&conn)?;
 
     let page_size = 20i64;
     let offset = page.unwrap_or(0) * page_size;
@@ -143,58 +148,62 @@ pub fn db_get_documents(
 
     let (where_clause, p) = build_doc_where(&search, &date_from, &date_to, &tag);
 
-    let total: i64 = db.query_row(
+    let total = db::scalar_i64(
+        &db,
         &format!("SELECT COUNT(*) FROM documents d WHERE {}", where_clause),
-        rusqlite::params_from_iter(p.iter()),
-        |row| row.get(0),
-    ).map_err(|e| e.to_string())?;
+        p.clone(),
+    )
+    .await?;
 
     let data_sql = format!(
         "SELECT d.id, d.title, d.tags, d.pinned, d.word_count, d.created_at, d.updated_at, d.content_text
          FROM documents d WHERE {} ORDER BY d.pinned DESC, {} LIMIT {} OFFSET {}",
         where_clause, sort_col, page_size, offset
     );
-    let mut stmt = db.prepare(&data_sql).map_err(|e| e.to_string())?;
-    let items = stmt.query_map(rusqlite::params_from_iter(p.iter()), |row| {
+    let items = db::fetch_all(&db, &data_sql, p, |row| {
         Ok(DocumentListItem {
             id: row.get(0)?,
             title: row.get(1)?,
             tags: row.get(2)?,
-            pinned: row.get::<_, i64>(3)? != 0,
+            pinned: row.get::<i64>(3)? != 0,
             word_count: row.get(4)?,
             created_at: row.get(5)?,
             updated_at: row.get(6)?,
             content_text: row.get(7)?,
         })
-    }).map_err(|e| e.to_string())?
-    .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+    })
+    .await?;
 
     Ok(DocumentListResult { items, total })
 }
 
 #[tauri::command]
-pub fn db_get_document(id: i64, conn: State<'_, AppState>) -> Result<DocumentDetail, String> {
-    let db = db::lock_db(&conn)?;
-    db.query_row(
+pub async fn db_get_document(id: i64, conn: State<'_, AppState>) -> Result<DocumentDetail, String> {
+    let db = db::conn(&conn)?;
+    db::fetch_one(
+        &db,
         "SELECT id, title, content, content_text, tags, pinned, word_count, created_at, updated_at
          FROM documents WHERE id = ?1",
         params![id],
-        |row| Ok(DocumentDetail {
-            id: row.get(0)?,
-            title: row.get(1)?,
-            content: row.get(2)?,
-            content_text: row.get(3)?,
-            tags: row.get(4)?,
-            pinned: row.get::<_, i64>(5)? != 0,
-            word_count: row.get(6)?,
-            created_at: row.get(7)?,
-            updated_at: row.get(8)?,
-        }),
-    ).map_err(|e| e.to_string())
+        |row| {
+            Ok(DocumentDetail {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                content: row.get(2)?,
+                content_text: row.get(3)?,
+                tags: row.get(4)?,
+                pinned: row.get::<i64>(5)? != 0,
+                word_count: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
+            })
+        },
+    )
+    .await
 }
 
 #[tauri::command]
-pub fn db_update_document(
+pub async fn db_update_document(
     id: i64,
     title: String,
     content: String,
@@ -204,42 +213,48 @@ pub fn db_update_document(
     word_count: i64,
     conn: State<'_, AppState>,
 ) -> Result<(), String> {
-    let db = db::lock_db(&conn)?;
+    let db = db::conn(&conn)?;
     db.execute(
         "UPDATE documents SET title=?1, content=?2, content_text=?3, tags=?4, pinned=?5,
          word_count=?6, updated_at=datetime('now') WHERE id=?7",
         params![title, content, content_text, tags, pinned as i64, word_count, id],
-    ).map_err(|e| e.to_string())?;
+    )
+    .await
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
-pub fn db_delete_document(id: i64, conn: State<'_, AppState>) -> Result<(), String> {
-    let db = db::lock_db(&conn)?;
-    db.execute("DELETE FROM documents WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+pub async fn db_delete_document(id: i64, conn: State<'_, AppState>) -> Result<(), String> {
+    let db = db::conn(&conn)?;
+    db.execute("DELETE FROM documents WHERE id = ?1", params![id])
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
-pub fn db_duplicate_document(id: i64, conn: State<'_, AppState>) -> Result<i64, String> {
-    let db = db::lock_db(&conn)?;
+pub async fn db_duplicate_document(id: i64, conn: State<'_, AppState>) -> Result<i64, String> {
+    let db = db::conn(&conn)?;
     db.execute(
         "INSERT INTO documents (title, content, content_text, tags, word_count)
          SELECT title || ' (copy)', content, content_text, tags, word_count
          FROM documents WHERE id = ?1",
         params![id],
-    ).map_err(|e| e.to_string())?;
+    )
+    .await
+    .map_err(|e| e.to_string())?;
     Ok(db.last_insert_rowid())
 }
 
 #[tauri::command]
-pub fn db_get_all_tags(conn: State<'_, AppState>) -> Result<Vec<String>, String> {
-    let db = db::lock_db(&conn)?;
-    let mut stmt = db.prepare(
-        "SELECT DISTINCT value FROM documents, json_each(documents.tags) ORDER BY value"
-    ).map_err(|e| e.to_string())?;
-    let tags = stmt.query_map([], |row| row.get::<_, String>(0))
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
-    Ok(tags)
+pub async fn db_get_all_tags(conn: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let db = db::conn(&conn)?;
+    db::fetch_all(
+        &db,
+        "SELECT DISTINCT value FROM documents, json_each(documents.tags) ORDER BY value",
+        (),
+        |row| row.get::<String>(0),
+    )
+    .await
 }
