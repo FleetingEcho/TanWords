@@ -9,6 +9,8 @@ export const vocabulary: Dict = {
     "vocab.analyzing": "AI analyzing, please wait...",
     "vocab.retry": "Retry",
     "vocab.myNotes": "My Notes",
+    "vocab.notesEmptyHint": "Nothing yet — click to add a note",
+    "vocab.outlineTop": "Top",
     "vocab.notesPlaceholder": "Notes, associations, example sentences for this word…",
     "vocab.save": "Save",
     "vocab.saving": "Saving…",
