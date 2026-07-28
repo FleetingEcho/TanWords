@@ -1,6 +1,6 @@
 use chrono::{DateTime, TimeZone, Utc};
 use rs_fsrs::{Card, Rating, State, FSRS};
-use rusqlite::{params, OptionalExtension};
+use libsql::params;
 use serde::Serialize;
 use tauri::State as TauriState;
 
@@ -66,49 +66,44 @@ fn sql_to_dt(s: &str) -> DateTime<Utc> {
 /// format (written by the older db_save_quiz_result path) — the two don't
 /// sort correctly against each other as raw strings.
 #[tauri::command]
-pub fn db_get_review_count(conn: TauriState<'_, AppState>) -> Result<i64, String> {
-    let db = db::lock_db(&conn)?;
+pub async fn db_get_review_count(conn: TauriState<'_, AppState>) -> Result<i64, String> {
+    let db = db::conn(&conn)?;
     let now = Utc::now();
 
-    let due_dates: Vec<String> = {
-        let mut stmt = db
-            .prepare("SELECT next_review_at FROM srs_records WHERE entity_type = 'word' AND next_review_at IS NOT NULL")
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map([], |row| row.get::<_, String>(0))
-            .map_err(|e| e.to_string())?;
-        let mut out = vec![];
-        for row in rows {
-            out.push(row.map_err(|e| e.to_string())?);
-        }
-        out
-    };
+    let due_dates: Vec<String> = db::fetch_all(
+        &db,
+        "SELECT next_review_at FROM srs_records WHERE entity_type = 'word' AND next_review_at IS NOT NULL",
+        (),
+        |row| row.get::<String>(0),
+    )
+    .await?;
     let due_count = due_dates.iter().filter(|s| sql_to_dt(s) <= now).count() as i64;
 
-    let new_count: i64 = db
-        .query_row(
-            "SELECT COUNT(*) FROM words w LEFT JOIN srs_records sr ON sr.entity_id = w.id AND sr.entity_type = 'word' WHERE sr.id IS NULL",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap_or(0);
+    let new_count: i64 = db::scalar_i64(
+        &db,
+        "SELECT COUNT(*) FROM words w LEFT JOIN srs_records sr ON sr.entity_id = w.id AND sr.entity_type = 'word' WHERE sr.id IS NULL",
+        (),
+    )
+    .await?;
 
     Ok(due_count + new_count.min(DEFAULT_NEW_LIMIT))
 }
 
 #[tauri::command]
-pub fn db_get_due_cards(
+pub async fn db_get_due_cards(
     new_limit: Option<i64>,
     conn: TauriState<'_, AppState>,
 ) -> Result<Vec<DueCard>, String> {
-    let db = db::lock_db(&conn)?;
+    let db = db::conn(&conn)?;
     let new_limit = new_limit.unwrap_or(DEFAULT_NEW_LIMIT);
 
     let zh_expr = "COALESCE((SELECT wd.zh FROM word_definitions wd WHERE wd.word_id = w.id ORDER BY wd.sort_order LIMIT 1), '')";
+    // `extracted_items` used to be the preferred source here, but migration 20
+    // dropped that table when the candidate/accept workflow was replaced. The
+    // subquery survived and made this whole statement fail on the first launch
+    // after that migration (init_db re-creates the table — empty — on the next
+    // launch, which is what hid the breakage).
     let context_expr = "COALESCE(
-        (SELECT ei.context_sentence FROM extracted_items ei
-         WHERE ei.kind = 'word' AND lower(ei.text) = lower(w.word) AND ei.context_sentence != ''
-         ORDER BY ei.id DESC LIMIT 1),
         (SELECT wd.example_en FROM word_definitions wd
          WHERE wd.word_id = w.id AND wd.example_en IS NOT NULL AND wd.example_en != ''
          ORDER BY wd.sort_order LIMIT 1),
@@ -126,25 +121,20 @@ pub fn db_get_due_cards(
          ORDER BY sr.next_review_at ASC"
     );
     let now_str = dt_to_sql(Utc::now());
-    {
-        let mut stmt = db.prepare(&due_sql).map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map(params![now_str], |row| {
-                let state_i: i64 = row.get(5)?;
-                Ok(DueCard {
-                    word_id: row.get(0)?,
-                    word: row.get(1)?,
-                    zh: row.get(2)?,
-                    level: row.get(3)?,
-                    context_sentence: row.get(4)?,
-                    state: state_to_str(state_from_i64(state_i)).to_string(),
-                })
+    result.extend(
+        db::fetch_all(&db, &due_sql, params![now_str], |row| {
+            let state_i: i64 = row.get(5)?;
+            Ok(DueCard {
+                word_id: row.get(0)?,
+                word: row.get(1)?,
+                zh: row.get(2)?,
+                level: row.get(3)?,
+                context_sentence: row.get(4)?,
+                state: state_to_str(state_from_i64(state_i)).to_string(),
             })
-            .map_err(|e| e.to_string())?;
-        for row in rows {
-            result.push(row.map_err(|e| e.to_string())?);
-        }
-    }
+        })
+        .await?,
+    );
 
     // New: words never reviewed, capped so a big vocabulary doesn't flood the session.
     let new_sql = format!(
@@ -155,24 +145,19 @@ pub fn db_get_due_cards(
          ORDER BY w.created_at ASC
          LIMIT ?1"
     );
-    {
-        let mut stmt = db.prepare(&new_sql).map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map(params![new_limit], |row| {
-                Ok(DueCard {
-                    word_id: row.get(0)?,
-                    word: row.get(1)?,
-                    zh: row.get(2)?,
-                    level: row.get(3)?,
-                    context_sentence: row.get(4)?,
-                    state: "new".to_string(),
-                })
+    result.extend(
+        db::fetch_all(&db, &new_sql, params![new_limit], |row| {
+            Ok(DueCard {
+                word_id: row.get(0)?,
+                word: row.get(1)?,
+                zh: row.get(2)?,
+                level: row.get(3)?,
+                context_sentence: row.get(4)?,
+                state: "new".to_string(),
             })
-            .map_err(|e| e.to_string())?;
-        for row in rows {
-            result.push(row.map_err(|e| e.to_string())?);
-        }
-    }
+        })
+        .await?,
+    );
 
     Ok(result)
 }
@@ -185,7 +170,7 @@ pub struct ReviewResult {
 }
 
 #[tauri::command]
-pub fn db_review_card(
+pub async fn db_review_card(
     word_id: i64,
     rating: String,
     conn: TauriState<'_, AppState>,
@@ -197,29 +182,28 @@ pub fn db_review_card(
         other => return Err(format!("invalid rating: {other} (expected again/hard/good)")),
     };
 
-    let db = db::lock_db(&conn)?;
+    let db = db::conn(&conn)?;
 
-    let existing: Option<(f64, f64, i64, i64, i64, i64, String, String, i64)> = db
-        .query_row(
-            "SELECT stability, difficulty, elapsed_days, scheduled_days, review_count, lapses, next_review_at, last_reviewed_at, state
-             FROM srs_records WHERE entity_id = ?1 AND entity_type = 'word'",
-            params![word_id],
-            |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                    row.get(5)?,
-                    row.get::<_, Option<String>>(6)?.unwrap_or_default(),
-                    row.get::<_, Option<String>>(7)?.unwrap_or_default(),
-                    row.get(8)?,
-                ))
-            },
-        )
-        .optional()
-        .map_err(|e| e.to_string())?;
+    let existing: Option<(f64, f64, i64, i64, i64, i64, String, String, i64)> = db::fetch_optional(
+        &db,
+        "SELECT stability, difficulty, elapsed_days, scheduled_days, review_count, lapses, next_review_at, last_reviewed_at, state
+         FROM srs_records WHERE entity_id = ?1 AND entity_type = 'word'",
+        params![word_id],
+        |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+                row.get::<Option<String>>(6)?.unwrap_or_default(),
+                row.get::<Option<String>>(7)?.unwrap_or_default(),
+                row.get(8)?,
+            ))
+        },
+    )
+    .await?;
 
     let now = Utc::now();
     let card = match existing {
@@ -259,7 +243,7 @@ pub fn db_review_card(
             new_card.state as i64,
             new_card.reps as i64,
             last_reviewed_at,
-            next_review_at,
+            next_review_at.clone(),
             new_card.stability,
             new_card.difficulty,
             new_card.elapsed_days,
@@ -268,13 +252,15 @@ pub fn db_review_card(
             new_card.state as i64,
         ],
     )
+    .await
     .map_err(|e| e.to_string())?;
 
     db.execute(
         "INSERT INTO daily_streaks (date, quiz_done) VALUES (date('now'), 1)
          ON CONFLICT(date) DO UPDATE SET quiz_done = quiz_done + 1",
-        [],
+        (),
     )
+    .await
     .map_err(|e| e.to_string())?;
 
     Ok(ReviewResult {

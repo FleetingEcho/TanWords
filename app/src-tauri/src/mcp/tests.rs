@@ -1,5 +1,6 @@
+use std::sync::Arc;
+
 use rmcp::handler::server::wrapper::Parameters;
-use rusqlite::Connection;
 use serde_json::Value;
 
 use super::config::{load_config, mcp_generate_token, save_config, McpConfig};
@@ -10,22 +11,37 @@ use super::types::{
     ListArticles, SearchPatterns, SearchVocabulary, UpdateVocabulary,
 };
 
-/// Change notifications go to a callback, so tests need no Tauri runtime.
-fn test_server(path: String) -> TanWordsMcp {
-    TanWordsMcp::new(path, std::sync::Arc::new(|_| {}))
+/// Change notifications and the DB handle both go through callbacks, so tests
+/// need no Tauri runtime and no managed state.
+fn test_server(database: Arc<crate::db::connection::Db>) -> TanWordsMcp {
+    let provider: super::tools::ConnProvider = {
+        let database = database.clone();
+        Arc::new(move || Ok(database.conn()))
+    };
+    TanWordsMcp::new(provider, Arc::new(|_| {}))
 }
 
-fn test_database() -> String {
-    let path = std::env::temp_dir().join(format!("tanwords-mcp-{}.db", mcp_generate_token()));
-    let conn = Connection::open(&path).unwrap();
-    crate::db::init_db(&conn).unwrap();
-    path.to_string_lossy().into_owned()
+/// A throwaway on-disk database. On disk rather than in memory because the
+/// server resolves a fresh connection per call, and every connection has to
+/// see the same data.
+async fn test_database() -> (Arc<crate::db::connection::Db>, String) {
+    let path = std::env::temp_dir()
+        .join(format!("tanwords-mcp-{}.db", mcp_generate_token()))
+        .to_string_lossy()
+        .into_owned();
+    let database = crate::db::connection::open(
+        &crate::db::DbProfile::Local { path: path.clone() },
+        None,
+    )
+    .await
+    .unwrap();
+    (Arc::new(database), path)
 }
 
 #[tokio::test]
 async fn vocabulary_and_document_tools_round_trip() {
-    let path = test_database();
-    let server = test_server(path.clone());
+    let (database, path) = test_database().await;
+    let server = test_server(database);
 
     let added = server
         .vocabulary_add(Parameters(AddVocabulary {
@@ -86,7 +102,8 @@ async fn vocabulary_and_document_tools_round_trip() {
 
 #[tokio::test]
 async fn server_can_restart_on_the_same_custom_port() {
-    let path = test_database();
+    let (database, path) = test_database().await;
+    let provider: super::tools::ConnProvider = Arc::new(move || Ok(database.conn()));
     let probe = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let port = probe.local_addr().unwrap().port();
     drop(probe);
@@ -95,26 +112,26 @@ async fn server_can_restart_on_the_same_custom_port() {
 
     let app = tauri::test::mock_app();
     let handle = app.handle().clone();
-    assert!(controller.restart(config.clone(), path.clone(), handle.clone()).await.unwrap().running);
-    assert!(controller.restart(config, path.clone(), handle).await.unwrap().running);
+    assert!(controller.restart(config.clone(), provider.clone(), handle.clone()).await.unwrap().running);
+    assert!(controller.restart(config, provider, handle).await.unwrap().running);
     controller.stop().await;
     assert!(!controller.status().running);
 
     let _ = std::fs::remove_file(path);
 }
 
-#[test]
-fn config_round_trip_and_token_strength() {
-    let conn = Connection::open_in_memory().unwrap();
-    crate::db::init_db(&conn).unwrap();
+#[tokio::test]
+async fn config_round_trip_and_token_strength() {
+    let database = crate::db::connection::open_memory().await.unwrap();
+    let conn = database.conn();
     let config = McpConfig {
         enabled: true,
         port: 49152,
         token: mcp_generate_token(),
     };
     assert!(config.token.len() >= 40);
-    save_config(&conn, &config).unwrap();
-    let loaded = load_config(&conn);
+    save_config(&conn, &config).await.unwrap();
+    let loaded = load_config(&conn).await;
     assert!(loaded.enabled);
     assert_eq!(loaded.port, 49152);
     assert_eq!(loaded.token, config.token);
@@ -122,8 +139,8 @@ fn config_round_trip_and_token_strength() {
 
 #[tokio::test]
 async fn document_search_ranks_by_relevance_instead_of_matching_everything() {
-    let path = test_database();
-    let server = test_server(path.clone());
+    let (database, path) = test_database().await;
+    let server = test_server(database);
 
     server.documents_create(Parameters(CreateDocument {
         title: "Rate limiting the API".into(),
@@ -151,8 +168,8 @@ async fn document_search_ranks_by_relevance_instead_of_matching_everything() {
 
 #[tokio::test]
 async fn vocabulary_can_be_corrected_and_removed() {
-    let path = test_database();
-    let server = test_server(path.clone());
+    let (database, path) = test_database().await;
+    let server = test_server(database);
 
     let added = server.vocabulary_add(Parameters(AddVocabulary {
         word: "hedge".into(),
@@ -183,8 +200,8 @@ async fn vocabulary_can_be_corrected_and_removed() {
 
 #[tokio::test]
 async fn patterns_deduplicate_and_collect_examples() {
-    let path = test_database();
-    let server = test_server(path.clone());
+    let (database, path) = test_database().await;
+    let server = test_server(database);
 
     let first = server.patterns_add(Parameters(AddPattern {
         pattern: "be shortlisted for + noun".into(),
@@ -213,8 +230,8 @@ async fn patterns_deduplicate_and_collect_examples() {
 
 #[tokio::test]
 async fn articles_are_deduplicated_searchable_and_annotatable() {
-    let path = test_database();
-    let server = test_server(path.clone());
+    let (database, path) = test_database().await;
+    let server = test_server(database);
 
     let added = server.articles_add(Parameters(AddArticle {
         title: "How PostgreSQL plans a query".into(),

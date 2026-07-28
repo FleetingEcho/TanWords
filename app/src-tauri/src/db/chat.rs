@@ -1,4 +1,4 @@
-use rusqlite::params;
+use libsql::{params, Value};
 use serde::Serialize;
 use tauri::State;
 
@@ -30,7 +30,7 @@ pub struct ChatSessionDetail {
     pub updated_at: String,
 }
 
-fn map_item(row: &rusqlite::Row) -> rusqlite::Result<ChatSessionItem> {
+fn map_item(row: &libsql::Row) -> libsql::Result<ChatSessionItem> {
     Ok(ChatSessionItem {
         id: row.get(0)?,
         title: row.get(1)?,
@@ -39,7 +39,7 @@ fn map_item(row: &rusqlite::Row) -> rusqlite::Result<ChatSessionItem> {
         message_count: row.get(4)?,
         created_at: row.get(5)?,
         updated_at: row.get(6)?,
-        archived: row.get::<_, i64>(7)? != 0,
+        archived: row.get::<i64>(7)? != 0,
     })
 }
 
@@ -47,7 +47,7 @@ fn map_item(row: &rusqlite::Row) -> rusqlite::Result<ChatSessionItem> {
 /// (None = both); `date_from`/`date_to` filter on last activity, as `YYYY-MM-DD`
 /// — `date_to` is treated as inclusive of that whole day.
 #[tauri::command]
-pub fn db_list_chat_sessions(
+pub async fn db_list_chat_sessions(
     page: Option<i64>,
     limit: Option<i64>,
     archived: Option<bool>,
@@ -55,7 +55,7 @@ pub fn db_list_chat_sessions(
     date_to: Option<String>,
     conn: State<'_, AppState>,
 ) -> Result<Vec<ChatSessionItem>, String> {
-    let db = db::lock_db(&conn)?;
+    let db = db::conn(&conn)?;
     let lim = limit.unwrap_or(100);
     let offset = page.unwrap_or(0) * lim;
 
@@ -64,60 +64,55 @@ pub fn db_list_chat_sessions(
          FROM ai_chat_sessions
          WHERE 1=1",
     );
-    let mut values: Vec<Box<dyn rusqlite::types::ToSql>> = vec![];
+    let mut values: Vec<Value> = vec![];
 
     if let Some(flag) = archived {
         sql.push_str(&format!(" AND archived = ?{}", values.len() + 1));
-        values.push(Box::new(if flag { 1i64 } else { 0i64 }));
+        values.push(Value::from(if flag { 1i64 } else { 0i64 }));
     }
     if let Some(from) = date_from {
         sql.push_str(&format!(" AND updated_at >= ?{}", values.len() + 1));
-        values.push(Box::new(from));
+        values.push(Value::from(from));
     }
     if let Some(to) = date_to {
         sql.push_str(&format!(" AND updated_at < date(?{}, '+1 day')", values.len() + 1));
-        values.push(Box::new(to));
+        values.push(Value::from(to));
     }
     sql.push_str(&format!(
         " ORDER BY updated_at DESC LIMIT ?{} OFFSET ?{}",
         values.len() + 1,
         values.len() + 2
     ));
-    values.push(Box::new(lim));
-    values.push(Box::new(offset));
+    values.push(Value::from(lim));
+    values.push(Value::from(offset));
 
-    let mut stmt = db.prepare(&sql).map_err(|e| e.to_string())?;
-    let refs: Vec<&dyn rusqlite::types::ToSql> = values.iter().map(|v| v.as_ref()).collect();
-    let rows = stmt.query_map(refs.as_slice(), map_item).map_err(|e| e.to_string())?;
-
-    let mut result = vec![];
-    for row in rows {
-        result.push(row.map_err(|e| e.to_string())?);
-    }
-    Ok(result)
+    db::fetch_all(&db, &sql, values, map_item).await
 }
 
 #[tauri::command]
-pub fn db_set_chat_session_archived(
+pub async fn db_set_chat_session_archived(
     id: String,
     archived: bool,
     conn: State<'_, AppState>,
 ) -> Result<(), String> {
-    let db = db::lock_db(&conn)?;
+    let db = db::conn(&conn)?;
     db.execute(
         "UPDATE ai_chat_sessions SET archived = ?2 WHERE id = ?1",
         params![id, if archived { 1i64 } else { 0i64 }],
-    ).map_err(|e| e.to_string())?;
+    )
+    .await
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
-pub fn db_get_chat_session(
+pub async fn db_get_chat_session(
     id: String,
     conn: State<'_, AppState>,
 ) -> Result<Option<ChatSessionDetail>, String> {
-    let db = db::lock_db(&conn)?;
-    let result = db.query_row(
+    let db = db::conn(&conn)?;
+    let result = db::fetch_optional(
+        &db,
         "SELECT id, title, messages, system_prompt, preset_id, provider_id, message_count, created_at, updated_at
          FROM ai_chat_sessions WHERE id = ?1",
         params![id],
@@ -134,12 +129,14 @@ pub fn db_get_chat_session(
                 updated_at: row.get(8)?,
             })
         },
-    ).ok();
+    )
+    .await
+    .unwrap_or(None);
     Ok(result)
 }
 
 #[tauri::command]
-pub fn db_upsert_chat_session(
+pub async fn db_upsert_chat_session(
     id: String,
     title: String,
     messages: String,
@@ -149,7 +146,7 @@ pub fn db_upsert_chat_session(
     message_count: i64,
     conn: State<'_, AppState>,
 ) -> Result<(), String> {
-    let db = db::lock_db(&conn)?;
+    let db = db::conn(&conn)?;
     db.execute(
         "INSERT INTO ai_chat_sessions
              (id, title, messages, system_prompt, preset_id, provider_id, message_count, updated_at)
@@ -163,43 +160,41 @@ pub fn db_upsert_chat_session(
              message_count = excluded.message_count,
              updated_at    = excluded.updated_at",
         params![id, title, messages, system_prompt, preset_id, provider_id, message_count],
-    ).map_err(|e| e.to_string())?;
+    )
+    .await
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
-pub fn db_delete_chat_session(
+pub async fn db_delete_chat_session(
     id: String,
     conn: State<'_, AppState>,
 ) -> Result<(), String> {
-    let db = db::lock_db(&conn)?;
+    let db = db::conn(&conn)?;
     db.execute("DELETE FROM ai_chat_sessions WHERE id = ?1", params![id])
+        .await
         .map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
-pub fn db_search_chat_sessions(
+pub async fn db_search_chat_sessions(
     query: String,
     conn: State<'_, AppState>,
 ) -> Result<Vec<ChatSessionItem>, String> {
-    let db = db::lock_db(&conn)?;
+    let db = db::conn(&conn)?;
     let like_pat = format!("%{}%", query);
 
-    let mut stmt = db.prepare(
+    db::fetch_all(
+        &db,
         "SELECT id, title, preset_id, provider_id, message_count, created_at, updated_at, archived
          FROM ai_chat_sessions
          WHERE title LIKE ?1
          ORDER BY updated_at DESC
          LIMIT 50",
-    ).map_err(|e| e.to_string())?;
-
-    let rows = stmt.query_map(params![like_pat], map_item)
-        .map_err(|e| e.to_string())?;
-
-    let mut result = vec![];
-    for row in rows {
-        result.push(row.map_err(|e| e.to_string())?);
-    }
-    Ok(result)
+        params![like_pat],
+        map_item,
+    )
+    .await
 }

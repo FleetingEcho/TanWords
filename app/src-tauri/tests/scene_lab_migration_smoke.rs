@@ -1,10 +1,12 @@
-use rusqlite::Connection;
+#[tokio::test]
+async fn scene_lab_schema_is_created_and_repeatable() {
+    let database = tanwords_lib::db::connection::open_memory()
+        .await
+        .expect("first init failed");
+    let conn = database.conn();
+    // init_db is idempotent — opening applied it once; run it again directly.
+    tanwords_lib::db::init_db(&conn).await.expect("second init failed");
 
-#[test]
-fn scene_lab_schema_is_created_and_repeatable() {
-    let conn = Connection::open_in_memory().unwrap();
-    tanwords_lib::db::init_db(&conn).expect("first init failed");
-    tanwords_lib::db::init_db(&conn).expect("second init failed");
     for table in [
         "scenes",
         "scene_objects",
@@ -19,19 +21,24 @@ fn scene_lab_schema_is_created_and_repeatable() {
         "knowledge_nodes",
         "knowledge_edges",
     ] {
-        let found: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
-                [table],
-                |row| row.get(0),
-            )
-            .unwrap();
+        let found = tanwords_lib::db::scalar_i64(
+            &conn,
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+            [table],
+        )
+        .await
+        .unwrap();
         assert_eq!(found, 1, "missing table {table}");
     }
-    let version: i64 = conn
-        .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
-            row.get(0)
-        })
-        .unwrap();
-    assert_eq!(version, 16);
+
+    // Compared against the migration list rather than a literal, so adding a
+    // migration doesn't silently leave this asserting an old version.
+    let version = tanwords_lib::db::scalar_i64(
+        &conn,
+        "SELECT MAX(version) FROM schema_migrations",
+        (),
+    )
+    .await
+    .unwrap();
+    assert_eq!(version, tanwords_lib::db::migrations::latest_version());
 }

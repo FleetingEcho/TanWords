@@ -1,6 +1,6 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use rand::RngCore;
-use rusqlite::{params, Connection};
+use libsql::{params, Connection};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -49,32 +49,36 @@ pub fn mcp_generate_token() -> String {
     URL_SAFE_NO_PAD.encode(bytes)
 }
 
-pub fn load_config(conn: &Connection) -> McpConfig {
-    let get = |key: &str| -> Option<String> {
-        conn.query_row(
+pub async fn load_config(conn: &Connection) -> McpConfig {
+    async fn get(conn: &Connection, key: &str) -> Option<String> {
+        crate::db::fetch_optional(
+            conn,
             "SELECT value FROM user_settings WHERE key=?1",
             [key],
-            |row| row.get(0),
+            |row| row.get::<String>(0),
         )
+        .await
         .ok()
-        .and_then(|raw: String| serde_json::from_str::<Value>(&raw).ok())
+        .flatten()
+        .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
         .and_then(|value| {
             value
                 .as_str()
                 .map(str::to_owned)
                 .or_else(|| Some(value.to_string()))
         })
-    };
+    }
     McpConfig {
-        enabled: get("mcp_enabled").as_deref() == Some("true"),
-        port: get("mcp_port")
+        enabled: get(conn, "mcp_enabled").await.as_deref() == Some("true"),
+        port: get(conn, "mcp_port")
+            .await
             .and_then(|value| value.parse().ok())
             .unwrap_or(DEFAULT_PORT),
-        token: get("mcp_token").unwrap_or_default(),
+        token: get(conn, "mcp_token").await.unwrap_or_default(),
     }
 }
 
-pub fn save_config(conn: &Connection, config: &McpConfig) -> Result<(), String> {
+pub async fn save_config(conn: &Connection, config: &McpConfig) -> Result<(), String> {
     for (key, value) in [
         ("mcp_enabled", json!(config.enabled)),
         ("mcp_port", json!(config.port.to_string())),
@@ -83,7 +87,9 @@ pub fn save_config(conn: &Connection, config: &McpConfig) -> Result<(), String> 
         conn.execute(
             "INSERT INTO user_settings(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             params![key, value.to_string()],
-        ).map_err(|error| error.to_string())?;
+        )
+        .await
+        .map_err(|error| error.to_string())?;
     }
     Ok(())
 }

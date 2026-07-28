@@ -8,7 +8,7 @@ import { logError, reportWriteError } from "./useDB.errors";
 import {
   ChatSessionItem, ChatSessionDetail,
   DashboardStats, DueCard, ReviewResult, SrsRating, SearchHistoryItem,
-  RssFeedMeta, RssFeed, RssEntryRow,
+  RssFeedMeta, RssFeed, RssEntryRow, DbConnection, ImportPlan, ImportDecisions, ImportResult,
 } from "./useDB.types";
 
 function serializeChatSession(s: {
@@ -328,6 +328,74 @@ export function useDBExtra() {
     }
   }, []);
 
+  /** The active connection profile plus what it supports, so the UI can hide
+   *  actions (export, switch file) that a remote profile can't perform. */
+  const getConnection = useCallback(async (): Promise<DbConnection | null> => {
+    try {
+      return await invoke<DbConnection>("db_get_connection");
+    } catch (e) {
+      logError("getConnection", e);
+      return null;
+    }
+  }, []);
+
+  /** Points the app at a Turso database as an embedded replica. The token goes
+   *  straight to the OS keychain and is never readable from here again. Caller
+   *  must reload the app afterwards — every already-fetched page is stale. */
+  const connectTurso = useCallback(async (url: string, token: string): Promise<DbConnection> => {
+    try {
+      return await invoke<DbConnection>("db_connect_turso", { url, token });
+    } catch (e) {
+      reportWriteError("connectTurso", e, "连接 Turso 失败");
+      throw e;
+    }
+  }, []);
+
+  /** Back to the default local database, forgetting the stored credentials. */
+  const disconnectRemote = useCallback(async (): Promise<DbConnection> => {
+    try {
+      return await invoke<DbConnection>("db_disconnect_remote");
+    } catch (e) {
+      reportWriteError("disconnectRemote", e, "断开在线数据库失败");
+      throw e;
+    }
+  }, []);
+
+  /** Pull the primary's latest changes now instead of waiting for the next
+   *  background sync. No-op on a local profile. */
+  const syncNow = useCallback(async (): Promise<void> => {
+    try {
+      await invoke("db_sync_now");
+    } catch (e) {
+      reportWriteError("syncNow", e, "同步失败");
+      throw e;
+    }
+  }, []);
+
+  /** Reads another TanWords database and reports what would be added and what
+   *  already exists. Writes nothing — the source is opened read-only. */
+  const importAnalyze = useCallback(async (sourcePath: string): Promise<ImportPlan> => {
+    try {
+      return await invoke<ImportPlan>("db_import_analyze", { sourcePath });
+    } catch (e) {
+      reportWriteError("importAnalyze", e, "读取数据库文件失败");
+      throw e;
+    }
+  }, []);
+
+  /** Applies an import with a decision for every conflict, in one transaction. */
+  const importApply = useCallback(
+    async (sourcePath: string, decisions: ImportDecisions): Promise<ImportResult> => {
+      try {
+        return await invoke<ImportResult>("db_import_apply", { sourcePath, decisions });
+      } catch (e) {
+        reportWriteError("importApply", e, "导入失败");
+        throw e;
+      }
+    },
+    []
+  );
+
   /** Mounts a different SQLite file as the active DB (creating it if new). Caller must reload the app after this succeeds — every already-fetched page is stale. */
   const switchDbPath = useCallback(async (newPath: string): Promise<string> => {
     try {
@@ -355,6 +423,8 @@ export function useDBExtra() {
     addRssFeed, getRssFeeds, updateRssFeedTitle, updateRssFeedPreferences, deleteRssFeed, fetchRssFeedMeta,
     syncRssFeed, getRssEntries, markRssEntryRead, getRssUnreadCounts,
     getDbPath, getDbSize, exportBackup, switchDbPath, clearTranslations,
+    getConnection, connectTurso, disconnectRemote, syncNow,
+    importAnalyze, importApply,
   }), [
     listChatSessions, setChatSessionArchived, getChatSession, upsertChatSession, deleteChatSession, searchChatSessions,
     saveArticleAnalysis, addKnownWords, getKnownWords,
@@ -364,5 +434,7 @@ export function useDBExtra() {
     addRssFeed, getRssFeeds, updateRssFeedTitle, updateRssFeedPreferences, deleteRssFeed, fetchRssFeedMeta,
     syncRssFeed, getRssEntries, markRssEntryRead, getRssUnreadCounts,
     getDbPath, getDbSize, exportBackup, switchDbPath, clearTranslations,
+    getConnection, connectTurso, disconnectRemote, syncNow,
+    importAnalyze, importApply,
   ]);
 }

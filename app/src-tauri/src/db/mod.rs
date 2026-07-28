@@ -1,17 +1,28 @@
-use rusqlite::{Connection, Result as SqlResult};
-use std::sync::MutexGuard;
+use libsql::{Connection, Result as SqlResult};
 use tauri::State;
 
 use crate::AppState;
 
 // ── Helper ──────────────────────────────────────────────────────────────────
 
-/// Lock the DB connection from Tauri State, returning a MutexGuard.
-pub fn lock_db<'a>(state: &'a State<'a, AppState>) -> Result<MutexGuard<'a, Connection>, String> {
-    state.db.lock().map_err(|e| e.to_string())
+/// The active DB connection, cloned out from under the state mutex.
+///
+/// Returns an owned handle rather than a guard on purpose: commands `.await`
+/// on it, and holding a lock across a suspend point is both a deadlock risk
+/// and (for `std::sync::MutexGuard`) not `Send`. `libsql::Connection` is an
+/// Arc handle, so cloning is cheap and every clone talks to the same database.
+pub fn conn(state: &State<'_, AppState>) -> Result<Connection, String> {
+    Ok(state.db.lock().map_err(|e| e.to_string())?.conn())
 }
 
 // ── Sub-modules ────────────────────────────────────────────────────────────
+
+pub mod connection;
+pub mod import;
+pub mod rows;
+pub use connection::{DbCaps, DbDescriptor, DbKind, DbProfile};
+pub use import::*;
+pub use rows::{fetch_all, fetch_one, fetch_optional, scalar_i64};
 
 pub mod settings;
 pub mod words_types;
@@ -48,26 +59,25 @@ pub use patterns::*;
 
 // ── Database Initialization ─────────────────────────────────────────────────
 
-pub fn init_db(conn: &Connection) -> SqlResult<()> {
-    conn.execute_batch("PRAGMA journal_mode=WAL;")?;
-    conn.execute_batch("PRAGMA foreign_keys=ON;")?;
-
-    conn.execute_batch(include_str!("../../sql/schema.sql"))?;
+/// PRAGMAs are applied by `connection::open` before this runs — they are
+/// per-connection and partly profile-dependent, unlike the schema below.
+pub async fn init_db(conn: &Connection) -> SqlResult<()> {
+    conn.execute_batch(include_str!("../../sql/schema.sql")).await?;
 
     // Migrations (idempotent)
-    conn.execute("ALTER TABLE words ADD COLUMN enrichment_json TEXT", []).ok();
-    conn.execute("ALTER TABLE words ADD COLUMN user_notes TEXT DEFAULT ''", []).ok();
-    conn.execute_batch(
+    let _ = conn.execute("ALTER TABLE words ADD COLUMN enrichment_json TEXT", ()).await;
+    let _ = conn.execute("ALTER TABLE words ADD COLUMN user_notes TEXT DEFAULT ''", ()).await;
+    let _ = conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS word_chats (
             word_id INTEGER PRIMARY KEY,
             messages TEXT NOT NULL DEFAULT '[]',
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(word_id) REFERENCES words(id)
         );"
-    ).ok();
+    ).await;
 
     // Documents feature
-    conn.execute_batch(
+    let _ = conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS documents (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             title        TEXT    NOT NULL DEFAULT 'Untitled',
@@ -99,10 +109,10 @@ pub fn init_db(conn: &Connection) -> SqlResult<()> {
             INSERT INTO documents_fts(rowid, title, content_text)
             VALUES (new.id, new.title, new.content_text);
         END;"
-    ).ok();
+    ).await;
 
     // AI Chat sessions
-    conn.execute_batch(
+    let _ = conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS ai_chat_sessions (
             id            TEXT PRIMARY KEY,
             title         TEXT    NOT NULL DEFAULT 'New Chat',
@@ -115,12 +125,12 @@ pub fn init_db(conn: &Connection) -> SqlResult<()> {
             updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_ai_chat_sessions_updated ON ai_chat_sessions(updated_at DESC);"
-    ).ok();
+    ).await;
     // Archived conversations stay searchable but fold out of the main list.
-    conn.execute("ALTER TABLE ai_chat_sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0", []).ok();
+    let _ = conn.execute("ALTER TABLE ai_chat_sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0", ()).await;
 
     // Reading lessons: articles + extracted items + known words
-    conn.execute_batch(
+    let _ = conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS articles (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             title      TEXT NOT NULL DEFAULT '',
@@ -148,7 +158,7 @@ pub fn init_db(conn: &Connection) -> SqlResult<()> {
             source     TEXT NOT NULL DEFAULT 'marked',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );"
-    ).ok();
+    ).await;
 
     // Insert default settings
     let settings = vec![
@@ -168,11 +178,12 @@ pub fn init_db(conn: &Connection) -> SqlResult<()> {
     for (key, value) in settings {
         conn.execute(
             "INSERT OR IGNORE INTO user_settings (key, value) VALUES (?1, ?2)",
-            rusqlite::params![key, value],
-        )?;
+            libsql::params![key, value],
+        )
+        .await?;
     }
 
-    migrations::run(conn)?;
+    migrations::run(conn).await?;
 
     Ok(())
 }

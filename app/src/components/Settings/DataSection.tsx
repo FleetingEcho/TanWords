@@ -3,6 +3,8 @@ import { toast } from "sonner";
 import { save as saveDialog, open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useT } from "@/hooks/useT";
 import { useDB } from "@/hooks/useDB";
+import { DbConnection, ImportDecisions, ImportPlan } from "@/hooks/useDB.types";
+import { ImportPreviewModal } from "./ImportPreviewModal";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Button } from "@/components/ui/button";
 import { SettingRow } from "./SettingsShared";
@@ -10,15 +12,38 @@ import { SettingRow } from "./SettingsShared";
 export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: ReturnType<typeof useT> }) {
   const [dbPath, setDbPath] = useState("");
   const [dbSize, setDbSize] = useState<number | null>(null);
+  const [connection, setConnection] = useState<DbConnection | null>(null);
   const [exporting, setExporting] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [pendingSwitchPath, setPendingSwitchPath] = useState<string | null>(null);
   const [switching, setSwitching] = useState(false);
 
+  // Turso connection form
+  const [tursoOpen, setTursoOpen] = useState(false);
+  const [tursoUrl, setTursoUrl] = useState("");
+  const [tursoToken, setTursoToken] = useState("");
+  const [connecting, setConnecting] = useState(false);
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  // Import from another database file
+  const [importPlan, setImportPlan] = useState<ImportPlan | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [importing, setImporting] = useState(false);
+
   useEffect(() => {
     db.getDbPath().then(setDbPath);
     db.getDbSize().then(setDbSize);
+    db.getConnection().then(setConnection);
   }, []);
+
+  const isRemote = connection?.kind === "turso";
+  // Serving the replica read-only because the primary was unreachable at
+  // startup: syncing can't work, so the button would only ever fail.
+  const isOffline = connection?.offline ?? false;
+  const canExport = connection?.caps.export ?? true;
+  const canSwitchPath = connection?.caps.switchPath ?? true;
+  const canImport = connection?.caps.writable ?? true;
 
   const formattedDbSize = dbSize === null
     ? "…"
@@ -60,6 +85,80 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
     }
   };
 
+  const handleConnectTurso = async () => {
+    setConnecting(true);
+    try {
+      await db.connectTurso(tursoUrl, tursoToken);
+      setTursoToken("");
+      toast.success(t("settings.remoteDBConnectOk"));
+      setTimeout(() => window.location.reload(), 600);
+    } catch {
+      // useDB already toasts the failure; keep the form open so the user can
+      // correct the URL or token rather than retyping both.
+      setConnecting(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    try {
+      await db.disconnectRemote();
+      toast.success(t("settings.remoteDBDisconnectOk"));
+      setTimeout(() => window.location.reload(), 600);
+    } catch {
+      setConfirmDisconnect(false);
+    }
+  };
+
+  const handleSyncNow = async () => {
+    setSyncing(true);
+    try {
+      await db.syncNow();
+      toast.success(t("settings.remoteDBSyncOk"));
+    } catch {
+      // useDB already toasts the failure
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleChooseImportFile = async () => {
+    const picked = await openDialog({
+      multiple: false,
+      filters: [{ name: "SQLite Database", extensions: ["db"] }],
+    });
+    if (typeof picked !== "string") return;
+    setAnalyzing(true);
+    try {
+      setImportPlan(await db.importAnalyze(picked));
+    } catch {
+      // useDB already toasts the failure
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const handleImport = async (decisions: ImportDecisions) => {
+    if (!importPlan) return;
+    setImporting(true);
+    try {
+      const result = await db.importApply(importPlan.sourcePath, decisions);
+      setImportPlan(null);
+      toast.success(
+        t("settings.importDBDone", {
+          added: result.added,
+          overwritten: result.overwritten,
+          skipped: result.skipped,
+        })
+      );
+      // Every already-loaded page was fetched from the pre-import database.
+      setTimeout(() => window.location.reload(), 800);
+    } catch {
+      // useDB already toasts the failure
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const handleExport = async () => {
     const dest = await saveDialog({
       defaultPath: `tanwords-backup-${new Date().toISOString().slice(0, 10)}.db`,
@@ -93,32 +192,164 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
       <div className="bg-card border border-border rounded-xl px-5 divide-y divide-border">
         <SettingRow label={t("settings.dbLocation")}>
           <div className="flex min-w-0 items-center gap-2">
-            <span className="max-w-[360px] truncate font-mono text-[11px] text-muted-foreground" title={dbPath}>{dbPath || "…"}</span>
+            {isRemote && (
+              <span className="shrink-0 truncate font-mono text-[11px] text-primary" title={connection?.remoteUrl ?? ""}>
+                {connection?.remoteUrl}
+              </span>
+            )}
+            <span
+              className="max-w-[320px] truncate font-mono text-[11px] text-muted-foreground"
+              title={isRemote ? `${t("settings.remoteDBReplicaNote")}: ${dbPath}` : dbPath}
+            >
+              {isRemote ? `(${t("settings.remoteDBReplicaNote")}) ` : ""}{dbPath || "…"}
+            </span>
             <span className="shrink-0 rounded-full border border-border bg-muted/60 px-2 py-0.5 font-mono text-[10px] font-medium text-foreground" title={t("settings.dbSizeIncludesAuxiliary")}>{formattedDbSize}</span>
           </div>
         </SettingRow>
-        <SettingRow label={t("settings.switchDB")} sub={t("settings.switchDBSub")}>
+
+        <SettingRow
+          label={t("settings.remoteDB")}
+          sub={isOffline ? t("settings.remoteDBOfflineNote") : t("settings.remoteDBSub")}
+        >
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={handleOpenExisting}
-              className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted transition-colors"
-            >
-              {t("settings.switchDBOpenExisting")}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleNewLocation}
-              className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted transition-colors"
-            >
-              {t("settings.switchDBNewLocation")}
-            </Button>
+            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+              isOffline
+                ? "bg-destructive/10 text-destructive"
+                : isRemote
+                  ? "bg-primary/10 text-primary"
+                  : "bg-muted text-muted-foreground"
+            }`}>
+              {isOffline
+                ? t("settings.remoteDBOffline")
+                : isRemote
+                  ? t("settings.remoteDBConnected")
+                  : t("settings.remoteDBLocal")}
+            </span>
+            {isRemote ? (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleSyncNow}
+                  disabled={syncing || !connection?.caps.sync}
+                  className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted disabled:opacity-50 transition-colors"
+                >
+                  {syncing ? t("settings.remoteDBSyncing") : t("settings.remoteDBSync")}
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => setConfirmDisconnect(true)}
+                  className="h-8 px-3 rounded-lg text-xs font-medium border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
+                >
+                  {t("settings.remoteDBDisconnect")}
+                </Button>
+              </>
+            ) : (
+              <Button
+                variant="outline"
+                onClick={() => setTursoOpen((open) => !open)}
+                aria-expanded={tursoOpen}
+                className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted transition-colors"
+              >
+                {t("settings.remoteDBConnect")}
+              </Button>
+            )}
           </div>
         </SettingRow>
-        <SettingRow label={t("settings.exportDB")} sub={t("settings.exportDBSub")}>
+
+        {tursoOpen && !isRemote && (
+          <div className="space-y-3 py-4">
+            {/* Appearance settings live in user_settings, i.e. in the database
+                itself, so connecting to an empty one reads as "everything was
+                reset". Say so before they click, not after. */}
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5">
+              <p className="text-xs font-semibold text-amber-600 dark:text-amber-500">
+                {t("settings.remoteDBWarnTitle")}
+              </p>
+              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                {t("settings.remoteDBWarnBody")}
+              </p>
+              <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                {t("settings.remoteDBWarnSafe")}
+              </p>
+            </div>
+            <label className="block space-y-1">
+              <span className="text-xs font-medium text-foreground">{t("settings.remoteDBUrl")}</span>
+              <input
+                value={tursoUrl}
+                onChange={(e) => setTursoUrl(e.target.value)}
+                placeholder={t("settings.remoteDBUrlPlaceholder")}
+                spellCheck={false}
+                autoComplete="off"
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs outline-none focus:border-primary"
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-xs font-medium text-foreground">{t("settings.remoteDBToken")}</span>
+              <input
+                type="password"
+                value={tursoToken}
+                onChange={(e) => setTursoToken(e.target.value)}
+                placeholder={t("settings.remoteDBTokenPlaceholder")}
+                spellCheck={false}
+                autoComplete="off"
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs outline-none focus:border-primary"
+              />
+              <span className="block text-[11px] text-muted-foreground">{t("settings.remoteDBTokenHint")}</span>
+            </label>
+            <div className="flex justify-end">
+              <Button
+                onClick={handleConnectTurso}
+                disabled={connecting || !tursoUrl.trim() || !tursoToken.trim()}
+                className="h-8 px-4 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              >
+                {connecting ? t("settings.remoteDBConnecting") : t("settings.remoteDBConnect")}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {canSwitchPath && (
+          <SettingRow label={t("settings.switchDB")} sub={t("settings.switchDBSub")}>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={handleOpenExisting}
+                className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted transition-colors"
+              >
+                {t("settings.switchDBOpenExisting")}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleNewLocation}
+                className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted transition-colors"
+              >
+                {t("settings.switchDBNewLocation")}
+              </Button>
+            </div>
+          </SettingRow>
+        )}
+
+        <SettingRow
+          label={t("settings.importDB")}
+          sub={canImport ? t("settings.importDBSub") : t("settings.importDBUnavailable")}
+        >
+          <Button
+            variant="outline"
+            onClick={handleChooseImportFile}
+            disabled={analyzing || !canImport}
+            className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted disabled:opacity-50 transition-colors"
+          >
+            {analyzing ? t("settings.importDBAnalyzing") : t("settings.importDBChoose")}
+          </Button>
+        </SettingRow>
+
+        <SettingRow
+          label={t("settings.exportDB")}
+          sub={canExport ? t("settings.exportDBSub") : t("settings.exportUnavailableRemote")}
+        >
           <Button
             onClick={handleExport}
-            disabled={exporting}
+            disabled={exporting || !canExport}
             className="h-8 px-4 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
           >
             {exporting ? t("settings.exporting") : t("settings.exportDB")}
@@ -151,6 +382,26 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
         confirmDisabled={switching}
         onCancel={() => setPendingSwitchPath(null)}
         onConfirm={confirmSwitch}
+      />
+
+      {importPlan && (
+        <ImportPreviewModal
+          plan={importPlan}
+          importing={importing}
+          onCancel={() => setImportPlan(null)}
+          onConfirm={handleImport}
+          t={t}
+        />
+      )}
+
+      <ConfirmModal
+        open={confirmDisconnect}
+        title={t("settings.remoteDBDisconnectTitle")}
+        message={t("settings.remoteDBDisconnectMessage")}
+        confirmLabel={t("settings.remoteDBDisconnect")}
+        danger
+        onCancel={() => setConfirmDisconnect(false)}
+        onConfirm={handleDisconnect}
       />
     </div>
   );

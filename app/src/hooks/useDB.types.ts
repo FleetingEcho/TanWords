@@ -211,3 +211,70 @@ export interface RssEntryRow {
   is_read: boolean;
   fetched_at: string;
 }
+
+/** Which database the app is talking to, and what that profile supports.
+ *  Mirrors `DbDescriptor` in src-tauri/src/db/connection.rs. */
+export interface DbConnection {
+  kind: "local" | "turso";
+  /** The SQLite file. For a Turso profile this is the local replica. */
+  path: string;
+  remoteUrl: string | null;
+  caps: {
+    /** VACUUM INTO backup export. Off for Turso. */
+    export: boolean;
+    /** Whether the profile can be repointed at another file. */
+    switchPath: boolean;
+    /** Whether an explicit pull-from-primary is meaningful. */
+    sync: boolean;
+    /** False when serving a replica offline — it is opened read-only, so any
+     *  save will fail at the driver. */
+    writable: boolean;
+  };
+  /** A Turso profile falling back to its local replica because the primary
+   *  couldn't be reached. Reads are real (possibly stale) data. */
+  offline: boolean;
+}
+
+/** One source row that already exists in the target, with both sides described
+ *  so the user can choose. Mirrors `ImportConflict` in db/import.rs. */
+export interface ImportConflict {
+  /** Natural key — echo it back in the decisions to overwrite this row. */
+  key: string;
+  title: string;
+  incoming: string;
+  existing: string;
+}
+
+export type ImportKind = "words" | "patterns" | "articles" | "documents" | "knownWords";
+
+export interface ImportGroup {
+  kind: ImportKind;
+  newCount: number;
+  conflicts: ImportConflict[];
+}
+
+export interface ImportPlan {
+  sourcePath: string;
+  groups: ImportGroup[];
+}
+
+/** Anything not listed under `overwrite` is skipped, so the safe choice needs
+ *  no bookkeeping on this side. */
+export interface ImportDecisions {
+  overwrite: Partial<Record<ImportKind, string[]>>;
+  includeNew: boolean;
+}
+
+export interface ImportOutcome {
+  kind: ImportKind;
+  added: number;
+  overwritten: number;
+  skipped: number;
+}
+
+export interface ImportResult {
+  outcomes: ImportOutcome[];
+  added: number;
+  overwritten: number;
+  skipped: number;
+}

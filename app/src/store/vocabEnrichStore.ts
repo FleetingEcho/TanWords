@@ -24,8 +24,16 @@ interface VocabEnrichState {
   /** Single-word re-analyze (detail panel's "Re-enrich"), keyed by word — same reasoning. */
   singleJobs: Record<string, SingleJob>;
   startSingle: (word: string) => AbortController;
-  finishSingle: (word: string, status: "done" | "error") => void;
+  finishSingle: (word: string, status: "done" | "error", controller?: AbortController) => void;
+  clearSingle: (word: string, controller?: AbortController) => void;
   cancelSingle: (word: string) => void;
+
+  /** Live partial stream of each running single-word job, so switching to another word and
+   *  back re-renders the text that arrived while the detail panel wasn't showing it. Kept in
+   *  its own map (not inside SingleJob) so per-chunk updates don't churn `singleJobs`, which
+   *  CommandBar's background-job indicator subscribes to. */
+  singleTexts: Record<string, string>;
+  setSingleText: (word: string, text: string) => void;
 }
 
 export const useVocabEnrichStore = create<VocabEnrichState>((set, get) => ({
@@ -40,17 +48,33 @@ export const useVocabEnrichStore = create<VocabEnrichState>((set, get) => ({
   finishBulk: () => set((s) => ({ bulk: { ...s.bulk, running: false, controller: null } })),
 
   singleJobs: {},
+  singleTexts: {},
   startSingle: (word) => {
     get().singleJobs[word]?.controller.abort();
     const controller = new AbortController();
-    set((s) => ({ singleJobs: { ...s.singleJobs, [word]: { status: "running", controller } } }));
+    set((s) => ({
+      singleJobs: { ...s.singleJobs, [word]: { status: "running", controller } },
+      singleTexts: { ...s.singleTexts, [word]: "" },
+    }));
     return controller;
   },
-  finishSingle: (word, status) =>
+  // `controller` guards against a stale run (one that was aborted because a newer re-analyze
+  // of the same word took over) resolving late and overwriting the newer job's state.
+  finishSingle: (word, status, controller) =>
     set((s) => {
       const job = s.singleJobs[word];
-      if (!job) return s;
-      return { singleJobs: { ...s.singleJobs, [word]: { ...job, status } } };
+      if (!job || (controller && job.controller !== controller)) return s;
+      const { [word]: _dropped, ...singleTexts } = s.singleTexts;
+      return { singleJobs: { ...s.singleJobs, [word]: { ...job, status } }, singleTexts };
+    }),
+  clearSingle: (word, controller) =>
+    set((s) => {
+      const job = s.singleJobs[word];
+      if (!job || (controller && job.controller !== controller)) return s;
+      const { [word]: _droppedJob, ...singleJobs } = s.singleJobs;
+      const { [word]: _droppedText, ...singleTexts } = s.singleTexts;
+      return { singleJobs, singleTexts };
     }),
   cancelSingle: (word) => get().singleJobs[word]?.controller.abort(),
+  setSingleText: (word, text) => set((s) => ({ singleTexts: { ...s.singleTexts, [word]: text } })),
 }));

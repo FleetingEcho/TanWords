@@ -106,7 +106,9 @@ admin/   # Standalone local admin tool for the same SQLite DB — table CRUD and
 
 - **Frontend** (`app/`): React 18 + TypeScript + Tailwind + Zustand, Vite, BlockNote
   (document editor).
-- **Backend** (`app/src-tauri/`): Rust, Tauri v2, `rusqlite` (SQLite, WAL mode).
+- **Backend** (`app/src-tauri/`): Rust, Tauri v2, `libsql` (SQLite, WAL mode) — one
+  API covering both a local database file and a Turso embedded replica, see
+  "Online database" below.
 - **Admin** (`admin/`): Node + Hono API + `better-sqlite3`, React/Vite web UI, plus a
   standalone CLI for unattended batch content generation.
 - **AI**: bring-your-own-key, OpenAI-compatible providers (OpenAI, Anthropic/Claude,
@@ -135,7 +137,45 @@ admin/   # Standalone local admin tool for the same SQLite DB — table CRUD and
 | Discover | Generate a themed vocabulary batch by topic, or explore a word family from a root/affix. |
 | Documents | Personal notes editor (BlockNote), full-text search (SQLite FTS5), tags, pinning. |
 | AI Chat | Multi-session chat with tool-use that can write directly into the app's data. |
-| Settings | Provider config, CEFR target level, TTS voice model/speed (scan directories, download recommended Kokoro/Piper voices, add custom directories), switchable DB location, backup export. |
+| Settings | Provider config, CEFR target level, TTS voice model/speed (scan directories, download recommended Kokoro/Piper voices, add custom directories), switchable DB location, online database connection, backup export. |
+
+## Online database (optional)
+
+By default everything lives in one local SQLite file and no account is needed.
+To share one vocabulary across machines, connect **your own** Turso database
+under Settings › Data:
+
+```bash
+turso db create tanwords
+turso db show tanwords --url          # → libsql://…  goes in "Database URL"
+turso db tokens create tanwords       # → token       goes in "Auth token"
+```
+
+> **Note**: appearance settings (avatar, nickname, background image, theme, highlight
+> colour, TTS voice, sidebar layout) live in the database too. Against an empty online
+> database they fall back to defaults, which looks like a reset — your original local
+> database is untouched and can be re-mounted anytime.
+
+A full local copy is kept afterwards (an embedded replica), so reads stay at
+local speed and offline reading still works; writes are forwarded to your
+primary and synced both ways in the background. The token is stored in the OS
+keychain and can't be read back from the UI. Backup export and switching the
+database file are local-profile only — neither is meaningful for a replica.
+
+**Moving existing local data in**: Settings › Data › "Import from a local database"
+takes any TanWords database file and shows a preview first — grouped by words,
+patterns, articles and documents, with a count of what's new and a side-by-side
+existing-vs-incoming list of what already exists. Tick the rows to overwrite,
+leave the rest, and it applies in one transaction. Re-importing the same file
+changes nothing. Overwrites never touch FSRS review progress, and settings
+(including the MCP token) are never imported.
+
+You can disconnect at any time: your current vocabulary is saved to a standalone
+local database file first and carries over, and nothing on the remote is touched.
+While offline, reads keep working from the local replica (marked read-only) and
+writes fail loudly rather than being silently lost.
+
+The database belongs to your own Turso account; this project hosts nothing.
 
 ## Getting started
 
