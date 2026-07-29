@@ -13,7 +13,7 @@ function buildPrompt(text: string, knownWords: string[], level: string): string 
   return `Read the article below and write a short markdown study note for a ${level} learner. Structure it as:
 
 ## Words worth learning
-Up to 15 single words worth learning for a ${level} learner, each as one bullet: **word** — 中文释义 — 用法/语气说明（中文，一句话）. Exclude common words (below ${level}), basic tech terms every engineer knows (server, deploy, database...), and proper nouns.
+Up to 30 words and phrases worth learning for a ${level} learner — don't limit this to single words, include collocations, phrasal verbs and idioms whenever they're worth learning. Each as one bullet: **word or phrase** — 中文释义 — 用法/语气说明（中文，一句话）. Exclude common words (below ${level}), basic tech terms every engineer knows (server, deploy, database...), and proper nouns.
 
 ## Sentences worth stealing
 3-8 highlight sentences worth imitating — advanced structures, elegant phrasing, rhetorical moves a ${level} learner should steal for their own writing. Prefer sentences that showcase a reusable pattern over merely long ones. Each as a blockquote with the EXACT sentence copied verbatim from the article, followed by a line with 中文翻译 and 这句好在哪、用了什么句式/修辞（中文，1-2句话）.
