@@ -336,16 +336,6 @@ export function GeneralSection() {
           onChange={(v) => settings.setSelectionActions(v === "on")}
         />
       </SettingRow>
-      <SettingRow label={t("settings.quickDoc")} sub={t("settings.quickDocSub")}>
-        <ToggleGroup
-          options={[
-            { id: "on", label: t("settings.on") },
-            { id: "off", label: t("settings.off") },
-          ]}
-          value={settings.showQuickDoc ? "on" : "off"}
-          onChange={(v) => settings.setShowQuickDoc(v === "on")}
-        />
-      </SettingRow>
       <div className="py-4">
         <div className="mb-3">
           <div className="flex items-center gap-2.5">

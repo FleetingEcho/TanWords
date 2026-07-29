@@ -21,7 +21,7 @@ function formatTimeAgo(t: (key: string, vars?: Record<string, string | number>) 
 
 /** Dashboard card: the last few articles opened in the RSS reader (lib/recentlyRead,
  *  the same localStorage-backed list behind Feeds' history dropdown) — clicking one
- *  jumps to Feeds and reopens it in-app via feedsNavStore's pendingBrowse handoff. */
+ *  jumps to Feeds and reopens it in-app via feedsNavStore's browse state. */
 export function RecentlyReadWidget() {
   const t = useT();
   const navigate = useNavStore((s) => s.navigate);
@@ -32,7 +32,7 @@ export function RecentlyReadWidget() {
   }, []);
 
   const openItem = (item: RecentlyReadItem) => {
-    useFeedsNavStore.getState().setPendingBrowse(item);
+    useFeedsNavStore.getState().setBrowse(item);
     navigate("feeds");
   };
 

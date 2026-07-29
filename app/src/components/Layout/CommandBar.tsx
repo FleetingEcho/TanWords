@@ -6,6 +6,7 @@ import {
   FilePlus2, Languages, MessageSquarePlus, Monitor, Moon, Quote, Search, Server, Settings, Sun,
   Type, Unplug, User, X,
 } from "lucide-react";
+import { SquaresPlusIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -24,6 +25,7 @@ import { useSettingsStore } from "@/store/settingsStore";
 import { useAnalysisStore } from "@/store/analysisStore";
 import { useVocabEnrichStore } from "@/store/vocabEnrichStore";
 import { GitHubIcon } from "@/components/ui/icons";
+import { useToolsBallStore } from "@/store/toolsBallStore";
 
 type McpState = { status: { running: boolean; error: string | null } };
 
@@ -39,6 +41,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   const theme = useSettingsStore((state) => state.theme);
   const setTheme = useSettingsStore((state) => state.setTheme);
   const visibleItems = useSettingsStore((state) => state.visibleTopBarItems);
+  const toggleToolsModal = useToolsBallStore((state) => state.toggleModal);
   const userAvatar = useSettingsStore((state) => state.userAvatar);
   const visible = (item: import("@/store/settingsStore").TopBarItemId) => visibleItems.includes(item);
   const analysisJobs = useAnalysisStore((state) => state.jobs);
@@ -248,6 +251,15 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
             {iconsCollapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
           </Button>
           {!iconsCollapsed && <>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleToolsModal}
+            title={t("tools.ballLabel")}
+            className="h-8 w-8 rounded-lg text-muted-foreground"
+          >
+            <SquaresPlusIcon className="h-4 w-4" />
+          </Button>
           {visible("db") && <Tooltip>
             <TooltipTrigger asChild>
               <Button

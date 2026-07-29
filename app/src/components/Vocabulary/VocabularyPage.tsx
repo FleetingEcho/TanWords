@@ -49,6 +49,7 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
   // Filters — levelFilters is applied client-side (empty = all levels) so
   // toggling level chips never needs a DB round-trip.
   const [levelFilters, setLevelFilters] = useState<LevelValue[]>([]);
+  const [starredOnly, setStarredOnly] = useState(false);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -56,6 +57,17 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
   const [page, setPage] = useState(0);
   const [view, setView] = useState<"words" | "patterns">("words");
   const [patternSeed, setPatternSeed] = useState<string | null>(null);
+  // Words layout: the classic list + detail split, or a single full-width
+  // list (like the Sentences tab) where the detail expands inline below the
+  // selected word.
+  const [wordsLayout, setWordsLayout] = useState<"split" | "full">(
+    () => (localStorage.getItem("vocab-words-layout") === "full" ? "full" : "split")
+  );
+  const toggleWordsLayout = () => setWordsLayout((current) => {
+    const next = current === "full" ? "split" : "full";
+    localStorage.setItem("vocab-words-layout", next);
+    return next;
+  });
   const [listCollapsed, setListCollapsed] = useState(() => localStorage.getItem("vocab-wordlist-collapsed") === "1");
   const toggleListCollapsed = () => setListCollapsed((current) => {
     localStorage.setItem("vocab-wordlist-collapsed", current ? "0" : "1");
@@ -315,8 +327,8 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
   }, [debouncedSearch, dateFrom, dateTo]);
 
   const visibleWords = useMemo(
-    () => words.filter((w) => matchesLevels(w.level, levelFilters)),
-    [words, levelFilters]
+    () => words.filter((w) => matchesLevels(w.level, levelFilters) && (!starredOnly || w.starred)),
+    [words, levelFilters, starredOnly]
   );
 
   // Dictionary behavior: the searched term isn't in the vocabulary → offer AI lookup
@@ -564,7 +576,9 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
     if (initialWordId && words.length > 0) {
       const w = words.find((x) => x.id === initialWordId);
       if (w) selectWord(w);
-    } else if (words.length > 0 && !selected) {
+    } else if (wordsLayout === "split" && words.length > 0 && !selected) {
+      // Only the split layout auto-selects — in the full-width list an
+      // auto-expanded first row would just be noise.
       selectWord(words[0]);
     }
   }, [words.length, initialWordId]);
@@ -582,6 +596,35 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
     setSelectedWord({ wordId: chatWordId, word: chatWord, enrichedContext: activeEnriched?.text || "" });
   }, [chatWordId, chatWord, activeEnriched, setSelectedWord]);
   useEffect(() => () => clearSelectedWord(), [clearSelectedWord]);
+
+  const wordDetail = (
+      <WordDetailPanel
+        selected={{
+          word: lookup ? lookup.word : selected?.word.word ?? "",
+          zh: lookup ? lookup.basicInfo.zh ?? lookup.enriched?.zhShort ?? null : selected?.word.zh ?? null,
+          wordType: lookup ? lookup.basicInfo.wordType ?? null : selected?.word.word_type ?? null,
+          level: lookup ? lookup.basicInfo.level ?? lookup.enriched?.level ?? null : selected?.word.level ?? null,
+          ipa: "",
+        }}
+        wordId={lookup ? null : selected?.word.id ?? null}
+        enriched={activeEnriched}
+        enriching={lookup ? enriching : effectiveEnriching}
+        enrichError={enrichError}
+        legacy={lookup || selectedWordJobRunning ? false : selected?.legacy ?? false}
+        notes={notes}
+        lookupMode={!!lookup}
+        lookupAdded={lookup?.added ?? false}
+        onAddToVocab={addLookupToVocab}
+        onNotesChange={saveNotes}
+        onClearNotes={() => saveNotes("")}
+        onRetry={() => {
+          if (lookup) startLookup(lookup.word);
+          else if (selected) enrichSelected(selected.word.word);
+        }}
+        onReenrich={() => selected && enrichSelected(selected.word.word)}
+        onGeneratePatterns={chatWord ? () => { setPatternSeed(chatWord); setView("patterns"); } : undefined}
+      />
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -613,10 +656,16 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
         dateTo={dateTo}
         onSearchChange={(v) => { setSearch(v); setPage(0); }}
         onFilterChange={(v) => { setLevelFilters(v); setPage(0); }}
+        starredOnly={starredOnly}
+        onStarredOnlyChange={(v) => { setStarredOnly(v); setPage(0); }}
         onDateFromChange={setDateFrom}
         onDateToChange={setDateTo}
         onRefresh={refreshList}
-        onSelect={selectWord}
+        onSelect={(w) => {
+          // In the full-width list, clicking the expanded word collapses it.
+          if (wordsLayout === "full" && !lookup && selected?.word.id === w.id) setSelected(null);
+          else selectWord(w);
+        }}
         onPageChange={setPage}
         onDoubleClick={handleWordDoubleClick}
         onAiLookup={startLookup}
@@ -636,34 +685,12 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
         onToggleStar={toggleWordStar}
         selectMode={selectMode}
         onToggleSelectMode={toggleWordSelectMode}
+        fullWidth={wordsLayout === "full"}
+        onToggleLayout={toggleWordsLayout}
+        renderDetail={() => wordDetail}
       />
 
-      <WordDetailPanel
-        selected={{
-          word: lookup ? lookup.word : selected?.word.word ?? "",
-          zh: lookup ? lookup.basicInfo.zh ?? lookup.enriched?.zhShort ?? null : selected?.word.zh ?? null,
-          wordType: lookup ? lookup.basicInfo.wordType ?? null : selected?.word.word_type ?? null,
-          level: lookup ? lookup.basicInfo.level ?? lookup.enriched?.level ?? null : selected?.word.level ?? null,
-          ipa: "",
-        }}
-        wordId={lookup ? null : selected?.word.id ?? null}
-        enriched={activeEnriched}
-        enriching={lookup ? enriching : effectiveEnriching}
-        enrichError={enrichError}
-        legacy={lookup || selectedWordJobRunning ? false : selected?.legacy ?? false}
-        notes={notes}
-        lookupMode={!!lookup}
-        lookupAdded={lookup?.added ?? false}
-        onAddToVocab={addLookupToVocab}
-        onNotesChange={saveNotes}
-        onClearNotes={() => saveNotes("")}
-        onRetry={() => {
-          if (lookup) startLookup(lookup.word);
-          else if (selected) enrichSelected(selected.word.word);
-        }}
-        onReenrich={() => selected && enrichSelected(selected.word.word)}
-        onGeneratePatterns={chatWord ? () => { setPatternSeed(chatWord); setView("patterns"); } : undefined}
-      />
+      {wordsLayout === "split" && wordDetail}
       </div>
       )}
 

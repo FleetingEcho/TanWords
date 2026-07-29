@@ -20,7 +20,7 @@ use v001_005::{MIGRATION_01, MIGRATION_02, MIGRATION_03, MIGRATION_04, MIGRATION
 use v006_010::{MIGRATION_06, MIGRATION_07, MIGRATION_08, MIGRATION_09, MIGRATION_10};
 use v011_015::{MIGRATION_11, MIGRATION_12, MIGRATION_13, MIGRATION_14, MIGRATION_15};
 use v016_021::{MIGRATION_16, MIGRATION_17, MIGRATION_18, MIGRATION_19, MIGRATION_20, MIGRATION_21};
-use v022_026::{MIGRATION_22, MIGRATION_23};
+use v022_026::{MIGRATION_22, MIGRATION_23, MIGRATION_24};
 
 const MIGRATIONS: &[Migration] = &[
     MIGRATION_01,
@@ -46,6 +46,7 @@ const MIGRATIONS: &[Migration] = &[
     MIGRATION_21,
     MIGRATION_22,
     MIGRATION_23,
+    MIGRATION_24,
 ];
 
 /// The version a fully-migrated database lands on. Exposed so tests can assert
@@ -126,7 +127,7 @@ mod tests {
     /// `run` applies *every* pending migration, not just the one under test,
     /// so a test that seeds only the table it cares about trips over a later
     /// migration altering some other table. These are the pre-existing tables
-    /// that migrations 16-23 touch, in their shape as of version 15.
+    /// that migrations 16-24 touch, in their shape as of version 15.
     async fn seed_legacy_tables(conn: &Connection) {
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS words (
@@ -142,6 +143,10 @@ mod tests {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 article_id INTEGER NOT NULL,
                 kind TEXT NOT NULL DEFAULT 'word'
+             );
+             CREATE TABLE IF NOT EXISTS patterns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                pattern TEXT NOT NULL
              );
              CREATE TABLE IF NOT EXISTS articles (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,

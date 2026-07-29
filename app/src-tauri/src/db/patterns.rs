@@ -24,6 +24,7 @@ pub struct PatternItem {
     zh: String,
     note: String,
     level: Option<String>,
+    starred: bool,
     created_at: String,
     examples: Vec<PatternExampleItem>,
 }
@@ -33,7 +34,7 @@ pub async fn db_list_patterns(conn: State<'_, AppState>) -> Result<Vec<PatternIt
     let db = db::conn(&conn)?;
     let mut patterns = db::fetch_all(
         &db,
-        "SELECT id,pattern,zh,note,level,created_at FROM patterns ORDER BY created_at DESC, id DESC",
+        "SELECT id,pattern,zh,note,level,starred,created_at FROM patterns ORDER BY created_at DESC, id DESC",
         (),
         |r| {
             Ok(PatternItem {
@@ -42,7 +43,8 @@ pub async fn db_list_patterns(conn: State<'_, AppState>) -> Result<Vec<PatternIt
                 zh: r.get(2)?,
                 note: r.get(3)?,
                 level: r.get(4)?,
-                created_at: r.get(5)?,
+                starred: r.get(5)?,
+                created_at: r.get(6)?,
                 examples: Vec::new(),
             })
         },
@@ -86,6 +88,46 @@ pub async fn db_delete_pattern(pattern_id: i64, conn: State<'_, AppState>) -> Re
         .await
         .map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn db_set_pattern_starred(
+    pattern_id: i64,
+    starred: bool,
+    conn: State<'_, AppState>,
+) -> Result<(), String> {
+    let db = db::conn(&conn)?;
+    db.execute(
+        "UPDATE patterns SET starred = ?1 WHERE id = ?2",
+        params![starred, pattern_id],
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Overwrite a saved sentence's AI-derived analysis (translation, skeleton,
+/// note, level) in place — used by the re-analyze action; the example
+/// sentences themselves are untouched.
+#[tauri::command]
+pub async fn db_update_pattern_analysis(
+    pattern_id: i64,
+    zh: String,
+    skeleton: String,
+    note: String,
+    level: String,
+    conn: State<'_, AppState>,
+) -> Result<(), String> {
+    let db = db::conn(&conn)?;
+    let level = level.trim().to_string();
+    let level_opt = if level.is_empty() { None } else { Some(level) };
+    db.execute(
+        "UPDATE patterns SET pattern=?2, zh=?3, note=?4, level=?5 WHERE id=?1",
+        params![pattern_id, skeleton, zh, note, level_opt],
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 /// Save a full sentence into the sentence-pattern library (patterns +

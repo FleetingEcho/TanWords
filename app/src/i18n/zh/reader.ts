@@ -7,6 +7,8 @@ export const reader: Dict = {
     "reader.fontSmaller": "缩小字号",
     "reader.fontLarger": "放大字号",
     "reader.analyzeNotes": "分析生词好句",
+    "reader.copyMarkdown": "以 Markdown 复制正文和评论",
+    "reader.copyFailed": "复制到剪贴板失败",
     "reader.urlPlaceholder": "粘贴文章网址…",
     "reader.open": "打开",
     "reader.openUrl": "打开网址",

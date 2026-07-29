@@ -10,14 +10,16 @@ export interface PendingBrowse {
 }
 
 interface FeedsNavState {
-  /** In-app reader to reopen (e.g. jumping back from the player bar) — consumed on Feeds page mount. */
-  pendingBrowse: PendingBrowse | null;
-  setPendingBrowse: (b: PendingBrowse) => void;
-  clearPendingBrowse: () => void;
+  /** The article currently open in the Feeds page's in-app reader. Lives here —
+   *  not in FeedsPage state — so leaving for another page (Settings, Dashboard…)
+   *  and coming back restores the article instead of dumping the user on the
+   *  feed list, and so other surfaces (player bar, dashboard widget) can open
+   *  one directly. Null when the feed list is showing. */
+  browse: PendingBrowse | null;
+  setBrowse: (b: PendingBrowse | null) => void;
 }
 
 export const useFeedsNavStore = create<FeedsNavState>((set) => ({
-  pendingBrowse: null,
-  setPendingBrowse: (b) => set({ pendingBrowse: b }),
-  clearPendingBrowse: () => set({ pendingBrowse: null }),
+  browse: null,
+  setBrowse: (b) => set({ browse: b }),
 }));

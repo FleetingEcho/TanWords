@@ -18,8 +18,10 @@ import { ArticleComments } from "@/components/Reader/ArticleComments";
 import { TranslationPane } from "@/components/shared/TranslationPane";
 import { Markdown } from "@/components/AiChat/Markdown";
 import { AiChatModal } from "@/components/AiChat/AiChatModal";
-import { MessageSquareText } from "lucide-react";
+import { MessageSquareText, Copy } from "lucide-react";
+import { toast } from "sonner";
 import { flattenHnComments, commentsToSpeechText, type HnComment } from "@/lib/hnComments";
+import { buildArticleMarkdown } from "@/lib/articleMarkdown";
 
 export interface FetchedArticle {
   title: string;
@@ -112,6 +114,7 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
   const [showComments, setShowComments] = useState(false);
   const readingRef = useRef<HTMLDivElement>(null);
   const [showTranslation, setShowTranslation] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [chatModalSessionId, setChatModalSessionId] = useState<string | null>(null);
   // The analyze trigger lives in the reader bar now (see ReaderView) — this page
   // only publishes its article there and renders whatever comes back.
@@ -173,6 +176,27 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
       text: article.text_content,
       commentsText: hnComments ? flattenHnComments(hnComments) : undefined,
     });
+  };
+
+  /** Copies the article (and the HN thread when loaded) as markdown — for
+   *  pasting into an external AI chat, so nothing is truncated. */
+  const handleCopyMarkdown = async () => {
+    if (!article) return;
+    const markdown = buildArticleMarkdown({
+      title: article.title,
+      byline: article.byline,
+      siteName: article.site_name,
+      sourceUrl: url.startsWith(SCRATCH_URL_PREFIX) || url.startsWith(LIBRARY_URL_PREFIX) ? undefined : url,
+      contentHtml: article.content_html,
+      comments: hnComments,
+    });
+    try {
+      await navigator.clipboard.writeText(markdown);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error(t("reader.copyFailed"));
+    }
   };
 
   const handleListenComments = () => {
@@ -360,7 +384,13 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
   }
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto">
+    // Two independent columns: the article scrolls on the left, and the side
+    // panel (notes / translation / comments) fills the reader's real height on
+    // the right with its own scroll — sizing it off 100vh instead would
+    // overshoot, since the feeds tab bar above and the player bar below both
+    // eat into the viewport, leaving the panel's bottom unreachable.
+    <div className="flex-1 min-h-0 flex">
+      <div className="min-w-0 flex-1 overflow-y-auto">
       <div className="px-6 py-10">
         <div className={hasSidePanes ? "" : "max-w-[68ch] mx-auto"}>
           {/* Font size control */}
@@ -396,6 +426,17 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
 
         {toolbarSlot && createPortal(
           <>
+            <Button
+              variant="ghost"
+              onClick={() => void handleCopyMarkdown()}
+              title={t("reader.copyMarkdown")}
+              aria-label={t("reader.copyMarkdown")}
+              className={`w-7 h-7 p-0 rounded-md flex items-center justify-center transition-colors shrink-0 ${
+                copied ? "bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/15" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              {copied ? <CheckIcon className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+            </Button>
             <Button
               variant="ghost"
               onClick={handleLearnClick}
@@ -497,72 +538,71 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
           toolbarSlot
         )}
 
-        {/* Article on the left, always. The right panel appears once notes or a
-          * translation is requested, and shows exactly one of them at a time —
-          * a small toggle only shows up once there's actually a second thing to
-          * switch to. Notes is populated from the reader bar's analyze button
-          * (see ReaderView); it just renders whatever markdown comes back. */}
-        <div className="mt-6 flex items-start gap-3">
-          {/* data-reader-selectable tells the global selection toolbar that
-            * anything picked in here (article body or HN comments) came from
-            * the reader, so saved sentences are attributed to it. */}
-          <div ref={readingRef} data-reader-selectable className={hasSidePanes ? "min-w-0 flex-1" : "min-w-0 w-full max-w-[68ch] mx-auto"}>
-            <div
-              className="reader-article-content text-foreground"
-              style={{ fontSize: `${FONT_STEPS[fontStep]}px`, lineHeight: 1.85 }}
-              dangerouslySetInnerHTML={{ __html: article.content_html }}
-            />
-            {hnItemId != null && <HnComments storyId={hnItemId} onLoaded={handleHnCommentsLoaded} />}
-          </div>
-
-          {hasSidePanes && (
-            <div className="min-w-0 flex-1 sticky top-0 h-[calc(100vh-3rem)] flex flex-col overflow-hidden border-l border-border/40 pl-4">
-              {openPanes.length > 1 && (
-                <div className="flex items-center gap-1 border-b border-border p-1.5 shrink-0">
-                  {openPanes.map((pane) => (
-                    <button
-                      key={pane}
-                      onClick={() => setRightView(pane)}
-                      className={`flex-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                        activeView === pane ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      {pane === "notes" ? t("reading.notesTitle") : pane === "translation" ? t("reading.translate.button") : t("library.comments", { n: comments.length })}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {activeView === "notes" ? (
-                <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-                  {analyzingNotes ? (
-                    <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
-                      <span className="w-3.5 h-3.5 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />
-                      {t("command.analyzing")}
-                    </div>
-                  ) : notesMarkdown ? (
-                    <Markdown text={notesMarkdown} />
-                  ) : (
-                    <p className="text-xs text-muted-foreground">{t("reading.notesEmpty")}</p>
-                  )}
-                </div>
-              ) : activeView === "comments" ? (
-                <ArticleComments
-                  comments={comments}
-                  onDelete={async (id) => { await db.deleteReadingComment(id); window.dispatchEvent(new CustomEvent("articles-updated")); }}
-                  onAdd={async (body) => {
-                    if (articleId === null) return;
-                    await db.addReadingComment(articleId, body);
-                    window.dispatchEvent(new CustomEvent("articles-updated"));
-                  }}
-                />
-              ) : (
-                <TranslationPane articleText={article.text_content} hnItemId={hnItemId ?? null} />
-              )}
-            </div>
-          )}
+        {/* data-reader-selectable tells the global selection toolbar that
+          * anything picked in here (article body or HN comments) came from
+          * the reader, so saved sentences are attributed to it. */}
+        <div ref={readingRef} data-reader-selectable className={`mt-6 min-w-0 ${hasSidePanes ? "" : "w-full max-w-[68ch] mx-auto"}`}>
+          <div
+            className="reader-article-content text-foreground"
+            style={{ fontSize: `${FONT_STEPS[fontStep]}px`, lineHeight: 1.85 }}
+            dangerouslySetInnerHTML={{ __html: article.content_html }}
+          />
+          {hnItemId != null && <HnComments storyId={hnItemId} onLoaded={handleHnCommentsLoaded} />}
         </div>
       </div>
+      </div>
+
+      {/* The side panel appears once notes or a translation is requested, and
+        * shows exactly one of them at a time — a small toggle only shows up
+        * once there's actually a second thing to switch to. Notes is populated
+        * from the reader bar's analyze button (see ReaderView); it just renders
+        * whatever markdown comes back. */}
+      {hasSidePanes && (
+        <div className="min-w-0 flex-1 flex flex-col overflow-hidden border-l border-border/40 pl-4">
+          {openPanes.length > 1 && (
+            <div className="flex items-center gap-1 border-b border-border p-1.5 shrink-0">
+              {openPanes.map((pane) => (
+                <button
+                  key={pane}
+                  onClick={() => setRightView(pane)}
+                  className={`flex-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                    activeView === pane ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {pane === "notes" ? t("reading.notesTitle") : pane === "translation" ? t("reading.translate.button") : t("library.comments", { n: comments.length })}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {activeView === "notes" ? (
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              {analyzingNotes ? (
+                <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+                  <span className="w-3.5 h-3.5 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />
+                  {t("command.analyzing")}
+                </div>
+              ) : notesMarkdown ? (
+                <Markdown text={notesMarkdown} />
+              ) : (
+                <p className="text-xs text-muted-foreground">{t("reading.notesEmpty")}</p>
+              )}
+            </div>
+          ) : activeView === "comments" ? (
+            <ArticleComments
+              comments={comments}
+              onDelete={async (id) => { await db.deleteReadingComment(id); window.dispatchEvent(new CustomEvent("articles-updated")); }}
+              onAdd={async (body) => {
+                if (articleId === null) return;
+                await db.addReadingComment(articleId, body);
+                window.dispatchEvent(new CustomEvent("articles-updated"));
+              }}
+            />
+          ) : (
+            <TranslationPane articleText={article.text_content} hnItemId={hnItemId ?? null} />
+          )}
+        </div>
+      )}
 
       <AiChatModal
         open={chatModalSessionId !== null}

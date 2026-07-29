@@ -179,8 +179,6 @@ export const settings: Dict = {
     "settings.defaultRssTabSub": "打开订阅页时默认显示的频道 — 选择单一来源可避免启动时加载全部频道",
     "settings.defaultRssTabAll": "全部",
     "settings.defaultRssTabHn": "Hacker News",
-    "settings.quickDoc": "浮动工具球",
-    "settings.quickDocSub": "在右下角显示浮动入口，快速访问文档和 AI 对话",
     "settings.nickname": "昵称",
     "settings.nicknameSub": "会显示在 Dashboard 的问候语中（如「晚上好，{name}」）",
     "settings.nicknamePlaceholder": "你的名字",

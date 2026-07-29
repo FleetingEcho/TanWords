@@ -2,19 +2,17 @@ import React, { useEffect, useRef, useState } from "react";
 import { useToolsBallStore } from "@/store/toolsBallStore";
 import { useNavStore } from "@/store/navStore";
 import { useSelectedWordStore } from "@/store/selectedWordStore";
-import { useDocumentEditor } from "@/components/Documents/useDocumentEditor";
-import { useAiChatSession } from "@/components/AiChat/useAiChatSession";
-import { ChatSessionItem } from "@/hooks/useDB";
-import { useDB } from "@/hooks/useDB";
+import { DocumentsPage } from "@/components/Documents/DocumentsPage";
+import { AiChatPage } from "@/components/AiChat/AiChatPage";
 import { ToolsModalTitleBar } from "@/components/ui/ToolsModalTitleBar";
-import { ToolsModalDocumentsTab } from "@/components/ui/ToolsModalDocumentsTab";
-import { ToolsModalChatTab } from "@/components/ui/ToolsModalChatTab";
 import { ToolsModalWordTab } from "@/components/ui/ToolsModalWordTab";
 import { ToolsModalResizeHandle } from "@/components/ui/ToolsModalResizeHandle";
 
 const MIN_W = 500;
 const MIN_H = 400;
 const DRAG_THRESHOLD = 5;
+/** Gap the maximized panel keeps from the viewport edges. */
+const MAX_MARGIN = 10;
 
 function clampPos(
   x: number, y: number,
@@ -37,12 +35,17 @@ function clampSize(
   };
 }
 
-/** Draggable + resizable modal with always-mounted tabs: Documents (DocSelector
- *  + BlockNote editor), AI Chat (minimal session selector + message area +
- *  composer), and — only while on the Vocabulary page — Word chat/notes for
- *  the currently selected word. Content is globally cached — closing and
- *  reopening preserves all state. This component is the composition root;
- *  each tab's body and the title bar live in sibling ToolsModal* files. */
+/** Draggable + resizable + maximizable modal hosting the real full pages:
+ *  Documents (database docs + local folder) and AI Chat (with session
+ *  history sidebar), plus — only while on the Vocabulary page — Word
+ *  chat/notes for the currently selected word.
+ *
+ *  Content mounts on first open and unmounts on close. Mounting the pages
+ *  permanently would double-run their DB queries and global event listeners
+ *  whenever the user is also *on* one of those pages; everything that
+ *  matters (docs, chat sessions) is DB-persisted, so a remount on reopen
+ *  restores the same state anyway. Within one open, inactive tabs are kept
+ *  mounted (display:none) so switching tabs doesn't lose scroll/drafts. */
 export function ToolsModal() {
   const isOpen = useToolsBallStore((s) => s.isOpen);
   const activeTab = useToolsBallStore((s) => s.activeTab);
@@ -52,6 +55,8 @@ export function ToolsModal() {
   const setModalPos = useToolsBallStore((s) => s.setModalPos);
   const modalSize = useToolsBallStore((s) => s.modalSize);
   const setModalSize = useToolsBallStore((s) => s.setModalSize);
+  const maximized = useToolsBallStore((s) => s.maximized);
+  const toggleMaximized = useToolsBallStore((s) => s.toggleMaximized);
 
   // ── Drag state ───────────────────────────────────────────────────────────
   const [dragging, setDragging] = useState(false);
@@ -68,11 +73,15 @@ export function ToolsModal() {
     origW: number; origH: number;
   } | null>(null);
 
-  // ── Document editor (always mounted) ─────────────────────────────────────
-  const docEditor = useDocumentEditor();
-
-  // ── AI Chat session (always mounted, independent from full-page AiChatPage)
-  const chat = useAiChatSession();
+  // ── Lazy per-tab mounting within one open ────────────────────────────────
+  const [mountedTabs, setMountedTabs] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!isOpen) {
+      setMountedTabs(new Set());
+      return;
+    }
+    setMountedTabs((prev) => (prev.has(activeTab) ? prev : new Set(prev).add(activeTab)));
+  }, [isOpen, activeTab]);
 
   // ── Word-chat tab (Vocabulary page only) ─────────────────────────────────
   const isVocabPage = useNavStore((s) => s.currentPage()) === "vocabulary";
@@ -82,16 +91,6 @@ export function ToolsModal() {
   useEffect(() => {
     if (!isVocabPage && activeTab === "word") setActiveTab("documents");
   }, [isVocabPage, activeTab, setActiveTab]);
-
-  // ── Session selector ─────────────────────────────────────────────────────
-  const db = useDB();
-  const [allSessions, setAllSessions] = useState<ChatSessionItem[]>([]);
-
-  useEffect(() => {
-    db.listChatSessions(0, 200).then(setAllSessions);
-    // Refresh when the modal opens
-    if (isOpen) db.listChatSessions(0, 200).then(setAllSessions);
-  }, [isOpen]);
 
   // ── Esc to close ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -121,8 +120,9 @@ export function ToolsModal() {
     return () => window.removeEventListener("resize", onResize);
   }, [isOpen, setModalPos, setModalSize]);
 
-  // ── Drag handlers ────────────────────────────────────────────────────────
+  // ── Drag handlers (no-op while maximized) ────────────────────────────────
   const onTitlePointerDown = (e: React.PointerEvent) => {
+    if (maximized) return;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     dragRef.current = {
       startX: e.clientX, startY: e.clientY,
@@ -176,54 +176,67 @@ export function ToolsModal() {
   };
 
   // ── Render ──────────────────────────────────────────────────────────────
-  // Always render content so hooks stay alive (global state caching).
-  // When closed, the overlay is hidden but all state is preserved.
+  if (!isOpen) return null;
 
   return (
-    <div className={`fixed inset-0 z-100 ${isOpen ? "" : "pointer-events-none"}`} style={{ visibility: isOpen ? "visible" : "hidden" }}>
+    <div className="fixed inset-0 z-[100]">
       {/* Backdrop */}
-      <div className={`absolute inset-0 bg-black/20 transition-opacity ${isOpen ? "opacity-100" : "opacity-0"}`} onClick={closeModal} />
+      <div className="absolute inset-0 bg-black/20" onClick={closeModal} />
 
       {/* Modal panel */}
       <div
         className={`absolute bg-background border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden
           ${resizing ? "select-none" : ""}
           ${dragging ? "cursor-grabbing" : ""}`}
-        style={{
-          left: modalPos.x,
-          top: modalPos.y,
-          width: modalSize.width,
-          height: modalSize.height,
-          transition: dragging || resizing ? "none" : "left 0.15s ease, top 0.15s ease, width 0.15s ease, height 0.15s ease",
-        }}
+        style={
+          maximized
+            ? { left: MAX_MARGIN, top: MAX_MARGIN, right: MAX_MARGIN, bottom: MAX_MARGIN }
+            : {
+                left: modalPos.x,
+                top: modalPos.y,
+                width: modalSize.width,
+                height: modalSize.height,
+                transition: dragging || resizing ? "none" : "left 0.15s ease, top 0.15s ease, width 0.15s ease, height 0.15s ease",
+              }
+        }
       >
         <ToolsModalTitleBar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           isVocabPage={isVocabPage}
-          chat={chat}
-          allSessions={allSessions}
           closeModal={closeModal}
+          maximized={maximized}
+          toggleMaximized={toggleMaximized}
           dragging={dragging}
           onTitlePointerDown={onTitlePointerDown}
           onTitlePointerMove={onTitlePointerMove}
           onTitlePointerUp={onTitlePointerUp}
         />
 
-        {/* ── Body ────────────────────────────────────────────────────────── */}
+        {/* ── Body: the real pages, shown/hidden per tab ──────────────────── */}
         <div className="flex-1 min-h-0 overflow-hidden">
-          <ToolsModalDocumentsTab active={activeTab === "documents"} docEditor={docEditor} />
-          <ToolsModalChatTab active={activeTab === "chat"} chat={chat} />
-          {isVocabPage && (
+          {mountedTabs.has("documents") && (
+            <div style={{ display: activeTab === "documents" ? "block" : "none", height: "100%" }}>
+              <DocumentsPage />
+            </div>
+          )}
+          {mountedTabs.has("chat") && (
+            <div style={{ display: activeTab === "chat" ? "block" : "none", height: "100%" }}>
+              <AiChatPage />
+            </div>
+          )}
+          {isVocabPage && mountedTabs.has("word") && (
             <ToolsModalWordTab active={activeTab === "word"} selectedWord={selectedWord} />
           )}
         </div>
 
-        <ToolsModalResizeHandle
-          onResizePointerDown={onResizePointerDown}
-          onResizePointerMove={onResizePointerMove}
-          onResizePointerUp={onResizePointerUp}
-        />
+        {!maximized && (
+          <ToolsModalResizeHandle
+            onResizePointerDown={onResizePointerDown}
+            onResizePointerMove={onResizePointerMove}
+            onResizePointerUp={onResizePointerUp}
+          />
+        )}
       </div>
     </div>
   );

@@ -203,6 +203,8 @@ pub fn run() {
             db::db_save_sentence_pattern,
             db::db_list_patterns,
             db::db_delete_pattern,
+            db::db_update_pattern_analysis,
+            db::db_set_pattern_starred,
             tts::models::tts_scan_models,
             tts::models::tts_default_models_dir,
             tts::engine::tts_load_model,
