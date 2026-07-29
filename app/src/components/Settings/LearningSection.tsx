@@ -122,6 +122,23 @@ export function LearningSection() {
           })}
         </div>
       </SettingRow>
+      <SettingRow label={t("settings.showLevelBadges")} sub={t("settings.showLevelBadgesSub")}>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={settings.showLevelBadges}
+          onClick={() => settings.setShowLevelBadges(!settings.showLevelBadges)}
+          className={`relative h-[18px] w-8 shrink-0 rounded-full transition-colors ${
+            settings.showLevelBadges ? "bg-primary" : "bg-muted-foreground/30"
+          }`}
+        >
+          <span
+            className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-all ${
+              settings.showLevelBadges ? "left-[calc(100%-1rem)]" : "left-0.5"
+            }`}
+          />
+        </button>
+      </SettingRow>
       <HighlightColorSetting />
       <EnrichPromptEditor />
     </div>

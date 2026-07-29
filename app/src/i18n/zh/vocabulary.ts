@@ -45,6 +45,7 @@ export const vocabulary: Dict = {
     "vocab.tabWords": "词汇",
     "vocab.tabPatterns": "例句",
     "vocab.patterns.title": "例句",
+    "vocab.perPage": "每页",
     "vocab.patterns.count": "{count} 个句式",
     "vocab.patterns.searchPlaceholder": "搜索句子、翻译、例句…",
     "vocab.patterns.quickSearchPlaceholder": "搜索或添加一个句子…",

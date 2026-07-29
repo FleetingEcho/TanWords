@@ -131,7 +131,19 @@ pub async fn init_db(conn: &Connection) -> SqlResult<()> {
             VALUES ('delete', old.id, old.title, old.content_text);
             INSERT INTO documents_fts(rowid, title, content_text)
             VALUES (new.id, new.title, new.content_text);
-        END;"
+        END;
+        CREATE TABLE IF NOT EXISTS document_assets (
+            id          TEXT PRIMARY KEY,
+            document_id INTEGER NOT NULL,
+            file_name   TEXT NOT NULL DEFAULT 'image',
+            mime_type   TEXT NOT NULL,
+            data        BLOB NOT NULL,
+            size        INTEGER NOT NULL,
+            created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_document_assets_document
+            ON document_assets(document_id);"
     ).await;
 
     // AI Chat sessions

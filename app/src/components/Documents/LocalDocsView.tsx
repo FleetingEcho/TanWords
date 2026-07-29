@@ -21,6 +21,7 @@ import {
   writeLocalDoc,
   importLocalDocs,
   exportLocalDocs,
+  uploadLocalDocImage,
 } from "@/lib/localDocs";
 import { SaveStatus } from "./useDocumentEditor";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
@@ -49,6 +50,7 @@ export function LocalDocsView() {
   const [searching, setSearching] = useState(false);
   const searchSequence = useRef(0);
   const [activePath, setActivePath] = useState<string | null>(null);
+  const activePathRef = useRef<string | null>(null);
   const [activeContent, setActiveContent] = useState<string | null>(null);
   const [activeRawContent, setActiveRawContent] = useState<string | null>(null);
   /** True while a file's content is being read — a large file can take a moment,
@@ -56,6 +58,7 @@ export function LocalDocsView() {
   const [fileLoading, setFileLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const saveStatusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveQueue = useRef(Promise.resolve());
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [pendingImport, setPendingImport] = useState<{ relPath: string; markdown: string; duplicate: boolean } | null>(null);
   const [sidebarOpen, setSidebarOpenState] = useState(() => localStorage.getItem("tanwords_doc_local_sidebar_collapsed") !== "1");
@@ -89,6 +92,7 @@ export function LocalDocsView() {
   }, [root]);
 
   useEffect(() => {
+    activePathRef.current = activePath;
     if (activePath) localStorage.setItem(LAST_LOCAL_PATH_KEY, activePath);
   }, [activePath]);
 
@@ -220,18 +224,26 @@ export function LocalDocsView() {
 
   const handleSave = useCallback(async (markdown: string) => {
     if (!root || !activePath) return;
+    const saveRoot = root;
+    const savePath = activePath;
     setSaveStatus("saving");
     if (saveStatusTimer.current) clearTimeout(saveStatusTimer.current);
-    try {
-      await writeLocalDoc(root, activePath, markdown);
-      setActiveRawContent(markdown);
-      setSaveStatus("saved");
-      saveStatusTimer.current = setTimeout(() => setSaveStatus("idle"), 1800);
-      refresh();
-    } catch (e) {
-      setSaveStatus("idle");
-      toast.error(String(e));
-    }
+    const save = async () => {
+      try {
+        await writeLocalDoc(saveRoot, savePath, markdown);
+        setActiveRawContent((current) => activePathRef.current === savePath ? markdown : current);
+        if (activePathRef.current === savePath) {
+          setSaveStatus("saved");
+          saveStatusTimer.current = setTimeout(() => setSaveStatus("idle"), 1800);
+        }
+        await refresh();
+      } catch (e) {
+        setSaveStatus("idle");
+        toast.error(String(e));
+      }
+    };
+    saveQueue.current = saveQueue.current.then(save, save);
+    await saveQueue.current;
   }, [root, activePath, refresh]);
 
   const requestImportToDatabase = useCallback(async (relPath: string, markdown?: string) => {
@@ -333,6 +345,8 @@ export function LocalDocsView() {
         modifiedMs={activeMeta?.modified_ms ?? 0}
         saveStatus={saveStatus}
         onSave={handleSave}
+        onDirty={() => setSaveStatus("dirty")}
+        onUploadImage={(file) => uploadLocalDocImage(root!, file)}
         toRawMarkdown={(markdown) => mdFromDisplay(markdown, root!, activePath!)}
         toDisplayMarkdown={(markdown) => mdToDisplay(markdown, root!, activePath!)}
         onRename={handleRename}

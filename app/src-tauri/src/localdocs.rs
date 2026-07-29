@@ -46,6 +46,22 @@ pub struct MarkdownExport {
     pub content: String,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarkdownAssetExport {
+    pub name: String,
+    pub data_base64: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarkdownBundleExport {
+    pub name: String,
+    pub content: String,
+    #[serde(default)]
+    pub assets: Vec<MarkdownAssetExport>,
+}
+
 fn unique_md_path(dir: &Path, file_name: &str) -> PathBuf {
     let path = Path::new(file_name);
     let stem = path
@@ -65,6 +81,55 @@ fn unique_md_path(dir: &Path, file_name: &str) -> PathBuf {
         }
     }
     dir.join(format!("{stem}-copy.{ext}"))
+}
+
+fn unique_asset_path(dir: &Path, file_name: &str) -> PathBuf {
+    let safe = Path::new(file_name)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("image");
+    let path = Path::new(safe);
+    let stem = path.file_stem().and_then(|value| value.to_str()).unwrap_or("image");
+    let ext = path.extension().and_then(|value| value.to_str()).unwrap_or("bin");
+    for index in 1..1000 {
+        let name = if index == 1 {
+            format!("{stem}.{ext}")
+        } else {
+            format!("{stem}-{index}.{ext}")
+        };
+        let candidate = dir.join(name);
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    dir.join(format!("{}-{}.{}", stem, uuid::Uuid::new_v4(), ext))
+}
+
+#[tauri::command]
+pub fn localdocs_store_asset(
+    root: String,
+    file_name: String,
+    mime_type: String,
+    data_base64: String,
+) -> Result<String, String> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    let root_path = Path::new(&root);
+    if !root_path.is_absolute() || !root_path.is_dir() {
+        return Err(format!("Invalid mounted directory: {root}"));
+    }
+    if !mime_type.starts_with("image/") {
+        return Err("Only image attachments are supported".into());
+    }
+    let data = STANDARD.decode(data_base64).map_err(|_| "Invalid image data")?;
+    if data.is_empty() || data.len() > 10 * 1024 * 1024 {
+        return Err("Image must be between 1 byte and 10 MB".into());
+    }
+    let assets_dir = root_path.join("assets");
+    fs::create_dir_all(&assets_dir).map_err(|e| format!("Failed to create assets folder: {e}"))?;
+    let destination = unique_asset_path(&assets_dir, &file_name);
+    fs::write(&destination, data).map_err(|e| format!("Failed to save image: {e}"))?;
+    let relative = destination.strip_prefix(root_path).map_err(|_| "Invalid image path")?;
+    Ok(relative.to_string_lossy().replace('\\', "/"))
 }
 
 #[tauri::command]
@@ -112,6 +177,40 @@ pub fn markdown_export_files(
         };
         fs::write(unique_md_path(dir, &safe_name), &file.content)
             .map_err(|e| format!("Failed to export: {e}"))?;
+    }
+    Ok(files.len())
+}
+
+#[tauri::command]
+pub fn markdown_export_bundles(
+    destination: String,
+    files: Vec<MarkdownBundleExport>,
+) -> Result<usize, String> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    let dir = Path::new(&destination);
+    if !dir.is_absolute() || !dir.is_dir() {
+        return Err(format!("Invalid export directory: {destination}"));
+    }
+    let assets_dir = dir.join("assets");
+    if files.iter().any(|file| !file.assets.is_empty()) {
+        fs::create_dir_all(&assets_dir).map_err(|e| format!("Failed to create assets folder: {e}"))?;
+    }
+    for file in &files {
+        let safe_name = Path::new(&file.name)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("Document.md");
+        fs::write(unique_md_path(dir, safe_name), &file.content)
+            .map_err(|e| format!("Failed to export document: {e}"))?;
+        for asset in &file.assets {
+            let safe_asset_name = Path::new(&asset.name)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .ok_or("Invalid asset name")?;
+            let data = STANDARD.decode(&asset.data_base64).map_err(|_| "Invalid asset data")?;
+            fs::write(assets_dir.join(safe_asset_name), data)
+                .map_err(|e| format!("Failed to export image: {e}"))?;
+        }
     }
     Ok(files.len())
 }
@@ -240,6 +339,14 @@ pub fn localdocs_list(root: String) -> Result<Vec<LocalDocItem>, String> {
     walk(root_p, root_p, 0, &mut out);
     out.sort_by(|a, b| b.modified_ms.cmp(&a.modified_ms));
     Ok(out)
+}
+
+/// Lightweight startup check for a persisted vault binding. Unlike
+/// `localdocs_list`, this does not walk the directory tree.
+#[tauri::command]
+pub fn localdocs_root_exists(root: String) -> bool {
+    let path = Path::new(&root);
+    path.is_absolute() && path.is_dir()
 }
 
 fn fuzzy_path_match(path: &str, query: &str) -> bool {
@@ -448,7 +555,7 @@ pub fn localdocs_delete(root: String, rel_path: String) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{localdocs_create, localdocs_move};
+    use super::{localdocs_create, localdocs_move, localdocs_store_asset};
     use std::{
         fs,
         time::{SystemTime, UNIX_EPOCH},
@@ -472,6 +579,36 @@ mod tests {
 
         let duplicate = localdocs_create(root_string.clone(), "Draft".into(), None).unwrap();
         assert!(localdocs_move(root_string, duplicate, "notes".into()).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn stores_pasted_images_in_a_deduplicated_assets_folder() {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("tanwords-localdocs-assets-{suffix}"));
+        fs::create_dir_all(&root).unwrap();
+        let root_string = root.to_string_lossy().to_string();
+
+        let first = localdocs_store_asset(
+            root_string.clone(),
+            "screenshot.png".into(),
+            "image/png".into(),
+            "YWJj".into(),
+        ).unwrap();
+        let second = localdocs_store_asset(
+            root_string,
+            "screenshot.png".into(),
+            "image/png".into(),
+            "ZGVm".into(),
+        ).unwrap();
+
+        assert_eq!(first, "assets/screenshot.png");
+        assert_eq!(second, "assets/screenshot-2.png");
+        assert_eq!(fs::read(root.join(first)).unwrap(), b"abc");
+        assert_eq!(fs::read(root.join(second)).unwrap(), b"def");
         fs::remove_dir_all(root).unwrap();
     }
 }

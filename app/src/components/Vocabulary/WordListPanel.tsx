@@ -14,6 +14,7 @@ import { Wand2, RefreshCw, Sparkles, Loader2, ChevronsLeft, ChevronsRight, Trash
 interface Props {
   words: WordListItem[];
   selectedId: number | null;
+  highlightId?: number;
   search: string;
   /** Selected level chips — empty means "all levels" */
   levelFilter: LevelValue[];
@@ -33,6 +34,7 @@ interface Props {
   onRefresh: () => void;
   onSelect: (w: WordListItem) => void;
   onPageChange: (p: number) => void;
+  onPageSizeChange: (size: number) => void;
   /** Double-click enters select mode (pre-selecting the word) or exits it */
   onDoubleClick: (w: WordListItem) => void;
   onAiLookup: (q: string) => void;
@@ -61,11 +63,11 @@ interface Props {
 }
 
 export function WordListPanel({
-  words, selectedId, search, levelFilter, starredOnly, onStarredOnlyChange, page, pageSize,
+  words, selectedId, highlightId, search, levelFilter, starredOnly, onStarredOnlyChange, page, pageSize,
   showAiLookup, lookupActive, dateFrom, dateTo,
   onSearchChange, onFilterChange,
   onDateFromChange, onDateToChange, onRefresh,
-  onSelect, onPageChange, onDoubleClick, onAiLookup,
+  onSelect, onPageChange, onPageSizeChange, onDoubleClick, onAiLookup,
   bulkRunning, bulkProgress, onEnrichUnanalyzed, onReanalyzeAll, onStopBulkEnrich,
   collapsed, onToggleCollapsed, selectedIds, onToggleSelect, onSelectAll, onClearSelection,
   onReanalyzeSelected, onDeleteSelected, onToggleStar, selectMode, onToggleSelectMode,
@@ -75,6 +77,13 @@ export function WordListPanel({
   const totalPages = Math.ceil(words.length / pageSize);
   const paged = words.slice(page * pageSize, (page + 1) * pageSize);
   const measure = fullWidth ? "mx-auto w-full max-w-4xl" : "";
+  const [jumpHighlightId, setJumpHighlightId] = React.useState<number | null>(highlightId ?? null);
+  React.useEffect(() => {
+    if (!highlightId) return;
+    setJumpHighlightId(highlightId);
+    const timer = window.setTimeout(() => setJumpHighlightId(null), 3000);
+    return () => window.clearTimeout(timer);
+  }, [highlightId]);
 
   if (collapsed && !fullWidth) {
     return (
@@ -270,7 +279,10 @@ export function WordListPanel({
         {paged.map((w) => {
           const expanded = fullWidth && !selectMode && !lookupActive && selectedId === w.id;
           return (
-          <div key={w.id}>
+          <div
+            key={w.id}
+            className={jumpHighlightId === w.id ? "relative z-20 rounded-sm ring-2 ring-inset ring-primary shadow-[0_0_0_3px_hsl(var(--primary)/0.12)]" : ""}
+          >
           {/* border-l lives one level below the divide-y/divide-border row above — that
               utility's `> :not([hidden]) ~ :not([hidden])` selector out-specifies a plain
               border-l-* class and silently overrides border-left-color on every row but
@@ -330,9 +342,21 @@ export function WordListPanel({
         </div>
       </div>
 
-      {totalPages > 1 && (
+      {words.length > 0 && (
         <div className="shrink-0 border-t border-border">
-        <div className={`${measure} px-3 py-2 flex items-center justify-between gap-1`}>
+        <div className={`${measure} px-3 py-2 flex items-center justify-between gap-2`}>
+          <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <span>{t("vocab.perPage")}</span>
+            <select
+              value={pageSize}
+              onChange={(e) => onPageSizeChange(Number(e.target.value))}
+              className="h-7 rounded-md border border-input bg-background px-1.5 text-xs text-foreground outline-none focus:ring-2 focus:ring-primary/30"
+              aria-label={t("vocab.perPage")}
+            >
+              {[10, 20, 50, 100].map((size) => <option key={size} value={size}>{size}</option>)}
+            </select>
+          </label>
+          <div className="flex items-center gap-1">
           <Button
             variant="ghost"
             onClick={() => onPageChange(Math.max(0, page - 1))}
@@ -356,6 +380,7 @@ export function WordListPanel({
               <path fillRule="evenodd" d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z" clipRule="evenodd" />
             </svg>
           </Button>
+          </div>
         </div>
         </div>
       )}

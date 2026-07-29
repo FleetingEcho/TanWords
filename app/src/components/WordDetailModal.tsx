@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useWordModalStore } from "@/store/wordModalStore";
 import { findBestProvider } from "@/providers/select";
@@ -13,6 +12,7 @@ import { EnrichmentText } from "@/components/EnrichmentText";
 import { parseEnrichmentStream, ParsedEnrichment } from "@/lib/enrichMeta";
 import { fetchBasicInfo, BasicInfo } from "@/lib/basicInfo";
 import { CloseIcon } from "@/components/ui/icons";
+import { LevelBadge } from "@/components/shared/LevelBadge";
 
 export function WordDetailModal() {
   const { word, closeWordModal } = useWordModalStore();
@@ -150,7 +150,7 @@ export function WordDetailModal() {
             <div className="space-y-4">
               <div className="flex items-center gap-3">
                 <DialogTitle className="text-2xl font-bold">{word}</DialogTitle>
-                {(basicInfo.level || parsed.level) && <Badge variant="default" className="text-xs">{basicInfo.level || parsed.level}</Badge>}
+                <LevelBadge level={basicInfo.level || parsed.level} />
               </div>
               <EnrichmentText text={parsed.text} />
               {streaming && <p className="text-xs text-muted-foreground animate-pulse">{t("modal.fetching")}</p>}

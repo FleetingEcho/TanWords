@@ -24,7 +24,9 @@ interface Props {
   modifiedMs: number;
   saveStatus: SaveStatus;
   /** Debounced editor content → caller persists to disk. */
-  onSave: (markdown: string) => void;
+  onSave: (markdown: string) => Promise<void>;
+  onDirty: () => void;
+  onUploadImage: (file: File) => Promise<string>;
   toRawMarkdown: (markdown: string) => string;
   toDisplayMarkdown: (markdown: string) => string;
   /** Title blur with a new file name (stem, no extension). */
@@ -38,7 +40,7 @@ function fileStem(relPath: string): string {
   return base.replace(/\.(md|markdown)$/i, "");
 }
 
-export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, modifiedMs, saveStatus, onSave, toRawMarkdown, toDisplayMarkdown, onRename, zenMode, onZenModeChange }: Props) {
+export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, modifiedMs, saveStatus, onSave, onDirty, onUploadImage, toRawMarkdown, toDisplayMarkdown, onRename, zenMode, onZenModeChange }: Props) {
   const t = useT();
   const isDark = useIsDark();
   const [title, setTitle] = useState(fileStem(relPath));
@@ -55,19 +57,48 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
   const dirty = useRef(false);
   const lastSavedRaw = useRef(initialRawMarkdown);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const maxSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushRef = useRef<() => Promise<void>>(async () => {});
 
-  const editor = useCreateBlockNote({ schema: editorSchema });
+  const editor = useCreateBlockNote({
+    schema: editorSchema,
+    uploadFile: onUploadImage,
+  }, [relPath]);
 
-  const scheduleSave = useCallback((markdown: string) => {
+  const flushRaw = useCallback(async (markdown: string) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      if (markdown !== lastSavedRaw.current) {
-        onSave(markdown);
-        lastSavedRaw.current = markdown;
-      }
-      dirty.current = false;
-    }, 1000);
+    if (maxSaveTimer.current) clearTimeout(maxSaveTimer.current);
+    saveTimer.current = null;
+    maxSaveTimer.current = null;
+    if (markdown !== lastSavedRaw.current) {
+      await onSave(markdown);
+      lastSavedRaw.current = markdown;
+    }
   }, [onSave]);
+
+  const flushSave = useCallback(async () => {
+    if (!dirty.current) return;
+    dirty.current = false;
+    try {
+      const markdown = mode === "raw"
+        ? rawMarkdown
+        : toRawMarkdown(await blocksToMarkdownOffThread(lowerMermaid(structuredClone(editor.document)) as any));
+      await flushRaw(markdown);
+    } catch (error) {
+      dirty.current = true;
+      throw error;
+    }
+  }, [editor, flushRaw, mode, rawMarkdown, toRawMarkdown]);
+  flushRef.current = flushSave;
+
+  const scheduleSave = useCallback(() => {
+    onDirty();
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => { void flushRef.current().catch(() => {}); }, 1000);
+    if (!maxSaveTimer.current) {
+      maxSaveTimer.current = setTimeout(() => { void flushRef.current().catch(() => {}); }, 8000);
+    }
+  }, [onDirty]);
 
   useEffect(() => {
     let cancelled = false;
@@ -86,22 +117,14 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
   const handleChange = useCallback(() => {
     if (!loaded.current) return;
     dirty.current = true;
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(async () => {
-      const markdown = await blocksToMarkdownOffThread(lowerMermaid(editor.document) as any);
-      const raw = toRawMarkdown(markdown);
-      if (raw !== lastSavedRaw.current) {
-        onSave(raw);
-        lastSavedRaw.current = raw;
-      }
-      dirty.current = false;
-    }, 1000);
-  }, [editor, onSave, toRawMarkdown]);
+    scheduleSave();
+  }, [scheduleSave]);
 
   const switchMode = useCallback(async (nextMode: EditorMode) => {
     if (nextMode === mode || switchingMode) return;
     setSwitchingMode(true);
     if (saveTimer.current) clearTimeout(saveTimer.current);
+    if (maxSaveTimer.current) clearTimeout(maxSaveTimer.current);
     try {
       if (nextMode === "raw") {
         const raw = dirty.current
@@ -109,8 +132,9 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
           : lastSavedRaw.current;
         setRawMarkdown(raw);
         if (dirty.current && raw !== lastSavedRaw.current) {
-          onSave(raw);
+          await onSave(raw);
           lastSavedRaw.current = raw;
+          dirty.current = false;
         }
         dirty.current = false;
         setMode("raw");
@@ -120,8 +144,9 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
         const parsed = liftMermaid(await markdownToBlocksOffThread(toDisplayMarkdown(rawMarkdown)));
         editor.replaceBlocks(editor.document, parsed.length ? parsed : [{ type: "paragraph" }]);
         if (dirty.current && rawMarkdown !== lastSavedRaw.current) {
-          onSave(rawMarkdown);
+          await onSave(rawMarkdown);
           lastSavedRaw.current = rawMarkdown;
+          dirty.current = false;
         }
         dirty.current = false;
         setMode("rich");
@@ -135,10 +160,32 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
   const handleRawChange = (markdown: string) => {
     dirty.current = true;
     setRawMarkdown(markdown);
-    scheduleSave(markdown);
+    scheduleSave();
   };
 
-  useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        void flushRef.current().catch(() => {});
+      }
+    };
+    const flushPending = () => { void flushRef.current().catch(() => {}); };
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("blur", flushPending);
+    window.addEventListener("pagehide", flushPending);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("blur", flushPending);
+      window.removeEventListener("pagehide", flushPending);
+    };
+  }, []);
+
+  useEffect(() => () => {
+    void flushRef.current().catch(() => {});
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    if (maxSaveTimer.current) clearTimeout(maxSaveTimer.current);
+  }, []);
 
   const handleTitleBlur = () => {
     const val = title.trim();
@@ -213,6 +260,8 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
             </span>
           ) : saveStatus === "saved" ? (
             <span className="text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1"><CheckIcon className="w-3 h-3" /> {t("doc.savedToDisk")}</span>
+          ) : saveStatus === "dirty" ? (
+            <span>{t("doc.unsavedChanges")}</span>
           ) : null}
         </span>
         <span className="ml-auto">{modifiedMs ? new Date(modifiedMs).toLocaleString() : ""}</span>

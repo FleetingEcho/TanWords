@@ -12,6 +12,7 @@ import { useLearnChatStore } from "@/store/learnChatStore";
 import { useLearnArticle } from "@/hooks/useLearnArticle";
 import { SpeakerIcon, SparkIcon, TranslateIcon, ReplyIcon, CheckIcon, PlayIcon, PauseIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { HnComments } from "@/components/Reader/HnComments";
 import { ScratchPasteScreen } from "@/components/Reader/ScratchPasteScreen";
 import { ArticleComments } from "@/components/Reader/ArticleComments";
@@ -116,6 +117,8 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
   const [showTranslation, setShowTranslation] = useState(false);
   const [copied, setCopied] = useState(false);
   const [chatModalSessionId, setChatModalSessionId] = useState<string | null>(null);
+  const [learnMenuOpen, setLearnMenuOpen] = useState(false);
+  const learnMenuCloseTimer = useRef<number | null>(null);
   // The analyze trigger lives in the reader bar now (see ReaderView) — this page
   // only publishes its article there and renders whatever comes back.
   const showNotes = useReaderNotesStore((s) => s.showNotes);
@@ -159,12 +162,12 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
     }
   };
 
-  /** Idle: kicks off the background Reading Tutor analysis. Running: clicking
-   *  again cancels it. Done: opens the chat conversation it was saved into. */
+  /** Idle: kicks off the background Reading Tutor analysis. Running: opens
+   *  controls for watching/cancelling it. Done: opens the saved conversation. */
   const handleLearnClick = () => {
     if (!article) return;
     if (learnJob?.status === "running") {
-      cancelLearn(url);
+      setLearnMenuOpen(true);
       return;
     }
     if (learnJob?.status === "done" && learnJob.sessionId) {
@@ -176,6 +179,16 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
       text: article.text_content,
       commentsText: hnComments ? flattenHnComments(hnComments) : undefined,
     });
+  };
+
+  const keepLearnMenuOpen = () => {
+    if (learnMenuCloseTimer.current !== null) window.clearTimeout(learnMenuCloseTimer.current);
+    if (learnJob?.status === "running") setLearnMenuOpen(true);
+  };
+
+  const scheduleLearnMenuClose = () => {
+    if (learnMenuCloseTimer.current !== null) window.clearTimeout(learnMenuCloseTimer.current);
+    learnMenuCloseTimer.current = window.setTimeout(() => setLearnMenuOpen(false), 180);
   };
 
   /** Copies the article (and the HN thread when loaded) as markdown — for
@@ -437,33 +450,72 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
             >
               {copied ? <CheckIcon className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
             </Button>
-            <Button
-              variant="ghost"
-              onClick={handleLearnClick}
-              title={
-                learnJob?.status === "running" ? t("reader.learnCancel")
-                : learnJob?.status === "done" ? t("reader.learnOpen")
-                : t("reader.learn")
-              }
-              aria-label={
-                learnJob?.status === "running" ? t("reader.learnCancel")
-                : learnJob?.status === "done" ? t("reader.learnOpen")
-                : t("reader.learn")
-              }
-              className={`w-7 h-7 p-0 rounded-md flex items-center justify-center transition-colors shrink-0 ${
-                learnJob?.status === "done"
-                  ? "bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/15"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              }`}
+            <Popover
+              open={learnMenuOpen && learnJob?.status === "running"}
+              onOpenChange={(open) => {
+                if (learnJob?.status === "running") setLearnMenuOpen(open);
+              }}
             >
-              {learnJob?.status === "running" ? (
-                <span className="w-3.5 h-3.5 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />
-              ) : learnJob?.status === "done" ? (
-                <CheckIcon className="w-4 h-4" />
-              ) : (
-                <SparkIcon className="w-4 h-4" />
-              )}
-            </Button>
+              <PopoverTrigger asChild>
+                <span onPointerEnter={keepLearnMenuOpen} onPointerLeave={scheduleLearnMenuClose}>
+                  <Button
+                    variant="ghost"
+                    onClick={handleLearnClick}
+                    title={
+                      learnJob?.status === "running" ? t("reader.learnActions")
+                      : learnJob?.status === "done" ? t("reader.learnOpen")
+                      : t("reader.learn")
+                    }
+                    aria-label={
+                      learnJob?.status === "running" ? t("reader.learnActions")
+                      : learnJob?.status === "done" ? t("reader.learnOpen")
+                      : t("reader.learn")
+                    }
+                    className={`w-7 h-7 p-0 rounded-md flex items-center justify-center transition-colors shrink-0 ${
+                      learnJob?.status === "done"
+                        ? "bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/15"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {learnJob?.status === "running" ? (
+                      <span className="w-3.5 h-3.5 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />
+                    ) : learnJob?.status === "done" ? (
+                      <CheckIcon className="w-4 h-4" />
+                    ) : (
+                      <SparkIcon className="w-4 h-4" />
+                    )}
+                  </Button>
+                </span>
+              </PopoverTrigger>
+              <PopoverContent
+                side="bottom"
+                align="center"
+                className="w-44 p-1.5"
+                onPointerEnter={keepLearnMenuOpen}
+                onPointerLeave={scheduleLearnMenuClose}
+              >
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setLearnMenuOpen(false);
+                    setChatModalSessionId(learnJob?.sessionId ?? null);
+                  }}
+                  className="h-8 w-full justify-start rounded-md px-2.5 text-xs font-medium"
+                >
+                  {t("reader.learnOpen")}
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setLearnMenuOpen(false);
+                    cancelLearn(url);
+                  }}
+                  className="h-8 w-full justify-start rounded-md px-2.5 text-xs font-medium text-destructive hover:bg-destructive/10 hover:text-destructive"
+                >
+                  {t("reader.learnCancel")}
+                </Button>
+              </PopoverContent>
+            </Popover>
             <Button
               variant="ghost"
               onClick={handleListen}

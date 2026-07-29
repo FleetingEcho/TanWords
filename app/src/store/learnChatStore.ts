@@ -5,13 +5,13 @@ export type LearnJobStatus = "running" | "done" | "error";
 interface LearnJob {
   status: LearnJobStatus;
   controller: AbortController;
-  /** Set once the analysis lands and the chat conversation is saved. */
-  sessionId?: string;
+  /** Created when the job starts so its live transcript can be opened. */
+  sessionId: string;
 }
 
 interface LearnChatState {
   jobs: Record<string, LearnJob>;
-  start: (articleUrl: string, controller: AbortController) => void;
+  start: (articleUrl: string, controller: AbortController, sessionId: string) => void;
   finishSuccess: (articleUrl: string, sessionId: string) => void;
   finishError: (articleUrl: string) => void;
   cancel: (articleUrl: string) => void;
@@ -28,8 +28,8 @@ interface LearnChatState {
  *  ArticleReader's lifetime, only this store is what survives it. */
 export const useLearnChatStore = create<LearnChatState>((set, get) => ({
   jobs: {},
-  start: (articleUrl, controller) =>
-    set((s) => ({ jobs: { ...s.jobs, [articleUrl]: { status: "running", controller } } })),
+  start: (articleUrl, controller, sessionId) =>
+    set((s) => ({ jobs: { ...s.jobs, [articleUrl]: { status: "running", controller, sessionId } } })),
   finishSuccess: (articleUrl, sessionId) =>
     set((s) => {
       const job = s.jobs[articleUrl];

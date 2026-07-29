@@ -45,6 +45,7 @@ export const vocabulary: Dict = {
     "vocab.tabWords": "Words",
     "vocab.tabPatterns": "Sentences",
     "vocab.patterns.title": "Sentences",
+    "vocab.perPage": "Per page",
     "vocab.patterns.count": "{count} patterns",
     "vocab.patterns.searchPlaceholder": "Search sentences, translations, examples…",
     "vocab.patterns.quickSearchPlaceholder": "Search or add a sentence…",

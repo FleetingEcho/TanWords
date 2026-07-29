@@ -11,6 +11,7 @@ import { Plus, Sparkles, ListChecks, Trash2, X, RefreshCw, Star } from "lucide-r
 interface Props {
   items: PatternItem[];
   expandedId: number | null;
+  highlightId?: number;
   search: string;
   searchTokens: string[];
   levelFilter: LevelFilter;
@@ -28,6 +29,7 @@ interface Props {
   /** Double-click enters select mode (pre-selecting the sentence) or exits it */
   onDoubleClick: (item: PatternItem) => void;
   onPageChange: (p: number) => void;
+  onPageSizeChange: (size: number) => void;
   onOpenAdd: () => void;
   onOpenGenerate: () => void;
   onRequestDelete: (item: PatternItem) => void;
@@ -104,14 +106,21 @@ function findHiddenMatch(item: PatternItem, sentence: string, tokens: string[]):
  *  note / extra examples inline right below it — no separate detail pane, so
  *  the sentence itself always gets the full width. */
 export function SentenceList({
-  items, expandedId, search, searchTokens, levelFilter, starredOnly, dateFrom, dateTo, page, pageSize,
+  items, expandedId, highlightId, search, searchTokens, levelFilter, starredOnly, dateFrom, dateTo, page, pageSize,
   onSearchChange, onLevelFilterChange, onStarredOnlyChange, onDateFromChange, onDateToChange,
-  onToggleExpand, onDoubleClick, onPageChange, onOpenAdd, onOpenGenerate, onRequestDelete, onReanalyze, reanalyzingId, onToggleStar,
+  onToggleExpand, onDoubleClick, onPageChange, onPageSizeChange, onOpenAdd, onOpenGenerate, onRequestDelete, onReanalyze, reanalyzingId, onToggleStar,
   selectMode, onToggleSelectMode, selectedIds, onToggleSelect, onSelectAll, onClearSelection, onDeleteSelected, onReanalyzeSelected,
 }: Props) {
   const t = useT();
   const totalPages = Math.ceil(items.length / pageSize);
   const paged = items.slice(page * pageSize, (page + 1) * pageSize);
+  const [jumpHighlightId, setJumpHighlightId] = React.useState<number | null>(highlightId ?? null);
+  React.useEffect(() => {
+    if (!highlightId) return;
+    setJumpHighlightId(highlightId);
+    const timer = window.setTimeout(() => setJumpHighlightId(null), 3000);
+    return () => window.clearTimeout(timer);
+  }, [highlightId]);
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
@@ -188,7 +197,7 @@ export function SentenceList({
           </div>
         )}
 
-        <div className="relative">
+        <div className="relative -mx-6">
           <input
             type="text"
             value={search}
@@ -230,7 +239,14 @@ export function SentenceList({
             const showSkeleton = item.pattern && item.pattern !== sentence;
             const hiddenMatch = expanded ? null : findHiddenMatch(item, sentence, searchTokens);
             return (
-              <div key={item.id} className={expanded ? "bg-muted/30" : ""}>
+              <div
+                key={item.id}
+                className={`${expanded ? "bg-muted/30" : ""} ${
+                  jumpHighlightId === item.id
+                    ? "relative z-20 rounded-sm ring-2 ring-inset ring-primary shadow-[0_0_0_3px_hsl(var(--primary)/0.12)]"
+                    : ""
+                }`}
+              >
                 {/* border-l lives on its own element, one level below the divide-y/divide-border
                     row above — that utility's `> :not([hidden]) ~ :not([hidden])` selector out-specifies
                     a plain border-l-* class and silently overrides border-left-color on every row but
@@ -345,9 +361,21 @@ export function SentenceList({
         </div>
       </div>
 
-      {totalPages > 1 && (
+      {items.length > 0 && (
         <div className="shrink-0 border-t border-border">
-          <div className="mx-auto w-full max-w-4xl px-5 py-2 flex items-center justify-between gap-1">
+          <div className="mx-auto w-full max-w-4xl px-5 py-2 flex items-center justify-between gap-2">
+            <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <span>{t("vocab.perPage")}</span>
+              <select
+                value={pageSize}
+                onChange={(e) => onPageSizeChange(Number(e.target.value))}
+                className="h-7 rounded-md border border-input bg-background px-1.5 text-xs text-foreground outline-none focus:ring-2 focus:ring-primary/30"
+                aria-label={t("vocab.perPage")}
+              >
+                {[10, 20, 50, 100].map((size) => <option key={size} value={size}>{size}</option>)}
+              </select>
+            </label>
+            <div className="flex items-center gap-1">
             <Button
               variant="ghost"
               onClick={() => onPageChange(Math.max(0, page - 1))}
@@ -371,6 +399,7 @@ export function SentenceList({
                 <path fillRule="evenodd" d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z" clipRule="evenodd" />
               </svg>
             </Button>
+            </div>
           </div>
         </div>
       )}

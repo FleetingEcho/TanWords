@@ -1,8 +1,9 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useDB, DocumentDetail } from "@/hooks/useDB";
+import { pruneDocumentAssets } from "@/lib/documentAssets";
 
-export type SaveStatus = "idle" | "saving" | "saved";
+export type SaveStatus = "idle" | "dirty" | "saving" | "saved";
 
 /** Shared document CRUD + autosave logic behind DocEditor, used by both the
  *  full Documents page and the quick-access SaveDocDrawer. */
@@ -15,12 +16,20 @@ export function useDocumentEditor() {
   /** True while a doc's content is being fetched — a large document can take a
    *  second or two, and without this the page just goes blank in between. */
   const [loading, setLoading] = useState(false);
+  const activeIdRef = useRef<number | null>(null);
 
   const pendingSave = useRef<{ content: string; contentText: string; wordCount: number } | null>(null);
+  const saveQueue = useRef(Promise.resolve());
+  const savedStatusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (savedStatusTimer.current) clearTimeout(savedStatusTimer.current);
+  }, []);
 
   const loadDoc = useCallback(async (id: number) => {
     if (id < 0) {
       setActiveId(null);
+      activeIdRef.current = null;
       setDoc(null);
       setLoading(false);
       return;
@@ -31,6 +40,7 @@ export function useDocumentEditor() {
       if (detail) {
         setDoc(detail);
         setActiveId(id);
+        activeIdRef.current = id;
         setSaveStatus("idle");
       }
     } finally {
@@ -46,18 +56,39 @@ export function useDocumentEditor() {
 
   const handleSave = useCallback(async (content: string, contentText: string, wordCount: number) => {
     if (!doc) return;
+    const documentId = doc.id;
+    const title = doc.title;
+    const tags = doc.tags;
+    const pinned = doc.pinned;
     pendingSave.current = { content, contentText, wordCount };
     setSaveStatus("saving");
-    try {
-      await db.updateDocument(doc.id, doc.title, content, contentText, doc.tags, doc.pinned, wordCount);
-      setSaveStatus("saved");
-      setRefreshKey((k) => k + 1);
-      setDoc((prev) => (prev ? { ...prev, content, content_text: contentText, word_count: wordCount } : prev));
-    } catch {
-      setSaveStatus("idle");
-      toast.error("Save failed");
-    }
+    const save = async () => {
+      try {
+        const saved = await db.updateDocument(documentId, title, content, contentText, tags, pinned, wordCount);
+        if (!saved) throw new Error("Save failed");
+        await pruneDocumentAssets(documentId, content);
+        if (activeIdRef.current === documentId && pendingSave.current?.content === content) {
+          setSaveStatus("saved");
+          if (savedStatusTimer.current) clearTimeout(savedStatusTimer.current);
+          savedStatusTimer.current = setTimeout(() => setSaveStatus("idle"), 1800);
+        }
+        setRefreshKey((k) => k + 1);
+        setDoc((prev) => (prev?.id === documentId
+          ? { ...prev, content, content_text: contentText, word_count: wordCount }
+          : prev));
+      } catch {
+        setSaveStatus("idle");
+        toast.error("Save failed");
+      }
+    };
+    saveQueue.current = saveQueue.current.then(save, save);
+    await saveQueue.current;
   }, [db, doc]);
+
+  const markDirty = useCallback(() => {
+    if (savedStatusTimer.current) clearTimeout(savedStatusTimer.current);
+    setSaveStatus("dirty");
+  }, []);
 
   const handleTitleChange = useCallback(async (title: string) => {
     if (!doc) return;
@@ -83,13 +114,14 @@ export function useDocumentEditor() {
 
   const reset = useCallback(() => {
     setActiveId(null);
+    activeIdRef.current = null;
     setDoc(null);
     setSaveStatus("idle");
   }, []);
 
   return {
     activeId, doc, saveStatus, refreshKey, loading,
-    loadDoc, handleNewDoc, handleSave, handleTitleChange, handleTagsChange, handlePinToggle,
+    loadDoc, handleNewDoc, handleSave, markDirty, handleTitleChange, handleTagsChange, handlePinToggle,
     reset,
   };
 }

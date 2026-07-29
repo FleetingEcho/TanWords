@@ -14,6 +14,9 @@ import { EnrichmentText } from "@/components/EnrichmentText";
 import { SearchIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { SpeakButton } from "@/components/ui/SpeakButton";
+import { useNavStore } from "@/store/navStore";
+import { LevelBadge } from "@/components/shared/LevelBadge";
 
 /** Placeholder shaped like a real candidate card (title row, usage note,
  * example, action row) so the dropdown doesn't jump when results land. */
@@ -50,7 +53,9 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
   const db = useDB();
   const t = useT();
   const openWordModal = useWordModalStore((s) => s.openWordModal);
+  const navigate = useNavStore((s) => s.navigate);
   const targetLevel = useSettingsStore((s) => s.targetLevels.join("/"));
+  const showLevelBadges = useSettingsStore((s) => s.showLevelBadges);
 
   const [query, setQuery] = useState("");
   const [matches, setMatches] = useState<WordListItem[]>([]);
@@ -232,17 +237,29 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
       {q && searched && (
         <div className={inline ? "absolute left-0 right-0 top-full z-50 mt-2 space-y-1 rounded-xl border border-border bg-popover p-2 shadow-2xl" : "space-y-1"}>
           {matches.map((w) => (
-            <Button
+            <div
               key={w.id}
-              variant="ghost"
-              onClick={() => openWordModal(w.word)}
+              role="button"
+              tabIndex={0}
+              onClick={() => {
+                setQuery("");
+                navigate("vocabulary", w.id);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setQuery("");
+                  navigate("vocabulary", w.id);
+                }
+              }}
               className="h-auto w-full flex items-center justify-start gap-2 px-2 py-1.5 rounded-lg hover:bg-muted transition-colors text-left"
             >
               <span className="text-xs font-semibold text-foreground">{w.word}</span>
+              <SpeakButton text={w.word} className="h-3.5 w-3.5" />
               <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 ml-auto shrink-0">
                 {t("reading.search.inVocab")}
               </span>
-            </Button>
+            </div>
           ))}
 
           {isZh ? (
@@ -255,20 +272,24 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
 
               {candidates.map((c, i) => {
                 const added = addedEn.includes(c.en) || collectedEn.includes(c.en.toLowerCase());
+                const meta = [c.wordType, showLevelBadges ? c.level : null].filter(Boolean);
                 return (
                   <div key={c.en} className="rounded-lg border border-border/50 bg-background/60 px-2 py-1.5">
-                    <button
-                      onClick={() => setExpanded(expanded === i ? -1 : i)}
-                      className="flex w-full items-baseline gap-2 text-left"
-                    >
-                      <span className="text-xs font-semibold text-foreground">{c.en}</span>
-                      {(c.wordType || c.level) && (
-                        <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">
-                          {[c.wordType, c.level].filter(Boolean).join(" · ")}
-                        </span>
-                      )}
-                      {c.zh && <span className="truncate text-[11px] text-muted-foreground">{c.zh}</span>}
-                    </button>
+                    <div className="flex items-start gap-2">
+                      <button
+                        onClick={() => setExpanded(expanded === i ? -1 : i)}
+                        className="flex min-w-0 flex-1 items-baseline gap-2 text-left"
+                      >
+                        <span className="text-xs font-semibold text-foreground">{c.en}</span>
+                        {meta.length > 0 && (
+                          <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">
+                            {meta.join(" · ")}
+                          </span>
+                        )}
+                        {c.zh && <span className="truncate text-[11px] text-muted-foreground">{c.zh}</span>}
+                      </button>
+                      <SpeakButton text={c.en} className="mt-0.5 h-3.5 w-3.5" />
+                    </div>
 
                     {c.note && <p className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">{c.note}</p>}
 
@@ -334,8 +355,9 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
               <div className="space-y-1 px-1">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-semibold text-foreground">{q}</span>
+                  <SpeakButton text={q} className="h-3.5 w-3.5" />
                   {(quickBasicInfo.zh || quick.zhShort) && <span className="text-xs text-muted-foreground">{quickBasicInfo.zh || quick.zhShort}</span>}
-                  {(quickBasicInfo.level || quick.level) && <span className="ml-auto shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">{quickBasicInfo.level || quick.level}</span>}
+                  {showLevelBadges && <span className="ml-auto"><LevelBadge level={quickBasicInfo.level || quick.level} /></span>}
                 </div>
                 <div className="text-xs leading-relaxed [&_blockquote]:my-1 [&_blockquote]:text-[11px]">
                   <EnrichmentText text={quick.text} />

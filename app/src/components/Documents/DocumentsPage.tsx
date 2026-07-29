@@ -16,7 +16,10 @@ const LAST_DB_ID_KEY = "tanwords_doc_last_db_id";
 
 export function DocumentsPage() {
   const t = useT();
-  const [source, setSourceState] = useState<DocSource>(() => (localStorage.getItem(LAST_SOURCE_KEY) === "local" ? "local" : "db"));
+  const [source, setSourceState] = useState<DocSource>(() => {
+    const saved = localStorage.getItem(LAST_SOURCE_KEY);
+    return saved === "local" ? saved : "db";
+  });
   const setSource = (s: DocSource) => {
     localStorage.setItem(LAST_SOURCE_KEY, s);
     setSourceState(s);
@@ -32,7 +35,7 @@ export function DocumentsPage() {
   };
   const {
     activeId, doc, saveStatus, refreshKey, loading,
-    loadDoc, handleNewDoc, handleSave, handleTitleChange, handleTagsChange, handlePinToggle,
+    loadDoc, handleNewDoc, handleSave, markDirty, handleTitleChange, handleTagsChange, handlePinToggle,
   } = useDocumentEditor();
 
   // Reopen whichever database doc was open last session.
@@ -99,6 +102,7 @@ export function DocumentsPage() {
                   key={doc.id}
                   doc={doc}
                   onSave={handleSave}
+                  onDirty={markDirty}
                   onTitleChange={handleTitleChange}
                   onTagsChange={handleTagsChange}
                   onPinToggle={handlePinToggle}
