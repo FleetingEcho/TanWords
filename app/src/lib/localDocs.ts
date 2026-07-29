@@ -4,7 +4,7 @@
  * itself is persisted in settings under `LOCAL_DOCS_ROOT_KEY`.
  */
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { prepareImageUpload } from "./documentAssets";
+import { prepareAssetUpload } from "./documentAssets";
 
 export const LOCAL_DOCS_ROOT_KEY = "localdocs.root";
 
@@ -88,7 +88,7 @@ export function exportMarkdownBundles(destination: string, files: Array<{
 export async function uploadLocalDocImage(root: string, file: File): Promise<string> {
   const relPath = await invoke<string>("localdocs_store_asset", {
     root,
-    ...await prepareImageUpload(file),
+    ...await prepareAssetUpload(file),
   });
   return convertFileSrc(`${root}/${relPath}`);
 }

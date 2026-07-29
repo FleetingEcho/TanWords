@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   documentAssetIdsFromContent,
   prepareDocumentAssetsForExport,
+  rewriteDocumentLinksForExport,
   type DocumentAsset,
 } from "./documentAssets";
 
@@ -28,7 +29,14 @@ describe("document assets", () => {
       `![diagram](tanwords-asset://${id})`,
       [asset(id)]
     );
-    expect(result.content).toBe(`![diagram](./assets/${id}.webp)`);
-    expect(result.assets).toEqual([{ name: `${id}.webp`, dataBase64: "YWJj" }]);
+    expect(result.content).toBe(`![diagram](./assets/${id}-pasted image.webp)`);
+    expect(result.assets).toEqual([{ name: `${id}-pasted image.webp`, dataBase64: "YWJj" }]);
+  });
+
+  it("rewrites stable document links to portable markdown paths", () => {
+    expect(rewriteDocumentLinksForExport(
+      "[Roadmap](tanwords-doc://42)",
+      [{ id: 42, title: "Product/Roadmap" }],
+    )).toBe("[Roadmap](./Product_Roadmap.md)");
   });
 });

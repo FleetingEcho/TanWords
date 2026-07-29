@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 export const DOCUMENT_ASSET_SCHEME = "tanwords-asset://";
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_ASSET_BYTES = 100 * 1024 * 1024;
 const MAX_RASTER_DIMENSION = 2400;
 const BLOB_URL_CACHE_CAPACITY = 100;
 const blobUrlCache = new Map<string, string>();
@@ -72,13 +73,27 @@ export async function prepareImageUpload(file: File): Promise<{ fileName: string
   };
 }
 
-export async function uploadDocumentImage(documentId: number, file: File): Promise<string> {
-  const prepared = await prepareImageUpload(file);
+export async function prepareAssetUpload(file: File): Promise<{ fileName: string; mimeType: string; dataBase64: string }> {
+  if (file.type.startsWith("image/")) return prepareImageUpload(file);
+  if (!file.size || file.size > MAX_ASSET_BYTES) throw new Error("Attachment must be between 1 byte and 100 MB");
+  return {
+    fileName: file.name || "attachment.bin",
+    mimeType: file.type || "application/octet-stream",
+    dataBase64: await blobToDataBase64(file),
+  };
+}
+
+export async function uploadDocumentAsset(documentId: number, file: File): Promise<string> {
+  const prepared = await prepareAssetUpload(file);
   const id = await invoke<string>("db_create_document_asset", {
     documentId,
     ...prepared,
   });
   return `${DOCUMENT_ASSET_SCHEME}${id}`;
+}
+
+export async function uploadDocumentImage(documentId: number, file: File): Promise<string> {
+  return uploadDocumentAsset(documentId, file);
 }
 
 export async function resolveDocumentAssetUrl(url: string): Promise<string> {
@@ -125,11 +140,26 @@ function extensionForMime(mime: string): string {
 export function prepareDocumentAssetsForExport(markdown: string, assets: DocumentAsset[]) {
   let content = markdown;
   const files = assets.map((asset) => {
-    const name = `${asset.id}.${extensionForMime(asset.mime_type)}`;
+    const safeOriginal = asset.file_name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_")
+      || `attachment.${extensionForMime(asset.mime_type)}`;
+    const name = `${asset.id}-${safeOriginal}`;
     content = content.split(`${DOCUMENT_ASSET_SCHEME}${asset.id}`).join(`./assets/${name}`);
     return { name, dataBase64: asset.data_base64 };
   });
   return { content, assets: files };
+}
+
+export function rewriteDocumentLinksForExport(
+  markdown: string,
+  documents: Array<{ id: number; title: string }>,
+): string {
+  const titles = new Map(documents.map((document) => [document.id, document.title]));
+  return markdown.replace(/tanwords-doc:\/\/(\d+)/g, (original, rawId: string) => {
+    const title = titles.get(Number(rawId));
+    if (!title) return original;
+    const safeTitle = title.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_").trim() || `Document-${rawId}`;
+    return `./${safeTitle}.md`;
+  });
 }
 
 export function pruneDocumentAssets(documentId: number, content: string): Promise<void> {
