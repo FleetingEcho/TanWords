@@ -24,6 +24,12 @@ export function ReadingPage() {
   // returning to "paste" doesn't show the last one.
   const [session, setSession] = useState(1);
   const articleTitle = useReaderNotesStore((s) => s.article?.title);
+  // The blank paste sheet has nothing to go back to yet, so its reader bar
+  // (and the toolbar portaled into it — copy/translate/listen/notes) stays
+  // hidden until ArticleReader actually has something loaded and publishes it
+  // here, right after "Start reading" — same signal the LIBRARY_URL_PREFIX
+  // branch below relies on to always show its bar.
+  const hasArticle = useReaderNotesStore((s) => !!s.article);
 
   useEffect(() => {
     const onShowLibrary = () => { setOpenArticleId(null); setView("library"); };
@@ -85,7 +91,7 @@ export function ReadingPage() {
             title={articleTitle || t("scratch.title")}
             domain={t("scratch.domain")}
             onBack={backToLibrary}
-            hideBar
+            hideBar={!hasArticle}
           />
         )}
       </div>

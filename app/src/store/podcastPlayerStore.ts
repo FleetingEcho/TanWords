@@ -56,6 +56,10 @@ const pauseAudio = () => {
 // resolves several tracks concurrently and owns its blob URLs individually.
 let currentBlobUrl: string | null = null;
 let nativePoll: number | null = null;
+/** True while forcing duration resolution (see the "loadedmetadata" listener
+ * below) — suppresses position updates during the probe seek so the seek bar
+ * doesn't visibly jump to the end for a frame. */
+let resolvingDuration = false;
 
 interface NativeAudioSnapshot {
   status: "idle" | "playing" | "paused" | "ended" | "error";
@@ -144,10 +148,31 @@ function getAudio(): HTMLAudioElement {
   audio.addEventListener("seeked", clearStallIfPlaying);
   audio.addEventListener("canplay", clearStallIfPlaying);
   audio.addEventListener("timeupdate", () => {
+    if (resolvingDuration) return;
     usePodcastPlayerStore.setState({ position: audio!.currentTime });
   });
   audio.addEventListener("durationchange", () => {
     if (isFinite(audio!.duration)) usePodcastPlayerStore.setState({ duration: audio!.duration });
+  });
+  audio.addEventListener("loadedmetadata", () => {
+    const el = audio!;
+    if (isFinite(el.duration)) return;
+    // Some remote podcast enclosures (chunked transfer, no Content-Length) report
+    // duration as Infinity until playback reaches the end — durationchange never
+    // fires with a real number, so the bar is stuck at 0:00 for the whole episode
+    // even though playback and position both work fine. Seeking far past the end
+    // forces the browser to resolve the true duration immediately (which then
+    // fires "durationchange" for real); snap back to where playback actually was
+    // once that settles.
+    const resumeAt = el.currentTime;
+    resolvingDuration = true;
+    const onSeeked = () => {
+      el.removeEventListener("seeked", onSeeked);
+      el.currentTime = resumeAt;
+      resolvingDuration = false;
+    };
+    el.addEventListener("seeked", onSeeked);
+    el.currentTime = 1e101;
   });
   audio.addEventListener("ended", () => {
     const s = usePodcastPlayerStore.getState();

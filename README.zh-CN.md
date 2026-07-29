@@ -10,32 +10,25 @@ C1/C2 水平的学习者。产品闭环：**阅读一篇真实文章 → AI 提�
 
 ## 截图
 
-### Reading（阅读）—— 从任意文章中提取词汇
+### Dashboard（仪表盘）—— 每次打开应用的起点
 
-粘贴一篇文章（或从 Feeds/HackerNews 直接拉取），AI 会在你阅读的同时按 CEFR 等级
-提取词汇，支持一键"全部加入词库"，也可以用内置 TTS 引擎逐句朗读全文并高亮跟读。
+继续阅读未完成的文章，快速跳回最近的单词/句型/文档，所有快捷操作入口都在
+这一屏里。
 
-![Reading 页面 — 词汇提取](static/images/Reading.png)
+![Dashboard 页面 — 继续阅读与快捷操作](static/images/Dashboard.png)
 
-同一篇文章的侧边栏还会提取**句型（Sentence Patterns）**——可复用的骨架句式带
-填空槽位，配中文讲解，并锚定在文章里真实出现的那句话上：
-
-![Reading 页面 — 句型提取](static/images/Reading_2.png)
-
-### 无限知识地图 —— 把任意主题展开成可学的词汇
-
-输入一个主题，AI 会生成一张结构化的 CEFR 分级词汇/句型地图，可以继续探索
-AI 生成的详细讲解，并把选中的条目——或整张地图——收录进个人词库。
-
-![无限知识地图页面 — 主题词汇与条目详情](static/images/Knowledge_Map.png)
-
-### Vocabulary（词库）—— 每个单词都有完整的 AI 讲解
+### Words（词库）—— 每个单词都有完整的 AI 讲解
 
 每个单词都会生成一段自由格式的中文讲解（核心释义、常见用法、搭配、与近义词的
 细微差别、词源、记忆方法），配 4-6 条以上真实例句，并带笔记编辑器和逐条例句的
-朗读按钮。
+朗读按钮。单词列表按"扫读"设计，而不是靠滚动翻找。
 
-![Vocabulary 页面 — 单词详情](static/images/Vocabulary.png)
+![Words 页面 — 单词详情](static/images/Words_2.png)
+
+同一页面的 **Sentences（例句）** 标签是一个并行的句型库——可复用的骨架句式
+带填空槽位，并锚定在真实出现过的那句话上：
+
+![Words 页面 — Sentences 标签](static/images/Sentences.png)
 
 ### Feeds（订阅）—— 文章和播客集中在一个地方
 
@@ -43,9 +36,10 @@ AI 生成的详细讲解，并把选中的条目——或整张地图——收�
 
 ![Feeds 页面 — 文章与播客](static/images/Feeds.png)
 
-打开一集播客可以查看节目简介、直接点击"Learn"从文字稿中提取词汇/句型
-（和处理普通文章一样），或者点击"Play episode"直接在底部播放条播放，
-不用离开当前页面：
+打开一篇文章可以在应用内阅读器里沉浸式阅读、直接提取词汇和句型，或者点击
+"Play episode"直接在底部播放条播放播客，不用离开当前页面：
+
+![Feeds 页面 — 应用内阅读器](static/images/Feeds_2.png)
 
 ![Feeds 页面 — 播客单集详情](static/images/Play_Episode.png)
 
@@ -60,13 +54,25 @@ AI 生成的详细讲解，并把选中的条目——或整张地图——收�
 
 ![Hacker News 页面 — 帖子与楼中楼评论](static/images/Hacker_News_Comments.png)
 
-### Settings（设置）—— 本机 TTS 语音模型
+### Music（音乐）—— 边听本地音乐边学习
+
+按艺人和专辑浏览本地音乐库，播放或随机播放一个合集，并通过底部常驻播放器
+控制当前队列——支持拖动进度、调整播放速度、切换曲目。
+
+![Music 页面 — 本地专辑与常驻播放器](static/images/Music.png)
+
+### Settings（设置）—— 本机 TTS 语音模型，以及你自己的云端数据库
 
 在设置页里扫描本地模型目录，或者直接下载推荐的 Kokoro/Piper 音色，下载前
 可以先试听，还能调整朗读语速——所有语音合成都在本机完成，朗读时不产生
 任何网络请求。
 
-![Settings 页面 — TTS 语音模型设置](static/images/TTS_Model_Setup.png)
+![Settings 页面 — TTS 语音模型设置](static/images/TTS_Model.png)
+
+连接你自己的 Turso 数据库，在多台设备间同步词库；也可以完全离线，随时在
+「设置 › 数据」里两者之间切换：
+
+![Settings 页面 — 本地与云端数据库](static/images/Local_Cloud_DB.png)
 
 ### Documents 与 AI Chat —— 侧边栏中的一等页面
 
