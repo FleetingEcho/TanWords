@@ -15,6 +15,12 @@ if (-not $Portable) {
     if (-not (Test-Path -LiteralPath $env:TAURI_SIGNING_PRIVATE_KEY_PATH)) {
         throw "Tauri signing private key was not found at: $env:TAURI_SIGNING_PRIVATE_KEY_PATH"
     }
+
+    # Tauri's updater signer reads the key from TAURI_SIGNING_PRIVATE_KEY (path or
+    # raw content), not the _PATH suffix above; forward it so signing succeeds.
+    if (-not (Test-Path Env:TAURI_SIGNING_PRIVATE_KEY)) {
+        $env:TAURI_SIGNING_PRIVATE_KEY = $env:TAURI_SIGNING_PRIVATE_KEY_PATH
+    }
 }
 
 $llvmPrefix = (scoop prefix llvm).Trim()
@@ -89,7 +95,7 @@ if ($Portable) {
 
     $portableDir = Join-Path $releaseDir "bundle\portable"
     New-Item -ItemType Directory -Path $portableDir -Force | Out-Null
-    $archive = Join-Path $portableDir "TanWords_0.2.0_windows_x64_portable.zip"
+    $archive = Join-Path $portableDir "TanWords_0.8.0_windows_x64_portable.zip"
     Compress-Archive -LiteralPath $portableFiles -DestinationPath $archive -Force
     Write-Output "Portable app created: $archive"
 }
