@@ -171,7 +171,7 @@ export function ScratchPasteScreen({
             autoFocus
             spellCheck={false}
             style={{ fontSize: 17.5, lineHeight: 1.85 }}
-            className="h-full min-h-[46vh] w-full resize-none bg-transparent text-foreground outline-none placeholder:text-muted-foreground/35"
+            className="h-full min-h-[calc(100vh-400px)] w-full resize-none bg-transparent text-foreground outline-none placeholder:text-muted-foreground/35"
           />
         </div>
 

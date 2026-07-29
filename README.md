@@ -11,36 +11,27 @@ Primary UI language is Chinese; the codebase (identifiers, comments) is English.
 
 ## Screenshots
 
-### Reading — extract vocabulary from any article
+### Dashboard — where every session starts
 
-Paste an article (or pull one in from Feeds/HackerNews) and the AI extracts
-CEFR-leveled vocabulary as you read, with one-click "add all to vocabulary" and
-sentence-by-sentence "listen to article" playback via the embedded TTS engine.
+Resume an in-progress article, jump back into recent words/patterns/docs, and
+reach every quick action from one home screen.
 
-![Reading page — vocabulary extraction](static/images/Reading.png)
+![Dashboard page — resume and quick actions](static/images/Dashboard.png)
 
-The same article's sidebar also surfaces **sentence patterns** — reusable
-skeletons with slots, explained in Chinese, backed by the real sentence they
-came from:
-
-![Reading page — sentence pattern extraction](static/images/Reading_2.png)
-
-### Knowledge Map — expand any topic into learnable vocabulary
-
-Enter a topic to generate a structured map of CEFR-leveled vocabulary and
-sentence patterns, then explore AI-enriched explanations and add selected
-items—or the whole map—to your personal library.
-
-![Knowledge Map page — topic vocabulary and entry detail](static/images/Knowledge_Map.png)
-
-### Vocabulary — full AI enrichment per word
+### Words — full AI enrichment per word
 
 Every word gets a freeform AI write-up (core meaning, common usage,
 collocations, nuance vs. near-synonyms, etymology, memory aids) with 4-6+
 real example sentences, plus a notes editor and a speak button on every
-example.
+example. The word list is built for scanning, not scrolling.
 
-![Vocabulary page — word detail](static/images/Vocabulary.png)
+![Words page — word detail](static/images/Words_2.png)
+
+The same page's **Sentences** tab is a parallel library of reusable
+sentence-pattern skeletons with slots, backed by the real sentence they came
+from:
+
+![Words page — Sentences tab](static/images/Sentences.png)
 
 ### Feeds — RSS articles and podcasts in one place
 
@@ -49,9 +40,11 @@ in a persistent bottom player bar.
 
 ![Feeds page — articles and podcasts](static/images/Feeds.png)
 
-Open an episode to read its show notes, jump straight into "Learn" (extract
-vocabulary/patterns from the transcript, same as any article), or hit "Play
-episode" to start it in the bottom player bar without leaving the page:
+Open an entry in the in-app reader to read it distraction-free, extract
+vocabulary and patterns straight from the page, or hit "Play episode" to
+start a podcast in the bottom player bar without leaving the page:
+
+![Feeds page — in-app article reader](static/images/Feeds_2.png)
 
 ![Feeds page — podcast episode detail](static/images/Play_Episode.png)
 
@@ -74,13 +67,18 @@ speed, and track navigation.
 
 ![Music page — local album and persistent player](static/images/Music.png)
 
-### Settings — on-device TTS voices
+### Settings — on-device TTS voices, and your own cloud database
 
 Scan local model directories or download recommended Kokoro/Piper voices
 right from Settings, preview a voice before committing, and adjust playback
 speed — all speech synthesis runs on-device, no network call at speak-time.
 
-![Settings page — TTS voice model setup](static/images/TTS_Model_Setup.png)
+![Settings page — TTS voice model setup](static/images/TTS_Model.png)
+
+Connect your own Turso database to sync one vocabulary across machines, or
+stay fully local — switch between the two anytime from Settings › Data:
+
+![Settings page — local vs. cloud database](static/images/Local_Cloud_DB.png)
 
 ### Documents & AI Chat — first-class pages in the nav
 
