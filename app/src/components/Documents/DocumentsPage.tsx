@@ -51,9 +51,17 @@ export function DocumentsPage() {
 
   useEffect(() => {
     const onNewDocument = () => { setSource("db"); void handleNewDoc(); };
+    const onOpenDocument = (event: Event) => {
+      const id = (event as CustomEvent<{ id: number }>).detail?.id;
+      if (id > 0) { setSource("db"); void loadDoc(id); }
+    };
     window.addEventListener("tanwords:new-document", onNewDocument);
-    return () => window.removeEventListener("tanwords:new-document", onNewDocument);
-  }, [handleNewDoc]);
+    window.addEventListener("tanwords:open-document", onOpenDocument);
+    return () => {
+      window.removeEventListener("tanwords:new-document", onNewDocument);
+      window.removeEventListener("tanwords:open-document", onOpenDocument);
+    };
+  }, [handleNewDoc, loadDoc]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">

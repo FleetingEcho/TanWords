@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { Archive, Download, Eye, FolderDown, Grid2X2, Image as ImageIcon, List, RefreshCw, Trash2, X } from "lucide-react";
+import { Archive, Download, Eye, File, FileArchive, FileAudio, FileText, FileVideo, FolderDown, Grid2X2, Image as ImageIcon, List, RefreshCw, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
@@ -25,22 +25,45 @@ function formatBytes(bytes: number): string {
   return `${bytes} B`;
 }
 
-function AssetThumbnail({ id, alt }: { id: string; alt: string }) {
+type AssetKind = "image" | "pdf" | "audio" | "video" | "archive" | "other";
+
+function assetKind(asset: Pick<DocumentAssetSummary, "mime_type" | "file_name">): AssetKind {
+  if (asset.mime_type.startsWith("image/")) return "image";
+  if (asset.mime_type === "application/pdf") return "pdf";
+  if (asset.mime_type.startsWith("audio/")) return "audio";
+  if (asset.mime_type.startsWith("video/")) return "video";
+  if (/(\.zip|\.gz|\.gzip|\.tar|\.tgz|\.bz2|\.7z)$/i.test(asset.file_name)
+    || /(zip|gzip|compressed|archive)/i.test(asset.mime_type)) return "archive";
+  return "other";
+}
+
+function KindIcon({ kind, className = "h-7 w-7" }: { kind: AssetKind; className?: string }) {
+  if (kind === "image") return <ImageIcon className={className} />;
+  if (kind === "pdf") return <FileText className={className} />;
+  if (kind === "audio") return <FileAudio className={className} />;
+  if (kind === "video") return <FileVideo className={className} />;
+  if (kind === "archive") return <FileArchive className={className} />;
+  return <File className={className} />;
+}
+
+function AssetThumbnail({ asset }: { asset: DocumentAssetSummary }) {
   const [url, setUrl] = useState("");
+  const kind = assetKind(asset);
   useEffect(() => {
+    if (kind !== "image") return;
     let active = true;
-    resolveDocumentAssetUrl(`tanwords-asset://${id}`)
+    resolveDocumentAssetUrl(`tanwords-asset://${asset.id}`)
       .then((resolved) => { if (active) setUrl(resolved); })
       .catch(() => {});
     return () => { active = false; };
-  }, [id]);
-  return url
-    ? <img src={url} alt={alt} className="h-full w-full object-cover" />
-    : <div className="flex h-full w-full items-center justify-center bg-muted"><ImageIcon className="h-6 w-6 text-muted-foreground/40" /></div>;
+  }, [asset.id, kind]);
+  if (kind === "image" && url) return <img src={url} alt={asset.file_name} className="h-full w-full object-cover" />;
+  return <div className="flex h-full w-full items-center justify-center bg-muted text-muted-foreground/45"><KindIcon kind={kind} /></div>;
 }
 
 function AssetPreview({ asset, onClose }: { asset: DocumentAssetSummary | null; onClose: () => void }) {
   const [url, setUrl] = useState("");
+  const kind = asset ? assetKind(asset) : "other";
   useEffect(() => {
     let active = true;
     setUrl("");
@@ -59,7 +82,12 @@ function AssetPreview({ asset, onClose }: { asset: DocumentAssetSummary | null; 
         <CloseIcon className="h-4 w-4" />
       </Button>
       <div className="flex max-h-[82vh] min-h-64 items-center justify-center bg-black/20 p-5">
-        {url ? <img src={url} alt={asset?.file_name ?? ""} className="max-h-[76vh] max-w-full object-contain" /> : (
+        {url && kind === "image" ? <img src={url} alt={asset?.file_name ?? ""} className="max-h-[76vh] max-w-full object-contain" />
+          : url && kind === "video" ? <video src={url} controls className="max-h-[76vh] max-w-full" />
+          : url && kind === "audio" ? <audio src={url} controls className="w-full max-w-xl" />
+          : url && kind === "pdf" ? <iframe src={url} title={asset?.file_name} className="h-[72vh] w-full rounded-lg bg-white" />
+          : url ? <div className="flex flex-col items-center gap-3 text-muted-foreground"><KindIcon kind={kind} className="h-14 w-14" /><span>{asset?.mime_type}</span></div>
+          : (
           <span className="h-6 w-6 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
         )}
       </div>
@@ -95,6 +123,8 @@ export function DocumentImageManager({ writable }: { writable: boolean }) {
   const [pageSize, setPageSize] = useState(
     () => Number(localStorage.getItem("tanwords_document_images_page_size")) || 20
   );
+  const [kindFilter, setKindFilter] = useState<AssetKind | "all">("all");
+  const [query, setQuery] = useState("");
 
   const changeView = (next: "grid" | "list") => {
     localStorage.setItem("tanwords_document_images_view", next);
@@ -109,9 +139,16 @@ export function DocumentImageManager({ writable }: { writable: boolean }) {
   useEffect(() => { void load(); }, []);
 
   const totalSize = useMemo(() => assets.reduce((sum, asset) => sum + asset.size, 0), [assets]);
+  const filteredAssets = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return assets.filter((asset) =>
+      (kindFilter === "all" || assetKind(asset) === kindFilter)
+      && (!needle || `${asset.file_name} ${asset.document_title} ${asset.mime_type}`.toLowerCase().includes(needle))
+    );
+  }, [assets, kindFilter, query]);
   const orphanCount = assets.filter((asset) => !asset.referenced).length;
-  const totalPages = Math.max(1, Math.ceil(assets.length / pageSize));
-  const visibleAssets = assets.slice(page * pageSize, (page + 1) * pageSize);
+  const totalPages = Math.max(1, Math.ceil(filteredAssets.length / pageSize));
+  const visibleAssets = filteredAssets.slice(page * pageSize, (page + 1) * pageSize);
   useEffect(() => {
     if (page >= totalPages) setPage(totalPages - 1);
   }, [page, totalPages]);
@@ -276,6 +313,24 @@ export function DocumentImageManager({ writable }: { writable: boolean }) {
         </div>
       </div>
 
+      <div className="flex shrink-0 items-center gap-2 border-b border-border px-6 py-2.5">
+        <input
+          value={query}
+          onChange={(event) => { setQuery(event.target.value); setPage(0); }}
+          placeholder={t("settings.documentAssetsSearch")}
+          className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-xs outline-none focus:ring-2 focus:ring-primary/30"
+        />
+        <select
+          value={kindFilter}
+          onChange={(event) => { setKindFilter(event.target.value as AssetKind | "all"); setPage(0); }}
+          className="h-8 rounded-lg border border-input bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-primary/30"
+        >
+          {(["all", "image", "pdf", "audio", "video", "archive", "other"] as const).map((kind) => (
+            <option key={kind} value={kind}>{t(`settings.documentAssetsKind_${kind}`)}</option>
+          ))}
+        </select>
+      </div>
+
       {selectMode && (
         <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/30 px-6 py-2">
           <Checkbox
@@ -313,7 +368,7 @@ export function DocumentImageManager({ writable }: { writable: boolean }) {
         <div className="flex h-28 items-center justify-center">
           <span className="h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
         </div>
-      ) : assets.length === 0 ? (
+      ) : filteredAssets.length === 0 ? (
         <div className="flex h-28 flex-col items-center justify-center gap-2 text-muted-foreground">
           <ImageIcon className="h-7 w-7 opacity-35" />
           <p className="text-xs">{t("settings.documentImagesEmpty")}</p>
@@ -338,7 +393,7 @@ export function DocumentImageManager({ writable }: { writable: boolean }) {
                 ? "relative aspect-[4/3] overflow-hidden bg-muted"
                 : "relative h-12 w-16 shrink-0 overflow-hidden rounded-md bg-muted"
               }>
-                <AssetThumbnail id={asset.id} alt={asset.file_name} />
+                <AssetThumbnail asset={asset} />
                 {!selectMode && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/45 text-white opacity-0 transition-opacity group-hover:opacity-100">
                     <span className="flex items-center gap-1.5 text-xs font-medium"><Eye className="h-4 w-4" />{t("settings.documentImageReview")}</span>
@@ -376,7 +431,7 @@ export function DocumentImageManager({ writable }: { writable: boolean }) {
         </div>
       )}
 
-      {assets.length > 0 && (
+      {filteredAssets.length > 0 && (
         <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border px-6 py-2">
           <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <span>{t("vocab.perPage")}</span>
@@ -393,9 +448,9 @@ export function DocumentImageManager({ writable }: { writable: boolean }) {
             <Button variant="ghost" disabled={page === 0} onClick={() => setPage((value) => Math.max(0, value - 1))}
               className="h-7 w-7 p-0 text-muted-foreground disabled:opacity-30">‹</Button>
             <span className="text-[11px] text-muted-foreground">
-              {page * pageSize + 1}–{Math.min((page + 1) * pageSize, assets.length)} / {assets.length}
+              {page * pageSize + 1}–{Math.min((page + 1) * pageSize, filteredAssets.length)} / {filteredAssets.length}
             </span>
-            <Button variant="ghost" disabled={(page + 1) * pageSize >= assets.length}
+            <Button variant="ghost" disabled={(page + 1) * pageSize >= filteredAssets.length}
               onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))}
               className="h-7 w-7 p-0 text-muted-foreground disabled:opacity-30">›</Button>
           </div>

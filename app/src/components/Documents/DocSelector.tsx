@@ -7,12 +7,12 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ChevronsLeft, Filter, Images } from "lucide-react";
+import { ChevronsLeft, Filter, Paperclip } from "lucide-react";
 import { Download, FileInput, MoreHorizontal } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { exportMarkdownBundles, readMarkdownFiles } from "@/lib/localDocs";
-import { getDocumentAssets, prepareDocumentAssetsForExport } from "@/lib/documentAssets";
+import { getDocumentAssets, prepareDocumentAssetsForExport, rewriteDocumentLinksForExport } from "@/lib/documentAssets";
 import { blocksToMarkdown, blocksToStorage, contentToBlocks, markdownToBlocks } from "@/lib/docFormat";
 import { LIST_PANEL_WIDTH, LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
 import { liftMermaid, lowerMermaid } from "./mermaidTransforms";
@@ -130,13 +130,21 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, onCollap
     const destination = await openDialog({ directory: true, multiple: false });
     if (typeof destination !== "string") return;
     try {
+      const firstPage = await db.getDocuments({ sort: "title", page: 0 });
+      const allDocuments = [...firstPage.items];
+      for (let nextPage = 1; nextPage < Math.ceil(firstPage.total / PAGE_SIZE); nextPage += 1) {
+        allDocuments.push(...(await db.getDocuments({ sort: "title", page: nextPage })).items);
+      }
       const files = [];
       for (const id of ids) {
         const detail = await db.getDocument(id);
         if (!detail) continue;
         const blocks = lowerMermaid(await contentToBlocks(detail.content));
         const markdown = await blocksToMarkdown(blocks);
-        const prepared = prepareDocumentAssetsForExport(markdown, await getDocumentAssets(id));
+        const prepared = prepareDocumentAssetsForExport(
+          rewriteDocumentLinksForExport(markdown, allDocuments),
+          await getDocumentAssets(id),
+        );
         files.push({ name: `${detail.title || t("doc.untitled")}.md`, ...prepared });
       }
       const count = await exportMarkdownBundles(destination, files);
@@ -195,7 +203,7 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, onCollap
               title={t("doc.manageDatabaseImages")}
               aria-label={t("doc.manageDatabaseImages")}
             >
-              <Images className="h-3.5 w-3.5" />
+              <Paperclip className="h-3.5 w-3.5" />
             </Button>
             <Button onClick={onNewDoc} className="h-6 px-2.5 rounded-lg bg-primary text-white text-[11px] font-semibold hover:bg-primary/90">+ {t("doc.newDoc")}</Button>
             <DropdownMenu>
