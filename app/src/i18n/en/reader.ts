@@ -7,6 +7,8 @@ export const reader: Dict = {
     "reader.fontSmaller": "Smaller text",
     "reader.fontLarger": "Larger text",
     "reader.analyzeNotes": "Analyze words & sentences worth learning",
+    "reader.copyMarkdown": "Copy article & comments as Markdown",
+    "reader.copyFailed": "Couldn't copy to clipboard",
     "reader.urlPlaceholder": "Paste an article URL…",
     "reader.open": "Open",
     "reader.openUrl": "Open URL",

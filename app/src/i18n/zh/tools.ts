@@ -7,5 +7,6 @@ export const tools: Dict = {
     "tools.word": "单词",
     "tools.wordNoSelection": "请先在词库中选择一个单词",
     "tools.close": "关闭",
-    "tools.newChat": "+ 新对话",
+    "tools.maximize": "最大化",
+    "tools.restore": "还原大小",
 };

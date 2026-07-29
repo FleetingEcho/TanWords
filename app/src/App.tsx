@@ -12,7 +12,6 @@ import { ReadingPage } from "@/components/Reader/ReadingPage";
 import { SelectionAsk } from "@/components/shared/SelectionAsk";
 import { PlayerBar } from "@/components/ui/PlayerBar";
 import { PodcastPlayerBar } from "@/components/ui/PodcastPlayerBar";
-import { ToolsBall } from "@/components/ui/ToolsBall";
 import { ToolsModal } from "@/components/ui/ToolsModal";
 import { AppBackground } from "@/components/Layout/AppBackground";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -178,7 +177,6 @@ function App() {
     <ToolsModal />
     <PlayerBar />
     <PodcastPlayerBar />
-    <ToolsBall />
     <Toaster position="bottom-right" richColors closeButton />
     </>
   );

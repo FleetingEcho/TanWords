@@ -179,8 +179,6 @@ export const settings: Dict = {
     "settings.defaultRssTabSub": "Which feed opens by default on the Feeds page — pick one source to skip loading every channel",
     "settings.defaultRssTabAll": "All",
     "settings.defaultRssTabHn": "Hacker News",
-    "settings.quickDoc": "Floating tools ball",
-    "settings.quickDocSub": "Show a floating ball for quick access to documents and AI chat",
     "settings.nickname": "Nickname",
     "settings.nicknameSub": "Shown in the Dashboard greeting (\"Good evening, {name}\").",
     "settings.nicknamePlaceholder": "Your name",

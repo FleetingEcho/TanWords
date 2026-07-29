@@ -11,6 +11,14 @@ import {
   type FlatHnComment,
 } from "@/lib/hnComments";
 import { Avatar } from "@/components/Reader/HnComments";
+import { Markdown } from "@/components/AiChat/Markdown";
+import { truncateMarkedBatch } from "@/lib/markerBatch";
+
+/** Char budget for the comment batch sent to the model. Generous — capable
+ *  models take this easily, and small local models get shrunk further by
+ *  translateStore's context-overflow retry ladder — so that in practice the
+ *  whole thread translates and every row on the left has its counterpart. */
+const TRANSLATE_COMMENTS_MAX_CHARS = 30000;
 import { RefreshIcon, ReplyIcon, PeopleIcon, ChevronDownIcon } from "@/components/ui/icons";
 import { StatBadge } from "@/components/ui/StatBadge";
 
@@ -145,11 +153,20 @@ export function TranslationPane({ articleText, hnItemId, collapsible = false }: 
       .catch(() => setCommentsFetchError(true));
   }, [hasHn, hnItemId]);
 
-  const flatComments = cachedComments ? flattenHnCommentsStructured(cachedComments) : [];
+  // The full thread, uncapped — the pane must mirror the live comment list
+  // exactly (same comments, same order), with untranslated tails falling back
+  // to their original text, rather than silently showing only a prefix that
+  // stops corresponding to what's on the left.
+  const flatComments = cachedComments ? flattenHnCommentsStructured(cachedComments, Infinity) : [];
   // Once the thread is fetched (or confirmed empty/failed), commentsText is stable —
   // undefined until then, so the translate job doesn't start prematurely without it.
   const commentsReady = !hasHn || cachedComments !== undefined || commentsFetchError;
-  const commentsText = flatComments.length ? serializeCommentsForTranslation(flatComments) : undefined;
+  // Only what's sent to the model is capped (dropping whole trailing comments,
+  // never splitting one) — translateStore's retry ladder still shrinks further
+  // for small-context local models.
+  const fullBatch = flatComments.length ? serializeCommentsForTranslation(flatComments) : undefined;
+  const commentsText = fullBatch ? truncateMarkedBatch(fullBatch, TRANSLATE_COMMENTS_MAX_CHARS) : undefined;
+  const commentsPreTruncated = Boolean(fullBatch && commentsText && commentsText.length < fullBatch.length);
 
   const key = `${articleText} ${commentsText ?? ""}`;
   const start = useTranslateStore((s) => s.start);
@@ -194,7 +211,9 @@ export function TranslationPane({ articleText, hnItemId, collapsible = false }: 
           </div>
         )}
         {articleTranslation && (
-          <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{articleTranslation}</p>
+          <div className="text-sm leading-relaxed text-foreground">
+            <Markdown text={articleTranslation} />
+          </div>
         )}
         {articleStatus === "ready" && articleTruncated && (
           <p className="text-[11px] text-muted-foreground/70">{t("reading.translate.truncated")}</p>
@@ -252,7 +271,7 @@ export function TranslationPane({ articleText, hnItemId, collapsible = false }: 
           {flatComments.map((item) => (
             <TranslatedCommentRow key={item.id} item={item} translated={translatedById?.get(item.id)} />
           ))}
-          {commentsStatus === "ready" && commentsTruncated && (
+          {commentsStatus === "ready" && (commentsTruncated || commentsPreTruncated) && (
             <p className="text-[11px] text-muted-foreground/70">{t("reading.translate.truncated")}</p>
           )}
         </Section>

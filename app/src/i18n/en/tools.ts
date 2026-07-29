@@ -7,5 +7,6 @@ export const tools: Dict = {
     "tools.word": "Word",
     "tools.wordNoSelection": "Select a word in Vocabulary first",
     "tools.close": "Close",
-    "tools.newChat": "+ New Chat",
+    "tools.maximize": "Maximize",
+    "tools.restore": "Restore size",
 };

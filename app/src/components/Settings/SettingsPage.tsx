@@ -111,7 +111,10 @@ export function SettingsPage() {
         * that also includes the nav bar's height, which made every
         * programmatic jump overshoot by that amount. */}
       <div ref={scrollRef} className="relative flex-1 overflow-y-auto">
-        <div className="max-w-full px-8 py-6 space-y-10">
+        {/* data-no-selection opts the whole settings page out of the global SelectionAsk
+            toolbar (Add word / Translate / Look up) — labels, model names and example text
+            here aren't reading material to look words up from. */}
+        <div className="max-w-full px-8 py-6 space-y-10" data-no-selection>
           <section ref={(el) => { sectionRefs.current.general = el; }} data-section="general" className="scroll-mt-6">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">{t("settings.general")}</p>
             <GeneralSection />

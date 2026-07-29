@@ -25,7 +25,7 @@ export const usePlayerOriginStore = create<PlayerOriginState>((set, get) => ({
     switch (origin.kind) {
       case "reader":
         navigate("feeds");
-        useFeedsNavStore.getState().setPendingBrowse({
+        useFeedsNavStore.getState().setBrowse({
           url: origin.url,
           title: origin.title,
           domain: origin.domain,

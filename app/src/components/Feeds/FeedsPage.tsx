@@ -60,7 +60,10 @@ export function FeedsPage() {
   const titleTranslations = showTitleTranslations ? cachedTitleTranslations : undefined;
   const [translateTarget, setTranslateTarget] = useState<{ title: string; articleText: string; hnItemId: number | null } | null>(null);
   const [chatModalSessionId, setChatModalSessionId] = useState<string | null>(null);
-  const [browse, setBrowse] = useState<BrowseTarget | null>(null);
+  // Store-backed (not useState) so the open article survives navigating to
+  // another page and back — see feedsNavStore.
+  const browse = useFeedsNavStore((s) => s.browse);
+  const setBrowse = useFeedsNavStore((s) => s.setBrowse);
   const [recentlyRead, setRecentlyRead] = useState<RecentlyReadItem[]>(() => getRecentlyRead());
   const syncingRef = useRef(false);
   // The live selection, readable from long-running background syncs — their
@@ -315,17 +318,6 @@ export function FeedsPage() {
       hnItemId: entry.hn_item_id ?? null,
     });
   };
-
-  // Jump back here from the player bar: reopen the in-app reader for whichever
-  // entry started the currently playing audio.
-  const pendingBrowse = useFeedsNavStore((s) => s.pendingBrowse);
-  const clearPendingBrowse = useFeedsNavStore((s) => s.clearPendingBrowse);
-
-  useEffect(() => {
-    if (!pendingBrowse) return;
-    setBrowse(pendingBrowse);
-    clearPendingBrowse();
-  }, [pendingBrowse]);
 
   return (
     <div className="flex h-full flex-col animate-fade-in">

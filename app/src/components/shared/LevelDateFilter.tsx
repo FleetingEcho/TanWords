@@ -2,7 +2,7 @@ import React from "react";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
-import { Filter } from "lucide-react";
+import { Filter, Star } from "lucide-react";
 
 export type LevelValue = "C2" | "C1" | "B2" | "B1-";
 export type LevelFilter = "all" | LevelValue;
@@ -28,6 +28,9 @@ interface Props {
   dateTo: string;
   onDateFromChange: (v: string) => void;
   onDateToChange: (v: string) => void;
+  /** Starred-only chip — shown when the change handler is provided */
+  starredOnly?: boolean;
+  onStarredOnlyChange?: (v: boolean) => void;
 }
 
 /** Level + date-range filter, shared by the Vocabulary and Sentences list panels
@@ -35,13 +38,14 @@ interface Props {
 export function LevelDateFilter({
   levelFilter, onLevelFilterChange, levels, onLevelsChange,
   dateFrom, dateTo, onDateFromChange, onDateToChange,
+  starredOnly = false, onStarredOnlyChange,
 }: Props) {
   const t = useT();
   const [open, setOpen] = React.useState(false);
   const multi = !!onLevelsChange;
   const selected = levels ?? [];
   const levelCount = multi ? selected.length : levelFilter !== "all" ? 1 : 0;
-  const activeCount = levelCount + (dateFrom || dateTo ? 1 : 0);
+  const activeCount = levelCount + (dateFrom || dateTo ? 1 : 0) + (starredOnly ? 1 : 0);
 
   const chipActive = (lv: LevelFilter) => {
     if (multi) return lv === "all" ? selected.length === 0 : selected.includes(lv as LevelValue);
@@ -86,6 +90,20 @@ export function LevelDateFilter({
                 {lv === "all" ? t("vocab.levelAll") : lv === "B1-" ? t("vocab.levelB1minus") : lv}
               </Button>
             ))}
+            {onStarredOnlyChange && (
+              <Button
+                variant="ghost"
+                onClick={() => onStarredOnlyChange(!starredOnly)}
+                className={`h-auto px-2 py-0.5 rounded-full text-[10px] font-semibold border transition-colors flex items-center gap-1 ${
+                  starredOnly
+                    ? "bg-yellow-400/15 text-yellow-600 dark:text-yellow-400 border-yellow-400/60 hover:bg-yellow-400/25"
+                    : "border-border text-muted-foreground hover:border-yellow-400/40 hover:bg-transparent"
+                }`}
+              >
+                <Star className={`w-2.5 h-2.5 ${starredOnly ? "fill-yellow-400 text-yellow-400" : ""}`} />
+                {t("vocab.filterStarred")}
+              </Button>
+            )}
           </div>
 
           <DateRangePicker

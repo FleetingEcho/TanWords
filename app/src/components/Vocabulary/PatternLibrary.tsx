@@ -5,13 +5,16 @@ import { useDB } from "@/hooks/useDB";
 import type { PatternItem } from "@/hooks/useDB.patterns";
 import { useT } from "@/hooks/useT";
 import { LevelFilter } from "@/components/shared/LevelDateFilter";
-import { SentenceListPanel } from "./SentenceListPanel";
-import { SentenceDetailPanel } from "./SentenceDetailPanel";
+import { findBestProvider } from "@/providers/select";
+import { useSettingsStore } from "@/store/settingsStore";
+import { analyzeSentence } from "@/features/patterns/generate";
+import { SentenceList } from "./SentenceList";
 import { SentenceModal } from "./SentenceModal";
 
 const PAGE_SIZE = 20;
 
-/** Sentence library: list + detail, mirroring the Words tab. Sentences are
+/** Sentence library: a single full-width feed where clicking a row expands
+ *  its detail inline (no side detail pane). Sentences are
  *  added either one at a time (typed in, AI fills the translation/level/
  *  pattern) or generated in a batch for a word/topic — both save through
  *  the existing patterns + pattern_examples tables (no schema change; a
@@ -25,10 +28,11 @@ export function PatternLibrary({ initialQuery, onSeedConsumed }: { initialQuery?
   const [patterns, setPatterns] = useState<PatternItem[]>([]);
   const [search, setSearch] = useState("");
   const [levelFilter, setLevelFilter] = useState<LevelFilter>("all");
+  const [starredOnly, setStarredOnly] = useState(false);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(0);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"add" | "generate">("generate");
@@ -36,6 +40,8 @@ export function PatternLibrary({ initialQuery, onSeedConsumed }: { initialQuery?
 
   const [deleteTarget, setDeleteTarget] = useState<PatternItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [reanalyzingId, setReanalyzingId] = useState<number | null>(null);
+  const targetLevel = useSettingsStore((s) => s.targetLevels.join("/"));
 
   // ── Multi-select (header action: delete selected) ──────────────────────
   const [selectMode, setSelectMode] = useState(false);
@@ -55,12 +61,21 @@ export function PatternLibrary({ initialQuery, onSeedConsumed }: { initialQuery?
     setSelectMode(false);
     clearSelection();
   };
+  // Double-click toggles select mode; entering it pre-selects the clicked sentence.
+  const handleDoubleClick = (item: PatternItem) => {
+    if (selectMode) {
+      exitSelectMode();
+    } else {
+      setSelectMode(true);
+      setSelectedIds(new Set([item.id]));
+    }
+  };
   const [deleteSelectedOpen, setDeleteSelectedOpen] = useState(false);
   const [deletingSelected, setDeletingSelected] = useState(false);
 
   const load = () => db.listPatterns().then(setPatterns);
   useEffect(() => { load(); }, []);
-  useEffect(() => { setPage(0); }, [search, levelFilter, dateFrom, dateTo]);
+  useEffect(() => { setPage(0); }, [search, levelFilter, starredOnly, dateFrom, dateTo]);
 
   // Picks up sentences quick-added from the top CommandBar's SentenceSearchBox.
   useEffect(() => {
@@ -77,18 +92,30 @@ export function PatternLibrary({ initialQuery, onSeedConsumed }: { initialQuery?
     onSeedConsumed?.();
   }, [initialQuery]);
 
+  // Multi-token AND search: every whitespace-separated token must match
+  // somewhere in the sentence bundle (sentence text, translation, note,
+  // skeleton, level, sources) — so "simmer C1" or "煎熬 anger" narrow the
+  // list instead of matching nothing as a literal substring.
+  const searchTokens = useMemo(
+    () => search.trim().toLowerCase().split(/\s+/).filter(Boolean),
+    [search]
+  );
+
   const visible = useMemo(() => {
-    const query = search.trim().toLowerCase();
     return patterns.filter((item) => {
-      if (query && !`${item.pattern} ${item.zh} ${item.note} ${item.examples.map((e) => e.sentence).join(" ")}`.toLowerCase().includes(query)) return false;
+      if (searchTokens.length > 0) {
+        const hay = `${item.pattern} ${item.zh} ${item.note} ${item.level ?? ""} ${item.examples.map((e) => `${e.sentence} ${e.source}`).join(" ")}`.toLowerCase();
+        if (!searchTokens.every((tk) => hay.includes(tk))) return false;
+      }
       if (levelFilter !== "all") {
         if (levelFilter === "B1-" ? !["B1", "A2", "A1"].includes(item.level ?? "") : item.level !== levelFilter) return false;
       }
+      if (starredOnly && !item.starred) return false;
       if (dateFrom && item.created_at < dateFrom) return false;
       if (dateTo && item.created_at > `${dateTo} 23:59:59`) return false;
       return true;
     });
-  }, [patterns, search, levelFilter, dateFrom, dateTo]);
+  }, [patterns, searchTokens, levelFilter, starredOnly, dateFrom, dateTo]);
 
   // Deleting the last item of the last page must not leave an empty page.
   useEffect(() => {
@@ -96,15 +123,50 @@ export function PatternLibrary({ initialQuery, onSeedConsumed }: { initialQuery?
     if (page > maxPage) setPage(maxPage);
   }, [visible.length, page]);
 
-  // Default to the first item once the list loads, like the Words tab does.
-  useEffect(() => {
-    if (selectedId === null && visible.length > 0) setSelectedId(visible[0].id);
-  }, [visible, selectedId]);
-
-  const selected = patterns.find((p) => p.id === selectedId) ?? null;
-
   // Dedup set for the generate flow — every sentence already in the library.
   const existingSentences = useMemo(() => patterns.flatMap((p) => p.examples.map((e) => e.sentence)), [patterns]);
+
+  // Optimistic star toggle, mirroring the Words tab's toggleWordStar.
+  const toggleStar = async (id: number) => {
+    const target = patterns.find((p) => p.id === id);
+    if (!target) return;
+    const next = !target.starred;
+    setPatterns((prev) => prev.map((p) => (p.id === id ? { ...p, starred: next } : p)));
+    const ok = await db.setPatternStarred(id, next);
+    if (!ok) setPatterns((prev) => prev.map((p) => (p.id === id ? { ...p, starred: !next } : p)));
+  };
+
+  // Re-runs the quick-add analysis on an already-saved sentence and overwrites
+  // its translation / skeleton / note / level — for rows saved before analysis
+  // existed, or where the model's first pass was off.
+  const reanalyze = async (item: PatternItem) => {
+    if (reanalyzingId !== null) return;
+    const provider = findBestProvider();
+    if (!provider) {
+      toast.error(t("vocab.noApiKey"));
+      return;
+    }
+    const sentence = item.examples[0]?.sentence ?? item.pattern;
+    setReanalyzingId(item.id);
+    try {
+      const result = await analyzeSentence(provider, sentence, targetLevel);
+      if (!result.zh.trim()) {
+        toast.error(t("vocab.patterns.reanalyzeFailed"));
+        return;
+      }
+      // Same fallback as the save path: an empty skeleton stores the sentence itself.
+      const ok = await db.updatePatternAnalysis(item.id, result.zh, result.skeleton.trim() || sentence, result.note, result.level);
+      if (ok) {
+        toast.success(t("vocab.patterns.reanalyzed"));
+        await load();
+        window.dispatchEvent(new CustomEvent("patterns-updated"));
+      }
+    } catch {
+      toast.error(t("vocab.patterns.reanalyzeFailed"));
+    } finally {
+      setReanalyzingId(null);
+    }
+  };
 
   const remove = async () => {
     if (!deleteTarget || deleting) return;
@@ -112,7 +174,7 @@ export function PatternLibrary({ initialQuery, onSeedConsumed }: { initialQuery?
     const deleted = await db.deletePattern(deleteTarget.id);
     if (deleted) {
       toast.success(t("vocab.patterns.deleted"));
-      if (selectedId === deleteTarget.id) setSelectedId(null);
+      if (expandedId === deleteTarget.id) setExpandedId(null);
       setDeleteTarget(null);
       await load();
       window.dispatchEvent(new CustomEvent("patterns-updated"));
@@ -127,7 +189,7 @@ export function PatternLibrary({ initialQuery, onSeedConsumed }: { initialQuery?
     const deletedCount = results.filter(Boolean).length;
     if (deletedCount > 0) {
       toast.success(t("vocab.patterns.selectedDeleted", { n: deletedCount }));
-      if (selectedId !== null && selectedIds.has(selectedId)) setSelectedId(null);
+      if (expandedId !== null && selectedIds.has(expandedId)) setExpandedId(null);
       exitSelectMode();
       await load();
       window.dispatchEvent(new CustomEvent("patterns-updated"));
@@ -138,23 +200,31 @@ export function PatternLibrary({ initialQuery, onSeedConsumed }: { initialQuery?
 
   return (
     <div className="flex min-h-0 flex-1">
-      <SentenceListPanel
+      <SentenceList
         items={visible}
-        selectedId={selectedId}
+        expandedId={expandedId}
         search={search}
+        searchTokens={searchTokens}
         levelFilter={levelFilter}
+        starredOnly={starredOnly}
         dateFrom={dateFrom}
         dateTo={dateTo}
         page={page}
         pageSize={PAGE_SIZE}
         onSearchChange={setSearch}
         onLevelFilterChange={setLevelFilter}
+        onStarredOnlyChange={setStarredOnly}
         onDateFromChange={setDateFrom}
         onDateToChange={setDateTo}
-        onSelect={(item) => setSelectedId(item.id)}
+        onToggleExpand={(item) => setExpandedId((prev) => (prev === item.id ? null : item.id))}
+        onDoubleClick={handleDoubleClick}
         onPageChange={setPage}
         onOpenAdd={() => { setModalMode("add"); setModalSeed(null); setModalOpen(true); }}
         onOpenGenerate={() => { setModalMode("generate"); setModalSeed(null); setModalOpen(true); }}
+        onRequestDelete={(item) => setDeleteTarget(item)}
+        onReanalyze={reanalyze}
+        reanalyzingId={reanalyzingId}
+        onToggleStar={toggleStar}
         selectMode={selectMode}
         onToggleSelectMode={toggleSelectMode}
         selectedIds={selectedIds}
@@ -162,11 +232,6 @@ export function PatternLibrary({ initialQuery, onSeedConsumed }: { initialQuery?
         onSelectAll={selectAll}
         onClearSelection={clearSelection}
         onDeleteSelected={() => setDeleteSelectedOpen(true)}
-      />
-
-      <SentenceDetailPanel
-        selected={selected}
-        onRequestDelete={() => selected && setDeleteTarget(selected)}
       />
 
       <SentenceModal

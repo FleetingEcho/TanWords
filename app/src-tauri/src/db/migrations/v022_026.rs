@@ -62,3 +62,12 @@ pub(super) const MIGRATION_23: Migration = Migration {
             END;
         ",
 };
+
+pub(super) const MIGRATION_24: Migration = Migration {
+    version: 24,
+    description: "add starred flag to patterns for pinning/filtering in the sentence library",
+    sql: "
+            ALTER TABLE patterns ADD COLUMN starred INTEGER NOT NULL DEFAULT 0
+                CHECK(starred IN (0, 1));
+        ",
+};

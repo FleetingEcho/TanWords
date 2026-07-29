@@ -85,7 +85,6 @@ interface SettingsState {
   ttsExtraDirs: string[];
   ttsSpeed: number;
   /** Show the floating quick-doc-edit ball in the bottom-right corner. */
-  showQuickDoc: boolean;
   /** Show the project GitHub link in the sidebar footer. */
   showGithubLink: boolean;
   /** Pop the lookup/translate/save toolbar over selected English text. Off
@@ -135,7 +134,6 @@ interface SettingsState {
   setTtsVoiceId: (id: string) => void;
   setTtsExtraDirs: (dirs: string[]) => void;
   setTtsSpeed: (speed: number) => void;
-  setShowQuickDoc: (v: boolean) => void;
   setShowGithubLink: (v: boolean) => void;
   setSelectionActions: (v: boolean) => void;
   setSidebarTabVisible: (tab: SidebarTabId, visible: boolean) => void;
@@ -272,7 +270,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   ttsVoiceId: "0",
   ttsExtraDirs: [],
   ttsSpeed: 1,
-  showQuickDoc: true,
   showGithubLink: true,
   selectionActions: true,
   visibleSidebarTabs: cachedSidebarTabs(),
@@ -307,11 +304,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     cacheUiLanguage(lang);
   },
 
-
-  setShowQuickDoc: (v) => {
-    set({ showQuickDoc: v });
-    saveSetting("quick_doc_ball", JSON.stringify(v));
-  },
 
   setSelectionActions: (v) => {
     set({ selectionActions: v });
@@ -449,7 +441,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         "tts_voice_id",
         "tts_extra_dirs",
         "tts_speed",
-        "quick_doc_ball",
         "show_github_link",
         "visible_sidebar_tabs",
         "visible_topbar_items",
@@ -525,7 +516,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         ttsExtraDirs: Array.isArray(values.tts_extra_dirs) ? values.tts_extra_dirs : [],
         ttsSpeed: Number(values.tts_speed) || 1,
         // JSON.parse turns the stored string into a real boolean; default on.
-        showQuickDoc: (values.quick_doc_ball as unknown) !== false && values.quick_doc_ball !== "false",
         showGithubLink: (values.show_github_link as unknown) !== false && values.show_github_link !== "false",
         selectionActions: (values.selection_actions as unknown) !== false && values.selection_actions !== "false",
         visibleSidebarTabs: resolvedSidebarTabs,

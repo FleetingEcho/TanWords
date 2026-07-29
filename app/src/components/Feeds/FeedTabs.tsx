@@ -115,7 +115,10 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
     }`;
 
   return (
-    <div className="flex shrink-0 items-center gap-3 border-b border-border bg-background/90 backdrop-blur-xl px-4 py-2.5">
+    // relative z-20: backdrop-blur creates a stacking context, and without a
+    // z-index the content bars below (e.g. HackerNewsSection's blurred toolbar)
+    // paint over the More / Recently-read dropdowns.
+    <div className="relative z-20 flex shrink-0 items-center gap-3 border-b border-border bg-background/90 backdrop-blur-xl px-4 py-2.5">
       <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <button onClick={() => onSelect("all")} className={`${pill(selected === "all")} shrink-0`}>
           {t("feeds.all")}

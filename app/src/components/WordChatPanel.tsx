@@ -154,26 +154,25 @@ export function WordChatPanel({ wordId, word, enrichedContext = "" }: PanelProps
 
   return (
     <div className="flex flex-col h-full">
-      {/* Tabs */}
-      <div className="flex gap-1 mb-3 shrink-0">
-        <Button
-          variant="ghost"
-          onClick={() => setTab("chat")}
-          className={`h-auto flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
-            tab === "chat" ? "bg-primary text-white hover:bg-primary" : "bg-muted text-muted-foreground hover:bg-muted/80"
-          }`}
-        >
-          {t("chat.tabChat")}
-        </Button>
-        <Button
-          variant="ghost"
-          onClick={() => setTab("notes")}
-          className={`h-auto flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
-            tab === "notes" ? "bg-primary text-white hover:bg-primary" : "bg-muted text-muted-foreground hover:bg-muted/80"
-          }`}
-        >
-          {t("chat.tabNotes")}
-        </Button>
+      {/* Header: the word on the left, compact chat/notes switcher on the right */}
+      <div className="flex items-center justify-between gap-3 mb-3 shrink-0">
+        <p className="min-w-0 truncate text-sm font-semibold text-foreground">{word}</p>
+        <div className="flex items-center gap-0.5 bg-muted rounded-lg p-0.5 shrink-0">
+          {(["chat", "notes"] as const).map((id) => (
+            <Button
+              key={id}
+              variant="ghost"
+              onClick={() => setTab(id)}
+              className={`h-auto px-3 py-1 text-xs font-semibold rounded-md transition-colors hover:bg-transparent ${
+                tab === id
+                  ? "bg-background text-foreground shadow-sm hover:bg-background"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {id === "chat" ? t("chat.tabChat") : t("chat.tabNotes")}
+            </Button>
+          ))}
+        </div>
       </div>
 
       {/* Notes tab — same BlockNote editor chrome as Documents, bound to a plain-text column */}
@@ -194,8 +193,7 @@ export function WordChatPanel({ wordId, word, enrichedContext = "" }: PanelProps
         <div className="flex flex-col flex-1 overflow-hidden">
           <div className="flex-1 overflow-y-auto space-y-3 pb-1 pr-0.5" style={{ minHeight: 0 }}>
             {messages.length === 0 && (
-              <div className="text-center py-10 text-muted-foreground text-xs">
-                <p className="mb-1 font-semibold text-foreground/70">{word}</p>
+              <div className="flex h-full flex-col items-center justify-center text-center text-muted-foreground text-xs">
                 <p className="opacity-60">{t("chat.chatEmpty")}</p>
               </div>
             )}

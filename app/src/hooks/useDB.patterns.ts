@@ -9,6 +9,7 @@ export interface PatternItem {
   zh: string;
   note: string;
   level: string | null;
+  starred: boolean;
   created_at: string;
   examples: PatternExampleItem[];
 }
@@ -29,5 +30,18 @@ export function useDBPatterns() {
     try { return await invoke("db_save_sentence_pattern", { sentence, zh, skeleton, note, level, source }); }
     catch (e) { reportWriteError("saveSentencePattern", e, "收藏句式失败"); return null; }
   }, []);
-  return useMemo(() => ({ listPatterns, deletePattern, saveSentencePattern }), [listPatterns, deletePattern, saveSentencePattern]);
+  const updatePatternAnalysis = useCallback(async (
+    patternId: number, zh: string, skeleton: string, note: string, level: string
+  ): Promise<boolean> => {
+    try { await invoke("db_update_pattern_analysis", { patternId, zh, skeleton, note, level }); return true; }
+    catch (e) { reportWriteError("updatePatternAnalysis", e, "更新句式分析失败"); return false; }
+  }, []);
+  const setPatternStarred = useCallback(async (patternId: number, starred: boolean): Promise<boolean> => {
+    try { await invoke("db_set_pattern_starred", { patternId, starred }); return true; }
+    catch (e) { reportWriteError("setPatternStarred", e, "标星失败"); return false; }
+  }, []);
+  return useMemo(
+    () => ({ listPatterns, deletePattern, saveSentencePattern, updatePatternAnalysis, setPatternStarred }),
+    [listPatterns, deletePattern, saveSentencePattern, updatePatternAnalysis, setPatternStarred]
+  );
 }
