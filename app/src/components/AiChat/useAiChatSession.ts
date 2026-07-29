@@ -310,6 +310,18 @@ export function useAiChatSession(initialSessionId?: string) {
     await loadSessions();
   };
 
+  const togglePinned = async (id: string, pinned: boolean) => {
+    await db.setChatSessionPinned(id, pinned);
+    await loadSessions();
+  };
+
+  const renameSession = async (id: string, title: string) => {
+    const ok = await db.renameChatSession(id, title);
+    if (!ok) return;
+    if (activeId === id) setActiveTitle(title.trim());
+    await loadSessions();
+  };
+
   const deleteSession = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     await db.deleteChatSession(id);
@@ -641,7 +653,7 @@ export function useAiChatSession(initialSessionId?: string) {
     // sidebar
     displaySessions, archivedSessions, searchQuery, setSearchQuery,
     dateFrom, dateTo, setDateRange: (from: string, to: string) => { setDateFrom(from); setDateTo(to); },
-    activeId, switchSession, deleteSession, toggleArchived, startNew, startWithArticle,
+    activeId, switchSession, deleteSession, toggleArchived, togglePinned, renameSession, startNew, startWithArticle,
     // active session
     displayItems, activeTitle, isNewSession, streaming,
     tokenCount: estimateTokens(displayItems),

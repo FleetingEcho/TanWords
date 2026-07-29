@@ -17,9 +17,12 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
 import { buildPresetPrompt } from "./aiChatHelpers";
 
-export function AiChatPage({ initialSessionId }: { initialSessionId?: string } = {}) {
+export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSessionId?: string; onActiveIdChange?: (id: string | null) => void } = {}) {
   const t = useT();
   const s = useAiChatSession(initialSessionId);
+  // Lets a wrapping modal know which session is actually on screen (the user
+  // may switch sessions inside it), e.g. for its expand-to-full-page button.
+  React.useEffect(() => { onActiveIdChange?.(s.activeId); }, [s.activeId, onActiveIdChange]);
   const navigate = useNavStore((state) => state.navigate);
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(() => localStorage.getItem("aichat-sidebar-collapsed") === "1");
   const [confirmClear, setConfirmClear] = React.useState(false);
@@ -28,7 +31,7 @@ export function AiChatPage({ initialSessionId }: { initialSessionId?: string } =
   const activeProvider = s.providers.find((provider) => provider.id === s.selectedProviderId) ?? s.providers[0];
   // With a wallpaper set, the app canvas is transparent (see AppBackground) —
   // this page must not paint over it. Without one it still needs a surface.
-  const hasCustomAppBackground = useSettingsStore((state) => !!state.appBackgroundImage);
+  const hasCustomAppBackground = useSettingsStore((state) => !!state.appBackgroundImage && state.appBackgroundVisible);
   const toggleSidebar = () => setSidebarCollapsed((current) => {
     localStorage.setItem("aichat-sidebar-collapsed", current ? "0" : "1");
     return !current;
@@ -77,6 +80,8 @@ export function AiChatPage({ initialSessionId }: { initialSessionId?: string } =
         onSwitchSession={s.switchSession}
         onDeleteSession={s.deleteSession}
         onToggleArchived={s.toggleArchived}
+        onTogglePinned={s.togglePinned}
+        onRenameSession={s.renameSession}
         onNewChat={s.startNew}
         collapsed={sidebarCollapsed}
         onToggleCollapsed={toggleSidebar}
@@ -139,7 +144,7 @@ export function AiChatPage({ initialSessionId }: { initialSessionId?: string } =
 
         {/* Messages */}
         <div ref={s.scrollHostRef} className="flex-1 overflow-y-auto px-5 py-7 min-h-0">
-          <div className="mx-auto max-w-3xl space-y-5">
+          <div className="mx-auto max-w-full space-y-5">
           {s.displayItems.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center">
               <p className="text-sm font-semibold text-foreground/80">{t("aichat.emptyTitle")}</p>
@@ -155,13 +160,13 @@ export function AiChatPage({ initialSessionId }: { initialSessionId?: string } =
                   !VOCAB_CARD_TOOL_NAMES.has(c.name) && !SENTENCE_CARD_TOOL_NAMES.has(c.name) && !NOTE_CARD_TOOL_NAMES.has(c.name)
                 );
                 // Mirrors MessageBubble's own box model exactly (avatar-width
-                // spacer + gap-3, content capped at max-w-[82%]) so a tool call
+                // spacer + gap-3, content capped at min(82%,48rem)) so a tool call
                 // sitting between two AI messages lines up on both edges, not
                 // just the left one.
                 return (
                   <div key={idx} className="flex gap-3">
-                    <div className="w-8 h-8 shrink-0" />
-                    <div className="min-w-0 flex-1 max-w-[82%] flex flex-col gap-5">
+                    <div className="w-10 h-10 shrink-0" />
+                    <div className="min-w-0 flex-1 max-w-[min(82%,48rem)] flex flex-col gap-5">
                       {extractCalls.map((c) => (
                         <VocabExtractionCard
                           key={c.id}
@@ -172,6 +177,7 @@ export function AiChatPage({ initialSessionId }: { initialSessionId?: string } =
                         <SentenceExtractionCard
                           key={c.id}
                           items={sentenceItemsFromToolInput(c.input)}
+                          variant={c.name === "extract_patterns" ? "extracted" : "generated"}
                         />
                       ))}
                       {noteCalls.map((c) => (

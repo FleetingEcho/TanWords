@@ -4,32 +4,56 @@ import { Button } from "@/components/ui/button";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Filter } from "lucide-react";
 
-export type LevelFilter = "all" | "C2" | "C1" | "B2" | "B1-";
-export type DateField = "created" | "updated";
+export type LevelValue = "C2" | "C1" | "B2" | "B1-";
+export type LevelFilter = "all" | LevelValue;
 
-const LEVEL_CHIPS: LevelFilter[] = ["all", "C2", "C1", "B2", "B1-"];
+const LEVELS: LevelValue[] = ["C2", "C1", "B2", "B1-"];
+
+/** True when a word/sentence level matches one of the selected level chips. */
+export function matchesLevels(level: string | null | undefined, selected: LevelValue[]): boolean {
+  if (selected.length === 0) return true;
+  return selected.some((lv) =>
+    lv === "B1-" ? ["B1", "A2", "A1"].includes(level ?? "") : level === lv
+  );
+}
 
 interface Props {
-  levelFilter: LevelFilter;
-  onLevelFilterChange: (v: LevelFilter) => void;
+  /** Single-select mode (Sentences / Patterns) */
+  levelFilter?: LevelFilter;
+  onLevelFilterChange?: (v: LevelFilter) => void;
+  /** Multi-select mode (Vocabulary) — empty array means "all levels" */
+  levels?: LevelValue[];
+  onLevelsChange?: (v: LevelValue[]) => void;
   dateFrom: string;
   dateTo: string;
   onDateFromChange: (v: string) => void;
   onDateToChange: (v: string) => void;
-  /** Only Vocabulary's list has both a created and an updated timestamp to filter on */
-  dateField?: DateField;
-  onDateFieldChange?: (v: DateField) => void;
 }
 
 /** Level + date-range filter, shared by the Vocabulary and Sentences list panels
  *  so both filter the same two dimensions the same way. */
 export function LevelDateFilter({
-  levelFilter, onLevelFilterChange, dateFrom, dateTo, onDateFromChange, onDateToChange,
-  dateField, onDateFieldChange,
+  levelFilter, onLevelFilterChange, levels, onLevelsChange,
+  dateFrom, dateTo, onDateFromChange, onDateToChange,
 }: Props) {
   const t = useT();
   const [open, setOpen] = React.useState(false);
-  const activeCount = (levelFilter !== "all" ? 1 : 0) + (dateFrom || dateTo ? 1 : 0);
+  const multi = !!onLevelsChange;
+  const selected = levels ?? [];
+  const levelCount = multi ? selected.length : levelFilter !== "all" ? 1 : 0;
+  const activeCount = levelCount + (dateFrom || dateTo ? 1 : 0);
+
+  const chipActive = (lv: LevelFilter) => {
+    if (multi) return lv === "all" ? selected.length === 0 : selected.includes(lv as LevelValue);
+    return levelFilter === lv;
+  };
+
+  const onChipClick = (lv: LevelFilter) => {
+    if (!multi) return onLevelFilterChange?.(lv);
+    if (lv === "all") return onLevelsChange!([]);
+    const v = lv as LevelValue;
+    onLevelsChange!(selected.includes(v) ? selected.filter((x) => x !== v) : [...selected, v]);
+  };
 
   return (
     <div>
@@ -48,13 +72,13 @@ export function LevelDateFilter({
       {open && (
         <div className="space-y-2.5 pt-2.5">
           <div className="flex gap-1 flex-wrap">
-            {LEVEL_CHIPS.map((lv) => (
+            {(["all", ...LEVELS] as LevelFilter[]).map((lv) => (
               <Button
                 key={lv}
                 variant="ghost"
-                onClick={() => onLevelFilterChange(lv)}
+                onClick={() => onChipClick(lv)}
                 className={`h-auto px-2 py-0.5 rounded-full text-[10px] font-semibold border transition-colors ${
-                  levelFilter === lv
+                  chipActive(lv)
                     ? "bg-primary text-primary-foreground border-primary hover:bg-primary/90"
                     : "border-border text-muted-foreground hover:border-primary/40 hover:bg-transparent"
                 }`}
@@ -64,30 +88,12 @@ export function LevelDateFilter({
             ))}
           </div>
 
-          <div className="flex items-center gap-1.5">
-            {dateField && onDateFieldChange && (
-              <div className="flex items-center gap-0.5 bg-muted p-0.5 rounded-lg shrink-0">
-                {(["created", "updated"] as DateField[]).map((f) => (
-                  <Button
-                    key={f}
-                    variant="ghost"
-                    onClick={() => onDateFieldChange(f)}
-                    className={`h-auto px-2 py-0.5 rounded-md text-[10px] font-medium transition-colors hover:bg-transparent ${
-                      dateField === f ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {f === "created" ? t("vocab.dateAdded") : t("vocab.dateUpdated")}
-                  </Button>
-                ))}
-              </div>
-            )}
-            <DateRangePicker
-              from={dateFrom}
-              to={dateTo}
-              onChange={(from, to) => { onDateFromChange(from); onDateToChange(to); }}
-              placeholder={t("vocab.dateRangePlaceholder")}
-            />
-          </div>
+          <DateRangePicker
+            from={dateFrom}
+            to={dateTo}
+            onChange={(from, to) => { onDateFromChange(from); onDateToChange(to); }}
+            placeholder={t("vocab.dateRangePlaceholder")}
+          />
         </div>
       )}
     </div>

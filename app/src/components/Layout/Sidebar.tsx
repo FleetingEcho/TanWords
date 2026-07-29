@@ -99,7 +99,7 @@ export function MainLayout({
   // Transparent instead of opaque when a custom app background is set, so AppBackground
   // (mounted behind this whole layout) shows through the page canvas — cards/sidebar
   // keep their own bg-card/bg-sidebar and stay opaque regardless.
-  const hasCustomAppBackground = useSettingsStore((s) => !!s.appBackgroundImage);
+  const hasCustomAppBackground = useSettingsStore((s) => !!s.appBackgroundImage && s.appBackgroundVisible);
   const podcastActive = usePodcastPlayerStore((s) => s.status !== "idle" && s.track !== null);
   const ttsActive = useTtsPlayerStore((s) => s.status !== "idle");
   const NAV_ITEMS: NavItemDef[] = NAV_ITEM_DEFS

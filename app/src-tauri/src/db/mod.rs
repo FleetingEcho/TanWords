@@ -15,6 +15,29 @@ pub fn conn(state: &State<'_, AppState>) -> Result<Connection, String> {
     Ok(state.db.lock().map_err(|e| e.to_string())?.conn())
 }
 
+/// A dedicated connection for commands that open an interactive transaction.
+///
+/// The shared handle above is a single Hrana stream on a Turso profile. A
+/// transaction opened on it pins the stream into Txn state, and every command
+/// running concurrently on a clone of it then fails — "connection has reached
+/// an invalid state, started with Txn" / "Stream already in use". Giving each
+/// transaction its own connection keeps the shared stream in autocommit.
+/// Local profiles keep the shared connection: a single local handle serializes
+/// fine (and a second connection to a `:memory:` database would be a different,
+/// empty database entirely). Only Turso gets a fresh stream.
+pub async fn txn_conn(state: &State<'_, AppState>) -> Result<Connection, String> {
+    let (database, kind) = {
+        let guard = state.db.lock().map_err(|e| e.to_string())?;
+        if guard.kind() == connection::DbKind::Local {
+            return Ok(guard.conn());
+        }
+        (guard.database(), guard.kind())
+    };
+    let conn = database.connect().map_err(|e| e.to_string())?;
+    connection::apply_pragmas(&conn, kind).await;
+    Ok(conn)
+}
+
 // ── Sub-modules ────────────────────────────────────────────────────────────
 
 pub mod connection;
@@ -128,6 +151,8 @@ pub async fn init_db(conn: &Connection) -> SqlResult<()> {
     ).await;
     // Archived conversations stay searchable but fold out of the main list.
     let _ = conn.execute("ALTER TABLE ai_chat_sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0", ()).await;
+    // Pinned conversations sort above the rest of their shelf.
+    let _ = conn.execute("ALTER TABLE ai_chat_sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0", ()).await;
 
     // Reading lessons: articles + extracted items + known words
     let _ = conn.execute_batch(
@@ -169,7 +194,7 @@ pub async fn init_db(conn: &Connection) -> SqlResult<()> {
         ("default_target_lang", r#""zh""#),
         ("default_ai_provider", r#""openai""#),
         ("quiz_reminder", r#""weekly""#),
-        ("ui_language", r#""zh""#),
+        ("ui_language", r#""en""#),
         ("latest_version", r#""0.1.0""#),
         ("target_level", r#""C1""#),
         ("daily_goal", "10"),

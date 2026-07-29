@@ -6,6 +6,7 @@ import { SpeakButton } from "@/components/ui/SpeakButton";
 import { SparkIcon } from "@/components/ui/icons";
 import { CheckIcon } from "@heroicons/react/24/solid";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export interface ExtractedVocabItem {
   word: string;
@@ -28,7 +29,7 @@ export function vocabItemsFromToolInput(input: Record<string, unknown>): Extract
 }
 
 const LEVEL_COLORS: Record<string, string> = {
-  C2: "#a855f7", C1: "#3b82f6", B2: "#14b8a6",
+  C2: "#a855f7", C1: "#3b82f6", B2: "#14b8a6", B1: "#f59e0b", A2: "#84cc16",
 };
 
 type ItemStatus = "pending" | "added" | "known";
@@ -53,6 +54,9 @@ export function VocabExtractionCard({ items }: { items: ExtractedVocabItem[] }) 
   const t = useT();
   const [statuses, setStatuses] = useState<Record<number, ItemStatus>>({});
   const [addingAll, setAddingAll] = useState(false);
+  // Multi-select is opt-out: every pending item starts selected, the user
+  // unchecks what they don't want before hitting "Add selected".
+  const [deselected, setDeselected] = useState<Record<number, boolean>>({});
 
   // Reopening a saved chat re-renders this card from the tool call's raw
   // input — it has no memory of what got added last time, so check the
@@ -81,11 +85,28 @@ export function VocabExtractionCard({ items }: { items: ExtractedVocabItem[] }) 
 
   if (items.length === 0) return null;
 
-  const pendingCount = items.filter((_, i) => !statuses[i]).length;
+  const pendingIdx = items.map((_, i) => i).filter((i) => !statuses[i]);
+  const selectedIdx = pendingIdx.filter((i) => !deselected[i]);
+  const pendingCount = pendingIdx.length;
+  const headerChecked: boolean | "indeterminate" =
+    selectedIdx.length === 0 ? false : selectedIdx.length === pendingIdx.length ? true : "indeterminate";
+
+  const toggleAll = () => {
+    const selectAll = selectedIdx.length < pendingIdx.length;
+    setDeselected((prev) => {
+      const next = { ...prev };
+      pendingIdx.forEach((i) => { next[i] = !selectAll; });
+      return next;
+    });
+  };
 
   const addOne = async (i: number) => {
     const item = items[i];
     const result = await db.addWordsBatch([item], "chat");
+    // added=0 AND skipped=0 means the write itself failed (addWordsBatch has
+    // already shown the error toast) — keep the item pending, and don't claim
+    // the word was a duplicate.
+    if (result.added === 0 && result.skipped === 0) return;
     setStatuses((prev) => ({ ...prev, [i]: "added" }));
     if (result.added > 0) window.dispatchEvent(new CustomEvent("vocab-updated"));
     else toast.info(t("aichat.vocab.alreadyInVocab", { word: item.word }));
@@ -97,13 +118,18 @@ export function VocabExtractionCard({ items }: { items: ExtractedVocabItem[] }) 
     setStatuses((prev) => ({ ...prev, [i]: "known" }));
   };
 
-  const addAll = async () => {
-    const pending = items.filter((_, i) => !statuses[i]);
-    if (pending.length === 0 || addingAll) return;
+  const addSelected = async () => {
+    const chosen = selectedIdx;
+    if (chosen.length === 0 || addingAll) return;
     setAddingAll(true);
-    const result = await db.addWordsBatch(pending, "chat");
+    const result = await db.addWordsBatch(chosen.map((i) => items[i]), "chat");
+    if (result.added === 0 && result.skipped === 0) {
+      // The write failed (error already toasted) — leave everything pending.
+      setAddingAll(false);
+      return;
+    }
     const next: Record<number, ItemStatus> = { ...statuses };
-    items.forEach((_, i) => { if (!next[i]) next[i] = "added"; });
+    chosen.forEach((i) => { next[i] = "added"; });
     setStatuses(next);
     setAddingAll(false);
     if (result.added > 0) window.dispatchEvent(new CustomEvent("vocab-updated"));
@@ -119,13 +145,19 @@ export function VocabExtractionCard({ items }: { items: ExtractedVocabItem[] }) 
         <SparkIcon className="w-3.5 h-3.5 text-primary" />
         <span className="text-xs font-semibold flex-1">{t("aichat.vocab.extractedCount", { n: items.length })}</span>
         {pendingCount > 0 && (
-          <Button
-            onClick={addAll}
-            disabled={addingAll}
-            className="h-7 px-3 rounded-lg text-[11px] font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-          >
-            {addingAll ? t("aichat.vocab.adding") : t("aichat.vocab.addAll", { n: pendingCount })}
-          </Button>
+          <>
+            <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer select-none">
+              <Checkbox checked={headerChecked} onCheckedChange={toggleAll} className="h-3.5 w-3.5" />
+              {t("aichat.selectAll")}
+            </label>
+            <Button
+              onClick={addSelected}
+              disabled={addingAll || selectedIdx.length === 0}
+              className="h-7 px-3 rounded-lg text-[11px] font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              {addingAll ? t("aichat.vocab.adding") : t("aichat.vocab.addSelected", { n: selectedIdx.length })}
+            </Button>
+          </>
         )}
       </div>
       <div className="divide-y divide-border max-h-80 overflow-y-auto">
@@ -134,6 +166,13 @@ export function VocabExtractionCard({ items }: { items: ExtractedVocabItem[] }) 
           return (
             <div key={i} className={`px-4 py-2.5 space-y-1 transition-opacity ${status !== "pending" ? "opacity-50" : ""}`}>
               <div className="flex items-center gap-2">
+                {status === "pending" && (
+                  <Checkbox
+                    checked={!deselected[i]}
+                    onCheckedChange={(v) => setDeselected((prev) => ({ ...prev, [i]: v !== true }))}
+                    className="h-3.5 w-3.5"
+                  />
+                )}
                 <span className="text-sm font-semibold text-foreground">{item.word}</span>
                 <SpeakButton text={item.word} className="w-3 h-3" />
                 <LevelDot level={item.level} />

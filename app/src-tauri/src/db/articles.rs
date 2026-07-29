@@ -32,7 +32,7 @@ pub async fn db_add_known_words(
     source: String,
     conn: State<'_, AppState>,
 ) -> Result<(), String> {
-    let db = db::conn(&conn)?;
+    let db = db::txn_conn(&conn).await?;
     let tx = db.transaction().await.map_err(|e| e.to_string())?;
     for word in &words {
         tx.execute(

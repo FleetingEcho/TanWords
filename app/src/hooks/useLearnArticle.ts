@@ -66,18 +66,11 @@ export function useLearnArticle() {
 
             const results = await Promise.all(response.toolCalls.map((tc) => executeTool(tc as ToolCall)));
 
-            // extract_vocabulary deliberately makes no DB write of its own — in the live chat
-            // UI the results render as review cards the user accepts individually. This run is
-            // headless (no chat UI is ever shown), so nothing would ever click those cards —
-            // save the extracted items directly here instead, or they'd silently vanish into
-            // the saved transcript and never reach the vocabulary list/Dashboard.
-            for (const tc of response.toolCalls) {
-              if (tc.name !== "extract_vocabulary") continue;
-              const items = (tc.input as { items?: { word: string; zh: string; word_type?: string; level?: string; context?: string }[] })?.items;
-              if (!Array.isArray(items) || items.length === 0) continue;
-              const result = await db.addWordsBatch(items, "reading-tutor");
-              if (result.added > 0) window.dispatchEvent(new CustomEvent("vocab-updated"));
-            }
+            // extract_vocabulary/extract_patterns deliberately make no DB write of their
+            // own: nothing is saved automatically. The extracted items live on in the
+            // saved transcript, and when the user opens the finished session in AI Chat
+            // the review cards render from it with add/select controls — the user decides
+            // there what enters the vocabulary list or sentence library.
 
             const calls: ToolCallDisplay[] = response.toolCalls.map((tc, i) => ({
               id: tc.id,

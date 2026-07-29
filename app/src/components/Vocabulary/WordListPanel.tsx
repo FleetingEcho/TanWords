@@ -7,31 +7,32 @@ import { SparkIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { LevelDateFilter, LevelFilter, DateField } from "@/components/shared/LevelDateFilter";
+import { LevelDateFilter, LevelValue } from "@/components/shared/LevelDateFilter";
 import { LIST_PANEL_WIDTH, LIST_PANEL_COLLAPSED_WIDTH, LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
-import { Wand2, RefreshCw, Loader2, ChevronsLeft, ChevronsRight, Trash2, X, Star, ListChecks } from "lucide-react";
+import { Wand2, RefreshCw, Sparkles, Loader2, ChevronsLeft, ChevronsRight, Trash2, X, Star, ListChecks } from "lucide-react";
 
 interface Props {
   words: WordListItem[];
   selectedId: number | null;
   search: string;
-  levelFilter: LevelFilter;
+  /** Selected level chips — empty means "all levels" */
+  levelFilter: LevelValue[];
   page: number;
   pageSize: number;
   /** The searched term isn't in the vocabulary — offer an AI dictionary lookup */
   showAiLookup: boolean;
   lookupActive: boolean;
-  dateField: DateField;
   dateFrom: string;
   dateTo: string;
   onSearchChange: (v: string) => void;
-  onFilterChange: (v: LevelFilter) => void;
-  onDateFieldChange: (v: DateField) => void;
+  onFilterChange: (v: LevelValue[]) => void;
   onDateFromChange: (v: string) => void;
   onDateToChange: (v: string) => void;
+  onRefresh: () => void;
   onSelect: (w: WordListItem) => void;
   onPageChange: (p: number) => void;
-  onDoubleClick: (word: string) => void;
+  /** Double-click enters select mode (pre-selecting the word) or exits it */
+  onDoubleClick: (w: WordListItem) => void;
   onAiLookup: (q: string) => void;
   /** True while a bulk enrichment (un-analyzed or re-analyze-all) is running */
   bulkRunning: boolean;
@@ -54,9 +55,9 @@ interface Props {
 
 export function WordListPanel({
   words, selectedId, search, levelFilter, page, pageSize,
-  showAiLookup, lookupActive, dateField, dateFrom, dateTo,
+  showAiLookup, lookupActive, dateFrom, dateTo,
   onSearchChange, onFilterChange,
-  onDateFieldChange, onDateFromChange, onDateToChange,
+  onDateFromChange, onDateToChange, onRefresh,
   onSelect, onPageChange, onDoubleClick, onAiLookup,
   bulkRunning, bulkProgress, onEnrichUnanalyzed, onReanalyzeAll, onStopBulkEnrich,
   collapsed, onToggleCollapsed, selectedIds, onToggleSelect, onSelectAll, onClearSelection,
@@ -115,6 +116,14 @@ export function WordListPanel({
               <>
                 <Button
                   variant="ghost"
+                  onClick={onRefresh}
+                  title={t("vocab.refreshList")}
+                  className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
                   onClick={onEnrichUnanalyzed}
                   title={t("vocab.enrichUnanalyzed")}
                   className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-primary hover:bg-primary/10 transition-colors shrink-0"
@@ -127,7 +136,7 @@ export function WordListPanel({
                   title={t("vocab.reanalyzeAll")}
                   className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" />
+                  <Sparkles className="w-3.5 h-3.5" />
                 </Button>
               </>
             )}
@@ -201,14 +210,12 @@ export function WordListPanel({
         </div>
 
         <LevelDateFilter
-          levelFilter={levelFilter}
-          onLevelFilterChange={onFilterChange}
+          levels={levelFilter}
+          onLevelsChange={onFilterChange}
           dateFrom={dateFrom}
           dateTo={dateTo}
           onDateFromChange={onDateFromChange}
           onDateToChange={onDateToChange}
-          dateField={dateField}
-          onDateFieldChange={onDateFieldChange}
         />
       </div>
 
@@ -236,7 +243,7 @@ export function WordListPanel({
         {paged.map((w) => (
           <div
             key={w.id}
-            onDoubleClick={() => onDoubleClick(w.word)}
+            onDoubleClick={() => onDoubleClick(w)}
             onClick={() => (selectMode ? onToggleSelect(w.id) : onSelect(w))}
             className={`border-l-2 px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors ${
               w.starred ? "border-l-yellow-400" : "border-l-transparent"
@@ -302,4 +309,4 @@ export function WordListPanel({
   );
 }
 
-export type { LevelFilter, DateField };
+export type { LevelValue };

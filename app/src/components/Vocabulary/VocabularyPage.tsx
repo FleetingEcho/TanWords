@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useDB, WordListItem } from "@/hooks/useDB";
-import { useWordModalStore } from "@/store/wordModalStore";
 import { findBestProvider } from "@/providers/select";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useT } from "@/hooks/useT";
 import { toast } from "sonner";
 import { useSelectedWordStore } from "@/store/selectedWordStore";
-import { WordListPanel, LevelFilter, DateField } from "./WordListPanel";
+import { WordListPanel, LevelValue } from "./WordListPanel";
+import { matchesLevels } from "@/components/shared/LevelDateFilter";
 import { WordDetailPanel } from "./WordDetailPanel";
 import { PatternLibrary } from "./PatternLibrary";
 import { parseEnrichmentStream, ParsedEnrichment } from "@/lib/enrichMeta";
@@ -31,10 +31,11 @@ interface LookupData {
 }
 
 const PAGE_SIZE = 50;
+/** How many words a bulk enrich analyzes concurrently */
+const BULK_CONCURRENCY = 3;
 
 export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
   const db = useDB();
-  const openWordModal = useWordModalStore((s) => s.openWordModal);
   const targetLevel = useSettingsStore((s) => s.targetLevels.join("/"));
 
   // Data
@@ -45,11 +46,11 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
   const [lookup, setLookup] = useState<LookupData | null>(null);
   const [notes, setNotes] = useState("");
 
-  // Filters
-  const [levelFilter, setLevelFilter] = useState<LevelFilter>("all");
+  // Filters — levelFilters is applied client-side (empty = all levels) so
+  // toggling level chips never needs a DB round-trip.
+  const [levelFilters, setLevelFilters] = useState<LevelValue[]>([]);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [dateField, setDateField] = useState<DateField>("created");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(0);
@@ -78,6 +79,15 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
   const exitWordSelectMode = () => {
     setSelectMode(false);
     clearWordSelection();
+  };
+  // Double-click toggles select mode; entering it pre-selects the clicked word.
+  const handleWordDoubleClick = (w: WordListItem) => {
+    if (selectMode) {
+      exitWordSelectMode();
+    } else {
+      setSelectMode(true);
+      setSelectedIds(new Set([w.id]));
+    }
   };
   const [deleteSelectedOpen, setDeleteSelectedOpen] = useState(false);
 
@@ -154,10 +164,13 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
     let succeeded = 0;
     let failed = 0;
     let done = 0;
-    for (const w of targets) {
-      if (controller.signal.aborted) break;
+    let nextIndex = 0;
+
+    const processWord = async (w: WordListItem) => {
       // If this word's detail panel happens to be open, clear its stale
-      // explanation and show the loading state while its turn runs.
+      // explanation and show the loading state while its turn runs. Only
+      // the open word streams into the panel — the other in-flight words
+      // just persist quietly.
       const isOpen = selectedRef.current?.word.id === w.id;
       if (isOpen) {
         setEnriching(true);
@@ -179,7 +192,7 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
           })(),
           fetchBasicInfo(provider, w.word, targetLevel, controller.signal),
         ]);
-        if (controller.signal.aborted) break;
+        if (controller.signal.aborted) return;
         const final = parseEnrichmentStream(raw);
         const zhShort = basicInfo.zh || final.zhShort;
         const level = basicInfo.level || final.level;
@@ -198,14 +211,27 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
         }
         succeeded++;
       } catch (e: any) {
-        if (e?.name === "AbortError") break;
+        if (e?.name === "AbortError") return;
         failed++;
       } finally {
         done++;
         useVocabEnrichStore.getState().setBulkProgress(done);
         if (isOpen) setEnriching(false);
       }
-    }
+    };
+
+    // Small worker pool: a few words in flight at once cuts wall time without
+    // hammering the provider's rate limits. Workers pull the next word off a
+    // shared cursor; aborting stops every worker at its next word boundary
+    // (in-flight streams are cancelled through the shared signal).
+    const workers = Array.from({ length: Math.min(BULK_CONCURRENCY, targets.length) }, async () => {
+      while (!controller.signal.aborted) {
+        const i = nextIndex++;
+        if (i >= targets.length) break;
+        await processWord(targets[i]);
+      }
+    });
+    await Promise.all(workers);
 
     const aborted = controller.signal.aborted;
     useVocabEnrichStore.getState().finishBulk();
@@ -260,8 +286,6 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
   const loadWords = async () => {
     const results = await db.getWords({
       search: debouncedSearch || undefined,
-      levelFilter: levelFilter === "all" ? undefined : levelFilter,
-      dateField,
       dateFrom: dateFrom || undefined,
       dateTo: dateTo || undefined,
     });
@@ -269,7 +293,12 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
     setPage(0);
   };
 
-  useEffect(() => { loadWords(); }, [levelFilter, debouncedSearch, dateField, dateFrom, dateTo]);
+  useEffect(() => { loadWords(); }, [debouncedSearch, dateFrom, dateTo]);
+
+  const refreshList = async () => {
+    await Promise.all([loadWords(), loadAllWordsSet()]);
+    toast.success(t("vocab.refreshed"));
+  };
 
   // Full, unfiltered vocabulary set — its size drives the "re-analyze all" confirm count.
   const [allWordsSet, setAllWordsSet] = useState<Set<string>>(new Set());
@@ -283,9 +312,12 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
     const handler = () => { loadWords(); loadAllWordsSet(); };
     window.addEventListener("vocab-updated", handler);
     return () => window.removeEventListener("vocab-updated", handler);
-  }, [levelFilter, debouncedSearch, dateField, dateFrom, dateTo]);
+  }, [debouncedSearch, dateFrom, dateTo]);
 
-  const visibleWords = words;
+  const visibleWords = useMemo(
+    () => words.filter((w) => matchesLevels(w.level, levelFilters)),
+    [words, levelFilters]
+  );
 
   // Dictionary behavior: the searched term isn't in the vocabulary → offer AI lookup
   const showAiLookup = useMemo(() => {
@@ -572,22 +604,21 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
         words={visibleWords}
         selectedId={selected?.word.id ?? null}
         search={search}
-        levelFilter={levelFilter}
+        levelFilter={levelFilters}
         page={page}
         pageSize={PAGE_SIZE}
         showAiLookup={showAiLookup}
         lookupActive={!!lookup}
-        dateField={dateField}
         dateFrom={dateFrom}
         dateTo={dateTo}
         onSearchChange={(v) => { setSearch(v); setPage(0); }}
-        onFilterChange={setLevelFilter}
-        onDateFieldChange={setDateField}
+        onFilterChange={(v) => { setLevelFilters(v); setPage(0); }}
         onDateFromChange={setDateFrom}
         onDateToChange={setDateTo}
+        onRefresh={refreshList}
         onSelect={selectWord}
         onPageChange={setPage}
-        onDoubleClick={(word) => openWordModal(word)}
+        onDoubleClick={handleWordDoubleClick}
         onAiLookup={startLookup}
         bulkRunning={bulkRunning}
         bulkProgress={bulkProgress}

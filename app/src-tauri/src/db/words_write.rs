@@ -80,7 +80,7 @@ pub async fn db_delete_words_batch(
     word_ids: Vec<i64>,
     conn: State<'_, AppState>,
 ) -> Result<(), String> {
-    let db = db::conn(&conn)?;
+    let db = db::txn_conn(&conn).await?;
     let tx = db.transaction().await.map_err(|e| e.to_string())?;
     for word_id in word_ids {
         tx.execute("DELETE FROM words WHERE id = ?1", params![word_id])
@@ -114,7 +114,7 @@ pub async fn db_add_word_enriched(
     enrichment: WordEnrichmentInput,
     conn: State<'_, AppState>,
 ) -> Result<AddWordResult, String> {
-    let db = db::conn(&conn)?;
+    let db = db::txn_conn(&conn).await?;
 
     // A real transaction handle, rather than the raw BEGIN/COMMIT statements
     // this used to issue: the older form left the connection stuck inside an
@@ -294,7 +294,7 @@ pub async fn db_add_words_batch(
     tag: Option<String>,
     conn: State<'_, AppState>,
 ) -> Result<BatchAddResult, String> {
-    let db = db::conn(&conn)?;
+    let db = db::txn_conn(&conn).await?;
     let tx = db.transaction().await.map_err(|e| e.to_string())?;
 
     let mut added = 0i64;

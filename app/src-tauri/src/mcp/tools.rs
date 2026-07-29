@@ -55,8 +55,15 @@ impl TanWordsMcp {
         (self.notifier)(event);
     }
 
-    fn connect(&self) -> Result<Connection, String> {
-        (self.conn)()
+    /// One connection per request. The provider hands out a fresh connection
+    /// (its own Hrana stream on Turso) so MCP traffic never shares a stream
+    /// with the UI's commands — see `db::txn_conn` for the failure mode.
+    async fn connect(&self) -> Result<Connection, String> {
+        let conn = (self.conn)()?;
+        // Advisory, mirroring `connection::apply_pragmas` — a replica may
+        // reject it, which is fine.
+        let _ = conn.execute_batch("PRAGMA foreign_keys=ON;").await;
+        Ok(conn)
     }
 
     #[tool(
@@ -64,7 +71,7 @@ impl TanWordsMcp {
     )]
     pub(super) async fn vocabulary_search(&self, Parameters(input): Parameters<SearchVocabulary>) -> String {
         let result: Result<Value, String> = async {
-            let conn = self.connect()?;
+            let conn = self.connect().await?;
             let pattern = format!("%{}%", input.query.trim());
             let items = db::fetch_all(
                 &conn,
@@ -84,7 +91,7 @@ impl TanWordsMcp {
     #[tool(description = "Get complete details for one vocabulary item by its unique ID")]
     pub(super) async fn vocabulary_get(&self, Parameters(input): Parameters<GetVocabulary>) -> String {
         let result: Result<Value, String> = async {
-            let conn = self.connect()?;
+            let conn = self.connect().await?;
             let word = db::fetch_one(
                 &conn,
                 "SELECT id,word,word_type,level,notes,source,created_at,enrichment_text FROM words WHERE id=?1",
@@ -132,7 +139,7 @@ impl TanWordsMcp {
     )]
     pub(super) async fn documents_search(&self, Parameters(input): Parameters<SearchDocuments>) -> String {
         let result: Result<Value, String> = async {
-            let conn = self.connect()?;
+            let conn = self.connect().await?;
             // The app maintains a documents_fts index (see db::init_db). The
             // old character-interleaved LIKE ("%a%p%i%") matched almost every
             // document for a short query and could not rank them; FTS gives
@@ -168,7 +175,7 @@ impl TanWordsMcp {
     )]
     pub(super) async fn documents_get(&self, Parameters(input): Parameters<GetDocument>) -> String {
         let result: Result<Value, String> = async {
-            let conn = self.connect()?;
+            let conn = self.connect().await?;
             db::fetch_one(
                 &conn,
                 "SELECT id,title,content,content_text,tags,pinned,word_count,created_at,updated_at FROM documents WHERE id=?1",
@@ -189,7 +196,7 @@ impl TanWordsMcp {
     )]
     pub(super) async fn documents_create(&self, Parameters(input): Parameters<CreateDocument>) -> String {
         let result: Result<Value, String> = async {
-            let conn = self.connect()?;
+            let conn = self.connect().await?;
             let tags = serde_json::to_string(&input.tags).map_err(|e| e.to_string())?;
             let count = input.content.split_whitespace().count() as i64;
             conn.execute("INSERT INTO documents(title,content,content_text,tags,word_count) VALUES(?1,?2,?2,?3,?4)",params![input.title,input.content,tags,count])
@@ -216,7 +223,7 @@ impl TanWordsMcp {
     #[tool(description = "Append Markdown to the end of an existing TanWords document")]
     pub(super) async fn documents_append(&self, Parameters(input): Parameters<AppendDocument>) -> String {
         let result: Result<Value, String> = async {
-            let conn = self.connect()?;
+            let conn = self.connect().await?;
             let changed = conn.execute("UPDATE documents SET content=content||'\n\n'||?1,content_text=content_text||'\n\n'||?1,word_count=word_count+?2,updated_at=datetime('now') WHERE id=?3",params![input.content.clone(),input.content.split_whitespace().count() as i64,input.id])
                 .await
                 .map_err(|e|e.to_string())?;
@@ -235,7 +242,7 @@ impl TanWordsMcp {
     #[tool(description = "Update one vocabulary item's meaning, part of speech, level or notes")]
     pub(super) async fn vocabulary_update(&self, Parameters(input): Parameters<UpdateVocabulary>) -> String {
         let result: Result<Value, String> = async {
-            let conn = self.connect()?;
+            let conn = self.connect().await?;
             let changed = conn
                 .execute(
                     "UPDATE words SET word_type=COALESCE(?2,word_type), level=COALESCE(?3,level),
@@ -272,7 +279,7 @@ impl TanWordsMcp {
     #[tool(description = "Delete one vocabulary item from TanWords by its unique ID")]
     pub(super) async fn vocabulary_delete(&self, Parameters(input): Parameters<GetVocabulary>) -> String {
         let result: Result<Value, String> = async {
-            let conn = self.connect()?;
+            let conn = self.connect().await?;
             let changed = conn
                 .execute("DELETE FROM words WHERE id=?1", [input.id])
                 .await
@@ -290,7 +297,7 @@ impl TanWordsMcp {
     #[tool(description = "Delete a TanWords document by its unique ID")]
     pub(super) async fn documents_delete(&self, Parameters(input): Parameters<GetDocument>) -> String {
         let result: Result<Value, String> = async {
-            let conn = self.connect()?;
+            let conn = self.connect().await?;
             let changed = conn
                 .execute("DELETE FROM documents WHERE id=?1", [input.id])
                 .await
@@ -310,7 +317,7 @@ impl TanWordsMcp {
     )]
     pub(super) async fn patterns_search(&self, Parameters(input): Parameters<SearchPatterns>) -> String {
         let result: Result<Value, String> = async {
-            let conn = self.connect()?;
+            let conn = self.connect().await?;
             let pattern = format!("%{}%", input.query.trim());
             let rows: Vec<(i64, Value)> = db::fetch_all(
                 &conn,
@@ -350,7 +357,7 @@ impl TanWordsMcp {
     )]
     pub(super) async fn patterns_add(&self, Parameters(input): Parameters<AddPattern>) -> String {
         let result: Result<Value, String> = async {
-            let conn = self.connect()?;
+            let conn = self.connect().await?;
             let existing: Option<i64> = db::fetch_optional(
                 &conn,
                 "SELECT id FROM patterns WHERE pattern=?1",
@@ -398,7 +405,7 @@ impl TanWordsMcp {
     )]
     pub(super) async fn articles_add(&self, Parameters(input): Parameters<AddArticle>) -> String {
         let result: Result<Value, String> = async {
-            let conn = self.connect()?;
+            let conn = self.connect().await?;
             let tags = serde_json::to_string(&input.tags).unwrap_or_else(|_| "[]".into());
             let (id, created) = db::upsert_article(
                 &conn,
@@ -421,7 +428,7 @@ impl TanWordsMcp {
     )]
     pub(super) async fn articles_list(&self, Parameters(input): Parameters<ListArticles>) -> String {
         let result: Result<Value, String> = async {
-            let conn = self.connect()?;
+            let conn = self.connect().await?;
             let terms = input.query.as_deref().map(db::fts_match_query).filter(|t| !t.is_empty());
             let limit = input.limit.min(100) as i64;
             let rows = match terms {
@@ -461,7 +468,7 @@ impl TanWordsMcp {
     #[tool(description = "Read one article from the reading library, optionally with the notes left on it")]
     pub(super) async fn articles_get(&self, Parameters(input): Parameters<GetArticle>) -> String {
         let result: Result<Value, String> = async {
-            let conn = self.connect()?;
+            let conn = self.connect().await?;
             let mut article = db::fetch_one(
                 &conn,
                 "SELECT id,title,content,word_count,source,source_url,tags,created_at,last_read_at
@@ -492,7 +499,7 @@ impl TanWordsMcp {
     )]
     pub(super) async fn articles_comment(&self, Parameters(input): Parameters<AddArticleComment>) -> String {
         let result: Result<Value, String> = async {
-            let conn = self.connect()?;
+            let conn = self.connect().await?;
             let id = db::insert_comment(&conn, input.article_id, "ai", &input.body, input.anchor_text.as_deref()).await?;
             Ok(json!({"id": id, "created": true}))
         }
@@ -503,7 +510,7 @@ impl TanWordsMcp {
 
     async fn add_words(&self, words: Vec<AddVocabulary>, tag: Option<String>) -> String {
         let result: Result<Value, String> = async {
-            let conn = self.connect()?;
+            let conn = self.connect().await?;
             let tx = conn.transaction().await.map_err(|e| e.to_string())?;
             let mut items = vec![];
             for item in words {
@@ -545,7 +552,7 @@ impl TanWordsMcp {
 
     async fn update_document(&self, input: UpdateDocument) -> String {
         let result: Result<Value, String> = async {
-            let conn = self.connect()?;
+            let conn = self.connect().await?;
             let current: (String, String, String, String) = db::fetch_one(
                 &conn,
                 "SELECT title,content,tags,updated_at FROM documents WHERE id=?1",

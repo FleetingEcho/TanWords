@@ -15,6 +15,7 @@ pub struct ChatSessionItem {
     pub created_at: String,
     pub updated_at: String,
     pub archived: bool,
+    pub pinned: bool,
 }
 
 #[derive(Serialize)]
@@ -40,6 +41,7 @@ fn map_item(row: &libsql::Row) -> libsql::Result<ChatSessionItem> {
         created_at: row.get(5)?,
         updated_at: row.get(6)?,
         archived: row.get::<i64>(7)? != 0,
+        pinned: row.get::<i64>(8)? != 0,
     })
 }
 
@@ -60,7 +62,7 @@ pub async fn db_list_chat_sessions(
     let offset = page.unwrap_or(0) * lim;
 
     let mut sql = String::from(
-        "SELECT id, title, preset_id, provider_id, message_count, created_at, updated_at, archived
+        "SELECT id, title, preset_id, provider_id, message_count, created_at, updated_at, archived, pinned
          FROM ai_chat_sessions
          WHERE 1=1",
     );
@@ -79,7 +81,7 @@ pub async fn db_list_chat_sessions(
         values.push(Value::from(to));
     }
     sql.push_str(&format!(
-        " ORDER BY updated_at DESC LIMIT ?{} OFFSET ?{}",
+        " ORDER BY pinned DESC, updated_at DESC LIMIT ?{} OFFSET ?{}",
         values.len() + 1,
         values.len() + 2
     ));
@@ -99,6 +101,44 @@ pub async fn db_set_chat_session_archived(
     db.execute(
         "UPDATE ai_chat_sessions SET archived = ?2 WHERE id = ?1",
         params![id, if archived { 1i64 } else { 0i64 }],
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn db_set_chat_session_pinned(
+    id: String,
+    pinned: bool,
+    conn: State<'_, AppState>,
+) -> Result<(), String> {
+    let db = db::conn(&conn)?;
+    db.execute(
+        "UPDATE ai_chat_sessions SET pinned = ?2 WHERE id = ?1",
+        params![id, if pinned { 1i64 } else { 0i64 }],
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Renames without touching `updated_at` — a rename is bookkeeping, not
+/// activity, and must not bump the conversation to the top of the list.
+#[tauri::command]
+pub async fn db_rename_chat_session(
+    id: String,
+    title: String,
+    conn: State<'_, AppState>,
+) -> Result<(), String> {
+    let title = title.trim().to_string();
+    if title.is_empty() {
+        return Err("Title cannot be empty".into());
+    }
+    let db = db::conn(&conn)?;
+    db.execute(
+        "UPDATE ai_chat_sessions SET title = ?2 WHERE id = ?1",
+        params![id, title],
     )
     .await
     .map_err(|e| e.to_string())?;
@@ -188,10 +228,10 @@ pub async fn db_search_chat_sessions(
 
     db::fetch_all(
         &db,
-        "SELECT id, title, preset_id, provider_id, message_count, created_at, updated_at, archived
+        "SELECT id, title, preset_id, provider_id, message_count, created_at, updated_at, archived, pinned
          FROM ai_chat_sessions
          WHERE title LIKE ?1
-         ORDER BY updated_at DESC
+         ORDER BY pinned DESC, updated_at DESC
          LIMIT 50",
         params![like_pat],
         map_item,

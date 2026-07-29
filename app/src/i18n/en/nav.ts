@@ -18,6 +18,8 @@ export const nav: Dict = {
     "command.searchPlaceholder": "Type a command or page…",
     "command.analyzing": "Analyzing…",
     "command.analyzingHint": "{n} articles analyzing — click to view or cancel",
+    "command.dbLocal": "Local database",
+    "command.dbCloud": "Cloud database (Turso)",
     "command.mcpRunning": "MCP server running",
     "command.mcpStopped": "MCP server not running",
     "command.aiConnected": "AI connected",

@@ -1,16 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useDB, DashboardStats } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
-import { useNavStore } from "@/store/navStore";
 import { useSettingsStore } from "@/store/settingsStore";
-import { ChatIcon, FeedIcon } from "@/components/ui/icons";
-import { RssWidget } from "./RssWidget";
-import { RecentlyReadWidget } from "./RecentlyReadWidget";
-import { Button } from "@/components/ui/button";
-
-const LEVEL_COLORS: Record<string, string> = {
-  C2: "#a855f7", C1: "#3b82f6", B2: "#14b8a6", B1: "#22c55e", A2: "#f59e0b", A1: "#f59e0b",
-};
+import { DashboardWidgetGrid } from "./DashboardWidgetGrid";
 
 // ── Small pieces ────────────────────────────────────────────────────────────
 
@@ -27,18 +19,6 @@ function StatTile({ value, label, accent }: { value: number; label: string; acce
   );
 }
 
-function LevelDot({ level }: { level: string }) {
-  if (!level) return null;
-  return (
-    <span
-      className="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0"
-      style={{ color: LEVEL_COLORS[level] ?? "#64748b", backgroundColor: `${LEVEL_COLORS[level] ?? "#64748b"}18` }}
-    >
-      {level}
-    </span>
-  );
-}
-
 // ── Page ────────────────────────────────────────────────────────────────────
 // Deliberately no streak / activity-heatmap / review stats: the dashboard is
 // a "continue learning" dispatcher, not a habit tracker.
@@ -48,8 +28,8 @@ export function DashboardPage() {
   const t = useT();
   const lang = useSettingsStore((s) => s.uiLanguage);
   const dashboardBanner = useSettingsStore((s) => s.dashboardBanner);
+  const bannerPosition = useSettingsStore((s) => s.dashboardBannerPosition);
   const nickname = useSettingsStore((s) => s.nickname);
-  const navigate = useNavStore((s) => s.navigate);
   const [stats, setStats] = useState<DashboardStats | null>(null);
 
   useEffect(() => {
@@ -79,7 +59,14 @@ export function DashboardPage() {
     <div className="p-6 space-y-5 animate-fade-in w-full">
       {dashboardBanner && (
         <div className="w-full h-[200px] rounded-2xl overflow-hidden border border-border">
-          <img src={dashboardBanner} alt="" className="w-full h-full object-cover" />
+          {/* The banner is far wider than most photos, so `cover` always discards
+            * part of the image — which part is the user's choice, made in Settings. */}
+          <img
+            src={dashboardBanner}
+            alt=""
+            className="w-full h-full object-cover"
+            style={{ objectPosition: `${bannerPosition.x}% ${bannerPosition.y}%` }}
+          />
         </div>
       )}
 
@@ -96,110 +83,8 @@ export function DashboardPage() {
         <StatTile value={stats?.article_count ?? 0} label={t("dash.stat.articles")} />
       </div>
 
-      {/* Recents */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
-        <div className="space-y-3">
-          {/* Quick actions */}
-          <div className="bg-card border border-border rounded-2xl p-4">
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { icon: FeedIcon, label: t("dash.quick.feeds"), go: () => navigate("feeds") },
-                {
-                  icon: ChatIcon,
-                  label: t("dash.quick.chat"),
-                  go: () => {
-                    navigate("chat");
-                    window.setTimeout(() => window.dispatchEvent(new CustomEvent("tanwords:new-chat")), 0);
-                  },
-                },
-              ].map((a) => (
-                <Button
-                  key={a.label}
-                  variant="ghost"
-                  onClick={a.go}
-                  className="h-auto group flex flex-col items-center gap-1.5 py-3 rounded-xl border border-border hover:bg-muted/60 hover:border-primary/30 transition-colors"
-                >
-                  <a.icon className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
-                  <span className="text-[11px] font-medium text-muted-foreground">{a.label}</span>
-                </Button>
-              ))}
-            </div>
-          </div>
-
-          {/* Feed subscriptions at a glance */}
-          <RssWidget />
-
-          {/* Latest words */}
-          <div className="bg-card border border-border rounded-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
-              <h2 className="text-sm font-semibold">{t("dash.recentWords")}</h2>
-              <Button
-                variant="link"
-                onClick={() => navigate("vocabulary")}
-                className="h-auto p-0 text-[11px] font-semibold text-primary hover:underline"
-              >
-                {t("dash.viewAll")}
-              </Button>
-            </div>
-            {stats && stats.recent_words.length === 0 ? (
-              <p className="px-4 py-6 text-xs text-muted-foreground leading-relaxed">{t("dash.empty.words")}</p>
-            ) : (
-              <div className="divide-y divide-border">
-                {(stats?.recent_words ?? []).map((w) => (
-                  <Button
-                    key={w.id}
-                    variant="ghost"
-                    onClick={() => navigate("vocabulary", w.id)}
-                    className="h-auto w-full rounded-none flex items-center justify-start gap-2 px-4 py-2.5 hover:bg-muted/40 transition-colors text-left"
-                  >
-                    <span className="text-sm font-semibold text-foreground">{w.word}</span>
-                    <LevelDot level={w.level} />
-                    <span className="flex-1 min-w-0 text-xs text-muted-foreground truncate text-right">{w.zh}</span>
-                  </Button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          {/* Last few articles opened in the reader */}
-          <RecentlyReadWidget />
-
-          {/* Recent documents */}
-          <div className="bg-card border border-border rounded-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
-              <h2 className="text-sm font-semibold">{t("dash.recentDocs")}</h2>
-              <Button
-                variant="link"
-                onClick={() => navigate("documents")}
-                className="h-auto p-0 text-[11px] font-semibold text-primary hover:underline"
-              >
-                {t("dash.viewAll")}
-              </Button>
-            </div>
-            {stats && stats.recent_docs.length === 0 ? (
-              <p className="px-4 py-6 text-xs text-muted-foreground">{t("dash.empty.docs")}</p>
-            ) : (
-              <div className="divide-y divide-border">
-                {(stats?.recent_docs ?? []).map((d) => (
-                  <Button
-                    key={d.id}
-                    variant="ghost"
-                    onClick={() => navigate("documents")}
-                    className="h-auto w-full rounded-none flex items-center justify-start gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors text-left"
-                  >
-                    <span className="flex-1 min-w-0 text-sm font-medium truncate">{d.title}</span>
-                    <span className="text-[10px] font-mono text-muted-foreground/70 shrink-0">
-                      {d.updated_at.slice(0, 10)}
-                    </span>
-                  </Button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      {/* Recents — drag any card by its handle to reorder, within or across columns */}
+      <DashboardWidgetGrid stats={stats} />
     </div>
   );
 }

@@ -81,9 +81,10 @@ impl DbProfile {
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DbCaps {
-    /// `VACUUM INTO` backup export. Deliberately off for Turso: the replica is
-    /// a derived copy, and "export" there would imply a guarantee about remote
-    /// state that a local snapshot can't make.
+    /// `VACUUM INTO` backup export. True for Turso too — the replica is a real
+    /// local SQLite file, so exporting it works exactly like a local database;
+    /// the frontend labels it as a snapshot of the replica (possibly a few
+    /// seconds behind the primary) rather than a live guarantee.
     pub export: bool,
     /// Whether `db_switch_path` can repoint this profile at another file.
     pub switch_path: bool,
@@ -133,6 +134,16 @@ impl Db {
         self.descriptor.clone()
     }
 
+    /// The database handle itself, for opening *additional* connections.
+    /// Interactive transactions must run on their own connection: on a Turso
+    /// profile every clone of `conn` is the same Hrana stream, and a
+    /// transaction pins that stream into Txn state — any concurrent command
+    /// sharing it then fails with "connection has reached an invalid state,
+    /// started with Txn" / "Stream already in use".
+    pub fn database(&self) -> Arc<Database> {
+        self.database.clone()
+    }
+
     pub fn path(&self) -> &str {
         &self.descriptor.path
     }
@@ -171,13 +182,13 @@ pub async fn open(profile: &DbProfile, token: Option<&str>) -> Result<Db, String
             let db = Builder::new_local(path)
                 .build()
                 .await
-                .map_err(|e| format!("打开本地数据库失败: {e}"))?;
+                .map_err(|e| format!("Failed to open local database: {e}"))?;
             (db, DbCaps { export: true, switch_path: true, sync: false, writable: true })
         }
         DbProfile::Turso { path, url } => {
             let token = token
                 .filter(|t| !t.trim().is_empty())
-                .ok_or_else(|| "缺少 Turso auth token".to_string())?;
+                .ok_or_else(|| "Missing Turso auth token".to_string())?;
             // Whether we already hold a copy of the data decides how bad a
             // failed first sync is, so check before `build()` creates the file.
             let has_replica = std::path::Path::new(path).exists();
@@ -193,7 +204,7 @@ pub async fn open(profile: &DbProfile, token: Option<&str>) -> Result<Db, String
                 Err(error) if has_replica => {
                     return open_degraded(profile, path, &error.to_string()).await;
                 }
-                Err(error) => return Err(format!("连接 Turso 失败: {error}")),
+                Err(error) => return Err(format!("Failed to connect to Turso: {error}")),
             };
 
             // Pull once before first use so a fresh replica isn't briefly empty.
@@ -202,7 +213,7 @@ pub async fn open(profile: &DbProfile, token: Option<&str>) -> Result<Db, String
                     // Nothing local to fall back on — failing here is far better
                     // than handing back an empty database that looks like data
                     // loss.
-                    return Err(format!("首次同步失败: {error}"));
+                    return Err(format!("Initial sync failed: {error}"));
                 }
                 // Reachable enough to connect but not to sync. The replica is a
                 // full local copy, so keep serving it (possibly stale) and let
@@ -210,13 +221,13 @@ pub async fn open(profile: &DbProfile, token: Option<&str>) -> Result<Db, String
                 eprintln!("[tanwords] Turso sync failed ({error}); serving the local replica");
                 offline = true;
             }
-            (db, DbCaps { export: false, switch_path: false, sync: true, writable: true })
+            (db, DbCaps { export: true, switch_path: false, sync: true, writable: true })
         }
     };
 
     let conn = database.connect().map_err(|e| e.to_string())?;
     apply_pragmas(&conn, profile.kind()).await;
-    super::init_db(&conn).await.map_err(|e| format!("初始化数据库失败: {e}"))?;
+    super::init_db(&conn).await.map_err(|e| format!("Failed to initialize database: {e}"))?;
 
     Ok(Db {
         database: Arc::new(database),
@@ -248,8 +259,21 @@ async fn open_degraded(profile: &DbProfile, path: &str, reason: &str) -> Result<
         .flags(libsql::OpenFlags::SQLITE_OPEN_READ_ONLY)
         .build()
         .await
-        .map_err(|e| format!("离线打开本地副本失败: {e}"))?;
+        .map_err(|e| format!("Failed to open local replica offline: {e}"))?;
     let conn = database.connect().map_err(|e| e.to_string())?;
+
+    // `build()` creates the replica file before it contacts the primary, so a
+    // connect that failed on its very first attempt leaves an empty file behind.
+    // That file then makes every later attempt look like "we have a replica to
+    // fall back on" — and this function would hand back a database with no
+    // schema that also can't be written to, which reads as a successful
+    // connection to an empty vocabulary. Only fall back to a replica that
+    // actually holds something; otherwise report the real failure.
+    let objects = super::scalar_i64(&conn, "SELECT COUNT(*) FROM sqlite_master", ()).await?;
+    if objects == 0 {
+        return Err(format!("Failed to connect to Turso: {reason}"));
+    }
+
     Ok(Db {
         database: Arc::new(database),
         conn,
@@ -260,7 +284,7 @@ async fn open_degraded(profile: &DbProfile, path: &str, reason: &str) -> Result<
                 DbProfile::Turso { url, .. } => Some(url.clone()),
                 DbProfile::Local { .. } => None,
             },
-            caps: DbCaps { export: false, switch_path: false, sync: false, writable: false },
+            caps: DbCaps { export: true, switch_path: false, sync: false, writable: false },
             offline: true,
         },
     })
@@ -275,7 +299,7 @@ pub async fn open_memory() -> Result<Db, String> {
 /// Connection PRAGMAs are advisory: a replica manages its own journal, and
 /// rejecting the statement there is expected rather than an error worth
 /// failing startup over.
-async fn apply_pragmas(conn: &Connection, kind: DbKind) {
+pub(crate) async fn apply_pragmas(conn: &Connection, kind: DbKind) {
     if kind == DbKind::Local {
         let _ = conn.execute_batch("PRAGMA journal_mode=WAL;").await;
     }

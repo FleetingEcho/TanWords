@@ -4,7 +4,8 @@ import { ChatSessionItem } from "@/hooks/useDB";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Button } from "@/components/ui/button";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
-import { Archive, ArchiveRestore, ChevronDown, ChevronsLeft, ChevronsRight, MessageSquarePlus, X } from "lucide-react";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { Archive, ArchiveRestore, ChevronDown, ChevronsLeft, ChevronsRight, MessageSquarePlus, MoreHorizontal, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
 import { LIST_PANEL_WIDTH, LIST_PANEL_COLLAPSED_WIDTH, LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
 
 /** Same compact pill as Documents' "+ New Doc" button (DocSelector) — kept in
@@ -23,6 +24,8 @@ interface Props {
   onSwitchSession: (id: string) => void;
   onDeleteSession: (id: string, e: React.MouseEvent) => void;
   onToggleArchived: (id: string, archived: boolean) => void;
+  onTogglePinned: (id: string, pinned: boolean) => void;
+  onRenameSession: (id: string, title: string) => void;
   onNewChat: () => void;
   collapsed: boolean;
   onToggleCollapsed: () => void;
@@ -31,11 +34,19 @@ interface Props {
 export function AiChatSidebar({
   displaySessions, archivedSessions, searchQuery, onSearchChange,
   dateFrom, dateTo, onDateRangeChange,
-  activeId, onSwitchSession, onDeleteSession, onToggleArchived, onNewChat, collapsed, onToggleCollapsed,
+  activeId, onSwitchSession, onDeleteSession, onToggleArchived, onTogglePinned, onRenameSession,
+  onNewChat, collapsed, onToggleCollapsed,
 }: Props) {
   const t = useT();
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [showArchive, setShowArchive] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+
+  const commitRename = (id: string, value: string) => {
+    setRenamingId(null);
+    const title = value.trim();
+    if (title) onRenameSession(id, title);
+  };
 
   /** One row, in either list. Conversations are listed newest-first and dated
    *  individually — the old Today/Yesterday/This week headers repeated the
@@ -50,29 +61,66 @@ export function AiChatSidebar({
       }`}
     >
       <span className="min-w-0 flex-1">
-        <span className="block text-xs leading-snug line-clamp-2 break-words">{session.title}</span>
-        <span className="mt-0.5 block text-[10px] tabular-nums text-muted-foreground/60">
+        {renamingId === session.id ? (
+          // Uncontrolled on purpose: SessionRow is redefined every parent
+          // render, so a controlled input would remount (and drop focus) on
+          // each keystroke. Commit on Enter/blur, cancel on Escape.
+          <input
+            autoFocus
+            defaultValue={session.title}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitRename(session.id, e.currentTarget.value);
+              else if (e.key === "Escape") setRenamingId(null);
+            }}
+            onBlur={(e) => commitRename(session.id, e.currentTarget.value)}
+            className="w-full h-6 px-1.5 text-xs rounded-md border border-primary/40 bg-background focus:outline-none focus:ring-1 focus:ring-primary/30"
+          />
+        ) : (
+          <span className="block text-xs leading-snug line-clamp-2 break-words">{session.title}</span>
+        )}
+        <span className="mt-0.5 flex items-center gap-1 text-[10px] tabular-nums text-muted-foreground/60">
           {session.updated_at.slice(0, 10)}
+          {session.pinned && <Pin className="h-2.5 w-2.5 text-primary/70" />}
         </span>
       </span>
-      <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-        <Button
-          variant="ghost"
-          onClick={(e) => { e.stopPropagation(); onToggleArchived(session.id, !archived); }}
-          title={archived ? t("aichat.unarchive") : t("aichat.archive")}
-          className="h-4 w-4 p-0 text-muted-foreground hover:text-foreground"
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            onClick={(e) => e.stopPropagation()}
+            title={t("aichat.sessionMenu")}
+            className="h-5 w-5 shrink-0 p-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100 hover:text-foreground"
+          >
+            <MoreHorizontal className="h-3.5 w-3.5" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="start"
+          onClick={(e) => e.stopPropagation()}
+          // Radix restores focus to the trigger on close, which would steal
+          // focus from the freshly opened rename input.
+          onCloseAutoFocus={(e) => e.preventDefault()}
         >
-          {archived ? <ArchiveRestore className="h-2.5 w-2.5" /> : <Archive className="h-2.5 w-2.5" />}
-        </Button>
-        <Button
-          variant="ghost"
-          onClick={(e) => { e.stopPropagation(); setPendingDeleteId(session.id); }}
-          title={t("common.delete")}
-          className="h-4 w-4 p-0 text-muted-foreground hover:text-destructive"
-        >
-          <X className="h-2.5 w-2.5" />
-        </Button>
-      </span>
+          <DropdownMenuItem onSelect={() => setRenamingId(session.id)}>
+            <Pencil className="h-3.5 w-3.5" /> {t("aichat.rename")}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onTogglePinned(session.id, !session.pinned)}>
+            {session.pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+            {t(session.pinned ? "aichat.unpin" : "aichat.pin")}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onToggleArchived(session.id, !archived)}>
+            {archived ? <ArchiveRestore className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
+            {t(archived ? "aichat.unarchive" : "aichat.archive")}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => setPendingDeleteId(session.id)}
+            className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+          >
+            <Trash2 className="h-3.5 w-3.5" /> {t("common.delete")}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 

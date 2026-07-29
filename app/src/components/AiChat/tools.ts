@@ -19,7 +19,7 @@ export interface ToolResult {
 // ── Tool Groups ────────────────────────────────────────────────────────────
 
 export const TOOL_GROUPS = {
-  vocabulary: { label: "Vocabulary", tools: ["save_word", "search_vocabulary", "extract_vocabulary", "add_words_to_vocab", "generate_sentences"] },
+  vocabulary: { label: "Vocabulary", tools: ["save_word", "search_vocabulary", "extract_vocabulary", "extract_patterns", "add_words_to_vocab", "generate_sentences"] },
   documents:  { label: "Documents",  tools: ["list_documents", "insert_into_document", "summarize_conversation", "save_note_as_document"] },
 } as const;
 
@@ -57,23 +57,49 @@ const ALL_TOOL_DEFS: Record<string, ToolDef> = {
 
   extract_vocabulary: {
     name: "extract_vocabulary",
-    description: "Extract C1+ level English vocabulary and expressions worth learning from a piece of text the user pasted into the chat. Call this when the user asks you to pull out, extract, or harvest vocabulary/生词 from an article or long text they shared — do the extraction yourself and pass the results as structured items; do not just describe them in prose. Each item needs a short context sentence quoted from the source text. The results are shown to the user as review cards, not saved automatically.",
+    description: "Extract the English words, phrases, collocations and idioms worth learning from a piece of text the user pasted into the chat — anything a learner would benefit from saving, judged by usefulness rather than a CEFR cutoff. Call this when the user asks you to pull out, extract, or harvest vocabulary/生词 from an article or long text they shared — do the extraction yourself and pass the results as structured items; do not just describe them in prose. Each item needs a short context sentence quoted from the source text. The results are shown to the user as review cards, not saved automatically.",
     input_schema: {
       type: "object",
       properties: {
         items: {
           type: "array",
-          description: "Extracted vocabulary/expression items, C1-calibrated, deduped against obviously basic words",
+          description: "Items worth learning — above-level words, but also familiar words used in unfamiliar senses, natural collocations, phrasal verbs, idioms and set expressions; deduped against words the learner certainly knows",
           items: {
             type: "object",
             properties: {
               word:      { type: "string", description: "The word or expression, in its base/dictionary form" },
               zh:        { type: "string", description: "Concise Chinese meaning in this context" },
-              word_type: { type: "string", enum: ["n", "v", "adj", "adv", "prep", "phrase"], description: "Part of speech, or 'phrase' for expressions" },
-              level:     { type: "string", enum: ["B2", "C1", "C2"], description: "Estimated CEFR level" },
+              word_type: { type: "string", enum: ["n", "v", "adj", "adv", "prep", "phrase", "idiom"], description: "Part of speech, 'phrase' for expressions/collocations, 'idiom' for idioms" },
+              level:     { type: "string", enum: ["A1", "A2", "B1", "B2", "C1", "C2"], description: "Honest estimated CEFR level of this word/expression as used here" },
               context:   { type: "string", description: "The sentence from the source text where this appears" },
             },
             required: ["word", "zh", "context"],
+          },
+        },
+      },
+      required: ["items"],
+    },
+  },
+
+  extract_patterns: {
+    name: "extract_patterns",
+    description: "Extract sentences worth imitating from a piece of text the user shared — advanced structures, elegant phrasing, useful grammar, rhetorical moves. Call this alongside extract_vocabulary when studying an article: pass the results as structured items, do not just quote them in prose. Each sentence must be copied verbatim from the source text. The results are shown as review cards the user can save to their sentence library; nothing is saved automatically.",
+    input_schema: {
+      type: "object",
+      properties: {
+        items: {
+          type: "array",
+          description: "Sentences worth learning from the source text, each with its reusable pattern skeleton",
+          items: {
+            type: "object",
+            properties: {
+              sentence: { type: "string", description: "The EXACT sentence, copied verbatim from the source text" },
+              zh:       { type: "string", description: "Natural Chinese translation" },
+              level:    { type: "string", enum: ["A2", "B1", "B2", "C1", "C2"], description: "Estimated CEFR level" },
+              skeleton: { type: "string", description: "Reusable pattern skeleton with placeholders, e.g. 'It is not until X that Y'" },
+              note:     { type: "string", description: "Short Chinese note: 这句好在哪、用了什么句式/语法/修辞" },
+            },
+            required: ["sentence", "zh"],
           },
         },
       },
@@ -214,6 +240,14 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
         const { items } = input as { items: unknown[] };
         const n = Array.isArray(items) ? items.length : 0;
         return { tool_use_id: id, content: `✓ Extracted ${n} item${n === 1 ? "" : "s"} — review the cards below.` };
+      }
+
+      case "extract_patterns": {
+        // No DB write here — the caller renders these as interactive review
+        // cards (SentenceExtractionCard) and the user accepts individually.
+        const { items } = input as { items: unknown[] };
+        const n = Array.isArray(items) ? items.length : 0;
+        return { tool_use_id: id, content: `✓ Extracted ${n} sentence${n === 1 ? "" : "s"} — review the cards below.` };
       }
 
       case "add_words_to_vocab": {

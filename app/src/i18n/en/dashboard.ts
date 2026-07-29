@@ -12,6 +12,7 @@ export const dashboard: Dict = {
     "dash.recentDocs": "Recent documents",
     "dash.empty.words": "Your vocabulary is empty — start collecting from an article",
     "dash.empty.docs": "No documents yet",
+    "dash.empty.recentlyRead": "Nothing read yet — open an article from Feeds",
     "dash.viewAll": "View all",
     "dash.quick.title": "Quick actions",
     "dash.quick.feeds": "Browse feeds",
@@ -21,4 +22,5 @@ export const dashboard: Dict = {
     "dash.rss.summary": "{articles} article feeds · {podcasts} podcasts · {unread} unread",
     "dash.rss.empty": "No RSS feeds yet",
     "dash.rss.open": "Open feeds",
+    "dash.dragHandle": "Drag to reorder",
 };

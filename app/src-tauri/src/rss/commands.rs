@@ -158,7 +158,9 @@ pub async fn db_delete_rss_feed(id: i64, conn: State<'_, AppState>) -> Result<()
 /// metadata that was empty at subscribe time. Returns the number of newly-inserted entries.
 #[tauri::command]
 pub async fn db_sync_rss_feed(feed_id: i64, conn: State<'_, AppState>) -> Result<i64, String> {
-    let db = db::conn(&conn)?;
+    // txn_conn, not conn: the entry upserts below run in an interactive
+    // transaction, which must not pin the shared Hrana stream on Turso.
+    let db = db::txn_conn(&conn).await?;
     let url: String = db::fetch_one(
         &db,
         "SELECT url FROM rss_feeds WHERE id = ?1",

@@ -33,6 +33,7 @@ function App() {
   const db = useDB();
   const t = useT();
   const { currentPage, currentWordId, navigate } = useNavStore();
+  const chatSessionId = useNavStore((s) => s.chatSessionId);
 
   const [wordCount, setWordCount] = React.useState(0);
 
@@ -53,6 +54,19 @@ function App() {
     invoke<string | null>("db_get_startup_warning")
       .then((path) => {
         if (path) toast.warning(t("settings.dbFallbackWarning", { path }), { duration: 15000 });
+      })
+      .catch(() => {});
+  }, []);
+
+  // A saved Turso profile can open successfully but read-only — the primary
+  // was unreachable and the app fell back to serving the local replica as-is
+  // (see `open_degraded` in the backend). That connection looks completely
+  // normal otherwise, so without this the first sign of trouble is a
+  // mysterious "failed to save" on the next write. Warn up front instead.
+  useEffect(() => {
+    db.getConnection()
+      .then((connection) => {
+        if (connection?.offline) toast.warning(t("settings.remoteDBOfflineNote"), { duration: 15000 });
       })
       .catch(() => {});
   }, []);
@@ -141,7 +155,7 @@ function App() {
       case "documents":
         return <DocumentsPage />;
       case "chat":
-        return <AiChatPage />;
+        return <AiChatPage initialSessionId={chatSessionId} />;
       case "settings":
         return <SettingsPage />;
       default:

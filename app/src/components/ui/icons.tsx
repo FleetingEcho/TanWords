@@ -30,6 +30,7 @@ import {
   BookmarkIcon as BookmarkIconOutline,
   LightBulbIcon,
   CheckIcon as HeroCheckIcon,
+  ArrowDownTrayIcon,
 } from "@heroicons/react/24/outline";
 import {
   ArrowPathIcon,
@@ -226,4 +227,23 @@ export function LoadMoreIcon({ className }: IconProps) {
 
 export function TranslateIcon({ className }: IconProps) {
   return <LanguageIcon className={className} />;
+}
+
+export function DownloadIcon({ className }: IconProps) {
+  return <ArrowDownTrayIcon className={className} />;
+}
+
+/** A six-dot grip, the conventional "drag me" affordance — Heroicons has no
+ *  equivalent, so this is hand-drawn rather than a repurposed unrelated icon. */
+export function GripIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" className={className}>
+      <circle cx="5" cy="3" r="1.3" />
+      <circle cx="11" cy="3" r="1.3" />
+      <circle cx="5" cy="8" r="1.3" />
+      <circle cx="11" cy="8" r="1.3" />
+      <circle cx="5" cy="13" r="1.3" />
+      <circle cx="11" cy="13" r="1.3" />
+    </svg>
+  );
 }

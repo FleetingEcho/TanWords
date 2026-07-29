@@ -3,7 +3,7 @@ import type { NavPage } from "@/store/navStore";
 
 export type Theme = "light" | "dark" | "system";
 export type SidebarTabId = Exclude<NavPage, "settings">;
-export type TopBarItemId = "search" | "context" | "scratch" | "mcp" | "ai" | "language" | "theme" | "updates" | "github";
+export type TopBarItemId = "search" | "context" | "scratch" | "db" | "mcp" | "ai" | "language" | "theme" | "updates" | "github";
 
 /** Feeds page tab selector: a specific RSS feed, "all" of them, or the native Hacker News browser. */
 export type RssTabSelection = number | "all" | "hackernews";
@@ -12,7 +12,22 @@ export const DEFAULT_SIDEBAR_TABS: SidebarTabId[] = [
   "dashboard", "feeds", "reading", "documents", "vocabulary", "chat", "music",
 ];
 export const DEFAULT_TOPBAR_ITEMS: TopBarItemId[] = [
-  "search", "context", "scratch", "mcp", "ai", "language", "theme", "updates", "github",
+  "search", "context", "scratch", "db", "mcp", "ai", "language", "theme", "updates", "github",
+];
+
+/** The draggable cards on the Dashboard's "Recents" grid. */
+export type DashboardWidgetId = "quickActions" | "feedUpdates" | "latestWords" | "recentlyRead" | "recentDocuments";
+export interface DashboardWidgetLayout {
+  left: DashboardWidgetId[];
+  right: DashboardWidgetId[];
+}
+export const DEFAULT_DASHBOARD_WIDGET_LAYOUT: DashboardWidgetLayout = {
+  left: ["quickActions", "feedUpdates", "latestWords"],
+  right: ["recentlyRead", "recentDocuments"],
+};
+const ALL_DASHBOARD_WIDGETS: DashboardWidgetId[] = [
+  ...DEFAULT_DASHBOARD_WIDGET_LAYOUT.left,
+  ...DEFAULT_DASHBOARD_WIDGET_LAYOUT.right,
 ];
 
 /** Amber, matching the emphasis colour word notes used before highlights had
@@ -21,6 +36,39 @@ export const DEFAULT_HIGHLIGHT_COLOR = "#d97706";
 
 /** Mid-tone hues that stay legible as a translucent wash in both themes. */
 export const HIGHLIGHT_PRESETS = ["#d97706", "#eab308", "#22c55e", "#0ea5e9", "#8b5cf6", "#ec4899"] as const;
+
+/** Which part of the dashboard banner survives the crop into its letterbox frame,
+ *  as CSS `object-position` percentages. The image itself is stored whole, so this
+ *  is the user's answer to "the banner is wider than my photo — show me *this* band". */
+export interface BannerPosition {
+  x: number;
+  y: number;
+}
+
+/** What a plain `object-fit: cover` does on its own: dead centre. */
+export const DEFAULT_BANNER_POSITION: BannerPosition = { x: 50, y: 50 };
+
+/** Guards against a stored layout that's drifted from `ALL_DASHBOARD_WIDGETS` —
+ *  an older install missing a widget added since, or (in principle) corrupt
+ *  JSON — by dropping unknown ids and appending any missing ones to "left"
+ *  rather than ever silently losing or duplicating a card. */
+function sanitizeDashboardLayout(raw: unknown): DashboardWidgetLayout {
+  const rawLeft = Array.isArray((raw as Partial<DashboardWidgetLayout>)?.left) ? (raw as DashboardWidgetLayout).left : [];
+  const rawRight = Array.isArray((raw as Partial<DashboardWidgetLayout>)?.right) ? (raw as DashboardWidgetLayout).right : [];
+  const seen = new Set<DashboardWidgetId>();
+  const left = rawLeft.filter((id) => {
+    if (!ALL_DASHBOARD_WIDGETS.includes(id) || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+  const right = rawRight.filter((id) => {
+    if (!ALL_DASHBOARD_WIDGETS.includes(id) || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+  const missing = ALL_DASHBOARD_WIDGETS.filter((id) => !seen.has(id));
+  return { left: [...left, ...missing], right };
+}
 
 interface SettingsState {
   theme: Theme;
@@ -45,6 +93,8 @@ interface SettingsState {
   selectionActions: boolean;
   /** Main navigation tabs visible in the sidebar. Settings is always visible. */
   visibleSidebarTabs: SidebarTabId[];
+  /** Order of the Dashboard's draggable widget cards across its two columns. */
+  dashboardWidgetLayout: DashboardWidgetLayout;
   /** User-selected controls visible in the global command bar. */
   visibleTopBarItems: TopBarItemId[];
   /** RSS feed tab selected by default when opening Feeds — "all" or a specific feed's id.
@@ -54,14 +104,21 @@ interface SettingsState {
   feedsViewMode: "card" | "list";
   /** User's custom avatar as a data URL, shown in place of the default icon in chat bubbles etc. Empty = default icon. */
   userAvatar: string;
-  /** Custom banner image (data URL) shown at the top of the Dashboard page. Empty = no banner. */
+  /** Custom banner image (data URL) shown at the top of the Dashboard page. Empty = no banner.
+   *  Stored whole rather than pre-cropped, so its framing stays adjustable and stays
+   *  correct however wide the window makes the banner. */
   dashboardBanner: string;
+  /** Which band of `dashboardBanner` the user dragged into view. */
+  dashboardBannerPosition: BannerPosition;
   /** Shown in the Dashboard greeting ("Good evening, {nickname}"). Empty = just "Good evening". */
   nickname: string;
   /** Custom full-app background image (data URL). Empty = none — just the theme's flat background. */
   appBackgroundImage: string;
   /** Blur radius in px applied to appBackgroundImage. */
   appBackgroundBlur: number;
+  /** Whether appBackgroundImage is currently shown. False hides it without
+   *  discarding the stored image, so it can be turned back on unchanged. */
+  appBackgroundVisible: boolean;
   /** Hex colour (`#rrggbb`) for `==highlighted==` spans in AI-written markdown.
    *  Applied as a CSS custom property, so nothing that renders a highlight has
    *  to know this setting exists. */
@@ -82,25 +139,30 @@ interface SettingsState {
   setShowGithubLink: (v: boolean) => void;
   setSelectionActions: (v: boolean) => void;
   setSidebarTabVisible: (tab: SidebarTabId, visible: boolean) => void;
+  setDashboardWidgetLayout: (layout: DashboardWidgetLayout) => void;
   setTopBarItemVisible: (item: TopBarItemId, visible: boolean) => void;
   setDefaultRssTab: (tab: RssTabSelection) => void;
   setFeedsViewMode: (mode: "card" | "list") => void;
   setUserAvatar: (dataUrl: string) => void;
-  setDashboardBanner: (dataUrl: string) => void;
+  /** Omitting `position` re-centres — a new image arrives without a framing, and
+   *  clearing the banner should not leave a stale one behind. */
+  setDashboardBanner: (dataUrl: string, position?: BannerPosition) => void;
   setNickname: (name: string) => void;
   setAppBackgroundImage: (dataUrl: string) => void;
   setAppBackgroundBlur: (px: number) => void;
+  setAppBackgroundVisible: (visible: boolean) => void;
   setHighlightColor: (hex: string) => void;
   loadFromDB: () => Promise<void>;
 }
 
 /** Cached synchronously so the first render uses the right language instead
- * of flashing "zh" before the async DB round-trip in loadFromDB() resolves. */
+ * of flashing the wrong one before the async DB round-trip in loadFromDB()
+ * resolves. Defaults to English for anyone without a saved preference yet. */
 function cachedUiLanguage(): string {
   try {
-    return localStorage.getItem("tanwords_language_cache") || "zh";
+    return localStorage.getItem("tanwords_language_cache") || "en";
   } catch {
-    return "zh";
+    return "en";
   }
 }
 
@@ -128,6 +190,25 @@ function cachedSidebarTabs(): SidebarTabId[] {
 function cacheSidebarTabs(tabs: SidebarTabId[]) {
   try {
     localStorage.setItem(SIDEBAR_TABS_CACHE_KEY, JSON.stringify(tabs));
+  } catch {
+    // The DB remains authoritative when localStorage is unavailable.
+  }
+}
+
+const DASHBOARD_LAYOUT_CACHE_KEY = "tanwords_dashboard_widget_layout_cache";
+
+function cachedDashboardLayout(): DashboardWidgetLayout {
+  try {
+    const raw = localStorage.getItem(DASHBOARD_LAYOUT_CACHE_KEY);
+    return raw ? sanitizeDashboardLayout(JSON.parse(raw)) : DEFAULT_DASHBOARD_WIDGET_LAYOUT;
+  } catch {
+    return DEFAULT_DASHBOARD_WIDGET_LAYOUT;
+  }
+}
+
+function cacheDashboardLayout(layout: DashboardWidgetLayout) {
+  try {
+    localStorage.setItem(DASHBOARD_LAYOUT_CACHE_KEY, JSON.stringify(layout));
   } catch {
     // The DB remains authoritative when localStorage is unavailable.
   }
@@ -195,14 +276,17 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   showGithubLink: true,
   selectionActions: true,
   visibleSidebarTabs: cachedSidebarTabs(),
+  dashboardWidgetLayout: cachedDashboardLayout(),
   visibleTopBarItems: cachedTopBarItems(),
   defaultRssTab: cachedDefaultRssTab(),
   feedsViewMode: cachedFeedsViewMode(),
   userAvatar: "",
   dashboardBanner: "",
+  dashboardBannerPosition: DEFAULT_BANNER_POSITION,
   nickname: "",
   appBackgroundImage: "",
   appBackgroundBlur: 20,
+  appBackgroundVisible: true,
   highlightColor: DEFAULT_HIGHLIGHT_COLOR,
   isLoaded: false,
 
@@ -249,6 +333,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     saveSetting("visible_sidebar_tabs", JSON.stringify(next));
   },
 
+  setDashboardWidgetLayout: (layout) => {
+    set({ dashboardWidgetLayout: layout });
+    cacheDashboardLayout(layout);
+    saveSetting("dashboard_widget_layout", JSON.stringify(layout));
+  },
+
   setTopBarItemVisible: (item, visible) => {
     const current = get().visibleTopBarItems;
     const next = visible
@@ -276,9 +366,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     saveSetting("user_avatar", JSON.stringify(dataUrl));
   },
 
-  setDashboardBanner: (dataUrl) => {
-    set({ dashboardBanner: dataUrl });
+  setDashboardBanner: (dataUrl, position) => {
+    const pos = position ?? DEFAULT_BANNER_POSITION;
+    set({ dashboardBanner: dataUrl, dashboardBannerPosition: pos });
     saveSetting("dashboard_banner", JSON.stringify(dataUrl));
+    saveSetting("dashboard_banner_position", JSON.stringify(pos));
   },
 
   setNickname: (name) => {
@@ -294,6 +386,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setAppBackgroundBlur: (px) => {
     set({ appBackgroundBlur: px });
     saveSetting("app_background_blur", JSON.stringify(px));
+  },
+
+  setAppBackgroundVisible: (visible) => {
+    set({ appBackgroundVisible: visible });
+    saveSetting("app_background_visible", JSON.stringify(visible));
   },
 
   setHighlightColor: (hex) => {
@@ -356,10 +453,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         "show_github_link",
         "visible_sidebar_tabs",
         "visible_topbar_items",
+        "dashboard_widget_layout",
         "default_rss_tab",
         "feeds_view_mode",
         "user_avatar",
         "dashboard_banner",
+        "dashboard_banner_position",
         "nickname",
         "app_background_image",
         "app_background_blur",
@@ -374,7 +473,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         }
       }
 
-      const resolvedUiLanguage = values.ui_language || "zh";
+      const resolvedUiLanguage = values.ui_language || "en";
       cacheUiLanguage(resolvedUiLanguage);
 
       let resolvedSidebarTabs = Array.isArray(values.visible_sidebar_tabs)
@@ -388,6 +487,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         await invoke("db_set_setting", { key: "visible_sidebar_tabs", value: JSON.stringify(resolvedSidebarTabs) });
       }
       cacheSidebarTabs(resolvedSidebarTabs);
+
+      const resolvedDashboardLayout = values.dashboard_widget_layout
+        ? sanitizeDashboardLayout(values.dashboard_widget_layout)
+        : DEFAULT_DASHBOARD_WIDGET_LAYOUT;
+      cacheDashboardLayout(resolvedDashboardLayout);
+
       const resolvedTopBarItems = Array.isArray(values.visible_topbar_items)
         ? DEFAULT_TOPBAR_ITEMS.filter((id) => (values.visible_topbar_items as unknown as string[]).includes(id))
         : DEFAULT_TOPBAR_ITEMS;
@@ -424,14 +529,17 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         showGithubLink: (values.show_github_link as unknown) !== false && values.show_github_link !== "false",
         selectionActions: (values.selection_actions as unknown) !== false && values.selection_actions !== "false",
         visibleSidebarTabs: resolvedSidebarTabs,
+        dashboardWidgetLayout: resolvedDashboardLayout,
         visibleTopBarItems: resolvedTopBarItems,
         defaultRssTab: resolvedDefaultRssTab,
         feedsViewMode: resolvedFeedsViewMode,
         userAvatar: values.user_avatar || "",
         dashboardBanner: values.dashboard_banner || "",
+        dashboardBannerPosition: parseBannerPosition(values.dashboard_banner_position),
         nickname: values.nickname || "",
         appBackgroundImage: values.app_background_image || "",
         appBackgroundBlur: values.app_background_blur !== undefined ? Number(values.app_background_blur) : 20,
+        appBackgroundVisible: (values.app_background_visible as unknown) !== false && values.app_background_visible !== "false",
         highlightColor: values.highlight_color || DEFAULT_HIGHLIGHT_COLOR,
         isLoaded: true,
       });
@@ -445,6 +553,15 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     }
   },
 }));
+
+/** Installs that predate the drag-to-position banner have no stored framing — and
+ *  their banners were baked as centre crops, so centre is also the honest fallback. */
+function parseBannerPosition(raw: unknown): BannerPosition {
+  const pos = raw as Partial<BannerPosition> | undefined;
+  if (!pos || typeof pos.x !== "number" || typeof pos.y !== "number") return DEFAULT_BANNER_POSITION;
+  const clamp = (v: number) => Math.min(100, Math.max(0, v));
+  return { x: clamp(pos.x), y: clamp(pos.y) };
+}
 
 async function saveSetting(key: string, value: string) {
   try {

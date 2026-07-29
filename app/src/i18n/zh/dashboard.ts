@@ -12,6 +12,7 @@ export const dashboard: Dict = {
     "dash.recentDocs": "最近文档",
     "dash.empty.words": "词库还是空的——从一篇文章开始收集",
     "dash.empty.docs": "还没有文档",
+    "dash.empty.recentlyRead": "还没有阅读记录 —— 去订阅页打开一篇文章",
     "dash.viewAll": "查看全部",
     "dash.quick.title": "快捷入口",
     "dash.quick.feeds": "逛订阅源",
@@ -21,4 +22,5 @@ export const dashboard: Dict = {
     "dash.rss.summary": "{articles} 个文章源 · {podcasts} 个播客 · {unread} 未读",
     "dash.rss.empty": "还没有订阅任何 RSS 源",
     "dash.rss.open": "去订阅页",
+    "dash.dragHandle": "拖动以调整顺序",
 };

@@ -42,7 +42,7 @@ sherpa-rs = "0.6"
 tar = "0.4"
 bzip2 = "0.4"
 futures-util = "0.3"
-keyring = "3"
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 libloading = "0.8"
 feed-rs = "2"
 url = "2"
