@@ -155,7 +155,10 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
 
   return (
     <>
-      <header className="relative z-20 flex h-12 shrink-0 select-none items-center gap-1.5 border-b border-border/80 bg-background/90 px-3 backdrop-blur-xl">
+      {/* Keep the global bar above page-local sticky toolbars (FeedTabs also
+          uses z-20). Inline search results live inside this stacking context,
+          so equal z-indices let the later page toolbar paint over them. */}
+      <header className="relative z-30 flex h-12 shrink-0 select-none items-center gap-1.5 border-b border-border/80 bg-background/90 px-3 backdrop-blur-xl">
         {visible("search") && (
           <div className="flex min-w-0 max-w-80 flex-1 items-center gap-1">
             <div className="min-w-0 flex-1">

@@ -76,6 +76,8 @@ interface SettingsState {
   uiLanguage: string;
   /** CEFR levels the AI calibrates to — multi-select, e.g. ["C1","C2"]. */
   targetLevels: string[];
+  /** Show compact A2–C2 badges throughout the UI. */
+  showLevelBadges: boolean;
   /** User override for the word-enrichment system prompt. Empty string = use the built-in default. */
   customEnrichPrompt: string;
   /** Root folder of the local music library. Empty string = not configured. */
@@ -128,6 +130,7 @@ interface SettingsState {
   setDefaultAiProvider: (provider: string) => void;
   setUiLanguage: (lang: string) => void;
   setTargetLevels: (levels: string[]) => void;
+  setShowLevelBadges: (visible: boolean) => void;
   setCustomEnrichPrompt: (prompt: string) => void;
   setMusicFolderPath: (path: string) => void;
   setTtsModelPath: (path: string) => void;
@@ -264,6 +267,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   defaultAiProvider: "openai",
   uiLanguage: cachedUiLanguage(),
   targetLevels: ["C1"],
+  showLevelBadges: true,
   customEnrichPrompt: "",
   musicFolderPath: "",
   ttsModelPath: "",
@@ -397,6 +401,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     saveSetting("target_level", JSON.stringify(levels));
   },
 
+  setShowLevelBadges: (visible) => {
+    set({ showLevelBadges: visible });
+    saveSetting("show_level_badges", JSON.stringify(visible));
+  },
+
   setCustomEnrichPrompt: (prompt) => {
     set({ customEnrichPrompt: prompt });
     saveSetting("custom_enrich_prompt", JSON.stringify(prompt));
@@ -435,6 +444,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         "default_ai_provider",
         "ui_language",
         "target_level",
+        "show_level_badges",
         "custom_enrich_prompt",
         "music_folder_path",
         "tts_model_path",
@@ -509,6 +519,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
           : values.target_level
           ? [values.target_level]
           : ["C1"],
+        showLevelBadges: (values.show_level_badges as unknown) !== false && values.show_level_badges !== "false",
         customEnrichPrompt: values.custom_enrich_prompt || "",
         musicFolderPath: values.music_folder_path || "",
         ttsModelPath: values.tts_model_path || "",

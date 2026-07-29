@@ -30,11 +30,12 @@ interface LookupData {
   wordId: number | null;
 }
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
+const WORD_PAGE_SIZE_KEY = "vocab-words-page-size";
 /** How many words a bulk enrich analyzes concurrently */
 const BULK_CONCURRENCY = 3;
 
-export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
+export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWordId?: number; initialSentenceId?: number }) {
   const db = useDB();
   const targetLevel = useSettingsStore((s) => s.targetLevels.join("/"));
 
@@ -55,8 +56,21 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(() => {
+    const saved = Number(localStorage.getItem(WORD_PAGE_SIZE_KEY));
+    return PAGE_SIZE_OPTIONS.includes(saved as (typeof PAGE_SIZE_OPTIONS)[number]) ? saved : 20;
+  });
+  const changePageSize = (next: number) => {
+    setPageSize(next);
+    setPage(0);
+    localStorage.setItem(WORD_PAGE_SIZE_KEY, String(next));
+  };
   const [view, setView] = useState<"words" | "patterns">("words");
   const [patternSeed, setPatternSeed] = useState<string | null>(null);
+  useEffect(() => {
+    if (initialSentenceId) setView("patterns");
+    else if (initialWordId) setView("words");
+  }, [initialWordId, initialSentenceId]);
   // Words layout: the classic list + detail split, or a single full-width
   // list (like the Sentences tab) where the detail expands inline below the
   // selected word.
@@ -576,13 +590,19 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
     if (lookup) return;
     if (initialWordId && words.length > 0) {
       const w = words.find((x) => x.id === initialWordId);
-      if (w) selectWord(w);
+      if (w) {
+        setLevelFilters([]);
+        setStarredOnly(false);
+        setListCollapsed(false);
+        setPage(Math.floor(words.findIndex((x) => x.id === initialWordId) / pageSize));
+        selectWord(w);
+      }
     } else if (wordsLayout === "split" && words.length > 0 && !selected) {
       // Only the split layout auto-selects — in the full-width list an
       // auto-expanded first row would just be noise.
       selectWord(words[0]);
     }
-  }, [words.length, initialWordId]);
+  }, [words.length, initialWordId, pageSize]);
 
   // ── Render ──────────────────────────────────────────────────────────────
 
@@ -642,15 +662,16 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
           ))}
         </div>
       </div>
-      {view === "patterns" ? <PatternLibrary initialQuery={patternSeed} onSeedConsumed={() => setPatternSeed(null)} /> : (
+      {view === "patterns" ? <PatternLibrary initialQuery={patternSeed} initialSentenceId={initialSentenceId} onSeedConsumed={() => setPatternSeed(null)} /> : (
       <div className="flex min-h-0 flex-1">
       <WordListPanel
         words={visibleWords}
         selectedId={selected?.word.id ?? null}
+        highlightId={initialWordId}
         search={search}
         levelFilter={levelFilters}
         page={page}
-        pageSize={PAGE_SIZE}
+        pageSize={pageSize}
         showAiLookup={showAiLookup}
         lookupActive={!!lookup}
         dateFrom={dateFrom}
@@ -668,6 +689,7 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
           else selectWord(w);
         }}
         onPageChange={setPage}
+        onPageSizeChange={changePageSize}
         onDoubleClick={handleWordDoubleClick}
         onAiLookup={startLookup}
         bulkRunning={bulkRunning}

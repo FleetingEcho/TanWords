@@ -11,7 +11,9 @@ interface Props {
   activeRawContent: string | null;
   modifiedMs: number;
   saveStatus: SaveStatus;
-  onSave: (markdown: string) => void;
+  onSave: (markdown: string) => Promise<void>;
+  onDirty: () => void;
+  onUploadImage: (file: File) => Promise<string>;
   toRawMarkdown: (markdown: string) => string;
   toDisplayMarkdown: (markdown: string) => string;
   onRename: (newName: string) => void;
@@ -28,6 +30,8 @@ export function LocalDocsEditorPane({
   modifiedMs,
   saveStatus,
   onSave,
+  onDirty,
+  onUploadImage,
   toRawMarkdown,
   toDisplayMarkdown,
   onRename,
@@ -47,6 +51,8 @@ export function LocalDocsEditorPane({
           modifiedMs={modifiedMs}
           saveStatus={saveStatus}
           onSave={onSave}
+          onDirty={onDirty}
+          onUploadImage={onUploadImage}
           toRawMarkdown={toRawMarkdown}
           toDisplayMarkdown={toDisplayMarkdown}
           onRename={onRename}

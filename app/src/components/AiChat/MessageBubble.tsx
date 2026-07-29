@@ -39,6 +39,10 @@ interface Props {
 const COLLAPSE_THRESHOLD = 700;
 const COLLAPSE_PREVIEW = 350;
 
+function countWords(text: string): number {
+  return text.match(/[\p{L}\p{N}]+(?:['’.-][\p{L}\p{N}]+)*/gu)?.length ?? 0;
+}
+
 export const MessageBubble = React.memo(function MessageBubble({ msg, compact = false, isTyping = false, fillCardWidth = false, index = 0, onEdit, onRegenerate }: Props) {
   const t = useT();
   const userAvatar = useSettingsStore((s) => s.userAvatar);
@@ -98,7 +102,7 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, compact = 
               onClick={() => setExpanded(true)}
               className="h-auto p-0 mt-1.5 text-[11px] font-semibold text-primary-foreground underline underline-offset-2 opacity-80 hover:opacity-100"
             >
-              {t("aichat.expand", { n: msg.content.length })}
+              {t("aichat.expand", { n: countWords(msg.content) })}
             </Button>
           </>
         ) : (

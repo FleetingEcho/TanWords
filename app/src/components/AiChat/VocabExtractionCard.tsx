@@ -7,6 +7,7 @@ import { SparkIcon } from "@/components/ui/icons";
 import { CheckIcon } from "@heroicons/react/24/solid";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { LevelBadge } from "@/components/shared/LevelBadge";
 
 export interface ExtractedVocabItem {
   word: string;
@@ -28,22 +29,10 @@ export function vocabItemsFromToolInput(input: Record<string, unknown>): Extract
   return ((input.items ?? input.words) as ExtractedVocabItem[] | undefined) ?? [];
 }
 
-const LEVEL_COLORS: Record<string, string> = {
-  C2: "#a855f7", C1: "#3b82f6", B2: "#14b8a6", B1: "#f59e0b", A2: "#84cc16",
-};
-
 type ItemStatus = "pending" | "added" | "known";
 
 function LevelDot({ level }: { level?: string }) {
-  if (!level) return null;
-  return (
-    <span
-      className="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0"
-      style={{ color: LEVEL_COLORS[level] ?? "#64748b", backgroundColor: `${LEVEL_COLORS[level] ?? "#64748b"}18` }}
-    >
-      {level}
-    </span>
-  );
+  return <LevelBadge level={level} />;
 }
 
 /** Renders the items array from an extract_vocabulary tool call as

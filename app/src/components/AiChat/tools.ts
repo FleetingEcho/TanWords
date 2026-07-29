@@ -19,7 +19,7 @@ export interface ToolResult {
 // ── Tool Groups ────────────────────────────────────────────────────────────
 
 export const TOOL_GROUPS = {
-  vocabulary: { label: "Vocabulary", tools: ["save_word", "search_vocabulary", "extract_vocabulary", "extract_patterns", "add_words_to_vocab", "generate_sentences"] },
+  vocabulary: { label: "Vocabulary", tools: ["save_word", "search_vocabulary", "add_words_to_vocab", "generate_sentences"] },
   documents:  { label: "Documents",  tools: ["list_documents", "insert_into_document", "summarize_conversation", "save_note_as_document"] },
 } as const;
 

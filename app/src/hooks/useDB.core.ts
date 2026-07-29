@@ -300,11 +300,13 @@ export function useDBCore() {
     tags: string,
     pinned: boolean,
     wordCount: number,
-  ): Promise<void> => {
+  ): Promise<boolean> => {
     try {
       await invoke("db_update_document", { id, title, content, contentText, tags, pinned, wordCount });
+      return true;
     } catch (e) {
       reportWriteError("updateDocument", e, "保存文档失败");
+      return false;
     }
   }, []);
 

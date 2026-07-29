@@ -11,7 +11,8 @@ import { analyzeSentence } from "@/features/patterns/generate";
 import { SentenceList } from "./SentenceList";
 import { SentenceModal } from "./SentenceModal";
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
+const SENTENCE_PAGE_SIZE_KEY = "vocab-sentences-page-size";
 
 /** Sentence library: a single full-width feed where clicking a row expands
  *  its detail inline (no side detail pane). Sentences are
@@ -21,7 +22,7 @@ const PAGE_SIZE = 20;
  *  "pattern" row already is a phrase/translation/note/level bundle with one
  *  saved example sentence, which is exactly what a flat sentence library
  *  needs). */
-export function PatternLibrary({ initialQuery, onSeedConsumed }: { initialQuery?: string | null; onSeedConsumed?: () => void }) {
+export function PatternLibrary({ initialQuery, initialSentenceId, onSeedConsumed }: { initialQuery?: string | null; initialSentenceId?: number; onSeedConsumed?: () => void }) {
   const db = useDB();
   const t = useT();
 
@@ -32,6 +33,15 @@ export function PatternLibrary({ initialQuery, onSeedConsumed }: { initialQuery?
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(() => {
+    const saved = Number(localStorage.getItem(SENTENCE_PAGE_SIZE_KEY));
+    return PAGE_SIZE_OPTIONS.includes(saved as (typeof PAGE_SIZE_OPTIONS)[number]) ? saved : 20;
+  });
+  const changePageSize = (next: number) => {
+    setPageSize(next);
+    setPage(0);
+    localStorage.setItem(SENTENCE_PAGE_SIZE_KEY, String(next));
+  };
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -77,6 +87,19 @@ export function PatternLibrary({ initialQuery, onSeedConsumed }: { initialQuery?
   useEffect(() => { load(); }, []);
   useEffect(() => { setPage(0); }, [search, levelFilter, starredOnly, dateFrom, dateTo]);
 
+  useEffect(() => {
+    if (!initialSentenceId || patterns.length === 0) return;
+    const index = patterns.findIndex((item) => item.id === initialSentenceId);
+    if (index < 0) return;
+    setSearch("");
+    setLevelFilter("all");
+    setStarredOnly(false);
+    setDateFrom("");
+    setDateTo("");
+    setExpandedId(initialSentenceId);
+    setPage(Math.floor(index / pageSize));
+  }, [initialSentenceId, patterns.length, pageSize]);
+
   // Picks up sentences quick-added from the top CommandBar's SentenceSearchBox.
   useEffect(() => {
     window.addEventListener("patterns-updated", load);
@@ -119,9 +142,9 @@ export function PatternLibrary({ initialQuery, onSeedConsumed }: { initialQuery?
 
   // Deleting the last item of the last page must not leave an empty page.
   useEffect(() => {
-    const maxPage = Math.max(0, Math.ceil(visible.length / PAGE_SIZE) - 1);
+    const maxPage = Math.max(0, Math.ceil(visible.length / pageSize) - 1);
     if (page > maxPage) setPage(maxPage);
-  }, [visible.length, page]);
+  }, [visible.length, page, pageSize]);
 
   // Dedup set for the generate flow — every sentence already in the library.
   const existingSentences = useMemo(() => patterns.flatMap((p) => p.examples.map((e) => e.sentence)), [patterns]);
@@ -242,6 +265,7 @@ export function PatternLibrary({ initialQuery, onSeedConsumed }: { initialQuery?
       <SentenceList
         items={visible}
         expandedId={expandedId}
+        highlightId={initialSentenceId}
         search={search}
         searchTokens={searchTokens}
         levelFilter={levelFilter}
@@ -249,7 +273,7 @@ export function PatternLibrary({ initialQuery, onSeedConsumed }: { initialQuery?
         dateFrom={dateFrom}
         dateTo={dateTo}
         page={page}
-        pageSize={PAGE_SIZE}
+        pageSize={pageSize}
         onSearchChange={setSearch}
         onLevelFilterChange={setLevelFilter}
         onStarredOnlyChange={setStarredOnly}
@@ -258,6 +282,7 @@ export function PatternLibrary({ initialQuery, onSeedConsumed }: { initialQuery?
         onToggleExpand={(item) => setExpandedId((prev) => (prev === item.id ? null : item.id))}
         onDoubleClick={handleDoubleClick}
         onPageChange={setPage}
+        onPageSizeChange={changePageSize}
         onOpenAdd={() => { setModalMode("add"); setModalSeed(null); setModalOpen(true); }}
         onOpenGenerate={() => { setModalMode("generate"); setModalSeed(null); setModalOpen(true); }}
         onRequestDelete={(item) => setDeleteTarget(item)}
