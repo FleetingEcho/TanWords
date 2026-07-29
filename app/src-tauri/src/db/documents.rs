@@ -60,7 +60,53 @@ pub struct DocumentAssetSummary {
     pub referenced: bool,
 }
 
-const MAX_DOCUMENT_ASSET_BYTES: usize = 10 * 1024 * 1024;
+#[derive(Serialize)]
+pub struct DocumentLinkItem {
+    pub id: i64,
+    pub title: String,
+}
+
+#[derive(Serialize)]
+pub struct DocumentLinkContext {
+    pub outgoing: Vec<DocumentLinkItem>,
+    pub backlinks: Vec<DocumentLinkItem>,
+    pub candidates: Vec<DocumentLinkItem>,
+}
+
+#[tauri::command]
+pub async fn db_get_document_link_context(
+    document_id: i64,
+    conn: State<'_, AppState>,
+) -> Result<DocumentLinkContext, String> {
+    let database = db::conn(&conn)?;
+    let candidates = db::fetch_all(
+        &database,
+        "SELECT id, title FROM documents WHERE id != ?1 ORDER BY title COLLATE NOCASE",
+        params![document_id],
+        |row| Ok(DocumentLinkItem { id: row.get(0)?, title: row.get(1)? }),
+    ).await?;
+    let content = db::fetch_one(
+        &database,
+        "SELECT content FROM documents WHERE id = ?1",
+        params![document_id],
+        |row| row.get::<String>(0),
+    ).await?;
+    let outgoing = candidates.iter()
+        .filter(|item| content.contains(&format!("tanwords-doc://{}", item.id)))
+        .map(|item| DocumentLinkItem { id: item.id, title: item.title.clone() })
+        .collect();
+    let backlinks = db::fetch_all(
+        &database,
+        "SELECT id, title FROM documents
+         WHERE id != ?1 AND instr(content, 'tanwords-doc://' || ?1) > 0
+         ORDER BY title COLLATE NOCASE",
+        params![document_id],
+        |row| Ok(DocumentLinkItem { id: row.get(0)?, title: row.get(1)? }),
+    ).await?;
+    Ok(DocumentLinkContext { outgoing, backlinks, candidates })
+}
+
+const MAX_DOCUMENT_ASSET_BYTES: usize = 100 * 1024 * 1024;
 
 #[tauri::command]
 pub async fn db_create_document_asset(
@@ -70,12 +116,9 @@ pub async fn db_create_document_asset(
     data_base64: String,
     conn: State<'_, AppState>,
 ) -> Result<String, String> {
-    if !mime_type.starts_with("image/") {
-        return Err("Only image attachments are supported".into());
-    }
-    let data = STANDARD.decode(data_base64).map_err(|_| "Invalid image data")?;
+    let data = STANDARD.decode(data_base64).map_err(|_| "Invalid attachment data")?;
     if data.is_empty() || data.len() > MAX_DOCUMENT_ASSET_BYTES {
-        return Err("Image must be between 1 byte and 10 MB".into());
+        return Err("Attachment must be between 1 byte and 100 MB".into());
     }
     let db = db::conn(&conn)?;
     let exists = db::scalar_i64(
@@ -166,10 +209,7 @@ pub async fn db_list_document_assets(conn: State<'_, AppState>) -> Result<Vec<Do
 fn remove_asset_blocks(value: &mut serde_json::Value, url: &str) {
     match value {
         serde_json::Value::Array(items) => {
-            items.retain(|item| {
-                !(item.get("type").and_then(|v| v.as_str()) == Some("image")
-                    && item.pointer("/props/url").and_then(|v| v.as_str()) == Some(url))
-            });
+            items.retain(|item| item.pointer("/props/url").and_then(|v| v.as_str()) != Some(url));
             for item in items {
                 remove_asset_blocks(item, url);
             }

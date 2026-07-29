@@ -117,18 +117,18 @@ pub fn localdocs_store_asset(
     if !root_path.is_absolute() || !root_path.is_dir() {
         return Err(format!("Invalid mounted directory: {root}"));
     }
-    if !mime_type.starts_with("image/") {
-        return Err("Only image attachments are supported".into());
+    if mime_type.len() > 255 {
+        return Err("Attachment MIME type is too long".into());
     }
-    let data = STANDARD.decode(data_base64).map_err(|_| "Invalid image data")?;
-    if data.is_empty() || data.len() > 10 * 1024 * 1024 {
-        return Err("Image must be between 1 byte and 10 MB".into());
+    let data = STANDARD.decode(data_base64).map_err(|_| "Invalid attachment data")?;
+    if data.is_empty() || data.len() > 100 * 1024 * 1024 {
+        return Err("Attachment must be between 1 byte and 100 MB".into());
     }
     let assets_dir = root_path.join("assets");
     fs::create_dir_all(&assets_dir).map_err(|e| format!("Failed to create assets folder: {e}"))?;
     let destination = unique_asset_path(&assets_dir, &file_name);
-    fs::write(&destination, data).map_err(|e| format!("Failed to save image: {e}"))?;
-    let relative = destination.strip_prefix(root_path).map_err(|_| "Invalid image path")?;
+    fs::write(&destination, data).map_err(|e| format!("Failed to save attachment: {e}"))?;
+    let relative = destination.strip_prefix(root_path).map_err(|_| "Invalid attachment path")?;
     Ok(relative.to_string_lossy().replace('\\', "/"))
 }
 
@@ -251,6 +251,9 @@ pub fn localdocs_export(
     if !destination.is_absolute() || !destination.is_dir() {
         return Err(format!("Invalid export directory: {}", destination.display()));
     }
+    let assets_destination = destination.join("assets");
+    let link_pattern = regex::Regex::new(r#"(?P<prefix>!?\[[^\]]*\]\()(?P<url>[^)\s]+)(?P<suffix>\))"#)
+        .map_err(|e| e.to_string())?;
     for rel_path in &rel_paths {
         let source = resolve(&root, rel_path)?;
         ensure_md(&source)?;
@@ -258,7 +261,40 @@ pub fn localdocs_export(
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("Document.md");
-        fs::copy(&source, unique_md_path(destination, name))
+        let content = fs::read_to_string(&source).map_err(|e| format!("Failed to read: {e}"))?;
+        let parent = source.parent().unwrap_or(Path::new(&root));
+        let mut replacements = std::collections::HashMap::new();
+        for capture in link_pattern.captures_iter(&content) {
+            let Some(url) = capture.name("url").map(|value| value.as_str()) else { continue };
+            if url.contains("://") || url.starts_with('#') {
+                continue;
+            }
+            if replacements.contains_key(url) {
+                continue;
+            }
+            let candidate = parent.join(url);
+            let Ok(canonical) = candidate.canonicalize() else { continue };
+            let root_assets = Path::new(&root).join("assets");
+            let Ok(canonical_assets) = root_assets.canonicalize() else { continue };
+            if !canonical.starts_with(&canonical_assets) || !canonical.is_file() {
+                continue;
+            }
+            fs::create_dir_all(&assets_destination)
+                .map_err(|e| format!("Failed to create assets folder: {e}"))?;
+            let file_name = canonical.file_name().and_then(|value| value.to_str()).unwrap_or("attachment.bin");
+            let exported = unique_asset_path(&assets_destination, file_name);
+            fs::copy(&canonical, &exported).map_err(|e| format!("Failed to export attachment: {e}"))?;
+            let exported_name = exported.file_name().and_then(|value| value.to_str()).unwrap_or(file_name);
+            replacements.insert(url.to_string(), format!("./assets/{exported_name}"));
+        }
+        let rewritten = link_pattern.replace_all(&content, |capture: &regex::Captures<'_>| {
+            let url = capture.name("url").map(|value| value.as_str()).unwrap_or("");
+            match replacements.get(url) {
+                Some(next) => format!("{}{}{}", &capture["prefix"], next, &capture["suffix"]),
+                None => capture[0].to_string(),
+            }
+        });
+        fs::write(unique_md_path(destination, name), rewritten.as_bytes())
             .map_err(|e| format!("Failed to export: {e}"))?;
     }
     Ok(rel_paths.len())
@@ -555,7 +591,7 @@ pub fn localdocs_delete(root: String, rel_path: String) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{localdocs_create, localdocs_move, localdocs_store_asset};
+    use super::{localdocs_create, localdocs_export, localdocs_move, localdocs_store_asset};
     use std::{
         fs,
         time::{SystemTime, UNIX_EPOCH},
@@ -610,5 +646,32 @@ mod tests {
         assert_eq!(fs::read(root.join(first)).unwrap(), b"abc");
         assert_eq!(fs::read(root.join(second)).unwrap(), b"def");
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn exports_markdown_with_referenced_general_attachments() {
+        let suffix = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("tanwords-localdocs-export-assets-{suffix}"));
+        let destination = std::env::temp_dir().join(format!("tanwords-localdocs-export-dest-{suffix}"));
+        fs::create_dir_all(root.join("notes")).unwrap();
+        fs::create_dir_all(root.join("assets")).unwrap();
+        fs::create_dir_all(&destination).unwrap();
+        fs::write(root.join("assets/archive.zip"), b"zip-data").unwrap();
+        fs::write(
+            root.join("notes/Guide.md"),
+            "[Download](../assets/archive.zip)",
+        ).unwrap();
+
+        let count = localdocs_export(
+            root.to_string_lossy().to_string(),
+            vec!["notes/Guide.md".into()],
+            destination.to_string_lossy().to_string(),
+        ).unwrap();
+
+        assert_eq!(count, 1);
+        assert_eq!(fs::read_to_string(destination.join("Guide.md")).unwrap(), "[Download](./assets/archive.zip)");
+        assert_eq!(fs::read(destination.join("assets/archive.zip")).unwrap(), b"zip-data");
+        fs::remove_dir_all(root).unwrap();
+        fs::remove_dir_all(destination).unwrap();
     }
 }

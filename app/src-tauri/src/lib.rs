@@ -159,6 +159,7 @@ pub fn run() {
             db::db_export_document_asset,
             db::db_export_document_assets_to_folder,
             db::db_export_document_assets_zip,
+            db::db_get_document_link_context,
             db::db_prune_document_assets,
             db::db_update_document,
             db::db_delete_document,

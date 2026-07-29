@@ -2,7 +2,11 @@ import type { PartialBlock } from "@blocknote/core";
 import { blocksToMarkdown, blocksToStorage, contentToBlocks, markdownToBlocks } from "./docFormat";
 
 type Operation = "markdownToBlocks" | "contentToBlocks" | "blocksToMarkdown" | "blocksToStorage";
-type Pending = { resolve: (value: any) => void; reject: (error: Error) => void };
+type Pending = {
+  resolve: (value: any) => void;
+  reject: (error: Error) => void;
+  timeout: ReturnType<typeof setTimeout>;
+};
 
 let worker: Worker | null = null;
 let workerUnavailable = false;
@@ -18,10 +22,14 @@ function getWorker(): Worker | null {
       const request = pending.get(data.id);
       if (!request) return;
       pending.delete(data.id);
+      clearTimeout(request.timeout);
       data.error ? request.reject(new Error(data.error)) : request.resolve(data.result);
     };
     worker.onerror = () => {
-      for (const request of pending.values()) request.reject(new Error("document worker failed"));
+      for (const request of pending.values()) {
+        clearTimeout(request.timeout);
+        request.reject(new Error("document worker failed"));
+      }
       pending.clear();
       worker?.terminate();
       worker = null;
@@ -39,7 +47,20 @@ function run<T>(operation: Operation, payload: string | readonly unknown[]): Pro
   if (!target) return null;
   const id = nextId++;
   return new Promise<T>((resolve, reject) => {
-    pending.set(id, { resolve, reject });
+    const timeout = setTimeout(() => {
+      const request = pending.get(id);
+      if (!request) return;
+      pending.delete(id);
+      request.reject(new Error("document worker timed out"));
+      for (const other of pending.values()) {
+        clearTimeout(other.timeout);
+        other.reject(new Error("document worker restarted after a timeout"));
+      }
+      pending.clear();
+      worker?.terminate();
+      worker = null;
+    }, 5000);
+    pending.set(id, { resolve, reject, timeout });
     target.postMessage({ id, operation, payload });
   });
 }

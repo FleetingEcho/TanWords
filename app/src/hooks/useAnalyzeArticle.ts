@@ -1,27 +1,43 @@
 import { useCallback } from "react";
 import { findBestProvider } from "@/providers/select";
 import { useDB } from "@/hooks/useDB";
-import { useSettingsStore } from "@/store/settingsStore";
 import { useAnalysisStore } from "@/store/analysisStore";
 
-function buildSystemPrompt(level: string): string {
-  return `You are an English learning assistant for a Chinese native speaker who works in tech (target level: CEFR ${level}). Output ONLY markdown — no commentary about the task itself, no code fences around the whole response.`;
+function buildSystemPrompt(): string {
+  return `You are an English reading tutor for a Chinese native speaker. Create practical, substantial study notes grounded in the source text. Output ONLY markdown — no commentary about the task itself and no code fences around the whole response. Do not mention or classify content by CEFR or any other proficiency framework.`;
 }
 
-function buildPrompt(text: string, knownWords: string[], level: string): string {
+function buildPrompt(text: string, knownWords: string[]): string {
   const known = knownWords.slice(0, 150).join(", ");
-  return `Read the article below and write a short markdown study note for a ${level} learner. Structure it as:
+  return `Read the article below and create a useful markdown study note in Chinese. Use exactly these sections:
 
-## Words worth learning
-Up to 30 words and phrases worth learning for a ${level} learner — don't limit this to single words, include collocations, phrasal verbs and idioms whenever they're worth learning. Each as one bullet: **word or phrase** — 中文释义 — 用法/语气说明（中文，一句话）. Exclude common words (below ${level}), basic tech terms every engineer knows (server, deploy, database...), and proper nouns.
+## 文章大意
+A clear, simple summary of the article in Chinese, about 3-5 sentences. Explain the main argument, key supporting points, and conclusion without turning this into a long report.
 
-## Sentences worth stealing
-3-8 highlight sentences worth imitating — advanced structures, elegant phrasing, rhetorical moves a ${level} learner should steal for their own writing. Prefer sentences that showcase a reusable pattern over merely long ones. Each as a blockquote with the EXACT sentence copied verbatim from the article, followed by a line with 中文翻译 and 这句好在哪、用了什么句式/修辞（中文，1-2句话）.
+## 值得学习的词汇
+Select 20-30 useful words or short phrases from the article. Include collocations and phrasal verbs when useful. Each item must be one concise bullet in this format: **word or phrase** — 简单中文释义. Do not add CEFR labels, usage essays, source-context columns, or a table.
+
+## 亮点句子
+Select 5-10 complete sentences worth rereading or imitating because they are clear, elegant, persuasive, or memorable. For each item:
+> Copy the exact complete English sentence from the article.
+
+Then give its Chinese translation and one short Chinese sentence explaining why it is effective.
+
+## 亮点句型
+Extract 4-8 reusable sentence patterns demonstrated by the article. For each item, show:
+- the reusable English pattern with replaceable parts in brackets;
+- the exact source sentence that demonstrates it;
+- a short Chinese explanation of when or how to use it.
+
+## 地道表达
+Select 6-12 natural collocations, idiomatic phrases, phrasal verbs, or rhetorical expressions from the article that a native speaker would naturally use. Each as one bullet: **expression** — 简单中文意思；简短说明它在原文中的语气或用法.
 
 Rules:
-- The user already knows these words, never suggest them again: ${known || "(none listed)"}
-- Sentences must be copied verbatim from the article.
-- Keep it concise — this is a note to read, not a report.
+- The user already knows these words; do not include them in the vocabulary section: ${known || "(none listed)"}
+- Every quoted sentence and expression must actually occur in the article. Never invent or silently rewrite a quote.
+- Prefer broadly useful English over proper nouns, product names, and basic technical terms.
+- Keep explanations concise, but provide every requested section and do not make the note sparse.
+- Do not include CEFR levels or proficiency classifications anywhere.
 
 Article:
 """
@@ -32,22 +48,22 @@ ${text}
 /** Comments get a different lens than the article body: informal/conversational text is where
  * native idioms, phrasal verbs, and natural discourse patterns actually show up — a formal-prose
  * analysis prompt would mostly find nothing worth extracting there. */
-function buildCommentsPrompt(text: string, knownWords: string[], level: string): string {
+function buildCommentsPrompt(text: string, knownWords: string[]): string {
   const known = knownWords.slice(0, 150).join(", ");
-  return `The text below is informal online discussion (Hacker News comments). Write a short markdown study note focused on NATIVE, everyday usage — idioms, phrasal verbs, discourse markers, and natural phrasing a native speaker uses in casual writing that a non-native learner wouldn't naturally produce. Structure it as:
+  return `The text below is informal online discussion (Hacker News comments). Create a concise Chinese supplement focused on native, everyday usage — idioms, phrasal verbs, discourse markers, and natural phrasing a non-native speaker may not naturally produce. Structure it as:
 
-## Words worth learning
-Up to 10 words/short phrases worth learning for a ${level} learner, each as one bullet: **word or phrase** — 中文释义 — 地道用法说明：为什么这样说更地道、非母语者容易怎么说得不自然（中文，一句话）.
+## 评论区地道表达
+Select 6-12 useful words or short expressions. Each as one bullet: **word or expression** — 简单中文意思；一句简短的地道用法说明.
 
-## Sentences worth stealing
-3-6 sentences that showcase natural native phrasing worth imitating in casual writing or speech. Each as a blockquote with the EXACT sentence copied verbatim, followed by a line with 中文翻译 and 这是什么样的口语/网络化表达，母语者为什么会这样说（中文，1-2句话）.
+## 评论区亮点句子
+Select 3-6 complete sentences that showcase natural phrasing worth imitating in casual writing or speech. Copy each exact sentence as a blockquote, then give a Chinese translation and one short explanation.
 
 Rules:
-- Focus on NATIVE, colloquial usage — NOT formal vocabulary or literary rhetoric (that's a separate pass on the article itself).
+- Focus on native, colloquial usage rather than formal vocabulary or literary rhetoric.
 - The user already knows these words, never suggest them again: ${known || "(none listed)"}
 - Sentences must be copied verbatim from the text.
 - Ignore off-topic banter, jokes, or single-word replies with no learning value — skip them rather than forcing something in. If nothing qualifies, write a single line saying so instead of the two headings.
-- Keep it concise — this is a note to read, not a report.
+- Do not include CEFR levels or proficiency classifications.
 
 Comments:
 """
@@ -101,7 +117,6 @@ export function useAnalyzeArticle() {
           ...new Set([...knownWords.map((w) => w.toLowerCase()), ...vocab.map((w) => w.word.toLowerCase())]),
         ];
 
-        const targetLevel = useSettingsStore.getState().targetLevels.join("/") || "C1";
         let received = 0;
         const runPrompt = async (systemPrompt: string, userPrompt: string): Promise<string> => {
           const chunks: string[] = [];
@@ -113,12 +128,12 @@ export function useAnalyzeArticle() {
           return chunks.join("").trim();
         };
 
-        const system = buildSystemPrompt(targetLevel);
-        let markdown = await runPrompt(system, buildPrompt(opts.text, excludeWords, targetLevel));
+        const system = buildSystemPrompt();
+        let markdown = await runPrompt(system, buildPrompt(opts.text, excludeWords));
 
         if (opts.commentsText?.trim()) {
           try {
-            const commentsMarkdown = await runPrompt(system, buildCommentsPrompt(opts.commentsText, excludeWords, targetLevel));
+            const commentsMarkdown = await runPrompt(system, buildCommentsPrompt(opts.commentsText, excludeWords));
             markdown += `\n\n---\n\n## From the comments\n\n${commentsMarkdown}`;
           } catch (e: any) {
             // The comments pass is a bonus — a flaky/short response there shouldn't sink the whole

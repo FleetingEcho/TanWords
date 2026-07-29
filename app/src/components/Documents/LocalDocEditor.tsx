@@ -12,7 +12,7 @@ import { liftMermaid, lowerMermaid } from "./mermaidTransforms";
 import { CheckIcon } from "@heroicons/react/24/solid";
 import { SaveStatus } from "./useDocumentEditor";
 import { Button } from "@/components/ui/button";
-import { Code2, Eye, Maximize2, Minimize2 } from "lucide-react";
+import { Code2, Eye, Maximize2, Minimize2, Paperclip } from "lucide-react";
 import { RawMarkdownEditor } from "./RawMarkdownEditor";
 
 type EditorMode = "rich" | "raw";
@@ -53,6 +53,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
   // body looks empty rather than loading, for however long the parse takes.
   const [richLoading, setRichLoading] = useState(true);
   const titleRef = useRef<HTMLInputElement>(null);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
   const loaded = useRef(false);
   const dirty = useRef(false);
   const lastSavedRaw = useRef(initialRawMarkdown);
@@ -102,12 +103,18 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
 
   useEffect(() => {
     let cancelled = false;
-    markdownToBlocksOffThread(initialMarkdown).then((parsed) => {
-      if (cancelled) return;
-      const blocks = liftMermaid(parsed);
-      if (blocks.length > 0) editor.replaceBlocks(editor.document, blocks);
-      requestAnimationFrame(() => { loaded.current = true; setRichLoading(false); });
-    });
+    (async () => {
+      try {
+        const parsed = await markdownToBlocksOffThread(initialMarkdown);
+        if (cancelled) return;
+        const blocks = liftMermaid(parsed);
+        if (blocks.length > 0) editor.replaceBlocks(editor.document, blocks);
+      } catch {
+        if (!cancelled) setMode("raw");
+      } finally {
+        if (!cancelled) requestAnimationFrame(() => { loaded.current = true; setRichLoading(false); });
+      }
+    })();
     return () => { cancelled = true; };
   }, []);
 
@@ -152,6 +159,12 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
         setMode("rich");
         requestAnimationFrame(() => { loaded.current = true; setRichLoading(false); });
       }
+    } catch {
+      if (nextMode === "rich") {
+        setMode("raw");
+        setRichLoading(false);
+        loaded.current = true;
+      }
     } finally {
       setSwitchingMode(false);
     }
@@ -160,6 +173,21 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
   const handleRawChange = (markdown: string) => {
     dirty.current = true;
     setRawMarkdown(markdown);
+    scheduleSave();
+  };
+
+  const insertAttachment = async (file: File | undefined) => {
+    if (!file) return;
+    const url = await onUploadImage(file);
+    const type = file.type.startsWith("image/") ? "image"
+      : file.type.startsWith("audio/") ? "audio"
+      : file.type.startsWith("video/") ? "video"
+      : "file";
+    editor.insertBlocks([{
+      type,
+      props: { url, name: file.name || "attachment" },
+    } as any], editor.getTextCursorPosition().block, "after");
+    dirty.current = true;
     scheduleSave();
   };
 
@@ -226,6 +254,10 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
         <div className="mt-2 flex items-center gap-2">
           <p className="min-w-0 flex-1 truncate text-xs font-mono text-muted-foreground/60">{relPath}</p>
           <div className="flex items-center rounded-md bg-muted p-0.5">
+            <Button type="button" variant="ghost" onClick={() => attachmentInputRef.current?.click()}
+              title={t("doc.attachFile")} className="h-6 gap-1 px-2 text-[10px]">
+              <Paperclip className="h-3 w-3" /> {t("doc.attach")}
+            </Button>
             <Button type="button" variant="ghost" disabled={switchingMode} onClick={() => void switchMode("rich")} className={`h-6 gap-1 px-2 text-[10px] ${mode === "rich" ? "bg-background shadow-sm" : ""}`}>
               <Eye className="h-3 w-3" /> {t("doc.richMode")}
             </Button>
@@ -235,6 +267,8 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
           </div>
         </div>
         <div className="mt-3 border-b border-border/60" />
+        <input ref={attachmentInputRef} type="file" className="hidden"
+          onChange={(event) => { void insertAttachment(event.target.files?.[0]); event.target.value = ""; }} />
       </div>
 
       {mode === "rich" ? (
@@ -244,7 +278,8 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
               <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
             </div>
           )}
-          <BlockNoteView editor={editor} theme={isDark ? "dark" : "light"} onChange={handleChange} className="tanwords-editor" />
+          <BlockNoteView editor={editor} theme={isDark ? "dark" : "light"} onChange={handleChange}
+            className="tanwords-editor" />
         </div>
       ) : (
         <RawMarkdownEditor value={rawMarkdown} onChange={handleRawChange} label={t("doc.rawMode")} />

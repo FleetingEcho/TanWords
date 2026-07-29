@@ -14,10 +14,12 @@ import { liftMermaid, lowerMermaid } from "./mermaidTransforms";
 import { PinIcon } from "@/components/ui/icons";
 import { CheckIcon } from "@heroicons/react/24/solid";
 import { Button } from "@/components/ui/button";
-import { Code2, Eye } from "lucide-react";
+import { Code2, Eye, Link2, Paperclip, Search } from "lucide-react";
 import { RawMarkdownEditor } from "./RawMarkdownEditor";
-import { resolveDocumentAssetUrl, uploadDocumentImage } from "@/lib/documentAssets";
+import { resolveDocumentAssetUrl, uploadDocumentAsset } from "@/lib/documentAssets";
 import type { SaveStatus } from "./useDocumentEditor";
+import { invoke } from "@tauri-apps/api/core";
+import { Dialog, DialogTitle } from "@/components/ui/dialog";
 
 interface Props {
   doc: DocumentDetail;
@@ -27,6 +29,13 @@ interface Props {
   onTagsChange: (tags: string) => void;
   onPinToggle: () => void;
   saveStatus: SaveStatus;
+}
+
+interface DocumentLinkItem { id: number; title: string }
+interface DocumentLinkContext {
+  outgoing: DocumentLinkItem[];
+  backlinks: DocumentLinkItem[];
+  candidates: DocumentLinkItem[];
 }
 
 export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, onPinToggle, saveStatus }: Props) {
@@ -44,7 +53,11 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
   // area renders blank in between: the title/tags header is already there, but the
   // body looks empty rather than loading, for however long the parse takes.
   const [richLoading, setRichLoading] = useState(true);
+  const [linkContext, setLinkContext] = useState<DocumentLinkContext>({ outgoing: [], backlinks: [], candidates: [] });
+  const [linkPickerOpen, setLinkPickerOpen] = useState(false);
+  const [linkQuery, setLinkQuery] = useState("");
   const titleRef = useRef<HTMLInputElement>(null);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
   const loaded = useRef(false);
   const rawDirty = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -54,22 +67,65 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
 
   const editor = useCreateBlockNote({
     schema: editorSchema,
-    uploadFile: (file) => uploadDocumentImage(doc.id, file),
+    uploadFile: (file) => uploadDocumentAsset(doc.id, file),
     resolveFileUrl: resolveDocumentAssetUrl,
   }, [doc.id]);
 
   // Load stored content (BlockNote JSON, or legacy Lexical — lazily migrated)
   useEffect(() => {
     let cancelled = false;
-    contentToBlocksOffThread(doc.content).then((parsed) => {
-      if (cancelled) return;
-      const blocks = liftMermaid(parsed);
-      if (blocks.length > 0) editor.replaceBlocks(editor.document, blocks);
-      // Enable saving only after initial content is in place
-      requestAnimationFrame(() => { loaded.current = true; setRichLoading(false); });
-    });
+    (async () => {
+      try {
+        const parsed = await contentToBlocksOffThread(doc.content);
+        if (cancelled) return;
+        const blocks = liftMermaid(parsed);
+        if (blocks.length > 0) editor.replaceBlocks(editor.document, blocks);
+      } finally {
+        if (!cancelled) requestAnimationFrame(() => { loaded.current = true; setRichLoading(false); });
+      }
+    })();
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    invoke<DocumentLinkContext>("db_get_document_link_context", { documentId: doc.id })
+      .then(setLinkContext)
+      .catch(() => {});
+  }, [doc.id, doc.content]);
+
+  const insertDocumentLink = (target: DocumentLinkItem) => {
+    editor.insertInlineContent([{
+      type: "link",
+      href: `tanwords-doc://${target.id}`,
+      content: target.title,
+    }]);
+    setLinkPickerOpen(false);
+    setLinkQuery("");
+    scheduleSave();
+  };
+
+  const insertAttachment = async (file: File | undefined) => {
+    if (!file) return;
+    const url = await uploadDocumentAsset(doc.id, file);
+    const type = file.type.startsWith("image/") ? "image"
+      : file.type.startsWith("audio/") ? "audio"
+      : file.type.startsWith("video/") ? "video"
+      : "file";
+    const current = editor.getTextCursorPosition().block;
+    editor.insertBlocks([{
+      type,
+      props: { url, name: file.name || "attachment" },
+    } as any], current, "after");
+    scheduleSave();
+  };
+
+  const handleEditorClick = (event: React.MouseEvent) => {
+    const anchor = (event.target as HTMLElement).closest<HTMLAnchorElement>("a[href^='tanwords-doc://']");
+    if (!anchor) return;
+    event.preventDefault();
+    const id = Number(anchor.getAttribute("href")?.slice("tanwords-doc://".length));
+    if (id > 0) window.dispatchEvent(new CustomEvent("tanwords:open-document", { detail: { id } }));
+  };
 
   const flushSave = useCallback(async () => {
     if (!dirty.current || !loaded.current) return;
@@ -230,6 +286,14 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
             </div>
           )}
           <div className="ml-auto flex items-center rounded-md bg-muted p-0.5">
+            <Button type="button" variant="ghost" onClick={() => attachmentInputRef.current?.click()}
+              title={t("doc.attachFile")} className="h-6 gap-1 px-2 text-[10px]">
+              <Paperclip className="h-3 w-3" /> {t("doc.attach")}
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => setLinkPickerOpen(true)}
+              title={t("doc.insertDocumentLink")} className="h-6 gap-1 px-2 text-[10px]">
+              <Link2 className="h-3 w-3" /> {t("doc.link")}
+            </Button>
             <Button type="button" variant="ghost" disabled={switchingMode} onClick={() => void switchMode("rich")} className={`h-6 gap-1 px-2 text-[10px] ${mode === "rich" ? "bg-background shadow-sm" : ""}`}>
               <Eye className="h-3 w-3" /> {t("doc.richMode")}
             </Button>
@@ -239,19 +303,45 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
           </div>
         </div>
         <div className="mt-3 border-b border-border/60" />
+        <input ref={attachmentInputRef} type="file" className="hidden"
+          onChange={(event) => { void insertAttachment(event.target.files?.[0]); event.target.value = ""; }} />
       </div>
 
       {mode === "rich" ? (
-        <div className="flex-1 overflow-y-auto relative">
+        <div className="flex-1 overflow-y-auto relative" onClickCapture={handleEditorClick}>
           {richLoading && (
             <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-10">
               <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
             </div>
           )}
-          <BlockNoteView editor={editor} theme={isDark ? "dark" : "light"} onChange={handleChange} className="tanwords-editor" />
+          <BlockNoteView editor={editor} theme={isDark ? "dark" : "light"} onChange={handleChange}
+            className="tanwords-editor" />
         </div>
       ) : (
         <RawMarkdownEditor value={rawMarkdown} onChange={handleRawChange} label={t("doc.rawMode")} />
+      )}
+
+      {(linkContext.outgoing.length > 0 || linkContext.backlinks.length > 0) && (
+        <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/60 px-12 py-2 text-[10px]">
+          {linkContext.outgoing.length > 0 && (
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              <Link2 className="h-3 w-3" /> {t("doc.outgoingLinks")}:
+              {linkContext.outgoing.map((item) => (
+                <button key={item.id} onClick={() => window.dispatchEvent(new CustomEvent("tanwords:open-document", { detail: { id: item.id } }))}
+                  className="text-primary hover:underline">{item.title}</button>
+              ))}
+            </span>
+          )}
+          {linkContext.backlinks.length > 0 && (
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              {t("doc.backlinks")}:
+              {linkContext.backlinks.map((item) => (
+                <button key={item.id} onClick={() => window.dispatchEvent(new CustomEvent("tanwords:open-document", { detail: { id: item.id } }))}
+                  className="text-primary hover:underline">{item.title}</button>
+              ))}
+            </span>
+          )}
+        </div>
       )}
 
       {/* Footer: save status + word count */}
@@ -271,6 +361,31 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
         <span className="ml-auto">{t("doc.wordCount", { n: doc.word_count })}</span>
         <span>{parseDbTimestamp(doc.updated_at).toLocaleDateString()}</span>
       </div>
+
+      <Dialog open={linkPickerOpen} onClose={() => setLinkPickerOpen(false)} maxWidth="max-w-md" className="overflow-hidden">
+        <div className="border-b border-border px-5 py-4">
+          <DialogTitle className="text-base font-semibold">{t("doc.insertDocumentLink")}</DialogTitle>
+        </div>
+        <div className="p-4">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input autoFocus value={linkQuery} onChange={(event) => setLinkQuery(event.target.value)}
+              placeholder={t("doc.searchDocumentsToLink")}
+              className="h-9 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-primary/30" />
+          </div>
+          <div className="mt-3 max-h-80 overflow-y-auto">
+            {linkContext.candidates
+              .filter((item) => item.title.toLowerCase().includes(linkQuery.trim().toLowerCase()))
+              .map((item) => (
+                <button key={item.id} onClick={() => insertDocumentLink(item)}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-muted">
+                  <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="truncate">{item.title}</span>
+                </button>
+              ))}
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }

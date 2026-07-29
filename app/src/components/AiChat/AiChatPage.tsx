@@ -10,11 +10,10 @@ import { AiChatComposer } from "./AiChatComposer";
 import { useAiChatSession, PRESET_IDS } from "./useAiChatSession";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowDown, Bot, Eraser, PlugZap, Settings, Unplug } from "lucide-react";
+import { ArrowDown, Bot, ChevronDown, Eraser, PlugZap, Unplug } from "lucide-react";
 import { useNavStore } from "@/store/navStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
-import { Dialog, DialogTitle } from "@/components/ui/dialog";
 import { buildPresetPrompt } from "./aiChatHelpers";
 
 export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSessionId?: string; onActiveIdChange?: (id: string | null) => void } = {}) {
@@ -26,7 +25,9 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
   const navigate = useNavStore((state) => state.navigate);
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(() => localStorage.getItem("aichat-sidebar-collapsed") === "1");
   const [confirmClear, setConfirmClear] = React.useState(false);
-  const [promptOpen, setPromptOpen] = React.useState(false);
+  const [promptExpanded, setPromptExpanded] = React.useState(
+    () => localStorage.getItem("aichat-prompt-expanded") === "1"
+  );
   const messages = React.useMemo(() => s.displayItems.flatMap((item) => item.kind === "message" ? [item.msg] : []), [s.displayItems]);
   const activeProvider = s.providers.find((provider) => provider.id === s.selectedProviderId) ?? s.providers[0];
   // With a wallpaper set, the app canvas is transparent (see AppBackground) —
@@ -34,6 +35,10 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
   const hasCustomAppBackground = useSettingsStore((state) => !!state.appBackgroundImage && state.appBackgroundVisible);
   const toggleSidebar = () => setSidebarCollapsed((current) => {
     localStorage.setItem("aichat-sidebar-collapsed", current ? "0" : "1");
+    return !current;
+  });
+  const togglePrompt = () => setPromptExpanded((current) => {
+    localStorage.setItem("aichat-prompt-expanded", current ? "0" : "1");
     return !current;
   });
   React.useEffect(() => {
@@ -91,17 +96,6 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
         {/* Compact icon-led session toolbar */}
         <div className="flex items-center gap-2 px-5 h-16 border-b border-border/60 bg-background/65 backdrop-blur-xl shrink-0">
           <div className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold tracking-tight text-foreground">{s.isNewSession ? t("aichat.newChat") : s.activeTitle}</span><span className="mt-0.5 block text-[10px] text-muted-foreground">{messages.length ? t("aichat.messageCount", { count: messages.length }) : t("aichat.ready")}</span></div>
-          <Select value={s.selectedPreset} onValueChange={(v) => s.setSelectedPreset(v)}>
-            <SelectTrigger title={t("aichat.toolbarMode")} aria-label={t("aichat.toolbarMode")} className="h-9 w-auto max-w-[160px] gap-2 rounded-xl border-border/70 bg-card/70 px-2.5 text-xs shadow-none focus:ring-1 focus:ring-primary/20 shrink-0">
-              <Bot className="h-3.5 w-3.5 shrink-0 text-primary" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {PRESET_IDS.map((id) => (
-                <SelectItem key={id} value={id}>{t(`aichat.preset.${id}`)}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
           {/* The selector is the connection indicator: it already names the
             * provider in use, so a separate "connected" light beside it said
             * the same thing twice and squeezed the model name into an
@@ -131,16 +125,73 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
               {t("aichat.providerDisconnected")}
             </Button>
           )}
-          <Button variant="ghost" onClick={() => setPromptOpen(true)} title={t("aichat.promptView")} aria-label={t("aichat.promptView")} className="h-9 w-9 rounded-xl p-0 text-muted-foreground hover:bg-primary/10 hover:text-primary shrink-0">
-            <Settings className="h-4 w-4" />
-          </Button>
           {s.displayItems.length > 0 && (
             <Button variant="ghost" onClick={() => setConfirmClear(true)} title={t("aichat.clear")} aria-label={t("aichat.clear")} className="h-9 w-9 rounded-xl p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive shrink-0">
               <Eraser className="h-4 w-4" />
             </Button>
           )}
-          {!activeProvider && <Button variant="ghost" onClick={() => navigate("settings")} title={t("aichat.openSettings")} aria-label={t("aichat.openSettings")} className="h-9 w-9 rounded-xl p-0 text-muted-foreground"><Settings className="h-4 w-4" /></Button>}
         </div>
+
+        {/* Tutor and its effective system prompt live together, directly above
+          * the conversation. The role stays switchable while collapsed; expanding
+          * reveals the exact prompt that will be sent and makes it editable. */}
+        <section className="border-b border-border/60 bg-background/40 backdrop-blur-md shrink-0">
+          <div className="flex min-h-12 items-center gap-2 px-5">
+            <Bot className="h-4 w-4 shrink-0 text-primary" />
+            <Select value={s.selectedPreset} onValueChange={(v) => s.setSelectedPreset(v)}>
+              <SelectTrigger
+                title={t("aichat.toolbarMode")}
+                aria-label={t("aichat.toolbarMode")}
+                className="h-8 w-auto min-w-[150px] max-w-[220px] gap-2 border-0 bg-transparent px-1 text-sm font-medium shadow-none hover:text-primary focus:ring-0"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PRESET_IDS.map((id) => (
+                  <SelectItem key={id} value={id}>{t(`aichat.preset.${id}`)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <button
+              type="button"
+              onClick={togglePrompt}
+              aria-expanded={promptExpanded}
+              aria-label={t("aichat.promptView")}
+              title={t("aichat.promptView")}
+              className="ml-auto flex h-8 items-center gap-2 rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground"
+            >
+              <span>{t("aichat.promptTitle")}</span>
+              <ChevronDown className={`h-4 w-4 transition-transform ${promptExpanded ? "rotate-180" : ""}`} />
+            </button>
+          </div>
+          {promptExpanded && (
+            <div className="border-t border-border/50 px-5 pb-4 pt-3">
+              <div className="mx-auto max-w-4xl">
+                <p className="mb-2 text-xs text-muted-foreground">{t("aichat.promptDescription")}</p>
+                <textarea
+                  value={s.customPrompt}
+                  onChange={(e) => s.setCustomPrompt(e.target.value)}
+                  placeholder={t("aichat.customPromptPlaceholder")}
+                  rows={8}
+                  className="max-h-[40vh] min-h-32 w-full resize-y rounded-xl border border-input bg-muted/20 px-4 py-3 font-mono text-xs leading-relaxed placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+                <div className="mt-2 flex items-center justify-end gap-2">
+                  <Button
+                    variant="ghost"
+                    disabled={s.selectedPreset === "custom"}
+                    onClick={() => s.setCustomPrompt(buildPresetPrompt(s.selectedPreset, useSettingsStore.getState().targetLevels.join("/")))}
+                    className="h-8 text-xs text-muted-foreground"
+                  >
+                    {t("aichat.promptReset")}
+                  </Button>
+                  <Button size="sm" className="h-8" onClick={togglePrompt}>
+                    {t("aichat.promptDone")}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
 
         {/* Messages */}
         <div className="relative flex-1 min-h-0">
@@ -258,33 +309,6 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
         onCancel={() => setConfirmClear(false)}
         onConfirm={() => { setConfirmClear(false); void s.clearMessages(); }}
       />
-      <Dialog open={promptOpen} onClose={() => setPromptOpen(false)} maxWidth="max-w-2xl" className="overflow-hidden">
-        <div className="border-b border-border/70 px-6 py-5">
-          <DialogTitle className="text-base font-semibold">{t("aichat.promptTitle")}</DialogTitle>
-          <p className="mt-1 text-xs text-muted-foreground">{t("aichat.promptDescription")}</p>
-        </div>
-        <div className="p-6">
-          <textarea
-            value={s.customPrompt}
-            onChange={(e) => s.setCustomPrompt(e.target.value)}
-            placeholder={t("aichat.customPromptPlaceholder")}
-            rows={14}
-            autoFocus
-            className="w-full resize-y rounded-xl border border-input bg-muted/20 px-4 py-3 font-mono text-sm leading-relaxed placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/30"
-          />
-          <div className="mt-4 flex items-center justify-between gap-3">
-            <Button
-              variant="ghost"
-              disabled={s.selectedPreset === "custom"}
-              onClick={() => s.setCustomPrompt(buildPresetPrompt(s.selectedPreset, useSettingsStore.getState().targetLevels.join("/")))}
-              className="text-xs text-muted-foreground"
-            >
-              {t("aichat.promptReset")}
-            </Button>
-            <Button onClick={() => setPromptOpen(false)}>{t("aichat.promptDone")}</Button>
-          </div>
-        </div>
-      </Dialog>
     </div>
   );
 }

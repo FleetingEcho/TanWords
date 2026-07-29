@@ -180,6 +180,7 @@ fn audio_end(reader: &mut BufReader<File>, file_len: u64) -> std::io::Result<u64
 /// Written by the encoder, and exact for the audio that encoder produced — but
 /// see [`Scan::declared_matches`] for why that is not the same as being exact
 /// for the file it now sits at the front of.
+#[cfg(test)]
 fn declared_frame_count(first_frame: &[u8], header: &FrameHeader) -> Option<u64> {
     let xing_at = 4 + header.side_info_len as usize;
     if let Some(tag) = first_frame.get(xing_at..xing_at + 8) {
@@ -224,6 +225,7 @@ pub(super) struct Scan {
     pub(super) secs: f64,
     /// Whether the file's own Xing/Info/VBRI header declares a frame count that
     /// agrees with what the file actually contains.
+    #[cfg(test)]
     pub(super) declared_matches: bool,
 }
 
@@ -240,6 +242,7 @@ pub(super) struct Scan {
 /// the header of the first one survives at the top of the joined file and
 /// describes only its own part. Trusting its mere presence caps playback at the
 /// end of part one.
+#[cfg(test)]
 pub(super) fn has_exact_frame_count(path: &Path) -> bool {
     scan(path).is_some_and(|scan| scan.declared_matches)
 }
@@ -284,6 +287,7 @@ fn scan(path: &Path) -> Option<Scan> {
 
     // The declared count covers the audio frames only, the tag frame itself
     // excluded — but only for the part of the file the tag was written for.
+    #[cfg(test)]
     let declared_secs = declared_frame_count(&first_frame, &first_header).map(|frames| {
         frames as f64 * first_header.samples as f64 / first_header.sample_rate as f64
     });
@@ -317,8 +321,10 @@ fn scan(path: &Path) -> Option<Scan> {
     }
     // One frame of slack: the declared count legitimately differs by the tag
     // frame itself or a single trailing partial frame.
+    #[cfg(test)]
     let slack = 2.0 * first_header.samples as f64 / first_header.sample_rate as f64;
     Some(Scan {
+        #[cfg(test)]
         declared_matches: declared_secs.is_some_and(|declared| (declared - seconds).abs() <= slack),
         secs: seconds,
     })
