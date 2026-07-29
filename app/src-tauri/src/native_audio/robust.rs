@@ -57,17 +57,20 @@ const MAX_CONSECUTIVE_ERRORS: u32 = 4096;
 /// is the single largest contributor to the "song is cut short" reports, and it
 /// is invisible in testing with CBR or Xing-tagged files, which is most of them.
 ///
-/// So: gapless stays on wherever the frame count is genuinely written in the
-/// file — every non-MP3 container here declares one, as do MP3s with a Xing or
-/// VBRI header — and goes off for the MP3s where it would be trimming to a
-/// guess. The cost of switching it off is up to ~26 ms of encoder padding at
-/// each end; the cost of leaving it on is losing minutes of the song.
+/// A trustworthy frame count is not sufficient: old files can independently
+/// carry corrupt LAME delay/padding fields. Therefore gapless stays on for
+/// non-MP3 containers and off for every MP3. The cost is up to one encoder
+/// frame of padding; the cost of trusting bad metadata is the tail of the song.
 fn gapless_is_safe(path: &Path) -> bool {
     let is_mp3 = path
         .extension()
         .and_then(|extension| extension.to_str())
         .is_some_and(|extension| extension.eq_ignore_ascii_case("mp3"));
-    !is_mp3 || super::mp3_duration::has_exact_frame_count(path)
+    // Even a verified Xing frame count is not enough: old encoders sometimes
+    // write corrupt LAME delay/padding fields beside it. Symphonia subtracts
+    // those values when gapless mode is enabled and can trim tens of seconds.
+    // The maximum cost of disabling MP3 gapless trimming is one encoder frame.
+    !is_mp3
 }
 
 /// What to do after attempting to decode one packet.
@@ -130,10 +133,14 @@ impl RobustDecoder {
             spec,
             buffer: SampleBuffer::<f32>::new(0, spec),
             offset: 0,
-            total_duration: time_base
-                .zip(n_frames)
-                .map(|(base, frames)| Duration::from(base.calc_time(frames)))
-                .filter(|d| !d.is_zero()),
+            total_duration: super::measured_container_duration_secs(path)
+                .map(Duration::from_secs_f64)
+                .or_else(|| {
+                    time_base
+                        .zip(n_frames)
+                        .map(|(base, frames)| Duration::from(base.calc_time(frames)))
+                        .filter(|d| !d.is_zero())
+                }),
             finished: false,
         };
 

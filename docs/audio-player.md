@@ -57,6 +57,7 @@ WebView entirely.
 | `native_audio/decoder.rs` | `FileDecoder` enum + `open_decoder` routing |
 | `native_audio/robust.rs` | **The** decoder. Symphonia, all platforms |
 | `native_audio/mp3_duration.rs` | Exact MP3 length by frame-header walk |
+| `native_audio/mp4_duration.rs` | Exact MP4/M4A audio length from `mdhd`/`stts` or fragmented `sidx` |
 | `native_audio/playback.rs` | The playback worker thread (two variants) |
 | `native_audio/pulse.rs` | Linux-only PulseAudio output via `libloading` |
 | `native_audio/coreaudio.rs` | macOS-only ExtAudioFile decoder (fallback) |
@@ -179,7 +180,8 @@ reason about and to test.
 - **Classifies errors** into recover-and-continue vs. genuine end of stream,
   instead of ending on all of them.
 - **Rebuilds the codec** on a mid-stream spec change.
-- **Gates gapless trimming** on whether the frame count is trustworthy.
+- **Disables MP3 gapless trimming** because old files can carry corrupt LAME
+  trim metadata even when their Xing frame count is trustworthy.
 - **Never reports an empty span** while audio remains.
 
 ---
@@ -190,9 +192,11 @@ reason about and to test.
 at*, not by which library produced it:
 
 1. **MP3 → measured from the bitstream** (`mp3_duration.rs`).
-2. **Container-declared length** from the decoder (MP4/M4A/FLAC/Ogg write an
-   exact frame count in the header).
-3. **`lofty` tag metadata**, for anything the first two cannot parse.
+2. **MP4/M4A → container timing boxes**: `mdhd`/`stts` for ordinary files,
+   `sidx` for fragmented files whose media header and sample table are empty.
+3. **Container-declared length** from the decoder (FLAC/Ogg and ordinary
+   containers write an exact frame count in the header).
+4. **`lofty` tag metadata**, for anything the earlier sources cannot parse.
 
 The result is pushed back into the decoder via `set_total_duration`, so seek
 clamping uses the same number the UI displays.
@@ -265,10 +269,12 @@ frames and then truncates playback *to the guess*.
 This is the single largest contributor to the classic symptom, and it is
 invisible when testing with CBR or Xing-tagged files, which is most files.
 
-Fix: `gapless_is_safe()` — on for every non-MP3 container (they declare exact
-counts) and for MP3s whose Xing/VBRI count survives the cross-check; off
-otherwise. Cost of off: up to ~26 ms of padding at each end. Cost of on: minutes
-of the song.
+Fix: `gapless_is_safe()` leaves gapless mode on for non-MP3 containers, but off
+for every MP3. Cross-checking Xing/VBRI counts is still required for duration,
+but it is not sufficient for trimming: this concert recording has a correct
+frame count beside corrupt LAME trim metadata, and Symphonia cuts it at 3:27
+when gapless mode is enabled. Cost of off: up to ~26 ms of padding at each end.
+Cost of on with bad metadata: the rest of the song.
 
 ### 7.3 Mid-stream spec change kills the decoder permanently
 
@@ -347,11 +353,13 @@ track. `select_audio_track` takes both from the chosen audio track.
    container-declared exact count. Never divide file size by a bitrate.
 4. **Do not trust a Xing/VBRI count without cross-checking it** against the
    bitstream. Concatenated files carry a stale one.
-5. **Keep `native_audio_load` synchronous.** See §3.
-6. **Keep the fallback decoders as fallbacks.** Routing a format to a native
+5. **Do not enable MP3 gapless trimming solely because the frame count is
+   valid.** LAME trim metadata can be corrupt independently.
+6. **Keep `native_audio_load` synchronous.** See §3.
+7. **Keep the fallback decoders as fallbacks.** Routing a format to a native
    decoder as the *primary* path is what created the whack-a-mole in the first
    place.
-7. **`accurate_duration` is the single source of truth.** The library list and
+8. **`accurate_duration` is the single source of truth.** The library list and
    the player must call the same thing or they will drift apart again.
 
 ---
@@ -422,6 +430,7 @@ Fixtures and what each one catches:
 | fixture | catches |
 |---|---|
 | `music_video.mp4` | §7.1 foreign-track packets |
+| `fragmented-duration.mp4` | empty `mdhd`/`stts`, real duration in `sidx` |
 | `vbr_noxing.mp3` | §7.2 gapless-to-a-guess, and the duration estimate |
 | `mixed_rate.mp3` (two rates concatenated) | §7.3 spec change, §6 stale Xing |
 | `played.mp3` / `played.mp4` via `played_secs` | §7.4 the span contract |
@@ -459,9 +468,10 @@ CI run here.
 - **Position reporting across a mid-stream sample-rate change** is approximate:
   the non-Linux worker reads `rodio::Player::get_pos()`, which does not know the
   rate changed. Rare, and only affects concatenated files.
-- **Gapless is off for MP3s without a verified frame count**, costing up to
-  ~26 ms of padding at each end. Deliberate; see §7.2.
+- **Gapless is off for every MP3**, costing up to ~26 ms of padding at each
+  end. Deliberate; see §7.2.
 - **The library scan re-runs on every visit.** Fine for hundreds of files; a
   five-figure library would want caching.
-- **Duration is measured twice at load** — once for `gapless_is_safe`, once for
-  `accurate_duration`. ~3 ms total, not worth the coupling to optimize away.
+- **Duration is measured twice at load** — once when constructing the decoder
+  and once by `accurate_duration`, which pushes the same value back into it.
+  About 3 ms total, not worth coupling the two paths to optimize away.
