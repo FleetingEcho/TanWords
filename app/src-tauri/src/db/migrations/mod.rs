@@ -128,7 +128,7 @@ mod tests {
     /// `run` applies *every* pending migration, not just the one under test,
     /// so a test that seeds only the table it cares about trips over a later
     /// migration altering some other table. These are the pre-existing tables
-    /// that migrations 16-24 touch, in their shape as of version 15.
+    /// that later migrations touch, in their shape as of version 15.
     async fn seed_legacy_tables(conn: &Connection) {
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS words (
@@ -147,7 +147,8 @@ mod tests {
              );
              CREATE TABLE IF NOT EXISTS patterns (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                pattern TEXT NOT NULL
+                pattern TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
              );
              CREATE TABLE IF NOT EXISTS articles (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
