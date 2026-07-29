@@ -56,6 +56,7 @@ export const vocabulary: Dict = {
     "vocab.patterns.reanalyzing": "Re-analyzing…",
     "vocab.patterns.reanalyzed": "Analysis updated",
     "vocab.patterns.reanalyzeFailed": "Re-analysis failed — please retry",
+    "vocab.patterns.reanalyzeSelectedDone": "Re-analyzed {done} sentences",
     "vocab.patterns.delete": "Delete sentence",
     "vocab.patterns.deleteConfirm": "Delete “{name}” and its examples?",
     "vocab.patterns.deleted": "Sentence deleted",

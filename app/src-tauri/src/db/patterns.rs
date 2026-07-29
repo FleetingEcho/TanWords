@@ -26,6 +26,7 @@ pub struct PatternItem {
     level: Option<String>,
     starred: bool,
     created_at: String,
+    updated_at: String,
     examples: Vec<PatternExampleItem>,
 }
 
@@ -34,7 +35,7 @@ pub async fn db_list_patterns(conn: State<'_, AppState>) -> Result<Vec<PatternIt
     let db = db::conn(&conn)?;
     let mut patterns = db::fetch_all(
         &db,
-        "SELECT id,pattern,zh,note,level,starred,created_at FROM patterns ORDER BY created_at DESC, id DESC",
+        "SELECT id,pattern,zh,note,level,starred,created_at,updated_at FROM patterns ORDER BY created_at DESC, id DESC",
         (),
         |r| {
             Ok(PatternItem {
@@ -45,6 +46,7 @@ pub async fn db_list_patterns(conn: State<'_, AppState>) -> Result<Vec<PatternIt
                 level: r.get(4)?,
                 starred: r.get(5)?,
                 created_at: r.get(6)?,
+                updated_at: r.get(7)?,
                 examples: Vec::new(),
             })
         },
@@ -122,7 +124,7 @@ pub async fn db_update_pattern_analysis(
     let level = level.trim().to_string();
     let level_opt = if level.is_empty() { None } else { Some(level) };
     db.execute(
-        "UPDATE patterns SET pattern=?2, zh=?3, note=?4, level=?5 WHERE id=?1",
+        "UPDATE patterns SET pattern=?2, zh=?3, note=?4, level=?5, updated_at=CURRENT_TIMESTAMP WHERE id=?1",
         params![pattern_id, skeleton, zh, note, level_opt],
     )
     .await
@@ -166,7 +168,7 @@ pub async fn db_save_sentence_pattern(
     let level = level.trim().to_string();
     let level_opt = if level.is_empty() { None } else { Some(level) };
     tx.execute(
-        "INSERT INTO patterns(pattern,zh,function_tag,level,note) VALUES(?1,?2,'other',?3,?4)",
+        "INSERT INTO patterns(pattern,zh,function_tag,level,note,updated_at) VALUES(?1,?2,'other',?3,?4,CURRENT_TIMESTAMP)",
         params![pattern_text, zh, level_opt, note],
     )
     .await

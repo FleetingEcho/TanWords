@@ -56,6 +56,7 @@ export const vocabulary: Dict = {
     "vocab.patterns.reanalyzing": "重新解析中…",
     "vocab.patterns.reanalyzed": "解析已更新",
     "vocab.patterns.reanalyzeFailed": "重新解析失败，请重试",
+    "vocab.patterns.reanalyzeSelectedDone": "已重新解析 {done} 个句子",
     "vocab.patterns.delete": "删除句子",
     "vocab.patterns.deleteConfirm": "确定删除“{name}”及其例句吗？",
     "vocab.patterns.deleted": "句子已删除",

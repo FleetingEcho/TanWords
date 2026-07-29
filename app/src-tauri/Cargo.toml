@@ -48,6 +48,12 @@ feed-rs = "2"
 url = "2"
 lofty = "0.22"
 rodio = { version = "0.22.2", default-features = false, features = ["playback", "mp3", "flac", "vorbis", "wav", "mp4"] }
+# Used directly (not through rodio) by native_audio::robust, which needs
+# packet-level control rodio's Decoder does not expose: pinning the audio track
+# in a container that also has video, and recovering from mid-file demuxer
+# errors instead of ending the stream. Same crate versions rodio already
+# resolves to, so this adds no extra compilation.
+symphonia = { version = "0.5.5", default-features = false, features = ["mp3", "aac", "isomp4", "flac", "vorbis", "ogg", "wav", "pcm", "adpcm", "alac", "mkv", "aiff", "caf"] }
 walkdir = "2"
 encoding_rs = "0.8"
 tauri-plugin-updater = "2"

@@ -11,6 +11,7 @@ export interface PatternItem {
   level: string | null;
   starred: boolean;
   created_at: string;
+  updated_at: string;
   examples: PatternExampleItem[];
 }
 export interface SavePatternResult { pattern_id: number; created: boolean }
