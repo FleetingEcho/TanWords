@@ -7,15 +7,19 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ChevronsLeft, Filter } from "lucide-react";
+import { ChevronsLeft, Filter, Images } from "lucide-react";
 import { Download, FileInput, MoreHorizontal } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { exportMarkdownFiles, readMarkdownFiles } from "@/lib/localDocs";
+import { exportMarkdownBundles, readMarkdownFiles } from "@/lib/localDocs";
+import { getDocumentAssets, prepareDocumentAssetsForExport } from "@/lib/documentAssets";
 import { blocksToMarkdown, blocksToStorage, contentToBlocks, markdownToBlocks } from "@/lib/docFormat";
 import { LIST_PANEL_WIDTH, LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
 import { liftMermaid, lowerMermaid } from "./mermaidTransforms";
 import { ExportMarkdownDialog, MarkdownExportChoice } from "./ExportMarkdownDialog";
+import { DocumentImageManager } from "./DocumentImageManager";
+import { Dialog, DialogTitle } from "@/components/ui/dialog";
+import { CloseIcon } from "@/components/ui/icons";
 
 const PAGE_SIZE = 20;
 
@@ -44,6 +48,7 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, onCollap
   const [loading, setLoading] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [exportChoices, setExportChoices] = useState<MarkdownExportChoice[] | null>(null);
+  const [imagesOpen, setImagesOpen] = useState(false);
 
   const load = useCallback(async (p = page) => {
     setLoading(true);
@@ -130,9 +135,11 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, onCollap
         const detail = await db.getDocument(id);
         if (!detail) continue;
         const blocks = lowerMermaid(await contentToBlocks(detail.content));
-        files.push({ name: `${detail.title || t("doc.untitled")}.md`, content: await blocksToMarkdown(blocks) });
+        const markdown = await blocksToMarkdown(blocks);
+        const prepared = prepareDocumentAssetsForExport(markdown, await getDocumentAssets(id));
+        files.push({ name: `${detail.title || t("doc.untitled")}.md`, ...prepared });
       }
-      const count = await exportMarkdownFiles(destination, files);
+      const count = await exportMarkdownBundles(destination, files);
       toast.success(t("doc.exportedCount", { n: count }));
     } catch (error) { toast.error(String(error)); }
   };
@@ -180,6 +187,16 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, onCollap
             )}
           </div>
           <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setImagesOpen(true)}
+              className="h-6 w-6 text-muted-foreground hover:text-primary"
+              title={t("doc.manageDatabaseImages")}
+              aria-label={t("doc.manageDatabaseImages")}
+            >
+              <Images className="h-3.5 w-3.5" />
+            </Button>
             <Button onClick={onNewDoc} className="h-6 px-2.5 rounded-lg bg-primary text-white text-[11px] font-semibold hover:bg-primary/90">+ {t("doc.newDoc")}</Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-6 w-6"><MoreHorizontal className="h-3.5 w-3.5" /></Button></DropdownMenuTrigger>
@@ -317,6 +334,25 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, onCollap
           </Button>
         </div>
       )}
+
+      <Dialog
+        open={imagesOpen}
+        onClose={() => setImagesOpen(false)}
+        maxWidth="max-w-[min(94vw,1280px)]"
+        className="top-[4vh] h-[88vh] overflow-hidden"
+      >
+        <DialogTitle className="sr-only">{t("doc.manageDatabaseImages")}</DialogTitle>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setImagesOpen(false)}
+          className="absolute right-3 top-3 z-20 h-8 w-8 rounded-full bg-background/80 backdrop-blur"
+          title={t("common.close")}
+        >
+          <CloseIcon className="h-4 w-4" />
+        </Button>
+        <DocumentImageManager writable />
+      </Dialog>
 
       <ConfirmModal
         open={pendingDeleteId !== null}

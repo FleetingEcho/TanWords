@@ -4,8 +4,13 @@
  * itself is persisted in settings under `LOCAL_DOCS_ROOT_KEY`.
  */
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { prepareImageUpload } from "./documentAssets";
 
 export const LOCAL_DOCS_ROOT_KEY = "localdocs.root";
+
+export function localDocsRootExists(root: string): Promise<boolean> {
+  return invoke("localdocs_root_exists", { root });
+}
 
 export interface LocalDocItem {
   rel_path: string;
@@ -70,6 +75,22 @@ export function readMarkdownFiles(paths: string[]): Promise<MarkdownSource[]> {
 
 export function exportMarkdownFiles(destination: string, files: Array<{ name: string; content: string }>): Promise<number> {
   return invoke("markdown_export_files", { destination, files });
+}
+
+export function exportMarkdownBundles(destination: string, files: Array<{
+  name: string;
+  content: string;
+  assets: Array<{ name: string; dataBase64: string }>;
+}>): Promise<number> {
+  return invoke("markdown_export_bundles", { destination, files });
+}
+
+export async function uploadLocalDocImage(root: string, file: File): Promise<string> {
+  const relPath = await invoke<string>("localdocs_store_asset", {
+    root,
+    ...await prepareImageUpload(file),
+  });
+  return convertFileSrc(`${root}/${relPath}`);
 }
 
 // ── Image path rewriting ────────────────────────────────────────────────────

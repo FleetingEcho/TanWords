@@ -13,7 +13,7 @@ import {
   DisplayItem, PRESET_IDS, ATTACH_THRESHOLD,
   buildPresetPrompt, genId, estimateTokens,
   serializeItems, deserializeItems, buildApiHistory, isContextOverflowError,
-  buildArticleBody, trimItemsToBudget,
+  buildArticleBody, trimItemsToBudget, unwrapMarkdownFence,
 } from "./aiChatHelpers";
 
 
@@ -57,6 +57,7 @@ export function useAiChatSession(initialSessionId?: string) {
   const [attachment, setAttachment] = useState<string | null>(null);
   const [showAttachment, setShowAttachment] = useState(false);
   const [streaming, setStreaming] = useState(false);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollHostRef = useRef<HTMLDivElement>(null);
@@ -137,6 +138,35 @@ export function useAiChatSession(initialSessionId?: string) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSessionId]);
 
+  // Background Reading Tutor jobs persist their partial transcript while they
+  // stream. If one is open in this page/modal, reflect those writes live
+  // without taking ownership of (or interrupting) the background request.
+  useEffect(() => {
+    const onExternalSessionUpdate = (event: Event) => {
+      const sessionId = (event as CustomEvent<{ sessionId?: string }>).detail?.sessionId;
+      if (!sessionId) return;
+      const openingInitialSession = !activeIdRef.current && initialSessionId === sessionId;
+      if (!openingInitialSession && sessionId !== activeIdRef.current) return;
+      void db.getChatSession(sessionId).then((detail) => {
+        if (!detail) return;
+        if (openingInitialSession) {
+          skipAutoRestoreRef.current = true;
+          setActiveId(sessionId);
+          setIsNewSession(false);
+          setSelectedPreset(detail.preset_id);
+          setCustomPrompt(detail.system_prompt || buildPresetPrompt(detail.preset_id, targetLevel));
+          setSelectedProviderId(detail.provider_id || providers[0]?.id || "");
+        } else if (activeIdRef.current !== sessionId) {
+          return;
+        }
+        setItems(deserializeItems(detail.messages));
+        setActiveTitle(detail.title);
+      });
+    };
+    window.addEventListener("tanwords:chat-session-updated", onExternalSessionUpdate);
+    return () => window.removeEventListener("tanwords:chat-session-updated", onExternalSessionUpdate);
+  }, [db, initialSessionId, providers, setItems, targetLevel]);
+
   useEffect(() => {
     if (!selectedProviderId && providers.length > 0) setSelectedProviderId(providers[0].id);
   }, [providers.length]);
@@ -145,7 +175,9 @@ export function useAiChatSession(initialSessionId?: string) {
     const host = scrollHostRef.current;
     if (!host) return;
     const onScroll = () => {
-      stickToBottomRef.current = host.scrollHeight - host.scrollTop - host.clientHeight < 120;
+      const atBottom = host.scrollHeight - host.scrollTop - host.clientHeight < 80;
+      stickToBottomRef.current = atBottom;
+      setShowScrollToBottom(!atBottom);
     };
     host.addEventListener("scroll", onScroll, { passive: true });
     return () => host.removeEventListener("scroll", onScroll);
@@ -162,6 +194,12 @@ export function useAiChatSession(initialSessionId?: string) {
     if (!stickToBottomRef.current) return;
     bottomRef.current?.scrollIntoView({ behavior: streaming ? "auto" : "smooth" });
   }, [displayItems.length, tailLength, streaming]);
+
+  const scrollToBottom = useCallback(() => {
+    stickToBottomRef.current = true;
+    setShowScrollToBottom(false);
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
 
   useEffect(() => {
     const ta = textareaRef.current;
@@ -189,6 +227,7 @@ export function useAiChatSession(initialSessionId?: string) {
     const epoch = ++sessionEpochRef.current;
     skipAutoRestoreRef.current = true;
     stickToBottomRef.current = true;
+    setShowScrollToBottom(false);
     controllerRef.current?.abort();
     setStreaming(false);
     setActiveId(id);
@@ -211,6 +250,7 @@ export function useAiChatSession(initialSessionId?: string) {
     sessionEpochRef.current++;
     skipAutoRestoreRef.current = true;
     stickToBottomRef.current = true;
+    setShowScrollToBottom(false);
     controllerRef.current?.abort();
     setStreaming(false);
     setActiveId(genId());
@@ -448,7 +488,10 @@ export function useAiChatSession(initialSessionId?: string) {
 
     let currentApiMsgs: ApiMessage[] = [];
 
-    const tools = getEnabledTools(enabledGroups);
+    // Reading Tutor deliberately uses plain Markdown. This keeps it fast and
+    // reliable on local models; words and sentences can already be selected
+    // and saved from the rendered answer.
+    const tools = selectedPreset === "reading-tutor" ? [] : getEnabledTools(enabledGroups);
     const sysPrompt = systemPrompt || buildPresetPrompt("english-tutor", targetLevel);
     // Save the user's turn before starting the network request. This makes a
     // new session visible in History immediately and survives app/API failure.
@@ -628,6 +671,13 @@ export function useAiChatSession(initialSessionId?: string) {
 
     if (!controller.signal.aborted) {
       if (renderTimer !== null) window.clearTimeout(renderTimer);
+      if (selectedPreset === "reading-tutor") {
+        currentItems = currentItems.map((item) =>
+          item.kind === "message" && item.msg.role === "assistant"
+            ? { ...item, msg: { ...item.msg, content: unwrapMarkdownFence(item.msg.content) } }
+            : item
+        );
+      }
       setStreaming(false);
       setItems(currentItems);
       await saveSession(sessionId, title, currentItems, sysPrompt, selectedPreset, selectedProviderId);
@@ -666,7 +716,7 @@ export function useAiChatSession(initialSessionId?: string) {
     input, setInput, attachment, setAttachment, showAttachment, setShowAttachment,
     handlePaste, handleStop, sendMessage,
     regenerate, editUserMessage, canRegenerate: !streaming && lastUserIndex() >= 0,
-    bottomRef, scrollHostRef, textareaRef,
+    bottomRef, scrollHostRef, textareaRef, showScrollToBottom, scrollToBottom,
   };
 }
 

@@ -3,21 +3,10 @@ import { useT } from "@/hooks/useT";
 import { useNavStore } from "@/store/navStore";
 import { Button } from "@/components/ui/button";
 import type { DashboardStats } from "@/hooks/useDB";
-
-const LEVEL_COLORS: Record<string, string> = {
-  C2: "#a855f7", C1: "#3b82f6", B2: "#14b8a6", B1: "#22c55e", A2: "#f59e0b", A1: "#f59e0b",
-};
+import { LevelBadge } from "@/components/shared/LevelBadge";
 
 function LevelDot({ level }: { level: string }) {
-  if (!level) return null;
-  return (
-    <span
-      className="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0"
-      style={{ color: LEVEL_COLORS[level] ?? "#64748b", backgroundColor: `${LEVEL_COLORS[level] ?? "#64748b"}18` }}
-    >
-      {level}
-    </span>
-  );
+  return <LevelBadge level={level} />;
 }
 
 /** Dashboard card: the newest additions to the vocabulary. `words` comes from

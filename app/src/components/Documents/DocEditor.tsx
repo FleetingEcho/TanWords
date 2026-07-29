@@ -16,17 +16,20 @@ import { CheckIcon } from "@heroicons/react/24/solid";
 import { Button } from "@/components/ui/button";
 import { Code2, Eye } from "lucide-react";
 import { RawMarkdownEditor } from "./RawMarkdownEditor";
+import { resolveDocumentAssetUrl, uploadDocumentImage } from "@/lib/documentAssets";
+import type { SaveStatus } from "./useDocumentEditor";
 
 interface Props {
   doc: DocumentDetail;
-  onSave: (content: string, contentText: string, wordCount: number) => void;
+  onSave: (content: string, contentText: string, wordCount: number) => Promise<void>;
+  onDirty: () => void;
   onTitleChange: (title: string) => void;
   onTagsChange: (tags: string) => void;
   onPinToggle: () => void;
-  saveStatus: "saved" | "saving" | "idle";
+  saveStatus: SaveStatus;
 }
 
-export function DocEditor({ doc, onSave, onTitleChange, onTagsChange, onPinToggle, saveStatus }: Props) {
+export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, onPinToggle, saveStatus }: Props) {
   const t = useT();
   const isDark = useIsDark();
   const [title, setTitle] = useState(doc.title);
@@ -45,8 +48,15 @@ export function DocEditor({ doc, onSave, onTitleChange, onTagsChange, onPinToggl
   const loaded = useRef(false);
   const rawDirty = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const maxSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dirty = useRef(false);
+  const flushRef = useRef<() => Promise<void>>(async () => {});
 
-  const editor = useCreateBlockNote({ schema: editorSchema });
+  const editor = useCreateBlockNote({
+    schema: editorSchema,
+    uploadFile: (file) => uploadDocumentImage(doc.id, file),
+    resolveFileUrl: resolveDocumentAssetUrl,
+  }, [doc.id]);
 
   // Load stored content (BlockNote JSON, or legacy Lexical — lazily migrated)
   useEffect(() => {
@@ -61,19 +71,49 @@ export function DocEditor({ doc, onSave, onTitleChange, onTagsChange, onPinToggl
     return () => { cancelled = true; };
   }, []);
 
+  const flushSave = useCallback(async () => {
+    if (!dirty.current || !loaded.current) return;
+    dirty.current = false;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    if (maxSaveTimer.current) clearTimeout(maxSaveTimer.current);
+    saveTimer.current = null;
+    maxSaveTimer.current = null;
+    try {
+      const blocks = mode === "raw"
+        ? liftMermaid(await markdownToBlocksOffThread(rawMarkdown))
+        : structuredClone(editor.document);
+      const { content, contentText, wordCount } = await blocksToStorageOffThread(
+        mode === "raw" ? blocks : lowerMermaid(blocks) as any
+      );
+      rawDirty.current = false;
+      await onSave(content, contentText, wordCount);
+    } catch (error) {
+      dirty.current = true;
+      throw error;
+    }
+  }, [editor, mode, onSave, rawMarkdown]);
+  flushRef.current = flushSave;
+
+  const scheduleSave = useCallback(() => {
+    dirty.current = true;
+    onDirty();
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => { void flushRef.current().catch(() => {}); }, 1000);
+    if (!maxSaveTimer.current) {
+      maxSaveTimer.current = setTimeout(() => { void flushRef.current().catch(() => {}); }, 8000);
+    }
+  }, [onDirty]);
+
   const handleChange = useCallback(() => {
     if (!loaded.current) return;
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(async () => {
-      const { content, contentText, wordCount } = await blocksToStorageOffThread(editor.document);
-      onSave(content, contentText, wordCount);
-    }, 1000);
-  }, [editor, onSave]);
+    scheduleSave();
+  }, [scheduleSave]);
 
   const switchMode = useCallback(async (next: "rich" | "raw") => {
     if (next === mode || switchingMode) return;
     setSwitchingMode(true);
     if (saveTimer.current) clearTimeout(saveTimer.current);
+    if (maxSaveTimer.current) clearTimeout(maxSaveTimer.current);
     try {
       if (next === "raw") {
         setRawMarkdown(await editor.blocksToMarkdownLossy(lowerMermaid(editor.document) as any));
@@ -84,8 +124,9 @@ export function DocEditor({ doc, onSave, onTitleChange, onTagsChange, onPinToggl
         editor.replaceBlocks(editor.document, blocks.length ? blocks : [{ type: "paragraph" }]);
         if (rawDirty.current) {
           const { content, contentText, wordCount } = await blocksToStorageOffThread(blocks);
-          onSave(content, contentText, wordCount);
+          await onSave(content, contentText, wordCount);
           rawDirty.current = false;
+          dirty.current = false;
         }
         requestAnimationFrame(() => { loaded.current = true; setRichLoading(false); });
       }
@@ -98,16 +139,32 @@ export function DocEditor({ doc, onSave, onTitleChange, onTagsChange, onPinToggl
   const handleRawChange = (markdown: string) => {
     rawDirty.current = true;
     setRawMarkdown(markdown);
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(async () => {
-      const blocks = liftMermaid(await markdownToBlocksOffThread(markdown));
-      const { content, contentText, wordCount } = await blocksToStorageOffThread(blocks);
-      onSave(content, contentText, wordCount);
-      rawDirty.current = false;
-    }, 1000);
+    scheduleSave();
   };
 
-  useEffect(() => () => { if (saveTimer.current) clearTimeout(saveTimer.current); }, []);
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        void flushRef.current().catch(() => {});
+      }
+    };
+    const flushPending = () => { void flushRef.current().catch(() => {}); };
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("blur", flushPending);
+    window.addEventListener("pagehide", flushPending);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("blur", flushPending);
+      window.removeEventListener("pagehide", flushPending);
+    };
+  }, []);
+
+  useEffect(() => () => {
+    void flushRef.current().catch(() => {});
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    if (maxSaveTimer.current) clearTimeout(maxSaveTimer.current);
+  }, []);
 
   const handleTitleBlur = () => {
     const val = title.trim() || t("doc.untitled");
@@ -207,6 +264,8 @@ export function DocEditor({ doc, onSave, onTitleChange, onTagsChange, onPinToggl
             </span>
           ) : saveStatus === "saved" ? (
             <span className="text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1"><CheckIcon className="w-3 h-3" /> {t("doc.autoSaved")}</span>
+          ) : saveStatus === "dirty" ? (
+            <span>{t("doc.unsavedChanges")}</span>
           ) : null}
         </span>
         <span className="ml-auto">{t("doc.wordCount", { n: doc.word_count })}</span>

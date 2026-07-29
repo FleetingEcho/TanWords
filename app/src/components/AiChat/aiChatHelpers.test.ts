@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { DisplayItem, estimateTokens, trimItemsToBudget, buildApiHistory } from "./aiChatHelpers";
+import { DisplayItem, estimateTokens, trimItemsToBudget, buildApiHistory, buildPresetPrompt, unwrapMarkdownFence } from "./aiChatHelpers";
 
 const user = (content: string): DisplayItem => ({ kind: "message", msg: { role: "user", content } });
 const ai = (content: string): DisplayItem => ({ kind: "message", msg: { role: "assistant", content } });
@@ -12,6 +12,26 @@ describe("estimateTokens", () => {
   it("counts tool call input and results, not just message text", () => {
     const withTool = [user("hi"), ai(""), toolBlock({ items: ["a".repeat(400)] })];
     expect(estimateTokens(withTool)).toBeGreaterThan(estimateTokens([user("hi"), ai("")]) + 100);
+  });
+});
+
+describe("unwrapMarkdownFence", () => {
+  it("unwraps a whole markdown fence from local-model output", () => {
+    expect(unwrapMarkdownFence("```markdown\n## 标题\n\n内容\n```")).toBe("## 标题\n\n内容");
+  });
+
+  it("preserves ordinary markdown and inner code fences", () => {
+    const text = "说明\n\n```ts\nconst n = 1;\n```";
+    expect(unwrapMarkdownFence(text)).toBe(text);
+  });
+});
+
+describe("reading tutor prompt", () => {
+  it("requires a vocabulary section with at least 20 items", () => {
+    const prompt = buildPresetPrompt("reading-tutor", "B2");
+    expect(prompt).toContain("## 值得学的词汇");
+    expect(prompt).toContain("AT LEAST 20");
+    expect(prompt).toContain("Never omit this section");
   });
 });
 

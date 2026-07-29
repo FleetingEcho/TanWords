@@ -10,7 +10,7 @@ import { AiChatComposer } from "./AiChatComposer";
 import { useAiChatSession, PRESET_IDS } from "./useAiChatSession";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Bot, Eraser, PlugZap, Settings, Unplug } from "lucide-react";
+import { ArrowDown, Bot, Eraser, PlugZap, Settings, Unplug } from "lucide-react";
 import { useNavStore } from "@/store/navStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
@@ -143,8 +143,9 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
         </div>
 
         {/* Messages */}
-        <div ref={s.scrollHostRef} className="flex-1 overflow-y-auto px-5 py-7 min-h-0">
-          <div className="mx-auto max-w-full space-y-5">
+        <div className="relative flex-1 min-h-0">
+          <div ref={s.scrollHostRef} className="h-full overflow-y-auto px-5 py-7">
+            <div className="mx-auto max-w-full space-y-5">
           {s.displayItems.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center">
               <p className="text-sm font-semibold text-foreground/80">{t("aichat.emptyTitle")}</p>
@@ -214,10 +215,22 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
               );
             })
           )}
-          <div ref={s.bottomRef} />
+            <div ref={s.bottomRef} />
+            </div>
           </div>
-        </div>
 
+          {s.showScrollToBottom && (
+            <Button
+              variant="outline"
+              onClick={s.scrollToBottom}
+              title={t("aichat.scrollToBottom")}
+              aria-label={t("aichat.scrollToBottom")}
+              className="absolute bottom-4 left-1/2 z-10 h-9 w-9 -translate-x-1/2 rounded-full border-border/80 bg-background/90 p-0 text-muted-foreground shadow-lg backdrop-blur-md hover:bg-background hover:text-foreground"
+            >
+              <ArrowDown className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
 
         <AiChatComposer
           input={s.input}

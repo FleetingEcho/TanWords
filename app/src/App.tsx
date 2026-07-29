@@ -24,6 +24,7 @@ import { useMcpSync } from "@/hooks/useMcpSync";
 import { initProviders } from "@/lib/initProviders";
 import { invoke } from "@tauri-apps/api/core";
 import { ENRICHED_SEED_WORDS, BASIC_SEED_WORDS } from "@/data/seedWords";
+import { LOCAL_DOCS_ROOT_KEY, localDocsRootExists } from "@/lib/localDocs";
 
 const MusicPage = React.lazy(() => import("@/components/Music/MusicPage"));
 
@@ -33,6 +34,7 @@ function App() {
   const t = useT();
   const { currentPage, currentWordId, navigate } = useNavStore();
   const chatSessionId = useNavStore((s) => s.chatSessionId);
+  const sentenceId = useNavStore((s) => s.sentenceId);
 
   const [wordCount, setWordCount] = React.useState(0);
 
@@ -43,6 +45,23 @@ function App() {
   useEffect(() => {
     initProviders();
     loadFromDB();
+  }, []);
+
+  // The local Documents folder is a device path, while settings may live in a
+  // database shared by Linux, macOS, and other machines. Silently discard a
+  // binding that is invalid on this device before the Documents view can try
+  // to scan or reopen files from it.
+  useEffect(() => {
+    void (async () => {
+      try {
+        const root = await db.getSetting(LOCAL_DOCS_ROOT_KEY);
+        if (!root || await localDocsRootExists(root)) return;
+        await db.setSetting(LOCAL_DOCS_ROOT_KEY, "");
+        localStorage.removeItem("tanwords_doc_last_local_path");
+      } catch {
+        // Startup validation is best-effort; it must never block app launch.
+      }
+    })();
   }, []);
 
   // If a previously-saved custom DB path failed to open this launch (drive
@@ -150,7 +169,7 @@ function App() {
           </React.Suspense>
         );
       case "vocabulary":
-        return <VocabularyPage initialWordId={wordId} />;
+        return <VocabularyPage initialWordId={wordId} initialSentenceId={sentenceId} />;
       case "documents":
         return <DocumentsPage />;
       case "chat":
