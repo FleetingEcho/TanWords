@@ -71,7 +71,7 @@ fn read_metadata(path: &Path) -> (Option<String>, Option<String>, Option<f64>) {
             // gets listed minutes short of what it actually plays. Measure the
             // bitstream instead and keep lofty only for the tags — and for the
             // containers (MP4/FLAC/Ogg) that declare an exact frame count.
-            let duration = crate::native_audio::measured_mp3_duration_secs(path)
+            let duration = crate::native_audio::measured_container_duration_secs(path)
                 .unwrap_or_else(|| tagged.properties().duration().as_secs_f64());
             let (title, artist) = tagged
                 .primary_tag()

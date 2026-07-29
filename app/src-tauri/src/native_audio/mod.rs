@@ -4,6 +4,7 @@ mod coreaudio;
 #[cfg(target_os = "linux")]
 mod gstreamer;
 mod mp3_duration;
+mod mp4_duration;
 #[cfg(target_os = "linux")]
 mod pulse;
 mod playback;
@@ -40,6 +41,12 @@ pub fn measured_mp3_duration_secs(path: &std::path::Path) -> Option<f64> {
     mp3_duration::mp3_duration_secs(path).filter(|secs| *secs > 0.0)
 }
 
+/// Exact duration measured from a format-specific source rather than metadata
+/// heuristics or a decoder's derived frame count.
+pub fn measured_container_duration_secs(path: &std::path::Path) -> Option<f64> {
+    measured_mp3_duration_secs(path).or_else(|| mp4_duration::audio_duration_secs(path))
+}
+
 /// The single source of truth for how long a local file is.
 ///
 /// Ranked by how the number is arrived at, not by which library produced it:
@@ -60,6 +67,9 @@ pub fn measured_mp3_duration_secs(path: &std::path::Path) -> Option<f64> {
 /// bugs appear.
 fn accurate_duration(path: &PathBuf, decoder: &decoder::FileDecoder) -> f64 {
     if let Some(secs) = measured_mp3_duration_secs(path) {
+        return secs;
+    }
+    if let Some(secs) = mp4_duration::audio_duration_secs(path) {
         return secs;
     }
 

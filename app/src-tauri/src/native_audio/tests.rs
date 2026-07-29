@@ -175,6 +175,53 @@ fn plays_and_measures_past_a_mid_file_parameter_change() {
     }
 }
 
+/// A valid Xing count can sit beside corrupt LAME trim metadata. Symphonia
+/// trusts both when gapless mode is on, so valid audio at the tail disappears.
+#[test]
+fn ignores_corrupt_lame_padding_and_plays_the_tail() {
+    let path = fixture_dir().join("bad-lame-padding.mp3");
+    if !ffmpeg(&[
+        "-f", "lavfi", "-i", "sine=frequency=440:duration=8:sample_rate=44100",
+        "-c:a", "libmp3lame", "-q:a", "4", path.to_str().unwrap(),
+    ]) {
+        return;
+    }
+    let mut bytes = std::fs::read(&path).unwrap();
+    let encoder = bytes
+        .windows(4)
+        .position(|window| window == b"Lavc" || window == b"LAME")
+        .expect("ffmpeg MP3 should contain a LAME extension");
+    bytes[encoder + 21..encoder + 24].fill(0xff);
+    std::fs::write(&path, bytes).unwrap();
+
+    let decoded = decoded_secs(open_decoder(&path).unwrap());
+    assert!(decoded > 7.95, "decoded={decoded:.3}s of 8s");
+    let _ = std::fs::remove_file(path);
+}
+
+/// Fragmented MP4 files may leave `mdhd` and `stts` at zero and store the real
+/// duration in a top-level `sidx`. Symphonia reports only a short fragment.
+#[test]
+fn measures_fragmented_mp4_from_its_segment_index() {
+    let path = fixture_dir().join("fragmented-duration.mp4");
+    if !ffmpeg(&[
+        "-f",
+        "lavfi",
+        "-i",
+        "sine=frequency=440:duration=8:sample_rate=48000",
+        "-c:a",
+        "aac",
+        "-movflags",
+        "dash+frag_keyframe+empty_moov",
+        path.to_str().unwrap(),
+    ]) {
+        return;
+    }
+    let duration = super::mp4_duration::audio_duration_secs(&path).unwrap();
+    assert!((duration - 8.0).abs() < 0.1, "duration={duration:.3}s");
+    let _ = std::fs::remove_file(path);
+}
+
 /// The span contract, checked directly: a decoder must never report an empty
 /// span while it still has audio.
 ///
