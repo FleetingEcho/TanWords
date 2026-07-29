@@ -5,7 +5,7 @@ decode pipeline, how duration is determined, and — at length — the family of
 truncation bugs that made songs stop early, because that history is the main
 reason this subsystem looks the way it does.
 
-Written 2026-07-28.
+Written and last updated 2026-07-28.
 
 ---
 
@@ -180,8 +180,8 @@ reason about and to test.
 - **Classifies errors** into recover-and-continue vs. genuine end of stream,
   instead of ending on all of them.
 - **Rebuilds the codec** on a mid-stream spec change.
-- **Disables MP3 gapless trimming** because old files can carry corrupt LAME
-  trim metadata even when their Xing frame count is trustworthy.
+- **Disables MP3 gapless trimming** because a trustworthy Xing count does not
+  make every other trim input or Symphonia's resulting `n_frames` trustworthy.
 - **Never reports an empty span** while audio remains.
 
 ---
@@ -198,11 +198,18 @@ at*, not by which library produced it:
    containers write an exact frame count in the header).
 4. **`lofty` tag metadata**, for anything the earlier sources cannot parse.
 
-The result is pushed back into the decoder via `set_total_duration`, so seek
-clamping uses the same number the UI displays.
+`RobustDecoder::open` installs the measured MP3/MP4 value immediately.
+`native_audio_load` measures again through `accurate_duration` and pushes the
+result back into the decoder via `set_total_duration`, so seek clamping uses the
+same number the UI displays. The duplicate measurement is intentional
+decoupling and cheap for normal library-sized files.
 
-`music.rs` uses the same measurement for the library list, so the list and the
-player cannot disagree.
+`music.rs` calls `measured_container_duration_secs` before falling back to
+Lofty, so the library list, duration probe, loaded player and seek clamp all use
+the same format-specific result. This matters for wrong-but-positive metadata:
+the frontend only probes tracks whose duration is missing or non-positive, so a
+plausible-looking wrong value such as `0:33` must be corrected during the Rust
+library scan rather than left for frontend backfill.
 
 ### Why MP3 needs its own measurement
 
@@ -229,17 +236,48 @@ mixed MPEG versions/layers, and resync across mid-file garbage.
 **A Xing count is verified, not trusted.** When two MP3s are concatenated the
 first file's Xing header survives at the top of the joined file and describes
 only its own part. `Scan::declared_matches` is true only when the declared count
-agrees with the walk (± 2 frames of slack). This drives both the reported
-duration *and* whether gapless trimming is enabled.
+agrees with the walk (± 2 frames of slack). It is retained as a diagnostic
+invariant, while reported duration always comes from the walk. MP3 gapless
+trimming is now disabled regardless, because a correct frame count does not
+prove that adjacent delay/padding metadata—or the decoder's derived
+`n_frames`—is safe.
+
+### Why MP4/M4A needs its own measurement
+
+ISO Base Media files are box trees. `mp4_duration.rs` walks top-level boxes,
+supports ordinary 32-bit sizes, 64-bit extended sizes and size-zero boxes, and
+uses two duration layouts:
+
+1. **Ordinary MP4/M4A:** under `moov/trak/mdia`, `hdlr == "soun"` identifies an
+   audio track. Its `mdhd` supplies the media time scale. Duration comes from a
+   non-zero `mdhd` duration, or otherwise from the sum of
+   `stts` entries (`sample_count × sample_delta`). If several audio tracks are
+   present, the longest audio-track duration wins.
+2. **Fragmented MP4:** `mdhd` may declare zero and `stts` may contain zero
+   entries because samples live in later `moof` fragments. A top-level `sidx`
+   then supplies a time scale and a list of subsegment durations. The parser
+   sums those durations and uses the longest valid top-level index.
+
+The reported `cry for me.mp4` is the second shape: one AAC audio track at
+48 kHz, 302.549 seconds long. Its `mdhd` duration is zero and its `stts` table is
+empty; the complete timeline is in `sidx`. Symphonia derived 33.649551 seconds
+from incomplete fragment information, while `ffprobe` and the `sidx` sum both
+give 302.549 seconds (`5:02`). Because 33.65 is positive, the old frontend
+"fill missing durations" pass never challenged it.
+
+The parser is deliberately gated to `.mp4` and `.m4a`, just as the MPEG frame
+walk is gated to `.mp3`; scanning arbitrary compressed payloads for box or frame
+signatures would create false positives.
 
 ---
 
 ## 7. The truncation bug family
 
 The recurring "a 4:00 song stops at 3:12 and skips to the next track" report was
-never one bug. It was five, and the fixes for the first ones were routed around
-per-platform rather than fixed at the source — which is why it kept reappearing
-on whichever OS had not been patched yet.
+never one bug. It was a family of at least six decoder, buffering and duration
+failures. Fixes for the first ones were routed around per-platform rather than
+fixed at the source — which is why the symptom kept reappearing on whichever OS
+had not been patched yet.
 
 Measured against ffmpeg-built fixtures, before any fix:
 
@@ -249,6 +287,7 @@ Measured against ffmpeg-built fixtures, before any fix:
 | VBR mp3, no Xing header | 240 s | **39.8 s** | **181.3 s** |
 | VBR mp3, dense intro | 240 s | **10.5 s** | **20.0 s** |
 | two mp3s concatenated | 120 s | **60.0 s** | **60.0 s** |
+| fragmented AAC `.mp4` | 302.55 s | **33.65 s** | duration metadata wrong |
 
 ### 7.1 Foreign track packets fed to the audio decoder
 
@@ -271,10 +310,12 @@ invisible when testing with CBR or Xing-tagged files, which is most files.
 
 Fix: `gapless_is_safe()` leaves gapless mode on for non-MP3 containers, but off
 for every MP3. Cross-checking Xing/VBRI counts is still required for duration,
-but it is not sufficient for trimming: this concert recording has a correct
-frame count beside corrupt LAME trim metadata, and Symphonia cuts it at 3:27
-when gapless mode is enabled. Cost of off: up to ~26 ms of padding at each end.
-Cost of on with bad metadata: the rest of the song.
+but it is not sufficient for trimming: the reported concert recording measures
+229.90 seconds by frame walk, yet Symphonia exposes only 207.44 seconds when
+gapless mode is enabled and the full stream when it is disabled. The exact bad
+field or Symphonia interpretation in that old file has not been isolated, so
+the safe invariant is broader than one encoder tag. Cost of off: up to ~26 ms
+of padding at each end. Cost of on with bad metadata: the rest of the song.
 
 ### 7.3 Mid-stream spec change kills the decoder permanently
 
@@ -337,6 +378,23 @@ rodio takes the time base from the first supported track but the frame count
 from the container's *default* track — which in a music video is the video
 track. `select_audio_track` takes both from the chosen audio track.
 
+### 7.6 Fragmented MP4 has no ordinary track duration
+
+A fragmented MP4 can legally put `0` in `mdhd`, leave `stts` empty and store its
+timeline in `sidx` plus later `moof` fragments. Symphonia can still decode the
+AAC packets but derive a short, plausible `n_frames`; the reported five-minute
+file appeared as **0:33** in both the library and loaded player.
+
+This differs from §7.5: there is only one track and it is the correct audio
+track. The wrong number comes from reading an incomplete timing representation,
+not selecting video metadata.
+
+Fix: `mp4_duration.rs` reads the audio track's `mdhd`/`stts` timing for ordinary
+files and sums `sidx` subsegment durations for fragmented files. That
+format-specific result outranks both the decoder and Lofty in
+`accurate_duration`, is installed into `RobustDecoder`, and is also used by the
+library scan.
+
 ---
 
 ## 8. Invariants — do not break these
@@ -354,13 +412,19 @@ track. `select_audio_track` takes both from the chosen audio track.
 4. **Do not trust a Xing/VBRI count without cross-checking it** against the
    bitstream. Concatenated files carry a stale one.
 5. **Do not enable MP3 gapless trimming solely because the frame count is
-   valid.** LAME trim metadata can be corrupt independently.
+   valid.** Other trim metadata and the decoder's derived `n_frames` can still
+   be wrong.
 6. **Keep `native_audio_load` synchronous.** See §3.
 7. **Keep the fallback decoders as fallbacks.** Routing a format to a native
    decoder as the *primary* path is what created the whack-a-mole in the first
    place.
 8. **`accurate_duration` is the single source of truth.** The library list and
    the player must call the same thing or they will drift apart again.
+9. **A positive duration is not automatically trustworthy.** Frontend backfill
+   only repairs missing values. Format-specific MP3 and MP4 measurement must run
+   during the library scan, before accepting decoder or Lofty metadata.
+10. **Fragmented MP4 timing must fall back to `sidx` when `mdhd`/`stts` are
+    empty.** Do not interpret an empty sample table as a short or empty song.
 
 ---
 
@@ -407,8 +471,12 @@ jump.
 - Extensions: `mp3, wav, m4a, mp4, flac, ogg, aac`.
 - Grouped by **first-level subfolder**; loose root files go to a `""` collection
   rendered last.
-- Tags via `lofty`, duration via `measured_mp3_duration_secs` falling back to
-  `lofty`.
+- Tags via `lofty`; duration via `measured_container_duration_secs` (MP3 frame
+  walk or MP4/M4A box timing), falling back to `lofty` for other formats.
+- The frontend's four-worker `fillMissingDurations` pass invokes
+  `native_audio_probe_duration` only for null, non-finite or non-positive
+  values. It is a missing-metadata fallback, not a validator for positive
+  values.
 - **GBK mojibake repair** (`fix_legacy_encoding`): ID3 tags written by Chinese
   rippers are usually GBK bytes that the spec decodes as Latin-1, giving
   `"ÖÜ½ÜÂ×"` for `"周杰伦"`. If every char fits in Latin-1 and the bytes
@@ -420,25 +488,28 @@ jump.
 
 ## 11. Testing
 
-`native_audio/tests.rs` **builds its own fixtures with ffmpeg** and skips if
-ffmpeg is absent. This is deliberate: the older tests pointed at MP3s on one
-developer's disk (`/home/zteng/...`, `/Users/tengzhang/...`) and silently
-returned on every other machine, which is part of why this kept shipping broken.
+The portable regression tests in `native_audio/tests.rs` **build their own
+fixtures with ffmpeg** and skip if ffmpeg is absent. This is deliberate: a few
+older, optional diagnostic tests still point at files on developer machines and
+return when those files are absent. They are useful for checking the original
+reports locally but provide no CI coverage; every fixed file shape therefore
+needs a generated fixture too.
 
 Fixtures and what each one catches:
 
 | fixture | catches |
 |---|---|
 | `music_video.mp4` | §7.1 foreign-track packets |
-| `fragmented-duration.mp4` | empty `mdhd`/`stts`, real duration in `sidx` |
+| `fragmented-duration.mp4` | §7.6 empty `mdhd`/`stts`, real duration in `sidx` |
+| `bad-lame-padding.mp3` | §7.2 valid Xing count beside unsafe LAME trim metadata |
 | `vbr_noxing.mp3` | §7.2 gapless-to-a-guess, and the duration estimate |
 | `mixed_rate.mp3` (two rates concatenated) | §7.3 spec change, §6 stale Xing |
 | `played.mp3` / `played.mp4` via `played_secs` | §7.4 the span contract |
 | `span.mp3` | §7.4 stated directly as an invariant |
 | `seekable.mp3` | seek accuracy, and playing on to the real end afterwards |
 
-`mp3_duration.rs` has its own pure-Rust unit tests that synthesize MPEG frames
-byte by byte — no ffmpeg, no fixtures.
+`mp3_duration.rs` also has pure-Rust unit tests that synthesize MPEG frames byte
+by byte — no ffmpeg or media fixtures.
 
 ### ⚠️ The test binary does not currently run on Windows
 
@@ -448,10 +519,11 @@ reproduces on a clean `git stash`ed tree, so it predates the audio work and is
 unrelated to it. It means the audio tests, though committed, have not been run
 by the repo's own harness on this machine.
 
-They were instead verified by an isolated crate that pulls the same source files
-in via `#[path]` and depends only on `rodio` + `symphonia` + `lofty`. 16/16 pass.
-Worth reproducing that harness, or fixing the DLL fault, before trusting a green
-CI run here.
+The earlier decoder work was also verified with an isolated crate that pulled
+the source files in via `#[path]` and depended only on the audio crates. That
+harness predates the latest MP4-duration test, so fixing the Windows DLL fault
+or extending the isolated harness remains necessary before treating Windows
+coverage as complete.
 
 ---
 
@@ -470,8 +542,20 @@ CI run here.
   rate changed. Rare, and only affects concatenated files.
 - **Gapless is off for every MP3**, costing up to ~26 ms of padding at each
   end. Deliberate; see §7.2.
+- **The MP4 duration parser implements the layouts encountered here, not all of
+  ISO BMFF.** It understands audio `mdhd`/`stts` and top-level `sidx`, chooses
+  the longest audio track/index, and ignores edit lists and nested/referenced
+  segment indexes. A file whose presentation timeline depends materially on
+  `elst`, nested `sidx`, or manifests outside the file may still need another
+  duration rule.
+- **`sidx` is not intrinsically tied to a decoded track in the current parser.**
+  Taking the longest valid top-level index is appropriate for the observed
+  single-audio-track files and common audio/video files whose tracks share a
+  presentation length, but unusual multi-program MP4s need a stronger mapping.
 - **The library scan re-runs on every visit.** Fine for hundreds of files; a
   five-figure library would want caching.
-- **Duration is measured twice at load** — once when constructing the decoder
-  and once by `accurate_duration`, which pushes the same value back into it.
-  About 3 ms total, not worth coupling the two paths to optimize away.
+- **Duration is measured twice at load** — once when constructing
+  `RobustDecoder` and once by `accurate_duration`, which pushes the same value
+  back into it. MP3 measurement is about 1–2 ms for a typical song; MP4 parsing
+  reads only `moov`/`sidx` payloads rather than media data. The duplication is
+  not worth coupling the decoder constructor to session state.
