@@ -41,6 +41,7 @@ interface Props {
   onSelectAll: () => void;
   onClearSelection: () => void;
   onDeleteSelected: () => void;
+  onReanalyzeSelected: () => void;
 }
 
 /** Wraps every search-token occurrence in `text` with a <mark>, earliest
@@ -106,7 +107,7 @@ export function SentenceList({
   items, expandedId, search, searchTokens, levelFilter, starredOnly, dateFrom, dateTo, page, pageSize,
   onSearchChange, onLevelFilterChange, onStarredOnlyChange, onDateFromChange, onDateToChange,
   onToggleExpand, onDoubleClick, onPageChange, onOpenAdd, onOpenGenerate, onRequestDelete, onReanalyze, reanalyzingId, onToggleStar,
-  selectMode, onToggleSelectMode, selectedIds, onToggleSelect, onSelectAll, onClearSelection, onDeleteSelected,
+  selectMode, onToggleSelectMode, selectedIds, onToggleSelect, onSelectAll, onClearSelection, onDeleteSelected, onReanalyzeSelected,
 }: Props) {
   const t = useT();
   const totalPages = Math.ceil(items.length / pageSize);
@@ -157,6 +158,15 @@ export function SentenceList({
             />
             <span className="text-[11px] font-medium text-muted-foreground">{t("vocab.selectedCount", { n: selectedIds.size })}</span>
             <div className="ml-auto flex items-center gap-1">
+              <Button
+                variant="ghost"
+                onClick={onReanalyzeSelected}
+                disabled={selectedIds.size === 0 || reanalyzingId !== null}
+                title={t("vocab.reanalyzeSelected")}
+                className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-primary hover:bg-primary/10 disabled:opacity-30 transition-colors shrink-0"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${reanalyzingId !== null ? "animate-spin" : ""}`} />
+              </Button>
               <Button
                 variant="ghost"
                 onClick={onDeleteSelected}
@@ -230,6 +240,8 @@ export function SentenceList({
                   onClick={() => (selectMode ? onToggleSelect(item.id) : onToggleExpand(item))}
                   onDoubleClick={() => onDoubleClick(item)}
                   className={`flex items-center gap-2 px-5 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors ${
+                    expanded ? "sticky top-0 z-10 bg-background" : ""
+                  } ${
                     selectedIds.has(item.id) ? "bg-accent/50" : ""
                   }`}
                 >
@@ -263,9 +275,6 @@ export function SentenceList({
                   >
                     <Star className={`w-3.5 h-3.5 ${item.starred ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground/50"}`} />
                   </Button>
-                  <span className="shrink-0 text-[11px] text-muted-foreground/70 tabular-nums">
-                    {item.created_at.slice(0, 10)}
-                  </span>
                 </div>
 
                 {expanded && (

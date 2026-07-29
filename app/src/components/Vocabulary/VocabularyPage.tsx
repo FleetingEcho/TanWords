@@ -298,6 +298,7 @@ export function VocabularyPage({ initialWordId }: { initialWordId?: number }) {
   const loadWords = async () => {
     const results = await db.getWords({
       search: debouncedSearch || undefined,
+      dateField: "updated",
       dateFrom: dateFrom || undefined,
       dateTo: dateTo || undefined,
     });
