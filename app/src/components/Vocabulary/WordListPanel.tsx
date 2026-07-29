@@ -280,6 +280,8 @@ export function WordListPanel({
             onDoubleClick={() => onDoubleClick(w)}
             onClick={() => (selectMode ? onToggleSelect(w.id) : onSelect(w))}
             className={`${fullWidth ? "px-6 py-2.5" : "px-4 py-3"} cursor-pointer hover:bg-muted/50 transition-colors ${
+              expanded ? "sticky top-0 z-10 bg-background" : ""
+            } ${
               selectedIds.has(w.id) || (selectedId === w.id && !lookupActive) ? "bg-accent/50" : ""
             }`}
           >

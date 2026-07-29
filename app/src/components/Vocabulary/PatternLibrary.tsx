@@ -111,8 +111,8 @@ export function PatternLibrary({ initialQuery, onSeedConsumed }: { initialQuery?
         if (levelFilter === "B1-" ? !["B1", "A2", "A1"].includes(item.level ?? "") : item.level !== levelFilter) return false;
       }
       if (starredOnly && !item.starred) return false;
-      if (dateFrom && item.created_at < dateFrom) return false;
-      if (dateTo && item.created_at > `${dateTo} 23:59:59`) return false;
+      if (dateFrom && item.updated_at < dateFrom) return false;
+      if (dateTo && item.updated_at > `${dateTo} 23:59:59`) return false;
       return true;
     });
   }, [patterns, searchTokens, levelFilter, starredOnly, dateFrom, dateTo]);
@@ -182,6 +182,45 @@ export function PatternLibrary({ initialQuery, onSeedConsumed }: { initialQuery?
     setDeleting(false);
   };
 
+  // Sequentially re-runs analysis on every selected sentence — same per-item
+  // logic as `reanalyze`, just looped, since there's no batch endpoint for it.
+  // Exits select mode up front (mirrors the Words tab's reanalyzeSelected) so
+  // the toolbar doesn't linger showing a stale selection while this runs.
+  const reanalyzeSelected = async () => {
+    if (reanalyzingId !== null) return;
+    const provider = findBestProvider();
+    if (!provider) {
+      toast.error(t("vocab.noApiKey"));
+      return;
+    }
+    const targets = patterns.filter((p) => selectedIds.has(p.id));
+    exitSelectMode();
+    let done = 0;
+    let failed = 0;
+    for (const item of targets) {
+      setReanalyzingId(item.id);
+      try {
+        const sentence = item.examples[0]?.sentence ?? item.pattern;
+        const result = await analyzeSentence(provider, sentence, targetLevel);
+        if (!result.zh.trim()) { failed++; continue; }
+        const ok = await db.updatePatternAnalysis(item.id, result.zh, result.skeleton.trim() || sentence, result.note, result.level);
+        ok ? done++ : failed++;
+      } catch {
+        failed++;
+      }
+    }
+    setReanalyzingId(null);
+    if (done > 0) {
+      await load();
+      window.dispatchEvent(new CustomEvent("patterns-updated"));
+    }
+    if (done > 0) {
+      toast.success(t("vocab.patterns.reanalyzeSelectedDone", { done }) + (failed > 0 ? t("vocab.bulkEnrichFailedSuffix", { failed }) : ""));
+    } else {
+      toast.error(t("vocab.patterns.reanalyzeFailed"));
+    }
+  };
+
   const deleteSelected = async () => {
     if (deletingSelected) return;
     setDeletingSelected(true);
@@ -232,6 +271,7 @@ export function PatternLibrary({ initialQuery, onSeedConsumed }: { initialQuery?
         onSelectAll={selectAll}
         onClearSelection={clearSelection}
         onDeleteSelected={() => setDeleteSelectedOpen(true)}
+        onReanalyzeSelected={reanalyzeSelected}
       />
 
       <SentenceModal

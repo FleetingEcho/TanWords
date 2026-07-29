@@ -3,9 +3,11 @@ mod decoder;
 mod coreaudio;
 #[cfg(target_os = "linux")]
 mod gstreamer;
+mod mp3_duration;
 #[cfg(target_os = "linux")]
 mod pulse;
 mod playback;
+mod robust;
 #[cfg(test)]
 mod tests;
 
@@ -19,6 +21,63 @@ pub use playback::NativeAudioSnapshot;
 
 use decoder::open_decoder;
 use playback::{playback_worker, Command, Session};
+
+/// Exact duration of an MP3, measured from its frame headers; `None` for every
+/// other format (where the container already declares an exact length) and for
+/// files that do not parse as MPEG audio.
+///
+/// Gated on the extension on purpose: an MPEG frame header is only 11 sync bits
+/// plus a handful of field constraints, so scanning a FLAC or MP4 payload for
+/// one would occasionally "succeed" on compressed noise.
+pub fn measured_mp3_duration_secs(path: &std::path::Path) -> Option<f64> {
+    let is_mp3 = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("mp3"));
+    if !is_mp3 {
+        return None;
+    }
+    mp3_duration::mp3_duration_secs(path).filter(|secs| *secs > 0.0)
+}
+
+/// The single source of truth for how long a local file is.
+///
+/// Ranked by how the number is arrived at, not by which library produced it:
+///
+/// 1. **MP3: measured from the bitstream** (`mp3_duration`). Every other MP3
+///    source is an extrapolation from the leading frames — `lofty` logs
+///    "Using bitrate to estimate duration" and symphonia averages its first 16
+///    frames — which is exact for CBR and badly wrong for VBR files with no
+///    Xing header. That estimate is what reported a 4:00 song as 3:12.
+/// 2. **Container-declared length** from the decoder. For MP4/M4A/FLAC/Ogg the
+///    length is written in the header as an exact frame count, so it is not an
+///    estimate at all.
+/// 3. **`lofty` tag metadata**, for anything the first two cannot parse.
+///
+/// The result is also pushed back into the decoder
+/// (`FileDecoder::set_total_duration`) so seek clamping uses the same number
+/// the UI displays — a mismatch there is how "seek to the end does nothing"
+/// bugs appear.
+fn accurate_duration(path: &PathBuf, decoder: &decoder::FileDecoder) -> f64 {
+    if let Some(secs) = measured_mp3_duration_secs(path) {
+        return secs;
+    }
+
+    if let Some(secs) = decoder.total_duration().map(|d| d.as_secs_f64()) {
+        if secs > 0.0 {
+            return secs;
+        }
+    }
+
+    use lofty::prelude::*;
+    if let Ok(tagged) = lofty::read_from_path(path) {
+        let secs = tagged.properties().duration().as_secs_f64();
+        if secs > 0.0 {
+            return secs;
+        }
+    }
+    0.0
+}
 
 pub struct NativeAudioState {
     session: Mutex<Option<Session>>,
@@ -69,7 +128,7 @@ pub fn native_audio_probe_duration(path: String) -> Result<f64, String> {
         return Err("invalid local audio path".into());
     }
     let decoder = open_decoder(&path)?;
-    Ok(decoder.total_duration().map(|d| d.as_secs_f64()).unwrap_or(0.0))
+    Ok(accurate_duration(&path, &decoder))
 }
 
 /// Deliberately NOT `#[tauri::command(async)]`, unlike probe_duration above.
@@ -89,11 +148,11 @@ pub fn native_audio_load(
     if !path.is_absolute() || !path.is_file() {
         return Err("invalid local audio path".into());
     }
-    let decoder = open_decoder(&path)?;
-    let duration = decoder
-        .total_duration()
-        .map(|d| d.as_secs_f64())
-        .unwrap_or(0.0);
+    let mut decoder = open_decoder(&path)?;
+    let duration = accurate_duration(&path, &decoder);
+    if duration > 0.0 {
+        decoder.set_total_duration(std::time::Duration::from_secs_f64(duration));
+    }
     let rate = decoder.sample_rate().get();
     let channels = decoder.channels().get();
     let generation = state.snapshot.lock().map_err(|e| e.to_string())?.generation + 1;

@@ -292,11 +292,18 @@ impl Iterator for GstreamerDecoder {
         }
         let sample = self.samples[self.offset];
         self.offset += 1;
+        // Pull the next buffer now, so `current_span_len` is never 0 mid-file.
+        if self.offset >= self.samples.len() {
+            let _ = self.refill();
+        }
         Some(sample)
     }
 }
 
 impl Source for GstreamerDecoder {
+    /// Never `Some(0)` before the true end of the stream — a zero-length span
+    /// makes rodio's `UniformSourceIterator` declare the track finished. See
+    /// the long note on `RobustDecoder::current_span_len`.
     fn current_span_len(&self) -> Option<usize> {
         Some(self.samples.len().saturating_sub(self.offset))
     }

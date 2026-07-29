@@ -71,3 +71,12 @@ pub(super) const MIGRATION_24: Migration = Migration {
                 CHECK(starred IN (0, 1));
         ",
 };
+
+pub(super) const MIGRATION_25: Migration = Migration {
+    version: 25,
+    description: "add updated_at to patterns so the sentence library's date filter can query edit time, not just creation time",
+    sql: "
+            ALTER TABLE patterns ADD COLUMN updated_at TEXT NOT NULL DEFAULT '';
+            UPDATE patterns SET updated_at = created_at;
+        ",
+};
