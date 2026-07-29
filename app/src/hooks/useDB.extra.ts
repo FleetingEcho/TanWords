@@ -56,6 +56,24 @@ export function useDBExtra() {
     }
   }, []);
 
+  const setChatSessionPinned = useCallback(async (id: string, pinned: boolean): Promise<void> => {
+    try {
+      await invoke("db_set_chat_session_pinned", { id, pinned });
+    } catch (e) {
+      reportWriteError("setChatSessionPinned", e, "置顶对话失败");
+    }
+  }, []);
+
+  const renameChatSession = useCallback(async (id: string, title: string): Promise<boolean> => {
+    try {
+      await invoke("db_rename_chat_session", { id, title });
+      return true;
+    } catch (e) {
+      reportWriteError("renameChatSession", e, "重命名对话失败");
+      return false;
+    }
+  }, []);
+
   const getChatSession = useCallback(async (id: string): Promise<ChatSessionDetail | null> => {
     try {
       return await invoke<ChatSessionDetail | null>("db_get_chat_session", { id });
@@ -361,6 +379,41 @@ export function useDBExtra() {
     }
   }, []);
 
+  /** The profile that failed to open at launch, if any — same snapshot App.tsx
+   *  already toasted once at startup. Settings re-reads it to decide whether
+   *  to keep showing a "forget saved connection" affordance. */
+  const getStartupWarning = useCallback(async (): Promise<string | null> => {
+    try {
+      return await invoke<string | null>("db_get_startup_warning");
+    } catch (e) {
+      logError("getStartupWarning", e);
+      return null;
+    }
+  }, []);
+
+  /** Whether the profile saved on disk (independent of the live connection,
+   *  which is already the local fallback if this is relevant at all) is
+   *  Turso — gates the "forget saved connection" button. */
+  const isSavedProfileTurso = useCallback(async (): Promise<boolean> => {
+    try {
+      return await invoke<boolean>("db_saved_profile_is_turso");
+    } catch (e) {
+      logError("isSavedProfileTurso", e);
+      return false;
+    }
+  }, []);
+
+  /** Clears a saved Turso profile that can't be reconnected right now (lost
+   *  token, wiped keychain, …), without needing a live connection to it. */
+  const forgetSavedProfile = useCallback(async (): Promise<void> => {
+    try {
+      await invoke("db_forget_saved_profile");
+    } catch (e) {
+      reportWriteError("forgetSavedProfile", e, "Failed to clear saved connection");
+      throw e;
+    }
+  }, []);
+
   /** Pull the primary's latest changes now instead of waiting for the next
    *  background sync. No-op on a local profile. */
   const syncNow = useCallback(async (): Promise<void> => {
@@ -415,7 +468,7 @@ export function useDBExtra() {
   }, []);
 
   return useMemo(() => ({
-    listChatSessions, setChatSessionArchived, getChatSession, upsertChatSession, deleteChatSession, searchChatSessions,
+    listChatSessions, setChatSessionArchived, setChatSessionPinned, renameChatSession, getChatSession, upsertChatSession, deleteChatSession, searchChatSessions,
     saveArticleAnalysis, addKnownWords, getKnownWords,
     getDashboardStats,
     getDueCards, reviewCard,
@@ -424,9 +477,10 @@ export function useDBExtra() {
     syncRssFeed, getRssEntries, markRssEntryRead, getRssUnreadCounts,
     getDbPath, getDbSize, exportBackup, switchDbPath, clearTranslations,
     getConnection, connectTurso, disconnectRemote, syncNow,
+    getStartupWarning, isSavedProfileTurso, forgetSavedProfile,
     importAnalyze, importApply,
   }), [
-    listChatSessions, setChatSessionArchived, getChatSession, upsertChatSession, deleteChatSession, searchChatSessions,
+    listChatSessions, setChatSessionArchived, setChatSessionPinned, renameChatSession, getChatSession, upsertChatSession, deleteChatSession, searchChatSessions,
     saveArticleAnalysis, addKnownWords, getKnownWords,
     getDashboardStats,
     getDueCards, reviewCard,
@@ -435,6 +489,7 @@ export function useDBExtra() {
     syncRssFeed, getRssEntries, markRssEntryRead, getRssUnreadCounts,
     getDbPath, getDbSize, exportBackup, switchDbPath, clearTranslations,
     getConnection, connectTurso, disconnectRemote, syncNow,
+    getStartupWarning, isSavedProfileTurso, forgetSavedProfile,
     importAnalyze, importApply,
   ]);
 }

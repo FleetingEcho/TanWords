@@ -11,6 +11,8 @@ export interface ChatSessionItem {
   content_text: string;
   /** Folded out of the main list into the archive section. */
   archived: boolean;
+  /** Sorts above the rest of its shelf. */
+  pinned: boolean;
 }
 
 export interface ChatSessionDetail extends ChatSessionItem {

@@ -16,6 +16,7 @@ const TOOL_ICONS: Record<string, React.FC<{ className?: string }>> = {
   save_word:           BookIcon,
   search_vocabulary:   SearchIcon,
   extract_vocabulary:  SparkIcon,
+  extract_patterns:    SparkIcon,
   add_words_to_vocab:  BookIcon,
   generate_sentences:  SparkIcon,
   list_documents:      ClipboardListIcon,
@@ -28,6 +29,7 @@ export const TOOL_LABELS: Record<string, string> = {
   save_word:           "Save word",
   search_vocabulary:   "Search vocabulary",
   extract_vocabulary:  "Extract vocabulary",
+  extract_patterns:    "Extract sentence patterns",
   add_words_to_vocab:  "Add words to vocabulary",
   generate_sentences:  "Generate sentences",
   list_documents:      "List documents",
@@ -43,6 +45,7 @@ function inputSummary(name: string, input: Record<string, unknown>): string {
     case "extract_vocabulary":  return `${(input.items as unknown[])?.length ?? 0} items`;
     case "add_words_to_vocab":  return `${(input.words as unknown[])?.length ?? 0} words`;
     case "generate_sentences":  return `${(input.items as unknown[])?.length ?? 0} sentences`;
+    case "extract_patterns":    return `${(input.items as unknown[])?.length ?? 0} sentences`;
     case "list_documents":      return "";
     case "insert_into_document":return `doc #${input.doc_id}`;
     case "save_note_as_document":return `"${input.title}"`;

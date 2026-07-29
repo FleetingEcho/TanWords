@@ -9,8 +9,9 @@ import { useSettingsStore } from "@/store/settingsStore";
 export function AppBackground() {
   const image = useSettingsStore((s) => s.appBackgroundImage);
   const blur = useSettingsStore((s) => s.appBackgroundBlur);
+  const visible = useSettingsStore((s) => s.appBackgroundVisible);
 
-  if (!image) return null;
+  if (!image || !visible) return null;
 
   return (
     <div className="fixed inset-0 -z-10 overflow-hidden bg-background">

@@ -74,7 +74,7 @@ pub async fn db_list_patterns(conn: State<'_, AppState>) -> Result<Vec<PatternIt
 
 #[tauri::command]
 pub async fn db_delete_pattern(pattern_id: i64, conn: State<'_, AppState>) -> Result<(), String> {
-    let db = db::conn(&conn)?;
+    let db = db::txn_conn(&conn).await?;
     let tx = db.transaction().await.map_err(|e| e.to_string())?;
     tx.execute("DELETE FROM pattern_practice WHERE pattern_id=?1", [pattern_id])
         .await
@@ -100,7 +100,7 @@ pub async fn db_save_sentence_pattern(
     source: String,
     conn: State<'_, AppState>,
 ) -> Result<SavePatternResult, String> {
-    let db = db::conn(&conn)?;
+    let db = db::txn_conn(&conn).await?;
     let sentence = sentence.trim().to_string();
     if sentence.is_empty() {
         return Err("empty sentence".into());

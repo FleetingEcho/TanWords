@@ -11,8 +11,8 @@ export function useT() {
   // triggering an infinite effect → setState → render loop.
   return useCallback(
     (key: string, vars?: Record<string, string | number>): string => {
-      const dict = translations[lang] ?? translations.zh;
-      let str = dict[key] ?? translations.zh[key] ?? key;
+      const dict = translations[lang] ?? translations.en;
+      let str = dict[key] ?? translations.en[key] ?? key;
       if (vars) {
         for (const [k, v] of Object.entries(vars)) {
           str = str.replace(`{${k}}`, String(v));

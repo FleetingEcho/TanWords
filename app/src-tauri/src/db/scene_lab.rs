@@ -135,7 +135,7 @@ pub async fn db_save_scene_lesson(
     input: SaveSceneLessonInput,
     conn: State<'_, AppState>,
 ) -> Result<i64, String> {
-    let db = db::conn(&conn)?;
+    let db = db::txn_conn(&conn).await?;
     let tx = db.transaction().await.map_err(|e| e.to_string())?;
     if let Some(id) = db::fetch_optional(
         &tx,
@@ -399,7 +399,7 @@ pub async fn db_add_scene_words_to_vocabulary(
     scene_vocabulary_ids: Vec<i64>,
     conn: State<'_, AppState>,
 ) -> Result<SceneWordAddResult, String> {
-    let db = db::conn(&conn)?;
+    let db = db::txn_conn(&conn).await?;
     let tx = db.transaction().await.map_err(|e| e.to_string())?;
     let mut added = 0;
     let mut linked = 0;

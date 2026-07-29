@@ -1,5 +1,4 @@
 import { AIProvider, TranslateParams, ExplainParams, buildSystemPrompt, buildEnrichSystemPrompt, buildEnrichUserPrompt, ToolDef, ApiMessage, ToolCallResponse } from "./base";
-import { logUsage } from "@/store/usageStore";
 import { useSettingsStore } from "@/store/settingsStore";
 
 export class AnthropicProvider implements AIProvider {
@@ -33,13 +32,7 @@ export class AnthropicProvider implements AIProvider {
     const targetLevel = targetLevels.join("/");
     const system = buildEnrichSystemPrompt(customEnrichPrompt);
     const user = buildEnrichUserPrompt(word, targetLevel);
-    const inputChars = system.length + user.length;
-    let full = "";
-    for await (const chunk of this.streamMessages(system, user, signal)) {
-      full += chunk;
-      yield chunk;
-    }
-    logUsage(this.id, this.modelId, inputChars, full.length);
+    yield* this.streamMessages(system, user, signal);
   }
 
   async *generate(systemPrompt: string, userPrompt: string, signal?: AbortSignal): AsyncGenerator<string> {

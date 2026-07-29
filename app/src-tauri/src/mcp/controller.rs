@@ -180,9 +180,18 @@ pub fn state_conn_provider<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> ConnP
         let state = app
             .try_state::<crate::AppState>()
             .ok_or_else(|| "database is not ready".to_string())?;
-        // Bound to a local so the `State` guard outlives the lock+clone rather
-        // than being dropped mid-expression.
-        let conn = state.db.lock().map_err(|e| e.to_string())?.conn();
-        Ok(conn)
+        // On Turso, a *fresh* connection per request rather than a clone of
+        // the app's shared handle: a clone is the same Hrana stream, and MCP
+        // requests (including add_words' transaction) running concurrently
+        // with UI commands on one stream fail with "Stream already in use".
+        // Local profiles keep the shared handle — one local connection
+        // serializes fine, and `:memory:` must not be reopened.
+        let guard = state.db.lock().map_err(|e| e.to_string())?;
+        if guard.kind() == crate::db::DbKind::Local {
+            return Ok(guard.conn());
+        }
+        let database = guard.database();
+        drop(guard);
+        database.connect().map_err(|e| e.to_string())
     })
 }

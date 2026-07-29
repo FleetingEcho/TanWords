@@ -2,17 +2,21 @@ import React from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import {
-  BrainCircuit, Check, ChevronsLeft, ChevronsRight, ClipboardPaste, FilePlus2, Languages,
-  MessageSquarePlus, Monitor, Moon, Quote, Search, Server, Settings, Sun, Type, Unplug, User, X,
+  BrainCircuit, Check, ChevronsLeft, ChevronsRight, ClipboardPaste, Cloud, CloudOff, Database,
+  FilePlus2, Languages, MessageSquarePlus, Monitor, Moon, Quote, Search, Server, Settings, Sun,
+  Type, Unplug, User, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { WordSearchBox } from "@/components/shared/WordSearchBox";
 import { SentenceSearchBox } from "@/components/shared/SentenceSearchBox";
 import { useT } from "@/hooks/useT";
+import { useDB } from "@/hooks/useDB";
+import type { DbConnection } from "@/hooks/useDB.types";
 import { useProviderStatus } from "@/hooks/useProviderStatus";
 import { NavPage, useNavStore } from "@/store/navStore";
 import { UpdateButton } from "@/components/Layout/UpdateButton";
@@ -82,6 +86,14 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   });
   const [mcp, setMcp] = React.useState<{ running: boolean; error: string | null }>({ running: false, error: null });
   const { ready: providersReady, connected: providerConnected, available: availableProviders } = useProviderStatus();
+  const db = useDB();
+  const [connection, setConnection] = React.useState<DbConnection | null>(null);
+
+  // Fetched once: every path that changes the active profile (connect,
+  // disconnect, switch) reloads the whole app, so there's nothing to poll.
+  React.useEffect(() => {
+    db.getConnection().then(setConnection);
+  }, []);
 
   const refreshMcp = React.useCallback(() => {
     invoke<McpState>("mcp_get_config").then((result) => setMcp(result.status)).catch(() => {});
@@ -236,7 +248,29 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
             {iconsCollapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
           </Button>
           {!iconsCollapsed && <>
-          {visible("mcp") && <Button variant="ghost" size="icon" onClick={() => navigate("settings")} title={mcp.error || (mcp.running ? t("command.mcpRunning") : t("command.mcpStopped"))} className={`relative h-8 w-8 rounded-lg ${mcp.error ? "text-amber-500" : mcp.running ? "text-foreground" : "text-muted-foreground"}`}><Server className="h-4 w-4" />{mcp.running && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />}</Button>}
+          {visible("db") && <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => navigate("settings", undefined, "data")}
+                className={`relative h-8 w-8 rounded-lg ${connection?.kind === "turso" && connection.offline ? "text-amber-500" : "text-muted-foreground"}`}
+              >
+                {connection?.kind === "turso"
+                  ? (connection.offline ? <CloudOff className="h-4 w-4" /> : <Cloud className="h-4 w-4" />)
+                  : <Database className="h-4 w-4" />}
+                {connection?.kind === "turso" && !connection.offline && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="end" className="max-w-64">
+              <p className="font-medium">{connection?.kind === "turso" ? t("command.dbCloud") : t("command.dbLocal")}</p>
+              <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
+                {connection?.kind === "turso" ? connection.remoteUrl : connection?.path}
+              </p>
+              {connection?.kind === "turso" && connection.offline && <p className="mt-1 text-amber-500">{t("settings.remoteDBOffline")}</p>}
+            </TooltipContent>
+          </Tooltip>}
+          {visible("mcp") && <Button variant="ghost" size="icon" onClick={() => navigate("settings", undefined, "mcp")} title={mcp.error || (mcp.running ? t("command.mcpRunning") : t("command.mcpStopped"))} className={`relative h-8 w-8 rounded-lg ${mcp.error ? "text-amber-500" : mcp.running ? "text-foreground" : "text-muted-foreground"}`}><Server className="h-4 w-4" />{mcp.running && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />}</Button>}
           {visible("ai") && <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" title={aiTitle} className={`relative h-8 w-8 rounded-lg ${aiTone}`}>

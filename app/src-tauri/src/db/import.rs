@@ -123,13 +123,13 @@ pub struct ImportResult {
 /// still be read rather than being migrated on the spot.
 async fn open_source(path: &str) -> Result<Connection, String> {
     if !std::path::Path::new(path).exists() {
-        return Err(format!("找不到文件: {path}"));
+        return Err(format!("File not found: {path}"));
     }
     let db = libsql::Builder::new_local(path)
         .flags(libsql::OpenFlags::SQLITE_OPEN_READ_ONLY)
         .build()
         .await
-        .map_err(|e| format!("无法打开数据库文件: {e}"))?;
+        .map_err(|e| format!("Failed to open database file: {e}"))?;
     let conn = db.connect().map_err(|e| e.to_string())?;
     // Anything without a words table isn't a TanWords database.
     db::scalar_i64(
@@ -140,7 +140,7 @@ async fn open_source(path: &str) -> Result<Connection, String> {
     .await
     .ok()
     .filter(|found| *found > 0)
-    .ok_or_else(|| "这不是一个 TanWords 数据库文件".to_string())?;
+    .ok_or_else(|| "This is not a TanWords database file".to_string())?;
     Ok(conn)
 }
 
@@ -464,10 +464,10 @@ pub async fn db_import_apply(
     conn: State<'_, AppState>,
 ) -> Result<ImportResult, String> {
     if !conn.descriptor()?.caps.writable {
-        return Err("当前数据库是只读的，无法导入".into());
+        return Err("The current database is read-only and cannot import".into());
     }
     let source = open_source(&source_path).await?;
-    let target = db::conn(&conn)?;
+    let target = db::txn_conn(&conn).await?;
     let empty = Vec::new();
     let chosen = |kind: &str| -> HashSet<String> {
         decisions

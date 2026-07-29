@@ -56,7 +56,7 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, compact = 
   };
 
   const textSize = compact ? "text-xs" : "text-sm";
-  const avatarSize = compact ? "w-7 h-7 text-[11px]" : "w-8 h-8 text-xs";
+  const avatarSize = compact ? "w-8 h-8 text-xs" : "w-10 h-10 text-sm";
 
   const isLongUserMsg = msg.role === "user" && msg.content.length > COLLAPSE_THRESHOLD;
 
@@ -64,7 +64,7 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, compact = 
     <div className={`flex gap-3 group ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
       {msg.role === "assistant" && (
         <div
-          className={`${avatarSize} rounded-xl bg-gradient-to-br from-primary/25 to-primary/5 ring-1 ring-primary/15 flex items-center justify-center font-semibold text-primary shrink-0 mt-1 shadow-sm`}
+          className={`${avatarSize} rounded-xl bg-gradient-to-br from-primary to-primary/80 ring-1 ring-primary/30 flex items-center justify-center font-semibold text-primary-foreground shrink-0 mt-1 shadow-md`}
         >
           AI
         </div>
@@ -72,7 +72,7 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, compact = 
 
       <div
         {...(msg.role === "assistant" ? { [AI_MESSAGE_ATTR]: "" } : {})}
-        className={`relative max-w-[82%] ${fillCardWidth ? "w-full" : ""} rounded-[20px] px-4 py-3 ${textSize} leading-7 shadow-sm ${
+        className={`relative max-w-[min(82%,48rem)] ${fillCardWidth ? "w-full" : ""} rounded-[20px] px-4 py-3 ${textSize} leading-7 shadow-sm ${
           msg.role === "user"
             ? "bg-gradient-to-br from-primary to-primary/90 text-primary-foreground rounded-br-md shadow-primary/10"
             : "border border-border/55 bg-card/80 text-foreground rounded-bl-md backdrop-blur-sm"
@@ -161,12 +161,12 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, compact = 
 
       {msg.role === "user" && (
         <div
-          className={`${avatarSize} rounded-xl bg-muted/80 ring-1 ring-border/60 flex items-center justify-center shrink-0 mt-1 overflow-hidden`}
+          className={`${avatarSize} rounded-xl bg-muted ring-1 ring-border flex items-center justify-center shrink-0 mt-1 overflow-hidden shadow-md`}
         >
           {userAvatar ? (
             <img src={userAvatar} alt="" className="w-full h-full object-cover" />
           ) : (
-            <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-muted-foreground">
+            <svg viewBox="0 0 16 16" fill="currentColor" className="w-5 h-5 text-muted-foreground">
               <path fillRule="evenodd" d="M8 8a3 3 0 100-6 3 3 0 000 6zm-4.5 8a4.5 4.5 0 019 0H3.5z" />
             </svg>
           )}

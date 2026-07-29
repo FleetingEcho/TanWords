@@ -27,7 +27,7 @@ pub async fn db_add_search_history(word: String, conn: State<'_, AppState>) -> R
     if word.is_empty() {
         return Ok(());
     }
-    let db = db::conn(&conn)?;
+    let db = db::txn_conn(&conn).await?;
     let tx = db.transaction().await.map_err(|e| e.to_string())?;
     tx.execute("DELETE FROM search_history WHERE word = ?1", params![word.clone()])
         .await

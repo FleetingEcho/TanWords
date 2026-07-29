@@ -1,7 +1,10 @@
-import React from "react";
+import React, { useRef } from "react";
+import { Maximize2 } from "lucide-react";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { CloseIcon } from "@/components/ui/icons";
+import { useNavStore } from "@/store/navStore";
+import { useT } from "@/hooks/useT";
 import { AiChatPage } from "./AiChatPage";
 
 interface Props {
@@ -13,17 +16,41 @@ interface Props {
 
 /** Full AI Chat UI in a large modal so a "Learn with AI chat" result can be
  *  read without leaving the article/feed the user was on. A thin chrome bar
- *  (just a close button) sits above AiChatPage rather than floating over it —
+ *  (expand + close) sits above AiChatPage rather than floating over it —
  *  AiChatPage's own header is already busy with session/provider controls in
  *  the top-right corner. Renders a fresh AiChatPage each time it opens;
  *  that's fine since chat sessions are persisted (see useAiChatSession's own
- *  DB-backed session list) — closing and reopening just remounts, not loses. */
+ *  DB-backed session list) — closing and reopening just remounts, not loses.
+ *
+ *  Vertical centering is top-[7.5vh] (the leftover of h-[85vh]) instead of
+ *  top-1/2 -translate-y-1/2: percentage translates land the layer on
+ *  fractional pixels and WebKitGTK renders all the text inside blurry. */
 export function AiChatModal({ open, onClose, sessionId }: Props) {
+  const t = useT();
+  // The session shown may drift from the `sessionId` prop as the user clicks
+  // around the modal's sidebar — AiChatPage reports the live one up here so
+  // the expand button opens what's actually on screen.
+  const activeIdRef = useRef<string | null>(sessionId ?? null);
+
   if (!open) return null;
 
+  const expandToFullPage = () => {
+    useNavStore.getState().openChatSession(activeIdRef.current ?? undefined);
+    onClose();
+  };
+
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="max-w-none" className="w-[90vw] h-[85vh] top-1/2 -translate-y-1/2 flex flex-col overflow-hidden p-0">
-      <div className="flex shrink-0 items-center justify-end px-2 py-1.5 border-b border-border">
+    <Dialog open={open} onClose={onClose} maxWidth="max-w-none" className="w-[90vw] h-[85vh] top-[7.5vh] flex flex-col overflow-hidden p-0">
+      <div className="flex shrink-0 items-center justify-end gap-1 px-2 py-1.5 border-b border-border">
+        <Button
+          variant="ghost"
+          onClick={expandToFullPage}
+          title={t("aichat.expandToPage")}
+          aria-label={t("aichat.expandToPage")}
+          className="w-7 h-7 p-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+        >
+          <Maximize2 className="w-3.5 h-3.5" />
+        </Button>
         <Button
           variant="ghost"
           onClick={onClose}
@@ -33,7 +60,7 @@ export function AiChatModal({ open, onClose, sessionId }: Props) {
         </Button>
       </div>
       <div className="min-h-0 flex-1">
-        <AiChatPage initialSessionId={sessionId} />
+        <AiChatPage initialSessionId={sessionId} onActiveIdChange={(id) => { activeIdRef.current = id; }} />
       </div>
     </Dialog>
   );

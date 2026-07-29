@@ -25,6 +25,23 @@ async fn export_backup(conn: &Connection, dest: &str) -> std::result::Result<(),
     conn.execute("VACUUM INTO ?1", params![dest])
         .await
         .map_err(|e| e.to_string())?;
+
+    // `VACUUM INTO` always writes its target in rollback-journal mode, no
+    // matter what journal mode the source connection is using — the WAL
+    // setting is a page-cache/connection concept SQLite doesn't carry into a
+    // freshly rebuilt file. `turso db import` rejects anything that isn't
+    // WAL, so a backup handed to it as-is fails (surfaced there as a
+    // confusing "group not found" rather than anything about journal mode).
+    // Reopen the file we just wrote purely to flip that one pragma.
+    let backup = libsql::Builder::new_local(dest)
+        .build()
+        .await
+        .map_err(|e| e.to_string())?;
+    let backup_conn = backup.connect().map_err(|e| e.to_string())?;
+    backup_conn
+        .execute_batch("PRAGMA journal_mode=WAL;")
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -118,6 +135,27 @@ pub fn db_get_startup_warning(state: State<'_, AppState>) -> Option<String> {
     state.db_fallback_warning.clone()
 }
 
+/// Whether the profile saved on disk (not necessarily the live connection,
+/// which is already the local fallback by the time this is reachable) is
+/// Turso. A failed local profile self-heals in `open_startup_db`, but a
+/// failed Turso one is kept on purpose in case it was just a flaky network —
+/// so it can linger indefinitely if the real cause was a lost/revoked token.
+/// Gates the "Forget saved connection" button in Settings.
+#[tauri::command]
+pub fn db_saved_profile_is_turso() -> bool {
+    matches!(crate::appconfig::load_db_profile(), Some(DbProfile::Turso { .. }))
+}
+
+/// Clears a saved Turso profile (and its keychain token) that can't be
+/// reconnected right now. Unlike `db_disconnect_remote`, this needs no live
+/// connection to the profile being forgotten — it only touches the saved
+/// config, leaving whatever the app already fell back to untouched.
+#[tauri::command]
+pub fn db_forget_saved_profile() {
+    crate::appconfig::clear_db_profile();
+    crate::secrets::turso_token_clear();
+}
+
 /// Mounts a different SQLite file as the app's active database — creating it
 /// (and running migrations) if it doesn't exist yet, or opening it as-is if
 /// it does. Swaps the live connection in place so no restart is needed; the
@@ -169,20 +207,41 @@ pub async fn db_connect_turso(
     let url = url.trim().to_string();
     let token = token.trim().to_string();
     if url.is_empty() {
-        return Err("请填写 Turso 数据库 URL".into());
+        return Err("Please fill in the Turso database URL".into());
     }
     if token.is_empty() {
-        return Err("请填写 Turso auth token".into());
+        return Err("Please fill in the Turso auth token".into());
     }
 
-    let profile = DbProfile::Turso {
-        path: crate::replica_db_path(),
-        url,
-    };
+    let replica_path = crate::replica_db_path();
+    let profile = DbProfile::Turso { path: replica_path.clone(), url };
+
+    // The replica path is fixed, not derived from the URL, so a file can be
+    // sitting here from a previous connection to a *different* Turso database
+    // (or an interrupted one). Reusing it would make libsql's embedded-replica
+    // sync treat this as a continuation of that unrelated lineage — pulling
+    // only incremental frames near wherever that old sync left off instead of
+    // the new primary's full history, silently leaving most rows missing.
+    // An explicit "Connect" always means "give me everything from this
+    // database", so start from nothing rather than risk that mismatch.
+    for suffix in ["", "-wal", "-shm", "-client_wal_index", "-info"] {
+        let _ = std::fs::remove_file(format!("{replica_path}{suffix}"));
+    }
+
     // Open before persisting anything: a bad URL or token should leave the
     // current (working) connection and the saved profile exactly as they were.
     let database = db::connection::open(&profile, Some(&token)).await?;
     let descriptor = database.descriptor();
+
+    // The read-only degraded mode exists so a *launch* can keep serving data the
+    // user already has while the primary is unreachable. As the result of
+    // deliberately connecting to a database it is a trap: the profile gets
+    // saved, the UI reports success, and every write afterwards fails. Refuse it
+    // here so the user gets an error they can retry instead of a connection that
+    // silently can't store anything.
+    if !descriptor.caps.writable {
+        return Err("Connected but unable to write: the primary database is temporarily unavailable, please check your network and retry".into());
+    }
 
     crate::secrets::turso_token_set(&token)?;
     crate::appconfig::save_db_profile(&profile).map_err(|e| e.to_string())?;
@@ -283,7 +342,7 @@ pub async fn db_export_backup(
     conn: State<'_, AppState>,
 ) -> std::result::Result<(), String> {
     if !conn.descriptor()?.caps.export {
-        return Err("在线数据库不支持导出备份".into());
+        return Err("Online databases do not support exporting backups".into());
     }
     let db = db::conn(&conn)?;
     export_backup(&db, &dest).await

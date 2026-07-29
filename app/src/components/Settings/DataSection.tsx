@@ -7,7 +7,8 @@ import { DbConnection, ImportDecisions, ImportPlan } from "@/hooks/useDB.types";
 import { ImportPreviewModal } from "./ImportPreviewModal";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Button } from "@/components/ui/button";
-import { SettingRow } from "./SettingsShared";
+import { DownloadIcon } from "@/components/ui/icons";
+import { SettingRow, ToggleGroup } from "./SettingsShared";
 
 export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: ReturnType<typeof useT> }) {
   const [dbPath, setDbPath] = useState("");
@@ -17,6 +18,10 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
   const [confirmClear, setConfirmClear] = useState(false);
   const [pendingSwitchPath, setPendingSwitchPath] = useState<string | null>(null);
   const [switching, setSwitching] = useState(false);
+  // Which half of the (now split) storage settings is showing. Defaults to
+  // "local" and flips to "cloud" once we know the active or last-attempted
+  // profile was Turso — see the effect below.
+  const [activeTab, setActiveTab] = useState<"local" | "cloud">("local");
 
   // Turso connection form
   const [tursoOpen, setTursoOpen] = useState(false);
@@ -25,6 +30,8 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
   const [connecting, setConnecting] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [stuckTursoWarning, setStuckTursoWarning] = useState<string | null>(null);
+  const [forgetting, setForgetting] = useState(false);
 
   // Import from another database file
   const [importPlan, setImportPlan] = useState<ImportPlan | null>(null);
@@ -34,7 +41,22 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
   useEffect(() => {
     db.getDbPath().then(setDbPath);
     db.getDbSize().then(setDbSize);
-    db.getConnection().then(setConnection);
+    db.getConnection().then((c) => {
+      setConnection(c);
+      if (c?.kind === "turso") setActiveTab("cloud");
+    });
+    // A saved Turso profile that failed to open at launch is kept (not
+    // self-cleared like a local one) in case it was just a flaky network —
+    // so it can linger across restarts if the real cause was a lost token.
+    // Surface a way to clear it once we know that's actually the case.
+    Promise.all([db.getStartupWarning(), db.isSavedProfileTurso()]).then(
+      ([warning, isTurso]) => {
+        if (warning && isTurso) {
+          setStuckTursoWarning(warning);
+          setActiveTab("cloud");
+        }
+      }
+    );
   }, []);
 
   const isRemote = connection?.kind === "turso";
@@ -109,6 +131,19 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
     }
   };
 
+  const handleForgetSavedConnection = async () => {
+    setForgetting(true);
+    try {
+      await db.forgetSavedProfile();
+      setStuckTursoWarning(null);
+      toast.success(t("settings.remoteDBForgetOk"));
+    } catch {
+      // useDB already toasts the failure
+    } finally {
+      setForgetting(false);
+    }
+  };
+
   const handleSyncNow = async () => {
     setSyncing(true);
     try {
@@ -167,6 +202,17 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
     if (!dest) return;
     setExporting(true);
     try {
+      // Pull the primary's latest changes into the replica first, so the
+      // export isn't a few seconds (or longer) stale. Best-effort: if the
+      // sync fails — offline, network hiccup — still export whatever the
+      // replica already has rather than blocking the backup entirely.
+      if (isRemote && connection?.caps.sync && !isOffline) {
+        try {
+          await db.syncNow();
+        } catch {
+          // useDB already toasted the sync failure; fall through to export.
+        }
+      }
       await db.exportBackup(dest);
       toast.success(t("settings.exportOk"));
     } catch {
@@ -187,11 +233,75 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
     toast.success(t("settings.dangerClearedOk"));
   };
 
+  // Export works against whichever connection is active — the Turso replica
+  // is a real local SQLite file too — so it appears in both tabs. For a
+  // remote connection it's explicitly framed as a snapshot of the replica,
+  // which can be a few seconds behind the primary until the next sync.
+  const exportRow = (
+    <SettingRow
+      label={t("settings.exportDB")}
+      sub={isRemote ? t("settings.exportDBSubRemote") : t("settings.exportDBSub")}
+    >
+      <Button
+        size="icon"
+        onClick={handleExport}
+        disabled={exporting || !canExport}
+        title={exporting ? t("settings.exporting") : t("settings.exportDB")}
+        aria-label={exporting ? t("settings.exporting") : t("settings.exportDB")}
+        className="h-8 w-8 rounded-lg disabled:opacity-50 transition-colors"
+      >
+        <DownloadIcon className={`w-4 h-4 ${exporting ? "animate-pulse" : ""}`} />
+      </Button>
+    </SettingRow>
+  );
+
+  // Clearing translations is a plain delete against whichever connection is
+  // active — unlike Export, it isn't local-only — so it appears in both tabs
+  // rather than being tied to one.
+  const clearTranslationsRow = (
+    <SettingRow label={t("settings.dangerClearTranslations")} sub={t("settings.dangerClearTranslationsSub")}>
+      <Button
+        variant="ghost"
+        onClick={handleClearTranslations}
+        className={`h-8 px-4 rounded-lg text-xs font-semibold transition-colors ${
+          confirmClear
+            ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            : "border border-destructive/40 text-destructive hover:bg-destructive/10"
+        }`}
+      >
+        {confirmClear ? t("settings.dangerConfirm") : t("settings.dangerClear")}
+      </Button>
+    </SettingRow>
+  );
+
   return (
     <div className="space-y-3">
-      <div className="bg-card border border-border rounded-xl px-5 divide-y divide-border">
-        <SettingRow label={t("settings.dbLocation")}>
-          <div className="flex min-w-0 items-center gap-2">
+      {stuckTursoWarning && !isRemote && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-amber-600 dark:text-amber-500">
+                {t("settings.remoteDBStuckTitle")}
+              </p>
+              <p className="mt-1 truncate text-[11px] leading-relaxed text-muted-foreground" title={stuckTursoWarning}>
+                {stuckTursoWarning}
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              onClick={handleForgetSavedConnection}
+              disabled={forgetting}
+              className="h-8 shrink-0 rounded-lg border border-destructive/40 px-3 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+            >
+              {forgetting ? t("settings.remoteDBForgetting") : t("settings.remoteDBForget")}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-card border border-border rounded-xl px-5 py-4 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 flex items-center gap-2">
             {isRemote && (
               <span className="shrink-0 truncate font-mono text-[11px] text-primary" title={connection?.remoteUrl ?? ""}>
                 {connection?.remoteUrl}
@@ -203,132 +313,160 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
             >
               {isRemote ? `(${t("settings.remoteDBReplicaNote")}) ` : ""}{dbPath || "…"}
             </span>
-            <span className="shrink-0 rounded-full border border-border bg-muted/60 px-2 py-0.5 font-mono text-[10px] font-medium text-foreground" title={t("settings.dbSizeIncludesAuxiliary")}>{formattedDbSize}</span>
           </div>
-        </SettingRow>
+          <span className="shrink-0 rounded-full border border-border bg-muted/60 px-2 py-0.5 font-mono text-[10px] font-medium text-foreground" title={t("settings.dbSizeIncludesAuxiliary")}>{formattedDbSize}</span>
+        </div>
 
-        <SettingRow
-          label={t("settings.remoteDB")}
-          sub={isOffline ? t("settings.remoteDBOfflineNote") : t("settings.remoteDBSub")}
-        >
-          <div className="flex items-center gap-2">
-            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-              isOffline
-                ? "bg-destructive/10 text-destructive"
-                : isRemote
-                  ? "bg-primary/10 text-primary"
-                  : "bg-muted text-muted-foreground"
-            }`}>
-              {isOffline
-                ? t("settings.remoteDBOffline")
-                : isRemote
-                  ? t("settings.remoteDBConnected")
-                  : t("settings.remoteDBLocal")}
-            </span>
-            {isRemote ? (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={handleSyncNow}
-                  disabled={syncing || !connection?.caps.sync}
-                  className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted disabled:opacity-50 transition-colors"
-                >
-                  {syncing ? t("settings.remoteDBSyncing") : t("settings.remoteDBSync")}
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => setConfirmDisconnect(true)}
-                  className="h-8 px-3 rounded-lg text-xs font-medium border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
-                >
-                  {t("settings.remoteDBDisconnect")}
-                </Button>
-              </>
+        <ToggleGroup
+          options={[
+            { id: "local", label: t("settings.dbTabLocal") },
+            { id: "cloud", label: t("settings.dbTabCloud") },
+          ]}
+          value={activeTab}
+          onChange={(v) => setActiveTab(v as "local" | "cloud")}
+        />
+
+        {activeTab === "local" ? (
+          <div>
+            {canSwitchPath ? (
+              <SettingRow label={t("settings.switchDB")} sub={t("settings.switchDBSub")}>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={handleOpenExisting}
+                    className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted transition-colors"
+                  >
+                    {t("settings.switchDBOpenExisting")}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleNewLocation}
+                    className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted transition-colors"
+                  >
+                    {t("settings.switchDBNewLocation")}
+                  </Button>
+                </div>
+              </SettingRow>
             ) : (
-              <Button
-                variant="outline"
-                onClick={() => setTursoOpen((open) => !open)}
-                aria-expanded={tursoOpen}
-                className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted transition-colors"
-              >
-                {t("settings.remoteDBConnect")}
-              </Button>
+              <div className="py-3.5 border-b border-border">
+                <p className="text-xs text-muted-foreground">{t("settings.switchDBUnavailableRemote")}</p>
+              </div>
             )}
-          </div>
-        </SettingRow>
 
-        {tursoOpen && !isRemote && (
-          <div className="space-y-3 py-4">
-            {/* Appearance settings live in user_settings, i.e. in the database
-                itself, so connecting to an empty one reads as "everything was
-                reset". Say so before they click, not after. */}
-            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5">
-              <p className="text-xs font-semibold text-amber-600 dark:text-amber-500">
-                {t("settings.remoteDBWarnTitle")}
-              </p>
-              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                {t("settings.remoteDBWarnBody")}
-              </p>
-              <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-                {t("settings.remoteDBWarnSafe")}
-              </p>
-            </div>
-            <label className="block space-y-1">
-              <span className="text-xs font-medium text-foreground">{t("settings.remoteDBUrl")}</span>
-              <input
-                value={tursoUrl}
-                onChange={(e) => setTursoUrl(e.target.value)}
-                placeholder={t("settings.remoteDBUrlPlaceholder")}
-                spellCheck={false}
-                autoComplete="off"
-                className="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs outline-none focus:border-primary"
-              />
-            </label>
-            <label className="block space-y-1">
-              <span className="text-xs font-medium text-foreground">{t("settings.remoteDBToken")}</span>
-              <input
-                type="password"
-                value={tursoToken}
-                onChange={(e) => setTursoToken(e.target.value)}
-                placeholder={t("settings.remoteDBTokenPlaceholder")}
-                spellCheck={false}
-                autoComplete="off"
-                className="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs outline-none focus:border-primary"
-              />
-              <span className="block text-[11px] text-muted-foreground">{t("settings.remoteDBTokenHint")}</span>
-            </label>
-            <div className="flex justify-end">
-              <Button
-                onClick={handleConnectTurso}
-                disabled={connecting || !tursoUrl.trim() || !tursoToken.trim()}
-                className="h-8 px-4 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-              >
-                {connecting ? t("settings.remoteDBConnecting") : t("settings.remoteDBConnect")}
-              </Button>
-            </div>
+            {exportRow}
+
+            {clearTranslationsRow}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <SettingRow
+              label={t("settings.remoteDB")}
+              sub={isOffline ? t("settings.remoteDBOfflineNote") : t("settings.remoteDBSub")}
+            >
+              <div className="flex items-center gap-2">
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                  isOffline
+                    ? "bg-destructive/10 text-destructive"
+                    : isRemote
+                      ? "bg-primary/10 text-primary"
+                      : "bg-muted text-muted-foreground"
+                }`}>
+                  {isOffline
+                    ? t("settings.remoteDBOffline")
+                    : isRemote
+                      ? t("settings.remoteDBConnected")
+                      : t("settings.remoteDBLocal")}
+                </span>
+                {isRemote ? (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={handleSyncNow}
+                      disabled={syncing || !connection?.caps.sync}
+                      className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted disabled:opacity-50 transition-colors"
+                    >
+                      {syncing ? t("settings.remoteDBSyncing") : t("settings.remoteDBSync")}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => setConfirmDisconnect(true)}
+                      className="h-8 px-3 rounded-lg text-xs font-medium border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
+                    >
+                      {t("settings.remoteDBDisconnect")}
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    variant="outline"
+                    onClick={() => setTursoOpen((open) => !open)}
+                    aria-expanded={tursoOpen}
+                    className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted transition-colors"
+                  >
+                    {t("settings.remoteDBConnect")}
+                  </Button>
+                )}
+              </div>
+            </SettingRow>
+
+            {tursoOpen && !isRemote && (
+              <div className="space-y-3">
+                {/* Appearance settings live in user_settings, i.e. in the database
+                    itself, so connecting to an empty one reads as "everything was
+                    reset". Say so before they click, not after. */}
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5">
+                  <p className="text-xs font-semibold text-amber-600 dark:text-amber-500">
+                    {t("settings.remoteDBWarnTitle")}
+                  </p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                    {t("settings.remoteDBWarnBody")}
+                  </p>
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                    {t("settings.remoteDBWarnSafe")}
+                  </p>
+                </div>
+                <label className="block space-y-1">
+                  <span className="text-xs font-medium text-foreground">{t("settings.remoteDBUrl")}</span>
+                  <input
+                    value={tursoUrl}
+                    onChange={(e) => setTursoUrl(e.target.value)}
+                    placeholder={t("settings.remoteDBUrlPlaceholder")}
+                    spellCheck={false}
+                    autoComplete="off"
+                    className="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs outline-none focus:border-primary"
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-xs font-medium text-foreground">{t("settings.remoteDBToken")}</span>
+                  <input
+                    type="password"
+                    value={tursoToken}
+                    onChange={(e) => setTursoToken(e.target.value)}
+                    placeholder={t("settings.remoteDBTokenPlaceholder")}
+                    spellCheck={false}
+                    autoComplete="off"
+                    className="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs outline-none focus:border-primary"
+                  />
+                  <span className="block text-[11px] text-muted-foreground">{t("settings.remoteDBTokenHint")}</span>
+                </label>
+                <div className="flex justify-end">
+                  <Button
+                    onClick={handleConnectTurso}
+                    disabled={connecting || !tursoUrl.trim() || !tursoToken.trim()}
+                    className="h-8 px-4 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                  >
+                    {connecting ? t("settings.remoteDBConnecting") : t("settings.remoteDBConnect")}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {isRemote && exportRow}
+            {clearTranslationsRow}
           </div>
         )}
+      </div>
 
-        {canSwitchPath && (
-          <SettingRow label={t("settings.switchDB")} sub={t("settings.switchDBSub")}>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                onClick={handleOpenExisting}
-                className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted transition-colors"
-              >
-                {t("settings.switchDBOpenExisting")}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={handleNewLocation}
-                className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted transition-colors"
-              >
-                {t("settings.switchDBNewLocation")}
-              </Button>
-            </div>
-          </SettingRow>
-        )}
-
+      <div className="bg-card border border-border rounded-xl px-5 divide-y divide-border">
         <SettingRow
           label={t("settings.importDB")}
           sub={canImport ? t("settings.importDBSub") : t("settings.importDBUnavailable")}
@@ -340,35 +478,6 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
             className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted disabled:opacity-50 transition-colors"
           >
             {analyzing ? t("settings.importDBAnalyzing") : t("settings.importDBChoose")}
-          </Button>
-        </SettingRow>
-
-        <SettingRow
-          label={t("settings.exportDB")}
-          sub={canExport ? t("settings.exportDBSub") : t("settings.exportUnavailableRemote")}
-        >
-          <Button
-            onClick={handleExport}
-            disabled={exporting || !canExport}
-            className="h-8 px-4 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-          >
-            {exporting ? t("settings.exporting") : t("settings.exportDB")}
-          </Button>
-        </SettingRow>
-      </div>
-
-      <div className="bg-destructive/5 border border-destructive/20 rounded-xl px-5">
-        <SettingRow label={t("settings.dangerClearTranslations")} sub={t("settings.dangerClearTranslationsSub")}>
-          <Button
-            variant="ghost"
-            onClick={handleClearTranslations}
-            className={`h-8 px-4 rounded-lg text-xs font-semibold transition-colors ${
-              confirmClear
-                ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                : "border border-destructive/40 text-destructive hover:bg-destructive/10"
-            }`}
-          >
-            {confirmClear ? t("settings.dangerConfirm") : t("settings.dangerClear")}
           </Button>
         </SettingRow>
       </div>

@@ -79,17 +79,33 @@ pub async fn run(conn: &Connection) -> SqlResult<()> {
         if m.version <= current {
             continue;
         }
-        conn.execute_batch(m.sql)
+        conn.execute_transactional_batch(&stamped(m))
             .await
             .unwrap_or_else(|e| panic!("migration {} ({}) failed: {e}", m.version, m.description));
-        conn.execute(
-            "INSERT INTO schema_migrations (version) VALUES (?1)",
-            [m.version],
-        )
-        .await?;
     }
 
     Ok(())
+}
+
+/// A migration's SQL with its own version stamp appended, as one statement list.
+///
+/// The stamp used to be a second `execute` call. That is free on a local file and
+/// expensive on a Turso profile, where every call is a network round-trip to the
+/// primary — 23 migrations × 2 trips was the bulk of the ~85s a first connect to
+/// a fresh remote database took. Running them together also makes each migration
+/// atomic: `execute_transactional_batch` wraps the lot in a transaction, so a
+/// migration can no longer half-apply and then fail without recording itself,
+/// leaving the next launch to replay statements that already ran.
+///
+/// The version is an integer from a `const`, so it is interpolated rather than
+/// bound — `execute_transactional_batch` takes no parameters.
+fn stamped(m: &Migration) -> String {
+    let sql = m.sql.trim_end();
+    let separator = if sql.ends_with(';') { "" } else { ";" };
+    format!(
+        "{sql}{separator}\nINSERT INTO schema_migrations (version) VALUES ({});",
+        m.version
+    )
 }
 
 #[cfg(test)]
@@ -249,5 +265,47 @@ mod tests {
         )
         .await;
         assert_eq!(article_id, None);
+    }
+
+    /// The version stamp rides along inside each migration's own batch. If that
+    /// ever stops executing, nothing fails loudly at the time — the damage shows
+    /// up on the *next* launch, when unrecorded migrations replay and an
+    /// `ALTER TABLE ... ADD COLUMN` hits a column that already exists.
+    #[tokio::test]
+    async fn every_migration_records_its_version_and_never_replays() {
+        let conn = memory_conn().await;
+        // The whole real initialisation path, not `seed_legacy_tables`: base
+        // schema, the tables init_db adds on top, then every migration in order.
+        // This is exactly what a first connect to an empty Turso database runs.
+        crate::db::init_db(&conn).await.unwrap();
+        assert_eq!(
+            count(&conn, "SELECT COALESCE(MAX(version), 0) FROM schema_migrations").await,
+            latest_version(),
+            "every migration should have stamped itself"
+        );
+        assert_eq!(
+            count(&conn, "SELECT COUNT(*) FROM schema_migrations").await,
+            MIGRATIONS.len() as i64,
+            "one row per migration, no gaps and no duplicates"
+        );
+
+        // init_db already ran them; a second pass must find nothing left to do.
+        // An unstamped migration would replay here and fail.
+        run(&conn).await.unwrap();
+        assert_eq!(
+            count(&conn, "SELECT COUNT(*) FROM schema_migrations").await,
+            MIGRATIONS.len() as i64
+        );
+    }
+
+    #[test]
+    fn stamped_sql_separates_the_migration_from_its_stamp_exactly_once() {
+        let trailing = Migration { version: 7, description: "", sql: "SELECT 1;\n   " };
+        assert_eq!(stamped(&trailing), "SELECT 1;\nINSERT INTO schema_migrations (version) VALUES (7);");
+
+        // A body that forgot its final semicolon must still produce valid SQL
+        // rather than gluing two statements together.
+        let bare = Migration { version: 8, description: "", sql: "SELECT 1" };
+        assert_eq!(stamped(&bare), "SELECT 1;\nINSERT INTO schema_migrations (version) VALUES (8);");
     }
 }

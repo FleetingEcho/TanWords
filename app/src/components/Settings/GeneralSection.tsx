@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Eye, Trash2, Upload } from "lucide-react";
-import { DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, useSettingsStore, Theme } from "@/store/settingsStore";
+import { DEFAULT_BANNER_POSITION, DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, useSettingsStore, Theme } from "@/store/settingsStore";
 import { useT } from "@/hooks/useT";
 import { useDB } from "@/hooks/useDB";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -12,15 +12,17 @@ import { CloseIcon } from "@/components/ui/icons";
 import type { RssFeed } from "@/hooks/useDB.types";
 import { SettingRow, ToggleGroup } from "./SettingsShared";
 import { ImageSetting } from "./ImageSetting";
+import { BannerPositionModal } from "./BannerPositionModal";
 
 const MAX_AVATAR_UPLOAD_BYTES = 5 * 1024 * 1024;
 const MAX_BANNER_UPLOAD_BYTES = 8 * 1024 * 1024;
 const MAX_APP_BG_UPLOAD_BYTES = 12 * 1024 * 1024;
 /** Stored well above the largest on-screen size (the 256px preview modal) so it's always downscaled, never upscaled. */
 const AVATAR_OUTPUT_SIZE = 512;
-/** ~4.8:1, wide enough to cover the dashboard banner (100% width x 200px) without upscaling on most screens. */
-const BANNER_OUTPUT_WIDTH = 1920;
-const BANNER_OUTPUT_HEIGHT = 400;
+/** The banner is stored whole and cropped at render time via object-position, so this
+ *  only has to be wide enough to cover a full-width banner without upscaling — the user
+ *  picks which band of it shows (see BannerPositionModal). */
+const BANNER_MAX_DIMENSION = 1920;
 /** Full-app background: covers arbitrarily-sized/shaped displays via object-fit: cover at
  *  render time, so unlike the avatar/banner this is downscaled only — never center-cropped —
  *  preserving the source aspect ratio. Capped comfortably above typical desktop resolutions. */
@@ -97,6 +99,12 @@ function AppBackgroundSetting() {
   const setImage = useSettingsStore((s) => s.setAppBackgroundImage);
   const blur = useSettingsStore((s) => s.appBackgroundBlur);
   const setBlur = useSettingsStore((s) => s.setAppBackgroundBlur);
+  const visible = useSettingsStore((s) => s.appBackgroundVisible);
+  const setVisible = useSettingsStore((s) => s.setAppBackgroundVisible);
+
+  // The real background renders full-window; the thumb is roughly an eighth of
+  // that, so scale the blur down for an honest miniature of the final look.
+  const thumbBlur = blur / 6;
 
   return (
     <ImageSetting
@@ -107,25 +115,56 @@ function AppBackgroundSetting() {
       processFile={(file) => fileToDownscaledDataUrl(file, APP_BG_MAX_DIMENSION, 0.85)}
       maxBytes={MAX_APP_BG_UPLOAD_BYTES}
       thumbClassName="w-48 h-16 rounded-lg"
+      thumbImgStyle={{
+        filter: `blur(${thumbBlur}px)${visible ? "" : " grayscale(1)"}`,
+        opacity: visible ? 1 : 0.35,
+        // Mirrors AppBackground's overscan so blurred edges don't reveal gaps.
+        transform: thumbBlur > 0 ? "scale(1.08)" : undefined,
+      }}
+      // Same legibility scrim the real background draws over the image.
+      thumbOverlay={visible ? <div className="pointer-events-none absolute inset-0 bg-black/20 dark:bg-black/45" /> : undefined}
       empty={t("settings.appBackgroundNone")}
       previewClassName="w-[70vw] h-fit top-1/2 -translate-y-1/2"
       previewImgClassName="w-full h-auto rounded-2xl object-cover shadow-lg"
     >
-      <div className="w-48">
-        <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-          <span>{t("settings.appBackgroundBlur")}</span>
-          <span className="tabular-nums">{blur}px</span>
+      <div className="w-full space-y-2.5 rounded-xl border border-border/60 bg-muted/30 p-2.5">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-foreground/80">{t("settings.appBackgroundVisible")}</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={visible}
+            disabled={!image}
+            onClick={() => setVisible(!visible)}
+            className={`relative h-[18px] w-8 shrink-0 rounded-full transition-colors disabled:opacity-40 ${
+              visible ? "bg-primary" : "bg-muted-foreground/30"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-all ${
+                visible ? "left-[calc(100%-1rem)]" : "left-0.5"
+              }`}
+            />
+          </button>
         </div>
-        <input
-          type="range"
-          min={0}
-          max={40}
-          step={1}
-          value={blur}
-          disabled={!image}
-          onChange={(e) => setBlur(Number(e.target.value))}
-          className="w-full accent-primary disabled:opacity-40"
-        />
+        <div className={`space-y-1.5 transition-opacity ${visible && image ? "" : "pointer-events-none opacity-40"}`}>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">{t("settings.appBackgroundBlur")}</span>
+            <span className="rounded-md bg-primary/10 px-1.5 py-px text-[10px] font-semibold tabular-nums text-primary">
+              {blur}px
+            </span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={40}
+            step={1}
+            value={blur}
+            disabled={!image || !visible}
+            onChange={(e) => setBlur(Number(e.target.value))}
+            className="w-full accent-primary"
+          />
+        </div>
       </div>
     </ImageSetting>
   );
@@ -189,21 +228,40 @@ function UserAvatarSetting() {
 function DashboardBannerSetting() {
   const t = useT();
   const dashboardBanner = useSettingsStore((s) => s.dashboardBanner);
+  const position = useSettingsStore((s) => s.dashboardBannerPosition);
   const setDashboardBanner = useSettingsStore((s) => s.setDashboardBanner);
+  /** A freshly picked image, held here until the user confirms its framing — replacing
+   *  the banner shouldn't take effect halfway, with the old framing still applied. */
+  const [pending, setPending] = useState<string | null>(null);
+  const [framing, setFraming] = useState(false);
+
+  const editing = pending ?? dashboardBanner;
 
   return (
-    <ImageSetting
-      label={t("settings.dashboardBanner")}
-      sub={t("settings.dashboardBannerSub")}
-      value={dashboardBanner}
-      onChange={setDashboardBanner}
-      processFile={(file) => fileToCroppedDataUrl(file, BANNER_OUTPUT_WIDTH, BANNER_OUTPUT_HEIGHT, 0.88)}
-      maxBytes={MAX_BANNER_UPLOAD_BYTES}
-      thumbClassName="w-64 h-16 rounded-lg"
-      empty={t("settings.dashboardBannerNone")}
-      previewClassName="w-[70vw] h-fit top-1/2 -translate-y-1/2"
-      previewImgClassName="w-full h-auto rounded-2xl object-cover shadow-lg"
-    />
+    <>
+      <ImageSetting
+        label={t("settings.dashboardBanner")}
+        sub={t("settings.dashboardBannerSub")}
+        value={dashboardBanner}
+        objectPosition={`${position.x}% ${position.y}%`}
+        onChange={setDashboardBanner}
+        onPicked={(dataUrl) => { setPending(dataUrl); setFraming(true); }}
+        onAdjust={() => { setPending(null); setFraming(true); }}
+        processFile={(file) => fileToDownscaledDataUrl(file, BANNER_MAX_DIMENSION, 0.86)}
+        maxBytes={MAX_BANNER_UPLOAD_BYTES}
+        thumbClassName="w-64 h-16 rounded-lg"
+        empty={t("settings.dashboardBannerNone")}
+        previewClassName="w-[70vw] h-fit top-1/2 -translate-y-1/2"
+        previewImgClassName="w-full h-auto rounded-2xl object-cover shadow-lg"
+      />
+      <BannerPositionModal
+        open={framing}
+        src={editing}
+        initial={pending ? DEFAULT_BANNER_POSITION : position}
+        onCancel={() => setFraming(false)}
+        onConfirm={(pos) => { setDashboardBanner(editing, pos); setFraming(false); }}
+      />
+    </>
   );
 }
 
@@ -251,7 +309,7 @@ export function GeneralSection() {
       <AppBackgroundSetting />
       <SettingRow label={t("settings.uiLanguage")} sub={t("settings.uiLanguageSub")}>
         <ToggleGroup
-          options={[{ id: "zh", label: "中文" }, { id: "en", label: "English" }]}
+          options={[{ id: "en", label: "English" }, { id: "zh", label: "中文" }]}
           value={settings.uiLanguage}
           onChange={(v) => settings.setUiLanguage(v)}
         />
