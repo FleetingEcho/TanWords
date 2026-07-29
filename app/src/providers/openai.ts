@@ -1,3 +1,4 @@
+import { fetch } from "@tauri-apps/plugin-http";
 import { AIProvider, TranslateParams, ExplainParams, buildSystemPrompt, buildEnrichSystemPrompt, buildEnrichUserPrompt, ToolDef, ApiMessage, ToolCallResponse, ContentBlock } from "./base";
 import { useSettingsStore } from "@/store/settingsStore";
 import { ThinkTagFilter } from "./thinkTagFilter";

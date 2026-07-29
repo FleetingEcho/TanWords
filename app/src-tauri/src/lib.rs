@@ -86,6 +86,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_http::init())
         .setup(move |app| {
             if mcp_config.enabled {
                 let handle = app.handle().clone();
