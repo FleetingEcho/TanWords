@@ -21,14 +21,14 @@ export default defineConfig({
     chunkSizeWarningLimit: 1600,
   },
   server: {
-    port: 1420,
+    port: 5420,
     strictPort: true,
     host: host || false,
     hmr: host
       ? {
           protocol: "ws",
           host,
-          port: 1421,
+          port: 5421,
         }
       : undefined,
     watch: {
