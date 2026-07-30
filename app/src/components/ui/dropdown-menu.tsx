@@ -1,13 +1,17 @@
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { cn } from "@/lib/utils";
+import { BrowserPanelBlocker } from "@/store/browserPanelStore";
 
 const DropdownMenu = DropdownMenuPrimitive.Root;
 const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 
-function DropdownMenuContent({ className, sideOffset = 6, ...props }: DropdownMenuPrimitive.DropdownMenuContentProps) {
+function DropdownMenuContent({ className, sideOffset = 6, children, ...props }: DropdownMenuPrimitive.DropdownMenuContentProps) {
   return (
     <DropdownMenuPrimitive.Portal>
-      <DropdownMenuPrimitive.Content sideOffset={sideOffset} className={cn("z-[110] min-w-44 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg outline-none", className)} {...props} />
+      <DropdownMenuPrimitive.Content sideOffset={sideOffset} className={cn("z-[110] min-w-44 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg outline-none", className)} {...props}>
+        <BrowserPanelBlocker />
+        {children}
+      </DropdownMenuPrimitive.Content>
     </DropdownMenuPrimitive.Portal>
   );
 }

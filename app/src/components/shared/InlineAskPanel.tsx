@@ -12,10 +12,24 @@ import { parseEnrichmentStream } from "@/lib/enrichMeta";
 import { SpeakButton } from "@/components/ui/SpeakButton";
 import { Markdown } from "@/components/AiChat/Markdown";
 import { Button } from "@/components/ui/button";
-import { Anchor, AskMode, cleanWord, isWordish } from "./selectionAskHelpers";
+import { AskMode, AskTarget, cleanWord, isWordish } from "./selectionAskHelpers";
 
-/** Streams an answer about the selection into a card pinned under it. */
-export function InlineAskPanel({ anchor, mode: initialMode, onClose }: { anchor: Anchor; mode: AskMode; onClose: () => void }) {
+/** Streams an answer about the selection.
+ *
+ *  Two layouts, same logic. `floating` pins a card under the selection, for
+ *  text selected inside the app. `inline` fills whatever container it's given
+ *  and is used by the Browser page's side pane: a selection there lives in a
+ *  native child webview, which is composited above all of our HTML, so a
+ *  floating card over the page would simply be invisible — the answer has to
+ *  sit *beside* the page instead. That also means no click-away-to-close,
+ *  since clicking the page is how you keep reading. */
+export function InlineAskPanel({ anchor, mode: initialMode, onClose, layout = "floating" }: {
+  anchor: AskTarget;
+  mode: AskMode;
+  onClose: () => void;
+  layout?: "floating" | "inline";
+}) {
+  const inline = layout === "inline";
   const t = useT();
   const db = useDB();
   const targetLevel = useSettingsStore((s) => s.targetLevels.join("/"));
@@ -32,12 +46,13 @@ export function InlineAskPanel({ anchor, mode: initialMode, onClose }: { anchor:
   // Clicking away closes it. Scrolling no longer does — the card follows the
   // text now — so this is what's left to dismiss it besides Esc and the ×.
   useEffect(() => {
+    if (inline) return;
     const onDown = (e: MouseEvent) => {
       if (!panelRef.current?.contains(e.target as Node)) onClose();
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
-  }, [onClose]);
+  }, [onClose, inline]);
 
   const word = cleanWord(anchor.text);
   const wordish = isWordish(anchor.text);
@@ -144,15 +159,24 @@ export function InlineAskPanel({ anchor, mode: initialMode, onClose }: { anchor:
   // tracks the text while you scroll, and without this it would ride off the
   // top or bottom of the window with it.
   const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max);
-  const openUp = anchor.bottom > window.innerHeight - 320;
-  const left = clamp(anchor.left, 220, Math.max(220, window.innerWidth - 220));
-  const style: React.CSSProperties = openUp
-    ? { bottom: clamp(window.innerHeight - anchor.top + 8, 8, window.innerHeight - 120), left }
-    : { top: clamp(anchor.bottom + 8, 8, window.innerHeight - 120), left };
+  const openUp = (anchor.bottom ?? 0) > window.innerHeight - 320;
+  const left = clamp(anchor.left ?? 0, 220, Math.max(220, window.innerWidth - 220));
+  const style: React.CSSProperties | undefined = inline
+    ? undefined
+    : openUp
+      ? { bottom: clamp(window.innerHeight - (anchor.top ?? 0) + 8, 8, window.innerHeight - 120), left }
+      : { top: clamp((anchor.bottom ?? 0) + 8, 8, window.innerHeight - 120), left };
 
   return (
-    <div ref={panelRef} data-no-selection className="fixed z-50 w-[min(420px,90vw)] -translate-x-1/2" style={style}>
-      <div className="overflow-hidden rounded-2xl border border-border bg-popover shadow-2xl ring-1 ring-black/5">
+    <div
+      ref={panelRef}
+      data-no-selection
+      className={inline ? "flex h-full min-h-0 flex-col" : "fixed z-50 w-[min(420px,90vw)] -translate-x-1/2"}
+      style={style}
+    >
+      <div className={inline
+        ? "flex h-full min-h-0 flex-col overflow-hidden bg-background"
+        : "overflow-hidden rounded-2xl border border-border bg-popover shadow-2xl ring-1 ring-black/5"}>
         <div className="flex items-start gap-2 border-b border-border bg-muted/60 px-3 py-2">
           <p className="min-w-0 flex-1 truncate text-[11px] font-semibold text-foreground">{anchor.text}</p>
           <SpeakButton text={anchor.text} className="w-3 h-3 mt-0.5" />
@@ -161,7 +185,7 @@ export function InlineAskPanel({ anchor, mode: initialMode, onClose }: { anchor:
           </Button>
         </div>
 
-        <div className={`${mode === "deep" ? "max-h-[58vh]" : "max-h-[42vh]"} overflow-y-auto px-3 py-2.5 text-xs leading-relaxed [&_blockquote]:my-1 [&_blockquote]:text-[11px]`}>
+        <div className={`${inline ? "min-h-0 flex-1" : mode === "deep" ? "max-h-[58vh]" : "max-h-[42vh]"} overflow-y-auto px-3 py-2.5 text-xs leading-relaxed [&_blockquote]:my-1 [&_blockquote]:text-[11px]`}>
           {error ? (
             <p className="text-destructive">{error}</p>
           ) : text ? (

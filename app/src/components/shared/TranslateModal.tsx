@@ -2,6 +2,7 @@ import React from "react";
 import { useT } from "@/hooks/useT";
 import { TranslationPane } from "./TranslationPane";
 import { CloseIcon, TranslateIcon } from "@/components/ui/icons";
+import { BrowserPanelBlocker } from "@/store/browserPanelStore";
 
 interface Props {
   open: boolean;
@@ -26,6 +27,7 @@ export function TranslateModal({ open, onClose, title, articleText, hnItemId }: 
       className="fixed inset-0 z-[120] flex items-start justify-center bg-black/45 px-4 pt-[8vh] backdrop-blur-sm"
       onMouseDown={onClose}
     >
+      <BrowserPanelBlocker />
       <div
         className="flex h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
         onMouseDown={(e) => e.stopPropagation()}

@@ -1,6 +1,7 @@
 import React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { cn } from "@/lib/utils";
+import { BrowserPanelBlocker } from "@/store/browserPanelStore";
 
 interface DialogProps {
   open: boolean;
@@ -27,6 +28,11 @@ export function Dialog({ open, onClose, children, className, maxWidth = "max-w-2
             className,
           )}
         >
+          {/* Native browser panel is composited above all our HTML, so it has
+            * to hide itself rather than lose a z-index fight — see
+            * browserPanelStore. Inside Content, not Portal: Radix wraps each
+            * Portal child in Presence+Slot, which needs a ref-able element. */}
+          <BrowserPanelBlocker />
           {children}
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
