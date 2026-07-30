@@ -22,6 +22,11 @@ function broadcastEvent(name: string, payload: unknown) {
   }
 }
 
+// Upper bound on how long createWindow() will hold the window hidden waiting
+// for the sidecar handshake. Past this, show anyway — a stuck/missing sidecar
+// binary should surface as an error inside the app, not an invisible window.
+const STARTUP_SHOW_TIMEOUT_MS = 15000;
+
 function createWindow() {
   // NOTE: Task 4 turns this into a BaseWindow hosting the UI as its own
   // WebContentsView, so browser-panel WebContentsViews can layer above it.
@@ -38,7 +43,18 @@ function createWindow() {
     },
   });
 
-  win.once("ready-to-show", () => win.show());
+  // Hold the window hidden past Chromium's first paint (an empty root div)
+  // until the sidecar handshake resolves too, so the window never shows the
+  // blank/unstyled shell React renders while still awaiting the backend.
+  const readyToShow = new Promise<void>((resolve) => win.once("ready-to-show", resolve));
+  const backendReady = sidecar.backendReady().then(
+    () => {},
+    () => {},
+  );
+  const timeout = new Promise<void>((resolve) => setTimeout(resolve, STARTUP_SHOW_TIMEOUT_MS));
+  void Promise.all([readyToShow, Promise.race([backendReady, timeout])]).then(() => {
+    if (!win.isDestroyed()) win.show();
+  });
 
   // Deny popups from the main UI (the browser panel's own WebContentsViews
   // get their own, separate setWindowOpenHandler in Task 4).
@@ -96,10 +112,8 @@ if (gotLock) {
     });
   });
 
-  // Standard Electron boilerplate. Task 4's tray work intercepts the
-  // window's own "close" event to hide-to-tray instead of destroying it, so
-  // this only fires once the user (or the `quitting` flag Task 4 adds)
-  // actually lets the window close.
+  // Standard Electron boilerplate. This only fires once the user actually
+  // lets the window close.
   app.on("window-all-closed", () => {
     if (process.platform !== "darwin") app.quit();
   });

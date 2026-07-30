@@ -5,10 +5,11 @@
   "type": "module",
   "homepage": "https://github.com/FleetingEcho/TanWords",
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "bun run core:build:dev && electron-vite dev",
     "dev:web": "vite",
     "build": "tsc --noEmit && electron-vite build",
     "core:build": "cd core && cargo build --release",
+    "core:build:dev": "cd core && cargo build",
     "test": "vitest",
     "test:run": "vitest run",
     "package": "bun run core:build && bun run build && electron-builder",

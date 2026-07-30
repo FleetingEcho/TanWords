@@ -57,7 +57,6 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
 
     const resolvedUiLanguage = values.ui_language || "en";
     cacheUiLanguage(resolvedUiLanguage);
-    invoke("tray_set_language", { lang: resolvedUiLanguage }).catch(() => {});
 
     let resolvedSidebarTabs = Array.isArray(values.visible_sidebar_tabs)
       ? DEFAULT_SIDEBAR_TABS.filter((id) => (values.visible_sidebar_tabs as unknown as string[]).includes(id))

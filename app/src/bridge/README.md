@@ -11,7 +11,7 @@ plan (`lib/localAudioSrc.ts` and one line of `lib/localDocs.ts`).
 
 | Bridge file | Replaces | Routes to |
 | --- | --- | --- |
-| `core.ts` | `@tauri-apps/api/core` | sidecar HTTP, except `browser_*`/`tray_*` -> main |
+| `core.ts` | `@tauri-apps/api/core` | sidecar HTTP, except `browser_*` -> main |
 | `event.ts` | `@tauri-apps/api/event` | sidecar SSE + main-process events, merged |
 | `window.ts` | `@tauri-apps/api/window` | main (see plan §8.4 — offset must be 0) |
 | `app.ts` | `@tauri-apps/api/app` | main (`app.getVersion()`) |
