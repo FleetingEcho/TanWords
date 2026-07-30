@@ -60,4 +60,69 @@ describe("DocumentContentSearch", () => {
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
     root.remove();
   });
+
+  it("does not re-highlight a stale query when a mutation fires after the query was cleared", async () => {
+    const root = document.createElement("div");
+    root.innerHTML = "<p>ccdxx</p>";
+    document.body.append(root);
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+    const highlights = new Map<string, unknown>();
+    Object.defineProperty(globalThis, "CSS", {
+      configurable: true,
+      value: { highlights },
+    });
+    Object.defineProperty(globalThis, "Highlight", {
+      configurable: true,
+      value: class Highlight {},
+    });
+
+    render(<DocumentContentSearch rootRef={{ current: root }} />);
+    const input = screen.getByLabelText("doc.searchContent");
+
+    fireEvent.change(input, { target: { value: "cc" } });
+    await waitFor(() => expect(highlights.has("tanwords-document-search")).toBe(true));
+
+    fireEvent.change(input, { target: { value: "" } });
+    await waitFor(() => expect(highlights.has("tanwords-document-search")).toBe(false));
+
+    // A document mutation (e.g. an async image or mermaid render finishing)
+    // that lands after the query was already cleared must not resurrect the
+    // highlight for the query that was active when it was scheduled.
+    await act(async () => {
+      root.append(document.createTextNode("late unrelated mutation"));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(highlights.has("tanwords-document-search")).toBe(false);
+    expect(highlights.has("tanwords-document-search-active")).toBe(false);
+    root.remove();
+  });
+
+  it("atomically clears the custom-highlight registry when the query is cleared", async () => {
+    const root = document.createElement("div");
+    root.innerHTML = "<p>use user future</p>";
+    document.body.append(root);
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+    const highlights = new Map<string, unknown>();
+    const clear = vi.spyOn(highlights, "clear");
+    Object.defineProperty(globalThis, "CSS", {
+      configurable: true,
+      value: { highlights },
+    });
+    Object.defineProperty(globalThis, "Highlight", {
+      configurable: true,
+      value: class Highlight {},
+    });
+
+    render(<DocumentContentSearch rootRef={{ current: root }} />);
+    const input = screen.getByLabelText("doc.searchContent");
+    fireEvent.change(input, { target: { value: "use" } });
+    await waitFor(() => expect(highlights.size).toBeGreaterThan(0));
+    clear.mockClear();
+
+    fireEvent.change(input, { target: { value: "" } });
+
+    expect(clear).toHaveBeenCalledTimes(1);
+    expect(highlights.size).toBe(0);
+    root.remove();
+  });
 });

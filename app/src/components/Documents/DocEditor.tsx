@@ -14,6 +14,7 @@ import "@blocknote/mantine/style.css";
 import { DocumentDetail } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { useIsDark } from "@/hooks/useIsDark";
+import { refreshCodeBlockTheme } from "./codeBlockTheme";
 import { blocksToStorageOffThread, contentToBlocksOffThread, markdownToBlocksOffThread } from "@/lib/documentWorkerClient";
 import { parseDbTimestamp } from "@/lib/dbTime";
 import { liftMermaid, lowerMermaid } from "./mermaidTransforms";
@@ -175,7 +176,11 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
       const password = await requestPassword({
         title: action === "download" ? t("doc.downloadPrivateFile") : t("doc.deletePrivateFile"),
         description: t("doc.sensitiveActionPasswordHint"),
-      });
+  });
+
+  useEffect(() => {
+    refreshCodeBlockTheme(editor);
+  }, [editor, isDark]);
       if (!password) return;
       try {
         await invoke("db_unlock_document", { id: doc.id, password });

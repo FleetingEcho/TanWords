@@ -140,12 +140,13 @@ export function ToolsModal() {
     d.moved = true;
     setDragging(true);
     const pos = clampPos(d.origX + dx, d.origY + dy, modalSize.width, modalSize.height, window.innerWidth, window.innerHeight);
-    setModalPos(pos);
+    setModalPos(pos, false);
   };
 
   const onTitlePointerUp = () => {
     dragRef.current = null;
     setDragging(false);
+    setModalPos(useToolsBallStore.getState().modalPos);
   };
 
   // ── Resize handlers ──────────────────────────────────────────────────────
@@ -167,19 +168,20 @@ export function ToolsModal() {
     const newW = r.origW + dx;
     const newH = r.origH + dy;
     const size = clampSize(newW, newH, window.innerWidth, window.innerHeight);
-    setModalSize(size);
+    setModalSize(size, false);
   };
 
   const onResizePointerUp = () => {
     resizeRef.current = null;
     setResizing(false);
+    setModalSize(useToolsBallStore.getState().modalSize);
   };
 
   // ── Render ──────────────────────────────────────────────────────────────
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100]">
+    <div className="fixed inset-0 z-10">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/20" onClick={closeModal} />
 

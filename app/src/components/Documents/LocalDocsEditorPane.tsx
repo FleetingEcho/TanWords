@@ -21,7 +21,7 @@ interface Props {
   onZenModeChange: (zen: boolean) => void;
 }
 
-export function LocalDocsEditorPane({
+export const LocalDocsEditorPane = React.memo(function LocalDocsEditorPane({
   editorKey,
   loading,
   activePath,
@@ -75,4 +75,4 @@ export function LocalDocsEditorPane({
       )}
     </div>
   );
-}
+});
