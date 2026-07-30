@@ -16,35 +16,35 @@
   :root {
     --app-font: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
     --code-font: "Monaspace Neon NF", "SFMono-Regular", Consolas, monospace;
-    --background: 220 20% 97%;
-    --foreground: 220 13% 13%;
+    --background: 220 25% 97%;
+    --foreground: 222 24% 14%;
     --card: 0 0% 100%;
-    --card-foreground: 220 13% 13%;
+    --card-foreground: 222 24% 14%;
     --popover: 0 0% 100%;
-    --popover-foreground: 220 13% 13%;
-    --primary: 243 75% 59%;
+    --popover-foreground: 222 24% 14%;
+    --primary: 226 68% 51%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 14% 93%;
-    --secondary-foreground: 220 13% 30%;
-    --muted: 220 14% 93%;
-    --muted-foreground: 220 9% 53%;
-    --accent: 243 100% 97%;
-    --accent-foreground: 243 75% 59%;
-    --destructive: 0 84% 60%;
+    --secondary: 220 20% 94%;
+    --secondary-foreground: 222 16% 28%;
+    --muted: 220 18% 94%;
+    --muted-foreground: 220 10% 43%;
+    --accent: 226 65% 94%;
+    --accent-foreground: 226 60% 42%;
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 243 75% 59%;
+    --border: 220 16% 86%;
+    --input: 220 16% 82%;
+    --ring: 226 68% 51%;
     --radius: 0.5rem;
-    /* Sidebar — white in light mode */
-    --sidebar: 0 0% 100%;
-    --sidebar-foreground: 220 13% 13%;
-    --sidebar-muted: 220 9% 53%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-active-bg: 243 100% 96%;
-    --sidebar-active-fg: 243 75% 59%;
+    /* A faintly tinted navigation rail separates structure from white cards. */
+    --sidebar: 220 24% 96%;
+    --sidebar-foreground: 222 20% 18%;
+    --sidebar-muted: 220 10% 43%;
+    --sidebar-border: 220 16% 85%;
+    --sidebar-active-bg: 226 70% 92%;
+    --sidebar-active-fg: 226 64% 43%;
     /* Writing studio — blue "fountain-pen ink" for annotations + manuscript serif */
-    --ink: 211 65% 45%;
+    --ink: 211 65% 40%;
     --manuscript-font: "Georgia", "Iowan Old Style", "Times New Roman", "Songti SC", "STSong", serif;
   }
 
@@ -199,32 +199,34 @@
 
   /* Tokyo Night Day */
   .theme-tokyo-night-day {
-    --background: 230 11% 89%;
-    --foreground: 224 55% 48%;
-    --card: 230 9% 85%;
-    --card-foreground: 224 55% 42%;
-    --popover: 230 9% 85%;
-    --popover-foreground: 224 55% 42%;
-    --primary: 215 82% 55%;
+    /* A quiet, paper-like canvas with neutral ink. Tokyo Night blue is kept
+       for interaction and emphasis instead of tinting every piece of text. */
+    --background: 225 25% 96%;
+    --foreground: 228 18% 22%;
+    --card: 225 22% 93%;
+    --card-foreground: 228 18% 22%;
+    --popover: 225 30% 98%;
+    --popover-foreground: 228 18% 22%;
+    --primary: 224 55% 46%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 229 22% 81%;
-    --secondary-foreground: 224 45% 38%;
-    --muted: 230 14% 83%;
-    --muted-foreground: 226 29% 54%;
-    --accent: 266 85% 64%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 343 90% 56%;
+    --secondary: 225 22% 89%;
+    --secondary-foreground: 228 16% 30%;
+    --muted: 225 18% 91%;
+    --muted-foreground: 226 13% 45%;
+    --accent: 259 35% 90%;
+    --accent-foreground: 224 45% 36%;
+    --destructive: 343 72% 48%;
     --destructive-foreground: 0 0% 100%;
-    --border: 228 20% 76%;
-    --input: 228 20% 76%;
-    --ring: 215 82% 55%;
-    --sidebar: 230 16% 86%;
-    --sidebar-foreground: 224 55% 42%;
-    --sidebar-muted: 226 29% 54%;
-    --sidebar-border: 228 20% 78%;
-    --sidebar-active-bg: 217 55% 82%;
-    --sidebar-active-fg: 215 82% 45%;
-    --ink: 197 86% 40%;
+    --border: 225 18% 80%;
+    --input: 225 18% 78%;
+    --ring: 224 55% 46%;
+    --sidebar: 225 24% 92%;
+    --sidebar-foreground: 228 18% 25%;
+    --sidebar-muted: 226 13% 45%;
+    --sidebar-border: 225 18% 81%;
+    --sidebar-active-bg: 216 55% 86%;
+    --sidebar-active-fg: 224 55% 40%;
+    --ink: 197 70% 36%;
   }
 
   /* Tokyo Night Storm — the brighter, blue-grey Tokyo Night variant */
@@ -293,14 +295,11 @@
  * `scroll` keeps the scrollbar allocated even for short documents; the gutter
  * prevents the editor from shifting horizontally as overflow changes. */
 .document-preview-scroll {
-  min-height: 0;
   overflow-y: scroll;
-  scrollbar-gutter: stable;
-  scrollbar-width: none;
 }
 .document-preview-scroll::-webkit-scrollbar {
-  width: 0;
-  height: 0;
+  width: 5px;
+  height: 10px;
 }
 
 /* Heatmap cells */
@@ -356,6 +355,24 @@
   background-color: hsl(var(--muted));
   color: var(--document-text-color, hsl(var(--foreground)));
   border: 1px solid hsl(var(--border));
+}
+/* Shiki always tokenizes with the github-dark palette (see prosemirror-highlight's
+   createParser, which defaults to the first loaded theme) regardless of the app's
+   light/dark theme. Its per-token colors are only legible against that theme's own
+   background, so give <code> the matching bg/fg it computes via
+   --prosemirror-highlight(-bg) instead of the app's light-mode --muted background,
+   which collided with dark-theme token colors. Padding moves from <pre> to <code>
+   so that background covers the full block, not just the text runs. */
+.tanwords-editor .bn-block-content[data-content-type="codeBlock"] pre {
+  background: transparent;
+  padding: 0;
+}
+.tanwords-editor .bn-block-content[data-content-type="codeBlock"] code {
+  display: block;
+  padding: 24px;
+  border-radius: 8px;
+  color: var(--prosemirror-highlight, var(--document-text-color, hsl(var(--foreground))));
+  background-color: var(--prosemirror-highlight-bg, transparent);
 }
 .tanwords-editor .bn-block-content[data-content-type="codeBlock"] > div > select,
 .tanwords-editor .bn-block-content[data-content-type="codeBlock"] > div > select > option {

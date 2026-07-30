@@ -1,6 +1,10 @@
-export function findTextMatches(root: HTMLElement, query: string): Range[] {
+export function findTextMatches(
+  root: HTMLElement,
+  query: string,
+  maxMatches = Number.POSITIVE_INFINITY,
+): Range[] {
   const needle = query.trim().toLocaleLowerCase();
-  if (!needle) return [];
+  if (!needle || maxMatches <= 0) return [];
 
   const ranges: Range[] = [];
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
@@ -21,6 +25,7 @@ export function findTextMatches(root: HTMLElement, query: string): Range[] {
       range.setStart(node, offset);
       range.setEnd(node, offset + needle.length);
       ranges.push(range);
+      if (ranges.length >= maxMatches) return ranges;
       offset += Math.max(needle.length, 1);
     }
   }

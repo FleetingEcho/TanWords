@@ -51,6 +51,28 @@ export function DocumentsSection() {
         </div>
       </SettingRow>
 
+      <SettingRow label={t("settings.documentFontSize")} sub={t("settings.documentFontSizeSub")}>
+        <div className="w-52 space-y-1.5">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>12px</span>
+            <span className="rounded-md bg-muted px-2 py-0.5 font-semibold tabular-nums text-foreground">
+              {settings.documentFontSize}px
+            </span>
+            <span>24px</span>
+          </div>
+          <input
+            type="range"
+            min={12}
+            max={24}
+            step={1}
+            value={settings.documentFontSize}
+            onChange={(event) => settings.setDocumentFontSize(Number(event.target.value))}
+            className="w-full accent-primary"
+            aria-label={t("settings.documentFontSize")}
+          />
+        </div>
+      </SettingRow>
+
       <SettingRow label={t("settings.documentTextColor")} sub={t("settings.documentTextColorSub")}>
         <div className="flex items-center gap-2">
           <input
