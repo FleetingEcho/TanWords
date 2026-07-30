@@ -19,7 +19,6 @@ import { useUpdaterStore } from "@/store/updaterStore";
 import { useNavStore } from "@/store/navStore";
 import { useDB } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
-import { useTraySync } from "@/hooks/useTraySync";
 import { useMcpSync } from "@/hooks/useMcpSync";
 import { initProviders } from "@/lib/initProviders";
 import { invoke } from "@tauri-apps/api/core";
@@ -39,7 +38,6 @@ function App() {
 
   const [wordCount, setWordCount] = React.useState(0);
 
-  useTraySync();
   useMcpSync();
 
   // Initialize providers from keychain (with localStorage fallback/migration) on startup.

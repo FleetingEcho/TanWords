@@ -70,7 +70,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ uiLanguage: lang });
     saveSetting("ui_language", JSON.stringify(lang));
     cacheUiLanguage(lang);
-    import("@tauri-apps/api/core").then(({ invoke }) => invoke("tray_set_language", { lang })).catch(() => {});
   },
 
   setSelectionActions: (v) => {

@@ -110,7 +110,7 @@ fn sherpa_cache_root() -> Option<PathBuf> {
 /// Commands that do NOT move to Rust — they are reimplemented in the
 /// Electron main process and never reach the sidecar. See the migration
 /// plan, section 5.
-const SKIP_MODULES: &[&str] = &["browser_panel", "tray"];
+const SKIP_MODULES: &[&str] = &["browser_panel"];
 
 struct CommandInfo {
     module: String,
