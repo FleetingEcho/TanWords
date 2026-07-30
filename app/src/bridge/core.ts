@@ -7,7 +7,7 @@ declare global {
     tanwords?: {
       /** Resolves once the sidecar has handshaken. */
       backend: Promise<{ port: number; token: string }>;
-      /** Main-process commands: browser panel, tray, dialogs, shell, ... */
+      /** Main-process commands: browser panel, dialogs, shell, ... */
       call: (channel: string, payload?: unknown) => Promise<any>;
       on: (channel: string, handler: (payload: any) => void) => () => void;
     };
@@ -17,7 +17,7 @@ declare global {
 /** Commands the Electron main process owns rather than the sidecar. Keep this
  *  in sync with SKIP_MODULES in core/build.rs (generate_dispatch_table()) —
  *  a name in one list and not the other is a silent routing bug. */
-const MAIN_PROCESS_COMMANDS = /^(browser_|tray_)/;
+const MAIN_PROCESS_COMMANDS = /^browser_/;
 
 let cached: { port: number; token: string } | null = null;
 

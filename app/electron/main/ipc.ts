@@ -1,11 +1,11 @@
 /** Main-side handlers for every channel `src/bridge/*.ts` calls via
  *  `window.tanwords.call(...)`. Grepped exhaustively from `tanwords?.call("` —
- *  see docs/electron-migration-handoff.md Task 3. `browser_*`/`tray_*` are
- *  deliberately NOT implemented here: the browser panel and tray are being
- *  built directly against native Electron APIs (WebContentsView, Tray), not
- *  ported from the old Rust command contract — see Task 4. They're stubbed
- *  with a clean rejection so an accidental call fails loudly instead of
- *  crashing the renderer. */
+ *  see docs/electron-migration-handoff.md Task 3. `browser_*` is
+ *  deliberately NOT implemented here: the browser panel is being built
+ *  directly against native Electron APIs (WebContentsView), not ported from
+ *  the old Rust command contract — see Task 4. It's stubbed with a clean
+ *  rejection so an accidental call fails loudly instead of crashing the
+ *  renderer. */
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
 import type { UpdateInfoPayload } from "./updater";
 
@@ -142,11 +142,11 @@ async function dispatch(channel: string, args: unknown, deps: IpcDeps): Promise<
     }
 
     default: {
-      if (/^(browser_|tray_)/.test(channel)) {
-        // Owned by native-Electron browser panel / tray work (Task 4), not
-        // by this Rust-command-contract port. Reject cleanly rather than
-        // crash so any not-yet-wired call site fails loudly and visibly.
-        throw new Error(`tanwords: "${channel}" is not implemented yet (browser panel/tray, see Task 4)`);
+      if (/^browser_/.test(channel)) {
+        // Owned by native-Electron browser panel work (Task 4), not by this
+        // Rust-command-contract port. Reject cleanly rather than crash so
+        // any not-yet-wired call site fails loudly and visibly.
+        throw new Error(`tanwords: "${channel}" is not implemented yet (browser panel, see Task 4)`);
       }
       throw new Error(`tanwords: unknown IPC channel "${channel}"`);
     }

@@ -2,7 +2,7 @@
  *
  *  Events arrive from two places and the UI must not care which:
  *    - the sidecar, over SSE   (tts-download-progress, mcp:*)
- *    - the main process, over preload (tray-*, browser://*)
+ *    - the main process, over preload (browser://*)
  *  Both are merged into one subscription table keyed by event name. */
 
 import { backendOrigin, backendToken } from "./core";
