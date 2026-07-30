@@ -1,32 +1,50 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, Globe, RotateCw, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Eraser, Globe, Home, MessageSquareQuote, RotateCw, Trash2 } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useBrowserPanel } from "./useBrowserPanel";
+import { BrowserTabStrip } from "./BrowserTabStrip";
 import { BrowserEmptyState } from "./BrowserEmptyState";
+import { BrowserAskPane } from "./BrowserAskPane";
 
 export default function BrowserPage() {
   const t = useT();
   const {
-    setContainer, url, title, loading, opened, error,
-    open, reload, goBack, goForward, clearData,
+    setContainer, tabs, active, error,
+    open, reload, hardReload, goBack, goForward, goHome, clearData,
+    newTab, selectTab, closeTab,
   } = useBrowserPanel();
+
+  const url = active?.url ?? "";
+  const opened = !!active && !active.atHome && !!active.panelId;
+  const loading = !!active?.loading;
 
   const [addressInput, setAddressInput] = useState(url);
   const editingRef = useRef(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [askOpen, setAskOpen] = useState(false);
 
   // Keep the address bar in sync with in-page navigation (clicking a link
-  // inside the embedded site) — but never while the user is actively typing
-  // a new address, or their edit would get overwritten mid-keystroke.
+  // inside the embedded site) and with tab switches — but never while the
+  // user is actively typing a new address, or their edit would get
+  // overwritten mid-keystroke.
   useEffect(() => {
     if (!editingRef.current) setAddressInput(url);
-  }, [url]);
+  }, [url, active?.key]);
 
   const go = () => void open(addressInput);
+
+  const handleHardReload = async () => {
+    try {
+      await hardReload();
+      toast.success(t("browser.hardReloadDone"));
+    } catch (e) {
+      toast.error(String(e));
+    }
+  };
 
   const handleClearData = async () => {
     setClearing(true);
@@ -43,6 +61,14 @@ export default function BrowserPage() {
 
   return (
     <div className="flex h-full flex-col">
+      <BrowserTabStrip
+        tabs={tabs}
+        activeKey={active?.key}
+        onSelect={selectTab}
+        onClose={closeTab}
+        onNew={newTab}
+      />
+
       {/* Fixed h-12 (not py-2 + content-driven height) so this row's box height
         * is deterministic — the native browser panel is positioned to start
         * exactly where this row's rect measures out to, and any implicit growth
@@ -67,6 +93,12 @@ export default function BrowserPage() {
         >
           <RotateCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
         </Button>
+        <Button
+          variant="ghost" size="icon" onClick={goHome} disabled={!opened}
+          className="h-8 w-8 text-muted-foreground" title={t("browser.home")} aria-label={t("browser.home")}
+        >
+          <Home className="h-4 w-4" />
+        </Button>
 
         <div className="relative mx-1 flex-1 min-w-0">
           <Globe className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -81,14 +113,22 @@ export default function BrowserPage() {
           />
         </div>
 
-        {title && opened && (
-          <span className="hidden max-w-40 shrink-0 truncate text-xs text-muted-foreground md:inline" title={title}>
-            {title}
-          </span>
-        )}
-
         <Button
-          variant="ghost" size="icon" onClick={() => setConfirmClear(true)} disabled={!opened}
+          variant="ghost" size="icon" onClick={() => setAskOpen((v) => !v)}
+          className={`h-8 w-8 ${askOpen ? "text-primary" : "text-muted-foreground hover:text-primary"}`}
+          title={t("browser.askSelection")} aria-label={t("browser.askSelection")}
+        >
+          <MessageSquareQuote className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost" size="icon" onClick={() => void handleHardReload()} disabled={!opened}
+          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          title={t("browser.hardReload")} aria-label={t("browser.hardReload")}
+        >
+          <Eraser className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost" size="icon" onClick={() => setConfirmClear(true)}
           className="h-8 w-8 text-muted-foreground hover:text-destructive"
           title={t("browser.clearData")} aria-label={t("browser.clearData")}
         >
@@ -102,8 +142,11 @@ export default function BrowserPage() {
         </div>
       )}
 
-      <div ref={setContainer} className="relative min-h-0 flex-1 bg-muted/20">
-        {!opened && <BrowserEmptyState onOpen={(u) => void open(u)} />}
+      <div className="flex min-h-0 flex-1">
+        <div ref={setContainer} className="relative min-h-0 flex-1 bg-muted/20">
+          {!opened && <BrowserEmptyState onOpen={(u) => void open(u)} />}
+        </div>
+        {askOpen && <BrowserAskPane onClose={() => setAskOpen(false)} />}
       </div>
 
       <ConfirmModal

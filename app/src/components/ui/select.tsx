@@ -3,6 +3,7 @@ import * as SelectPrimitive from "@radix-ui/react-select";
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { BrowserPanelBlocker } from "@/store/browserPanelStore";
 
 const Select = SelectPrimitive.Root;
 
@@ -81,6 +82,7 @@ const SelectContent = React.forwardRef<
       position={position}
       {...props}
     >
+      <BrowserPanelBlocker />
       <SelectScrollUpButton />
       <SelectPrimitive.Viewport
         className={cn(
