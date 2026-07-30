@@ -13,6 +13,8 @@ export const nav: Dict = {
     "nav.settings": "Settings",
     "nav.music": "Music",
     "nav.feeds": "RSS",
+    "nav.reading": "Reading",
+    "nav.browser": "Browser",
     "command.newDocument": "New document",
     "command.newChat": "New AI chat",
     "command.searchPlaceholder": "Type a command or page…",
@@ -35,6 +37,4 @@ export const nav: Dict = {
     "command.profile": "Your profile",
     "command.collapseIcons": "Collapse toolbar icons",
     "command.expandIcons": "Expand toolbar icons",
-    "nav.reading": "Reading",
-    "nav.browser": "Browser",
 };

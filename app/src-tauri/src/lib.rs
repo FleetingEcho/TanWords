@@ -282,6 +282,7 @@ pub fn run() {
             mcp::mcp_apply_config,
             mcp::mcp_generate_token,
             tray::tray_update_now_playing,
+            tray::tray_set_language,
             browser_panel::browser_get_state,
             browser_panel::browser_show,
             browser_panel::browser_navigate,
