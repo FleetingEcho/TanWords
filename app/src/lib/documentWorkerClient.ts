@@ -1,7 +1,8 @@
 import type { PartialBlock } from "@blocknote/core";
-import { blocksToMarkdown, blocksToStorage, contentToBlocks, markdownToBlocks } from "./docFormat";
+import { blocksToMarkdown, blocksToStorage, blocksToText, contentToBlocks, markdownToBlocks } from "./docFormat";
 
-type Operation = "markdownToBlocks" | "contentToBlocks" | "blocksToMarkdown" | "blocksToStorage";
+type Operation = "markdownToBlocks" | "contentToBlocks" | "blocksToMarkdown" | "blocksToMarkdownWithStats" | "blocksToStorage";
+export type MarkdownWithStats = { markdown: string; wordCount: number };
 type Pending = {
   resolve: (value: any) => void;
   reject: (error: Error) => void;
@@ -59,7 +60,11 @@ function run<T>(operation: Operation, payload: string | readonly unknown[]): Pro
       pending.clear();
       worker?.terminate();
       worker = null;
-    }, 5000);
+    // Large Markdown documents can legitimately take several seconds to parse
+    // or serialize. A short timeout is counterproductive here: the catch path
+    // repeats the same expensive work on the UI thread. Keep the work isolated
+    // in the worker and reserve restart/fallback for a genuinely stuck worker.
+    }, 60_000);
     pending.set(id, { resolve, reject, timeout });
     target.postMessage({ id, operation, payload });
   });
@@ -79,6 +84,29 @@ export async function contentToBlocksOffThread(content: string): Promise<Partial
 export async function blocksToMarkdownOffThread(blocks: readonly unknown[]): Promise<string> {
   try { return await (run<string>("blocksToMarkdown", blocks) ?? blocksToMarkdown(blocks)); }
   catch { return blocksToMarkdown(blocks); }
+}
+
+export async function blocksToMarkdownWithStatsOffThread(
+  blocks: readonly unknown[],
+): Promise<MarkdownWithStats> {
+  try {
+    return await (run<MarkdownWithStats>("blocksToMarkdownWithStats", blocks)
+      ?? Promise.all([blocksToMarkdown(blocks), Promise.resolve(blocksToText(blocks))]).then(
+        ([markdown, text]) => ({
+          markdown,
+          wordCount: text.trim() ? text.trim().split(/\s+/).length : 0,
+        }),
+      ));
+  } catch {
+    const [markdown, text] = await Promise.all([
+      blocksToMarkdown(blocks),
+      Promise.resolve(blocksToText(blocks)),
+    ]);
+    return {
+      markdown,
+      wordCount: text.trim() ? text.trim().split(/\s+/).length : 0,
+    };
+  }
 }
 
 export async function blocksToStorageOffThread(blocks: readonly unknown[]) {

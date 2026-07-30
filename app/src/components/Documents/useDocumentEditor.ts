@@ -16,6 +16,7 @@ export function useDocumentEditor() {
   /** True while a doc's content is being fetched — a large document can take a
    *  second or two, and without this the page just goes blank in between. */
   const [loading, setLoading] = useState(false);
+  const [lockedId, setLockedId] = useState<number | null>(null);
   const activeIdRef = useRef<number | null>(null);
 
   const pendingSave = useRef<{ content: string; contentText: string; wordCount: number } | null>(null);
@@ -31,6 +32,7 @@ export function useDocumentEditor() {
       setActiveId(null);
       activeIdRef.current = null;
       setDoc(null);
+      setLockedId(null);
       setLoading(false);
       return;
     }
@@ -38,15 +40,39 @@ export function useDocumentEditor() {
     try {
       const detail = await db.getDocument(id);
       if (detail) {
+        setLockedId(null);
         setDoc(detail);
         setActiveId(id);
         activeIdRef.current = id;
         setSaveStatus("idle");
       }
+    } catch (error) {
+      if (String(error).includes("DOCUMENT_LOCKED")) {
+        setDoc(null);
+        setLockedId(id);
+        setActiveId(id);
+        activeIdRef.current = id;
+      } else {
+        throw error;
+      }
     } finally {
       setLoading(false);
     }
   }, [db]);
+
+  const unlockDocument = useCallback(async (password: string) => {
+    if (lockedId === null) return;
+    await db.unlockDocument(lockedId, password);
+    await loadDoc(lockedId);
+    setRefreshKey((key) => key + 1);
+  }, [db, loadDoc, lockedId]);
+
+  const removeLockedProtection = useCallback(async (password: string) => {
+    if (lockedId === null) return;
+    await db.removeDocumentProtection(lockedId, password);
+    await loadDoc(lockedId);
+    setRefreshKey((key) => key + 1);
+  }, [db, loadDoc, lockedId]);
 
   const handleNewDoc = useCallback(async () => {
     const id = await db.createDocument();
@@ -116,12 +142,14 @@ export function useDocumentEditor() {
     setActiveId(null);
     activeIdRef.current = null;
     setDoc(null);
+    setLockedId(null);
     setSaveStatus("idle");
   }, []);
 
   return {
-    activeId, doc, saveStatus, refreshKey, loading,
+    activeId, doc, lockedId, saveStatus, refreshKey, loading,
     loadDoc, handleNewDoc, handleSave, markDirty, handleTitleChange, handleTagsChange, handlePinToggle,
+    unlockDocument, removeLockedProtection,
     reset,
   };
 }

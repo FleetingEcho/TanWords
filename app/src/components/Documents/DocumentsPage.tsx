@@ -8,6 +8,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Button } from "@/components/ui/button";
 import { ChevronsRight } from "lucide-react";
 import { LIST_PANEL_WIDTH, LIST_PANEL_COLLAPSED_WIDTH, LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
+import { LockedDocumentPanel } from "./LockedDocumentPanel";
 
 type DocSource = "db" | "local";
 
@@ -34,8 +35,9 @@ export function DocumentsPage() {
     setDbSidebarOpenState(open);
   };
   const {
-    activeId, doc, saveStatus, refreshKey, loading,
+    activeId, doc, lockedId, saveStatus, refreshKey, loading,
     loadDoc, handleNewDoc, handleSave, markDirty, handleTitleChange, handleTagsChange, handlePinToggle,
+    unlockDocument, removeLockedProtection,
   } = useDocumentEditor();
 
   // Reopen whichever database doc was open last session.
@@ -66,7 +68,7 @@ export function DocumentsPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Source tabs: database docs vs mounted local folder */}
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2.5 bg-background">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2.5 bg-transparent">
         <div className="flex items-center gap-1">
           {(["db", "local"] as const).map((s) => (
             <Button
@@ -115,6 +117,11 @@ export function DocumentsPage() {
                   onTagsChange={handleTagsChange}
                   onPinToggle={handlePinToggle}
                   saveStatus={saveStatus}
+                />
+              ) : lockedId !== null ? (
+                <LockedDocumentPanel
+                  onUnlock={unlockDocument}
+                  onRemoveProtection={removeLockedProtection}
                 />
               ) : loading ? (
                 <div className="flex items-center justify-center h-full">

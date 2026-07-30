@@ -6,6 +6,7 @@
   "permissions": [
     "core:default",
     "dialog:default",
+    "clipboard-manager:allow-read-image",
     "shell:default",
     "updater:default",
     "process:allow-restart",

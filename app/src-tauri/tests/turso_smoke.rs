@@ -417,6 +417,7 @@ async fn a_local_database_can_be_imported_into_turso() {
             db: std::sync::Mutex::new(remote),
             tts: std::sync::Mutex::new(None).into(),
             db_fallback_warning: None,
+            document_privacy: Default::default(),
         },
     );
     let state: tauri::State<tanwords_lib::AppState> = tauri::Manager::state(&app);

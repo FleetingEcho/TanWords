@@ -1,12 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
-import { Archive, Download, Eye, File, FileArchive, FileAudio, FileText, FileVideo, FolderDown, Grid2X2, Image as ImageIcon, List, RefreshCw, Trash2, X } from "lucide-react";
+import { Archive, Download, Eye, File, FileArchive, FileAudio, FileText, FileVideo, FolderDown, Grid2X2, Image as ImageIcon, List, LockKeyhole, RefreshCw, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
 import { CloseIcon } from "@/components/ui/icons";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  DocumentPasswordDialog,
+  type DocumentPasswordRequest,
+} from "./DocumentPasswordDialog";
+import { requiresAttachmentPassword, type PrivateAttachmentAction } from "./privateDocumentPolicy";
 import { useT } from "@/hooks/useT";
 import {
   deleteDocumentAsset,
@@ -50,13 +57,17 @@ function AssetThumbnail({ asset }: { asset: DocumentAssetSummary }) {
   const [url, setUrl] = useState("");
   const kind = assetKind(asset);
   useEffect(() => {
+    if (asset.protected && !asset.unlocked) return;
     if (kind !== "image") return;
     let active = true;
     resolveDocumentAssetUrl(`tanwords-asset://${asset.id}`)
       .then((resolved) => { if (active) setUrl(resolved); })
       .catch(() => {});
     return () => { active = false; };
-  }, [asset.id, kind]);
+  }, [asset.id, asset.protected, asset.unlocked, kind]);
+  if (asset.protected && !asset.unlocked) {
+    return <div className="flex h-full w-full items-center justify-center bg-muted text-muted-foreground"><LockKeyhole className="h-7 w-7" /></div>;
+  }
   if (kind === "image" && url) return <img src={url} alt={asset.file_name} className="h-full w-full object-cover" />;
   return <div className="flex h-full w-full items-center justify-center bg-muted text-muted-foreground/45"><KindIcon kind={kind} /></div>;
 }
@@ -125,6 +136,46 @@ export function DocumentImageManager({ writable }: { writable: boolean }) {
   );
   const [kindFilter, setKindFilter] = useState<AssetKind | "all">("all");
   const [query, setQuery] = useState("");
+  const [passwordRequest, setPasswordRequest] = useState<DocumentPasswordRequest | null>(null);
+  const passwordResolver = useRef<((password: string | null) => void) | null>(null);
+
+  const requestPassword = (request: DocumentPasswordRequest) => new Promise<string | null>((resolve) => {
+    passwordResolver.current = resolve;
+    setPasswordRequest(request);
+  });
+
+  const finishPasswordRequest = (password: string | null) => {
+    const resolve = passwordResolver.current;
+    passwordResolver.current = null;
+    setPasswordRequest(null);
+    resolve?.(password);
+  };
+
+  const authorizeAssets = async (
+    action: PrivateAttachmentAction,
+    candidates: DocumentAssetSummary[],
+  ): Promise<boolean> => {
+    const privateDocuments = new Map<number, DocumentAssetSummary>();
+    for (const asset of candidates) {
+      if (requiresAttachmentPassword(asset.protected, action)) {
+        privateDocuments.set(asset.document_id, asset);
+      }
+    }
+    for (const [documentId, asset] of privateDocuments) {
+      const password = await requestPassword({
+        title: action === "download" ? t("doc.downloadPrivateFile") : t("doc.deletePrivateFile"),
+        description: `${asset.document_title}: ${t("doc.sensitiveActionPasswordHint")}`,
+      });
+      if (!password) return false;
+      try {
+        await invoke("db_unlock_document", { id: documentId, password });
+      } catch {
+        toast.error(t("doc.invalidPassword"));
+        return false;
+      }
+    }
+    return true;
+  };
 
   const changeView = (next: "grid" | "list") => {
     localStorage.setItem("tanwords_document_images_view", next);
@@ -146,7 +197,7 @@ export function DocumentImageManager({ writable }: { writable: boolean }) {
       && (!needle || `${asset.file_name} ${asset.document_title} ${asset.mime_type}`.toLowerCase().includes(needle))
     );
   }, [assets, kindFilter, query]);
-  const orphanCount = assets.filter((asset) => !asset.referenced).length;
+  const orphanCount = assets.filter((asset) => !asset.protected && !asset.referenced).length;
   const totalPages = Math.max(1, Math.ceil(filteredAssets.length / pageSize));
   const visibleAssets = filteredAssets.slice(page * pageSize, (page + 1) * pageSize);
   useEffect(() => {
@@ -167,6 +218,7 @@ export function DocumentImageManager({ writable }: { writable: boolean }) {
   };
 
   const handleAssetClick = (asset: DocumentAssetSummary) => {
+    if (asset.protected && !asset.unlocked) return;
     if (clickTimer.current) clearTimeout(clickTimer.current);
     clickTimer.current = setTimeout(() => {
       if (selectMode) toggleSelected(asset.id);
@@ -175,6 +227,7 @@ export function DocumentImageManager({ writable }: { writable: boolean }) {
   };
 
   const handleAssetDoubleClick = (asset: DocumentAssetSummary) => {
+    if (asset.protected && !asset.unlocked) return;
     if (clickTimer.current) clearTimeout(clickTimer.current);
     if (selectMode) {
       setSelectMode(false);
@@ -186,6 +239,7 @@ export function DocumentImageManager({ writable }: { writable: boolean }) {
   };
 
   const exportOne = async (asset: DocumentAssetSummary) => {
+    if (!await authorizeAssets("download", [asset])) return;
     const extension = asset.file_name.split(".").pop()?.replace(/[^a-z0-9]/gi, "")
       || (asset.mime_type === "image/svg+xml" ? "svg" : asset.mime_type.split("/")[1]?.replace("jpeg", "jpg"))
       || "png";
@@ -204,11 +258,13 @@ export function DocumentImageManager({ writable }: { writable: boolean }) {
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
+    const target = deleteTarget;
+    setDeleteTarget(null);
+    if (!await authorizeAssets("delete", [target])) return;
     setDeleting(true);
     try {
-      await deleteDocumentAsset(deleteTarget.id);
-      setAssets((current) => current.filter((asset) => asset.id !== deleteTarget.id));
-      setDeleteTarget(null);
+      await deleteDocumentAsset(target.id);
+      setAssets((current) => current.filter((asset) => asset.id !== target.id));
       window.dispatchEvent(new CustomEvent("docs-updated"));
       toast.success(t("settings.documentImageDeleted"));
     } catch (error) {
@@ -232,6 +288,8 @@ export function DocumentImageManager({ writable }: { writable: boolean }) {
   };
 
   const exportSelectedToFolder = async () => {
+    const selected = assets.filter((asset) => selectedIds.has(asset.id));
+    if (!await authorizeAssets("download", selected)) return;
     const destination = await openDialog({ directory: true, multiple: false });
     if (typeof destination !== "string") return;
     setBulkBusy(true);
@@ -243,6 +301,8 @@ export function DocumentImageManager({ writable }: { writable: boolean }) {
   };
 
   const exportSelectedZip = async () => {
+    const selected = assets.filter((asset) => selectedIds.has(asset.id));
+    if (!await authorizeAssets("download", selected)) return;
     const destination = await saveDialog({
       defaultPath: "tanwords-images.zip",
       filters: [{ name: "ZIP", extensions: ["zip"] }],
@@ -257,6 +317,9 @@ export function DocumentImageManager({ writable }: { writable: boolean }) {
   };
 
   const deleteSelected = async () => {
+    setConfirmBulkDelete(false);
+    const selected = assets.filter((asset) => selectedIds.has(asset.id));
+    if (!await authorizeAssets("delete", selected)) return;
     setBulkBusy(true);
     try {
       for (const id of selectedIds) await deleteDocumentAsset(id);
@@ -320,23 +383,27 @@ export function DocumentImageManager({ writable }: { writable: boolean }) {
           placeholder={t("settings.documentAssetsSearch")}
           className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-xs outline-none focus:ring-2 focus:ring-primary/30"
         />
-        <select
+        <Select
           value={kindFilter}
-          onChange={(event) => { setKindFilter(event.target.value as AssetKind | "all"); setPage(0); }}
-          className="h-8 rounded-lg border border-input bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-primary/30"
+          onValueChange={(value) => { setKindFilter(value as AssetKind | "all"); setPage(0); }}
         >
-          {(["all", "image", "pdf", "audio", "video", "archive", "other"] as const).map((kind) => (
-            <option key={kind} value={kind}>{t(`settings.documentAssetsKind_${kind}`)}</option>
-          ))}
-        </select>
+          <SelectTrigger className="h-8 w-auto min-w-28 rounded-lg px-2 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {(["all", "image", "pdf", "audio", "video", "archive", "other"] as const).map((kind) => (
+              <SelectItem key={kind} value={kind}>{t(`settings.documentAssetsKind_${kind}`)}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {selectMode && (
         <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/30 px-6 py-2">
           <Checkbox
-            checked={selectedIds.size === assets.length && assets.length > 0}
+            checked={selectedIds.size === assets.filter((asset) => !asset.protected || asset.unlocked).length && assets.length > 0}
             onCheckedChange={() => setSelectedIds(
-              selectedIds.size === assets.length ? new Set() : new Set(assets.map((asset) => asset.id))
+              selectedIds.size ? new Set() : new Set(assets.filter((asset) => !asset.protected || asset.unlocked).map((asset) => asset.id))
             )}
           />
           <span className="text-xs font-medium text-muted-foreground">
@@ -406,12 +473,15 @@ export function DocumentImageManager({ writable }: { writable: boolean }) {
               </div>
               <div className={view === "grid" ? "space-y-1.5 p-2.5" : "flex min-w-0 flex-1 items-center gap-4"}>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium" title={asset.file_name}>{asset.file_name}</p>
+                  <p className="flex items-center gap-1 truncate text-xs font-medium" title={asset.file_name}>
+                    {asset.protected && <LockKeyhole className="h-3 w-3 shrink-0 text-muted-foreground" />}
+                    <span className="truncate">{asset.file_name}</span>
+                  </p>
                   <p className="mt-0.5 truncate text-[10px] text-muted-foreground" title={asset.document_title}>{asset.document_title}</p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   <span className="text-[10px] text-muted-foreground">{formatBytes(asset.size)}</span>
-                  {!asset.referenced && (
+                  {!asset.protected && !asset.referenced && (
                     <span className="rounded bg-amber-500/10 px-1 py-px text-[9px] font-semibold text-amber-600">
                       {t("settings.documentImageOrphan")}
                     </span>
@@ -435,14 +505,21 @@ export function DocumentImageManager({ writable }: { writable: boolean }) {
         <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border px-6 py-2">
           <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <span>{t("vocab.perPage")}</span>
-            <select value={pageSize} onChange={(event) => {
-              const size = Number(event.target.value);
+            <Select value={String(pageSize)} onValueChange={(value) => {
+              const size = Number(value);
               localStorage.setItem("tanwords_document_images_page_size", String(size));
               setPageSize(size);
               setPage(0);
-            }} className="h-7 rounded-md border border-input bg-background px-1.5 text-xs text-foreground outline-none focus:ring-2 focus:ring-primary/30">
-              {[10, 20, 50, 100].map((size) => <option key={size} value={size}>{size}</option>)}
-            </select>
+            }}>
+              <SelectTrigger className="h-7 w-16 rounded-md px-1.5 text-xs" aria-label={t("vocab.perPage")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[10, 20, 50, 100].map((size) => (
+                  <SelectItem key={size} value={String(size)}>{size}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
           <div className="flex items-center gap-1">
             <Button variant="ghost" disabled={page === 0} onClick={() => setPage((value) => Math.max(0, value - 1))}
@@ -477,6 +554,11 @@ export function DocumentImageManager({ writable }: { writable: boolean }) {
         confirmDisabled={bulkBusy}
         onCancel={() => !bulkBusy && setConfirmBulkDelete(false)}
         onConfirm={() => void deleteSelected()}
+      />
+      <DocumentPasswordDialog
+        request={passwordRequest}
+        onCancel={() => finishPasswordRequest(null)}
+        onSubmit={(password) => finishPasswordRequest(password)}
       />
     </div>
   );

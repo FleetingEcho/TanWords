@@ -175,8 +175,20 @@ pub(super) async fn fetch_feed_meta(url: &str) -> Result<RssFeedMeta, String> {
         return Err(format!("Server returned {}", resp.status()));
     }
 
-    let body = resp.bytes().await.map_err(|e| e.to_string())?;
-    let feed = feed_rs::parser::parse(&body[..]).map_err(|e| format!("Feed parse error: {e}"))?;
+    let body = resp.bytes().await.map_err(|e| e.to_string())?.to_vec();
+
+    // feed-rs performs synchronous XML parsing. Large "full refresh" batches
+    // used to run that CPU work on Tokio's async executor, where it could delay
+    // unrelated Tauri commands and make the page feel unresponsive. Network I/O
+    // remains async; only the CPU-bound parse/normalization stage moves to the
+    // dedicated blocking worker pool.
+    tauri::async_runtime::spawn_blocking(move || parse_feed_body(&body))
+        .await
+        .map_err(|e| format!("Feed parser worker failed: {e}"))?
+}
+
+fn parse_feed_body(body: &[u8]) -> Result<RssFeedMeta, String> {
+    let feed = feed_rs::parser::parse(body).map_err(|e| format!("Feed parse error: {e}"))?;
 
     let site_link = feed
         .links

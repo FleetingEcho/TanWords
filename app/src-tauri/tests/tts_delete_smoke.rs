@@ -16,6 +16,7 @@ async fn deletes_and_unloads_active_model() {
         db: std::sync::Mutex::new(database),
         tts: std::sync::Mutex::new(None).into(),
         db_fallback_warning: None,
+        document_privacy: Default::default(),
     });
     let state: tauri::State<tanwords_lib::AppState> = app.state();
 

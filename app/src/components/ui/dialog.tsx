@@ -20,10 +20,9 @@ export function Dialog({ open, onClose, children, className, maxWidth = "max-w-2
         <DialogPrimitive.Content
           aria-describedby={undefined}
           className={cn(
-            // Centered via inset-x + mx-auto rather than left-1/2 -translate-x-1/2:
-            // percentage translates put the layer on fractional pixel boundaries
-            // (WebKitGTK renders all the text inside blurry), margin centering doesn't.
-            "fixed inset-x-0 top-[8vh] z-[101] mx-auto w-[calc(100%-2rem)] rounded-xl border border-border bg-background shadow-2xl outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+            // Center with inset + auto margins rather than percentage transforms:
+            // WebKitGTK renders text on fractional transformed pixels blurry.
+            "fixed inset-0 z-[101] m-auto h-fit max-h-[calc(100vh-2rem)] w-[calc(100%-2rem)] overflow-y-auto rounded-xl border border-border bg-background shadow-2xl outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
             maxWidth,
             className,
           )}

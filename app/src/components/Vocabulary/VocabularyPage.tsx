@@ -649,7 +649,7 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2.5 bg-background">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2.5 bg-transparent">
         <div className="flex items-center gap-1">
           {(["words", "patterns"] as const).map((tab) => (
             <button

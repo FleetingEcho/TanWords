@@ -3,7 +3,7 @@ import { BlockNoteEditor } from "@blocknote/core";
 
 type Request = {
   id: number;
-  operation: "markdownToBlocks" | "contentToBlocks" | "blocksToMarkdown" | "blocksToStorage";
+  operation: "markdownToBlocks" | "contentToBlocks" | "blocksToMarkdown" | "blocksToMarkdownWithStats" | "blocksToStorage";
   payload: string | readonly unknown[];
 };
 
@@ -49,6 +49,13 @@ async function handle(data: Request) {
       }
     } else if (data.operation === "blocksToMarkdown") {
       result = await getParser().blocksToMarkdownLossy(data.payload as any);
+    } else if (data.operation === "blocksToMarkdownWithStats") {
+      const blocks = data.payload as readonly unknown[];
+      const contentText = blocksToText(blocks);
+      result = {
+        markdown: await getParser().blocksToMarkdownLossy(blocks as any),
+        wordCount: contentText.trim() ? contentText.trim().split(/\s+/).length : 0,
+      };
     } else {
       const blocks = data.payload as readonly unknown[];
       const contentText = blocksToText(blocks);

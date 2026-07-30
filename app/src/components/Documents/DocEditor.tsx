@@ -1,5 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useCreateBlockNote } from "@blocknote/react";
+import {
+  FormattingToolbar,
+  FormattingToolbarController,
+  getFormattingToolbarItems,
+  useCreateBlockNote,
+} from "@blocknote/react";
+import { offset, shift } from "@floating-ui/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import { editorSchema } from "./editorSchema";
 import "@blocknote/core/fonts/inter.css";
@@ -14,12 +20,20 @@ import { liftMermaid, lowerMermaid } from "./mermaidTransforms";
 import { PinIcon } from "@/components/ui/icons";
 import { CheckIcon } from "@heroicons/react/24/solid";
 import { Button } from "@/components/ui/button";
-import { Code2, Eye, Link2, Paperclip, Search } from "lucide-react";
+import { Code2, Download, Eye, Link2, Paperclip, Search, Trash2 } from "lucide-react";
 import { RawMarkdownEditor } from "./RawMarkdownEditor";
 import { resolveDocumentAssetUrl, uploadDocumentAsset } from "@/lib/documentAssets";
 import type { SaveStatus } from "./useDocumentEditor";
 import { invoke } from "@tauri-apps/api/core";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
+import { selectRichEditorContents } from "./editorSelection";
+import { useSettingsStore } from "@/store/settingsStore";
+import { DocumentPasswordDialog, type DocumentPasswordRequest } from "./DocumentPasswordDialog";
+import { requiresAttachmentPassword, type PrivateAttachmentAction } from "./privateDocumentPolicy";
+import { toast } from "sonner";
+import { isEmptyParagraph, withTrailingEditorParagraph, withoutTrailingEditorParagraph } from "./trailingEditorParagraph";
+import { DocumentPreviewScrollArea } from "./DocumentPreviewScrollArea";
+import { DocumentContentSearch } from "./DocumentContentSearch";
 
 interface Props {
   doc: DocumentDetail;
@@ -41,6 +55,8 @@ interface DocumentLinkContext {
 export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, onPinToggle, saveStatus }: Props) {
   const t = useT();
   const isDark = useIsDark();
+  const documentFontSize = useSettingsStore((state) => state.documentFontSize);
+  const setDocumentFontSize = useSettingsStore((state) => state.setDocumentFontSize);
   const [title, setTitle] = useState(doc.title);
   const [tagsInput, setTagsInput] = useState(
     (() => { try { return (JSON.parse(doc.tags) as string[]).join(", "); } catch { return ""; } })()
@@ -58,12 +74,28 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
   const [linkQuery, setLinkQuery] = useState("");
   const titleRef = useRef<HTMLInputElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const searchRootRef = useRef<HTMLDivElement>(null);
   const loaded = useRef(false);
   const rawDirty = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const maxSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dirty = useRef(false);
   const flushRef = useRef<() => Promise<void>>(async () => {});
+  const [passwordRequest, setPasswordRequest] = useState<DocumentPasswordRequest | null>(null);
+  const passwordResolver = useRef<((password: string | null) => void) | null>(null);
+  const [toolbarPortalElement, setToolbarPortalElement] = useState<HTMLDivElement | null>(null);
+
+  const requestPassword = useCallback((request: DocumentPasswordRequest) => new Promise<string | null>((resolve) => {
+    passwordResolver.current = resolve;
+    setPasswordRequest(request);
+  }), []);
+
+  const finishPasswordRequest = (password: string | null) => {
+    const resolve = passwordResolver.current;
+    passwordResolver.current = null;
+    setPasswordRequest(null);
+    resolve?.(password);
+  };
 
   const editor = useCreateBlockNote({
     schema: editorSchema,
@@ -78,8 +110,8 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
       try {
         const parsed = await contentToBlocksOffThread(doc.content);
         if (cancelled) return;
-        const blocks = liftMermaid(parsed);
-        if (blocks.length > 0) editor.replaceBlocks(editor.document, blocks);
+        const blocks = withTrailingEditorParagraph(liftMermaid(parsed));
+        editor.replaceBlocks(editor.document, blocks as any);
       } finally {
         if (!cancelled) requestAnimationFrame(() => { loaded.current = true; setRichLoading(false); });
       }
@@ -127,6 +159,69 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
     if (id > 0) window.dispatchEvent(new CustomEvent("tanwords:open-document", { detail: { id } }));
   };
 
+  const handleRichEditorKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "a") return;
+    if (!(event.target as Element).closest(".bn-editor")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    selectRichEditorContents(event.currentTarget);
+  };
+
+  const sensitiveAttachmentAction = useCallback(async (
+    action: PrivateAttachmentAction,
+    block: any,
+  ) => {
+    if (requiresAttachmentPassword(doc.protected, action)) {
+      const password = await requestPassword({
+        title: action === "download" ? t("doc.downloadPrivateFile") : t("doc.deletePrivateFile"),
+        description: t("doc.sensitiveActionPasswordHint"),
+      });
+      if (!password) return;
+      try {
+        await invoke("db_unlock_document", { id: doc.id, password });
+      } catch {
+        toast.error(t("doc.invalidPassword"));
+        return;
+      }
+    }
+    if (action === "delete") {
+      editor.focus();
+      editor.removeBlocks([block.id]);
+      return;
+    }
+    const downloadUrl = editor.resolveFileUrl
+      ? await editor.resolveFileUrl(block.props.url)
+      : block.props.url;
+    window.open(downloadUrl, "_blank", "noopener,noreferrer");
+  }, [doc.id, doc.protected, editor, requestPassword, t]);
+
+  const formattingToolbar = useCallback(() => {
+    const defaults = getFormattingToolbarItems();
+    if (!doc.protected) return <FormattingToolbar>{defaults}</FormattingToolbar>;
+    const selected = editor.getSelection()?.blocks || [editor.getTextCursorPosition().block];
+    const block: any = selected.length === 1 ? selected[0] : null;
+    const isFile = Boolean(block?.props && typeof block.props.url === "string");
+    const items = defaults.filter((item) =>
+      item.key !== "fileDeleteButton" && item.key !== "fileDownloadButton"
+    );
+    if (isFile) {
+      const insertAt = Math.max(0, items.findIndex((item) => item.key === "filePreviewButton"));
+      items.splice(
+        insertAt,
+        0,
+        <button key="protectedFileDelete" type="button" className="bn-button mx-0.5 inline-flex h-7 w-7 items-center justify-center rounded-md" title={t("doc.deletePrivateFile")}
+          onClick={() => void sensitiveAttachmentAction("delete", block)}>
+          <Trash2 className="h-4 w-4" />
+        </button>,
+        <button key="protectedFileDownload" type="button" className="bn-button mx-0.5 inline-flex h-7 w-7 items-center justify-center rounded-md" title={t("doc.downloadPrivateFile")}
+          onClick={() => void sensitiveAttachmentAction("download", block)}>
+          <Download className="h-4 w-4" />
+        </button>,
+      );
+    }
+    return <FormattingToolbar>{items}</FormattingToolbar>;
+  }, [doc.protected, editor, sensitiveAttachmentAction, t]);
+
   const flushSave = useCallback(async () => {
     if (!dirty.current || !loaded.current) return;
     dirty.current = false;
@@ -137,7 +232,7 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
     try {
       const blocks = mode === "raw"
         ? liftMermaid(await markdownToBlocksOffThread(rawMarkdown))
-        : structuredClone(editor.document);
+        : withoutTrailingEditorParagraph(editor.document);
       const { content, contentText, wordCount } = await blocksToStorageOffThread(
         mode === "raw" ? blocks : lowerMermaid(blocks) as any
       );
@@ -162,8 +257,12 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
 
   const handleChange = useCallback(() => {
     if (!loaded.current) return;
+    const cursor = editor.getTextCursorPosition();
+    if (!cursor.nextBlock && !isEmptyParagraph(cursor.block)) {
+      editor.insertBlocks([{ type: "paragraph" }], cursor.block, "after");
+    }
     scheduleSave();
-  }, [scheduleSave]);
+  }, [editor, scheduleSave]);
 
   const switchMode = useCallback(async (next: "rich" | "raw") => {
     if (next === mode || switchingMode) return;
@@ -172,12 +271,13 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
     if (maxSaveTimer.current) clearTimeout(maxSaveTimer.current);
     try {
       if (next === "raw") {
-        setRawMarkdown(await editor.blocksToMarkdownLossy(lowerMermaid(editor.document) as any));
+        const contentBlocks = withoutTrailingEditorParagraph(editor.document);
+        setRawMarkdown(await editor.blocksToMarkdownLossy(lowerMermaid(contentBlocks) as any));
       } else {
         loaded.current = false;
         setRichLoading(true);
         const blocks = liftMermaid(await markdownToBlocksOffThread(rawMarkdown));
-        editor.replaceBlocks(editor.document, blocks.length ? blocks : [{ type: "paragraph" }]);
+        editor.replaceBlocks(editor.document, withTrailingEditorParagraph(blocks) as any);
         if (rawDirty.current) {
           const { content, contentText, wordCount } = await blocksToStorageOffThread(blocks);
           await onSave(content, contentText, wordCount);
@@ -236,7 +336,11 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
   const tagChips = tagsInput.split(",").map((s) => s.trim()).filter(Boolean);
 
   return (
-    <div className="flex flex-col h-full">
+    <div
+      ref={setToolbarPortalElement}
+      className="bn-root relative flex h-full flex-col"
+      data-color-scheme={isDark ? "dark" : "light"}
+    >
       {/* Title + metadata */}
       <div className="px-12 pt-8 pb-2 shrink-0">
         <div className="flex items-start gap-3">
@@ -248,7 +352,7 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
             onBlur={handleTitleBlur}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); titleRef.current?.blur(); } }}
             placeholder={t("doc.untitled")}
-            className="flex-1 text-3xl font-bold tracking-tight bg-transparent border-none outline-none placeholder:text-muted-foreground/30 text-foreground"
+            className="document-editor-title flex-1 font-bold tracking-tight bg-transparent border-none outline-none placeholder:text-muted-foreground/30 text-foreground"
           />
           <Button
             variant="ghost"
@@ -286,6 +390,7 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
             </div>
           )}
           <div className="ml-auto flex items-center rounded-md bg-muted p-0.5">
+            {mode === "rich" && <DocumentContentSearch rootRef={searchRootRef} />}
             <Button type="button" variant="ghost" onClick={() => attachmentInputRef.current?.click()}
               title={t("doc.attachFile")} className="h-6 gap-1 px-2 text-[10px]">
               <Paperclip className="h-3 w-3" /> {t("doc.attach")}
@@ -300,6 +405,23 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
             <Button type="button" variant="ghost" disabled={switchingMode} onClick={() => void switchMode("raw")} className={`h-6 gap-1 px-2 text-[10px] ${mode === "raw" ? "bg-background shadow-sm" : ""}`}>
               <Code2 className="h-3 w-3" /> {t("doc.rawMode")}
             </Button>
+            <span className="mx-0.5 h-3.5 w-px bg-border" />
+            <Button type="button" variant="ghost" size="icon"
+              disabled={documentFontSize <= 12}
+              onClick={() => setDocumentFontSize(documentFontSize - 1)}
+              title={`${t("settings.documentFontSize")}: ${documentFontSize - 1}px`}
+              aria-label={`${t("settings.documentFontSize")} -`}
+              className="h-6 w-auto rounded-md px-1.5 text-[11px] font-semibold text-muted-foreground">
+              A−
+            </Button>
+            <Button type="button" variant="ghost" size="icon"
+              disabled={documentFontSize >= 24}
+              onClick={() => setDocumentFontSize(documentFontSize + 1)}
+              title={`${t("settings.documentFontSize")}: ${documentFontSize + 1}px`}
+              aria-label={`${t("settings.documentFontSize")} +`}
+              className="h-6 w-auto rounded-md px-1.5 text-[13px] font-semibold text-muted-foreground">
+              A+
+            </Button>
           </div>
         </div>
         <div className="mt-3 border-b border-border/60" />
@@ -308,14 +430,29 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
       </div>
 
       {mode === "rich" ? (
-        <div className="flex-1 overflow-y-auto relative" onClickCapture={handleEditorClick}>
-          {richLoading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-10">
-              <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-            </div>
-          )}
-          <BlockNoteView editor={editor} theme={isDark ? "dark" : "light"} onChange={handleChange}
-            className="tanwords-editor" />
+        <div ref={searchRootRef} className="contents">
+          <DocumentPreviewScrollArea onClickCapture={handleEditorClick}
+            onKeyDownCapture={handleRichEditorKeyDown}>
+            {richLoading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-10">
+                <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+              </div>
+            )}
+            <BlockNoteView editor={editor} theme={isDark ? "dark" : "light"} onChange={handleChange}
+              formattingToolbar={false} className="tanwords-editor">
+              <FormattingToolbarController
+                formattingToolbar={formattingToolbar}
+                portalElement={toolbarPortalElement}
+                floatingUIOptions={{
+                  useFloatingOptions: {
+                    placement: "bottom-start",
+                    middleware: [offset(10), shift({ padding: 8 })],
+                  },
+                  elementProps: { style: { zIndex: 100 } },
+                }}
+              />
+            </BlockNoteView>
+          </DocumentPreviewScrollArea>
         </div>
       ) : (
         <RawMarkdownEditor value={rawMarkdown} onChange={handleRawChange} label={t("doc.rawMode")} />
@@ -386,6 +523,12 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
           </div>
         </div>
       </Dialog>
+
+      <DocumentPasswordDialog
+        request={passwordRequest}
+        onCancel={() => finishPasswordRequest(null)}
+        onSubmit={(password) => finishPasswordRequest(password)}
+      />
     </div>
   );
 }
