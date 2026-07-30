@@ -166,7 +166,7 @@ export function HackerNewsSection({ viewMode, onOpen, onTranslate, translatingId
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-background/90 backdrop-blur-xl px-4 py-2.5">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-transparent backdrop-blur-xl px-4 py-2.5">
         <div className="flex items-center gap-1.5">
           {SECTIONS.map((s) => (
             <button
