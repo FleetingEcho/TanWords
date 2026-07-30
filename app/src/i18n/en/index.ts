@@ -18,6 +18,7 @@ import { feeds } from "./feeds";
 import { podcast } from "./podcast";
 import { tools } from "./tools";
 import { music } from "./music";
+import { browser } from "./browser";
 import { updater } from "./updater";
 
 export const en: Dict = {
@@ -40,5 +41,6 @@ export const en: Dict = {
     ...podcast,
     ...tools,
     ...music,
+    ...browser,
     ...updater,
 };

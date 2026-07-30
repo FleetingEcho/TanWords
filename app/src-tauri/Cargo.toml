@@ -19,7 +19,10 @@ tauri-build = { version = "2", features = [] }
 sherpa-rs = "0.6"
 
 [dependencies]
-tauri = { version = "2", features = ["protocol-asset", "tray-icon", "image-png"] }
+# "unstable" is required for the child-webview API (Window::add_child et al.)
+# used by browser_panel — the API surface may still change in a future Tauri
+# release, but the functionality itself is production-shipped, not broken.
+tauri = { version = "2", features = ["protocol-asset", "tray-icon", "image-png", "unstable"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-clipboard-manager = "2"
@@ -73,7 +76,7 @@ zip = { version = "4.6.1", default-features = false, features = ["deflate"] }
 regex = "1"
 
 [dev-dependencies]
-tauri = { version = "2", features = ["test"] }
+tauri = { version = "2", features = ["test", "unstable"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
