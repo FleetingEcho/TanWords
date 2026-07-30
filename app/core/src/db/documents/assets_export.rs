@@ -1,12 +1,12 @@
 use libsql::params;
 use std::io::Write;
-use tauri::State;
+use crate::shim::State;
 
 use crate::db;
 use crate::document_privacy::{self, decrypt_bytes};
 use crate::AppState;
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_export_document_asset(
     id: String,
     destination: String,
@@ -103,7 +103,7 @@ fn unique_export_path(
     unreachable!()
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_export_document_assets_to_folder(
     ids: Vec<String>,
     destination: String,
@@ -124,7 +124,7 @@ pub async fn db_export_document_assets_to_folder(
     Ok(rows.len() as u64)
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_export_document_assets_zip(
     ids: Vec<String>,
     destination: String,

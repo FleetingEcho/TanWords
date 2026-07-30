@@ -1,5 +1,5 @@
 use libsql::{params, Connection, Result};
-use tauri::State;
+use crate::shim::State;
 
 use crate::db;
 use crate::db::connection::{DbDescriptor, DbProfile};
@@ -71,13 +71,13 @@ pub async fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<()
     Ok(())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_get_word_count(conn: State<'_, AppState>) -> std::result::Result<i64, String> {
     let db = db::conn(&conn)?;
     db::scalar_i64(&db, "SELECT COUNT(*) FROM words", ()).await
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_get_translation_count(
     conn: State<'_, AppState>,
 ) -> std::result::Result<i64, String> {
@@ -87,7 +87,7 @@ pub async fn db_get_translation_count(
 
 // db_get_review_count moved to srs.rs (needs FSRS-consistent date comparison).
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_get_setting(
     key: String,
     conn: State<'_, AppState>,
@@ -96,7 +96,7 @@ pub async fn db_get_setting(
     get_setting(&db, &key).await.map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_set_setting(
     key: String,
     value: String,
@@ -106,21 +106,21 @@ pub async fn db_set_setting(
     set_setting(&db, &key, &value).await.map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub fn db_get_db_path(state: State<'_, AppState>) -> std::result::Result<String, String> {
     state.db_path()
 }
 
 /// Bytes on disk. For a Turso profile this measures the local replica, which
 /// is the only thing this process can actually stat.
-#[tauri::command]
+#[crate::shim::command]
 pub fn db_get_db_size(state: State<'_, AppState>) -> std::result::Result<u64, String> {
     database_disk_size(&state.db_path()?)
 }
 
 /// The active connection profile, including what it supports — the frontend
 /// hides export/switch actions that can't work rather than failing on click.
-#[tauri::command]
+#[crate::shim::command]
 pub fn db_get_connection(state: State<'_, AppState>) -> std::result::Result<DbDescriptor, String> {
     state.descriptor()
 }
@@ -130,7 +130,7 @@ pub fn db_get_connection(state: State<'_, AppState>) -> std::result::Result<DbDe
 /// otherwise. The frontend calls this once at startup to show a warning
 /// instead of the app silently falling back to an empty default database
 /// with no explanation.
-#[tauri::command]
+#[crate::shim::command]
 pub fn db_get_startup_warning(state: State<'_, AppState>) -> Option<String> {
     state.db_fallback_warning.clone()
 }
@@ -141,7 +141,7 @@ pub fn db_get_startup_warning(state: State<'_, AppState>) -> Option<String> {
 /// failed Turso one is kept on purpose in case it was just a flaky network —
 /// so it can linger indefinitely if the real cause was a lost/revoked token.
 /// Gates the "Forget saved connection" button in Settings.
-#[tauri::command]
+#[crate::shim::command]
 pub fn db_saved_profile_is_turso() -> bool {
     matches!(crate::appconfig::load_db_profile(), Some(DbProfile::Turso { .. }))
 }
@@ -150,7 +150,7 @@ pub fn db_saved_profile_is_turso() -> bool {
 /// reconnected right now. Unlike `db_disconnect_remote`, this needs no live
 /// connection to the profile being forgotten — it only touches the saved
 /// config, leaving whatever the app already fell back to untouched.
-#[tauri::command]
+#[crate::shim::command]
 pub fn db_forget_saved_profile() {
     crate::appconfig::clear_db_profile();
     crate::secrets::turso_token_clear();
@@ -161,7 +161,7 @@ pub fn db_forget_saved_profile() {
 /// it does. Swaps the live connection in place so no restart is needed; the
 /// caller (Settings UI) still does a full frontend reload afterward since
 /// every already-loaded page's state was fetched from the old DB.
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_switch_path(
     new_path: String,
     state: State<'_, AppState>,
@@ -198,7 +198,7 @@ pub async fn db_switch_path_without_persist(
 /// that reads at local speed and syncs to the user's primary in the
 /// background. The token goes straight to the OS keychain and is never
 /// readable from the frontend again.
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_connect_turso(
     url: String,
     token: String,
@@ -276,7 +276,7 @@ fn snapshot_destination() -> String {
 /// disconnects, the Turso database is the one they have been using, and landing
 /// them on a months-old local file reads as data loss. The remote is untouched —
 /// this only stops syncing to it.
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_disconnect_remote(
     state: State<'_, AppState>,
 ) -> std::result::Result<DbDescriptor, String> {
@@ -320,7 +320,7 @@ pub async fn db_disconnect_remote(
 
 /// Pulls the primary's latest changes now instead of waiting for the next
 /// background sync — for the "another device just added words" case.
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_sync_now(state: State<'_, AppState>) -> std::result::Result<(), String> {
     // Take an owned handle and drop the guard before awaiting — the state
     // mutex is a std one and must never be held across a suspend point.
@@ -336,7 +336,7 @@ pub async fn db_sync_now(state: State<'_, AppState>) -> std::result::Result<(), 
 
 /// Writes a consistent snapshot of the database to `dest` via VACUUM INTO,
 /// safe to run even with WAL journal entries not yet checkpointed.
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_export_backup(
     dest: String,
     conn: State<'_, AppState>,
@@ -348,7 +348,7 @@ pub async fn db_export_backup(
     export_backup(&db, &dest).await
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_clear_translations(conn: State<'_, AppState>) -> std::result::Result<(), String> {
     let db = db::conn(&conn)?;
     clear_translations(&db).await

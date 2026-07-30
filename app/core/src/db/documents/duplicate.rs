@@ -1,11 +1,11 @@
 use libsql::params;
-use tauri::State;
+use crate::shim::State;
 
 use crate::db;
 use crate::document_privacy::{self, decrypt_bytes, decrypt_text};
 use crate::AppState;
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_duplicate_document(id: i64, conn: State<'_, AppState>) -> Result<i64, String> {
     let db = db::conn(&conn)?;
     if document_privacy::document_is_protected(&db, id).await? {

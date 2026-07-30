@@ -7,9 +7,6 @@
 //!   cp ~/Library/Application\ Support/tanwords/tanwords.db{,-wal} /tmp/
 //!   TANWORDS_TEST_DB=/tmp/tanwords.db cargo test --test real_db_smoke
 
-use tauri::test::{mock_builder, mock_context, noop_assets};
-use tauri::Manager;
-
 #[tokio::test]
 async fn real_database_opens_and_serves_every_read_path() {
     let Ok(path) = std::env::var("TANWORDS_TEST_DB") else {
@@ -25,16 +22,13 @@ async fn real_database_opens_and_serves_every_read_path() {
     .await
     .expect("opening a real database should succeed");
 
-    let app = mock_builder()
-        .build(mock_context(noop_assets()))
-        .expect("build failed");
-    app.manage(tanwords_lib::AppState {
+    let app_state = tanwords_lib::AppState {
         db: std::sync::Mutex::new(database),
         tts: std::sync::Mutex::new(None).into(),
         db_fallback_warning: None,
         document_privacy: Default::default(),
-    });
-    let state: tauri::State<tanwords_lib::AppState> = app.state();
+    };
+    let state = tanwords_lib::shim::State::from_ref(&app_state);
 
     let words = tanwords_lib::db::db_get_words(None, None, None, None, None, None, state.clone())
         .await

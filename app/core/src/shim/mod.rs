@@ -5,15 +5,18 @@
 //! `app.emit(..)` and `app.try_state::<T>()` exactly as before; they just
 //! resolve here now. Migrating a file is a find/replace, not a rewrite:
 //!
-//!     rg -l 'tauri::' src/ | xargs sed -i \
-//!       -e 's/#\[tauri::command\]/#[crate::shim::command]/' \
-//!       -e 's/#\[tauri::command(async)\]/#[crate::shim::command(async)]/' \
-//!       -e 's/\btauri::State\b/crate::shim::State/g' \
-//!       -e 's/\btauri::AppHandle\b/crate::shim::AppHandle/g' \
-//!       -e 's/use tauri::\{/use crate::shim::{/'
+//! ```text
+//! rg -l 'tauri::' src/ | xargs sed -i \
+//!   -e 's/#\[tauri::command\]/#[crate::shim::command]/' \
+//!   -e 's/#\[tauri::command(async)\]/#[crate::shim::command(async)]/' \
+//!   -e 's/\btauri::State\b/crate::shim::State/g' \
+//!   -e 's/\btauri::AppHandle\b/crate::shim::AppHandle/g' \
+//!   -e 's/use tauri::\{/use crate::shim::{/'
+//! ```
 //!
 //! then `cargo check` and fix what is left. Do NOT delete the `#[..::command]`
-//! attributes — scripts/gen_dispatch.py finds the commands by scanning for them.
+//! attributes — `build.rs`'s `generate_dispatch_table()` finds the commands
+//! by scanning for them, on every `cargo build`/`cargo check`.
 
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
@@ -25,9 +28,20 @@ use tokio::sync::broadcast;
 
 pub use tanwords_macros::command;
 
-/// Stands in for `tauri::State`. A transparent borrow, so every existing
+/// Stands in for `crate::shim::State`. A transparent borrow, so every existing
 /// `state.field` / `state.method()` call site keeps working through `Deref`.
 pub struct State<'a, T: 'static>(&'a T);
+
+// Written by hand rather than `#[derive(Clone, Copy)]`: the derive macro
+// would add a `T: Clone` / `T: Copy` bound, but `&T` is `Copy` regardless of
+// whether `T` is — and `AppState` (holding `Mutex`es) never will be.
+impl<'a, T: 'static> Clone for State<'a, T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'a, T: 'static> Copy for State<'a, T> {}
 
 impl<'a, T: 'static> Deref for State<'a, T> {
     type Target = T;
@@ -73,7 +87,7 @@ impl Registry {
     }
 }
 
-/// Stands in for `tauri::AppHandle`. Cheap to clone, `Send + 'static`, so the
+/// Stands in for `crate::shim::AppHandle`. Cheap to clone, `Send + 'static`, so the
 /// existing `let handle = app.handle().clone(); spawn(async move { .. })`
 /// patterns in mcp/controller.rs and tts/download.rs still work.
 #[derive(Clone)]
@@ -87,7 +101,7 @@ impl AppHandle {
         Self { registry, events }
     }
 
-    /// `tauri::Emitter::emit`. Failure here means "nobody is listening", which
+    /// `crate::shim::Emitter::emit`. Failure here means "nobody is listening", which
     /// is not an error — every existing call site already does `let _ = ..`.
     pub fn emit<P: Serialize>(&self, name: &str, payload: P) -> Result<(), String> {
         let payload = serde_json::to_value(payload).map_err(|e| e.to_string())?;

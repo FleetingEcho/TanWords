@@ -2,8 +2,6 @@
 //! a conflict, and what an "overwrite" is allowed to touch.
 
 use std::collections::HashMap;
-use tauri::test::{mock_builder, mock_context, noop_assets};
-use tauri::Manager;
 
 use tanwords_lib::db::{connection, DbProfile, ImportDecisions};
 
@@ -81,24 +79,22 @@ async fn build_source(path: &str) {
     .unwrap();
 }
 
-async fn app_with(path: &str) -> tauri::App<tauri::test::MockRuntime> {
+async fn app_with(path: &str) -> tanwords_lib::AppState {
     let database = open(path).await;
-    let app = mock_builder().build(mock_context(noop_assets())).expect("build");
-    app.manage(tanwords_lib::AppState {
+    tanwords_lib::AppState {
         db: std::sync::Mutex::new(database),
         tts: std::sync::Mutex::new(None).into(),
         db_fallback_warning: None,
         document_privacy: Default::default(),
-    });
-    app
+    }
 }
 
-async fn scalar(state: &tauri::State<'_, tanwords_lib::AppState>, sql: &str) -> i64 {
+async fn scalar(state: &tanwords_lib::shim::State<'_, tanwords_lib::AppState>, sql: &str) -> i64 {
     let conn = tanwords_lib::db::conn(state).unwrap();
     tanwords_lib::db::scalar_i64(&conn, sql, ()).await.unwrap()
 }
 
-async fn text(state: &tauri::State<'_, tanwords_lib::AppState>, sql: &str) -> Option<String> {
+async fn text(state: &tanwords_lib::shim::State<'_, tanwords_lib::AppState>, sql: &str) -> Option<String> {
     let conn = tanwords_lib::db::conn(state).unwrap();
     tanwords_lib::db::fetch_optional(&conn, sql, (), |r| r.get(0)).await.unwrap()
 }
@@ -107,8 +103,8 @@ async fn text(state: &tauri::State<'_, tanwords_lib::AppState>, sql: &str) -> Op
 async fn importing_into_an_empty_database_brings_everything_over() {
     let (src, dest) = (temp_db("src"), temp_db("dest"));
     build_source(&src).await;
-    let app = app_with(&dest).await;
-    let state: tauri::State<tanwords_lib::AppState> = app.state();
+    let app_state = app_with(&dest).await;
+    let state = tanwords_lib::shim::State::from_ref(&app_state);
 
     let plan = tanwords_lib::db::db_import_analyze(src.clone(), state.clone())
         .await
@@ -172,8 +168,8 @@ async fn conflicts_are_reported_and_skipped_by_default() {
         .unwrap();
     }
 
-    let app = app_with(&dest).await;
-    let state: tauri::State<tanwords_lib::AppState> = app.state();
+    let app_state = app_with(&dest).await;
+    let state = tanwords_lib::shim::State::from_ref(&app_state);
 
     let plan = tanwords_lib::db::db_import_analyze(src.clone(), state.clone())
         .await
@@ -231,8 +227,8 @@ async fn overwriting_replaces_content_but_never_review_progress() {
         .unwrap();
     }
 
-    let app = app_with(&dest).await;
-    let state: tauri::State<tanwords_lib::AppState> = app.state();
+    let app_state = app_with(&dest).await;
+    let state = tanwords_lib::shim::State::from_ref(&app_state);
 
     let mut overwrite = HashMap::new();
     overwrite.insert("words".to_string(), vec!["blacksmith".to_string()]);
@@ -275,8 +271,8 @@ async fn overwriting_replaces_content_but_never_review_progress() {
 async fn importing_the_same_file_twice_is_a_no_op() {
     let (src, dest) = (temp_db("src4"), temp_db("dest4"));
     build_source(&src).await;
-    let app = app_with(&dest).await;
-    let state: tauri::State<tanwords_lib::AppState> = app.state();
+    let app_state = app_with(&dest).await;
+    let state = tanwords_lib::shim::State::from_ref(&app_state);
 
     tanwords_lib::db::db_import_apply(src.clone(), ImportDecisions::default(), state.clone())
         .await
@@ -309,8 +305,8 @@ async fn a_non_tanwords_file_is_rejected() {
             .unwrap();
     }
     let dest = temp_db("dest5");
-    let app = app_with(&dest).await;
-    let state: tauri::State<tanwords_lib::AppState> = app.state();
+    let app_state = app_with(&dest).await;
+    let state = tanwords_lib::shim::State::from_ref(&app_state);
 
     let err = tanwords_lib::db::db_import_analyze(stray.clone(), state)
         .await

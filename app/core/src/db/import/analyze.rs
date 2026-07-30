@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use tauri::State;
+use crate::shim::State;
 
 use super::source::{
     article_key, has_table, incoming_word_summary, open_source, read_words, truncate,
@@ -11,7 +11,7 @@ use crate::AppState;
 
 // ── Analyze ─────────────────────────────────────────────────────────────────
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_import_analyze(
     source_path: String,
     conn: State<'_, AppState>,

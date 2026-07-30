@@ -4,6 +4,7 @@
  * itself is persisted in settings under `LOCAL_DOCS_ROOT_KEY`.
  */
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { isAssetUrl, assetUrlToPath } from "@/bridge/core";
 import { prepareAssetUpload } from "./documentAssets";
 
 export const LOCAL_DOCS_ROOT_KEY = "localdocs.root";
@@ -152,7 +153,7 @@ export function mdFromDisplay(markdown: string, root: string, relPath: string): 
   return markdown.replace(MD_IMG_RE, (_m, pre: string, url: string, post: string) => {
     let abs: string | null = null;
     if (url.startsWith("asset://localhost/")) abs = url.slice("asset://localhost/".length);
-    else if (url.startsWith("http://asset.localhost/")) abs = url.slice("http://asset.localhost/".length);
+    else if (isAssetUrl(url)) abs = assetUrlToPath(url);
     if (abs === null) return pre + url + post;
     abs = tryDecode(abs);
     if (!abs.startsWith("/")) abs = "/" + abs;

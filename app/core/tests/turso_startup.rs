@@ -1,5 +1,5 @@
 //! The startup path specifically: `run()` opens the database with
-//! `tauri::async_runtime::block_on`, and libsql's replica code uses
+//! a multi-threaded Tokio runtime's `block_on`, and libsql's replica code uses
 //! `block_in_place` internally, which panics outside a multi-threaded runtime.
 //! A saved Turso profile must therefore survive being opened exactly that way.
 //!
@@ -24,13 +24,17 @@ fn turso_profile_opens_through_tauri_block_on() {
 
     // Deliberately a sync `#[test]` with no runtime of its own — the same
     // position `run()` is in when it calls this.
-    let database = tauri::async_runtime::block_on(connection::open(
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("failed to build runtime");
+    let database = runtime.block_on(connection::open(
         &DbProfile::Turso { path: path.clone(), url },
         Some(&token),
     ))
     .expect("a saved Turso profile must open on the startup path");
 
-    let count = tauri::async_runtime::block_on(tanwords_lib::db::scalar_i64(
+    let count = runtime.block_on(tanwords_lib::db::scalar_i64(
         &database.conn(),
         "SELECT COUNT(*) FROM words",
         (),

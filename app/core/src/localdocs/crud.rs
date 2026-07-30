@@ -3,14 +3,14 @@ use std::path::Path;
 
 use super::paths::{ensure_md, resolve};
 
-#[tauri::command]
+#[crate::shim::command]
 pub fn localdocs_read(root: String, rel_path: String) -> Result<String, String> {
     let path = resolve(&root, &rel_path)?;
     ensure_md(&path)?;
     fs::read_to_string(&path).map_err(|e| format!("Failed to read: {e}"))
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub fn localdocs_write(root: String, rel_path: String, content: String) -> Result<(), String> {
     let path = resolve(&root, &rel_path)?;
     ensure_md(&path)?;
@@ -19,7 +19,7 @@ pub fn localdocs_write(root: String, rel_path: String, content: String) -> Resul
 
 /// Create an empty markdown file in a vault directory, deduplicating the name
 /// ("Untitled.md" → "Untitled 2.md"). Returns the new file's relative path.
-#[tauri::command]
+#[crate::shim::command]
 pub fn localdocs_create(
     root: String,
     name: String,
@@ -54,7 +54,7 @@ pub fn localdocs_create(
 
 /// Move one markdown file into an existing directory inside the mounted root.
 /// Returns the file's new relative path and never overwrites an existing file.
-#[tauri::command]
+#[crate::shim::command]
 pub fn localdocs_move(
     root: String,
     rel_path: String,
@@ -87,7 +87,7 @@ pub fn localdocs_move(
 }
 
 /// Rename a file in place (same directory). Returns the new relative path.
-#[tauri::command]
+#[crate::shim::command]
 pub fn localdocs_rename(
     root: String,
     rel_path: String,
@@ -115,7 +115,7 @@ pub fn localdocs_rename(
     Ok(new_rel)
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub fn localdocs_delete(root: String, rel_path: String) -> Result<(), String> {
     let path = resolve(&root, &rel_path)?;
     ensure_md(&path)?;

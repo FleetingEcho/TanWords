@@ -1,6 +1,6 @@
 use libsql::{params, Value};
 use serde::Serialize;
-use tauri::State;
+use crate::shim::State;
 
 use crate::AppState;
 use crate::db;
@@ -48,7 +48,7 @@ fn map_item(row: &libsql::Row) -> libsql::Result<ChatSessionItem> {
 /// Lists conversations, newest first. `archived` selects which shelf to read
 /// (None = both); `date_from`/`date_to` filter on last activity, as `YYYY-MM-DD`
 /// — `date_to` is treated as inclusive of that whole day.
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_list_chat_sessions(
     page: Option<i64>,
     limit: Option<i64>,
@@ -91,7 +91,7 @@ pub async fn db_list_chat_sessions(
     db::fetch_all(&db, &sql, values, map_item).await
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_set_chat_session_archived(
     id: String,
     archived: bool,
@@ -107,7 +107,7 @@ pub async fn db_set_chat_session_archived(
     Ok(())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_set_chat_session_pinned(
     id: String,
     pinned: bool,
@@ -125,7 +125,7 @@ pub async fn db_set_chat_session_pinned(
 
 /// Renames without touching `updated_at` — a rename is bookkeeping, not
 /// activity, and must not bump the conversation to the top of the list.
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_rename_chat_session(
     id: String,
     title: String,
@@ -145,7 +145,7 @@ pub async fn db_rename_chat_session(
     Ok(())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_get_chat_session(
     id: String,
     conn: State<'_, AppState>,
@@ -175,7 +175,7 @@ pub async fn db_get_chat_session(
     Ok(result)
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_upsert_chat_session(
     id: String,
     title: String,
@@ -206,7 +206,7 @@ pub async fn db_upsert_chat_session(
     Ok(())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_delete_chat_session(
     id: String,
     conn: State<'_, AppState>,
@@ -218,7 +218,7 @@ pub async fn db_delete_chat_session(
     Ok(())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_search_chat_sessions(
     query: String,
     conn: State<'_, AppState>,

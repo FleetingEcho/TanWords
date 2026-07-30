@@ -13,3 +13,5 @@ dist-releases/
 app/docs/
 .claude/
 ./**/*/.claude/
+
+app/out/

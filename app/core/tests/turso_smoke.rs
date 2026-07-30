@@ -408,19 +408,13 @@ async fn a_local_database_can_be_imported_into_turso() {
     let remote = connection::open(&DbProfile::Turso { path: replica.clone(), url }, Some(&token))
         .await
         .expect("connect");
-    let app = tauri::test::mock_builder()
-        .build(tauri::test::mock_context(tauri::test::noop_assets()))
-        .expect("build app");
-    tauri::Manager::manage(
-        &app,
-        tanwords_lib::AppState {
-            db: std::sync::Mutex::new(remote),
-            tts: std::sync::Mutex::new(None).into(),
-            db_fallback_warning: None,
-            document_privacy: Default::default(),
-        },
-    );
-    let state: tauri::State<tanwords_lib::AppState> = tauri::Manager::state(&app);
+    let app_state = tanwords_lib::AppState {
+        db: std::sync::Mutex::new(remote),
+        tts: std::sync::Mutex::new(None).into(),
+        db_fallback_warning: None,
+        document_privacy: Default::default(),
+    };
+    let state = tanwords_lib::shim::State::from_ref(&app_state);
 
     let plan = tanwords_lib::db::db_import_analyze(source.clone(), state.clone())
         .await

@@ -141,11 +141,11 @@ fn scan_library(root: &Path) -> Result<Vec<MusicCollection>, String> {
 /// Scans the user's configured music folder into per-subfolder collections.
 /// Stateless by design: the library is re-scanned on each page visit, so file
 /// additions/removals never need cache invalidation.
-#[tauri::command]
+#[crate::shim::command]
 pub async fn music_scan_library(root: String) -> Result<Vec<MusicCollection>, String> {
     // Metadata parsing is blocking I/O over potentially many files — keep it
     // off the async IPC thread.
-    tauri::async_runtime::spawn_blocking(move || scan_library(Path::new(&root)))
+    tokio::task::spawn_blocking(move || scan_library(Path::new(&root)))
         .await
         .map_err(|e| e.to_string())?
 }

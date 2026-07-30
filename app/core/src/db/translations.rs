@@ -1,6 +1,6 @@
 use libsql::{params, Value};
 use serde::Serialize;
-use tauri::State;
+use crate::shim::State;
 
 use crate::AppState;
 use crate::db;
@@ -18,7 +18,7 @@ pub struct TranslationItem {
     pub created_at: String,
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_save_translation(
     source_text: String,
     result_text: String,
@@ -49,7 +49,7 @@ pub async fn db_save_translation(
     Ok(id)
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_get_translations(
     search: Option<String>,
     cluster: Option<String>,

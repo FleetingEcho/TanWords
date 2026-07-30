@@ -1,6 +1,6 @@
 use libsql::params;
 use serde::Serialize;
-use tauri::State;
+use crate::shim::State;
 
 use crate::AppState;
 use crate::db;
@@ -12,7 +12,7 @@ pub struct QuizWordItem {
     pub zh: String,
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_get_quiz_words(
     limit: Option<i64>,
     conn: State<'_, AppState>,
@@ -40,7 +40,7 @@ pub async fn db_get_quiz_words(
     .await
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_save_quiz_result(
     word_id: i64,
     is_correct: bool,

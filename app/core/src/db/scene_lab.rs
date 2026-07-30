@@ -1,6 +1,6 @@
 use libsql::params;
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use crate::shim::State;
 
 use crate::{db, AppState};
 
@@ -103,7 +103,7 @@ pub struct SceneWordAddResult {
     skipped: i64,
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_list_scenes(conn: State<'_, AppState>) -> Result<Vec<SceneSummary>, String> {
     let db = db::conn(&conn)?;
     db::fetch_all(
@@ -130,7 +130,7 @@ pub async fn db_list_scenes(conn: State<'_, AppState>) -> Result<Vec<SceneSummar
     .await
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_save_scene_lesson(
     input: SaveSceneLessonInput,
     conn: State<'_, AppState>,
@@ -208,7 +208,7 @@ pub async fn db_save_scene_lesson(
     Ok(lesson_id)
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_get_scene_lesson(
     lesson_id: i64,
     conn: State<'_, AppState>,
@@ -314,7 +314,7 @@ pub async fn db_get_scene_lesson(
     }))
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_start_scene_session(
     lesson_id: i64,
     mode: String,
@@ -330,7 +330,7 @@ pub async fn db_start_scene_session(
     Ok(db.last_insert_rowid())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_finish_scene_session(session_id: i64, conn: State<'_, AppState>) -> Result<(), String> {
     let db = db::conn(&conn)?;
     db.execute(
@@ -342,7 +342,7 @@ pub async fn db_finish_scene_session(session_id: i64, conn: State<'_, AppState>)
     Ok(())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_save_scene_attempt(
     session_id: i64,
     scene_vocabulary_id: i64,
@@ -379,7 +379,7 @@ pub async fn db_save_scene_attempt(
     Ok(())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_get_scene_progress(
     lesson_id: i64,
     conn: State<'_, AppState>,
@@ -394,7 +394,7 @@ pub async fn db_get_scene_progress(
     .await
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_add_scene_words_to_vocabulary(
     scene_vocabulary_ids: Vec<i64>,
     conn: State<'_, AppState>,

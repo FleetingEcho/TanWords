@@ -1,6 +1,6 @@
 use libsql::params;
 use serde::Serialize;
-use tauri::State;
+use crate::shim::State;
 
 use crate::{db, AppState};
 
@@ -30,7 +30,7 @@ pub struct PatternItem {
     examples: Vec<PatternExampleItem>,
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_list_patterns(conn: State<'_, AppState>) -> Result<Vec<PatternItem>, String> {
     let db = db::conn(&conn)?;
     let mut patterns = db::fetch_all(
@@ -76,7 +76,7 @@ pub async fn db_list_patterns(conn: State<'_, AppState>) -> Result<Vec<PatternIt
     Ok(patterns)
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_delete_pattern(pattern_id: i64, conn: State<'_, AppState>) -> Result<(), String> {
     let db = db::txn_conn(&conn).await?;
     let tx = db.transaction().await.map_err(|e| e.to_string())?;
@@ -92,7 +92,7 @@ pub async fn db_delete_pattern(pattern_id: i64, conn: State<'_, AppState>) -> Re
     tx.commit().await.map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_set_pattern_starred(
     pattern_id: i64,
     starred: bool,
@@ -111,7 +111,7 @@ pub async fn db_set_pattern_starred(
 /// Overwrite a saved sentence's AI-derived analysis (translation, skeleton,
 /// note, level) in place — used by the re-analyze action; the example
 /// sentences themselves are untouched.
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_update_pattern_analysis(
     pattern_id: i64,
     zh: String,
@@ -134,7 +134,7 @@ pub async fn db_update_pattern_analysis(
 
 /// Save a full sentence into the sentence-pattern library (patterns +
 /// pattern_examples), deduplicating by the exact example sentence.
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_save_sentence_pattern(
     sentence: String,
     zh: String,

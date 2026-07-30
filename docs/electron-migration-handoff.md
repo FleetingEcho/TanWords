@@ -1,6 +1,18 @@
 # Electron migration — implementation handoff
 
-Read this file and `electron-migration-plan.md`. **You do not need to read the
+## START HERE. Read these two files, in this order, before touching anything.
+
+1. **This file, all of it.** It is the task list and the order to do them in.
+2. **`electron-migration-plan.md`, all of it, once.** It is the reference: why
+   the architecture is shaped this way, and ~15 specific traps where the code
+   compiles fine and is wrong at runtime.
+
+Read the plan *before* starting Task 1, not lazily when a `§` reference comes
+up. It is one read of a single file and it is much cheaper than the bugs it
+prevents. The `§` numbers below point back into it so you can re-check a detail
+without re-reading the whole thing.
+
+Read nothing else up front. In particular: **you do not need to read the
 React UI.** ~38k lines under `src/components`, `src/hooks`, `src/store`,
 `src/providers` stay byte-for-byte identical. If you are editing one of those to
 make Electron work, you are in the wrong file — the fix belongs in
@@ -28,7 +40,7 @@ Chromium+Node — that is unrelated and not something you choose.)
 | Vite aliases mapping all 10 `@tauri-apps/*` specifiers onto the bridge | `app/vite.config.ts` |
 | All 10 bridge modules written | `app/src/bridge/*.ts` |
 | Test setup stubs the preload global | `app/src/test/setup.ts` |
-| **Dispatch table generator + all 148 sidecar commands generated** | `app/core/scripts/gen_dispatch.py` -> `app/core/src/rpc/dispatch.rs` |
+| **Dispatch table generator + all 148 sidecar commands generated** | `app/core/build.rs` (`generate_dispatch_table()`) -> `$OUT_DIR/dispatch.rs`, included by `app/core/src/rpc/mod.rs` |
 | Tauri compatibility shim (`State`, `AppHandle`, `emit`, `try_state`) | `app/core/src/shim/mod.rs` |
 | Marker `#[command]` proc-macro | `app/core/macros/` |
 | RPC arg handling incl. the camelCase->snake_case conversion | `app/core/src/rpc/mod.rs` |
@@ -56,15 +68,16 @@ cargo check 2>&1 | head -40
 ```
 
 Then work the `cargo check` list top-down. **Never delete a `#[..::command]`
-attribute** — `gen_dispatch.py` finds commands by scanning for them.
+attribute** — `build.rs`'s `generate_dispatch_table()` finds commands by
+scanning for them, on every `cargo build`/`cargo check`.
 
 Two things the sed cannot do, and they are the only real thinking in the Rust:
 
 1. `tts_download_model<R: tauri::Runtime>` — drop the generic parameter, the
    shim's `AppHandle` is not generic.
 2. Anything under `browser_panel/` and `tray.rs` — **delete both modules**. They
-   are reimplemented in Electron main (Task 4). `gen_dispatch.py` already
-   excludes their 14 commands via `SKIP_MODULES`.
+   are reimplemented in Electron main (Task 4). `generate_dispatch_table()`
+   already excludes their 14 commands via `SKIP_MODULES`.
 
 ## Tasks, in order. Each ends with something runnable.
 
@@ -90,7 +103,9 @@ first run. Once the Electron build ships, this opportunity is gone forever.
 - Delete `capabilities/`, `gen/`, `tauri*.conf.json` — but first copy the CSP
   and the icon paths out of `tauri.conf.json`, Task 5 needs them.
 - Verify: `cargo check` clean, `cargo test` passes, and
-  `python3 scripts/gen_dispatch.py` still reports 148 commands / 0 unparsed.
+  `cargo build 2>&1 | grep 'cargo:warning=dispatch'` still reports 148
+  commands / 0 unparsed (the dispatch table regenerates automatically on
+  every build via `build.rs`, no manual step).
 
 ### Task 2 — restore the guarantees that vanish silently
 Plan §8.1 and §8.2. These compile fine and are wrong at runtime:
@@ -155,5 +170,5 @@ After each task: `bunx vitest run` must stay at 138 passing.
   into `app.getPath('userData')` — you would orphan every existing user's
   vocabulary and force a multi-GB model re-download.
 - `MAIN_PROCESS_COMMANDS` in `src/bridge/core.ts` and `SKIP_MODULES` in
-  `core/scripts/gen_dispatch.py` describe the same split. A name in one and not
-  the other is a silent routing bug.
+  `core/build.rs` (`generate_dispatch_table()`) describe the same split. A
+  name in one and not the other is a silent routing bug.

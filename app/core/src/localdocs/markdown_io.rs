@@ -4,7 +4,7 @@ use std::path::Path;
 use super::paths::{ensure_md, unique_asset_path, unique_md_path};
 use super::types::{MarkdownBundleExport, MarkdownExport, MarkdownSource};
 
-#[tauri::command]
+#[crate::shim::command]
 pub fn localdocs_store_asset(
     root: String,
     file_name: String,
@@ -31,7 +31,7 @@ pub fn localdocs_store_asset(
     Ok(relative.to_string_lossy().replace('\\', "/"))
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub fn markdown_read_files(paths: Vec<String>) -> Result<Vec<MarkdownSource>, String> {
     let mut out = Vec::new();
     for source in paths {
@@ -55,7 +55,7 @@ pub fn markdown_read_files(paths: Vec<String>) -> Result<Vec<MarkdownSource>, St
     Ok(out)
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub fn markdown_export_files(
     destination: String,
     files: Vec<MarkdownExport>,
@@ -80,7 +80,7 @@ pub fn markdown_export_files(
     Ok(files.len())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub fn markdown_export_bundles(
     destination: String,
     files: Vec<MarkdownBundleExport>,

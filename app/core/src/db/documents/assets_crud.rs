@@ -1,6 +1,6 @@
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use libsql::params;
-use tauri::State;
+use crate::shim::State;
 
 use super::types::{DocumentAsset, DocumentAssetSummary};
 use crate::db;
@@ -9,7 +9,7 @@ use crate::AppState;
 
 const MAX_DOCUMENT_ASSET_BYTES: usize = 100 * 1024 * 1024;
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_create_document_asset(
     document_id: i64,
     file_name: String,
@@ -41,7 +41,7 @@ pub async fn db_create_document_asset(
     Ok(id)
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_get_document_asset(
     id: String,
     conn: State<'_, AppState>,
@@ -71,7 +71,7 @@ pub async fn db_get_document_asset(
     })
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_get_document_assets(
     document_id: i64,
     conn: State<'_, AppState>,
@@ -113,7 +113,7 @@ pub async fn db_get_document_assets(
         .collect()
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_list_document_assets(
     conn: State<'_, AppState>,
 ) -> Result<Vec<DocumentAssetSummary>, String> {
@@ -162,7 +162,7 @@ pub(super) fn remove_asset_blocks(value: &mut serde_json::Value, url: &str) {
     }
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_delete_document_asset(id: String, conn: State<'_, AppState>) -> Result<(), String> {
     let db = db::conn(&conn)?;
     let document_id = db::fetch_one(
@@ -204,7 +204,7 @@ pub async fn db_delete_document_asset(id: String, conn: State<'_, AppState>) -> 
     Ok(())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_delete_orphan_document_assets(conn: State<'_, AppState>) -> Result<u64, String> {
     let db = db::conn(&conn)?;
     db.execute(
@@ -221,7 +221,7 @@ pub async fn db_delete_orphan_document_assets(conn: State<'_, AppState>) -> Resu
     .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_prune_document_assets(
     document_id: i64,
     referenced_ids: Vec<String>,

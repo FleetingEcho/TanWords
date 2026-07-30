@@ -1,4 +1,4 @@
-use tauri::State;
+use crate::shim::State;
 
 use crate::db;
 use crate::AppState;
@@ -40,7 +40,7 @@ pub struct DashboardStats {
     pub recent_docs: Vec<RecentDoc>,
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_dashboard_stats(conn: State<'_, AppState>) -> Result<DashboardStats, String> {
     let db = db::conn(&conn)?;
 
