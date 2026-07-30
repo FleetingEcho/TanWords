@@ -4,6 +4,7 @@ use tauri::Manager;
 use db::connection::{Db, DbDescriptor, DbProfile};
 
 pub mod appconfig;
+pub mod browser_panel;
 pub mod db;
 pub mod document_privacy;
 pub mod tts;
@@ -130,6 +131,7 @@ pub fn run() {
         })
         .manage(mcp_controller)
         .manage(native_audio::NativeAudioState::default())
+        .manage(browser_panel::BrowserPanelState::default())
         .invoke_handler(tauri::generate_handler![
             db::db_get_word_count,
             db::db_get_translation_count,
@@ -280,6 +282,15 @@ pub fn run() {
             mcp::mcp_apply_config,
             mcp::mcp_generate_token,
             tray::tray_update_now_playing,
+            browser_panel::browser_get_state,
+            browser_panel::browser_show,
+            browser_panel::browser_navigate,
+            browser_panel::browser_reload,
+            browser_panel::browser_go_back,
+            browser_panel::browser_go_forward,
+            browser_panel::browser_set_bounds,
+            browser_panel::browser_hide,
+            browser_panel::browser_clear_data,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
