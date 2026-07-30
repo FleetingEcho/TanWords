@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened-runtime entitlements for the main app AND (via mac.binaries in
+  electron-builder.yml) the tanwords-core sidecar binary — plan §6 /
+  electron-migration-handoff.md Task 5: "sign the sidecar and list it in the
+  hardened-runtime entitlements".
+
+  - allow-jit / allow-unsigned-executable-memory: Electron/V8 in the renderer
+    needs these; harmless no-ops for the plain Rust sidecar binary.
+  - disable-library-validation: the sidecar dlopen's sherpa-onnx/onnxruntime
+    .dylibs from extraResources (see build.rs's baked
+    "@executable_path/../Resources/sherpa-libs" rpath) which are not signed
+    with this project's Team ID. Without this entitlement, hardened runtime
+    refuses to load them and TTS breaks silently on first launch.
+  - network client: the sidecar's axum server binds 127.0.0.1 and the
+    renderer/main both dial it over loopback HTTP.
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  <key>com.apple.security.network.client</key>
+  <true/>
+  <key>com.apple.security.network.server</key>
+  <true/>
+</dict>
+</plist>

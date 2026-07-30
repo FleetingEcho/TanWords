@@ -1,6 +1,6 @@
 use libsql::params;
 use serde::Serialize;
-use tauri::State;
+use crate::shim::State;
 
 use crate::db;
 use crate::AppState;
@@ -21,7 +21,7 @@ pub struct SearchHistoryItem {
 /// place: CURRENT_TIMESTAMP is only second-resolution, so two lookups within
 /// the same second would tie and sort arbitrarily. A fresh autoincrement id
 /// is a reliable recency order regardless of clock resolution.
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_add_search_history(word: String, conn: State<'_, AppState>) -> Result<(), String> {
     let word = word.trim().to_lowercase();
     if word.is_empty() {
@@ -45,7 +45,7 @@ pub async fn db_add_search_history(word: String, conn: State<'_, AppState>) -> R
 /// The most recent lookups, each flagged with whether the word is (now, not
 /// necessarily at search time) in the vocabulary — computed fresh on every
 /// read so it can't go stale if the word was added via a different route.
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_get_search_history(
     conn: State<'_, AppState>,
 ) -> Result<Vec<SearchHistoryItem>, String> {
@@ -69,7 +69,7 @@ pub async fn db_get_search_history(
     .await
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_clear_search_history(conn: State<'_, AppState>) -> Result<(), String> {
     let db = db::conn(&conn)?;
     db.execute("DELETE FROM search_history", ())

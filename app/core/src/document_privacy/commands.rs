@@ -1,5 +1,5 @@
 use libsql::params;
-use tauri::State;
+use crate::shim::State;
 
 use super::crypto::{decrypt_bytes, decrypt_text, encrypt_bytes, encrypt_text, random};
 use super::keys::{
@@ -10,7 +10,7 @@ use super::keys::{master_config, store_master_config};
 use super::state::{PrivatePasswordStatus, LOCKED_ERROR};
 use crate::{db, AppState};
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_private_password_status(
     state: State<'_, AppState>,
 ) -> Result<PrivatePasswordStatus, String> {
@@ -27,7 +27,7 @@ pub async fn db_private_password_status(
     })
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_unlock_document(
     id: i64,
     password: String,
@@ -65,12 +65,12 @@ pub async fn db_unlock_document(
     state.document_privacy.unlock(id, key)
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub fn db_lock_document(_id: i64, state: State<'_, AppState>) -> Result<(), String> {
     state.document_privacy.clear()
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_protect_document(
     id: i64,
     password: Option<String>,
@@ -117,7 +117,7 @@ pub async fn db_protect_document(
     state.document_privacy.unlock(id, data_key)
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_remove_document_protection(
     id: i64,
     password: String,
@@ -170,7 +170,7 @@ pub async fn db_remove_document_protection(
     state.document_privacy.lock(id)
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_change_document_password(
     current_password: String,
     new_password: String,

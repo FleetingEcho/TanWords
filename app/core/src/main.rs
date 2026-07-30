@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-fn main() {
-    tanwords_lib::run()
+#[tokio::main]
+async fn main() {
+    tanwords_lib::run().await
 }

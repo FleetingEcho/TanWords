@@ -3,7 +3,7 @@ use std::path::Path;
 
 use futures_util::StreamExt;
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
+use crate::shim::AppHandle;
 
 use super::models::{default_models_dir, detect_model_dir, TtsModelInfo};
 
@@ -23,9 +23,9 @@ enum DownloadProgress {
 /// Downloads a model archive (`url`) to the default models directory,
 /// extracts it under `dirname`, and verifies it. On any failure the partial
 /// download and any half-extracted directory are removed.
-#[tauri::command]
-pub async fn tts_download_model<R: tauri::Runtime>(
-    app: AppHandle<R>,
+#[crate::shim::command]
+pub async fn tts_download_model(
+    app: AppHandle,
     url: String,
     dirname: String,
 ) -> Result<TtsModelInfo, String> {
@@ -52,8 +52,8 @@ pub async fn tts_download_model<R: tauri::Runtime>(
     result
 }
 
-async fn download_and_extract<R: tauri::Runtime>(
-    app: &AppHandle<R>,
+async fn download_and_extract(
+    app: &AppHandle,
     url: &str,
     root: &Path,
     tmp_path: &Path,

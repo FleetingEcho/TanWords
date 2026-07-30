@@ -48,7 +48,7 @@ fn walk(dir: &Path, root: &Path, depth: usize, out: &mut Vec<LocalDocItem>) {
     }
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub fn localdocs_list(root: String) -> Result<Vec<LocalDocItem>, String> {
     let root_p = Path::new(&root);
     if !root_p.is_absolute() || !root_p.is_dir() {
@@ -62,7 +62,7 @@ pub fn localdocs_list(root: String) -> Result<Vec<LocalDocItem>, String> {
 
 /// Lightweight startup check for a persisted vault binding. Unlike
 /// `localdocs_list`, this does not walk the directory tree.
-#[tauri::command]
+#[crate::shim::command]
 pub fn localdocs_root_exists(root: String) -> bool {
     let path = Path::new(&root);
     path.is_absolute() && path.is_dir()
@@ -78,7 +78,7 @@ fn fuzzy_path_match(path: &str, query: &str) -> bool {
 
 /// Full-text search built from ripgrep's own matcher/searcher crates. Results
 /// are deliberately bounded so a broad query cannot flood the webview.
-#[tauri::command]
+#[crate::shim::command]
 pub fn localdocs_search(root: String, query: String) -> Result<Vec<LocalDocSearchResult>, String> {
     let root_p = Path::new(&root);
     if !root_p.is_absolute() || !root_p.is_dir() {

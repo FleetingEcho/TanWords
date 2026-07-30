@@ -1,5 +1,5 @@
 use libsql::params;
-use tauri::State;
+use crate::shim::State;
 
 use super::types::{DocumentDetail, DocumentListItem, DocumentListResult};
 use crate::db;
@@ -58,7 +58,7 @@ pub(super) fn build_doc_where(
     (conditions.join(" AND "), params)
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_create_document(conn: State<'_, AppState>) -> Result<i64, String> {
     let db = db::conn(&conn)?;
     db.execute(
@@ -70,7 +70,7 @@ pub async fn db_create_document(conn: State<'_, AppState>) -> Result<i64, String
     Ok(db.last_insert_rowid())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_create_document_with_content(
     title: String,
     content: String,
@@ -89,7 +89,7 @@ pub async fn db_create_document_with_content(
     Ok(db.last_insert_rowid())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_document_title_exists(
     title: String,
     conn: State<'_, AppState>,
@@ -104,7 +104,7 @@ pub async fn db_document_title_exists(
         != 0)
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_get_documents(
     search: Option<String>,
     date_from: Option<String>,
@@ -162,7 +162,7 @@ pub async fn db_get_documents(
     Ok(DocumentListResult { items, total })
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_get_document(id: i64, conn: State<'_, AppState>) -> Result<DocumentDetail, String> {
     let db = db::conn(&conn)?;
     let row = db::fetch_one(
@@ -196,7 +196,7 @@ pub async fn db_get_document(id: i64, conn: State<'_, AppState>) -> Result<Docum
     })
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_update_document(
     id: i64,
     title: String,
@@ -234,7 +234,7 @@ pub async fn db_update_document(
     Ok(())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_delete_document(id: i64, conn: State<'_, AppState>) -> Result<(), String> {
     let db = db::conn(&conn)?;
     document_privacy::require_key(&db, &conn.document_privacy, id).await?;
@@ -251,7 +251,7 @@ pub async fn db_delete_document(id: i64, conn: State<'_, AppState>) -> Result<()
     Ok(())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_get_all_tags(conn: State<'_, AppState>) -> Result<Vec<String>, String> {
     let db = db::conn(&conn)?;
     db::fetch_all(

@@ -1,0 +1,148 @@
+# electron-builder config for TanWords (Electron migration, Task 5).
+# Reference: docs/electron-migration-plan.md §6, docs/electron-migration-handoff.md
+# Task 5, and electron_app/task1-csp-and-icons.md (values extracted from the old
+# app/core/tauri.conf.json before it was deleted in Task 1).
+#
+# Kept as a separate YAML file rather than package.json's `build` key purely for
+# readability given how much platform-specific config this needs; `bun run package`
+# (package.json) invokes plain `electron-builder`, which auto-discovers this file.
+
+appId: com.tanner.tanwords
+productName: TanWords
+# version is NOT set here — electron-builder reads it from package.json's
+# "version" (already 1.0.0); duplicating it here would be a second source of truth.
+
+directories:
+  # electron-vite's build output (out/main, out/preload, out/renderer) is what
+  # actually ships; core/ (Rust source + target/) and src/ (pre-bundle renderer
+  # source) must NOT be swept into the app via the default "**/*" file matcher.
+  output: ../dist-releases
+  buildResources: build
+
+files:
+  - out/**/*
+  - package.json
+  # Everything else (src/, electron/ *.ts sources, core/ Rust source & target/,
+  # docs/, scripts/) is excluded by omission — `files` replaces the default
+  # "**/*" glob once specified. Production node_modules (electron-updater and
+  # its deps) are added automatically by electron-builder regardless of this
+  # list; it tracks them from package.json's "dependencies" separately.
+asarUnpack: []
+
+# ---------------------------------------------------------------------------
+# extraResources: the tanwords-core sidecar + its sherpa-onnx/onnxruntime
+# shared libs. Common destination `core/tanwords-core` matches EXACTLY what
+# electron/main/sidecar.ts's resolveBinaryPath() looks up when app.isPackaged:
+#   path.join(process.resourcesPath, "core", name)
+#
+# The sherpa-libs destination differs per platform because app/core/build.rs
+# bakes a platform-specific rpath into the sidecar binary at compile time
+# (already done, not touched by this task):
+#   macOS:  @executable_path/../Resources/sherpa-libs
+#           -> resourcesPath/core/tanwords-core's executable_path is
+#              resourcesPath/core/, so "../Resources/sherpa-libs" resolves to
+#              resourcesPath/sherpa-libs (Resources IS resourcesPath on mac).
+#   Linux:  $ORIGIN/../lib/TanWords/sherpa-libs
+#           -> $ORIGIN is resourcesPath/core/, so this resolves to
+#              resourcesPath/lib/TanWords/sherpa-libs.
+# Windows has no rpath mechanism; the DLL search order includes the
+# executable's own directory, so the sherpa DLLs just need to sit next to
+# tanwords-core.exe, i.e. the same `core/` destination as the binary.
+# ---------------------------------------------------------------------------
+extraResources:
+  - from: core/target/release/tanwords-core
+    to: core/tanwords-core
+
+mac:
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+    - target: zip
+      arch: [x64, arm64]
+  icon: core/icons/icon.icns
+  category: public.app-category.education
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # electron-builder's default deep-sign covers the .app bundle and its Node
+  # native addons, but a plain Mach-O executable dropped into Resources via
+  # extraResources is NOT reliably picked up by that pass with the right
+  # entitlements/hardened-runtime flags — list it explicitly so it gets signed
+  # with the same identity + entitlements as the app itself. electron-builder
+  # docs describe `mac.binaries` paths as relative to the built app's
+  # Contents/Resources/ directory (see extraResources above: the binary lands
+  # at Contents/Resources/core/tanwords-core, so "core/tanwords-core" here).
+  # UNVERIFIED: no macOS signing environment available in this sandbox to
+  # confirm electron-builder actually resolves/signs this path as expected —
+  # see the packaging report for what still needs a real Mac to check.
+  binaries:
+    - core/tanwords-core
+  extraResources:
+    - from: core/sherpa-libs
+      to: sherpa-libs
+
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+    - target: rpm
+      arch: [x64]
+  # electron-builder expects a directory of <size>x<size>.png files for the
+  # Linux icon set; app/core/icons/ has 32x32.png/64x64.png/128x128.png
+  # alongside unrelated files (Windows Square*Logo.png, android/, ios/,
+  # icon.png, tray-template.png) that electron-builder simply ignores because
+  # they don't match its <N>x<N>.png naming pattern.
+  icon: core/icons
+  category: Education
+  extraResources:
+    - from: core/sherpa-libs
+      to: lib/TanWords/sherpa-libs
+
+# AppImage has no equivalent of Tauri's `bundle.linux.bundleMediaFramework`
+# (which bundled GStreamer's own codec plugins into the AppImage so it didn't
+# depend on the host's GStreamer install). electron-builder's AppImage target
+# does not offer this — TODO(manual verification): test audio playback
+# (native_audio_* + TTS) on a plain AppImage launch on a machine WITHOUT
+# gstreamer1.0-plugins-{good,bad,ugly} installed, since deb/rpm depends below
+# won't help an AppImage user. Plan §9.5 / electron_app/task1-csp-and-icons.md.
+deb:
+  # electron-builder's fpm-based deb/rpm targets require a maintainer with a
+  # name+email (normally taken from package.json's "author" field, which this
+  # project doesn't set). Setting it directly here avoids inventing a fake
+  # author identity in package.json — replace with a real
+  # "Name <email>" before shipping an actual release.
+  maintainer: FleetingEcho <dev2jake@gmail.com>
+  depends:
+    - gstreamer1.0-plugins-good
+    - gstreamer1.0-plugins-bad
+    - gstreamer1.0-plugins-ugly
+    # speech-dispatcher: plan §9.5 — Chromium's window.speechSynthesis
+    # (ttsBackend.ts's fallback when no embedded TTS model is loaded) returns
+    # an empty voice list on Linux without speech-dispatcher running.
+    - speech-dispatcher
+
+rpm:
+  maintainer: FleetingEcho <dev2jake@gmail.com>
+  depends:
+    - gstreamer1-plugins-good
+    - gstreamer1-plugins-bad-free
+    - gstreamer1-plugins-ugly-free
+    - speech-dispatcher
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: core/icons/icon.ico
+  extraResources:
+    - from: core/sherpa-libs
+      to: core
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true

@@ -1,13 +1,16 @@
 // Manual verification of the real download+extract+verify flow against the
 // actual GitHub release. Not run in CI (network + ~100MB download).
 //   cargo test --test tts_download_smoke -- --ignored --nocapture
-use tauri::test::{mock_builder, mock_context, noop_assets};
+
+fn mock_handle() -> tanwords_lib::shim::AppHandle {
+    let (tx, _rx) = tokio::sync::broadcast::channel(16);
+    tanwords_lib::shim::AppHandle::new(std::sync::Arc::new(tanwords_lib::shim::Registry::default()), tx)
+}
 
 #[tokio::test]
 #[ignore]
 async fn downloads_and_recognizes_recommended_model() {
-    let app = mock_builder().build(mock_context(noop_assets())).expect("build failed");
-    let handle = app.handle().clone();
+    let handle = mock_handle();
 
     let info = tanwords_lib::tts::download::tts_download_model(
         handle,
@@ -25,8 +28,7 @@ async fn downloads_and_recognizes_recommended_model() {
 #[tokio::test]
 #[ignore]
 async fn downloads_and_recognizes_piper_model() {
-    let app = mock_builder().build(mock_context(noop_assets())).expect("build failed");
-    let handle = app.handle().clone();
+    let handle = mock_handle();
 
     let info = tanwords_lib::tts::download::tts_download_model(
         handle,
@@ -44,8 +46,7 @@ async fn downloads_and_recognizes_piper_model() {
 #[tokio::test]
 #[ignore]
 async fn downloads_and_recognizes_kokoro_multilang_model() {
-    let app = mock_builder().build(mock_context(noop_assets())).expect("build failed");
-    let handle = app.handle().clone();
+    let handle = mock_handle();
 
     let info = tanwords_lib::tts::download::tts_download_model(
         handle,
@@ -63,8 +64,7 @@ async fn downloads_and_recognizes_kokoro_multilang_model() {
 #[tokio::test]
 #[ignore]
 async fn downloads_and_recognizes_kokoro_int8_multilang_model() {
-    let app = mock_builder().build(mock_context(noop_assets())).expect("build failed");
-    let handle = app.handle().clone();
+    let handle = mock_handle();
 
     let info = tanwords_lib::tts::download::tts_download_model(
         handle,

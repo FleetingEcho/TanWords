@@ -114,16 +114,16 @@ fn build_handle(dir: &Path, kind: &str) -> Result<TtsHandle, String> {
     }
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn tts_load_model(
-    state: tauri::State<'_, crate::AppState>,
+    state: crate::shim::State<'_, crate::AppState>,
     path: String,
 ) -> Result<TtsModelInfo, String> {
     // Session construction and the warm-up synthesis both perform synchronous
     // ONNX work. Keep them off Tauri's command/runtime threads so app startup
     // and unrelated IPC remain responsive while a saved model is preloaded.
     let tts = state.tts.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         let dir = PathBuf::from(&path);
         let info = detect_model_dir(&dir).ok_or_else(|| "model not recognized".to_string())?;
         if info.kind == "unknown" {
@@ -148,9 +148,9 @@ pub async fn tts_load_model(
 /// Deletes a model directory from disk — unloading it first if it's the one
 /// currently active, so we don't leave a dangling in-memory reference to a
 /// path that no longer exists.
-#[tauri::command]
+#[crate::shim::command]
 pub fn tts_delete_model(
-    state: tauri::State<'_, crate::AppState>,
+    state: crate::shim::State<'_, crate::AppState>,
     path: String,
 ) -> Result<(), String> {
     let dir = PathBuf::from(&path);
@@ -168,9 +168,9 @@ pub fn tts_delete_model(
     std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn tts_synthesize(
-    state: tauri::State<'_, crate::AppState>,
+    state: crate::shim::State<'_, crate::AppState>,
     text: String,
     speaker_id: u32,
     speed: f32,
@@ -182,7 +182,7 @@ pub async fn tts_synthesize(
     // other IPC commands. `spawn_blocking` moves it to the dedicated blocking
     // pool instead.
     let tts = state.tts.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
         let mut guard = tts.lock().map_err(|e| e.to_string())?;
         let engine = guard.as_mut().ok_or_else(|| "model-not-loaded".to_string())?;
         let (samples, sample_rate) = engine.handle.synthesize(&text, speaker_id as i32, speed)?;
@@ -194,9 +194,9 @@ pub async fn tts_synthesize(
     .map_err(|e| e.to_string())?
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub fn tts_engine_status(
-    state: tauri::State<'_, crate::AppState>,
+    state: crate::shim::State<'_, crate::AppState>,
 ) -> Result<Option<TtsModelInfo>, String> {
     let guard = state.tts.lock().map_err(|e| e.to_string())?;
     Ok(guard.as_ref().map(|engine| TtsModelInfo {

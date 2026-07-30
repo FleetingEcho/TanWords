@@ -1,12 +1,12 @@
 use libsql::params;
-use tauri::State;
+use crate::shim::State;
 
 use super::types::{DocumentLinkContext, DocumentLinkItem};
 use crate::db;
 use crate::document_privacy::{self, decrypt_text};
 use crate::AppState;
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_get_document_link_context(
     document_id: i64,
     conn: State<'_, AppState>,

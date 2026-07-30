@@ -110,8 +110,8 @@ async fn server_can_restart_on_the_same_custom_port() {
     let controller = McpController::default();
     let config = McpConfig { enabled: true, port, token: mcp_generate_token() };
 
-    let app = tauri::test::mock_app();
-    let handle = app.handle().clone();
+    let (events, _rx) = tokio::sync::broadcast::channel(16);
+    let handle = crate::shim::AppHandle::new(Arc::new(crate::shim::Registry::default()), events);
     assert!(controller.restart(config.clone(), provider.clone(), handle.clone()).await.unwrap().running);
     assert!(controller.restart(config, provider, handle).await.unwrap().running);
     controller.stop().await;

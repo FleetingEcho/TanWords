@@ -1,9 +1,6 @@
 // Manual verification against a real model (Kokoro or Piper). Not run in CI
 // (no bundled model file); run explicitly with:
 //   TTS_TEST_MODEL_DIR=/path/to/model-dir cargo test --test tts_real_model -- --ignored --nocapture
-use tauri::test::{mock_builder, mock_context, noop_assets};
-use tauri::Manager;
-
 #[tokio::test]
 #[ignore]
 async fn loads_and_synthesizes_real_model() {
@@ -12,14 +9,13 @@ async fn loads_and_synthesizes_real_model() {
     let database = tanwords_lib::db::connection::open_memory()
         .await
         .expect("open_memory failed");
-    let app = mock_builder().build(mock_context(noop_assets())).expect("build failed");
-    app.manage(tanwords_lib::AppState {
+    let app_state = tanwords_lib::AppState {
         db: std::sync::Mutex::new(database),
         tts: std::sync::Mutex::new(None).into(),
         db_fallback_warning: None,
         document_privacy: Default::default(),
-    });
-    let state: tauri::State<tanwords_lib::AppState> = app.state();
+    };
+    let state = tanwords_lib::shim::State::from_ref(&app_state);
 
     let info = tanwords_lib::tts::engine::tts_load_model(state.clone(), dir)
         .await

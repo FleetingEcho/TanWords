@@ -1,5 +1,5 @@
 use libsql::params;
-use tauri::State;
+use crate::shim::State;
 
 use crate::db;
 use crate::db::words_types::{
@@ -7,7 +7,7 @@ use crate::db::words_types::{
 };
 use crate::AppState;
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_add_word(
     word: String,
     word_type: Option<String>,
@@ -66,7 +66,7 @@ pub async fn db_add_word(
     Ok(AddWordResult { id: word_id, is_new })
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_delete_word(word_id: i64, conn: State<'_, AppState>) -> Result<(), String> {
     let db = db::conn(&conn)?;
     db.execute("DELETE FROM words WHERE id = ?1", params![word_id])
@@ -75,7 +75,7 @@ pub async fn db_delete_word(word_id: i64, conn: State<'_, AppState>) -> Result<(
     Ok(())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_delete_words_batch(
     word_ids: Vec<i64>,
     conn: State<'_, AppState>,
@@ -90,7 +90,7 @@ pub async fn db_delete_words_batch(
     tx.commit().await.map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_set_word_starred(
     word_id: i64,
     starred: bool,
@@ -106,7 +106,7 @@ pub async fn db_set_word_starred(
     Ok(())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_add_word_enriched(
     word: String,
     zh: String,
@@ -222,7 +222,7 @@ pub async fn db_add_word_enriched(
 
 // ── Word Notes & Chat ─────────────────────────────────────────────────────────
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_get_word_extras(
     word_id: i64,
     conn: State<'_, AppState>,
@@ -251,7 +251,7 @@ pub async fn db_get_word_extras(
     Ok(WordExtras { notes, messages })
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_save_word_notes(
     word_id: i64,
     notes: String,
@@ -267,7 +267,7 @@ pub async fn db_save_word_notes(
     Ok(())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_save_word_chat(
     word_id: i64,
     messages: String,
@@ -287,7 +287,7 @@ pub async fn db_save_word_chat(
 
 // ── Batch add (used by AI Chat vocabulary tools + future batch import) ──────
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_add_words_batch(
     words: Vec<NewVocabWord>,
     source: String,

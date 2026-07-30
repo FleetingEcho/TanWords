@@ -1,6 +1,6 @@
 use libsql::{params, Connection};
 use std::collections::HashSet;
-use tauri::State;
+use crate::shim::State;
 
 use super::apply_documents_known::{apply_documents, apply_known_words};
 use super::apply_patterns_articles::{apply_articles, apply_patterns};
@@ -11,7 +11,7 @@ use crate::AppState;
 
 // ── Apply ───────────────────────────────────────────────────────────────────
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_import_apply(
     source_path: String,
     decisions: ImportDecisions,

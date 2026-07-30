@@ -1,5 +1,10 @@
 # Tauri → Electron migration plan
 
+> **Implementing this? Read `electron-migration-handoff.md` first** — it has the
+> task order, the bun commands, and the list of work that is already done. This
+> file is the reference it points back into: read it once, end to end, before
+> starting Task 1. Sections 7–10 are the ones that prevent real bugs.
+
 Goal: replace Tauri 2 with latest Electron, Vite for dev, electron-builder for
 packaging — keeping the existing React UI (~38k LOC) essentially untouched and
 keeping the existing Rust (~15k LOC) as a **sidecar process** that does all the
