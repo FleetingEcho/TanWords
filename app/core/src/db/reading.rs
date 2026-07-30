@@ -1,6 +1,6 @@
 use libsql::{params, Connection, Value};
 use serde::Serialize;
-use tauri::State;
+use crate::shim::State;
 
 use crate::db;
 use crate::AppState;
@@ -111,7 +111,7 @@ pub async fn upsert_article(
     Ok((conn.last_insert_rowid(), true))
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_save_reading_article(
     title: String,
     content: String,
@@ -135,7 +135,7 @@ pub async fn db_save_reading_article(
 
 /// Lists the library. `search` runs against the FTS index (relevance-ranked,
 /// with a snippet); everything else is a plain filter.
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_list_reading_articles(
     search: Option<String>,
     source: Option<String>,
@@ -240,7 +240,7 @@ pub async fn db_list_reading_articles(
     Ok(ReadingArticlePage { items, total })
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_get_reading_article(
     id: i64,
     touch: Option<bool>,
@@ -279,7 +279,7 @@ pub async fn db_get_reading_article(
     Ok(detail)
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_delete_reading_article(id: i64, conn: State<'_, AppState>) -> Result<(), String> {
     let db = db::conn(&conn)?;
     db.execute("DELETE FROM reading_article_comments WHERE article_id = ?1", params![id])
@@ -291,7 +291,7 @@ pub async fn db_delete_reading_article(id: i64, conn: State<'_, AppState>) -> Re
     Ok(())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_list_reading_comments(
     article_id: i64,
     conn: State<'_, AppState>,
@@ -343,7 +343,7 @@ pub async fn insert_comment(
     Ok(conn.last_insert_rowid())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_add_reading_comment(
     article_id: i64,
     author: String,
@@ -355,7 +355,7 @@ pub async fn db_add_reading_comment(
     insert_comment(&db, article_id, &author, &body, anchor_text.as_deref()).await
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_delete_reading_comment(id: i64, conn: State<'_, AppState>) -> Result<(), String> {
     let db = db::conn(&conn)?;
     db.execute("DELETE FROM reading_article_comments WHERE id = ?1", params![id])

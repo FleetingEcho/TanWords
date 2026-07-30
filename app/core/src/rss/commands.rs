@@ -1,8 +1,8 @@
-//! `#[tauri::command]` entry points for feed subscription management and the
+//! `#[crate::shim::command]` entry points for feed subscription management and the
 //! `rss_entries` cache (DB reads/writes).
 
 use libsql::params;
-use tauri::State;
+use crate::shim::State;
 
 use crate::db;
 use crate::AppState;
@@ -10,7 +10,7 @@ use crate::AppState;
 use super::parse::fetch_feed_meta;
 use super::types::{RssEntryRow, RssFeed};
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_add_rss_feed(
     url: String,
     title: String,
@@ -53,7 +53,7 @@ pub async fn db_add_rss_feed(
     Ok(id)
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_get_rss_feeds(conn: State<'_, AppState>) -> Result<Vec<RssFeed>, String> {
     let db = db::conn(&conn)?;
     db::fetch_all(
@@ -86,7 +86,7 @@ pub async fn db_get_rss_feeds(conn: State<'_, AppState>) -> Result<Vec<RssFeed>,
     .await
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_update_rss_feed_preferences(
     id: i64,
     category: Option<String>,
@@ -128,7 +128,7 @@ pub async fn db_update_rss_feed_preferences(
     Ok(())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_update_rss_feed_title(
     id: i64,
     title: String,
@@ -144,7 +144,7 @@ pub async fn db_update_rss_feed_title(
     Ok(())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_delete_rss_feed(id: i64, conn: State<'_, AppState>) -> Result<(), String> {
     let db = db::conn(&conn)?;
     db.execute("DELETE FROM rss_feeds WHERE id = ?1", params![id])
@@ -156,7 +156,7 @@ pub async fn db_delete_rss_feed(id: i64, conn: State<'_, AppState>) -> Result<()
 /// Fetch the feed and upsert its entries into `rss_entries` (deduped by url; `is_read` is
 /// never touched on conflict). Updates `rss_feeds.last_fetched_at` and backfills feed
 /// metadata that was empty at subscribe time. Returns the number of newly-inserted entries.
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_sync_rss_feed(feed_id: i64, conn: State<'_, AppState>) -> Result<i64, String> {
     // txn_conn, not conn: the entry upserts below run in an interactive
     // transaction, which must not pin the shared Hrana stream on Turso.
@@ -261,7 +261,7 @@ const RSS_ENTRY_COLUMNS: &str =
     "id, feed_id, title, url, author, summary, image_url, audio_url, audio_duration, hn_item_id, published, is_read, fetched_at";
 
 /// Read cached entries from the DB; `feed_id = None` returns entries across all feeds.
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_get_rss_entries(
     feed_id: Option<i64>,
     limit: Option<i64>,
@@ -288,7 +288,7 @@ pub async fn db_get_rss_entries(
     }
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_mark_rss_entry_read(id: i64, conn: State<'_, AppState>) -> Result<(), String> {
     let db = db::conn(&conn)?;
     db.execute("UPDATE rss_entries SET is_read = 1 WHERE id = ?1", params![id])
@@ -298,7 +298,7 @@ pub async fn db_mark_rss_entry_read(id: i64, conn: State<'_, AppState>) -> Resul
 }
 
 /// Unread entry count per feed, as `[feed_id, count]` pairs (feeds with zero unread are omitted).
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_get_rss_unread_counts(
     conn: State<'_, AppState>,
 ) -> Result<Vec<(i64, i64)>, String> {

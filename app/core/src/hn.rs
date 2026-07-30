@@ -150,7 +150,7 @@ async fn fetch_story(client: &reqwest::Client, sem: &Semaphore, id: i64) -> Opti
 /// ranking shift mid-scroll can shift or repeat an item — the same drift
 /// HN's own /news?p=N pagination has, and not worth solving for a live,
 /// unpersisted view.
-#[tauri::command]
+#[crate::shim::command]
 pub async fn fetch_hn_section(section: String, offset: i64, limit: i64) -> Result<HnSectionPage, String> {
     let endpoint = HN_SECTIONS
         .iter()
@@ -184,7 +184,7 @@ pub async fn fetch_hn_section(section: String, offset: i64, limit: i64) -> Resul
 /// by `fetch_hn_section`) has no search of its own. Results are relevance-
 /// ranked, restricted to stories (`tags=story`), and paginated by Algolia's
 /// own page/nbPages rather than an offset.
-#[tauri::command]
+#[crate::shim::command]
 pub async fn search_hn(query: String, page: i64) -> Result<HnSearchPage, String> {
     if query.trim().is_empty() {
         return Ok(HnSearchPage { stories: Vec::new(), page: 0, total_pages: 0 });
@@ -293,7 +293,7 @@ fn fetch_comment_tree<'a>(
 /// entry's `hn_item_id` (see `rss.rs::extract_hn_item_id`) or read straight
 /// off a `news.ycombinator.com/item?id=` URL. Capped at MAX_COMMENTS /
 /// MAX_DEPTH so a mega-thread can't stall the UI.
-#[tauri::command]
+#[crate::shim::command]
 pub async fn fetch_hn_comments(story_id: i64) -> Result<Vec<HnComment>, String> {
     let client = reqwest::Client::builder()
         .user_agent(USER_AGENT)

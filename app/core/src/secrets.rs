@@ -38,7 +38,7 @@ fn validate_key_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub fn secret_set(key: String, value: String) -> Result<(), String> {
     validate_key_name(&key)?;
 
@@ -51,7 +51,7 @@ pub fn secret_set(key: String, value: String) -> Result<(), String> {
     entry.set_password(&value).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub fn secret_get(key: String) -> Result<Option<String>, String> {
     validate_key_name(&key)?;
 
@@ -64,7 +64,7 @@ pub fn secret_get(key: String) -> Result<Option<String>, String> {
     }
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub fn secret_delete(key: String) -> Result<(), String> {
     validate_key_name(&key)?;
 

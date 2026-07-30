@@ -42,7 +42,7 @@ impl Default for McpStatus {
     }
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub fn mcp_generate_token() -> String {
     let mut bytes = [0_u8; 32];
     rand::thread_rng().fill_bytes(&mut bytes);

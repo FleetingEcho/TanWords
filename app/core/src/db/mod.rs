@@ -1,5 +1,5 @@
 use libsql::{Connection, Result as SqlResult};
-use tauri::State;
+use crate::shim::State;
 
 use crate::AppState;
 

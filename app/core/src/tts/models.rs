@@ -19,7 +19,7 @@ pub fn default_models_dir() -> PathBuf {
         .join("tts_models")
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub fn tts_scan_models(extra_dirs: Vec<String>) -> Result<Vec<TtsModelInfo>, String> {
     let mut roots: Vec<PathBuf> = vec![default_models_dir()];
     roots.extend(extra_dirs.into_iter().map(PathBuf::from));
@@ -28,7 +28,7 @@ pub fn tts_scan_models(extra_dirs: Vec<String>) -> Result<Vec<TtsModelInfo>, Str
 
 /// Where downloaded models land — surfaced to the settings UI so the user
 /// knows where to go delete one manually.
-#[tauri::command]
+#[crate::shim::command]
 pub fn tts_default_models_dir() -> String {
     default_models_dir().to_string_lossy().to_string()
 }

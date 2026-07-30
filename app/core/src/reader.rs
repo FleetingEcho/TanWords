@@ -42,7 +42,7 @@ fn strip_footnote_backrefs(text: &str) -> String {
         .replace('\u{FE0F}', "")
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn fetch_article(url: String) -> Result<FetchedArticle, String> {
     let client = reqwest::Client::builder()
         .user_agent(USER_AGENT)

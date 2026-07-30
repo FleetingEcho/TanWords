@@ -1,28 +1,23 @@
-use tauri::test::{mock_builder, mock_context, noop_assets};
-use tauri::Manager;
-
-/// Builds a mock app around a throwaway in-memory database, returning the app
-/// (which owns the state) and a connection for seeding rows directly.
-async fn mock_app() -> (tauri::App<tauri::test::MockRuntime>, libsql::Connection) {
+/// Builds a throwaway in-memory database wrapped in `AppState`, returning it
+/// (the caller owns it and builds a `State` from a reference) and a
+/// connection for seeding rows directly.
+async fn mock_app() -> (tanwords_lib::AppState, libsql::Connection) {
     let database = tanwords_lib::db::connection::open_memory()
         .await
         .expect("open_memory failed");
     let conn = database.conn();
-    let app = mock_builder()
-        .build(mock_context(noop_assets()))
-        .expect("failed to build mock app");
-    app.manage(tanwords_lib::AppState {
+    let app_state = tanwords_lib::AppState {
         db: std::sync::Mutex::new(database),
         tts: std::sync::Mutex::new(None).into(),
         db_fallback_warning: None,
         document_privacy: Default::default(),
-    });
-    (app, conn)
+    };
+    (app_state, conn)
 }
 
 #[tokio::test]
 async fn srs_review_roundtrip() {
-    let (app, conn) = mock_app().await;
+    let (app_state, conn) = mock_app().await;
 
     // Seed one word with a definition
     conn.execute(
@@ -35,7 +30,7 @@ async fn srs_review_roundtrip() {
         [word_id],
     ).await.unwrap();
 
-    let state: tauri::State<tanwords_lib::AppState> = app.state();
+    let state = tanwords_lib::shim::State::from_ref(&app_state);
 
     // First call: word has no srs_records row yet -> should appear as "new"
     let due = tanwords_lib::db::db_get_due_cards(None, state.clone())
@@ -80,14 +75,14 @@ async fn srs_review_roundtrip() {
 
 #[tokio::test]
 async fn search_history_roundtrip() {
-    let (app, conn) = mock_app().await;
+    let (app_state, conn) = mock_app().await;
 
     conn.execute(
         "INSERT INTO words (word, word_type, level, word_freq, source) VALUES ('serendipity', 'n', 'C2', 1, 'manual')",
         (),
     ).await.unwrap();
 
-    let state: tauri::State<tanwords_lib::AppState> = app.state();
+    let state = tanwords_lib::shim::State::from_ref(&app_state);
 
     tanwords_lib::db::db_add_search_history("Serendipity".to_string(), state.clone())
         .await

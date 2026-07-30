@@ -1,10 +1,10 @@
 use libsql::params;
-use tauri::State;
+use crate::shim::State;
 
 use crate::db;
 use crate::AppState;
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_save_article_analysis(
     title: String,
     source_url: String,
@@ -26,7 +26,7 @@ pub async fn db_save_article_analysis(
     Ok(db.last_insert_rowid())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_add_known_words(
     words: Vec<String>,
     source: String,
@@ -46,7 +46,7 @@ pub async fn db_add_known_words(
     Ok(())
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_get_known_words(conn: State<'_, AppState>) -> Result<Vec<String>, String> {
     let db = db::conn(&conn)?;
     db::fetch_all(

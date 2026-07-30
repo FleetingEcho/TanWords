@@ -1,11 +1,11 @@
 use libsql::{params, Value};
-use tauri::State;
+use crate::shim::State;
 
 use crate::db;
 use crate::db::words_types::{WordDefItem, WordDetail, WordListItem};
 use crate::AppState;
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_get_words(
     search: Option<String>,
     level_filter: Option<String>,
@@ -94,7 +94,7 @@ pub async fn db_get_words(
     .await
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_get_word_detail(
     word_id: i64,
     conn: State<'_, AppState>,

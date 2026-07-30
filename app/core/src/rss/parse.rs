@@ -182,7 +182,7 @@ pub(super) async fn fetch_feed_meta(url: &str) -> Result<RssFeedMeta, String> {
     // unrelated Tauri commands and make the page feel unresponsive. Network I/O
     // remains async; only the CPU-bound parse/normalization stage moves to the
     // dedicated blocking worker pool.
-    tauri::async_runtime::spawn_blocking(move || parse_feed_body(&body))
+    tokio::task::spawn_blocking(move || parse_feed_body(&body))
         .await
         .map_err(|e| format!("Feed parser worker failed: {e}"))?
 }
@@ -244,7 +244,7 @@ fn parse_feed_body(body: &[u8]) -> Result<RssFeedMeta, String> {
 }
 
 /// Fetch and parse an RSS/Atom feed from a URL (used for the add-feed preview).
-#[tauri::command]
+#[crate::shim::command]
 pub async fn fetch_rss(url: String) -> Result<RssFeedMeta, String> {
     fetch_feed_meta(&url).await
 }

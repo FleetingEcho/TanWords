@@ -15,7 +15,7 @@ mod tests;
 use rodio::Source;
 use std::path::PathBuf;
 use std::sync::{mpsc, Arc, Mutex};
-use tauri::State;
+use crate::shim::State;
 
 pub use decoder::DecodedTrack;
 pub use playback::NativeAudioSnapshot;
@@ -92,6 +92,29 @@ fn accurate_duration(path: &PathBuf, decoder: &decoder::FileDecoder) -> f64 {
 pub struct NativeAudioState {
     session: Mutex<Option<Session>>,
     snapshot: Arc<Mutex<NativeAudioSnapshot>>,
+    /// Serializes every `native_audio_*` command against every other one.
+    ///
+    /// Under Tauri this was free: all commands but `probe_duration` ran on the
+    /// single main thread, so `native_audio_load`'s take-old/install-new
+    /// sequence could never be interleaved with a `native_audio_stop`. Under
+    /// axum each request lands on an arbitrary tokio worker, so that ordering
+    /// guarantee has to be rebuilt explicitly. Holding this lock for the full
+    /// body of each command (not just around the individual `session`/
+    /// `snapshot` field locks) recreates "one thread, one command at a time"
+    /// exactly: a `native_audio_stop` that arrives while a `native_audio_load`
+    /// is between taking the old session and installing the new one now
+    /// blocks until `load` finishes, instead of observing `session == None`
+    /// and being silently dropped.
+    ///
+    /// A dedicated actor task (channel + one thread owning the state) would
+    /// give the same serialization, but it means every command becomes a
+    /// round trip through a channel and the actor has to fabricate the
+    /// `Result`/error plumbing the direct calls already have for free. A
+    /// single `Mutex` held across the whole handler body is the smaller diff
+    /// for the same guarantee, and every command here is either a fast
+    /// in-memory update or (for `load`) file I/O already documented as "fast
+    /// enough" to run inline — so lock hold time stays short.
+    op_lock: Mutex<()>,
 }
 
 impl Default for NativeAudioState {
@@ -99,6 +122,7 @@ impl Default for NativeAudioState {
         Self {
             session: Mutex::new(None),
             snapshot: Arc::new(Mutex::new(NativeAudioSnapshot::default())),
+            op_lock: Mutex::new(()),
         }
     }
 }
@@ -125,13 +149,13 @@ impl NativeAudioState {
 /// the list showing no duration for a track that plays back with a perfectly correct
 /// one. Reusing the real decoder keeps the two guaranteed to agree.
 /// `(async)` — not because the body is async, but because a plain
-/// `#[tauri::command]` fn runs on the main thread, which on Linux is the GTK/
+/// `#[crate::shim::command]` fn runs on the main thread, which on Linux is the GTK/
 /// WebKit UI thread. Opening a decoder is file I/O plus (for MP3) a GStreamer
 /// pipeline, so running it there froze the whole window while the music
 /// library filled in missing durations. This variant runs on Tauri's blocking
 /// threadpool instead, which also makes the library's concurrent probes
 /// actually concurrent rather than serialized behind one thread.
-#[tauri::command(async)]
+#[crate::shim::command(async)]
 pub fn native_audio_probe_duration(path: String) -> Result<f64, String> {
     let path = PathBuf::from(path);
     if !path.is_absolute() || !path.is_file() {
@@ -141,19 +165,19 @@ pub fn native_audio_probe_duration(path: String) -> Result<f64, String> {
     Ok(accurate_duration(&path, &decoder))
 }
 
-/// Deliberately NOT `#[tauri::command(async)]`, unlike probe_duration above.
-/// Running on the main thread is what keeps this atomic against the other
-/// session commands: between taking the old session and installing the new one
-/// there is a window where `session` is None, and a native_audio_stop landing
-/// inside it would be silently dropped, leaving the track playing. The
-/// frontend's load-serializing chain (podcastPlayerStore) assumes that too.
-/// open_decoder is fast enough here to not be worth that risk.
-#[tauri::command]
+/// Not `#[crate::shim::command(async)]`: `open_decoder` is fast enough that
+/// running it inline (rather than on the blocking pool) isn't worth the
+/// complexity, and — unlike `probe_duration` — this command mutates shared
+/// session state, so it must go through `op_lock` (see the field doc on
+/// `NativeAudioState::op_lock` for why: under Tauri the main thread gave this
+/// atomicity against `native_audio_stop` et al. for free, axum does not).
+#[crate::shim::command]
 pub fn native_audio_load(
     path: String,
     autoplay: bool,
     state: State<'_, NativeAudioState>,
 ) -> Result<NativeAudioSnapshot, String> {
+    let _guard = state.op_lock.lock().map_err(|e| e.to_string())?;
     let path = PathBuf::from(path);
     if !path.is_absolute() || !path.is_file() {
         return Err("invalid local audio path".into());
@@ -187,37 +211,43 @@ pub fn native_audio_load(
     Ok(value)
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub fn native_audio_play(state: State<'_, NativeAudioState>) -> Result<(), String> {
+    let _guard = state.op_lock.lock().map_err(|e| e.to_string())?;
     state.send(Command::Play)
 }
-#[tauri::command]
+#[crate::shim::command]
 pub fn native_audio_pause(state: State<'_, NativeAudioState>) -> Result<(), String> {
+    let _guard = state.op_lock.lock().map_err(|e| e.to_string())?;
     state.send(Command::Pause)
 }
-#[tauri::command]
+#[crate::shim::command]
 pub fn native_audio_seek(seconds: f64, state: State<'_, NativeAudioState>) -> Result<(), String> {
+    let _guard = state.op_lock.lock().map_err(|e| e.to_string())?;
     state.send(Command::Seek(seconds))
 }
-#[tauri::command]
+#[crate::shim::command]
 pub fn native_audio_set_speed(
     speed: f32,
     state: State<'_, NativeAudioState>,
 ) -> Result<(), String> {
+    let _guard = state.op_lock.lock().map_err(|e| e.to_string())?;
     state.send(Command::Speed(speed))
 }
-#[tauri::command]
+#[crate::shim::command]
 pub fn native_audio_stop(state: State<'_, NativeAudioState>) -> Result<(), String> {
+    let _guard = state.op_lock.lock().map_err(|e| e.to_string())?;
     if let Some(session) = state.session.lock().map_err(|e| e.to_string())?.take() {
         let _ = session.commands.send(Command::Stop);
     }
     *state.snapshot.lock().map_err(|e| e.to_string())? = NativeAudioSnapshot::default();
     Ok(())
 }
-#[tauri::command]
+#[crate::shim::command]
 pub fn native_audio_snapshot(
     state: State<'_, NativeAudioState>,
 ) -> Result<NativeAudioSnapshot, String> {
+    let _guard = state.op_lock.lock().map_err(|e| e.to_string())?;
     state
         .snapshot
         .lock()

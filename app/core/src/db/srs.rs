@@ -2,7 +2,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use rs_fsrs::{Card, Rating, State, FSRS};
 use libsql::params;
 use serde::Serialize;
-use tauri::State as TauriState;
+use crate::shim::State as TauriState;
 
 use crate::db;
 use crate::AppState;
@@ -65,7 +65,7 @@ fn sql_to_dt(s: &str) -> DateTime<Utc> {
 /// either RFC3339 (written by db_review_card) or SQLite's own datetime()
 /// format (written by the older db_save_quiz_result path) — the two don't
 /// sort correctly against each other as raw strings.
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_get_review_count(conn: TauriState<'_, AppState>) -> Result<i64, String> {
     let db = db::conn(&conn)?;
     let now = Utc::now();
@@ -89,7 +89,7 @@ pub async fn db_get_review_count(conn: TauriState<'_, AppState>) -> Result<i64, 
     Ok(due_count + new_count.min(DEFAULT_NEW_LIMIT))
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_get_due_cards(
     new_limit: Option<i64>,
     conn: TauriState<'_, AppState>,
@@ -169,7 +169,7 @@ pub struct ReviewResult {
     pub state: String,
 }
 
-#[tauri::command]
+#[crate::shim::command]
 pub async fn db_review_card(
     word_id: i64,
     rating: String,

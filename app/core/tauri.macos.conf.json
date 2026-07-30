@@ -1,9 +1,0 @@
-{
-  "bundle": {
-    "resources": [
-      "sherpa-libs/libonnxruntime.1.17.1.dylib",
-      "sherpa-libs/libsherpa-onnx-c-api.dylib",
-      "sherpa-libs/libsherpa-onnx-cxx-api.dylib"
-    ]
-  }
-}

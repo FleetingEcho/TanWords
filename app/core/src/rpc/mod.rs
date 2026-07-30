@@ -8,7 +8,13 @@
 //! token printed to stdout at startup, so nothing else on the machine can drive
 //! the user's database.
 
-pub mod dispatch;
+pub mod dispatch {
+    //! Generated at build time by `generate_dispatch_table()` in
+    //! `build.rs` — see that function for the source of truth. Not a
+    //! checked-in file; lives in `$OUT_DIR` and is regenerated on every
+    //! `cargo build`/`cargo check`.
+    include!(concat!(env!("OUT_DIR"), "/dispatch.rs"));
+}
 
 use std::sync::Arc;
 

@@ -1,10 +1,10 @@
 //! The `#[command]` attribute is a marker, nothing more.
 //!
 //! Tauri's version generated an IPC wrapper. Ours does not need to: the
-//! wrappers live in `src/rpc/dispatch.rs`, generated ahead of time by
-//! `scripts/gen_dispatch.py`, which finds commands by scanning for this
-//! attribute. So the attribute must stay on the functions, and must expand to
-//! the function unchanged.
+//! wrappers are generated into `$OUT_DIR/dispatch.rs` at build time by
+//! `generate_dispatch_table()` in `build.rs`, which finds commands by
+//! scanning for this attribute. So the attribute must stay on the functions,
+//! and must expand to the function unchanged.
 //!
 //! `#[command(async)]` is accepted and also ignored here — the generator reads
 //! that flag itself and emits a `spawn_blocking` call for those.
