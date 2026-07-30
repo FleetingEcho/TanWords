@@ -41,10 +41,18 @@ function App() {
   useTraySync();
   useMcpSync();
 
-  // Initialize providers from keychain (with localStorage fallback/migration) on startup
+  // Initialize providers from keychain (with localStorage fallback/migration) on startup.
+  // Deferred past first paint so the OS keychain prompt (macOS asks the first
+  // time an unauthorized app reads/writes an entry) doesn't fire before the
+  // user has even seen the app window.
   useEffect(() => {
-    initProviders();
+    const idle = window.requestIdleCallback?.(() => initProviders())
+      ?? window.setTimeout(() => initProviders(), 500);
     loadFromDB();
+    return () => {
+      if (window.cancelIdleCallback && typeof idle !== "number") window.cancelIdleCallback(idle);
+      else window.clearTimeout(idle as number);
+    };
   }, []);
 
   // The local Documents folder is a device path, while settings may live in a
