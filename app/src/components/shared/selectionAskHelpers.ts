@@ -12,17 +12,29 @@ export const MAX_SELECTION = 320;
 /** How much surrounding text goes to the model as context. */
 export const CONTEXT_CHARS = 700;
 
-export interface Anchor {
+/** What an "ask" needs to know about the thing being asked about. Split out
+ *  of `Anchor` because the Browser page asks about a selection made inside a
+ *  native child webview, where there is no DOM range, no viewport rect, and
+ *  no in-app element to attribute — just text pulled across from the page. */
+export interface AskTarget {
   text: string;
-  /** Viewport rect of the selection, for placing the toolbar and the panel.
-   *  Recomputed from `range` while scrolling so both track the text. */
-  top: number;
-  bottom: number;
-  left: number;
   /** Text around the selection, for disambiguating what it means *here*. */
   context: string;
   /** Attribution recorded on anything saved from this selection. */
   source: string;
+  /** Viewport rect of the selection. Only the floating layout needs it. */
+  top?: number;
+  bottom?: number;
+  left?: number;
+}
+
+export interface Anchor extends AskTarget {
+  /** Required here, unlike on `AskTarget`: an in-app selection always has a
+   *  viewport rect, and the floating toolbar/card are placed from it.
+   *  Recomputed from `range` while scrolling so both track the text. */
+  top: number;
+  bottom: number;
+  left: number;
   /** True when the selection sits in an AI chat reply, where "ask" should go
    *  to the composer instead of a card. */
   inChat: boolean;

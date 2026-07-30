@@ -1,12 +1,51 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useBrowserPanelBlockStore } from "@/store/browserPanelStore";
 
-interface BrowserState {
+/** One entry in the tab strip.
+ *
+ *  `key` is this component's own stable React key. `panelId` is the id Rust
+ *  assigned to the tab's native webview, and stays null until the tab has
+ *  actually opened something — a brand-new tab sits on the home screen with
+ *  no webview behind it at all. */
+export interface BrowserTab {
+  key: string;
+  panelId: string | null;
   url: string;
   title: string;
-  opened: boolean;
+  loading: boolean;
+  /** Showing the home screen: the webview (if any) is hidden, not closed. */
+  atHome: boolean;
 }
+
+interface RemoteTab {
+  id: string;
+  url: string;
+  title: string;
+  atHome: boolean;
+}
+
+interface RemoteState {
+  tabs: RemoteTab[];
+  active: string | null;
+}
+
+interface TabEvent<T> {
+  tabId: string;
+  value: T;
+}
+
+let keySeq = 0;
+const freshTab = (): BrowserTab => ({
+  key: `tab-${++keySeq}`,
+  panelId: null,
+  url: "",
+  title: "",
+  loading: false,
+  atHome: true,
+});
 
 /** Turns any pasted text into something navigable: a bare domain gets a
  *  scheme, anything that isn't URL-shaped becomes a Google search — the
@@ -23,27 +62,43 @@ function normalizeAddress(input: string): string | null {
 
 const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
-/** Nudges WebKit into recompositing the page. Inserting the native child
- *  webview as a window-level sibling NSView, alongside this document's own
- *  GPU-promoted layers (anything with a CSS transition/transform, e.g. our
- *  toolbar buttons), can leave those layers blank — positioned correctly,
- *  just not repainted — until something else forces a recomposite. Toggling
- *  a transform on the root element is the standard nudge for this class of
- *  WebKit compositing bug. */
-const forceRepaint = () => {
-  const el = document.documentElement;
-  const prev = el.style.transform;
-  el.style.transform = "translateZ(0)";
-  void el.offsetHeight;
-  requestAnimationFrame(() => { el.style.transform = prev; });
-};
+let offsetCache: { value: number; at: number } | null = null;
 
-/** Owns the native browser panel's lifecycle: opening/repositioning it under
- * a placeholder element, syncing address-bar state from Rust-side events
- * (in-page navigation, title, loading), and the nav/clear-data actions. The
- * panel itself outlives this hook's mounted lifetime (see browser_panel's
- * module doc) — `browser_get_state` on mount lets a remounted page pick up
- * wherever the still-alive panel actually is instead of resetting to empty.
+/** Vertical distance between the window's native content area (what the panel's
+ *  bounds are measured in) and this document's viewport (what
+ *  `getBoundingClientRect()` is measured in).
+ *
+ *  A child webview is a sibling NSView placed in the window's content view,
+ *  whose origin on macOS is the top of the *window frame*. WKWebView, however,
+ *  insets its own web content by the title bar height, so DOM y=0 sits that far
+ *  down the content view. Measured live: content area 1201x801, DOM viewport
+ *  1201x769 — a 32px gap. Passing a raw `rect.top` therefore placed the panel
+ *  32px too high (covering the toolbar) and left it 32px short at the bottom.
+ *
+ *  Derived rather than hardcoded: it's 0 on Windows/Linux and in fullscreen,
+ *  and it tracks whatever title bar style the window ends up with. */
+async function viewportOffsetY(): Promise<number> {
+  // Only ever changes when the title bar itself does (fullscreen), but the
+  // resize path calls this on every observed frame, so don't pay two IPC
+  // round-trips each time.
+  if (offsetCache && performance.now() - offsetCache.at < 250) return offsetCache.value;
+  try {
+    const win = getCurrentWindow();
+    const [size, scale] = await Promise.all([win.innerSize(), win.scaleFactor()]);
+    const value = Math.max(0, Math.round(size.height / scale - window.innerHeight));
+    offsetCache = { value, at: performance.now() };
+    return value;
+  } catch {
+    // Non-Tauri (browser dev server) — no native panel to misplace anyway.
+    return 0;
+  }
+}
+
+/** Owns the native browser panel's lifecycle: one webview per tab, positioned
+ * under a placeholder element, plus the address/nav actions that drive them.
+ * The webviews outlive this hook's mounted lifetime (see browser_panel's
+ * module doc) — `browser_get_state` on mount rebuilds the strip from the tabs
+ * that actually exist rather than resetting to a single empty one.
  *
  * Every panel mutation is serialized through one queue and waits a couple of
  * animation frames before trusting a measurement. Without this, opening a
@@ -57,18 +112,25 @@ export function useBrowserPanel() {
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   containerRef.current = container;
-  const [url, setUrl] = useState("");
-  const [title, setTitle] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [opened, setOpened] = useState(false);
+
+  const [tabs, setTabs] = useState<BrowserTab[]>(() => [freshTab()]);
+  const [activeKey, setActiveKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const queueRef = useRef<Promise<void>>(Promise.resolve());
+  // A modal/dropdown is up. The panel is a native view composited above all
+  // of our HTML, so it has to step aside rather than lose a z-index fight.
+  const blocked = useBrowserPanelBlockStore((s) => s.blockers > 0);
 
-  const currentBounds = () => {
+  const active = tabs.find((t) => t.key === activeKey) ?? tabs[0];
+
+  /** The placeholder's rect, translated from viewport coordinates into the
+   *  window's native content-area coordinates the panel is positioned in. */
+  const currentBounds = async () => {
     const el = containerRef.current;
     if (!el) return null;
     const rect = el.getBoundingClientRect();
-    return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
+    const offsetY = await viewportOffsetY();
+    return { x: rect.left, y: rect.top + offsetY, width: rect.width, height: rect.height };
   };
 
   const enqueue = (fn: () => Promise<void>) => {
@@ -77,49 +139,82 @@ export function useBrowserPanel() {
     return next;
   };
 
-  /** Shows (creating on first use) and positions the panel, or just
-   *  repositions it when `targetUrl` is null. Settles for two frames before
-   *  measuring, then re-measures and corrects once more after the call
-   *  completes — cheap, and it's what makes the initial placement reliable
-   *  regardless of exactly when this fires relative to a layout change. */
-  const showAt = (targetUrl: string | null) => enqueue(async () => {
-    await nextFrame();
-    await nextFrame();
-    const rect = currentBounds();
-    if (!rect) return;
-    try {
-      await invoke("browser_show", { ...rect, url: targetUrl });
-      if (targetUrl) setUrl(targetUrl);
-      setOpened(true);
-      setError(null);
-    } catch (e) {
-      setError(String(e));
-      return;
-    }
-    await nextFrame();
-    const settled = currentBounds();
-    if (settled) await invoke("browser_set_bounds", settled).catch(() => {});
-    forceRepaint();
-  });
+  const patchTab = (key: string, patch: Partial<BrowserTab>) =>
+    setTabs((prev) => prev.map((t) => (t.key === key ? { ...t, ...patch } : t)));
 
-  const reposition = () => enqueue(async () => {
-    const rect = currentBounds();
-    if (rect) await invoke("browser_set_bounds", rect).catch(() => {});
-  });
+  /** Shows (creating on first use) and positions one tab's webview, or just
+   *  reveals it where it already is when `targetUrl` is null. Settles for two
+   *  frames before measuring, then re-measures and corrects once more after
+   *  the call completes — cheap, and it's what makes the initial placement
+   *  reliable regardless of exactly when this fires relative to a layout
+   *  change. */
+  const showAt = (key: string, panelId: string | null, targetUrl: string | null) =>
+    enqueue(async () => {
+      await nextFrame();
+      await nextFrame();
+      const rect = await currentBounds();
+      if (!rect) return;
+      try {
+        const id = await invoke<string>("browser_show", { tabId: panelId, ...rect, url: targetUrl });
+        patchTab(key, {
+          panelId: id,
+          atHome: false,
+          ...(targetUrl ? { url: targetUrl } : {}),
+        });
+        setError(null);
+      } catch (e) {
+        setError(String(e));
+        return;
+      }
+      await nextFrame();
+      const settled = await currentBounds();
+      if (settled) await invoke("browser_set_bounds", settled).catch(() => {});
+    });
 
-  // Once the placeholder has laid out, check whether the panel is already
-  // alive (a previous visit to this page, still running in the background)
-  // and if so sync the address bar and reposition it under the placeholder.
+  const reposition = () =>
+    enqueue(async () => {
+      const rect = await currentBounds();
+      if (rect) await invoke("browser_set_bounds", rect).catch(() => {});
+    });
+
+  // Once the placeholder has laid out, adopt whatever tabs are already alive
+  // (a previous visit to this page, still running in the background).
   useEffect(() => {
     if (!container) return;
-    invoke<BrowserState>("browser_get_state").then((state) => {
-      if (!state.opened) return;
-      setUrl(state.url);
-      setTitle(state.title);
-      void showAt(null);
-    }).catch(() => {});
+    invoke<RemoteState>("browser_get_state")
+      .then((state) => {
+        if (!state.tabs.length) return;
+        const restored: BrowserTab[] = state.tabs.map((t) => ({
+          key: `tab-${++keySeq}`,
+          panelId: t.id,
+          url: t.url,
+          title: t.title,
+          loading: false,
+          atHome: t.atHome,
+        }));
+        setTabs(restored);
+        setActiveKey(restored.find((t) => t.panelId === state.active)?.key ?? restored[0].key);
+      })
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [container]);
+
+  // Single reconciliation point: make the native side match whichever tab is
+  // active. Tab switches and the home button only touch React state, and this
+  // reveals/hides the right webview afterwards.
+  useEffect(() => {
+    if (!container || !active) return;
+    if (blocked || active.atHome || !active.panelId) {
+      void enqueue(async () => {
+        await invoke("browser_hide", {}).catch(() => {});
+      });
+      return;
+    }
+    // Re-showing after a blocker clears is just `setHidden(false)` natively,
+    // so the page keeps its scroll position and in-page state.
+    void showAt(active.key, active.panelId, null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [container, blocked, active?.key, active?.panelId, active?.atHome]);
 
   useEffect(() => {
     if (!container) return;
@@ -134,31 +229,91 @@ export function useBrowserPanel() {
   }, [container]);
 
   useEffect(() => {
+    const patchByPanel = (tabId: string, patch: Partial<BrowserTab>) =>
+      setTabs((prev) => prev.map((t) => (t.panelId === tabId ? { ...t, ...patch } : t)));
     const unlistens = [
-      listen<string>("browser://navigated", (e) => setUrl(e.payload)),
-      listen<string>("browser://title-changed", (e) => setTitle(e.payload)),
-      listen<boolean>("browser://loading", (e) => setLoading(e.payload)),
+      listen<TabEvent<string>>("browser://navigated", (e) =>
+        patchByPanel(e.payload.tabId, { url: e.payload.value })),
+      listen<TabEvent<string>>("browser://title-changed", (e) =>
+        patchByPanel(e.payload.tabId, { title: e.payload.value })),
+      listen<TabEvent<boolean>>("browser://loading", (e) =>
+        patchByPanel(e.payload.tabId, { loading: e.payload.value })),
     ];
-    return () => { unlistens.forEach((p) => p.then((fn) => fn()).catch(() => {})); };
+    return () => {
+      unlistens.forEach((p) => p.then((fn) => fn()).catch(() => {}));
+    };
   }, []);
 
-  // Leaving the page hides the native panel so it doesn't render over
-  // whatever page comes next — see browser_panel's module doc.
-  useEffect(() => () => { invoke("browser_hide").catch(() => {}); }, []);
+  // Leaving the page hides every panel so none of them render over whatever
+  // page comes next — see browser_panel's module doc.
+  useEffect(() => () => { invoke("browser_hide", {}).catch(() => {}); }, []);
 
   const open = (raw: string) => {
     const target = normalizeAddress(raw);
-    if (!target) return Promise.resolve();
-    return showAt(target);
+    if (!target || !active) return Promise.resolve();
+    return showAt(active.key, active.panelId, target);
   };
 
-  const reload = () => invoke("browser_reload").catch(() => {});
-  const goBack = () => invoke("browser_go_back").catch(() => {});
-  const goForward = () => invoke("browser_go_forward").catch(() => {});
+  /** Back to the home screen without discarding the tab — the webview is
+   *  hidden rather than closed, so the session (and the shared cookie jar)
+   *  survives. The address and title clear with it: a tab showing the home
+   *  screen has no address, and leaving the old one in the bar was the whole
+   *  complaint. Rust records this too, so a page remount doesn't resurrect
+   *  the site the tab was sent home from. */
+  const goHome = () => {
+    if (!active) return;
+    if (active.panelId) invoke("browser_go_home", { tabId: active.panelId }).catch(() => {});
+    patchTab(active.key, { atHome: true, url: "", title: "", loading: false });
+  };
+
+  const newTab = () => {
+    const tab = freshTab();
+    setTabs((prev) => [...prev, tab]);
+    setActiveKey(tab.key);
+  };
+
+  const selectTab = (key: string) => setActiveKey(key);
+
+  const closeTab = (key: string) => {
+    const index = tabs.findIndex((t) => t.key === key);
+    if (index === -1) return;
+    const panelId = tabs[index].panelId;
+    if (panelId) invoke("browser_close_tab", { tabId: panelId }).catch(() => {});
+    const rest = tabs.filter((t) => t.key !== key);
+    // Closing the last tab leaves an empty home tab rather than a blank page.
+    const next = rest.length ? rest : [freshTab()];
+    setTabs(next);
+    if (key === active?.key) setActiveKey(next[Math.min(index, next.length - 1)].key);
+  };
+
+  const onActive = (command: string) =>
+    active?.panelId ? invoke(command, { tabId: active.panelId }).catch(() => {}) : Promise.resolve();
+
+  const reload = () => onActive("browser_reload");
+  const goBack = () => onActive("browser_go_back");
+  const goForward = () => onActive("browser_go_forward");
+  /** Throws away cookies/localStorage/cache before reloading. Rejects rather
+   *  than swallowing, so the caller can surface a toast. */
+  const hardReload = () =>
+    active?.panelId
+      ? invoke("browser_hard_reload", { tabId: active.panelId })
+      : Promise.resolve();
   const clearData = () => invoke("browser_clear_data");
 
   return {
-    setContainer, url, title, loading, opened, error,
-    open, reload, goBack, goForward, clearData,
+    setContainer,
+    tabs,
+    active,
+    error,
+    open,
+    reload,
+    hardReload,
+    goBack,
+    goForward,
+    goHome,
+    clearData,
+    newTab,
+    selectTab,
+    closeTab,
   };
 }

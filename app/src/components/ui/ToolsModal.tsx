@@ -7,6 +7,7 @@ import { AiChatPage } from "@/components/AiChat/AiChatPage";
 import { ToolsModalTitleBar } from "@/components/ui/ToolsModalTitleBar";
 import { ToolsModalWordTab } from "@/components/ui/ToolsModalWordTab";
 import { ToolsModalResizeHandle } from "@/components/ui/ToolsModalResizeHandle";
+import { BrowserPanelBlocker } from "@/store/browserPanelStore";
 
 const MIN_W = 500;
 const MIN_H = 400;
@@ -182,6 +183,8 @@ export function ToolsModal() {
 
   return (
     <div className="fixed inset-0 z-10">
+      {/* Native browser panel must step aside — see browserPanelStore. */}
+      <BrowserPanelBlocker />
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/20" onClick={closeModal} />
 
