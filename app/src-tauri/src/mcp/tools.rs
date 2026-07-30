@@ -155,6 +155,7 @@ impl TanWordsMcp {
                  FROM documents_fts f
                  JOIN documents d ON d.id = f.rowid
                  WHERE documents_fts MATCH ?1
+                   AND d.protected=0
                    AND (?2 IS NULL OR EXISTS(SELECT 1 FROM json_each(d.tags) WHERE value=?2))
                  ORDER BY d.pinned DESC, bm25(documents_fts)
                  LIMIT ?3",
@@ -178,7 +179,7 @@ impl TanWordsMcp {
             let conn = self.connect().await?;
             db::fetch_one(
                 &conn,
-                "SELECT id,title,content,content_text,tags,pinned,word_count,created_at,updated_at FROM documents WHERE id=?1",
+                "SELECT id,title,content,content_text,tags,pinned,word_count,created_at,updated_at FROM documents WHERE id=?1 AND protected=0",
                 [input.id],
                 |row| Ok(json!({"id":row.get::<i64>(0)?,"title":row.get::<String>(1)?,"content":row.get::<String>(2)?,"text":row.get::<String>(3)?,"tags":serde_json::from_str::<Value>(&row.get::<String>(4)?).unwrap_or(json!([])),"pinned":row.get::<i64>(5)?!=0,"wordCount":row.get::<i64>(6)?,"createdAt":row.get::<String>(7)?,"updatedAt":row.get::<String>(8)?})),
             )
@@ -224,7 +225,7 @@ impl TanWordsMcp {
     pub(super) async fn documents_append(&self, Parameters(input): Parameters<AppendDocument>) -> String {
         let result: Result<Value, String> = async {
             let conn = self.connect().await?;
-            let changed = conn.execute("UPDATE documents SET content=content||'\n\n'||?1,content_text=content_text||'\n\n'||?1,word_count=word_count+?2,updated_at=datetime('now') WHERE id=?3",params![input.content.clone(),input.content.split_whitespace().count() as i64,input.id])
+            let changed = conn.execute("UPDATE documents SET content=content||'\n\n'||?1,content_text=content_text||'\n\n'||?1,word_count=word_count+?2,updated_at=datetime('now') WHERE id=?3 AND protected=0",params![input.content.clone(),input.content.split_whitespace().count() as i64,input.id])
                 .await
                 .map_err(|e|e.to_string())?;
             if changed == 0 {
@@ -299,7 +300,7 @@ impl TanWordsMcp {
         let result: Result<Value, String> = async {
             let conn = self.connect().await?;
             let changed = conn
-                .execute("DELETE FROM documents WHERE id=?1", [input.id])
+                .execute("DELETE FROM documents WHERE id=?1 AND protected=0", [input.id])
                 .await
                 .map_err(|e| e.to_string())?;
             if changed == 0 {
@@ -555,7 +556,7 @@ impl TanWordsMcp {
             let conn = self.connect().await?;
             let current: (String, String, String, String) = db::fetch_one(
                 &conn,
-                "SELECT title,content,tags,updated_at FROM documents WHERE id=?1",
+                "SELECT title,content,tags,updated_at FROM documents WHERE id=?1 AND protected=0",
                 [input.id],
                 |row| {
                     Ok((

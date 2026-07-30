@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { useDB } from "@/hooks/useDB";
 import type { RssFeed } from "@/hooks/useDB.types";
-import { DEFAULT_FEEDS } from "./defaultFeeds";
+import { DEFAULT_FEEDS, INITIAL_FEEDS } from "./defaultFeeds";
 
 type DB = ReturnType<typeof useDB>;
 
@@ -41,7 +41,7 @@ export async function seedDefaults(db: DB, existing: RssFeed[]): Promise<RssFeed
     const seeded = await invoke<string | null>("db_get_setting", { key: SEEDED_FLAG });
     if (!seeded) {
       if (existing.length === 0) {
-        for (const p of DEFAULT_FEEDS) {
+        for (const p of INITIAL_FEEDS) {
           await db.addRssFeed(p.url, p.title, "", p.desc);
         }
       }

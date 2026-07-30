@@ -54,6 +54,7 @@ export const feeds: Dict = {
   "feeds.group.thisWeek": "本周",
   "feeds.group.earlier": "更早",
   "feeds.cat.webdev": "文章 · Web 开发",
+  "feeds.cat.news": "科技新闻",
   "feeds.cat.tech": "文章 · 科技与 AI",
   "feeds.cat.podcast": "播客",
 };

@@ -7,11 +7,12 @@ import { TtsSection } from "./TtsSection";
 import { GeneralSection } from "./GeneralSection";
 import { LearningSection } from "./LearningSection";
 import { McpSection } from "./McpSection";
+import { DocumentsSection } from "./DocumentsSection";
 import { DataSection } from "./DataSection";
 
 export { SettingRow } from "./SettingsShared";
 
-const SECTIONS = ["general", "providers", "learning", "tts", "mcp", "data"] as const;
+const SECTIONS = ["general", "providers", "learning", "tts", "mcp", "documents", "data"] as const;
 type SectionId = (typeof SECTIONS)[number];
 
 export function SettingsPage() {
@@ -19,7 +20,7 @@ export function SettingsPage() {
   const db = useDB();
 
   const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
-    general: null, providers: null, learning: null, tts: null, mcp: null, data: null,
+    general: null, providers: null, learning: null, tts: null, mcp: null, documents: null, data: null,
   });
   const scrollRef = useRef<HTMLDivElement>(null);
   const [activeSection, setActiveSection] = useState<SectionId>("general");
@@ -136,6 +137,13 @@ export function SettingsPage() {
 
           <section ref={(el) => { sectionRefs.current.mcp = el; }} data-section="mcp" className="scroll-mt-6">
             <McpSection />
+          </section>
+
+          <section ref={(el) => { sectionRefs.current.documents = el; }} data-section="documents" className="scroll-mt-6">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              {t("settings.section.documents")}
+            </p>
+            <DocumentsSection />
           </section>
 
           <section ref={(el) => { sectionRefs.current.data = el; }} data-section="data" className="scroll-mt-6">

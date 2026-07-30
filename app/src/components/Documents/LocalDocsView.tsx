@@ -309,7 +309,11 @@ export function LocalDocsView() {
   if (!rootLoaded) return null;
 
   return (
-    <div className={`flex h-full overflow-hidden bg-background ${zenMode ? "fixed inset-0 z-50" : ""}`}>
+    <div className={`flex h-full overflow-hidden ${
+      zenMode
+        ? "fixed inset-0 z-50 bg-background"
+        : "bg-transparent"
+    }`}>
       {/* Sidebar */}
       {!zenMode && (
         <LocalDocsSidebar
@@ -317,6 +321,7 @@ export function LocalDocsView() {
           onSidebarOpenChange={setSidebarOpen}
           root={root}
           onMount={handleMount}
+          onRefresh={() => void refresh()}
           onNewFile={(directory) => void handleNewFile(directory)}
           onImportFiles={() => void handleImportFiles()}
           onOpenExportPicker={() => setExportPickerOpen(true)}

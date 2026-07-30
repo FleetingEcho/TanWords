@@ -25,6 +25,8 @@ export interface DocumentAssetSummary {
   size: number;
   created_at: string;
   referenced: boolean;
+  protected: boolean;
+  unlocked: boolean;
 }
 
 function blobToDataBase64(blob: Blob): Promise<string> {
@@ -40,12 +42,13 @@ async function compressRaster(file: File): Promise<{ blob: Blob; fileName: strin
   if (file.type === "image/gif" || file.type === "image/svg+xml") {
     return { blob: file, fileName: file.name || "image" };
   }
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, MAX_RASTER_DIMENSION / Math.max(bitmap.width, bitmap.height));
-  if (scale === 1 && file.size <= 2 * 1024 * 1024) {
-    bitmap.close();
+  // Small clipboard PNGs do not need decoding. This also keeps uploads working
+  // in WebViews that do not implement createImageBitmap.
+  if (file.size <= 2 * 1024 * 1024) {
     return { blob: file, fileName: file.name || "image" };
   }
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, MAX_RASTER_DIMENSION / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(bitmap.width * scale));
   canvas.height = Math.max(1, Math.round(bitmap.height * scale));

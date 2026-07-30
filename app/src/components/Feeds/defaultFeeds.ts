@@ -10,7 +10,7 @@
  *  removed 2026-07-22 — replaced by the native New/Top/Best browser in
  *  FeedTabs, which reads HN's own API instead of an RSS mirror. */
 
-export type FeedCategory = "webdev" | "tech" | "podcast";
+export type FeedCategory = "news" | "webdev" | "tech" | "podcast";
 
 export interface DefaultFeed {
   title: string;
@@ -19,9 +19,17 @@ export interface DefaultFeed {
   category: FeedCategory;
 }
 
-export const FEED_CATEGORIES: FeedCategory[] = ["webdev", "tech", "podcast"];
+export const FEED_CATEGORIES: FeedCategory[] = ["news", "webdev", "tech", "podcast"];
 
 export const DEFAULT_FEEDS: DefaultFeed[] = [
+  // ── Technical news ────────────────────────────────────────────────────────
+  { category: "news", title: "TechCrunch", url: "https://techcrunch.com/feed/", desc: "Startups, venture capital, products, and the technology industry" },
+  { category: "news", title: "The Verge", url: "https://www.theverge.com/rss/index.xml", desc: "Technology news, products, science, and digital culture" },
+  { category: "news", title: "WIRED", url: "https://www.wired.com/feed/rss", desc: "Technology, science, security, business, and culture" },
+  { category: "news", title: "Ars Technica", url: "https://feeds.arstechnica.com/arstechnica/index", desc: "Technology news and analysis with real technical depth" },
+  { category: "news", title: "MIT Technology Review", url: "https://www.technologyreview.com/feed/", desc: "Emerging technology and its impact on society" },
+  { category: "news", title: "IEEE Spectrum", url: "https://spectrum.ieee.org/feeds/feed.rss", desc: "Engineering, science, and hard-technology news" },
+
   // ── Articles · Web development ──────────────────────────────────────────
   { category: "webdev", title: "JavaScript Weekly", url: "https://cprss.s3.amazonaws.com/javascriptweekly.com.xml", desc: "Weekly digest of JavaScript news and articles" },
   { category: "webdev", title: "Frontend Focus", url: "https://cprss.s3.amazonaws.com/frontendfoc.us.xml", desc: "Weekly digest of HTML, CSS, and browser tech" },
@@ -38,9 +46,6 @@ export const DEFAULT_FEEDS: DefaultFeed[] = [
   { category: "tech", title: "GitHub Blog", url: "https://github.blog/feed/", desc: "Product news and engineering from GitHub" },
   { category: "tech", title: "The Pragmatic Engineer", url: "https://blog.pragmaticengineer.com/rss/", desc: "Big-tech and startup engineering culture" },
   { category: "tech", title: "Lobsters", url: "https://lobste.rs/rss", desc: "Computing link aggregator, quieter than HN" },
-  { category: "tech", title: "Ars Technica", url: "https://feeds.arstechnica.com/arstechnica/index", desc: "Tech news with real technical depth" },
-  { category: "tech", title: "MIT Technology Review", url: "https://www.technologyreview.com/feed/", desc: "Emerging tech and its impact" },
-  { category: "tech", title: "IEEE Spectrum", url: "https://spectrum.ieee.org/feeds/feed.rss", desc: "Engineering and hard-tech journalism" },
   { category: "tech", title: "Hugging Face Blog", url: "https://huggingface.co/blog/feed.xml", desc: "Hands-on ML and open-model releases" },
   { category: "tech", title: "Stratechery", url: "https://stratechery.com/feed/", desc: "Ben Thompson on tech strategy (free weekly articles)" },
 
@@ -59,3 +64,12 @@ export const DEFAULT_FEEDS: DefaultFeed[] = [
   { category: "podcast", title: "Oxide and Friends", url: "https://feeds.transistor.fm/oxide-and-friends", desc: "Systems engineering conversations" },
   { category: "podcast", title: "The Vergecast", url: "https://feeds.megaphone.fm/vergecast", desc: "The Verge's flagship tech show" },
 ];
+
+const INITIAL_FEED_URLS = new Set([
+  "https://feed.syntax.fm",
+  "https://changelog.com/practicalai/feed",
+]);
+
+/** RSS subscriptions created on first launch. Hacker News is always available
+ * as a native tab, so it deliberately has no RSS row here. */
+export const INITIAL_FEEDS = DEFAULT_FEEDS.filter((feed) => INITIAL_FEED_URLS.has(feed.url));

@@ -202,17 +202,6 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
     if (!dest) return;
     setExporting(true);
     try {
-      // Pull the primary's latest changes into the replica first, so the
-      // export isn't a few seconds (or longer) stale. Best-effort: if the
-      // sync fails — offline, network hiccup — still export whatever the
-      // replica already has rather than blocking the backup entirely.
-      if (isRemote && connection?.caps.sync && !isOffline) {
-        try {
-          await db.syncNow();
-        } catch {
-          // useDB already toasted the sync failure; fall through to export.
-        }
-      }
       await db.exportBackup(dest);
       toast.success(t("settings.exportOk"));
     } catch {
@@ -232,47 +221,6 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
     setConfirmClear(false);
     toast.success(t("settings.dangerClearedOk"));
   };
-
-  // Export works against whichever connection is active — the Turso replica
-  // is a real local SQLite file too — so it appears in both tabs. For a
-  // remote connection it's explicitly framed as a snapshot of the replica,
-  // which can be a few seconds behind the primary until the next sync.
-  const exportRow = (
-    <SettingRow
-      label={t("settings.exportDB")}
-      sub={isRemote ? t("settings.exportDBSubRemote") : t("settings.exportDBSub")}
-    >
-      <Button
-        size="icon"
-        onClick={handleExport}
-        disabled={exporting || !canExport}
-        title={exporting ? t("settings.exporting") : t("settings.exportDB")}
-        aria-label={exporting ? t("settings.exporting") : t("settings.exportDB")}
-        className="h-8 w-8 rounded-lg disabled:opacity-50 transition-colors"
-      >
-        <DownloadIcon className={`w-4 h-4 ${exporting ? "animate-pulse" : ""}`} />
-      </Button>
-    </SettingRow>
-  );
-
-  // Clearing translations is a plain delete against whichever connection is
-  // active — unlike Export, it isn't local-only — so it appears in both tabs
-  // rather than being tied to one.
-  const clearTranslationsRow = (
-    <SettingRow label={t("settings.dangerClearTranslations")} sub={t("settings.dangerClearTranslationsSub")}>
-      <Button
-        variant="ghost"
-        onClick={handleClearTranslations}
-        className={`h-8 px-4 rounded-lg text-xs font-semibold transition-colors ${
-          confirmClear
-            ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            : "border border-destructive/40 text-destructive hover:bg-destructive/10"
-        }`}
-      >
-        {confirmClear ? t("settings.dangerConfirm") : t("settings.dangerClear")}
-      </Button>
-    </SettingRow>
-  );
 
   return (
     <div className="space-y-3">
@@ -327,36 +275,28 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
         />
 
         {activeTab === "local" ? (
-          <div>
-            {canSwitchPath ? (
-              <SettingRow label={t("settings.switchDB")} sub={t("settings.switchDBSub")}>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={handleOpenExisting}
-                    className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted transition-colors"
-                  >
-                    {t("settings.switchDBOpenExisting")}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={handleNewLocation}
-                    className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted transition-colors"
-                  >
-                    {t("settings.switchDBNewLocation")}
-                  </Button>
-                </div>
-              </SettingRow>
-            ) : (
-              <div className="py-3.5 border-b border-border">
-                <p className="text-xs text-muted-foreground">{t("settings.switchDBUnavailableRemote")}</p>
+          canSwitchPath ? (
+            <SettingRow label={t("settings.switchDB")} sub={t("settings.switchDBSub")}>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={handleOpenExisting}
+                  className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted transition-colors"
+                >
+                  {t("settings.switchDBOpenExisting")}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleNewLocation}
+                  className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted transition-colors"
+                >
+                  {t("settings.switchDBNewLocation")}
+                </Button>
               </div>
-            )}
-
-            {exportRow}
-
-            {clearTranslationsRow}
-          </div>
+            </SettingRow>
+          ) : (
+            <p className="text-xs text-muted-foreground py-2">{t("settings.switchDBUnavailableRemote")}</p>
+          )
         ) : (
           <div className="space-y-3">
             <SettingRow
@@ -459,9 +399,6 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
                 </div>
               </div>
             )}
-
-            {isRemote && exportRow}
-            {clearTranslationsRow}
           </div>
         )}
       </div>
@@ -478,6 +415,38 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
             className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted disabled:opacity-50 transition-colors"
           >
             {analyzing ? t("settings.importDBAnalyzing") : t("settings.importDBChoose")}
+          </Button>
+        </SettingRow>
+
+        <SettingRow
+          label={t("settings.exportDB")}
+          sub={canExport ? t("settings.exportDBSub") : t("settings.exportUnavailableRemote")}
+        >
+          <Button
+            size="icon"
+            onClick={handleExport}
+            disabled={exporting || !canExport}
+            title={exporting ? t("settings.exporting") : t("settings.exportDB")}
+            aria-label={exporting ? t("settings.exporting") : t("settings.exportDB")}
+            className="h-8 w-8 rounded-lg disabled:opacity-50 transition-colors"
+          >
+            <DownloadIcon className={`w-4 h-4 ${exporting ? "animate-pulse" : ""}`} />
+          </Button>
+        </SettingRow>
+      </div>
+
+      <div className="bg-destructive/5 border border-destructive/20 rounded-xl px-5">
+        <SettingRow label={t("settings.dangerClearTranslations")} sub={t("settings.dangerClearTranslationsSub")}>
+          <Button
+            variant="ghost"
+            onClick={handleClearTranslations}
+            className={`h-8 px-4 rounded-lg text-xs font-semibold transition-colors ${
+              confirmClear
+                ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                : "border border-destructive/40 text-destructive hover:bg-destructive/10"
+            }`}
+          >
+            {confirmClear ? t("settings.dangerConfirm") : t("settings.dangerClear")}
           </Button>
         </SettingRow>
       </div>

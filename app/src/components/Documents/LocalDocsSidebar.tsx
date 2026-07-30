@@ -3,17 +3,19 @@ import { LocalDocItem, LocalDocSearchResult } from "@/lib/localDocs";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronsLeft, ChevronsRight, Download, FileInput, FileText, FolderOpen, Loader2, MoreHorizontal } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, Copy, Download, FileInput, FileText, FolderOpen, Loader2, MoreHorizontal, RefreshCw } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { LocalDocTree } from "./LocalDocTree";
 import { LocalDocSearchResults } from "./LocalDocSearchResults";
 import { LIST_PANEL_WIDTH, LIST_PANEL_COLLAPSED_WIDTH, LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
+import { toast } from "sonner";
 
 interface Props {
   sidebarOpen: boolean;
   onSidebarOpenChange: (open: boolean) => void;
   root: string | null;
   onMount: () => void;
+  onRefresh: () => void;
   onNewFile: (directory?: string) => void;
   onImportFiles: () => void;
   onOpenExportPicker: () => void;
@@ -38,6 +40,7 @@ export function LocalDocsSidebar({
   onSidebarOpenChange,
   root,
   onMount,
+  onRefresh,
   onNewFile,
   onImportFiles,
   onOpenExportPicker,
@@ -58,7 +61,7 @@ export function LocalDocsSidebar({
 
   return (
     <Collapsible open={sidebarOpen} onOpenChange={onSidebarOpenChange} asChild>
-      <div className={`${sidebarOpen ? LIST_PANEL_WIDTH : LIST_PANEL_COLLAPSED_WIDTH} h-full shrink-0 border-r border-border bg-card transition-[width] duration-200`}>
+      <div className={`${sidebarOpen ? LIST_PANEL_WIDTH : LIST_PANEL_COLLAPSED_WIDTH} h-full shrink-0 border-r border-border bg-transparent transition-[width] duration-200`}>
         {!sidebarOpen && (
           <div className="flex justify-center pt-3">
             <CollapsibleTrigger asChild>
@@ -97,17 +100,47 @@ export function LocalDocsSidebar({
 
           {root && (
             <>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={onMount}
-                title={root}
-                className="w-full h-7 justify-start gap-1.5 px-1 text-[11px] text-muted-foreground hover:text-foreground"
-              >
-                <FolderOpen className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate font-mono">{root}</span>
-                <span className="ml-auto shrink-0 underline decoration-dotted">{t("doc.changeFolder")}</span>
-              </Button>
+              <div className="flex min-w-0 items-center">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={onMount}
+                  title={root}
+                  className="h-7 min-w-0 flex-1 justify-start gap-1.5 px-1 text-[11px] text-muted-foreground hover:text-foreground"
+                >
+                  <FolderOpen className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate font-mono">{root}</span>
+                  <span className="ml-auto shrink-0 underline decoration-dotted">{t("doc.changeFolder")}</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  title={t("doc.copyFolderPath")}
+                  aria-label={t("doc.copyFolderPath")}
+                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(root).then(
+                      () => toast.success(t("doc.folderPathCopied")),
+                      () => toast.error(t("doc.copyFolderPathFailed")),
+                    );
+                  }}
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  title={t("doc.refreshFolder")}
+                  aria-label={t("doc.refreshFolder")}
+                  disabled={filesLoading}
+                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                  onClick={onRefresh}
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${filesLoading ? "animate-spin" : ""}`} />
+                </Button>
+              </div>
 
               <input
                 type="text"
@@ -167,7 +200,7 @@ export function LocalDocsSidebar({
         </div>
 
         {root && files.length > 0 && (
-          <div className="px-3 py-2 border-t border-border shrink-0">
+          <div className="h-9 px-3 border-t border-border flex items-center shrink-0">
             <span className="text-[10px] text-muted-foreground">{t("doc.total", { n: files.length })}</span>
           </div>
         )}

@@ -5,6 +5,7 @@ use db::connection::{Db, DbDescriptor, DbProfile};
 
 pub mod appconfig;
 pub mod db;
+pub mod document_privacy;
 pub mod tts;
 pub mod reader;
 pub mod secrets;
@@ -35,6 +36,7 @@ pub struct AppState {
     /// the default location — surfaced once to the frontend so the user
     /// sees a warning instead of a mysteriously empty vocabulary.
     pub db_fallback_warning: Option<String>,
+    pub document_privacy: document_privacy::DocumentPrivacyState,
 }
 
 impl AppState {
@@ -51,6 +53,7 @@ impl AppState {
     /// background sync.
     pub fn replace_db(&self, next: Db) -> Result<(), String> {
         *self.db.lock().map_err(|e| e.to_string())? = next;
+        self.document_privacy.clear()?;
         Ok(())
     }
 }
@@ -83,6 +86,7 @@ pub fn run() {
 
     builder
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
@@ -122,6 +126,7 @@ pub fn run() {
             db: Mutex::new(database),
             tts: Arc::new(Mutex::new(None)),
             db_fallback_warning,
+            document_privacy: document_privacy::DocumentPrivacyState::default(),
         })
         .manage(mcp_controller)
         .manage(native_audio::NativeAudioState::default())
@@ -150,6 +155,12 @@ pub fn run() {
             db::db_document_title_exists,
             db::db_get_documents,
             db::db_get_document,
+            document_privacy::db_protect_document,
+            document_privacy::db_private_password_status,
+            document_privacy::db_unlock_document,
+            document_privacy::db_lock_document,
+            document_privacy::db_remove_document_protection,
+            document_privacy::db_change_document_password,
             db::db_create_document_asset,
             db::db_get_document_asset,
             db::db_get_document_assets,

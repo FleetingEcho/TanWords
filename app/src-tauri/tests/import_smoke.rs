@@ -88,6 +88,7 @@ async fn app_with(path: &str) -> tauri::App<tauri::test::MockRuntime> {
         db: std::sync::Mutex::new(database),
         tts: std::sync::Mutex::new(None).into(),
         db_fallback_warning: None,
+        document_privacy: Default::default(),
     });
     app
 }
