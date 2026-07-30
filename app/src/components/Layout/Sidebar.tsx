@@ -59,7 +59,7 @@ function NavButton({
       } ${
         active
           ? "bg-[hsl(var(--sidebar-active-bg))] text-[hsl(var(--sidebar-active-fg))] hover:bg-[hsl(var(--sidebar-active-bg))]"
-          : "text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--muted))]"
+          : "text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--sidebar-foreground))]"
       }`}
     >
       <span className="relative shrink-0">

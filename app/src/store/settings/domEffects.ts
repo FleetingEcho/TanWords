@@ -47,6 +47,7 @@ export function applyTheme(theme: Theme) {
     "theme-tokyo-night",
     "theme-tokyo-night-day",
     "theme-tokyo-night-storm",
+    "theme-dim",
   );
   if (theme === "system") {
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -62,6 +63,7 @@ export function applyTheme(theme: Theme) {
     if (theme === "tokyo-night") root.classList.add("theme-tokyo-night");
     if (theme === "tokyo-night-day") root.classList.add("theme-tokyo-night-day");
     if (theme === "tokyo-night-storm") root.classList.add("theme-tokyo-night-storm");
+    if (theme === "dim") root.classList.add("theme-dim");
   }
   // Cached so index.html's pre-paint script can apply it synchronously on
   // the next launch, before the async DB round-trip resolves.

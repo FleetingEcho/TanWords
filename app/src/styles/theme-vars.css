@@ -244,4 +244,35 @@
     --sidebar-active-fg: 224 89% 77%;
     --ink: 189 71% 73%;
   }
+
+  /* Dim — X (Twitter)'s dark-navy mode: Dim background, Twitter Blue primary,
+     the "Like" raspberry pink as the secondary accent. */
+  .theme-dim {
+    --background: 210 34% 8%;
+    --foreground: 200 7% 91%;
+    --card: 213 28% 11%;
+    --card-foreground: 200 7% 91%;
+    --popover: 213 28% 11%;
+    --popover-foreground: 200 7% 91%;
+    --primary: 204 88% 53%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 208 28% 13%;
+    --secondary-foreground: 200 7% 91%;
+    --muted: 208 24% 12%;
+    --muted-foreground: 206 14% 59%;
+    --accent: 332 90% 76%;
+    --accent-foreground: 210 34% 8%;
+    --destructive: 356 91% 54%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 206 18% 18%;
+    --input: 206 18% 18%;
+    --ring: 204 88% 53%;
+    --sidebar: 210 34% 6%;
+    --sidebar-foreground: 200 7% 91%;
+    --sidebar-muted: 206 14% 59%;
+    --sidebar-border: 206 16% 16%;
+    --sidebar-active-bg: 204 35% 22%;
+    --sidebar-active-fg: 204 88% 60%;
+    --ink: 195 85% 72%;
+  }
 }

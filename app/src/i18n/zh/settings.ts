@@ -190,6 +190,7 @@ export const settings: Dict = {
     "settings.tokyoNight": "◆ Tokyo Night",
     "settings.tokyoNightDay": "◇ Tokyo Night Day",
     "settings.tokyoNightStorm": "◆ Tokyo Night Storm",
+    "settings.dim": "◆ 暗淡 (Dim)",
     "settings.system": "◇ 系统",
     "settings.importDB": "从本地数据库导入",
     "settings.importDBSub": "读取另一个 TanWords 数据库文件，把里面的词库、句型、文章和文档合并进来。适合把本地数据搬到刚建好的在线库。",
