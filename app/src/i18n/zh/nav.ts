@@ -36,5 +36,5 @@ export const nav: Dict = {
     "command.collapseIcons": "折叠工具栏图标",
     "command.expandIcons": "展开工具栏图标",
     "nav.reading": "精读",
-    "nav.browser": "浏览器",
+    "nav.browse": "浏览",
 };

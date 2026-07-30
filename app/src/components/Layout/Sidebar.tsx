@@ -23,13 +23,13 @@ interface NavItemDef {
 
 const NAV_ITEM_DEFS: Omit<NavItemDef, "label">[] = [
   { id: "dashboard", icon: GridIcon },
+  { id: "browser", icon: Globe },
   { id: "feeds", icon: FeedIcon },
   { id: "reading", icon: ClipboardPaste },
   { id: "documents", icon: DocIcon },
   { id: "vocabulary", icon: BookIcon, showCount: "word" },
   { id: "chat", icon: ChatIcon },
   { id: "music", icon: MusicIcon },
-  { id: "browser", icon: Globe },
 ];
 
 /** Shared button chrome for both the customizable nav items and the pinned Settings
@@ -97,9 +97,6 @@ export function MainLayout({
   const collapsed = useLayoutStore((s) => s.sidebarCollapsed);
   const toggleCollapsed = useLayoutStore((s) => s.toggleSidebar);
   const visibleSidebarTabs = useSettingsStore((s) => s.visibleSidebarTabs);
-  // Transparent instead of opaque when a custom app background is set, so AppBackground
-  // (mounted behind this whole layout) shows through the page canvas — cards/sidebar
-  // keep their own bg-card/bg-sidebar and stay opaque regardless.
   const hasCustomAppBackground = useSettingsStore((s) => !!s.appBackgroundImage && s.appBackgroundVisible);
   const podcastActive = usePodcastPlayerStore((s) => s.status !== "idle" && s.track !== null);
   const ttsActive = useTtsPlayerStore((s) => s.status !== "idle");
