@@ -327,6 +327,7 @@ export function GeneralSection() {
             <SelectItem value="tokyo-night">{t("settings.tokyoNight")}</SelectItem>
             <SelectItem value="tokyo-night-day">{t("settings.tokyoNightDay")}</SelectItem>
             <SelectItem value="tokyo-night-storm">{t("settings.tokyoNightStorm")}</SelectItem>
+            <SelectItem value="dim">{t("settings.dim")}</SelectItem>
             <SelectItem value="system">{t("settings.system")}</SelectItem>
           </SelectContent>
         </Select>
