@@ -114,12 +114,24 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
         : "border-border font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
     }`;
 
+  const scrollTabsHorizontally = (event: React.WheelEvent<HTMLDivElement>) => {
+    if (Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+    const scroller = event.currentTarget;
+    if (scroller.scrollWidth <= scroller.clientWidth) return;
+    scroller.scrollLeft += event.deltaY;
+    event.preventDefault();
+  };
+
   return (
     // relative z-20: backdrop-blur creates a stacking context, and without a
     // z-index the content bars below (e.g. HackerNewsSection's blurred toolbar)
     // paint over the More / Recently-read dropdowns.
-    <div className="relative z-20 flex shrink-0 items-center gap-3 border-b border-border bg-background/90 backdrop-blur-xl px-4 py-2.5">
-      <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div className="relative z-20 flex shrink-0 items-center gap-3 border-b border-border bg-transparent backdrop-blur-xl px-4 py-2.5">
+      <div className="min-w-0 flex-1 overflow-hidden">
+        <div
+          className="rss-tabs-scroll -mb-3 flex items-center gap-1.5 overflow-x-auto pb-3"
+          onWheel={scrollTabsHorizontally}
+        >
         <button onClick={() => onSelect("all")} className={`${pill(selected === "all")} shrink-0`}>
           {t("feeds.all")}
           <UnreadBadge n={totalUnread} />
@@ -160,6 +172,7 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
           );
         })}
 
+        </div>
       </div>
 
       <div className="flex h-8 shrink-0 items-center gap-2">

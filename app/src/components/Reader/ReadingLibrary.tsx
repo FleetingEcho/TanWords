@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Bot, ClipboardPaste, MessageSquareText, Rss, Search, Trash2 } from "lucide-react";
+import { Bot, ChevronDown, ClipboardPaste, Filter, MessageSquareText, Rss, Search, Trash2 } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { useDB } from "@/hooks/useDB";
 import type { ReadingArticleItem } from "@/hooks/useDB.reading";
@@ -48,6 +48,7 @@ export function ReadingLibrary({ onOpen }: { onOpen: (id: number) => void }) {
   const [dateTo, setDateTo] = useState("");
   const [onlyCommented, setOnlyCommented] = useState(false);
   const [sort, setSort] = useState<"recent" | "added" | "longest">("recent");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<ReadingArticleItem | null>(null);
 
   const load = useCallback(async (targetPage = page) => {
@@ -78,55 +79,75 @@ export function ReadingLibrary({ onOpen }: { onOpen: (id: number) => void }) {
 
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const filtered = !!search || source !== "all" || !!dateFrom || !!dateTo || onlyCommented;
+  const advancedFiltersActive = source !== "all" || !!dateFrom || !!dateTo || onlyCommented || sort !== "recent";
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* Filter bar */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-border/60 px-5 py-3">
-        <div className="relative min-w-[200px] flex-1">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/50" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t("library.searchPlaceholder")}
-            className="h-8 w-full rounded-lg border border-input bg-background pl-8 pr-2 text-xs placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/30"
-          />
+      {/* Centered search with secondary filters collapsed out of the way. */}
+      <div className="shrink-0 border-b border-border/60">
+        <div className="mx-auto max-w-4xl px-5 py-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/50" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t("library.searchPlaceholder")}
+              className="h-9 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-xs placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/30"
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setFiltersOpen((open) => !open)}
+            aria-expanded={filtersOpen}
+            className={`mt-2 flex items-center gap-1.5 text-[11px] font-medium transition-colors hover:text-foreground ${
+              advancedFiltersActive ? "text-primary" : "text-muted-foreground"
+            }`}
+          >
+            <Filter className="h-3 w-3" />
+            {t("library.filters")}
+            <ChevronDown className={`h-3 w-3 transition-transform ${filtersOpen ? "rotate-180" : ""}`} />
+          </button>
+
+          {filtersOpen && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Select value={source} onValueChange={setSource}>
+                <SelectTrigger className="h-8 w-auto min-w-[104px] gap-1.5 rounded-lg border-border bg-background px-2.5 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("library.sourceAll")}</SelectItem>
+                  <SelectItem value="paste">{t("library.sourcePaste")}</SelectItem>
+                  <SelectItem value="mcp">{t("library.sourceMcp")}</SelectItem>
+                  <SelectItem value="reader">{t("library.sourceReader")}</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <DateRangePicker from={dateFrom} to={dateTo} onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} placeholder={t("library.dateRange")} className="w-auto" />
+
+              <Button
+                variant="ghost"
+                onClick={() => setOnlyCommented((v) => !v)}
+                aria-pressed={onlyCommented}
+                className={`h-8 gap-1.5 rounded-lg px-2.5 text-xs font-medium ${onlyCommented ? "bg-primary/10 text-primary" : "text-muted-foreground"}`}
+              >
+                <MessageSquareText className="h-3.5 w-3.5" />
+                {t("library.onlyCommented")}
+              </Button>
+
+              <Select value={sort} onValueChange={(v) => setSort(v as typeof sort)}>
+                <SelectTrigger className="h-8 w-auto min-w-[92px] gap-1.5 rounded-lg border-border bg-background px-2.5 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="recent">{t("library.sortRecent")}</SelectItem>
+                  <SelectItem value="added">{t("library.sortAdded")}</SelectItem>
+                  <SelectItem value="longest">{t("library.sortLongest")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
-
-        <Select value={source} onValueChange={setSource}>
-          <SelectTrigger className="h-8 w-auto min-w-[104px] gap-1.5 rounded-lg border-border bg-background px-2.5 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t("library.sourceAll")}</SelectItem>
-            <SelectItem value="paste">{t("library.sourcePaste")}</SelectItem>
-            <SelectItem value="mcp">{t("library.sourceMcp")}</SelectItem>
-            <SelectItem value="reader">{t("library.sourceReader")}</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <DateRangePicker from={dateFrom} to={dateTo} onChange={(from, to) => { setDateFrom(from); setDateTo(to); }} placeholder={t("library.dateRange")} className="w-auto" />
-
-        <Button
-          variant="ghost"
-          onClick={() => setOnlyCommented((v) => !v)}
-          aria-pressed={onlyCommented}
-          className={`h-8 gap-1.5 rounded-lg px-2.5 text-xs font-medium ${onlyCommented ? "bg-primary/10 text-primary" : "text-muted-foreground"}`}
-        >
-          <MessageSquareText className="h-3.5 w-3.5" />
-          {t("library.onlyCommented")}
-        </Button>
-
-        <Select value={sort} onValueChange={(v) => setSort(v as typeof sort)}>
-          <SelectTrigger className="h-8 w-auto min-w-[92px] gap-1.5 rounded-lg border-border bg-background px-2.5 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="recent">{t("library.sortRecent")}</SelectItem>
-            <SelectItem value="added">{t("library.sortAdded")}</SelectItem>
-            <SelectItem value="longest">{t("library.sortLongest")}</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
       {/* Log */}

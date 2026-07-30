@@ -287,6 +287,7 @@ export function useDBCore() {
     try {
       return await invoke<DocumentDetail>("db_get_document", { id });
     } catch (e) {
+      if (String(e).includes("DOCUMENT_LOCKED")) throw e;
       logError("getDocument", e);
       return null;
     }
@@ -336,6 +337,20 @@ export function useDBCore() {
     }
   }, []);
 
+  const protectDocument = useCallback((id: number, password?: string): Promise<void> =>
+    invoke("db_protect_document", { id, password: password || null }), []);
+  const unlockDocument = useCallback((id: number, password: string): Promise<void> =>
+    invoke("db_unlock_document", { id, password }), []);
+  const lockDocument = useCallback((id: number): Promise<void> =>
+    invoke("db_lock_document", { id }), []);
+  const removeDocumentProtection = useCallback((id: number, password: string): Promise<void> =>
+    invoke("db_remove_document_protection", { id, password }), []);
+  const changeDocumentPassword = useCallback((
+    currentPassword: string, newPassword: string,
+  ): Promise<void> => invoke("db_change_document_password", {
+    currentPassword, newPassword,
+  }), []);
+
   const addWordsBatch = useCallback(
     async (
       words: { word: string; zh: string; word_type?: string; level?: string; context?: string }[],
@@ -362,6 +377,7 @@ export function useDBCore() {
     getSetting, setSetting,
     createDocument, getDocuments, getDocument,
     updateDocument, deleteDocument, duplicateDocument,
+    protectDocument, unlockDocument, lockDocument, removeDocumentProtection, changeDocumentPassword,
     getAllTags, addWordsBatch,
   }), [
     getWordCount, getTranslationCount, getReviewCount,
@@ -373,6 +389,7 @@ export function useDBCore() {
     getSetting, setSetting,
     createDocument, getDocuments, getDocument,
     updateDocument, deleteDocument, duplicateDocument,
+    protectDocument, unlockDocument, lockDocument, removeDocumentProtection, changeDocumentPassword,
     getAllTags, addWordsBatch,
   ]);
 }

@@ -9,9 +9,16 @@
         try {
           var theme = localStorage.getItem("tanwords_theme_cache") || "system";
           var isDark =
-            theme === "dark" ||
+            theme === "dark" || theme === "catppuccin-mocha" || theme === "dracula" ||
+            theme === "tokyo-night" || theme === "tokyo-night-storm" ||
             (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
           if (isDark) document.documentElement.classList.add("dark");
+          if (theme === "catppuccin-latte") document.documentElement.classList.add("theme-catppuccin-latte");
+          if (theme === "catppuccin-mocha") document.documentElement.classList.add("theme-catppuccin-mocha");
+          if (theme === "dracula") document.documentElement.classList.add("theme-dracula");
+          if (theme === "tokyo-night") document.documentElement.classList.add("theme-tokyo-night");
+          if (theme === "tokyo-night-day") document.documentElement.classList.add("theme-tokyo-night-day");
+          if (theme === "tokyo-night-storm") document.documentElement.classList.add("theme-tokyo-night-storm");
         } catch (e) {}
       })();
     </script>

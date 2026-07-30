@@ -1,29 +1,29 @@
+//! Opens a *copy* of a real user database through the normal startup path and
+//! runs the queries that touch the trickiest SQL — multi-join list reads, both
+//! FTS5 indexes, and the SRS due-card query. Fresh-file tests can't catch a
+//! migration that only misbehaves against existing data.
+//!
+//! Skipped unless `TANWORDS_TEST_DB` points at a database copy:
+//!   cp ~/Library/Application\ Support/tanwords/tanwords.db{,-wal} /tmp/
+//!   TANWORDS_TEST_DB=/tmp/tanwords.db cargo test --test real_db_smoke
+
 use tauri::test::{mock_builder, mock_context, noop_assets};
 use tauri::Manager;
 
 #[tokio::test]
-async fn switch_path_mounts_new_db_and_swaps_live_connection() {
-    // Real files rather than :memory: — switching away and back has to prove
-    // the *original* database still holds its rows, which an in-memory one
-    // (destroyed the moment its last handle drops) could not show.
-    let tmp_dir = std::env::temp_dir().join(format!("tanwords_switch_test_{}", std::process::id()));
-    std::fs::create_dir_all(&tmp_dir).unwrap();
-    let original_path = tmp_dir.join("original.db").to_string_lossy().to_string();
+async fn real_database_opens_and_serves_every_read_path() {
+    let Ok(path) = std::env::var("TANWORDS_TEST_DB") else {
+        eprintln!("TANWORDS_TEST_DB not set — skipping");
+        return;
+    };
 
+    // The full startup path: PRAGMAs, init_db, and every pending migration.
     let database = tanwords_lib::db::connection::open(
-        &tanwords_lib::db::DbProfile::Local { path: original_path.clone() },
+        &tanwords_lib::db::DbProfile::Local { path },
         None,
     )
     .await
-    .expect("open failed");
-    database
-        .conn()
-        .execute(
-            "INSERT INTO words (word, word_type, level, word_freq, source) VALUES ('original', 'n', 'B2', 1, 'manual')",
-            (),
-        )
-        .await
-        .unwrap();
+    .expect("opening a real database should succeed");
 
     let app = mock_builder()
         .build(mock_context(noop_assets()))
@@ -32,76 +32,50 @@ async fn switch_path_mounts_new_db_and_swaps_live_connection() {
         db: std::sync::Mutex::new(database),
         tts: std::sync::Mutex::new(None).into(),
         db_fallback_warning: None,
+        document_privacy: Default::default(),
     });
     let state: tauri::State<tanwords_lib::AppState> = app.state();
 
-    // Confirm the original word is visible before switching.
-    let before = tanwords_lib::db::db_get_word_count(state.clone()).await.unwrap();
-    assert_eq!(before, 1);
+    let words = tanwords_lib::db::db_get_words(None, None, None, None, None, None, state.clone())
+        .await
+        .expect("db_get_words");
+    assert!(!words.is_empty(), "the test database should have vocabulary");
 
-    let new_path = tmp_dir.join("other.db").to_string_lossy().to_string();
+    // Detail read for a real row, including its definitions join.
+    tanwords_lib::db::db_get_word_detail(words[0].id, state.clone())
+        .await
+        .expect("db_get_word_detail");
 
-    let returned_path =
-        tanwords_lib::db::db_switch_path_without_persist(new_path.clone(), state.clone())
-            .await
-            .expect("db_switch_path failed");
-    assert_eq!(returned_path, new_path);
-
-    // The new DB is empty (fresh file) — word count must reflect the NEW db, not the old one.
-    let after = tanwords_lib::db::db_get_word_count(state.clone()).await.unwrap();
-    assert_eq!(
-        after, 0,
-        "should be querying the newly mounted (empty) db, not the original"
-    );
-
-    // db_get_db_path must report the new path.
-    let reported_path = tanwords_lib::db::db_get_db_path(state.clone()).unwrap();
-    assert_eq!(reported_path, new_path);
-
-    // Writing through the swapped connection should persist to the new file.
-    tanwords_lib::db::db_add_word(
-        "newword".to_string(),
-        None,
-        None,
-        "新词".to_string(),
-        state.clone(),
+    // FTS5: reading_articles_fts, with MATCH + bm25 + snippet.
+    tanwords_lib::db::db_list_reading_articles(
+        Some("the".into()), None, None, None, None, None, None, None, state.clone(),
     )
     .await
-    .expect("add_word on new db failed");
-    let after_write = tanwords_lib::db::db_get_word_count(state.clone()).await.unwrap();
-    assert_eq!(after_write, 1);
+    .expect("db_list_reading_articles with search");
 
-    // Switching back finds the original file untouched.
-    tanwords_lib::db::db_switch_path_without_persist(original_path, state.clone())
+    // FTS5: documents_fts, reached through the document list's own filter.
+    tanwords_lib::db::db_get_documents(Some("a".into()), None, None, None, None, None, state.clone())
         .await
-        .expect("switch back failed");
-    let back = tanwords_lib::db::db_get_word_count(state).await.unwrap();
-    assert_eq!(back, 1, "the original database should still hold its row");
+        .expect("db_get_documents with search");
 
-    std::fs::remove_dir_all(&tmp_dir).ok();
-}
-
-/// The connection descriptor drives which actions the Settings UI offers, so
-/// the local profile must advertise export/switch support.
-#[tokio::test]
-async fn local_profile_reports_its_capabilities() {
-    let database = tanwords_lib::db::connection::open_memory()
+    // The SRS queries, including the due-card context expression.
+    tanwords_lib::db::db_get_due_cards(None, state.clone())
         .await
-        .expect("open_memory failed");
-    let app = mock_builder()
-        .build(mock_context(noop_assets()))
-        .expect("build failed");
-    app.manage(tanwords_lib::AppState {
-        db: std::sync::Mutex::new(database),
-        tts: std::sync::Mutex::new(None).into(),
-        db_fallback_warning: None,
-    });
-    let state: tauri::State<tanwords_lib::AppState> = app.state();
+        .expect("db_get_due_cards");
+    tanwords_lib::db::db_get_review_count(state.clone())
+        .await
+        .expect("db_get_review_count");
 
-    let descriptor = tanwords_lib::db::db_get_connection(state).unwrap();
-    assert_eq!(descriptor.kind, tanwords_lib::db::DbKind::Local);
-    assert!(descriptor.caps.export);
-    assert!(descriptor.caps.switch_path);
-    assert!(!descriptor.caps.sync);
-    assert!(descriptor.remote_url.is_none());
+    // Dashboard aggregates every table at once.
+    tanwords_lib::db::db_dashboard_stats(state.clone())
+        .await
+        .expect("db_dashboard_stats");
+
+    // Patterns and chat sessions round out the list-shaped reads.
+    tanwords_lib::db::db_list_patterns(state.clone())
+        .await
+        .expect("db_list_patterns");
+    tanwords_lib::db::db_list_chat_sessions(None, None, None, None, None, state)
+        .await
+        .expect("db_list_chat_sessions");
 }

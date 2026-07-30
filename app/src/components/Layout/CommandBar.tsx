@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import {
   BrainCircuit, Check, ChevronsLeft, ChevronsRight, ClipboardPaste, Cloud, CloudOff, Database,
-  FilePlus2, Languages, MessageSquarePlus, Monitor, Moon, Quote, Search, Server, Settings, Sun,
+  FilePlus2, Languages, MessageSquarePlus, Monitor, Moon, Palette, Quote, Search, Server, Settings, Sun,
   Type, Unplug, User, X,
 } from "lucide-react";
 import { SquaresPlusIcon } from "@heroicons/react/24/outline";
@@ -316,10 +316,16 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
             </DropdownMenuContent>
           </DropdownMenu>}
           {visible("theme") && <DropdownMenu>
-            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" title={t("settings.theme")} className="h-8 w-8 rounded-lg text-muted-foreground">{theme === "light" ? <Sun className="h-4 w-4" /> : theme === "dark" ? <Moon className="h-4 w-4" /> : <Monitor className="h-4 w-4" />}</Button></DropdownMenuTrigger>
+            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" title={t("settings.theme")} className="h-8 w-8 rounded-lg text-muted-foreground">{theme === "light" || theme === "catppuccin-latte" || theme === "tokyo-night-day" ? <Sun className="h-4 w-4" /> : theme === "dark" ? <Moon className="h-4 w-4" /> : theme === "system" ? <Monitor className="h-4 w-4" /> : <Palette className="h-4 w-4" />}</Button></DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
               <DropdownMenuItem onClick={() => setTheme("light")}><Sun className="h-4 w-4" /><span className="flex-1">{t("settings.light")}</span>{theme === "light" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setTheme("dark")}><Moon className="h-4 w-4" /><span className="flex-1">{t("settings.dark")}</span>{theme === "dark" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme("catppuccin-latte")}><Palette className="h-4 w-4" /><span className="flex-1">{t("settings.catppuccinLatte")}</span>{theme === "catppuccin-latte" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme("catppuccin-mocha")}><Palette className="h-4 w-4" /><span className="flex-1">{t("settings.catppuccinMocha")}</span>{theme === "catppuccin-mocha" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme("dracula")}><Palette className="h-4 w-4" /><span className="flex-1">{t("settings.dracula")}</span>{theme === "dracula" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme("tokyo-night")}><Palette className="h-4 w-4" /><span className="flex-1">{t("settings.tokyoNight")}</span>{theme === "tokyo-night" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme("tokyo-night-day")}><Sun className="h-4 w-4" /><span className="flex-1">{t("settings.tokyoNightDay")}</span>{theme === "tokyo-night-day" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme("tokyo-night-storm")}><Palette className="h-4 w-4" /><span className="flex-1">{t("settings.tokyoNightStorm")}</span>{theme === "tokyo-night-storm" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setTheme("system")}><Monitor className="h-4 w-4" /><span className="flex-1">{t("settings.system")}</span>{theme === "system" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>}

@@ -65,4 +65,5 @@ export const common: Dict = {
     "library.commentMine": "Me",
     "scratch.titlePlaceholder": "Give this article a title…",
     "scratch.newRead": "New text",
+    "library.filters": "Filters",
 };

@@ -7,13 +7,23 @@ import "@blocknote/mantine/style.css";
 
 import { useT } from "@/hooks/useT";
 import { useIsDark } from "@/hooks/useIsDark";
-import { blocksToMarkdownOffThread, markdownToBlocksOffThread } from "@/lib/documentWorkerClient";
+import { blocksToMarkdownOffThread, blocksToMarkdownWithStatsOffThread, markdownToBlocksOffThread } from "@/lib/documentWorkerClient";
 import { liftMermaid, lowerMermaid } from "./mermaidTransforms";
 import { CheckIcon } from "@heroicons/react/24/solid";
 import { SaveStatus } from "./useDocumentEditor";
 import { Button } from "@/components/ui/button";
 import { Code2, Eye, Maximize2, Minimize2, Paperclip } from "lucide-react";
 import { RawMarkdownEditor } from "./RawMarkdownEditor";
+import { blocksToText } from "@/lib/docFormat";
+import { toast } from "sonner";
+import { selectRichEditorContents } from "./editorSelection";
+import { clipboardImageFiles, clipboardImageFilesOrNative } from "./clipboardImages";
+import { readImage } from "@tauri-apps/plugin-clipboard-manager";
+import { useSettingsStore } from "@/store/settingsStore";
+import { promoteLocalFileLinks } from "./localFileBlocks";
+import { isEmptyParagraph, withTrailingEditorParagraph, withoutTrailingEditorParagraph } from "./trailingEditorParagraph";
+import { DocumentPreviewScrollArea } from "./DocumentPreviewScrollArea";
+import { DocumentContentSearch } from "./DocumentContentSearch";
 
 type EditorMode = "rich" | "raw";
 
@@ -40,12 +50,47 @@ function fileStem(relPath: string): string {
   return base.replace(/\.(md|markdown)$/i, "");
 }
 
+function countWords(text: string): number {
+  const trimmed = text.trim();
+  return trimmed ? trimmed.split(/\s+/).length : 0;
+}
+
+async function readNativeClipboardImage(): Promise<File | null> {
+  try {
+    const image = await readImage();
+    const [rgba, size] = await Promise.all([
+      image.rgba(),
+      image.size(),
+    ]);
+    const { width, height } = size;
+    if (!width || !height || rgba.length === 0) return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Image conversion is unavailable");
+    context.putImageData(new ImageData(new Uint8ClampedArray(rgba), width, height), 0, 0);
+    const blob = await new Promise<Blob>((resolve, reject) =>
+      canvas.toBlob(
+        (value) => value ? resolve(value) : reject(new Error("Clipboard image conversion failed")),
+        "image/png",
+      )
+    );
+    return new File([blob], `clipboard-${Date.now()}.png`, { type: "image/png" });
+  } catch {
+    return null;
+  }
+}
+
 export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, modifiedMs, saveStatus, onSave, onDirty, onUploadImage, toRawMarkdown, toDisplayMarkdown, onRename, zenMode, onZenModeChange }: Props) {
   const t = useT();
   const isDark = useIsDark();
+  const documentFontSize = useSettingsStore((state) => state.documentFontSize);
+  const setDocumentFontSize = useSettingsStore((state) => state.setDocumentFontSize);
   const [title, setTitle] = useState(fileStem(relPath));
   const [mode, setMode] = useState<EditorMode>("rich");
   const [rawMarkdown, setRawMarkdown] = useState(initialRawMarkdown);
+  const [wordCount, setWordCount] = useState(() => countWords(initialMarkdown));
   const [switchingMode, setSwitchingMode] = useState(false);
   // useCreateBlockNote starts with an empty document — content only lands once the
   // (off-thread, so genuinely async) parse below resolves. Without this, the editor
@@ -54,39 +99,51 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
   const [richLoading, setRichLoading] = useState(true);
   const titleRef = useRef<HTMLInputElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const searchRootRef = useRef<HTMLDivElement>(null);
   const loaded = useRef(false);
   const dirty = useRef(false);
   const lastSavedRaw = useRef(initialRawMarkdown);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const maxSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const flushRef = useRef<() => Promise<void>>(async () => {});
+  const flushRef = useRef<(force?: boolean) => Promise<void>>(async () => {});
 
   const editor = useCreateBlockNote({
     schema: editorSchema,
     uploadFile: onUploadImage,
   }, [relPath]);
 
-  const flushRaw = useCallback(async (markdown: string) => {
+  const flushRaw = useCallback(async (markdown: string, force = false) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     if (maxSaveTimer.current) clearTimeout(maxSaveTimer.current);
     saveTimer.current = null;
     maxSaveTimer.current = null;
-    if (markdown !== lastSavedRaw.current) {
+    if (force || markdown !== lastSavedRaw.current) {
       await onSave(markdown);
       lastSavedRaw.current = markdown;
     }
   }, [onSave]);
 
-  const flushSave = useCallback(async () => {
-    if (!dirty.current) return;
+  const flushSave = useCallback(async (force = false) => {
+    const hasChanges = dirty.current;
+    if (!hasChanges && !force) return;
     dirty.current = false;
     try {
-      const markdown = mode === "raw"
-        ? rawMarkdown
-        : toRawMarkdown(await blocksToMarkdownOffThread(lowerMermaid(structuredClone(editor.document)) as any));
-      await flushRaw(markdown);
+      let markdown = lastSavedRaw.current;
+      let nextWordCount: number | null = null;
+      if (hasChanges && mode === "raw") {
+        markdown = rawMarkdown;
+        nextWordCount = countWords(markdown);
+      } else if (hasChanges) {
+        const result = await blocksToMarkdownWithStatsOffThread(
+          lowerMermaid(withoutTrailingEditorParagraph(editor.document)) as any,
+        );
+        markdown = toRawMarkdown(result.markdown);
+        nextWordCount = result.wordCount;
+      }
+      if (nextWordCount !== null) setWordCount(nextWordCount);
+      await flushRaw(markdown, force);
     } catch (error) {
-      dirty.current = true;
+      dirty.current = hasChanges;
       throw error;
     }
   }, [editor, flushRaw, mode, rawMarkdown, toRawMarkdown]);
@@ -107,8 +164,9 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
       try {
         const parsed = await markdownToBlocksOffThread(initialMarkdown);
         if (cancelled) return;
-        const blocks = liftMermaid(parsed);
-        if (blocks.length > 0) editor.replaceBlocks(editor.document, blocks);
+        const blocks = withTrailingEditorParagraph(promoteLocalFileLinks(liftMermaid(parsed)));
+        editor.replaceBlocks(editor.document, blocks as any);
+        setWordCount(countWords(blocksToText(blocks)));
       } catch {
         if (!cancelled) setMode("raw");
       } finally {
@@ -123,9 +181,13 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
 
   const handleChange = useCallback(() => {
     if (!loaded.current) return;
+    const cursor = editor.getTextCursorPosition();
+    if (!cursor.nextBlock && !isEmptyParagraph(cursor.block)) {
+      editor.insertBlocks([{ type: "paragraph" }], cursor.block, "after");
+    }
     dirty.current = true;
     scheduleSave();
-  }, [scheduleSave]);
+  }, [editor, scheduleSave]);
 
   const switchMode = useCallback(async (nextMode: EditorMode) => {
     if (nextMode === mode || switchingMode) return;
@@ -135,9 +197,12 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
     try {
       if (nextMode === "raw") {
         const raw = dirty.current
-          ? toRawMarkdown(await blocksToMarkdownOffThread(lowerMermaid(editor.document) as any))
+          ? toRawMarkdown(await blocksToMarkdownOffThread(
+            lowerMermaid(withoutTrailingEditorParagraph(editor.document)) as any,
+          ))
           : lastSavedRaw.current;
         setRawMarkdown(raw);
+        setWordCount(countWords(raw));
         if (dirty.current && raw !== lastSavedRaw.current) {
           await onSave(raw);
           lastSavedRaw.current = raw;
@@ -148,8 +213,11 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
       } else {
         loaded.current = false;
         setRichLoading(true);
-        const parsed = liftMermaid(await markdownToBlocksOffThread(toDisplayMarkdown(rawMarkdown)));
-        editor.replaceBlocks(editor.document, parsed.length ? parsed : [{ type: "paragraph" }]);
+        const parsed = promoteLocalFileLinks(
+          liftMermaid(await markdownToBlocksOffThread(toDisplayMarkdown(rawMarkdown)))
+        );
+        editor.replaceBlocks(editor.document, withTrailingEditorParagraph(parsed) as any);
+        setWordCount(countWords(blocksToText(parsed)));
         if (dirty.current && rawMarkdown !== lastSavedRaw.current) {
           await onSave(rawMarkdown);
           lastSavedRaw.current = rawMarkdown;
@@ -178,24 +246,55 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
 
   const insertAttachment = async (file: File | undefined) => {
     if (!file) return;
-    const url = await onUploadImage(file);
-    const type = file.type.startsWith("image/") ? "image"
-      : file.type.startsWith("audio/") ? "audio"
-      : file.type.startsWith("video/") ? "video"
-      : "file";
-    editor.insertBlocks([{
-      type,
-      props: { url, name: file.name || "attachment" },
-    } as any], editor.getTextCursorPosition().block, "after");
-    dirty.current = true;
-    scheduleSave();
+    try {
+      const url = await onUploadImage(file);
+      const type = file.type.startsWith("image/") ? "image"
+        : file.type.startsWith("audio/") ? "audio"
+        : file.type.startsWith("video/") ? "video"
+        : "file";
+      editor.insertBlocks([{
+        type,
+        props: { url, name: file.name || "attachment" },
+      } as any], editor.getTextCursorPosition().block, "after");
+      dirty.current = true;
+      scheduleSave();
+    } catch (error) {
+      toast.error(String(error));
+    }
+  };
+
+  const handleImagePaste = (event: React.ClipboardEvent) => {
+    const webImages = clipboardImageFiles(event.clipboardData);
+    const advertisesImage = Array.from(event.clipboardData.types)
+      .some((type) => type.startsWith("image/"));
+    if (webImages.length > 0 || advertisesImage) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    // Handle clipboard image blobs explicitly. Some desktop WebViews don't
+    // expose them as Files at all, so fall back to Tauri's native clipboard.
+    void (async () => {
+      const images = await clipboardImageFilesOrNative(
+        event.clipboardData,
+        readNativeClipboardImage,
+      );
+      for (const image of images) await insertAttachment(image);
+    })();
+  };
+
+  const handleRichEditorKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "a") return;
+    if (!(event.target as Element).closest(".bn-editor")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    selectRichEditorContents(event.currentTarget);
   };
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
         event.preventDefault();
-        void flushRef.current().catch(() => {});
+        void flushRef.current(true).catch((error) => toast.error(String(error)));
       }
     };
     const flushPending = () => { void flushRef.current().catch(() => {}); };
@@ -237,7 +336,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
             onBlur={handleTitleBlur}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); titleRef.current?.blur(); } }}
             placeholder={t("doc.untitled")}
-            className="flex-1 text-3xl font-bold tracking-tight bg-transparent border-none outline-none placeholder:text-muted-foreground/30 text-foreground"
+            className="document-editor-title flex-1 font-bold tracking-tight bg-transparent border-none outline-none placeholder:text-muted-foreground/30 text-foreground"
           />
           <Button
             type="button"
@@ -254,6 +353,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
         <div className="mt-2 flex items-center gap-2">
           <p className="min-w-0 flex-1 truncate text-xs font-mono text-muted-foreground/60">{relPath}</p>
           <div className="flex items-center rounded-md bg-muted p-0.5">
+            {mode === "rich" && <DocumentContentSearch rootRef={searchRootRef} />}
             <Button type="button" variant="ghost" onClick={() => attachmentInputRef.current?.click()}
               title={t("doc.attachFile")} className="h-6 gap-1 px-2 text-[10px]">
               <Paperclip className="h-3 w-3" /> {t("doc.attach")}
@@ -264,6 +364,23 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
             <Button type="button" variant="ghost" disabled={switchingMode} onClick={() => void switchMode("raw")} className={`h-6 gap-1 px-2 text-[10px] ${mode === "raw" ? "bg-background shadow-sm" : ""}`}>
               <Code2 className="h-3 w-3" /> {t("doc.rawMode")}
             </Button>
+            <span className="mx-0.5 h-3.5 w-px bg-border" />
+            <Button type="button" variant="ghost" size="icon"
+              disabled={documentFontSize <= 12}
+              onClick={() => setDocumentFontSize(documentFontSize - 1)}
+              title={`${t("settings.documentFontSize")}: ${documentFontSize - 1}px`}
+              aria-label={`${t("settings.documentFontSize")} -`}
+              className="h-6 w-auto rounded-md px-1.5 text-[11px] font-semibold text-muted-foreground">
+              A−
+            </Button>
+            <Button type="button" variant="ghost" size="icon"
+              disabled={documentFontSize >= 24}
+              onClick={() => setDocumentFontSize(documentFontSize + 1)}
+              title={`${t("settings.documentFontSize")}: ${documentFontSize + 1}px`}
+              aria-label={`${t("settings.documentFontSize")} +`}
+              className="h-6 w-auto rounded-md px-1.5 text-[13px] font-semibold text-muted-foreground">
+              A+
+            </Button>
           </div>
         </div>
         <div className="mt-3 border-b border-border/60" />
@@ -272,21 +389,24 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
       </div>
 
       {mode === "rich" ? (
-        <div className="flex-1 overflow-y-auto relative">
-          {richLoading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-10">
-              <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-            </div>
-          )}
-          <BlockNoteView editor={editor} theme={isDark ? "dark" : "light"} onChange={handleChange}
-            className="tanwords-editor" />
+        <div ref={searchRootRef} className="contents">
+          <DocumentPreviewScrollArea onPasteCapture={handleImagePaste}
+            onKeyDownCapture={handleRichEditorKeyDown}>
+            {richLoading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-10">
+                <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+              </div>
+            )}
+            <BlockNoteView editor={editor} theme={isDark ? "dark" : "light"} onChange={handleChange}
+              className="tanwords-editor" />
+          </DocumentPreviewScrollArea>
         </div>
       ) : (
         <RawMarkdownEditor value={rawMarkdown} onChange={handleRawChange} label={t("doc.rawMode")} />
       )}
 
       {/* Footer: save status */}
-      <div className="px-12 py-2.5 border-t border-border flex items-center gap-3 text-[10px] font-mono tabular-nums text-muted-foreground shrink-0">
+      <div className="h-9 px-12 border-t border-border flex items-center gap-3 text-[10px] font-mono tabular-nums text-muted-foreground shrink-0">
         <span>
           {saveStatus === "saving" ? (
             <span className="flex items-center gap-1.5">
@@ -299,7 +419,8 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
             <span>{t("doc.unsavedChanges")}</span>
           ) : null}
         </span>
-        <span className="ml-auto">{modifiedMs ? new Date(modifiedMs).toLocaleString() : ""}</span>
+        <span className="ml-auto">{t("doc.wordCount", { n: wordCount })}</span>
+        <span>{modifiedMs ? new Date(modifiedMs).toLocaleString() : ""}</span>
       </div>
     </div>
   );

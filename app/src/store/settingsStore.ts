@@ -1,7 +1,16 @@
 import { create } from "zustand";
 import type { NavPage } from "@/store/navStore";
 
-export type Theme = "light" | "dark" | "system";
+export type Theme =
+  | "light"
+  | "dark"
+  | "catppuccin-latte"
+  | "catppuccin-mocha"
+  | "dracula"
+  | "tokyo-night"
+  | "tokyo-night-day"
+  | "tokyo-night-storm"
+  | "system";
 export type SidebarTabId = Exclude<NavPage, "settings">;
 export type TopBarItemId = "search" | "context" | "scratch" | "db" | "mcp" | "ai" | "language" | "theme" | "updates" | "github";
 
@@ -33,6 +42,7 @@ const ALL_DASHBOARD_WIDGETS: DashboardWidgetId[] = [
 /** Amber, matching the emphasis colour word notes used before highlights had
  *  their own `==` syntax. Kept in sync with the fallback in index.css. */
 export const DEFAULT_HIGHLIGHT_COLOR = "#d97706";
+const DOCUMENT_TEXT_COLOR_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
 /** Mid-tone hues that stay legible as a translucent wash in both themes. */
 export const HIGHLIGHT_PRESETS = ["#d97706", "#eab308", "#22c55e", "#0ea5e9", "#8b5cf6", "#ec4899"] as const;
@@ -120,6 +130,13 @@ interface SettingsState {
   /** Whether appBackgroundImage is currently shown. False hides it without
    *  discarding the stored image, so it can be turned back on unchanged. */
   appBackgroundVisible: boolean;
+  /** Body font size, in pixels, for full-size BlockNote document editors. */
+  documentFontSize: number;
+  /** Line-height multiplier for full-size BlockNote document editors. */
+  documentLineHeight: number;
+  /** Optional body text colour for full-size document editors. Empty uses the
+   * active theme's foreground colour. */
+  documentTextColor: string;
   /** Hex colour (`#rrggbb`) for `==highlighted==` spans in AI-written markdown.
    *  Applied as a CSS custom property, so nothing that renders a highlight has
    *  to know this setting exists. */
@@ -152,6 +169,9 @@ interface SettingsState {
   setAppBackgroundImage: (dataUrl: string) => void;
   setAppBackgroundBlur: (px: number) => void;
   setAppBackgroundVisible: (visible: boolean) => void;
+  setDocumentFontSize: (px: number) => void;
+  setDocumentLineHeight: (value: number) => void;
+  setDocumentTextColor: (hex: string) => void;
   setHighlightColor: (hex: string) => void;
   loadFromDB: () => Promise<void>;
 }
@@ -288,6 +308,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   appBackgroundImage: "",
   appBackgroundBlur: 20,
   appBackgroundVisible: true,
+  documentFontSize: 16,
+  documentLineHeight: 1.9,
+  documentTextColor: "",
   highlightColor: DEFAULT_HIGHLIGHT_COLOR,
   isLoaded: false,
 
@@ -389,6 +412,27 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     saveSetting("app_background_visible", JSON.stringify(visible));
   },
 
+  setDocumentFontSize: (px) => {
+    const size = Math.min(24, Math.max(12, Math.round(px)));
+    set({ documentFontSize: size });
+    applyDocumentFontSize(size);
+    saveSetting("document_font_size", JSON.stringify(size));
+  },
+
+  setDocumentLineHeight: (value) => {
+    const lineHeight = Math.min(2.2, Math.max(1.4, Math.round(value * 10) / 10));
+    set({ documentLineHeight: lineHeight });
+    applyDocumentLineHeight(lineHeight);
+    saveSetting("document_line_height", JSON.stringify(lineHeight));
+  },
+
+  setDocumentTextColor: (hex) => {
+    const color = DOCUMENT_TEXT_COLOR_RE.test(hex) ? hex : "";
+    set({ documentTextColor: color });
+    applyDocumentTextColor(color);
+    saveSetting("document_text_color", JSON.stringify(color));
+  },
+
   setHighlightColor: (hex) => {
     set({ highlightColor: hex });
     applyHighlightColor(hex);
@@ -463,6 +507,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         "nickname",
         "app_background_image",
         "app_background_blur",
+        "app_background_visible",
+        "document_font_size",
+        "document_line_height",
+        "document_text_color",
         "highlight_color",
       ];
 
@@ -541,11 +589,19 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         appBackgroundImage: values.app_background_image || "",
         appBackgroundBlur: values.app_background_blur !== undefined ? Number(values.app_background_blur) : 20,
         appBackgroundVisible: (values.app_background_visible as unknown) !== false && values.app_background_visible !== "false",
+        documentFontSize: Math.min(24, Math.max(12, Number(values.document_font_size) || 16)),
+        documentLineHeight: Math.min(2.2, Math.max(1.4, Number(values.document_line_height) || 1.9)),
+        documentTextColor: DOCUMENT_TEXT_COLOR_RE.test(values.document_text_color || "")
+          ? values.document_text_color
+          : "",
         highlightColor: values.highlight_color || DEFAULT_HIGHLIGHT_COLOR,
         isLoaded: true,
       });
 
       applyTheme(get().theme);
+      applyDocumentFontSize(get().documentFontSize);
+      applyDocumentLineHeight(get().documentLineHeight);
+      applyDocumentTextColor(get().documentTextColor);
       applyHighlightColor(get().highlightColor);
     } catch (e) {
       console.warn("Settings not loaded from DB (may be web mode):", e);
@@ -587,13 +643,46 @@ function applyHighlightColor(hex: string) {
   root.style.setProperty("--highlight-bg", `${safe}33`);
 }
 
+function applyDocumentFontSize(px: number) {
+  document.documentElement.style.setProperty("--document-font-size", `${px}px`);
+}
+
+function applyDocumentLineHeight(value: number) {
+  document.documentElement.style.setProperty("--document-line-height", String(value));
+}
+
+function applyDocumentTextColor(hex: string) {
+  if (DOCUMENT_TEXT_COLOR_RE.test(hex)) {
+    document.documentElement.style.setProperty("--document-text-color", hex);
+  } else {
+    document.documentElement.style.removeProperty("--document-text-color");
+  }
+}
+
 function applyTheme(theme: Theme) {
   const root = document.documentElement;
+  root.classList.remove(
+    "theme-catppuccin-latte",
+    "theme-catppuccin-mocha",
+    "theme-dracula",
+    "theme-tokyo-night",
+    "theme-tokyo-night-day",
+    "theme-tokyo-night-storm",
+  );
   if (theme === "system") {
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     root.classList.toggle("dark", prefersDark);
   } else {
-    root.classList.toggle("dark", theme === "dark");
+    root.classList.toggle(
+      "dark",
+      theme !== "light" && theme !== "catppuccin-latte" && theme !== "tokyo-night-day",
+    );
+    if (theme === "catppuccin-latte") root.classList.add("theme-catppuccin-latte");
+    if (theme === "catppuccin-mocha") root.classList.add("theme-catppuccin-mocha");
+    if (theme === "dracula") root.classList.add("theme-dracula");
+    if (theme === "tokyo-night") root.classList.add("theme-tokyo-night");
+    if (theme === "tokyo-night-day") root.classList.add("theme-tokyo-night-day");
+    if (theme === "tokyo-night-storm") root.classList.add("theme-tokyo-night-storm");
   }
   // Cached so index.html's pre-paint script can apply it synchronously on
   // the next launch, before the async DB round-trip resolves.

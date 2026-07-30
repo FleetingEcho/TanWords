@@ -65,4 +65,5 @@ export const common: Dict = {
     "library.commentMine": "我",
     "scratch.titlePlaceholder": "给这篇文章起个标题…",
     "scratch.newRead": "新的一篇",
+    "library.filters": "筛选",
 };

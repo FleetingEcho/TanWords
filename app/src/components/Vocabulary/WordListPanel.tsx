@@ -6,6 +6,7 @@ import { SpeakButton } from "@/components/ui/SpeakButton";
 import { SparkIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { LevelDateFilter, LevelValue } from "@/components/shared/LevelDateFilter";
 import { LIST_PANEL_WIDTH, LIST_PANEL_COLLAPSED_WIDTH, LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
@@ -221,7 +222,7 @@ export function WordListPanel({
         )}
 
         {/* Dictionary search — hits the vocabulary first, AI lookup as fallback */}
-        <div className="relative">
+        <div className={`relative ${fullWidth ? "-mx-6" : ""}`}>
           <input
             type="text"
             value={search}
@@ -291,10 +292,12 @@ export function WordListPanel({
           <div
             onDoubleClick={() => onDoubleClick(w)}
             onClick={() => (selectMode ? onToggleSelect(w.id) : onSelect(w))}
-            className={`${fullWidth ? "px-6 py-2.5" : "px-4 py-3"} cursor-pointer hover:bg-muted/50 transition-colors ${
+            className={`${fullWidth ? "px-6 py-2.5" : "px-4 py-3"} cursor-pointer transition-colors ${
               expanded ? "sticky top-0 z-10 bg-background" : ""
             } ${
-              selectedIds.has(w.id) || (selectedId === w.id && !lookupActive) ? "bg-accent/50" : ""
+              selectedIds.has(w.id) || (selectedId === w.id && !lookupActive)
+                ? "bg-muted hover:bg-muted"
+                : "hover:bg-muted"
             }`}
           >
             <div className="flex items-center gap-1.5 min-w-0">
@@ -345,17 +348,19 @@ export function WordListPanel({
       {words.length > 0 && (
         <div className="shrink-0 border-t border-border">
         <div className={`${measure} px-3 py-2 flex items-center justify-between gap-2`}>
-          <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <span>{t("vocab.perPage")}</span>
-            <select
-              value={pageSize}
-              onChange={(e) => onPageSizeChange(Number(e.target.value))}
-              className="h-7 rounded-md border border-input bg-background px-1.5 text-xs text-foreground outline-none focus:ring-2 focus:ring-primary/30"
-              aria-label={t("vocab.perPage")}
-            >
-              {[10, 20, 50, 100].map((size) => <option key={size} value={size}>{size}</option>)}
-            </select>
-          </label>
+            <Select value={String(pageSize)} onValueChange={(value) => onPageSizeChange(Number(value))}>
+              <SelectTrigger className="h-7 w-16 rounded-md px-2 text-xs" aria-label={t("vocab.perPage")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[10, 20, 50, 100].map((size) => (
+                  <SelectItem key={size} value={String(size)}>{size}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="flex items-center gap-1">
           <Button
             variant="ghost"

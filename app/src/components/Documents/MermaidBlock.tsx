@@ -22,6 +22,18 @@ function MermaidView({ code, onChange }: { code: string; onChange: (code: string
   const [editing, setEditing] = useState(!code.trim());
   const [draft, setDraft] = useState(code);
   const containerRef = useRef<HTMLDivElement>(null);
+  const themeColors = (() => {
+    const styles = getComputedStyle(document.documentElement);
+    const hsl = (name: string) => `hsl(${styles.getPropertyValue(name).trim()})`;
+    return {
+      background: hsl("--background"),
+      card: hsl("--card"),
+      foreground: styles.getPropertyValue("--document-text-color").trim() || hsl("--foreground"),
+      border: hsl("--border"),
+      primary: hsl("--primary"),
+    };
+  })();
+  const themeKey = JSON.stringify(themeColors);
 
   useEffect(() => {
     if (!code.trim()) return;
@@ -29,7 +41,7 @@ function MermaidView({ code, onChange }: { code: string; onChange: (code: string
     (async () => {
       try {
         const mermaid = (await import("mermaid")).default;
-        mermaid.initialize(createMermaidConfig(isDark));
+        mermaid.initialize(createMermaidConfig(isDark, themeColors));
         const { svg } = await mermaid.render(`tanwords-mermaid-${++renderSeq}`, code);
         if (!cancelled) { setSvg(svg); setError(null); }
       } catch (e) {
@@ -37,7 +49,7 @@ function MermaidView({ code, onChange }: { code: string; onChange: (code: string
       }
     })();
     return () => { cancelled = true; };
-  }, [code, isDark]);
+  }, [code, isDark, themeKey]);
 
   const commit = () => {
     setEditing(false);

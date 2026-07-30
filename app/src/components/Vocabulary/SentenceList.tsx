@@ -5,6 +5,7 @@ import { LevelBadge } from "@/components/shared/LevelBadge";
 import { SpeakButton } from "@/components/ui/SpeakButton";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LevelDateFilter, LevelFilter } from "@/components/shared/LevelDateFilter";
 import { Plus, Sparkles, ListChecks, Trash2, X, RefreshCw, Star } from "lucide-react";
 
@@ -366,14 +367,16 @@ export function SentenceList({
           <div className="mx-auto w-full max-w-4xl px-5 py-2 flex items-center justify-between gap-2">
             <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
               <span>{t("vocab.perPage")}</span>
-              <select
-                value={pageSize}
-                onChange={(e) => onPageSizeChange(Number(e.target.value))}
-                className="h-7 rounded-md border border-input bg-background px-1.5 text-xs text-foreground outline-none focus:ring-2 focus:ring-primary/30"
-                aria-label={t("vocab.perPage")}
-              >
-                {[10, 20, 50, 100].map((size) => <option key={size} value={size}>{size}</option>)}
-              </select>
+              <Select value={String(pageSize)} onValueChange={(value) => onPageSizeChange(Number(value))}>
+                <SelectTrigger className="h-7 w-16 rounded-md px-1.5 text-xs" aria-label={t("vocab.perPage")}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[10, 20, 50, 100].map((size) => (
+                    <SelectItem key={size} value={String(size)}>{size}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
             <div className="flex items-center gap-1">
             <Button

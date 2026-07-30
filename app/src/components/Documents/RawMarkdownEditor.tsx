@@ -129,8 +129,11 @@ export function RawMarkdownEditor({
             spellCheck={false}
             aria-label={label}
             wrap={wrap ? "soft" : "off"}
-            style={{ tabSize: 2 }}
-            className={`min-h-0 flex-1 resize-none overflow-auto border-0 bg-transparent px-6 py-5 font-mono text-[14px] leading-7 text-foreground/90 outline-none placeholder:text-muted-foreground/30 ${
+            style={{
+              tabSize: 2,
+              color: "var(--document-text-color, hsl(var(--foreground)))",
+            }}
+            className={`min-h-0 flex-1 resize-none overflow-auto border-0 bg-transparent px-6 py-5 font-mono text-[14px] leading-7 outline-none placeholder:text-muted-foreground/30 ${
               wrap ? "whitespace-pre-wrap break-words" : "whitespace-pre"
             }`}
           />

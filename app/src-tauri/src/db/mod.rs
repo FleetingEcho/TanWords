@@ -145,6 +145,12 @@ pub async fn init_db(conn: &Connection) -> SqlResult<()> {
         CREATE INDEX IF NOT EXISTS idx_document_assets_document
             ON document_assets(document_id);"
     ).await;
+    let _ = conn.execute(
+        "ALTER TABLE documents ADD COLUMN protected INTEGER NOT NULL DEFAULT 0",
+        (),
+    ).await;
+    let _ = conn.execute("ALTER TABLE documents ADD COLUMN protection_salt BLOB", ()).await;
+    let _ = conn.execute("ALTER TABLE documents ADD COLUMN wrapped_key BLOB", ()).await;
 
     // AI Chat sessions
     let _ = conn.execute_batch(

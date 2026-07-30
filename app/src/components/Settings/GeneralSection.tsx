@@ -116,8 +116,7 @@ function AppBackgroundSetting() {
       maxBytes={MAX_APP_BG_UPLOAD_BYTES}
       thumbClassName="w-48 h-16 rounded-lg"
       thumbImgStyle={{
-        filter: `blur(${thumbBlur}px)${visible ? "" : " grayscale(1)"}`,
-        opacity: visible ? 1 : 0.35,
+        filter: `blur(${thumbBlur}px)`,
         // Mirrors AppBackground's overscan so blurred edges don't reveal gaps.
         transform: thumbBlur > 0 ? "scale(1.08)" : undefined,
       }}
@@ -147,7 +146,7 @@ function AppBackgroundSetting() {
             />
           </button>
         </div>
-        <div className={`space-y-1.5 transition-opacity ${visible && image ? "" : "pointer-events-none opacity-40"}`}>
+        <div className={`space-y-1.5 ${visible && image ? "" : "pointer-events-none"}`}>
           <div className="flex items-center justify-between text-xs">
             <span className="text-muted-foreground">{t("settings.appBackgroundBlur")}</span>
             <span className="rounded-md bg-primary/10 px-1.5 py-px text-[10px] font-semibold tabular-nums text-primary">
@@ -162,7 +161,7 @@ function AppBackgroundSetting() {
             value={blur}
             disabled={!image || !visible}
             onChange={(e) => setBlur(Number(e.target.value))}
-            className="w-full accent-primary"
+            className="w-full accent-primary disabled:opacity-100"
           />
         </div>
       </div>
@@ -315,15 +314,43 @@ export function GeneralSection() {
         />
       </SettingRow>
       <SettingRow label={t("settings.theme")} sub={t("settings.themeSub")}>
-        <ToggleGroup
-          options={[
-            { id: "light", label: t("settings.light") },
-            { id: "dark", label: t("settings.dark") },
-            { id: "system", label: t("settings.system") },
-          ]}
-          value={settings.theme}
-          onChange={(v) => settings.setTheme(v as Theme)}
-        />
+        <Select value={settings.theme} onValueChange={(value) => settings.setTheme(value as Theme)}>
+          <SelectTrigger className="h-9 w-52">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="light">{t("settings.light")}</SelectItem>
+            <SelectItem value="dark">{t("settings.dark")}</SelectItem>
+            <SelectItem value="catppuccin-latte">{t("settings.catppuccinLatte")}</SelectItem>
+            <SelectItem value="catppuccin-mocha">{t("settings.catppuccinMocha")}</SelectItem>
+            <SelectItem value="dracula">{t("settings.dracula")}</SelectItem>
+            <SelectItem value="tokyo-night">{t("settings.tokyoNight")}</SelectItem>
+            <SelectItem value="tokyo-night-day">{t("settings.tokyoNightDay")}</SelectItem>
+            <SelectItem value="tokyo-night-storm">{t("settings.tokyoNightStorm")}</SelectItem>
+            <SelectItem value="system">{t("settings.system")}</SelectItem>
+          </SelectContent>
+        </Select>
+      </SettingRow>
+      <SettingRow label={t("settings.documentFontSize")} sub={t("settings.documentFontSizeSub")}>
+        <div className="w-52 space-y-1.5">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>12px</span>
+            <span className="rounded-md bg-muted px-2 py-0.5 font-semibold tabular-nums text-foreground">
+              {settings.documentFontSize}px
+            </span>
+            <span>24px</span>
+          </div>
+          <input
+            type="range"
+            min={12}
+            max={24}
+            step={1}
+            value={settings.documentFontSize}
+            onChange={(event) => settings.setDocumentFontSize(Number(event.target.value))}
+            className="w-full accent-primary"
+            aria-label={t("settings.documentFontSize")}
+          />
+        </div>
       </SettingRow>
       <DefaultRssTabSetting />
       <SettingRow label={t("settings.selectionActions")} sub={t("settings.selectionActionsSub")}>

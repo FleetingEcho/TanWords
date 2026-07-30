@@ -15,6 +15,7 @@ async fn mock_app() -> (tauri::App<tauri::test::MockRuntime>, libsql::Connection
         db: std::sync::Mutex::new(database),
         tts: std::sync::Mutex::new(None).into(),
         db_fallback_warning: None,
+        document_privacy: Default::default(),
     });
     (app, conn)
 }

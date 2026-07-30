@@ -1,11 +1,12 @@
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use libsql::params;
 use serde::Serialize;
-use tauri::State;
-use base64::{engine::general_purpose::STANDARD, Engine as _};
 use std::io::Write;
+use tauri::State;
 
-use crate::AppState;
 use crate::db;
+use crate::document_privacy::{self, decrypt_bytes, decrypt_text, encrypt_bytes, encrypt_text};
+use crate::AppState;
 
 #[derive(Serialize)]
 pub struct DocumentListItem {
@@ -17,6 +18,8 @@ pub struct DocumentListItem {
     pub created_at: String,
     pub updated_at: String,
     pub content_text: String,
+    pub protected: bool,
+    pub unlocked: bool,
 }
 
 #[derive(Serialize)]
@@ -30,6 +33,7 @@ pub struct DocumentDetail {
     pub word_count: i64,
     pub created_at: String,
     pub updated_at: String,
+    pub protected: bool,
 }
 
 #[derive(Serialize)]
@@ -58,6 +62,8 @@ pub struct DocumentAssetSummary {
     pub size: i64,
     pub created_at: String,
     pub referenced: bool,
+    pub protected: bool,
+    pub unlocked: bool,
 }
 
 #[derive(Serialize)]
@@ -79,31 +85,57 @@ pub async fn db_get_document_link_context(
     conn: State<'_, AppState>,
 ) -> Result<DocumentLinkContext, String> {
     let database = db::conn(&conn)?;
+    let key = document_privacy::require_key(&database, &conn.document_privacy, document_id).await?;
     let candidates = db::fetch_all(
         &database,
         "SELECT id, title FROM documents WHERE id != ?1 ORDER BY title COLLATE NOCASE",
         params![document_id],
-        |row| Ok(DocumentLinkItem { id: row.get(0)?, title: row.get(1)? }),
-    ).await?;
-    let content = db::fetch_one(
+        |row| {
+            Ok(DocumentLinkItem {
+                id: row.get(0)?,
+                title: row.get(1)?,
+            })
+        },
+    )
+    .await?;
+    let stored_content = db::fetch_one(
         &database,
         "SELECT content FROM documents WHERE id = ?1",
         params![document_id],
         |row| row.get::<String>(0),
-    ).await?;
-    let outgoing = candidates.iter()
+    )
+    .await?;
+    let content = match key {
+        Some(key) => decrypt_text(&key, &stored_content)?,
+        None => stored_content,
+    };
+    let outgoing = candidates
+        .iter()
         .filter(|item| content.contains(&format!("tanwords-doc://{}", item.id)))
-        .map(|item| DocumentLinkItem { id: item.id, title: item.title.clone() })
+        .map(|item| DocumentLinkItem {
+            id: item.id,
+            title: item.title.clone(),
+        })
         .collect();
     let backlinks = db::fetch_all(
         &database,
         "SELECT id, title FROM documents
-         WHERE id != ?1 AND instr(content, 'tanwords-doc://' || ?1) > 0
+         WHERE id != ?1 AND protected=0 AND instr(content, 'tanwords-doc://' || ?1) > 0
          ORDER BY title COLLATE NOCASE",
         params![document_id],
-        |row| Ok(DocumentLinkItem { id: row.get(0)?, title: row.get(1)? }),
-    ).await?;
-    Ok(DocumentLinkContext { outgoing, backlinks, candidates })
+        |row| {
+            Ok(DocumentLinkItem {
+                id: row.get(0)?,
+                title: row.get(1)?,
+            })
+        },
+    )
+    .await?;
+    Ok(DocumentLinkContext {
+        outgoing,
+        backlinks,
+        candidates,
+    })
 }
 
 const MAX_DOCUMENT_ASSET_BYTES: usize = 100 * 1024 * 1024;
@@ -116,93 +148,131 @@ pub async fn db_create_document_asset(
     data_base64: String,
     conn: State<'_, AppState>,
 ) -> Result<String, String> {
-    let data = STANDARD.decode(data_base64).map_err(|_| "Invalid attachment data")?;
+    let data = STANDARD
+        .decode(data_base64)
+        .map_err(|_| "Invalid attachment data")?;
     if data.is_empty() || data.len() > MAX_DOCUMENT_ASSET_BYTES {
         return Err("Attachment must be between 1 byte and 100 MB".into());
     }
     let db = db::conn(&conn)?;
-    let exists = db::scalar_i64(
-        &db,
-        "SELECT EXISTS(SELECT 1 FROM documents WHERE id = ?1)",
-        params![document_id],
-    ).await?;
-    if exists == 0 {
-        return Err("Document does not exist".into());
-    }
-    let id = uuid::Uuid::new_v4().to_string();
     let size = data.len() as i64;
+    let key = document_privacy::require_key(&db, &conn.document_privacy, document_id).await?;
+    let data = match key {
+        Some(key) => encrypt_bytes(&key, &data)?,
+        None => data,
+    };
+    let id = uuid::Uuid::new_v4().to_string();
     db.execute(
         "INSERT INTO document_assets (id, document_id, file_name, mime_type, data, size)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         params![id.clone(), document_id, file_name, mime_type, data, size],
-    ).await.map_err(|e| e.to_string())?;
+    )
+    .await
+    .map_err(|e| e.to_string())?;
     Ok(id)
 }
 
 #[tauri::command]
-pub async fn db_get_document_asset(id: String, conn: State<'_, AppState>) -> Result<DocumentAsset, String> {
+pub async fn db_get_document_asset(
+    id: String,
+    conn: State<'_, AppState>,
+) -> Result<DocumentAsset, String> {
     let db = db::conn(&conn)?;
-    db::fetch_one(
+    let row = db::fetch_one(
         &db,
         "SELECT id, document_id, file_name, mime_type, size, data FROM document_assets WHERE id = ?1",
         params![id],
-        |row| {
-            let data: Vec<u8> = row.get(5)?;
-            Ok(DocumentAsset {
-                id: row.get(0)?,
-                document_id: row.get(1)?,
-                file_name: row.get(2)?,
-                mime_type: row.get(3)?,
-                size: row.get(4)?,
-                data_base64: STANDARD.encode(data),
-            })
-        },
-    ).await
+        |row| Ok((
+            row.get::<String>(0)?, row.get::<i64>(1)?, row.get::<String>(2)?,
+            row.get::<String>(3)?, row.get::<i64>(4)?, row.get::<Vec<u8>>(5)?,
+        )),
+    ).await?;
+    let key = document_privacy::require_key(&db, &conn.document_privacy, row.1).await?;
+    let data = match key {
+        Some(key) => decrypt_bytes(&key, &row.5)?,
+        None => row.5,
+    };
+    Ok(DocumentAsset {
+        id: row.0,
+        document_id: row.1,
+        file_name: row.2,
+        mime_type: row.3,
+        size: row.4,
+        data_base64: STANDARD.encode(data),
+    })
 }
 
 #[tauri::command]
-pub async fn db_get_document_assets(document_id: i64, conn: State<'_, AppState>) -> Result<Vec<DocumentAsset>, String> {
+pub async fn db_get_document_assets(
+    document_id: i64,
+    conn: State<'_, AppState>,
+) -> Result<Vec<DocumentAsset>, String> {
     let db = db::conn(&conn)?;
-    db::fetch_all(
+    let key = document_privacy::require_key(&db, &conn.document_privacy, document_id).await?;
+    let rows = db::fetch_all(
         &db,
         "SELECT id, document_id, file_name, mime_type, size, data
          FROM document_assets WHERE document_id = ?1 ORDER BY created_at",
         params![document_id],
         |row| {
-            let data: Vec<u8> = row.get(5)?;
+            Ok((
+                row.get::<String>(0)?,
+                row.get::<i64>(1)?,
+                row.get::<String>(2)?,
+                row.get::<String>(3)?,
+                row.get::<i64>(4)?,
+                row.get::<Vec<u8>>(5)?,
+            ))
+        },
+    )
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            let data = match key {
+                Some(key) => decrypt_bytes(&key, &row.5)?,
+                None => row.5,
+            };
             Ok(DocumentAsset {
-                id: row.get(0)?,
-                document_id: row.get(1)?,
-                file_name: row.get(2)?,
-                mime_type: row.get(3)?,
-                size: row.get(4)?,
+                id: row.0,
+                document_id: row.1,
+                file_name: row.2,
+                mime_type: row.3,
+                size: row.4,
                 data_base64: STANDARD.encode(data),
             })
-        },
-    ).await
+        })
+        .collect()
 }
 
 #[tauri::command]
-pub async fn db_list_document_assets(conn: State<'_, AppState>) -> Result<Vec<DocumentAssetSummary>, String> {
+pub async fn db_list_document_assets(
+    conn: State<'_, AppState>,
+) -> Result<Vec<DocumentAssetSummary>, String> {
     let db = db::conn(&conn)?;
     db::fetch_all(
         &db,
         "SELECT a.id, a.document_id, d.title, a.file_name, a.mime_type, a.size, a.created_at,
-                CASE WHEN instr(d.content, 'tanwords-asset://' || a.id) > 0 THEN 1 ELSE 0 END
+                CASE WHEN d.protected=0 AND instr(d.content, 'tanwords-asset://' || a.id) > 0 THEN 1 ELSE 0 END,
+                d.protected
          FROM document_assets a
          JOIN documents d ON d.id = a.document_id
          ORDER BY a.created_at DESC",
         (),
-        |row| Ok(DocumentAssetSummary {
+        |row| {
+            let document_id = row.get::<i64>(1)?;
+            let protected = row.get::<i64>(8)? != 0;
+            Ok(DocumentAssetSummary {
             id: row.get(0)?,
-            document_id: row.get(1)?,
+            document_id,
             document_title: row.get(2)?,
             file_name: row.get(3)?,
             mime_type: row.get(4)?,
             size: row.get(5)?,
             created_at: row.get(6)?,
             referenced: row.get::<i64>(7)? != 0,
-        }),
+            protected,
+            unlocked: protected && conn.document_privacy.is_unlocked(document_id),
+        })},
     ).await
 }
 
@@ -231,23 +301,37 @@ pub async fn db_delete_document_asset(id: String, conn: State<'_, AppState>) -> 
         "SELECT document_id FROM document_assets WHERE id = ?1",
         params![id.clone()],
         |row| row.get::<i64>(0),
-    ).await?;
-    let content = db::fetch_one(
+    )
+    .await?;
+    let key = document_privacy::require_key(&db, &conn.document_privacy, document_id).await?;
+    let stored_content = db::fetch_one(
         &db,
         "SELECT content FROM documents WHERE id = ?1",
         params![document_id],
         |row| row.get::<String>(0),
-    ).await?;
+    )
+    .await?;
+    let content = match key {
+        Some(key) => decrypt_text(&key, &stored_content)?,
+        None => stored_content,
+    };
     if let Ok(mut blocks) = serde_json::from_str::<serde_json::Value>(&content) {
         remove_asset_blocks(&mut blocks, &format!("tanwords-asset://{id}"));
         let updated = serde_json::to_string(&blocks).map_err(|e| e.to_string())?;
+        let stored_updated = match key {
+            Some(key) => encrypt_text(&key, &updated)?,
+            None => updated,
+        };
         db.execute(
             "UPDATE documents SET content = ?1, updated_at = datetime('now') WHERE id = ?2",
-            params![updated, document_id],
-        ).await.map_err(|e| e.to_string())?;
+            params![stored_updated, document_id],
+        )
+        .await
+        .map_err(|e| e.to_string())?;
     }
     db.execute("DELETE FROM document_assets WHERE id = ?1", params![id])
-        .await.map_err(|e| e.to_string())?;
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -256,13 +340,16 @@ pub async fn db_delete_orphan_document_assets(conn: State<'_, AppState>) -> Resu
     let db = db::conn(&conn)?;
     db.execute(
         "DELETE FROM document_assets
-         WHERE NOT EXISTS (
+             WHERE document_id IN (SELECT id FROM documents WHERE protected=0)
+               AND NOT EXISTS (
              SELECT 1 FROM documents d
              WHERE d.id = document_assets.document_id
                AND instr(d.content, 'tanwords-asset://' || document_assets.id) > 0
          )",
         (),
-    ).await.map_err(|e| e.to_string())
+    )
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -276,36 +363,65 @@ pub async fn db_export_document_asset(
         return Err("Export destination must be an absolute path".into());
     }
     let db = db::conn(&conn)?;
-    let data = db::fetch_one(
+    let (document_id, data) = db::fetch_one(
         &db,
-        "SELECT data FROM document_assets WHERE id = ?1",
+        "SELECT document_id,data FROM document_assets WHERE id = ?1",
         params![id],
-        |row| row.get::<Vec<u8>>(0),
-    ).await?;
+        |row| Ok((row.get::<i64>(0)?, row.get::<Vec<u8>>(1)?)),
+    )
+    .await?;
+    let key = document_privacy::require_key(&db, &conn.document_privacy, document_id).await?;
+    let data = match key {
+        Some(key) => decrypt_bytes(&key, &data)?,
+        None => data,
+    };
     std::fs::write(path, data).map_err(|e| format!("Failed to export image: {e}"))
 }
 
 fn safe_export_name(name: &str, id: &str) -> String {
     let cleaned: String = name
         .chars()
-        .map(|c| if c.is_control() || matches!(c, '/' | '\\' | ':') { '_' } else { c })
+        .map(|c| {
+            if c.is_control() || matches!(c, '/' | '\\' | ':') {
+                '_'
+            } else {
+                c
+            }
+        })
         .collect();
-    if cleaned.trim().is_empty() { format!("image-{id}.png") } else { cleaned }
+    if cleaned.trim().is_empty() {
+        format!("image-{id}.png")
+    } else {
+        cleaned
+    }
 }
 
 async fn export_asset_rows(
     database: &libsql::Connection,
     ids: &[String],
+    privacy: &document_privacy::DocumentPrivacyState,
 ) -> Result<Vec<(String, String, Vec<u8>)>, String> {
     let mut rows = Vec::with_capacity(ids.len());
     for id in ids {
         let row = db::fetch_one(
             database,
-            "SELECT file_name, data FROM document_assets WHERE id = ?1",
+            "SELECT document_id,file_name,data FROM document_assets WHERE id = ?1",
             params![id.clone()],
-            |row| Ok((row.get::<String>(0)?, row.get::<Vec<u8>>(1)?)),
-        ).await?;
-        rows.push((id.clone(), row.0, row.1));
+            |row| {
+                Ok((
+                    row.get::<i64>(0)?,
+                    row.get::<String>(1)?,
+                    row.get::<Vec<u8>>(2)?,
+                ))
+            },
+        )
+        .await?;
+        let key = document_privacy::require_key(database, privacy, row.0).await?;
+        let data = match key {
+            Some(key) => decrypt_bytes(&key, &row.2)?,
+            None => row.2,
+        };
+        rows.push((id.clone(), row.1, data));
     }
     Ok(rows)
 }
@@ -344,7 +460,7 @@ pub async fn db_export_document_assets_to_folder(
         return Err("Export destination must be an existing absolute directory".into());
     }
     let database = db::conn(&conn)?;
-    let rows = export_asset_rows(&database, &ids).await?;
+    let rows = export_asset_rows(&database, &ids, &conn.document_privacy).await?;
     let mut used = std::collections::HashSet::new();
     for (id, file_name, data) in &rows {
         let base = safe_export_name(file_name, id);
@@ -365,7 +481,7 @@ pub async fn db_export_document_assets_zip(
         return Err("Export destination must be an absolute path".into());
     }
     let database = db::conn(&conn)?;
-    let rows = export_asset_rows(&database, &ids).await?;
+    let rows = export_asset_rows(&database, &ids, &conn.document_privacy).await?;
     let file = std::fs::File::create(path).map_err(|e| format!("Failed to create ZIP: {e}"))?;
     let mut archive = zip::ZipWriter::new(file);
     let options = zip::write::SimpleFileOptions::default()
@@ -374,11 +490,16 @@ pub async fn db_export_document_assets_zip(
     for (id, file_name, data) in &rows {
         let base = safe_export_name(file_name, id);
         let unique = unique_export_path(std::path::Path::new(""), &base, &mut used);
-        archive.start_file(unique.to_string_lossy(), options)
+        archive
+            .start_file(unique.to_string_lossy(), options)
             .map_err(|e| format!("Failed to write ZIP: {e}"))?;
-        archive.write_all(data).map_err(|e| format!("Failed to write ZIP: {e}"))?;
+        archive
+            .write_all(data)
+            .map_err(|e| format!("Failed to write ZIP: {e}"))?;
     }
-    archive.finish().map_err(|e| format!("Failed to finish ZIP: {e}"))?;
+    archive
+        .finish()
+        .map_err(|e| format!("Failed to finish ZIP: {e}"))?;
     Ok(rows.len() as u64)
 }
 
@@ -389,16 +510,19 @@ pub async fn db_prune_document_assets(
     conn: State<'_, AppState>,
 ) -> Result<(), String> {
     let db = db::conn(&conn)?;
+    document_privacy::require_key(&db, &conn.document_privacy, document_id).await?;
     let assets = db::fetch_all(
         &db,
         "SELECT id FROM document_assets WHERE document_id = ?1",
         params![document_id],
         |row| row.get::<String>(0),
-    ).await?;
+    )
+    .await?;
     for id in assets {
         if !referenced_ids.contains(&id) {
             db.execute("DELETE FROM document_assets WHERE id = ?1", params![id])
-                .await.map_err(|e| e.to_string())?;
+                .await
+                .map_err(|e| e.to_string())?;
         }
     }
     Ok(())
@@ -418,14 +542,19 @@ fn build_doc_where(
         if !q.is_empty() {
             // Ordered-character fuzzy match: "btmk" matches "bitmask".
             // Escaping keeps LIKE metacharacters literal.
-            let fuzzy = q.to_lowercase().chars().fold(String::from("%"), |mut out, ch| {
-                if matches!(ch, '%' | '_' | '\\') { out.push('\\'); }
-                out.push(ch);
-                out.push('%');
-                out
-            });
+            let fuzzy = q
+                .to_lowercase()
+                .chars()
+                .fold(String::from("%"), |mut out, ch| {
+                    if matches!(ch, '%' | '_' | '\\') {
+                        out.push('\\');
+                    }
+                    out.push(ch);
+                    out.push('%');
+                    out
+                });
             conditions.push(format!(
-                "(LOWER(d.title) LIKE ?{} ESCAPE '\\' OR LOWER(d.content_text) LIKE ?{} ESCAPE '\\')",
+                "(LOWER(d.title) LIKE ?{} ESCAPE '\\' OR (d.protected=0 AND LOWER(d.content_text) LIKE ?{} ESCAPE '\\'))",
                 params.len() + 1,
                 params.len() + 2
             ));
@@ -483,7 +612,10 @@ pub async fn db_create_document_with_content(
 }
 
 #[tauri::command]
-pub async fn db_document_title_exists(title: String, conn: State<'_, AppState>) -> Result<bool, String> {
+pub async fn db_document_title_exists(
+    title: String,
+    conn: State<'_, AppState>,
+) -> Result<bool, String> {
     let db = db::conn(&conn)?;
     Ok(db::scalar_i64(
         &db,
@@ -506,12 +638,14 @@ pub async fn db_get_documents(
 ) -> Result<DocumentListResult, String> {
     let db = db::conn(&conn)?;
 
-    let page_size = 20i64;
+    // Both privacy shelves must be present together so each can be collapsed
+    // independently; document lists are intentionally fetched as one page.
+    let page_size = 10_000i64;
     let offset = page.unwrap_or(0) * page_size;
     let sort_col = match sort.as_deref() {
         Some("created") => "d.created_at DESC",
-        Some("title")   => "d.title ASC",
-        _               => "d.updated_at DESC",
+        Some("title") => "d.title ASC",
+        _ => "d.updated_at DESC",
     };
 
     let (where_clause, p) = build_doc_where(&search, &date_from, &date_to, &tag);
@@ -524,13 +658,16 @@ pub async fn db_get_documents(
     .await?;
 
     let data_sql = format!(
-        "SELECT d.id, d.title, d.tags, d.pinned, d.word_count, d.created_at, d.updated_at, d.content_text
-         FROM documents d WHERE {} ORDER BY d.pinned DESC, {} LIMIT {} OFFSET {}",
+        "SELECT d.id, d.title, d.tags, d.pinned, d.word_count, d.created_at, d.updated_at,
+                CASE WHEN d.protected=1 THEN '' ELSE d.content_text END, d.protected
+         FROM documents d WHERE {} ORDER BY d.protected ASC, d.pinned DESC, {} LIMIT {} OFFSET {}",
         where_clause, sort_col, page_size, offset
     );
     let items = db::fetch_all(&db, &data_sql, p, |row| {
+        let id = row.get::<i64>(0)?;
+        let protected = row.get::<i64>(8)? != 0;
         Ok(DocumentListItem {
-            id: row.get(0)?,
+            id,
             title: row.get(1)?,
             tags: row.get(2)?,
             pinned: row.get::<i64>(3)? != 0,
@@ -538,6 +675,8 @@ pub async fn db_get_documents(
             created_at: row.get(5)?,
             updated_at: row.get(6)?,
             content_text: row.get(7)?,
+            protected,
+            unlocked: protected && conn.document_privacy.is_unlocked(id),
         })
     })
     .await?;
@@ -548,26 +687,35 @@ pub async fn db_get_documents(
 #[tauri::command]
 pub async fn db_get_document(id: i64, conn: State<'_, AppState>) -> Result<DocumentDetail, String> {
     let db = db::conn(&conn)?;
-    db::fetch_one(
+    let row = db::fetch_one(
         &db,
-        "SELECT id, title, content, content_text, tags, pinned, word_count, created_at, updated_at
+        "SELECT id, title, content, content_text, tags, pinned, word_count, created_at, updated_at, protected
          FROM documents WHERE id = ?1",
         params![id],
-        |row| {
-            Ok(DocumentDetail {
-                id: row.get(0)?,
-                title: row.get(1)?,
-                content: row.get(2)?,
-                content_text: row.get(3)?,
-                tags: row.get(4)?,
-                pinned: row.get::<i64>(5)? != 0,
-                word_count: row.get(6)?,
-                created_at: row.get(7)?,
-                updated_at: row.get(8)?,
-            })
-        },
-    )
-    .await
+        |row| Ok((
+            row.get::<i64>(0)?, row.get::<String>(1)?, row.get::<String>(2)?,
+            row.get::<String>(3)?, row.get::<String>(4)?, row.get::<i64>(5)? != 0,
+            row.get::<i64>(6)?, row.get::<String>(7)?, row.get::<String>(8)?,
+            row.get::<i64>(9)? != 0,
+        )),
+    ).await?;
+    let key = document_privacy::require_key(&db, &conn.document_privacy, id).await?;
+    let (content, content_text) = match key {
+        Some(key) => (decrypt_text(&key, &row.2)?, decrypt_text(&key, &row.3)?),
+        None => (row.2, row.3),
+    };
+    Ok(DocumentDetail {
+        id: row.0,
+        title: row.1,
+        content,
+        content_text,
+        tags: row.4,
+        pinned: row.5,
+        word_count: row.6,
+        created_at: row.7,
+        updated_at: row.8,
+        protected: row.9,
+    })
 }
 
 #[tauri::command]
@@ -582,10 +730,26 @@ pub async fn db_update_document(
     conn: State<'_, AppState>,
 ) -> Result<(), String> {
     let db = db::conn(&conn)?;
+    let key = document_privacy::require_key(&db, &conn.document_privacy, id).await?;
+    let (content, content_text) = match key {
+        Some(key) => (
+            encrypt_text(&key, &content)?,
+            encrypt_text(&key, &content_text)?,
+        ),
+        None => (content, content_text),
+    };
     db.execute(
         "UPDATE documents SET title=?1, content=?2, content_text=?3, tags=?4, pinned=?5,
          word_count=?6, updated_at=datetime('now') WHERE id=?7",
-        params![title, content, content_text, tags, pinned as i64, word_count, id],
+        params![
+            title,
+            content,
+            content_text,
+            tags,
+            pinned as i64,
+            word_count,
+            id
+        ],
     )
     .await
     .map_err(|e| e.to_string())?;
@@ -595,17 +759,81 @@ pub async fn db_update_document(
 #[tauri::command]
 pub async fn db_delete_document(id: i64, conn: State<'_, AppState>) -> Result<(), String> {
     let db = db::conn(&conn)?;
-    db.execute("DELETE FROM document_assets WHERE document_id = ?1", params![id])
-        .await.map_err(|e| e.to_string())?;
+    document_privacy::require_key(&db, &conn.document_privacy, id).await?;
+    db.execute(
+        "DELETE FROM document_assets WHERE document_id = ?1",
+        params![id],
+    )
+    .await
+    .map_err(|e| e.to_string())?;
     db.execute("DELETE FROM documents WHERE id = ?1", params![id])
         .await
         .map_err(|e| e.to_string())?;
+    conn.document_privacy.lock(id)?;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn db_duplicate_document(id: i64, conn: State<'_, AppState>) -> Result<i64, String> {
     let db = db::conn(&conn)?;
+    if document_privacy::document_is_protected(&db, id).await? {
+        let key = conn.document_privacy.key(id)?;
+        let (title, stored_content, stored_text, tags, word_count) = db::fetch_one(
+            &db,
+            "SELECT title,content,content_text,tags,word_count FROM documents WHERE id=?1",
+            [id],
+            |row| {
+                Ok((
+                    row.get::<String>(0)?,
+                    row.get::<String>(1)?,
+                    row.get::<String>(2)?,
+                    row.get::<String>(3)?,
+                    row.get::<i64>(4)?,
+                ))
+            },
+        )
+        .await?;
+        let mut content = decrypt_text(&key, &stored_content)?;
+        let content_text = decrypt_text(&key, &stored_text)?;
+        db.execute(
+            "INSERT INTO documents(title,content,content_text,tags,word_count) VALUES(?1,?2,?3,?4,?5)",
+            params![format!("{title} (copy)"), content.clone(), content_text, tags, word_count],
+        ).await.map_err(|e| e.to_string())?;
+        let new_document_id = db.last_insert_rowid();
+        let assets = db::fetch_all(
+            &db,
+            "SELECT id,file_name,mime_type,data,size FROM document_assets WHERE document_id=?1",
+            [id],
+            |row| {
+                Ok((
+                    row.get::<String>(0)?,
+                    row.get::<String>(1)?,
+                    row.get::<String>(2)?,
+                    row.get::<Vec<u8>>(3)?,
+                    row.get::<i64>(4)?,
+                ))
+            },
+        )
+        .await?;
+        for (old_id, file_name, mime_type, encrypted, size) in assets {
+            let new_id = uuid::Uuid::new_v4().to_string();
+            db.execute(
+                "INSERT INTO document_assets(id,document_id,file_name,mime_type,data,size) VALUES(?1,?2,?3,?4,?5,?6)",
+                params![new_id.clone(), new_document_id, file_name, mime_type, decrypt_bytes(&key, &encrypted)?, size],
+            ).await.map_err(|e| e.to_string())?;
+            content = content.replace(
+                &format!("tanwords-asset://{old_id}"),
+                &format!("tanwords-asset://{new_id}"),
+            );
+        }
+        db.execute(
+            "UPDATE documents SET content=?1 WHERE id=?2",
+            params![content, new_document_id],
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+        return Ok(new_document_id);
+    }
     db.execute(
         "INSERT INTO documents (title, content, content_text, tags, word_count)
          SELECT title || ' (copy)', content, content_text, tags, word_count
@@ -620,26 +848,39 @@ pub async fn db_duplicate_document(id: i64, conn: State<'_, AppState>) -> Result
         "SELECT content FROM documents WHERE id = ?1",
         params![new_document_id],
         |row| row.get::<String>(0),
-    ).await?;
+    )
+    .await?;
     let assets = db::fetch_all(
         &db,
         "SELECT id, file_name, mime_type, data, size FROM document_assets WHERE document_id = ?1",
         params![id],
-        |row| Ok((
-            row.get::<String>(0)?,
-            row.get::<String>(1)?,
-            row.get::<String>(2)?,
-            row.get::<Vec<u8>>(3)?,
-            row.get::<i64>(4)?,
-        )),
-    ).await?;
+        |row| {
+            Ok((
+                row.get::<String>(0)?,
+                row.get::<String>(1)?,
+                row.get::<String>(2)?,
+                row.get::<Vec<u8>>(3)?,
+                row.get::<i64>(4)?,
+            ))
+        },
+    )
+    .await?;
     for (old_id, file_name, mime_type, data, size) in assets {
         let new_id = uuid::Uuid::new_v4().to_string();
         db.execute(
             "INSERT INTO document_assets (id, document_id, file_name, mime_type, data, size)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![new_id.clone(), new_document_id, file_name, mime_type, data, size],
-        ).await.map_err(|e| e.to_string())?;
+            params![
+                new_id.clone(),
+                new_document_id,
+                file_name,
+                mime_type,
+                data,
+                size
+            ],
+        )
+        .await
+        .map_err(|e| e.to_string())?;
         content = content.replace(
             &format!("tanwords-asset://{old_id}"),
             &format!("tanwords-asset://{new_id}"),
@@ -648,7 +889,9 @@ pub async fn db_duplicate_document(id: i64, conn: State<'_, AppState>) -> Result
     db.execute(
         "UPDATE documents SET content = ?1 WHERE id = ?2",
         params![content, new_document_id],
-    ).await.map_err(|e| e.to_string())?;
+    )
+    .await
+    .map_err(|e| e.to_string())?;
     Ok(new_document_id)
 }
 

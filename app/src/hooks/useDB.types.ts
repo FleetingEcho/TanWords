@@ -93,6 +93,8 @@ export interface DocumentListItem {
   created_at: string;
   updated_at: string;
   content_text: string;
+  protected: boolean;
+  unlocked: boolean;
   /** Folded out of the main list into the archive section. */
   archived: boolean;
 }
@@ -107,6 +109,7 @@ export interface DocumentDetail {
   word_count: number;
   created_at: string;
   updated_at: string;
+  protected: boolean;
 }
 
 export interface DocumentListResult {

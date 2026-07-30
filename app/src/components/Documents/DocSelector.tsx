@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useDB, DocumentListItem } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { DocItem } from "./DocItem";
@@ -7,9 +7,10 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ChevronsLeft, Filter, Paperclip } from "lucide-react";
+import { ChevronDown, ChevronsLeft, FilePlus2, Filter, LockKeyhole, Paperclip, Plus } from "lucide-react";
 import { Download, FileInput, MoreHorizontal } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { exportMarkdownBundles, readMarkdownFiles } from "@/lib/localDocs";
 import { getDocumentAssets, prepareDocumentAssetsForExport, rewriteDocumentLinksForExport } from "@/lib/documentAssets";
@@ -20,8 +21,14 @@ import { ExportMarkdownDialog, MarkdownExportChoice } from "./ExportMarkdownDial
 import { DocumentImageManager } from "./DocumentImageManager";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
 import { CloseIcon } from "@/components/ui/icons";
+import { DocumentPasswordDialog, type DocumentPasswordRequest } from "./DocumentPasswordDialog";
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 10_000;
+type PrivatePasswordStatus = {
+  configured: boolean;
+  unlocked: boolean;
+  legacy_documents: number;
+};
 
 interface Props {
   activeId: number | null;
@@ -49,6 +56,23 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, onCollap
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [exportChoices, setExportChoices] = useState<MarkdownExportChoice[] | null>(null);
   const [imagesOpen, setImagesOpen] = useState(false);
+  const [normalOpen, setNormalOpen] = useState(() => localStorage.getItem("tanwords_docs_normal_open") !== "0");
+  const [privateOpen, setPrivateOpen] = useState(() => localStorage.getItem("tanwords_docs_private_open") !== "0");
+  const [shelfMenu, setShelfMenu] = useState<{ x: number; y: number; private: boolean } | null>(null);
+  const [passwordRequest, setPasswordRequest] = useState<DocumentPasswordRequest | null>(null);
+  const passwordResolver = useRef<((password: string | null) => void) | null>(null);
+
+  const requestPassword = useCallback((request: DocumentPasswordRequest) => new Promise<string | null>((resolve) => {
+    passwordResolver.current = resolve;
+    setPasswordRequest(request);
+  }), []);
+
+  const finishPasswordRequest = (password: string | null) => {
+    const resolve = passwordResolver.current;
+    passwordResolver.current = null;
+    setPasswordRequest(null);
+    resolve?.(password);
+  };
 
   const load = useCallback(async (p = page) => {
     setLoading(true);
@@ -80,6 +104,16 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, onCollap
     return () => window.removeEventListener("docs-updated", onExternalChange);
   }, [load, page]);
   useEffect(() => { db.getAllTags().then(setAllTags); }, [refreshKey]);
+  useEffect(() => {
+    if (!shelfMenu) return;
+    const dismiss = () => setShelfMenu(null);
+    window.addEventListener("mousedown", dismiss);
+    window.addEventListener("blur", dismiss);
+    return () => {
+      window.removeEventListener("mousedown", dismiss);
+      window.removeEventListener("blur", dismiss);
+    };
+  }, [shelfMenu]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -105,6 +139,75 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, onCollap
 
   const handleDelete = (id: number) => setPendingDeleteId(id);
 
+  const passwordForPrivateDocument = async (): Promise<string | undefined | null> => {
+    const status = await invoke<PrivatePasswordStatus>("db_private_password_status");
+    if (status.configured && status.unlocked) return undefined;
+    return requestPassword({
+      title: status.configured ? t("doc.unlock") : t("doc.setPrivatePassword"),
+      description: status.configured ? t("doc.sharedPasswordPrompt") : t("doc.sharedPasswordSetupHint"),
+      confirm: !status.configured,
+    });
+  };
+
+  const handlePrivacyAction = async (doc: DocumentListItem) => {
+    if (doc.protected && !doc.unlocked) {
+      onSelect(doc.id);
+      return;
+    }
+    try {
+      if (doc.protected) {
+        await db.lockDocument(doc.id);
+        if (activeId === doc.id) onSelect(doc.id);
+      } else {
+        const password = await passwordForPrivateDocument();
+        if (password === null) return;
+        await db.protectDocument(doc.id, password);
+      }
+      await load(page);
+    } catch (error) {
+      toast.error(String(error));
+    }
+  };
+
+  const handleRemoveProtection = async (doc: DocumentListItem) => {
+    const password = await requestPassword({
+      title: t("doc.removeProtection"),
+      description: t("doc.passwordPrompt"),
+    });
+    if (!password) return;
+    try {
+      await db.removeDocumentProtection(doc.id, password);
+      await load(page);
+      if (activeId === doc.id) onSelect(doc.id);
+    } catch {
+      toast.error(t("doc.invalidPassword"));
+    }
+  };
+
+  const handleNewPrivateDoc = async () => {
+    const password = await passwordForPrivateDocument();
+    if (password === null) return;
+    let id = 0;
+    try {
+      id = await db.createDocument();
+      if (!id) throw new Error(t("doc.privateCreateFailed"));
+      await db.protectDocument(id, password);
+      setPrivateOpen(true);
+      localStorage.setItem("tanwords_docs_private_open", "1");
+      await load(0);
+      onSelect(id);
+    } catch (error) {
+      if (id) await db.deleteDocument(id);
+      toast.error(String(error));
+    }
+  };
+
+  const createInShelf = (privateShelf: boolean) => {
+    setShelfMenu(null);
+    if (privateShelf) void handleNewPrivateDoc();
+    else onNewDoc();
+  };
+
   const handleImport = async () => {
     const picked = await openDialog({ multiple: true, filters: [{ name: "Markdown", extensions: ["md", "markdown"] }] });
     const paths = typeof picked === "string" ? [picked] : picked;
@@ -127,14 +230,29 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, onCollap
   };
 
   const exportDocuments = async (ids: number[]) => {
-    const destination = await openDialog({ directory: true, multiple: false });
-    if (typeof destination !== "string") return;
     try {
       const firstPage = await db.getDocuments({ sort: "title", page: 0 });
       const allDocuments = [...firstPage.items];
       for (let nextPage = 1; nextPage < Math.ceil(firstPage.total / PAGE_SIZE); nextPage += 1) {
         allDocuments.push(...(await db.getDocuments({ sort: "title", page: nextPage })).items);
       }
+      for (const id of ids) {
+        const listItem = allDocuments.find((document) => document.id === id);
+        if (!listItem?.protected) continue;
+        const password = await requestPassword({
+          title: t("doc.exportMarkdown"),
+          description: t("doc.exportPasswordPrompt", { title: listItem.title || t("doc.untitled") }),
+        });
+        if (!password) return;
+        try {
+          await db.unlockDocument(id, password);
+        } catch {
+          toast.error(t("doc.invalidPassword"));
+          return;
+        }
+      }
+      const destination = await openDialog({ directory: true, multiple: false });
+      if (typeof destination !== "string") return;
       const files = [];
       for (const id of ids) {
         const detail = await db.getDocument(id);
@@ -161,7 +279,7 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, onCollap
         const result = await db.getDocuments({ sort: "title", page: nextPage });
         allDocs.push(...result.items);
       }
-      setExportChoices(allDocs.map((doc) => ({
+      setExportChoices(allDocs.filter((doc) => !doc.protected || doc.unlocked).map((doc) => ({
         id: String(doc.id),
         label: doc.title || t("doc.untitled"),
         detail: doc.content_text.slice(0, 100),
@@ -183,7 +301,7 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, onCollap
   };
 
   return (
-    <div className={`flex flex-col h-full border-r border-border ${LIST_PANEL_WIDTH} shrink-0 bg-card`}>
+    <div className={`flex flex-col h-full border-r border-border ${LIST_PANEL_WIDTH} shrink-0 bg-transparent`}>
       {/* Header */}
       <div className="px-3 pt-4 pb-2 space-y-2 shrink-0">
         <div className="flex items-center justify-between">
@@ -294,13 +412,45 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, onCollap
       <div className="flex-1 overflow-y-auto px-2 py-1 space-y-0.5 min-h-0">
         {loading ? (
           <div className="flex items-center justify-center py-8 text-muted-foreground text-xs">Loading…</div>
-        ) : docs.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground gap-1">
-            <p className="text-sm">{t("doc.emptyState")}</p>
-            <p className="text-xs opacity-60">{t("doc.emptyStateHint")}</p>
-          </div>
         ) : (
-          docs.map((doc) => (
+          <>
+            {[
+              { key: "normal", label: t("doc.normalGroup"), items: docs.filter((doc) => !doc.protected), open: normalOpen, setOpen: setNormalOpen },
+              { key: "private", label: t("doc.privateGroup"), items: docs.filter((doc) => doc.protected), open: privateOpen, setOpen: setPrivateOpen },
+            ].map((group) => (
+              <div key={group.key} className="mb-1.5">
+                <div
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setShelfMenu({ x: event.clientX, y: event.clientY, private: group.key === "private" });
+                  }}
+                  className="group/shelf flex w-full items-center px-1 pb-1 pt-1.5 text-muted-foreground"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !group.open;
+                      group.setOpen(next);
+                      localStorage.setItem(`tanwords_docs_${group.key}_open`, next ? "1" : "0");
+                    }}
+                    className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] hover:text-foreground"
+                  >
+                    <ChevronDown className={`h-3 w-3 transition-transform ${group.open ? "" : "-rotate-90"}`} />
+                    {group.key === "private" && <LockKeyhole className="h-3 w-3" />}
+                    <span>{group.label}</span>
+                    <span className="ml-auto min-w-5 rounded-full bg-muted px-1.5 py-px text-center tabular-nums text-muted-foreground">{group.items.length}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => createInShelf(group.key === "private")}
+                    className="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
+                    title={group.key === "private" ? t("doc.newPrivateDoc") : t("doc.newDoc")}
+                    aria-label={group.key === "private" ? t("doc.newPrivateDoc") : t("doc.newDoc")}
+                  >
+                    <Plus className="h-3 w-3" />
+                  </button>
+                </div>
+                {group.open && group.items.map((doc) => (
             <DocItem
               key={doc.id}
               doc={doc}
@@ -312,10 +462,38 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, onCollap
               onDelete={handleDelete}
               searchQuery={search}
               onExport={(id) => void exportDocuments([id])}
+              onPrivacyAction={(item) => void handlePrivacyAction(item)}
+              onRemoveProtection={(item) => void handleRemoveProtection(item)}
             />
-          ))
+                ))}
+              </div>
+            ))}
+          </>
         )}
       </div>
+
+      {shelfMenu && (
+        <div
+          style={{ position: "fixed", left: shelfMenu.x, top: shelfMenu.y, zIndex: 9999 }}
+          onMouseDown={(event) => event.stopPropagation()}
+          className="min-w-44 rounded-lg border border-border bg-popover p-1 shadow-lg"
+        >
+          <Button
+            variant="ghost"
+            onClick={() => createInShelf(shelfMenu.private)}
+            className="h-8 w-full justify-start gap-2 px-2 text-xs"
+          >
+            <FilePlus2 className="h-3.5 w-3.5" />
+            {shelfMenu.private ? t("doc.newPrivateDoc") : t("doc.newDoc")}
+          </Button>
+        </div>
+      )}
+
+      <DocumentPasswordDialog
+        request={passwordRequest}
+        onCancel={() => finishPasswordRequest(null)}
+        onSubmit={(password) => finishPasswordRequest(password)}
+      />
 
       {/* Pagination */}
       {totalPages > 1 && (
