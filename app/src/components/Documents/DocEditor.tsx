@@ -1,40 +1,31 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import {
-  FormattingToolbar,
   FormattingToolbarController,
-  getFormattingToolbarItems,
-  useCreateBlockNote,
 } from "@blocknote/react";
 import { offset, shift } from "@floating-ui/react";
 import { BlockNoteView } from "@blocknote/mantine";
-import { editorSchema } from "./editorSchema";
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
 
 import { DocumentDetail } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { useIsDark } from "@/hooks/useIsDark";
-import { refreshCodeBlockTheme } from "./codeBlockTheme";
-import { blocksToStorageOffThread, contentToBlocksOffThread, markdownToBlocksOffThread } from "@/lib/documentWorkerClient";
 import { parseDbTimestamp } from "@/lib/dbTime";
-import { liftMermaid, lowerMermaid } from "./mermaidTransforms";
 import { PinIcon } from "@/components/ui/icons";
 import { CheckIcon } from "@heroicons/react/24/solid";
 import { Button } from "@/components/ui/button";
-import { Code2, Download, Eye, Link2, Paperclip, Search, Trash2 } from "lucide-react";
+import { Code2, Eye, Link2, Paperclip, Search } from "lucide-react";
 import { RawMarkdownEditor } from "./RawMarkdownEditor";
-import { resolveDocumentAssetUrl, uploadDocumentAsset } from "@/lib/documentAssets";
 import type { SaveStatus } from "./useDocumentEditor";
-import { invoke } from "@tauri-apps/api/core";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
 import { selectRichEditorContents } from "./editorSelection";
 import { useSettingsStore } from "@/store/settingsStore";
-import { DocumentPasswordDialog, type DocumentPasswordRequest } from "./DocumentPasswordDialog";
-import { requiresAttachmentPassword, type PrivateAttachmentAction } from "./privateDocumentPolicy";
-import { toast } from "sonner";
-import { isEmptyParagraph, withTrailingEditorParagraph, withoutTrailingEditorParagraph } from "./trailingEditorParagraph";
+import { DocumentPasswordDialog } from "./DocumentPasswordDialog";
 import { DocumentPreviewScrollArea } from "./DocumentPreviewScrollArea";
 import { DocumentContentSearch } from "./DocumentContentSearch";
+import { useDocEditorContent } from "./hooks/useDocEditorContent";
+import { useDocEditorLinks } from "./hooks/useDocEditorLinks";
+import { useDocEditorAttachments } from "./hooks/useDocEditorAttachments";
 
 interface Props {
   doc: DocumentDetail;
@@ -46,13 +37,6 @@ interface Props {
   saveStatus: SaveStatus;
 }
 
-interface DocumentLinkItem { id: number; title: string }
-interface DocumentLinkContext {
-  outgoing: DocumentLinkItem[];
-  backlinks: DocumentLinkItem[];
-  candidates: DocumentLinkItem[];
-}
-
 export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, onPinToggle, saveStatus }: Props) {
   const t = useT();
   const isDark = useIsDark();
@@ -62,270 +46,16 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
   const [tagsInput, setTagsInput] = useState(
     (() => { try { return (JSON.parse(doc.tags) as string[]).join(", "); } catch { return ""; } })()
   );
-  const [mode, setMode] = useState<"rich" | "raw">("rich");
-  const [rawMarkdown, setRawMarkdown] = useState("");
-  const [switchingMode, setSwitchingMode] = useState(false);
-  // useCreateBlockNote starts with an empty document — content only lands once the
-  // (off-thread, so genuinely async) parse below resolves. Without this, the editor
-  // area renders blank in between: the title/tags header is already there, but the
-  // body looks empty rather than loading, for however long the parse takes.
-  const [richLoading, setRichLoading] = useState(true);
-  const [linkContext, setLinkContext] = useState<DocumentLinkContext>({ outgoing: [], backlinks: [], candidates: [] });
-  const [linkPickerOpen, setLinkPickerOpen] = useState(false);
-  const [linkQuery, setLinkQuery] = useState("");
   const titleRef = useRef<HTMLInputElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const searchRootRef = useRef<HTMLDivElement>(null);
-  const loaded = useRef(false);
-  const rawDirty = useRef(false);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const maxSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const dirty = useRef(false);
-  const flushRef = useRef<() => Promise<void>>(async () => {});
-  const [passwordRequest, setPasswordRequest] = useState<DocumentPasswordRequest | null>(null);
-  const passwordResolver = useRef<((password: string | null) => void) | null>(null);
   const [toolbarPortalElement, setToolbarPortalElement] = useState<HTMLDivElement | null>(null);
 
-  const requestPassword = useCallback((request: DocumentPasswordRequest) => new Promise<string | null>((resolve) => {
-    passwordResolver.current = resolve;
-    setPasswordRequest(request);
-  }), []);
+  const content = useDocEditorContent(doc, onSave, onDirty);
+  const { editor, mode, rawMarkdown, switchingMode, richLoading, switchMode, handleChange, handleRawChange, scheduleSave } = content;
 
-  const finishPasswordRequest = (password: string | null) => {
-    const resolve = passwordResolver.current;
-    passwordResolver.current = null;
-    setPasswordRequest(null);
-    resolve?.(password);
-  };
-
-  const editor = useCreateBlockNote({
-    schema: editorSchema,
-    uploadFile: (file) => uploadDocumentAsset(doc.id, file),
-    resolveFileUrl: resolveDocumentAssetUrl,
-  }, [doc.id]);
-
-  // Load stored content (BlockNote JSON, or legacy Lexical — lazily migrated)
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const parsed = await contentToBlocksOffThread(doc.content);
-        if (cancelled) return;
-        const blocks = withTrailingEditorParagraph(liftMermaid(parsed));
-        editor.replaceBlocks(editor.document, blocks as any);
-      } finally {
-        if (!cancelled) requestAnimationFrame(() => { loaded.current = true; setRichLoading(false); });
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  useEffect(() => {
-    invoke<DocumentLinkContext>("db_get_document_link_context", { documentId: doc.id })
-      .then(setLinkContext)
-      .catch(() => {});
-  }, [doc.id, doc.content]);
-
-  const insertDocumentLink = (target: DocumentLinkItem) => {
-    editor.insertInlineContent([{
-      type: "link",
-      href: `tanwords-doc://${target.id}`,
-      content: target.title,
-    }]);
-    setLinkPickerOpen(false);
-    setLinkQuery("");
-    scheduleSave();
-  };
-
-  const insertAttachment = async (file: File | undefined) => {
-    if (!file) return;
-    const url = await uploadDocumentAsset(doc.id, file);
-    const type = file.type.startsWith("image/") ? "image"
-      : file.type.startsWith("audio/") ? "audio"
-      : file.type.startsWith("video/") ? "video"
-      : "file";
-    const current = editor.getTextCursorPosition().block;
-    editor.insertBlocks([{
-      type,
-      props: { url, name: file.name || "attachment" },
-    } as any], current, "after");
-    scheduleSave();
-  };
-
-  const handleEditorClick = (event: React.MouseEvent) => {
-    const anchor = (event.target as HTMLElement).closest<HTMLAnchorElement>("a[href^='tanwords-doc://']");
-    if (!anchor) return;
-    event.preventDefault();
-    const id = Number(anchor.getAttribute("href")?.slice("tanwords-doc://".length));
-    if (id > 0) window.dispatchEvent(new CustomEvent("tanwords:open-document", { detail: { id } }));
-  };
-
-  const handleRichEditorKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "a") return;
-    if (!(event.target as Element).closest(".bn-editor")) return;
-    event.preventDefault();
-    event.stopPropagation();
-    selectRichEditorContents(event.currentTarget);
-  };
-
-  const sensitiveAttachmentAction = useCallback(async (
-    action: PrivateAttachmentAction,
-    block: any,
-  ) => {
-    if (requiresAttachmentPassword(doc.protected, action)) {
-      const password = await requestPassword({
-        title: action === "download" ? t("doc.downloadPrivateFile") : t("doc.deletePrivateFile"),
-        description: t("doc.sensitiveActionPasswordHint"),
-  });
-
-  useEffect(() => {
-    refreshCodeBlockTheme(editor);
-  }, [editor, isDark]);
-      if (!password) return;
-      try {
-        await invoke("db_unlock_document", { id: doc.id, password });
-      } catch {
-        toast.error(t("doc.invalidPassword"));
-        return;
-      }
-    }
-    if (action === "delete") {
-      editor.focus();
-      editor.removeBlocks([block.id]);
-      return;
-    }
-    const downloadUrl = editor.resolveFileUrl
-      ? await editor.resolveFileUrl(block.props.url)
-      : block.props.url;
-    window.open(downloadUrl, "_blank", "noopener,noreferrer");
-  }, [doc.id, doc.protected, editor, requestPassword, t]);
-
-  const formattingToolbar = useCallback(() => {
-    const defaults = getFormattingToolbarItems();
-    if (!doc.protected) return <FormattingToolbar>{defaults}</FormattingToolbar>;
-    const selected = editor.getSelection()?.blocks || [editor.getTextCursorPosition().block];
-    const block: any = selected.length === 1 ? selected[0] : null;
-    const isFile = Boolean(block?.props && typeof block.props.url === "string");
-    const items = defaults.filter((item) =>
-      item.key !== "fileDeleteButton" && item.key !== "fileDownloadButton"
-    );
-    if (isFile) {
-      const insertAt = Math.max(0, items.findIndex((item) => item.key === "filePreviewButton"));
-      items.splice(
-        insertAt,
-        0,
-        <button key="protectedFileDelete" type="button" className="bn-button mx-0.5 inline-flex h-7 w-7 items-center justify-center rounded-md" title={t("doc.deletePrivateFile")}
-          onClick={() => void sensitiveAttachmentAction("delete", block)}>
-          <Trash2 className="h-4 w-4" />
-        </button>,
-        <button key="protectedFileDownload" type="button" className="bn-button mx-0.5 inline-flex h-7 w-7 items-center justify-center rounded-md" title={t("doc.downloadPrivateFile")}
-          onClick={() => void sensitiveAttachmentAction("download", block)}>
-          <Download className="h-4 w-4" />
-        </button>,
-      );
-    }
-    return <FormattingToolbar>{items}</FormattingToolbar>;
-  }, [doc.protected, editor, sensitiveAttachmentAction, t]);
-
-  const flushSave = useCallback(async () => {
-    if (!dirty.current || !loaded.current) return;
-    dirty.current = false;
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    if (maxSaveTimer.current) clearTimeout(maxSaveTimer.current);
-    saveTimer.current = null;
-    maxSaveTimer.current = null;
-    try {
-      const blocks = mode === "raw"
-        ? liftMermaid(await markdownToBlocksOffThread(rawMarkdown))
-        : withoutTrailingEditorParagraph(editor.document);
-      const { content, contentText, wordCount } = await blocksToStorageOffThread(
-        mode === "raw" ? blocks : lowerMermaid(blocks) as any
-      );
-      rawDirty.current = false;
-      await onSave(content, contentText, wordCount);
-    } catch (error) {
-      dirty.current = true;
-      throw error;
-    }
-  }, [editor, mode, onSave, rawMarkdown]);
-  flushRef.current = flushSave;
-
-  const scheduleSave = useCallback(() => {
-    dirty.current = true;
-    onDirty();
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => { void flushRef.current().catch(() => {}); }, 1000);
-    if (!maxSaveTimer.current) {
-      maxSaveTimer.current = setTimeout(() => { void flushRef.current().catch(() => {}); }, 8000);
-    }
-  }, [onDirty]);
-
-  const handleChange = useCallback(() => {
-    if (!loaded.current) return;
-    const cursor = editor.getTextCursorPosition();
-    if (!cursor.nextBlock && !isEmptyParagraph(cursor.block)) {
-      editor.insertBlocks([{ type: "paragraph" }], cursor.block, "after");
-    }
-    scheduleSave();
-  }, [editor, scheduleSave]);
-
-  const switchMode = useCallback(async (next: "rich" | "raw") => {
-    if (next === mode || switchingMode) return;
-    setSwitchingMode(true);
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    if (maxSaveTimer.current) clearTimeout(maxSaveTimer.current);
-    try {
-      if (next === "raw") {
-        const contentBlocks = withoutTrailingEditorParagraph(editor.document);
-        setRawMarkdown(await editor.blocksToMarkdownLossy(lowerMermaid(contentBlocks) as any));
-      } else {
-        loaded.current = false;
-        setRichLoading(true);
-        const blocks = liftMermaid(await markdownToBlocksOffThread(rawMarkdown));
-        editor.replaceBlocks(editor.document, withTrailingEditorParagraph(blocks) as any);
-        if (rawDirty.current) {
-          const { content, contentText, wordCount } = await blocksToStorageOffThread(blocks);
-          await onSave(content, contentText, wordCount);
-          rawDirty.current = false;
-          dirty.current = false;
-        }
-        requestAnimationFrame(() => { loaded.current = true; setRichLoading(false); });
-      }
-      setMode(next);
-    } finally {
-      setSwitchingMode(false);
-    }
-  }, [editor, mode, onSave, rawMarkdown, switchingMode]);
-
-  const handleRawChange = (markdown: string) => {
-    rawDirty.current = true;
-    setRawMarkdown(markdown);
-    scheduleSave();
-  };
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
-        event.preventDefault();
-        void flushRef.current().catch(() => {});
-      }
-    };
-    const flushPending = () => { void flushRef.current().catch(() => {}); };
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("blur", flushPending);
-    window.addEventListener("pagehide", flushPending);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("blur", flushPending);
-      window.removeEventListener("pagehide", flushPending);
-    };
-  }, []);
-
-  useEffect(() => () => {
-    void flushRef.current().catch(() => {});
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    if (maxSaveTimer.current) clearTimeout(maxSaveTimer.current);
-  }, []);
+  const links = useDocEditorLinks({ documentId: doc.id, documentContent: doc.content, editor, scheduleSave });
+  const attachments = useDocEditorAttachments({ doc, editor, isDark, scheduleSave });
 
   const handleTitleBlur = () => {
     const val = title.trim() || t("doc.untitled");
@@ -400,7 +130,7 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
               title={t("doc.attachFile")} className="h-6 gap-1 px-2 text-[10px]">
               <Paperclip className="h-3 w-3" /> {t("doc.attach")}
             </Button>
-            <Button type="button" variant="ghost" onClick={() => setLinkPickerOpen(true)}
+            <Button type="button" variant="ghost" onClick={() => links.setLinkPickerOpen(true)}
               title={t("doc.insertDocumentLink")} className="h-6 gap-1 px-2 text-[10px]">
               <Link2 className="h-3 w-3" /> {t("doc.link")}
             </Button>
@@ -431,13 +161,13 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
         </div>
         <div className="mt-3 border-b border-border/60" />
         <input ref={attachmentInputRef} type="file" className="hidden"
-          onChange={(event) => { void insertAttachment(event.target.files?.[0]); event.target.value = ""; }} />
+          onChange={(event) => { void attachments.insertAttachment(event.target.files?.[0]); event.target.value = ""; }} />
       </div>
 
       {mode === "rich" ? (
         <div ref={searchRootRef} className="contents">
-          <DocumentPreviewScrollArea onClickCapture={handleEditorClick}
-            onKeyDownCapture={handleRichEditorKeyDown}>
+          <DocumentPreviewScrollArea onClickCapture={links.handleEditorClick}
+            onKeyDownCapture={(e) => attachments.handleRichEditorKeyDown(e, selectRichEditorContents)}>
             {richLoading && (
               <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-10">
                 <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
@@ -446,7 +176,7 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
             <BlockNoteView editor={editor} theme={isDark ? "dark" : "light"} onChange={handleChange}
               formattingToolbar={false} className="tanwords-editor">
               <FormattingToolbarController
-                formattingToolbar={formattingToolbar}
+                formattingToolbar={attachments.formattingToolbar}
                 portalElement={toolbarPortalElement}
                 floatingUIOptions={{
                   useFloatingOptions: {
@@ -463,21 +193,21 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
         <RawMarkdownEditor value={rawMarkdown} onChange={handleRawChange} label={t("doc.rawMode")} />
       )}
 
-      {(linkContext.outgoing.length > 0 || linkContext.backlinks.length > 0) && (
+      {(links.linkContext.outgoing.length > 0 || links.linkContext.backlinks.length > 0) && (
         <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/60 px-12 py-2 text-[10px]">
-          {linkContext.outgoing.length > 0 && (
+          {links.linkContext.outgoing.length > 0 && (
             <span className="flex items-center gap-1.5 text-muted-foreground">
               <Link2 className="h-3 w-3" /> {t("doc.outgoingLinks")}:
-              {linkContext.outgoing.map((item) => (
+              {links.linkContext.outgoing.map((item) => (
                 <button key={item.id} onClick={() => window.dispatchEvent(new CustomEvent("tanwords:open-document", { detail: { id: item.id } }))}
                   className="text-primary hover:underline">{item.title}</button>
               ))}
             </span>
           )}
-          {linkContext.backlinks.length > 0 && (
+          {links.linkContext.backlinks.length > 0 && (
             <span className="flex items-center gap-1.5 text-muted-foreground">
               {t("doc.backlinks")}:
-              {linkContext.backlinks.map((item) => (
+              {links.linkContext.backlinks.map((item) => (
                 <button key={item.id} onClick={() => window.dispatchEvent(new CustomEvent("tanwords:open-document", { detail: { id: item.id } }))}
                   className="text-primary hover:underline">{item.title}</button>
               ))}
@@ -504,22 +234,22 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
         <span>{parseDbTimestamp(doc.updated_at).toLocaleDateString()}</span>
       </div>
 
-      <Dialog open={linkPickerOpen} onClose={() => setLinkPickerOpen(false)} maxWidth="max-w-md" className="overflow-hidden">
+      <Dialog open={links.linkPickerOpen} onClose={() => links.setLinkPickerOpen(false)} maxWidth="max-w-md" className="overflow-hidden">
         <div className="border-b border-border px-5 py-4">
           <DialogTitle className="text-base font-semibold">{t("doc.insertDocumentLink")}</DialogTitle>
         </div>
         <div className="p-4">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input autoFocus value={linkQuery} onChange={(event) => setLinkQuery(event.target.value)}
+            <input autoFocus value={links.linkQuery} onChange={(event) => links.setLinkQuery(event.target.value)}
               placeholder={t("doc.searchDocumentsToLink")}
               className="h-9 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-primary/30" />
           </div>
           <div className="mt-3 max-h-80 overflow-y-auto">
-            {linkContext.candidates
-              .filter((item) => item.title.toLowerCase().includes(linkQuery.trim().toLowerCase()))
+            {links.linkContext.candidates
+              .filter((item) => item.title.toLowerCase().includes(links.linkQuery.trim().toLowerCase()))
               .map((item) => (
-                <button key={item.id} onClick={() => insertDocumentLink(item)}
+                <button key={item.id} onClick={() => links.insertDocumentLink(item)}
                   className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-muted">
                   <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
                   <span className="truncate">{item.title}</span>
@@ -530,9 +260,9 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
       </Dialog>
 
       <DocumentPasswordDialog
-        request={passwordRequest}
-        onCancel={() => finishPasswordRequest(null)}
-        onSubmit={(password) => finishPasswordRequest(password)}
+        request={attachments.passwordRequest}
+        onCancel={() => attachments.finishPasswordRequest(null)}
+        onSubmit={(password) => attachments.finishPasswordRequest(password)}
       />
     </div>
   );
