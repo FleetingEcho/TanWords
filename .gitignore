@@ -3,8 +3,8 @@
 
 .codegraph/
 
-# sherpa-onnx shared libs staged by src-tauri/build.rs at build time
-app/src-tauri/sherpa-libs/
+# sherpa-onnx shared libs staged by core/build.rs at build time
+app/core/sherpa-libs/
 
 # local release build outputs (deb/rpm/dmg/app) — not source, regenerate via build
 dist-releases/

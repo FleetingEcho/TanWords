@@ -4,18 +4,17 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
+    "dev": "electron-vite dev",
+    "dev:web": "vite",
+    "build": "tsc --noEmit && electron-vite build",
+    "core:build": "cd core && cargo build --release",
+    "core:dispatch": "cd core && python3 scripts/gen_dispatch.py",
     "test": "vitest",
     "test:run": "vitest run",
-    "preview": "vite preview",
-    "tauri": "tauri",
-    "dev:linux": "PKG_CONFIG_PATH=\"/usr/local/lib/x86_64-linux-gnu/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:$PKG_CONFIG_PATH\" tauri dev",
-    "build:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1",
-    "build:windows:portable": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1 -Portable",
-    "build:appimage": "PKG_CONFIG_PATH=\"/usr/local/lib/x86_64-linux-gnu/pkgconfig:/usr/local/lib/pkgconfig:/usr/local/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:$PKG_CONFIG_PATH\" tauri build --bundles appimage",
-    "build:dmg": "tauri build --bundles dmg",
-    "build:release:mac": "tauri build --target universal-apple-darwin --bundles app,dmg && bash scripts/verify-release-data.sh"
+    "package": "bun run core:build && bun run build && electron-builder",
+    "package:linux": "bun run package -- --linux",
+    "package:mac": "bun run package -- --mac",
+    "package:win": "bun run package -- --win"
   },
   "dependencies": {
     "@blocknote/code-block": "^0.51.4",
@@ -35,13 +34,6 @@
     "@radix-ui/react-popover": "^1.1.19",
     "@radix-ui/react-select": "^2.3.3",
     "@radix-ui/react-tooltip": "^1.2.16",
-    "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-clipboard-manager": "^2",
-    "@tauri-apps/plugin-dialog": "^2",
-    "@tauri-apps/plugin-http": "^2",
-    "@tauri-apps/plugin-process": "^2.3.1",
-    "@tauri-apps/plugin-shell": "^2",
-    "@tauri-apps/plugin-updater": "^2.10.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
@@ -57,7 +49,6 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.11.2",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
     "@types/react": "^18.3.12",
@@ -69,6 +60,11 @@
     "tailwindcss": "^3.4.16",
     "typescript": "^5.6.3",
     "vite": "^6.0.0",
-    "vitest": "^2.1.9"
-  }
+    "vitest": "^2.1.9",
+    "electron": "^40.0.0",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "^4.0.0",
+    "electron-updater": "^6.6.2"
+  },
+  "main": "out/main/index.js"
 }
