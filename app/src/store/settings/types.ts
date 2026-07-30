@@ -9,6 +9,7 @@ export type Theme =
   | "tokyo-night"
   | "tokyo-night-day"
   | "tokyo-night-storm"
+  | "dim"
   | "system";
 export type SidebarTabId = Exclude<NavPage, "settings">;
 export type TopBarItemId = "search" | "context" | "scratch" | "db" | "mcp" | "ai" | "language" | "theme" | "updates" | "github";

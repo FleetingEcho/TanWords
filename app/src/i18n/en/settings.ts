@@ -190,6 +190,7 @@ export const settings: Dict = {
     "settings.tokyoNight": "Tokyo Night",
     "settings.tokyoNightDay": "Tokyo Night Day",
     "settings.tokyoNightStorm": "Tokyo Night Storm",
+    "settings.dim": "Dim",
     "settings.system": "System",
     "settings.importDB": "Import from a local database",
     "settings.importDBSub": "Read another TanWords database file and merge its vocabulary, patterns, articles and documents in. Useful for moving local data into a freshly created online database.",
