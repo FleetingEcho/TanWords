@@ -1,5 +1,5 @@
 import React from "react";
-import { ClipboardPaste, PanelLeft, Settings } from "lucide-react";
+import { ClipboardPaste, Globe, PanelLeft, Settings } from "lucide-react";
 import { useLayoutStore } from "@/store/layoutStore";
 import { useT } from "@/hooks/useT";
 import {
@@ -29,6 +29,7 @@ const NAV_ITEM_DEFS: Omit<NavItemDef, "label">[] = [
   { id: "vocabulary", icon: BookIcon, showCount: "word" },
   { id: "chat", icon: ChatIcon },
   { id: "music", icon: MusicIcon },
+  { id: "browser", icon: Globe },
 ];
 
 /** Shared button chrome for both the customizable nav items and the pinned Settings

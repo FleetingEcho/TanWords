@@ -27,6 +27,7 @@ import { ENRICHED_SEED_WORDS, BASIC_SEED_WORDS } from "@/data/seedWords";
 import { LOCAL_DOCS_ROOT_KEY, localDocsRootExists } from "@/lib/localDocs";
 
 const MusicPage = React.lazy(() => import("@/components/Music/MusicPage"));
+const BrowserPage = React.lazy(() => import("@/components/Browser/BrowserPage"));
 
 function App() {
   const { loadFromDB, isLoaded, ttsModelPath } = useSettingsStore();
@@ -174,6 +175,18 @@ function App() {
             }
           >
             <MusicPage />
+          </React.Suspense>
+        );
+      case "browser":
+        return (
+          <React.Suspense
+            fallback={
+              <div className="h-full flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+              </div>
+            }
+          >
+            <BrowserPage />
           </React.Suspense>
         );
       case "vocabulary":
