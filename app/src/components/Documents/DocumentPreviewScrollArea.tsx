@@ -67,68 +67,25 @@ export function DocumentPreviewScrollArea({
     resizeObserver?.observe(viewport);
     const mutationObserver = new MutationObserver(scheduleUpdate);
     mutationObserver.observe(viewport, { childList: true, subtree: true, characterData: true });
-    // WebKitGTK can report the pre-flex height during layout effects. Measure
-    // again on the next frame after the flex column has its final size.
+    viewport.addEventListener("scroll", scheduleUpdate, { passive: true });
     scheduleUpdate();
     return () => {
       resizeObserver?.disconnect();
       mutationObserver.disconnect();
+      viewport.removeEventListener("scroll", scheduleUpdate);
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
     };
   }, [scheduleUpdate]);
 
-  const handleThumbPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    const viewport = viewportRef.current;
-    if (!viewport || !thumb.scrollable) return;
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    dragRef.current = { pointerY: event.clientY, scrollTop: viewport.scrollTop };
-  };
-
-  const handleThumbPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    const viewport = viewportRef.current;
-    const drag = dragRef.current;
-    if (!viewport || !drag || !thumb.scrollable) return;
-    const trackTravel = viewport.clientHeight - TRACK_INSET * 2 - thumb.height;
-    const scrollTravel = viewport.scrollHeight - viewport.clientHeight;
-    if (trackTravel > 0) {
-      viewport.scrollTop = drag.scrollTop
-        + (event.clientY - drag.pointerY) * (scrollTravel / trackTravel);
-    }
-  };
 
   return (
     <div className={`relative min-h-0 flex-1 overflow-hidden ${className}`}>
       <div
         {...props}
         ref={viewportRef}
-        onScroll={(event) => {
-          scheduleUpdate();
-          props.onScroll?.(event);
-        }}
         className="document-preview-scroll h-full"
       >
         {children}
-      </div>
-      <div
-        aria-hidden
-        className="pointer-events-none absolute bottom-2 right-1 top-2 z-20 w-2 rounded-full"
-        style={{ background: "hsl(var(--muted-foreground) / 0.2)" }}
-      >
-        <div
-          className={`pointer-events-auto absolute left-0 w-2 rounded-full transition-colors ${
-            thumb.scrollable ? "cursor-grab active:cursor-grabbing" : ""
-          }`}
-          style={{
-            top: thumb.top - TRACK_INSET,
-            height: thumb.height,
-            background: "hsl(var(--muted-foreground) / 0.6)",
-          }}
-          onPointerDown={handleThumbPointerDown}
-          onPointerMove={handleThumbPointerMove}
-          onPointerUp={() => { dragRef.current = null; }}
-          onPointerCancel={() => { dragRef.current = null; }}
-        />
       </div>
     </div>
   );

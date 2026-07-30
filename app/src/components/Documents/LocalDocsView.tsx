@@ -246,6 +246,20 @@ export function LocalDocsView() {
     await saveQueue.current;
   }, [root, activePath, refresh]);
 
+  const markDirty = useCallback(() => setSaveStatus("dirty"), []);
+  const handleUploadImage = useCallback(
+    (file: File) => uploadLocalDocImage(root!, file),
+    [root],
+  );
+  const toRawMarkdown = useCallback(
+    (markdown: string) => mdFromDisplay(markdown, root!, activePath!),
+    [root, activePath],
+  );
+  const toDisplayMarkdown = useCallback(
+    (markdown: string) => mdToDisplay(markdown, root!, activePath!),
+    [root, activePath],
+  );
+
   const requestImportToDatabase = useCallback(async (relPath: string, markdown?: string) => {
     if (!root) return;
     try {
@@ -275,16 +289,16 @@ export function LocalDocsView() {
     }
   }, [pendingImport, db, t]);
 
-  const handleRename = async (newName: string) => {
+  const handleRename = useCallback(async (newName: string) => {
     if (!root || !activePath) return;
     try {
       const newRel = await renameLocalDoc(root, activePath, newName);
       setActivePath(newRel);
-      refresh();
+      void refresh();
     } catch (e) {
       toast.error(String(e));
     }
-  };
+  }, [root, activePath, refresh]);
 
   const confirmDelete = async () => {
     const relPath = pendingDelete;
@@ -350,10 +364,10 @@ export function LocalDocsView() {
         modifiedMs={activeMeta?.modified_ms ?? 0}
         saveStatus={saveStatus}
         onSave={handleSave}
-        onDirty={() => setSaveStatus("dirty")}
-        onUploadImage={(file) => uploadLocalDocImage(root!, file)}
-        toRawMarkdown={(markdown) => mdFromDisplay(markdown, root!, activePath!)}
-        toDisplayMarkdown={(markdown) => mdToDisplay(markdown, root!, activePath!)}
+        onDirty={markDirty}
+        onUploadImage={handleUploadImage}
+        toRawMarkdown={toRawMarkdown}
+        toDisplayMarkdown={toDisplayMarkdown}
         onRename={handleRename}
         zenMode={zenMode}
         onZenModeChange={setZenMode}

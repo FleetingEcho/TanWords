@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { BookmarkPlus, BookPlus, Check, Languages, MessageSquareQuote, Search, X } from "lucide-react";
 import { useDB } from "@/hooks/useDB";
@@ -12,6 +13,10 @@ import { parseEnrichmentStream } from "@/lib/enrichMeta";
 import { SpeakButton } from "@/components/ui/SpeakButton";
 import { Markdown } from "@/components/AiChat/Markdown";
 import { Button } from "@/components/ui/button";
+import {
+  findSelectionOverlayHost,
+  positionSelectionToolbar,
+} from "./selectionToolbarPosition";
 
 /** Marks the AI replies in the chat transcript as selectable targets — your
  *  own messages, and the Chinese glosses in cards, have nothing to offer. */
@@ -41,6 +46,11 @@ interface Anchor {
    *  scrolls, which is what lets the card stay pinned to the sentence it's
    *  explaining instead of being dismissed the moment the page moves. */
   range: Range;
+}
+
+function renderSelectionOverlay(anchor: Anchor, content: React.ReactNode) {
+  const host = findSelectionOverlayHost(anchor.range);
+  return host ? createPortal(content, host) : content;
 }
 
 /** Recomputes an anchor's viewport position from its range. Returns null once
@@ -105,6 +115,8 @@ export function SelectionAsk() {
   // instead of offering to add it again. One local SQLite query per selection.
   const [collected, setCollected] = useState(false);
   const [adding, setAdding] = useState(false);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const [toolbarSize, setToolbarSize] = useState({ width: 0, height: 0 });
 
   useEffect(() => {
     if (!enabled) return;
@@ -165,7 +177,9 @@ export function SelectionAsk() {
       if (e.key === "Escape") { setAnchor(null); setAsking(null); }
     };
 
-    document.addEventListener("mouseup", readSelection);
+    // Radix dialogs may stop mouse events before they bubble to document.
+    // Capture the completed selection before modal event isolation runs.
+    document.addEventListener("mouseup", readSelection, true);
     // Capture phase, on window: scroll doesn't bubble, and the element that
     // actually scrolls differs per surface.
     window.addEventListener("scroll", onScroll, { capture: true, passive: true });
@@ -174,7 +188,7 @@ export function SelectionAsk() {
     document.addEventListener("keydown", onKey);
     return () => {
       if (frame) cancelAnimationFrame(frame);
-      document.removeEventListener("mouseup", readSelection);
+      document.removeEventListener("mouseup", readSelection, true);
       window.removeEventListener("scroll", onScroll, { capture: true });
       window.removeEventListener("resize", onScroll);
       document.removeEventListener("selectionchange", onSelectionChange);
@@ -192,6 +206,15 @@ export function SelectionAsk() {
     });
     return () => { cancelled = true; };
   }, [selectedWord, db]);
+
+  useLayoutEffect(() => {
+    const toolbar = toolbarRef.current;
+    if (!anchor || !toolbar) return;
+    const next = { width: toolbar.offsetWidth, height: toolbar.offsetHeight };
+    setToolbarSize((current) =>
+      current.width === next.width && current.height === next.height ? current : next
+    );
+  }, [anchor, adding, collected, saving]);
 
   /** Adds the selected word with a real gloss/type/level behind it. The
    *  dictionary call happens on click rather than on every selection — one
@@ -235,13 +258,22 @@ export function SelectionAsk() {
 
   if (!enabled) return null;
 
+  const toolbarPosition = anchor && toolbarSize.width > 0
+    ? positionSelectionToolbar(anchor, toolbarSize, window.innerWidth)
+    : null;
+
   return (
     <>
-      {anchor && (
+      {anchor && renderSelectionOverlay(anchor, (
         <div
+          ref={toolbarRef}
           data-no-selection
-          className="fixed z-50 -translate-x-1/2 -translate-y-full"
-          style={{ top: anchor.top - 8, left: anchor.left }}
+          className="fixed z-50"
+          style={{
+            top: toolbarPosition?.top ?? 0,
+            left: toolbarPosition?.left ?? 0,
+            visibility: toolbarPosition ? "visible" : "hidden",
+          }}
           onMouseDown={(e) => e.preventDefault()} // keep the selection alive through the click
         >
           {/* Fully opaque: the reader sits on the user's wallpaper, and a
@@ -331,15 +363,15 @@ export function SelectionAsk() {
             </span>
           </div>
         </div>
-      )}
+      ))}
 
-      {asking && (
+      {asking && renderSelectionOverlay(asking.anchor, (
         <InlineAskPanel
           anchor={asking.anchor}
           mode={asking.mode}
           onClose={() => setAsking(null)}
         />
-      )}
+      ))}
     </>
   );
 }

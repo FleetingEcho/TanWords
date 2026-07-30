@@ -24,6 +24,7 @@ import { promoteLocalFileLinks } from "./localFileBlocks";
 import { isEmptyParagraph, withTrailingEditorParagraph, withoutTrailingEditorParagraph } from "./trailingEditorParagraph";
 import { DocumentPreviewScrollArea } from "./DocumentPreviewScrollArea";
 import { DocumentContentSearch } from "./DocumentContentSearch";
+import { refreshCodeBlockTheme } from "./codeBlockTheme";
 
 type EditorMode = "rich" | "raw";
 
@@ -111,6 +112,10 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
     schema: editorSchema,
     uploadFile: onUploadImage,
   }, [relPath]);
+
+  useEffect(() => {
+    refreshCodeBlockTheme(editor);
+  }, [editor, isDark]);
 
   const flushRaw = useCallback(async (markdown: string, force = false) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);

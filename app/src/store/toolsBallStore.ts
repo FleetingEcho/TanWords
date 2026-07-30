@@ -57,8 +57,8 @@ interface ToolsBallState {
   closeModal: () => void;
   toggleModal: () => void;
   setActiveTab: (tab: "documents" | "chat" | "word") => void;
-  setModalPos: (pos: Pos) => void;
-  setModalSize: (size: { width: number; height: number }) => void;
+  setModalPos: (pos: Pos, persist?: boolean) => void;
+  setModalSize: (size: { width: number; height: number }, persist?: boolean) => void;
 }
 
 export const useToolsBallStore = create<ToolsBallState>((set, get) => ({
@@ -88,13 +88,13 @@ export const useToolsBallStore = create<ToolsBallState>((set, get) => ({
 
   setActiveTab: (tab) => set({ activeTab: tab }),
 
-  setModalPos: (pos) => {
+  setModalPos: (pos, persist = true) => {
     set({ modalPos: pos });
-    localStorage.setItem(MODAL_POS_KEY, JSON.stringify(pos));
+    if (persist) localStorage.setItem(MODAL_POS_KEY, JSON.stringify(pos));
   },
 
-  setModalSize: (size) => {
+  setModalSize: (size, persist = true) => {
     set({ modalSize: size });
-    localStorage.setItem(MODAL_SIZE_KEY, JSON.stringify(size));
+    if (persist) localStorage.setItem(MODAL_SIZE_KEY, JSON.stringify(size));
   },
 }));
