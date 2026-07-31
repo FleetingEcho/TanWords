@@ -5,9 +5,9 @@
   "type": "module",
   "homepage": "https://github.com/FleetingEcho/TanWords",
   "scripts": {
-    "dev": "bun run core:build:dev && electron-vite dev",
+    "dev": "bun run core:build:dev && vite",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
-    "build": "bun run typecheck && electron-vite build",
+    "build": "bun run typecheck && vite build",
     "core:build": "cd core && cargo build --release",
     "core:build:dev": "cd core && cargo build",
     "test": "vitest",
@@ -22,9 +22,6 @@
     "@blocknote/core": "^0.51.4",
     "@blocknote/mantine": "^0.51.4",
     "@blocknote/react": "^0.51.4",
-    "@dnd-kit/core": "^6.3.1",
-    "@dnd-kit/sortable": "^10.0.0",
-    "@dnd-kit/utilities": "^3.2.2",
     "@heroicons/react": "^2.2.0",
     "@mantine/core": "^8.3.18",
     "@mantine/hooks": "^8.3.18",
@@ -56,16 +53,16 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
+    "electron": "^43.2.0",
+    "electron-builder": "^26.0.12",
+    "electron-updater": "^6.6.2",
     "jsdom": "^25.0.1",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.16",
     "typescript": "^5.6.3",
     "vite": "^6.0.0",
-    "vitest": "^2.1.9",
-    "electron": "^40.0.0",
-    "electron-builder": "^26.0.12",
-    "electron-vite": "^4.0.0",
-    "electron-updater": "^6.6.2"
+    "vite-plugin-electron": "^1.1.0",
+    "vitest": "^2.1.9"
   },
   "main": "out/main/index.js"
 }

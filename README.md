@@ -177,8 +177,8 @@ router to drift out of sync. 152 commands are wired this way today.
 
 ### Bundle: 202MB → 129MB DMG, 344MB → 17MB asar
 
-- **`node_modules` is not shipped.** All 30 production dependencies are renderer
-  libraries Vite has already bundled into `out/renderer`, and electron-vite
+- **`node_modules` is not shipped.** All 27 production dependencies are renderer
+  libraries Vite has already bundled into `out/renderer`, and vite-plugin-electron
   inlines the single main-process dependency into `out/main` — nothing resolves
   from the tree at runtime. Shipping it anyway made `app.asar` 344MB instead of
   **17MB**.
