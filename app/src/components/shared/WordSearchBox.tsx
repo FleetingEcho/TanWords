@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { SpeakButton } from "@/components/ui/SpeakButton";
 import { useNavStore } from "@/store/navStore";
+import { useDismissOnOutside } from "@/hooks/useDismissOnOutside";
 import { LevelBadge } from "@/components/shared/LevelBadge";
 
 /** Placeholder shaped like a real candidate card (title row, usage note,
@@ -73,7 +74,12 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
   const [expanded, setExpanded] = useState(0);
   const [addedEn, setAddedEn] = useState<string[]>([]);
   const [collectedEn, setCollectedEn] = useState<string[]>([]);
+  /** Whether the results dropdown is showing. Separate from `searched` so
+   *  dismissing it only hides the panel — the lookup behind it survives,
+   *  and re-opening costs nothing. */
+  const [open, setOpen] = useState(false);
   const quickAbortRef = useRef<AbortController | undefined>(undefined);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const q = query.trim();
   const exactMatch = matches.find((w) => w.word.toLowerCase() === q.toLowerCase());
@@ -102,6 +108,8 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
 
   useEffect(() => () => quickAbortRef.current?.abort(), []);
 
+  useDismissOnOutside(inline && open, () => setOpen(false), [containerRef]);
+
   // A candidate can already be in the vocabulary under a gloss unrelated to
   // the Chinese query (so `matches` wouldn't show it) — check each one by
   // its own English spelling before offering to add it again.
@@ -124,6 +132,7 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
 
   const runSearch = async () => {
     if (!q) return;
+    setOpen(true);
     quickAbortRef.current?.abort();
     const rows = await db.getWords({ search: q });
     setMatches(rows.slice(0, 4));
@@ -215,15 +224,23 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
   };
 
   return (
-    <div className={inline ? "relative" : "space-y-2"}>
+    <div ref={containerRef} className={inline ? "relative" : "space-y-2"}>
       <div className="relative">
         <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
         <input
           autoFocus={!inline}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          onFocus={() => { if (searched) setOpen(true); }}
           onKeyDown={(e) => {
-            if (e.key === "Enter") { e.preventDefault(); void runSearch(); }
+            if (e.key !== "Enter") return;
+            e.preventDefault();
+            // Editing the query resets `searched`, so reaching here with it
+            // still set means the text is unchanged and the lookup on file is
+            // the answer to it — re-open rather than ask the model again. A
+            // run that failed left nothing to re-open, so that one retries.
+            if (searched && !quickError && !noProvider) { setOpen(true); return; }
+            void runSearch();
           }}
           placeholder={t("reading.search.placeholder")}
           className="w-full h-8 pl-8 pr-7 rounded-lg border border-input bg-background text-xs focus:outline-hidden focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground"
@@ -235,7 +252,7 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
         )}
       </div>
 
-      {q && searched && (
+      {q && searched && open && (
         <div className={inline ? "absolute left-0 right-0 top-full z-50 mt-2 space-y-1 rounded-xl border border-border bg-popover p-2 shadow-2xl" : "space-y-1"}>
           {/* Only in the floating variant: the inline one renders in normal
             * flow and is not an overlay. On the Browser page the native panel
