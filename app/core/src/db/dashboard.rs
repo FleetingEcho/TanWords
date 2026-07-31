@@ -19,13 +19,18 @@ pub struct RecentDoc {
     pub updated_at: String,
 }
 
+/// The four totals the dashboard tiles show, plus the lists its cards read.
+///
+/// `words_this_week`, `article_count` and `known_count` used to be here too.
+/// Two of them were never rendered at all, and the tiles now count the four
+/// things the app actually collects — words, sentence patterns, AI chats,
+/// documents — so those three queries ran on every dashboard load for nothing.
 #[derive(serde::Serialize)]
 pub struct DashboardStats {
     pub word_count: i64,
-    pub words_this_week: i64,
-    pub article_count: i64,
+    pub pattern_count: i64,
+    pub chat_count: i64,
     pub doc_count: i64,
-    pub known_count: i64,
     pub recent_words: Vec<RecentWord>,
     pub recent_docs: Vec<RecentDoc>,
 }
@@ -35,15 +40,9 @@ pub async fn db_dashboard_stats(conn: State<'_, AppState>) -> Result<DashboardSt
     let db = db::conn(&conn)?;
 
     let word_count = db::scalar_i64(&db, "SELECT COUNT(*) FROM words", ()).await?;
-    let words_this_week = db::scalar_i64(
-        &db,
-        "SELECT COUNT(*) FROM words WHERE date(created_at, 'localtime') >= date('now', 'localtime', '-6 days')",
-        (),
-    )
-    .await?;
-    let article_count = db::scalar_i64(&db, "SELECT COUNT(*) FROM articles", ()).await?;
+    let pattern_count = db::scalar_i64(&db, "SELECT COUNT(*) FROM patterns", ()).await?;
+    let chat_count = db::scalar_i64(&db, "SELECT COUNT(*) FROM ai_chat_sessions", ()).await?;
     let doc_count = db::scalar_i64(&db, "SELECT COUNT(*) FROM documents", ()).await?;
-    let known_count = db::scalar_i64(&db, "SELECT COUNT(*) FROM user_known_words", ()).await?;
 
     // A `resume` field used to be computed here from a JOIN on extracted_items.
     // Migration 20 dropped that table (it replaced the candidate/accept
@@ -93,10 +92,9 @@ pub async fn db_dashboard_stats(conn: State<'_, AppState>) -> Result<DashboardSt
 
     Ok(DashboardStats {
         word_count,
-        words_this_week,
-        article_count,
+        pattern_count,
+        chat_count,
         doc_count,
-        known_count,
         recent_words,
         recent_docs,
     })

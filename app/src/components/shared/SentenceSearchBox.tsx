@@ -7,7 +7,7 @@ import type { PatternItem } from "@/hooks/useDB.patterns";
 import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
 import { findBestProvider } from "@/providers/select";
-import { analyzeSentence } from "@/features/patterns/generate";
+import { analyzeSentence, type GeneratedSentence } from "@/features/patterns/generate";
 import { LevelBadge } from "@/components/shared/LevelBadge";
 import { SearchIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,12 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
   const [matches, setMatches] = useState<PatternItem[]>([]);
   const [searched, setSearched] = useState(false);
   const [adding, setAdding] = useState(false);
+  /** The AI reading of the typed sentence, shown before it is saved. */
+  const [analysis, setAnalysis] = useState<GeneratedSentence | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeFailed, setAnalyzeFailed] = useState(false);
+  const [noProvider, setNoProvider] = useState(false);
+  const analyzeAbortRef = useRef<AbortController>();
   const anchorRef = useRef<HTMLDivElement>(null);
 
   const loadPatterns = () => db.listPatterns().then(setAllPatterns);
@@ -49,36 +55,79 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
   const exactMatch = matches.some((p) =>
     p.examples.some((e) => e.sentence.trim().toLowerCase() === q.toLowerCase()));
 
-  // Search live and recompute once the async library load finishes. Previously,
-  // pressing Enter before `listPatterns()` resolved searched an empty snapshot
-  // and never retried.
+  // Editing the query invalidates whatever was last searched — reset instead of
+  // re-searching automatically. This box used to search on every keystroke,
+  // which popped the dropdown open over a half-typed sentence; a sentence is
+  // only meaningful once it is finished, so nothing happens until Enter. Same
+  // contract as WordSearchBox.
   useEffect(() => {
-    if (!q) {
-      setSearched(false);
-      setMatches([]);
+    analyzeAbortRef.current?.abort();
+    setSearched(false);
+    setMatches([]);
+    setAnalysis(null);
+    setAnalyzing(false);
+    setAnalyzeFailed(false);
+    setNoProvider(false);
+  }, [query]);
+
+  useEffect(() => () => analyzeAbortRef.current?.abort(), []);
+
+  // Pressing Enter before `listPatterns()` resolves would otherwise search an
+  // empty snapshot and never retry; recompute if the library lands afterwards.
+  useEffect(() => {
+    if (!searched || !q) return;
+    setMatches(filterSentencePatterns(allPatterns, q).slice(0, 8));
+  }, [allPatterns]);
+
+  const runSearch = async () => {
+    if (!q) return;
+    analyzeAbortRef.current?.abort();
+    const found = filterSentencePatterns(allPatterns, q).slice(0, 8);
+    setMatches(found);
+    setSearched(true);
+
+    // Only worth an AI call for something sentence-shaped, and not for a
+    // sentence the library already holds verbatim — that one has a stored
+    // analysis already, reachable by clicking the match.
+    const alreadySaved = found.some((p) =>
+      p.examples.some((e) => e.sentence.trim().toLowerCase() === q.toLowerCase()));
+    if (alreadySaved || q.split(/\s+/).filter(Boolean).length < 3) return;
+
+    const provider = findBestProvider();
+    if (!provider) {
+      setNoProvider(true);
       return;
     }
-    setMatches(filterSentencePatterns(allPatterns, q).slice(0, 8));
-    setSearched(true);
-  }, [q, allPatterns]);
-
-  const runSearch = () => {
-    if (!q) return;
-    setMatches(filterSentencePatterns(allPatterns, q).slice(0, 8));
-    setSearched(true);
+    const controller = new AbortController();
+    analyzeAbortRef.current = controller;
+    setAnalyzing(true);
+    setAnalyzeFailed(false);
+    try {
+      const result = await analyzeSentence(provider, q, levels, controller.signal);
+      if (!controller.signal.aborted) setAnalysis(result);
+    } catch {
+      if (!controller.signal.aborted) setAnalyzeFailed(true);
+    } finally {
+      if (!controller.signal.aborted) setAnalyzing(false);
+    }
   };
 
   const handleAdd = async () => {
     if (!q || adding || exactMatch) return;
     setAdding(true);
     try {
-      const provider = findBestProvider();
-      let result = { sentence: q, zh: "", level: "", skeleton: "", note: "" };
-      if (provider) {
-        try { result = await analyzeSentence(provider, q, levels); }
-        catch { toast.error(t("vocab.patterns.analyzeFailed")); }
-      } else {
-        toast.info(t("vocab.noApiKey"));
+      // Whatever runSearch already analyzed and put on screen — saving is now
+      // just committing what was shown, rather than a second (and possibly
+      // differently-worded) AI call behind the user's back.
+      let result: GeneratedSentence = analysis ?? { sentence: q, zh: "", level: "", skeleton: "", note: "" };
+      if (!analysis) {
+        const provider = findBestProvider();
+        if (provider) {
+          try { result = await analyzeSentence(provider, q, levels); }
+          catch { toast.error(t("vocab.patterns.analyzeFailed")); }
+        } else {
+          toast.info(t("vocab.noApiKey"));
+        }
       }
       const saved = await db.saveSentencePattern(result.sentence, result.zh, result.skeleton, result.note, result.level, "manual");
       if (saved) {
@@ -131,13 +180,47 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
         <p className="px-2 py-1 text-xs text-muted-foreground">{t("vocab.patterns.noMatch")}</p>
       )}
 
+      {/* The typed sentence, read by the AI. Words have shown this since the
+        * beginning (WordSearchBox's quick lookup); sentences were analyzed too,
+        * but only ever inside `handleAdd` — so the reading existed and was
+        * saved without the learner being shown it once. */}
       {canAddSentence && !exactMatch && (
-        <div className="p-2">
+        <div className="mt-1 rounded-lg border border-border bg-muted/30 p-2.5">
+          <div className="flex items-start gap-2">
+            <p className="min-w-0 flex-1 text-xs font-medium leading-relaxed text-foreground">{q}</p>
+            <SpeakButton text={q} className="mt-0.5 h-3.5 w-3.5" />
+            {analysis?.level && <LevelBadge level={analysis.level} />}
+          </div>
+
+          {analyzing && (
+            <div className="mt-2 space-y-1.5 animate-pulse" aria-hidden>
+              <div className="h-2.5 w-3/4 rounded-full bg-muted" />
+              <div className="h-2.5 w-1/2 rounded-full bg-muted" />
+            </div>
+          )}
+
+          {analysis && !analyzing && (
+            <div className="mt-2 space-y-1.5">
+              {analysis.zh && <p className="text-xs leading-relaxed text-muted-foreground">{analysis.zh}</p>}
+              {analysis.skeleton && (
+                <p className="font-mono text-[11px] leading-relaxed text-primary">{analysis.skeleton}</p>
+              )}
+              {analysis.note && (
+                <p className="text-[11px] leading-relaxed text-muted-foreground/80">{analysis.note}</p>
+              )}
+            </div>
+          )}
+
+          {analyzeFailed && !analyzing && (
+            <p className="mt-2 text-[11px] text-muted-foreground">{t("vocab.patterns.analyzeFailed")}</p>
+          )}
+          {noProvider && <p className="mt-2 text-[11px] text-muted-foreground">{t("vocab.noApiKey")}</p>}
+
           <Button
             variant="ghost"
             onClick={handleAdd}
-            disabled={adding}
-            className="h-auto w-full items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-primary hover:bg-primary/10 disabled:opacity-50 transition-colors"
+            disabled={adding || analyzing}
+            className="mt-2 h-auto w-full items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-primary hover:bg-primary/10 disabled:opacity-50 transition-colors"
           >
             <BookPlus className="h-3.5 w-3.5 shrink-0" />
             <span className="truncate">{adding ? t("vocab.patterns.adding") : t("vocab.patterns.add")}</span>

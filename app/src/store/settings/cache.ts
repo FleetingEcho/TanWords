@@ -1,7 +1,6 @@
 import {
-  DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_DASHBOARD_WIDGET_LAYOUT,
-  sanitizeDashboardLayout,
-  type SidebarTabId, type TopBarItemId, type DashboardWidgetLayout, type RssTabSelection,
+  DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS,
+  type SidebarTabId, type TopBarItemId, type RssTabSelection,
 } from "./types";
 
 /** localStorage mirrors of a handful of settings that several pages read
@@ -43,25 +42,6 @@ export function cachedSidebarTabs(): SidebarTabId[] {
 export function cacheSidebarTabs(tabs: SidebarTabId[]) {
   try {
     localStorage.setItem(SIDEBAR_TABS_CACHE_KEY, JSON.stringify(tabs));
-  } catch {
-    // The DB remains authoritative when localStorage is unavailable.
-  }
-}
-
-const DASHBOARD_LAYOUT_CACHE_KEY = "tanwords_dashboard_widget_layout_cache";
-
-export function cachedDashboardLayout(): DashboardWidgetLayout {
-  try {
-    const raw = localStorage.getItem(DASHBOARD_LAYOUT_CACHE_KEY);
-    return raw ? sanitizeDashboardLayout(JSON.parse(raw)) : DEFAULT_DASHBOARD_WIDGET_LAYOUT;
-  } catch {
-    return DEFAULT_DASHBOARD_WIDGET_LAYOUT;
-  }
-}
-
-export function cacheDashboardLayout(layout: DashboardWidgetLayout) {
-  try {
-    localStorage.setItem(DASHBOARD_LAYOUT_CACHE_KEY, JSON.stringify(layout));
   } catch {
     // The DB remains authoritative when localStorage is unavailable.
   }

@@ -7,12 +7,12 @@ import type { RssEntryRow, RssFeed } from "@/hooks/useDB.types";
 import { PlayIcon, PauseIcon, MusicIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import {
-  DashboardCard, DashboardRow, DashboardEmpty, DashboardSkeleton, DashboardFillRows,
+  DashboardCard, DashboardRow, DashboardEmpty, DashboardSkeleton, DashboardFill,
   DASHBOARD_ROW_H, DASHBOARD_BODY_ROWS,
 } from "./DashboardCard";
 
-/** The current-episode strip is two rows tall, leaving three for the queue. */
-const QUEUE_ROWS = 3;
+/** The now-playing strip is worth two ordinary rows. */
+const NOW_PLAYING_ROWS = 2;
 
 function formatDuration(sec: number | null | undefined): string {
   if (!sec || !isFinite(sec)) return "";
@@ -29,7 +29,7 @@ function formatDuration(sec: number | null | undefined): string {
  *  a single click from the dashboard instead of a trip through Feeds. When
  *  something *is* loaded it pins to the top with its progress, so the card
  *  answers "where was I" and "what's next" in the same place. */
-export function ListenNextWidget() {
+export function ListenNextWidget({ maxRows = DASHBOARD_BODY_ROWS }: { maxRows?: number }) {
   const t = useT();
   const db = useDB();
   const navigate = useNavStore((s) => s.navigate);
@@ -51,14 +51,15 @@ export function ListenNextWidget() {
       setFeedsById(new Map(feedList.map((f) => [f.id, f])));
       const withAudio = entries.filter((e) => e.audio_url);
       const unheard = withAudio.filter((e) => !e.is_read);
-      setEpisodes((unheard.length ? unheard : withAudio).slice(0, QUEUE_ROWS + 2));
+      setEpisodes((unheard.length ? unheard : withAudio).slice(0, maxRows));
     })();
     return () => { alive = false; };
-  }, []);
+  }, [maxRows]);
 
   const playing = status === "playing";
   const active = track && status !== "idle";
-  const queue = (episodes ?? []).filter((e) => e.audio_url !== track?.audioUrl).slice(0, active ? QUEUE_ROWS : QUEUE_ROWS + 2);
+  const queueRows = Math.max(0, maxRows - (active ? NOW_PLAYING_ROWS : 0));
+  const queue = (episodes ?? []).filter((e) => e.audio_url !== track?.audioUrl).slice(0, queueRows);
   const progress = duration > 0 ? Math.min(100, (position / duration) * 100) : 0;
 
   return (
@@ -68,14 +69,14 @@ export function ListenNextWidget() {
       onViewAll={() => navigate("feeds")}
     >
       {episodes === null ? (
-        <DashboardSkeleton />
+        <DashboardSkeleton rows={maxRows} />
       ) : !active && queue.length === 0 ? (
         <DashboardEmpty>{t("dash.empty.listenNext")}</DashboardEmpty>
       ) : (
         <>
           {active && (
             <div
-              style={{ height: DASHBOARD_ROW_H * 2 }}
+              style={{ height: DASHBOARD_ROW_H * NOW_PLAYING_ROWS }}
               className="flex items-center gap-3 px-4 border-b border-border bg-primary/5"
             >
               <Button
@@ -120,8 +121,7 @@ export function ListenNextWidget() {
               </span>
             </DashboardRow>
           ))}
-          {/* The now-playing strip is worth two rows, so it displaces two. */}
-          <DashboardFillRows count={DASHBOARD_BODY_ROWS - queue.length - (active ? 2 : 0)} />
+          <DashboardFill />
         </>
       )}
     </DashboardCard>

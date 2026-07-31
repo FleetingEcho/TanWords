@@ -1,11 +1,11 @@
 import type { StoreApi } from "zustand";
 import type { SettingsState } from "./state";
 import {
-  DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_DASHBOARD_WIDGET_LAYOUT, DEFAULT_HIGHLIGHT_COLOR,
-  DOCUMENT_TEXT_COLOR_RE, sanitizeDashboardLayout, type Theme, type RssTabSelection,
+  DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR,
+  DOCUMENT_TEXT_COLOR_RE, type Theme, type RssTabSelection,
 } from "./types";
 import {
-  cacheUiLanguage, cacheSidebarTabs, cacheDashboardLayout, cacheTopBarItems, cacheDefaultRssTab, cacheFeedsViewMode,
+  cacheUiLanguage, cacheSidebarTabs, cacheTopBarItems, cacheDefaultRssTab, cacheFeedsViewMode,
 } from "./cache";
 import { applyTheme, applyDocumentFontSize, applyDocumentLineHeight, applyDocumentTextColor, applyHighlightColor, parseBannerPosition } from "./domEffects";
 
@@ -31,7 +31,6 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       "show_github_link",
       "visible_sidebar_tabs",
       "visible_topbar_items",
-      "dashboard_widget_layout",
       "default_rss_tab",
       "feeds_view_mode",
       "user_avatar",
@@ -70,11 +69,6 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
     }
     cacheSidebarTabs(resolvedSidebarTabs);
 
-    const resolvedDashboardLayout = values.dashboard_widget_layout
-      ? sanitizeDashboardLayout(values.dashboard_widget_layout)
-      : DEFAULT_DASHBOARD_WIDGET_LAYOUT;
-    cacheDashboardLayout(resolvedDashboardLayout);
-
     const resolvedTopBarItems = Array.isArray(values.visible_topbar_items)
       ? DEFAULT_TOPBAR_ITEMS.filter((id) => (values.visible_topbar_items as unknown as string[]).includes(id))
       : DEFAULT_TOPBAR_ITEMS;
@@ -111,7 +105,6 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       showGithubLink: (values.show_github_link as unknown) !== false && values.show_github_link !== "false",
       selectionActions: (values.selection_actions as unknown) !== false && values.selection_actions !== "false",
       visibleSidebarTabs: resolvedSidebarTabs,
-      dashboardWidgetLayout: resolvedDashboardLayout,
       visibleTopBarItems: resolvedTopBarItems,
       defaultRssTab: resolvedDefaultRssTab,
       feedsViewMode: resolvedFeedsViewMode,

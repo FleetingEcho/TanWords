@@ -119,10 +119,9 @@ export interface DocumentListResult {
 
 export interface DashboardStats {
   word_count: number;
-  words_this_week: number;
-  article_count: number;
+  pattern_count: number;
+  chat_count: number;
   doc_count: number;
-  known_count: number;
   recent_words: { id: number; word: string; zh: string; level: string; updated_at: string }[];
   recent_docs: { id: number; title: string; updated_at: string }[];
 }

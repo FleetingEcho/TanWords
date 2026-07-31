@@ -7,6 +7,7 @@ import type { UpdateInfoPayload } from "./updater";
 import type { BrowserPanelManager, PanelBounds } from "./browserPanel";
 import type { TrayManager } from "./tray";
 import { abortFetch, startFetch } from "./http";
+import { rememberWindowBackground } from "./windowBackground";
 
 export type IpcDeps = {
   getMainWindow: () => BrowserWindow | null;
@@ -59,6 +60,13 @@ async function dispatch(
       const win = deps.getMainWindow();
       win?.show();
       win?.focus();
+      return null;
+    }
+    /** The renderer reporting its resolved theme background, so the next
+     *  launch can create the window in that colour instead of white. */
+    case "window:background": {
+      const { color } = (args ?? {}) as { color?: unknown };
+      rememberWindowBackground(color);
       return null;
     }
 

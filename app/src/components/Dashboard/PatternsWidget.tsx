@@ -5,7 +5,7 @@ import { useNavStore } from "@/store/navStore";
 import type { PatternItem } from "@/hooks/useDB.patterns";
 import { BookmarkIcon } from "@/components/ui/icons";
 import { LevelBadge } from "@/components/shared/LevelBadge";
-import { DashboardCard, DashboardRow, DashboardEmpty, DashboardSkeleton, DashboardFillRows, DASHBOARD_BODY_ROWS } from "./DashboardCard";
+import { DashboardCard, DashboardRow, DashboardEmpty, DashboardSkeleton, DashboardFill, DASHBOARD_BODY_ROWS } from "./DashboardCard";
 
 /** Dashboard card: the sentence-pattern library, which is where article-driven
  *  study actually accumulates — starred patterns first, then the newest.
@@ -13,7 +13,7 @@ import { DashboardCard, DashboardRow, DashboardEmpty, DashboardSkeleton, Dashboa
  *  Click-through needs no new plumbing: `openVocabularySentence` navigates to
  *  Vocabulary and VocabularyPage switches itself to the patterns tab on a
  *  non-empty `initialSentenceId` (VocabularyPage.tsx:58). */
-export function PatternsWidget() {
+export function PatternsWidget({ maxRows = DASHBOARD_BODY_ROWS }: { maxRows?: number }) {
   const t = useT();
   const db = useDB();
   const navigate = useNavStore((s) => s.navigate);
@@ -25,10 +25,10 @@ export function PatternsWidget() {
     db.listPatterns().then((all) => {
       if (!alive) return;
       const ranked = [...all].sort((a, b) => Number(b.starred) - Number(a.starred));
-      setItems(ranked.slice(0, DASHBOARD_BODY_ROWS));
+      setItems(ranked.slice(0, maxRows));
     });
     return () => { alive = false; };
-  }, []);
+  }, [maxRows]);
 
   return (
     <DashboardCard
@@ -37,7 +37,7 @@ export function PatternsWidget() {
       onViewAll={() => navigate("vocabulary")}
     >
       {items === null ? (
-        <DashboardSkeleton />
+        <DashboardSkeleton rows={maxRows} />
       ) : items.length === 0 ? (
         <DashboardEmpty>{t("dash.empty.patterns")}</DashboardEmpty>
       ) : (
@@ -52,7 +52,7 @@ export function PatternsWidget() {
             {p.level && <LevelBadge level={p.level} />}
           </DashboardRow>
         ))}
-        <DashboardFillRows count={DASHBOARD_BODY_ROWS - items.length} />
+        <DashboardFill />
         </>
       )}
     </DashboardCard>

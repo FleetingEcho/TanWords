@@ -1,4 +1,5 @@
 import { DEFAULT_BANNER_POSITION, DEFAULT_HIGHLIGHT_COLOR, DOCUMENT_TEXT_COLOR_RE, type BannerPosition, type Theme } from "./types";
+import { callMain } from "@/ipc/host";
 
 /** Installs that predate the drag-to-position banner have no stored framing — and
  *  their banners were baked as centre crops, so centre is also the honest fallback. */
@@ -71,5 +72,26 @@ export function applyTheme(theme: Theme) {
     localStorage.setItem("tanwords_theme_cache", theme);
   } catch {
     // localStorage unavailable — the DB-driven applyTheme() call still runs, just later
+  }
+
+  reportWindowBackground();
+}
+
+/** Tells main what this theme actually resolves to, so the next launch can
+ *  create its BrowserWindow in that colour rather than the default white.
+ *
+ *  Read off the DOM rather than mapped from `theme`: the class list above is
+ *  the input to a stylesheet, and `getComputedStyle` is the only thing that
+ *  knows what came out of it — including for "system", where the answer
+ *  depends on the OS. Best-effort throughout; a failure here costs one white
+ *  frame on next launch, never anything the user is doing now. */
+function reportWindowBackground() {
+  try {
+    if (!window.tanwords) return; // browser/test context, no preload
+    const color = getComputedStyle(document.body).backgroundColor;
+    if (color) void callMain("window:background", { color }).catch(() => {});
+  } catch {
+    // getComputedStyle can throw if body isn't attached yet; the next
+    // applyTheme call (settings load) reports it anyway.
   }
 }

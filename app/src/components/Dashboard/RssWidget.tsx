@@ -5,11 +5,11 @@ import { useNavStore } from "@/store/navStore";
 import { FeedIcon, PlayIcon } from "@/components/ui/icons";
 import type { RssEntryRow, RssFeed } from "@/hooks/useDB.types";
 import { Button } from "@/components/ui/button";
-import { DashboardCard, DashboardRow, DashboardSkeleton, DashboardFillRows, DASHBOARD_BODY_ROWS } from "./DashboardCard";
+import { DashboardCard, DashboardRow, DashboardSkeleton, DashboardFill, DASHBOARD_BODY_ROWS } from "./DashboardCard";
 
 /** Dashboard card: feed subscriptions at a glance — source/unread totals and
  * the latest unread entries — with the Feeds page as its click-through. */
-export function RssWidget() {
+export function RssWidget({ maxRows = DASHBOARD_BODY_ROWS }: { maxRows?: number }) {
   const t = useT();
   const db = useDB();
   const navigate = useNavStore((s) => s.navigate);
@@ -31,11 +31,11 @@ export function RssWidget() {
       setFeeds(feedList);
       setUnread(counts.reduce((sum, [, n]) => sum + n, 0));
       const unreadEntries = entries.filter((e) => !e.is_read);
-      setLatest((unreadEntries.length ? unreadEntries : entries).slice(0, DASHBOARD_BODY_ROWS));
+      setLatest((unreadEntries.length ? unreadEntries : entries).slice(0, maxRows));
       setLoaded(true);
     })();
     return () => { alive = false; };
-  }, []);
+  }, [maxRows]);
 
   const podcastCount = feeds.filter((f) => f.is_podcast).length;
   const articleCount = feeds.length - podcastCount;
@@ -61,7 +61,7 @@ export function RssWidget() {
       onViewAll={() => navigate("feeds")}
     >
       {!loaded ? (
-        <DashboardSkeleton />
+        <DashboardSkeleton rows={maxRows} />
       ) : feeds.length === 0 ? (
         <div className="h-full flex flex-col items-center justify-center gap-2.5 px-6 text-center">
           <p className="text-xs text-muted-foreground">{t("dash.rss.empty")}</p>
@@ -100,7 +100,7 @@ export function RssWidget() {
             {!e.is_read && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
           </DashboardRow>
         ))}
-        <DashboardFillRows count={DASHBOARD_BODY_ROWS - latest.length} />
+        <DashboardFill />
         </>
       )}
     </DashboardCard>

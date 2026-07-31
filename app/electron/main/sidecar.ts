@@ -20,8 +20,14 @@ function binaryName(): string {
 
 /** Where the sidecar binary lives. Packaged builds carry it as an
  *  `extraResources` entry (Task 5); unpackaged dev/CI runs use whichever of
- *  `core/target/{release,debug}` was actually built, preferring release if
- *  both exist since that's what `bun run package` produces. */
+ *  `core/target/{release,debug}` was actually built.
+ *
+ *  When both exist, the *newer* one wins rather than release unconditionally.
+ *  `bun run dev` builds debug (`core:build:dev`), so preferring release meant
+ *  that once `bun run package` had produced a release binary, every later dev
+ *  run silently kept executing it — Rust edits appeared to do nothing, and new
+ *  backend fields came back undefined while the old ones still worked, which
+ *  looks like a frontend bug rather than a stale binary. */
 function resolveBinaryPath(): string {
   const name = binaryName();
 
@@ -32,8 +38,18 @@ function resolveBinaryPath(): string {
   const coreDir = path.join(app.getAppPath(), "core");
   const releasePath = path.join(coreDir, "target", "release", name);
   const debugPath = path.join(coreDir, "target", "debug", name);
-  if (fs.existsSync(releasePath)) return releasePath;
-  return debugPath;
+
+  const mtime = (p: string): number => {
+    try {
+      return fs.statSync(p).mtimeMs;
+    } catch {
+      return -1;
+    }
+  };
+  const release = mtime(releasePath);
+  const debug = mtime(debugPath);
+  if (release < 0 && debug < 0) return debugPath;
+  return release >= debug ? releasePath : debugPath;
 }
 
 export class SidecarSupervisor {

@@ -1,23 +1,24 @@
 import React from "react";
 import { useT } from "@/hooks/useT";
 import { useNavStore } from "@/store/navStore";
-import { ChatIcon, FeedIcon, BookIcon, DocIcon, CompassIcon, MusicIcon } from "@/components/ui/icons";
+import { ChatIcon, MusicIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 
-/** One-tap jumps into the app's main loops.
+/** Two one-tap jumps, under the greeting rather than inside the Recents grid —
+ *  this is navigation, not a "recent" anything.
  *
- *  This used to be a card inside the Recents grid, where it was the odd one
- *  out: no list, so nothing to size it, and it sat at ~94px next to 240px
- *  neighbours. As a full-width strip under the greeting it reads as what it
- *  actually is — navigation, not a "recent" anything — and the grid below is
- *  left as six cards of identical height. */
+ *  Only the AI tutor and Music: everything else it used to offer (Feeds,
+ *  Reading, Words, Docs) is one click away in the sidebar anyway, and the
+ *  sentence-pattern and feed cards below already lead into those loops.
+ *
+ *  Icon beside the label rather than above it. At two-across each button is
+ *  half the page wide, and a small glyph centred over a caption in that much
+ *  space just looks stranded. */
 export function QuickActionsBar() {
   const t = useT();
   const navigate = useNavStore((s) => s.navigate);
 
   const actions = [
-    { icon: FeedIcon, label: t("dash.quick.feeds"), go: () => navigate("feeds") },
-    { icon: BookIcon, label: t("dash.quick.reading"), go: () => navigate("reading") },
     {
       icon: ChatIcon,
       label: t("dash.quick.chat"),
@@ -26,22 +27,22 @@ export function QuickActionsBar() {
         window.setTimeout(() => window.dispatchEvent(new CustomEvent("tanwords:new-chat")), 0);
       },
     },
-    { icon: CompassIcon, label: t("dash.quick.words"), go: () => navigate("vocabulary") },
-    { icon: DocIcon, label: t("dash.quick.docs"), go: () => navigate("documents") },
     { icon: MusicIcon, label: t("dash.quick.music"), go: () => navigate("music") },
   ];
 
   return (
-    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+    <div className="grid grid-cols-2 gap-2">
       {actions.map((a) => (
         <Button
           key={a.label}
           variant="ghost"
           onClick={a.go}
-          className="h-auto group flex flex-col items-center gap-1.5 py-3 rounded-xl bg-card border border-border hover:bg-muted/60 hover:border-primary/30 transition-colors"
+          className="h-auto group flex flex-row items-center justify-center gap-2.5 py-3.5 rounded-xl bg-card border border-border hover:bg-muted/60 hover:border-primary/30 transition-colors"
         >
-          <a.icon className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
-          <span className="text-[11px] font-medium text-muted-foreground">{a.label}</span>
+          <a.icon className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+          <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors">
+            {a.label}
+          </span>
         </Button>
       ))}
     </div>

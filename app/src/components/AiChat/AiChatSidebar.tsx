@@ -5,12 +5,36 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Button } from "@/components/ui/button";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { Archive, ArchiveRestore, ChevronDown, ChevronsLeft, ChevronsRight, MessageSquarePlus, MoreHorizontal, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, ChevronDown, ChevronsLeft, ChevronsRight, MessageSquare, MessageSquarePlus, MoreHorizontal, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
 import { LIST_PANEL_WIDTH, LIST_PANEL_COLLAPSED_WIDTH, LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
 
 /** Same compact pill as Documents' "+ New Doc" button (DocSelector) — kept in
  *  one row with the collapse toggle instead of stacking a full-width button below it. */
 const NEW_BUTTON_CLASS = "h-6 px-2.5 rounded-lg bg-primary text-white text-[11px] font-semibold hover:bg-primary/90";
+
+/** `updated_at` sliced to its date, said the short way.
+ *
+ *  The list used to print the raw `2026-07-31` under every title. Ten glyphs
+ *  of mostly-identical text on its own line, once per row — it doubled each
+ *  row's height to say something that only matters as "how long ago", and the
+ *  shared `2026-` prefix carried no information at all.
+ *
+ *  Compares the same `slice(0, 10)` the list already displayed rather than
+ *  parsing the timestamp, so this changes how the date reads and nothing about
+ *  which day it names. */
+function formatSessionDate(t: (k: string) => string, updatedAt: string): string {
+  const key = updatedAt.slice(0, 10);
+  const at = (offsetDays: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - offsetDays);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  if (key === at(0)) return t("aichat.today");
+  if (key === at(1)) return t("aichat.yesterday");
+  // Same calendar year: the year is shared by every row, so drop it.
+  if (key.slice(0, 4) === at(0).slice(0, 4)) return key.slice(5);
+  return key;
+}
 
 interface Props {
   displaySessions: ChatSessionItem[];
@@ -54,12 +78,18 @@ export function AiChatSidebar({
   const SessionRow = ({ session, archived }: { session: ChatSessionItem; archived: boolean }) => (
     <div
       onClick={() => onSwitchSession(session.id)}
-      className={`group relative flex items-start gap-1 px-3 py-2 mx-1 rounded-lg cursor-pointer transition-colors ${
+      title={session.title}
+      className={`group relative flex h-9 items-center gap-2 px-2.5 mx-1 rounded-lg cursor-pointer transition-colors ${
         session.id === activeId
           ? "bg-[hsl(var(--sidebar-active-bg))] text-[hsl(var(--sidebar-active-fg))]"
           : "text-[hsl(var(--sidebar-foreground))] hover:bg-muted"
       }`}
     >
+      {/* Same glyph the collapsed rail uses, so a conversation looks like the
+        * same object whichever width the panel is at. */}
+      <MessageSquare
+        className={`h-3.5 w-3.5 shrink-0 ${session.id === activeId ? "text-primary" : "text-muted-foreground/50"}`}
+      />
       <span className="min-w-0 flex-1">
         {renamingId === session.id ? (
           // Uncontrolled on purpose: SessionRow is redefined every parent
@@ -77,20 +107,28 @@ export function AiChatSidebar({
             className="w-full h-6 px-1.5 text-xs rounded-md border border-primary/40 bg-background focus:outline-none focus:ring-1 focus:ring-primary/30"
           />
         ) : (
-          <span className="block text-xs leading-snug line-clamp-2 break-words">{session.title}</span>
+          // One line, truncated: `line-clamp-2` let every row pick its own
+          // height, so the list came out ragged. The full title is in the
+          // row's tooltip.
+          <span className="block truncate text-xs leading-none">{session.title}</span>
         )}
-        <span className="mt-0.5 flex items-center gap-1 text-[10px] tabular-nums text-muted-foreground/60">
-          {session.updated_at.slice(0, 10)}
-          {session.pinned && <Pin className="h-2.5 w-2.5 text-primary/70" />}
-        </span>
       </span>
-      <DropdownMenu>
+      {session.pinned && <Pin className="h-2.5 w-2.5 shrink-0 text-primary/70" />}
+      {/* Date and menu share one slot, so revealing the menu on hover shifts
+        * nothing. The date also yields while the menu is open — without the
+        * `group-has-` clause it reappears under the popup as soon as the
+        * pointer leaves the row. */}
+      <span className="relative flex w-16 shrink-0 items-center justify-end">
+        <span className="whitespace-nowrap text-[10px] tabular-nums text-muted-foreground/60 transition-opacity group-hover:opacity-0 group-has-[[data-state=open]]:opacity-0">
+          {formatSessionDate(t, session.updated_at)}
+        </span>
+        <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
             onClick={(e) => e.stopPropagation()}
             title={t("aichat.sessionMenu")}
-            className="h-5 w-5 shrink-0 p-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100 hover:text-foreground"
+            className="absolute right-0 h-5 w-5 shrink-0 p-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100 hover:text-foreground"
           >
             <MoreHorizontal className="h-3.5 w-3.5" />
           </Button>
@@ -120,7 +158,8 @@ export function AiChatSidebar({
             <Trash2 className="h-3.5 w-3.5" /> {t("common.delete")}
           </DropdownMenuItem>
         </DropdownMenuContent>
-      </DropdownMenu>
+        </DropdownMenu>
+      </span>
     </div>
   );
 
@@ -193,8 +232,25 @@ export function AiChatSidebar({
         )}
       </div>}
 
+      {/* A chat glyph per session, not the title's first letter. Initials only
+        * read as initials when they mean something — here they were arbitrary
+        * ("S", "M", "S"), told you nothing about which chat was which, and made
+        * the rail look like a column of stray characters. The icon says "chat"
+        * and the title lives in the tooltip; the active one is marked by its
+        * highlight. */}
       {collapsed && <div className="flex-1 flex flex-col items-center gap-2 py-3">
-        {displaySessions.slice(0, 8).map((session) => <Button key={session.id} variant="ghost" onClick={() => onSwitchSession(session.id)} title={session.title} className={`h-8 w-8 rounded-xl p-0 text-[11px] font-semibold ${session.id === activeId ? "bg-primary/12 text-primary ring-1 ring-primary/20" : "text-muted-foreground"}`}>{session.title.trim().slice(0, 1).toUpperCase()}</Button>)}
+        {displaySessions.slice(0, 8).map((session) => (
+          <Button
+            key={session.id}
+            variant="ghost"
+            onClick={() => onSwitchSession(session.id)}
+            title={session.title}
+            aria-label={session.title}
+            className={`h-8 w-8 rounded-xl p-0 ${session.id === activeId ? "bg-primary/12 text-primary ring-1 ring-primary/20" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+          </Button>
+        ))}
       </div>}
 
       <ConfirmModal

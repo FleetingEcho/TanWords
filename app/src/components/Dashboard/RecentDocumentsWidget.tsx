@@ -3,13 +3,17 @@ import { useT } from "@/hooks/useT";
 import { useNavStore } from "@/store/navStore";
 import type { DashboardStats } from "@/hooks/useDB";
 import { DocIcon } from "@/components/ui/icons";
-import { DashboardCard, DashboardRow, DashboardEmpty, DashboardSkeleton, DashboardFillRows, DASHBOARD_BODY_ROWS } from "./DashboardCard";
+import { DashboardCard, DashboardRow, DashboardEmpty, DashboardSkeleton, DashboardFill, DASHBOARD_BODY_ROWS } from "./DashboardCard";
 
 /** Dashboard card: recently touched documents. `docs` comes from the parent's
  *  single shared `getDashboardStats()` call rather than fetching its own copy. */
-export function RecentDocumentsWidget({ docs }: { docs: DashboardStats["recent_docs"] | undefined }) {
+export function RecentDocumentsWidget({ docs, maxRows = DASHBOARD_BODY_ROWS }: {
+  docs: DashboardStats["recent_docs"] | undefined;
+  maxRows?: number;
+}) {
   const t = useT();
   const navigate = useNavStore((s) => s.navigate);
+  const shown = (docs ?? []).slice(0, maxRows);
 
   return (
     <DashboardCard
@@ -18,12 +22,12 @@ export function RecentDocumentsWidget({ docs }: { docs: DashboardStats["recent_d
       onViewAll={() => navigate("documents")}
     >
       {docs === undefined ? (
-        <DashboardSkeleton />
-      ) : docs.length === 0 ? (
+        <DashboardSkeleton rows={maxRows} />
+      ) : shown.length === 0 ? (
         <DashboardEmpty>{t("dash.empty.docs")}</DashboardEmpty>
       ) : (
         <>
-          {docs.map((d) => (
+          {shown.map((d) => (
             <DashboardRow key={d.id} onClick={() => navigate("documents")}>
               <span className="flex-1 min-w-0 text-sm font-medium truncate">{d.title}</span>
               <span className="text-[10px] font-mono text-muted-foreground/70 shrink-0">
@@ -31,7 +35,7 @@ export function RecentDocumentsWidget({ docs }: { docs: DashboardStats["recent_d
               </span>
             </DashboardRow>
           ))}
-          <DashboardFillRows count={DASHBOARD_BODY_ROWS - docs.length} />
+          <DashboardFill />
         </>
       )}
     </DashboardCard>
