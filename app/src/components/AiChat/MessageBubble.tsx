@@ -68,7 +68,7 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, compact = 
     <div className={`flex gap-3 group ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
       {msg.role === "assistant" && (
         <div
-          className={`${avatarSize} rounded-xl bg-gradient-to-br from-primary to-primary/80 ring-1 ring-primary/30 flex items-center justify-center font-semibold text-primary-foreground shrink-0 mt-1 shadow-md`}
+          className={`${avatarSize} rounded-xl bg-linear-to-br from-primary to-primary/80 ring-1 ring-primary/30 flex items-center justify-center font-semibold text-primary-foreground shrink-0 mt-1 shadow-md`}
         >
           AI
         </div>
@@ -76,10 +76,10 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, compact = 
 
       <div
         {...(msg.role === "assistant" ? { [AI_MESSAGE_ATTR]: "" } : {})}
-        className={`relative max-w-[min(82%,48rem)] ${fillCardWidth ? "w-full" : ""} rounded-[20px] px-4 py-3 ${textSize} leading-7 shadow-sm ${
+        className={`relative max-w-[min(82%,48rem)] ${fillCardWidth ? "w-full" : ""} rounded-[20px] px-4 py-3 ${textSize} leading-7 shadow-xs ${
           msg.role === "user"
-            ? "bg-gradient-to-br from-primary to-primary/90 text-primary-foreground rounded-br-md shadow-primary/10"
-            : "border border-border/55 bg-card/80 text-foreground rounded-bl-md backdrop-blur-sm"
+            ? "bg-linear-to-br from-primary to-primary/90 text-primary-foreground rounded-br-md shadow-primary/10"
+            : "border border-border/55 bg-card/80 text-foreground rounded-bl-md backdrop-blur-xs"
         }`}
       >
         {isTyping ? (
@@ -126,7 +126,7 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, compact = 
             <Button
               variant="ghost"
               onClick={() => onEdit(index)}
-              className="w-5 h-5 p-0 rounded-full bg-background border border-border flex items-center justify-center shadow-sm hover:bg-background"
+              className="w-5 h-5 p-0 rounded-full bg-background border border-border flex items-center justify-center shadow-xs hover:bg-background"
               title={t("aichat.editMessage")}
             >
               <Pencil className="w-2.5 h-2.5 text-muted-foreground" />
@@ -136,7 +136,7 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, compact = 
             <Button
               variant="ghost"
               onClick={onRegenerate}
-              className="w-5 h-5 p-0 rounded-full bg-background border border-border flex items-center justify-center shadow-sm hover:bg-background"
+              className="w-5 h-5 p-0 rounded-full bg-background border border-border flex items-center justify-center shadow-xs hover:bg-background"
               title={t("aichat.regenerate")}
             >
               <RotateCw className="w-2.5 h-2.5 text-muted-foreground" />
@@ -145,7 +145,7 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, compact = 
           <Button
             variant="ghost"
             onClick={copy}
-            className="w-5 h-5 p-0 rounded-full bg-background border border-border flex items-center justify-center shadow-sm hover:bg-background"
+            className="w-5 h-5 p-0 rounded-full bg-background border border-border flex items-center justify-center shadow-xs hover:bg-background"
             title={t("chat.copy")}
           >
             {copied ? (

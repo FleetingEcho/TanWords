@@ -92,7 +92,7 @@ export function ReadingLibrary({ onOpen }: { onOpen: (id: number) => void }) {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t("library.searchPlaceholder")}
-              className="h-9 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-xs placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/30"
+              className="h-9 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-xs placeholder:text-muted-foreground/40 focus:outline-hidden focus:ring-1 focus:ring-primary/30"
             />
           </div>
 

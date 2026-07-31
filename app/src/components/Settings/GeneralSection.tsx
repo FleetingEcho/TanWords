@@ -140,7 +140,7 @@ function AppBackgroundSetting() {
             }`}
           >
             <span
-              className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-all ${
+              className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white shadow-xs transition-all ${
                 visible ? "left-[calc(100%-1rem)]" : "left-0.5"
               }`}
             />
@@ -193,7 +193,7 @@ function NicknameSetting() {
         onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
         placeholder={t("settings.nicknamePlaceholder")}
         maxLength={30}
-        className="h-9 w-48 px-3 rounded-lg border border-input bg-background text-sm text-right focus:outline-none focus:ring-2 focus:ring-primary/30"
+        className="h-9 w-48 px-3 rounded-lg border border-input bg-background text-sm text-right focus:outline-hidden focus:ring-2 focus:ring-primary/30"
       />
     </SettingRow>
   );
@@ -281,7 +281,7 @@ function DefaultRssTabSetting() {
         value={String(defaultRssTab)}
         onValueChange={(v) => setDefaultRssTab(v === "all" || v === "hackernews" ? v : Number(v))}
       >
-        <SelectTrigger className="h-8 w-52 rounded-lg border-border bg-background text-xs focus:outline-none">
+        <SelectTrigger className="h-8 w-52 rounded-lg border-border bg-background text-xs focus:outline-hidden">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>

@@ -22,7 +22,7 @@ export function ToggleGroup({ options, value, onChange }: { options: { id: strin
           variant="ghost"
           onClick={() => onChange(o.id)}
           className={`h-auto px-3 py-1 rounded-md text-xs font-medium transition-colors hover:bg-transparent ${
-            value === o.id ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+            value === o.id ? "bg-card shadow-xs text-foreground" : "text-muted-foreground hover:text-foreground"
           }`}
         >
           {o.label}

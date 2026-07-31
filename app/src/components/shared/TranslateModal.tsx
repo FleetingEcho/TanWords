@@ -24,7 +24,7 @@ export function TranslateModal({ open, onClose, title, articleText, hnItemId }: 
 
   return (
     <div
-      className="fixed inset-0 z-[120] flex items-start justify-center bg-black/45 px-4 pt-[8vh] backdrop-blur-sm"
+      className="fixed inset-0 z-120 flex items-start justify-center bg-black/45 px-4 pt-[8vh] backdrop-blur-xs"
       onMouseDown={onClose}
     >
       <BrowserPanelBlocker />

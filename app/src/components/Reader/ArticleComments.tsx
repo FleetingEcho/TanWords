@@ -79,7 +79,7 @@ export function ArticleComments({
           onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void submit(); }}
           placeholder={t("library.commentPlaceholder")}
           rows={2}
-          className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-xs leading-relaxed placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/30"
+          className="w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-xs leading-relaxed placeholder:text-muted-foreground/40 focus:outline-hidden focus:ring-1 focus:ring-primary/30"
         />
         <div className="mt-2 flex justify-end">
           <Button onClick={() => void submit()} disabled={!draft.trim() || saving} className="h-7 rounded-lg px-3 text-xs font-semibold disabled:opacity-40">

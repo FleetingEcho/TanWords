@@ -73,7 +73,7 @@ export function AddFeedDialog({ open, onClose, onAdded, subscribedUrls }: Props)
       aria-modal="true"
     >
       <div
-        className="w-[28rem] max-w-[calc(100vw-2rem)] max-h-[80vh] overflow-y-auto bg-card border border-border rounded-2xl shadow-xl p-5"
+        className="w-md max-w-[calc(100vw-2rem)] max-h-[80vh] overflow-y-auto bg-card border border-border rounded-2xl shadow-xl p-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
@@ -90,7 +90,7 @@ export function AddFeedDialog({ open, onClose, onAdded, subscribedUrls }: Props)
             onChange={(e) => { setUrl(e.target.value); setPreview(null); }}
             onKeyDown={(e) => e.key === "Enter" && fetchPreview()}
             placeholder={t("feeds.urlPlaceholder")}
-            className="flex-1 h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            className="flex-1 h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-hidden focus:ring-2 focus:ring-primary/30"
           />
           <Button
             variant="outline"

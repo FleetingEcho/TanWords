@@ -204,7 +204,7 @@ export function SentenceList({
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={t("vocab.patterns.searchPlaceholder")}
-            className="w-full h-9 pl-8 pr-3 rounded-lg border border-input bg-background text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+            className="w-full h-9 pl-8 pr-3 rounded-lg border border-input bg-background text-sm placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30"
           />
           <svg className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-muted-foreground" viewBox="0 0 20 20" fill="currentColor">
             <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
@@ -271,7 +271,7 @@ export function SentenceList({
                     />
                   )}
                   <div className="min-w-0 flex-1">
-                    <p className={`text-sm font-medium ${expanded ? "break-words" : "truncate"}`}>
+                    <p className={`text-sm font-medium ${expanded ? "wrap-break-word" : "truncate"}`}>
                       <Highlight text={sentence} tokens={searchTokens} />
                     </p>
                     {hiddenMatch && (
@@ -320,7 +320,7 @@ export function SentenceList({
                           {rest.map((example) => (
                             <div key={example.id} className="flex items-start gap-2 rounded-xl border border-border bg-card px-3 py-2.5">
                               <SpeakButton text={example.sentence} className="mt-0.5 w-3.5 h-3.5 shrink-0" />
-                              <p className="min-w-0 flex-1 break-words text-sm leading-6">
+                              <p className="min-w-0 flex-1 wrap-break-word text-sm leading-6">
                                 <Highlight text={example.sentence} tokens={searchTokens} />
                               </p>
                               {example.source && (

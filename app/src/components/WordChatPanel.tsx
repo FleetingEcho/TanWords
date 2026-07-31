@@ -165,7 +165,7 @@ export function WordChatPanel({ wordId, word, enrichedContext = "" }: PanelProps
               onClick={() => setTab(id)}
               className={`h-auto px-3 py-1 text-xs font-semibold rounded-md transition-colors hover:bg-transparent ${
                 tab === id
-                  ? "bg-background text-foreground shadow-sm hover:bg-background"
+                  ? "bg-background text-foreground shadow-xs hover:bg-background"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -217,7 +217,7 @@ export function WordChatPanel({ wordId, word, enrichedContext = "" }: PanelProps
                 placeholder={t("chat.inputPlaceholder")}
                 rows={1}
                 disabled={streaming}
-                className="flex-1 resize-none px-3 py-2.5 text-xs rounded-xl border border-input bg-card placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-50 leading-relaxed min-h-[36px]"
+                className="flex-1 resize-none px-3 py-2.5 text-xs rounded-xl border border-input bg-card placeholder:text-muted-foreground/40 focus:outline-hidden focus:ring-2 focus:ring-primary/30 disabled:opacity-50 leading-relaxed min-h-[36px]"
               />
               {streaming ? (
                 <Button

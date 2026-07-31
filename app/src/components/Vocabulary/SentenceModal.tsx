@@ -226,7 +226,7 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
                 onChange={(e) => setQuickText(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && void quickAdd()}
                 placeholder={t("vocab.patterns.addPlaceholder")}
-                className="flex-1 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/40 placeholder:text-muted-foreground"
+                className="flex-1 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-hidden focus:ring-2 focus:ring-primary/40 placeholder:text-muted-foreground"
               />
               <Button
                 onClick={quickAdd}
@@ -245,7 +245,7 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
                 onChange={(e) => setGenQuery(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && void generate(false)}
                 placeholder={t("vocab.patterns.genPlaceholder")}
-                className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-sm outline-none focus:border-primary/50 focus:ring-2 focus:ring-primary/15"
+                className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-sm outline-hidden focus:border-primary/50 focus:ring-2 focus:ring-primary/15"
               />
               <Button className="h-9" disabled={genBusy || !genQuery.trim()} onClick={() => void generate(false)}>
                 {genBusy ? t("vocab.patterns.generating") : t("vocab.patterns.generate")}
@@ -259,7 +259,7 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
                   {t("vocab.patterns.genProgress", { count: candidates.length })}
                 </div>
                 <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted">
-                  <div className="h-full w-1/3 animate-pulse rounded-full bg-gradient-to-r from-primary/40 to-primary" />
+                  <div className="h-full w-1/3 animate-pulse rounded-full bg-linear-to-r from-primary/40 to-primary" />
                 </div>
               </div>
             )}
@@ -309,7 +309,7 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
                           />
                         )}
                         <div className="min-w-0 flex-1">
-                          <strong className="min-w-0 break-words font-serif text-[15px] block">{candidate.sentence}</strong>
+                          <strong className="min-w-0 wrap-break-word font-serif text-[15px] block">{candidate.sentence}</strong>
                           <span className="mt-0.5 block text-sm text-muted-foreground">{candidate.zh}</span>
                           {(candidate.skeleton || candidate.note) && (
                             <span className="mt-0.5 block truncate text-xs text-muted-foreground/80">

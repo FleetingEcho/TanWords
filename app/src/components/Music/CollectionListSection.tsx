@@ -33,7 +33,7 @@ export function CollectionListSection({
             direction="right"
             className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-150 ${collapsed ? "" : "rotate-90"}`}
           />
-          <span className="w-8 h-8 rounded-lg shrink-0 shadow-sm" style={{ backgroundImage: cover.css }} />
+          <span className="w-8 h-8 rounded-lg shrink-0 shadow-xs" style={{ backgroundImage: cover.css }} />
           <span className="text-sm font-semibold truncate group-hover:text-primary transition-colors">{displayName}</span>
           <span className="text-xs text-muted-foreground shrink-0">
             {t("music.tracksCount", { count: String(collection.tracks.length) })}

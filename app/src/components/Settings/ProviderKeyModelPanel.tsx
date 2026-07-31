@@ -39,12 +39,12 @@ export function ProviderKeyModelPanel({
     <div className="space-y-3">
       <div>
         <label className="text-xs text-muted-foreground block mb-1">{t("settings.apiKey")}</label>
-        <input type="password" value={apiKeyValue} onChange={(e) => onApiKeyChange(e.target.value)} placeholder={apiKeyPlaceholder} className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30" />
+        <input type="password" value={apiKeyValue} onChange={(e) => onApiKeyChange(e.target.value)} placeholder={apiKeyPlaceholder} className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm font-mono focus:outline-hidden focus:ring-2 focus:ring-primary/30" />
       </div>
       <div>
         <label className="text-xs text-muted-foreground block mb-1">{t("settings.modelId")}</label>
         <div className="flex gap-2">
-          <input list="provider-model-options" value={modelValue} onChange={(e) => onModelChange(e.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-sm font-mono focus:outline-none" />
+          <input list="provider-model-options" value={modelValue} onChange={(e) => onModelChange(e.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-sm font-mono focus:outline-hidden" />
           <ProviderIconButton label={t("settings.fetchModels")} onClick={onFetchModels}>
             {fetchingModels ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListRestart className="h-4 w-4" />}
           </ProviderIconButton>

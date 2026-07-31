@@ -136,7 +136,7 @@ export function SentenceExtractionCard({ items, variant = "generated" }: { items
                     className="h-3.5 w-3.5 mt-0.5 shrink-0"
                   />
                 )}
-                <span className="text-sm font-semibold text-foreground min-w-0 flex-1 break-words">{item.sentence}</span>
+                <span className="text-sm font-semibold text-foreground min-w-0 flex-1 wrap-break-word">{item.sentence}</span>
                 <SpeakButton text={item.sentence} className="w-3 h-3 mt-0.5 shrink-0" />
                 <LevelBadge level={item.level} />
               </div>

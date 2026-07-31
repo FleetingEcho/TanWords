@@ -157,7 +157,7 @@ export function ScratchPasteScreen({
           onChange={(e) => { setTitle(e.target.value); setTitleEdited(true); }}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); textareaRef.current?.focus(); } }}
           placeholder={t("scratch.titlePlaceholder")}
-          className="mt-8 w-full bg-transparent text-xl font-semibold tracking-tight text-foreground outline-none placeholder:font-normal placeholder:text-muted-foreground/35"
+          className="mt-8 w-full bg-transparent text-xl font-semibold tracking-tight text-foreground outline-hidden placeholder:font-normal placeholder:text-muted-foreground/35"
         />
 
         <div className="group relative mt-4 flex-1 border-l-2 border-border/70 pl-6 transition-colors focus-within:border-primary/50">
@@ -171,7 +171,7 @@ export function ScratchPasteScreen({
             autoFocus
             spellCheck={false}
             style={{ fontSize: 17.5, lineHeight: 1.85 }}
-            className="h-full min-h-[calc(100vh-400px)] w-full resize-none bg-transparent text-foreground outline-none placeholder:text-muted-foreground/35"
+            className="h-full min-h-[calc(100vh-400px)] w-full resize-none bg-transparent text-foreground outline-hidden placeholder:text-muted-foreground/35"
           />
         </div>
 

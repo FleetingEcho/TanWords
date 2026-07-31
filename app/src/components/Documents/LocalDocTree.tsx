@@ -68,7 +68,7 @@ function FileRow({ file, active, depth, rowRef, onOpen, onDelete, onImport, onEx
         depth === 0 ? "min-h-[52px] gap-2 py-1.5" : "min-h-10 gap-1.5 py-1"
       } ${
         active
-          ? "border-primary/25 bg-primary/10 text-foreground shadow-sm shadow-primary/5"
+          ? "border-primary/25 bg-primary/10 text-foreground shadow-xs shadow-primary/5"
           : "border-transparent text-foreground/90 hover:bg-muted/60"
       }`}
     >

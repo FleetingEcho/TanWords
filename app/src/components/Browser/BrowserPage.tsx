@@ -101,7 +101,7 @@ export default function BrowserPage() {
             onBlur={() => { editingRef.current = false; }}
             onKeyDown={(e) => { if (e.key === "Enter") { (e.target as HTMLInputElement).blur(); go(); } }}
             placeholder={t("browser.addressPlaceholder")}
-            className="h-8 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-xs outline-none transition-colors focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+            className="h-8 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-xs outline-hidden transition-colors focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
           />
         </div>
 

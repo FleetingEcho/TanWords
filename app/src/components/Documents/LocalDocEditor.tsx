@@ -287,7 +287,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
     window.addEventListener("pagehide", flushPending);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("blur", flushPending);
+      window.removeEventListener("blur-sm", flushPending);
       window.removeEventListener("pagehide", flushPending);
     };
   }, []);
@@ -320,7 +320,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
             onBlur={handleTitleBlur}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); titleRef.current?.blur(); } }}
             placeholder={t("doc.untitled")}
-            className="document-editor-title flex-1 font-bold tracking-tight bg-transparent border-none outline-none placeholder:text-muted-foreground/30 text-foreground"
+            className="document-editor-title flex-1 font-bold tracking-tight bg-transparent border-none outline-hidden placeholder:text-muted-foreground/30 text-foreground"
           />
           <Button
             type="button"
@@ -342,10 +342,10 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
               title={t("doc.attachFile")} className="h-6 gap-1 px-2 text-[10px]">
               <Paperclip className="h-3 w-3" /> {t("doc.attach")}
             </Button>
-            <Button type="button" variant="ghost" disabled={switchingMode} onClick={() => void switchMode("rich")} className={`h-6 gap-1 px-2 text-[10px] ${mode === "rich" ? "bg-background shadow-sm" : ""}`}>
+            <Button type="button" variant="ghost" disabled={switchingMode} onClick={() => void switchMode("rich")} className={`h-6 gap-1 px-2 text-[10px] ${mode === "rich" ? "bg-background shadow-xs" : ""}`}>
               <Eye className="h-3 w-3" /> {t("doc.richMode")}
             </Button>
-            <Button type="button" variant="ghost" disabled={switchingMode} onClick={() => void switchMode("raw")} className={`h-6 gap-1 px-2 text-[10px] ${mode === "raw" ? "bg-background shadow-sm" : ""}`}>
+            <Button type="button" variant="ghost" disabled={switchingMode} onClick={() => void switchMode("raw")} className={`h-6 gap-1 px-2 text-[10px] ${mode === "raw" ? "bg-background shadow-xs" : ""}`}>
               <Code2 className="h-3 w-3" /> {t("doc.rawMode")}
             </Button>
             <span className="mx-0.5 h-3.5 w-px bg-border" />

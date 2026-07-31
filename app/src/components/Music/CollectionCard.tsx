@@ -25,13 +25,13 @@ export function CollectionCard({
   return (
     <button
       onClick={onOpen}
-      className="group text-left rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group text-left rounded-2xl focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
     >
       <div
-        className="relative aspect-square rounded-2xl shadow-sm overflow-hidden transition-transform duration-200 group-hover:-translate-y-1 group-hover:shadow-lg"
+        className="relative aspect-square rounded-2xl shadow-xs overflow-hidden transition-transform duration-200 group-hover:-translate-y-1 group-hover:shadow-lg"
         style={{ backgroundImage: cover.css }}
       >
-        <div className="absolute inset-0 bg-gradient-to-t from-black/25 to-transparent" />
+        <div className="absolute inset-0 bg-linear-to-t from-black/25 to-transparent" />
         <MusicIcon className="absolute bottom-3 left-3 w-5 h-5 text-white/60" />
         <span
           onClick={playAll}

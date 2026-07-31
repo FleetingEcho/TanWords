@@ -74,7 +74,7 @@ function PlayButton({ onPlay, label }: { onPlay: (e: React.MouseEvent) => void; 
     <Button
       variant="ghost"
       onClick={onPlay}
-      className="h-8 px-3 inline-flex items-center gap-1.5 rounded-full text-xs font-semibold shadow-sm transition-all
+      className="h-8 px-3 inline-flex items-center gap-1.5 rounded-full text-xs font-semibold shadow-xs transition-all
         bg-card/90 text-foreground border border-border hover:bg-card
         opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
     >
@@ -114,7 +114,7 @@ function TranslateButton({ translating, onTranslate, label }: { translating: boo
       disabled={translating}
       title={label}
       aria-label={label}
-      className="h-8 w-8 p-0 inline-flex items-center justify-center rounded-full shadow-sm transition-all
+      className="h-8 w-8 p-0 inline-flex items-center justify-center rounded-full shadow-xs transition-all
         bg-card/90 text-foreground border border-border hover:bg-card disabled:opacity-60
         opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
     >
@@ -150,7 +150,7 @@ function AnalyzeBackgroundButton({ url, analyzing, onAnalyze, analyzeLabel, done
       disabled={running}
       title={done ? doneLabel : analyzeLabel}
       aria-label={done ? doneLabel : analyzeLabel}
-      className={`h-8 w-8 p-0 inline-flex items-center justify-center rounded-full shadow-sm transition-all border disabled:opacity-60 ${
+      className={`h-8 w-8 p-0 inline-flex items-center justify-center rounded-full shadow-xs transition-all border disabled:opacity-60 ${
         done
           ? "bg-emerald-500 text-white border-emerald-600 hover:bg-emerald-500/90 opacity-100"
           : running
@@ -218,13 +218,13 @@ export function EntryCard({ entry, feedTitle, hero = false, onOpen, onPlay, onTr
         onClick={onOpen}
         onKeyDown={(e) => e.key === "Enter" && onOpen()}
         className="group relative w-full rounded-2xl overflow-hidden cursor-pointer border border-border bg-card
-          transition-transform hover:scale-[1.004] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          transition-transform hover:scale-[1.004] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
       >
-        <Cover src={entry.image_url} feedTitle={feedTitle} className="w-full aspect-[21/9]" background={coverColor} letter={coverLetter} />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-transparent" />
+        <Cover src={entry.image_url} feedTitle={feedTitle} className="w-full aspect-21/9" background={coverColor} letter={coverLetter} />
+        <div className="absolute inset-0 bg-linear-to-t from-black/75 via-black/25 to-transparent" />
         <div className="absolute inset-x-0 bottom-0 p-5">
           <div className="flex items-center gap-1.5 text-[11px] font-medium text-white/80 mb-1.5">{meta}</div>
-          <h3 className="font-serif text-xl md:text-2xl font-bold leading-snug text-white line-clamp-2 [text-wrap:balance]">
+          <h3 className="font-serif text-xl md:text-2xl font-bold leading-snug text-white line-clamp-2 text-balance">
             {entry.title}
           </h3>
           {chineseTitle && <p className="mt-1 text-sm text-white/75 line-clamp-2">{chineseTitle}</p>}
@@ -261,9 +261,9 @@ export function EntryCard({ entry, feedTitle, hero = false, onOpen, onPlay, onTr
       onClick={onOpen}
       onKeyDown={(e) => e.key === "Enter" && onOpen()}
       className="group relative rounded-2xl overflow-hidden cursor-pointer border border-border bg-card flex flex-col
-        transition-all hover:border-primary/30 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+        transition-all hover:border-primary/30 hover:shadow-md focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
     >
-      <Cover src={entry.image_url} feedTitle={feedTitle} className="w-full aspect-[16/9]" background={coverColor} letter={coverLetter} />
+      <Cover src={entry.image_url} feedTitle={feedTitle} className="w-full aspect-video" background={coverColor} letter={coverLetter} />
       <div className="p-3.5 flex flex-col gap-1.5 flex-1">
         <h3 className={`font-serif text-[15px] leading-snug line-clamp-2 ${!trackRead || !entry.is_read ? "font-semibold text-foreground" : "font-medium text-muted-foreground"}`}>
           {entry.title}
@@ -323,7 +323,7 @@ export function EntryListRow({ entry, feedTitle, onOpen, onPlay, onTranslate, tr
       tabIndex={0}
       onClick={onOpen}
       onKeyDown={(e) => e.key === "Enter" && onOpen()}
-      className="group flex items-center gap-2.5 rounded-lg px-2.5 py-2 cursor-pointer hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+      className="group flex items-center gap-2.5 rounded-lg px-2.5 py-2 cursor-pointer hover:bg-muted/50 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
     >
       {trackRead && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${unread ? "bg-primary" : "bg-transparent"}`} aria-hidden="true" />}
       <div className="min-w-0 flex-1">

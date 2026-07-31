@@ -189,7 +189,7 @@ export function HackerNewsSection({ viewMode, onOpen, onTranslate, translatingId
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t("hn.search.placeholder")}
-            className="h-8 w-full rounded-full border border-input bg-background pl-8 pr-7 text-xs outline-none focus:ring-1 focus:ring-ring"
+            className="h-8 w-full rounded-full border border-input bg-background pl-8 pr-7 text-xs outline-hidden focus:ring-1 focus:ring-ring"
           />
           {query && (
             <button

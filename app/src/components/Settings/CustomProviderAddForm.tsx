@@ -28,20 +28,20 @@ export function CustomProviderAddForm({ newProvider, onNewProviderChange, fetchi
       <h3 className="text-sm font-semibold">{t("settings.addCustomTitle")}</h3>
       <div>
         <label className="text-xs text-muted-foreground block mb-1">{t("settings.name")}</label>
-        <input value={newProvider.name} onChange={(e) => onNewProviderChange((prev) => ({ ...prev, name: e.target.value }))} placeholder="e.g., Ollama" className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none" />
+        <input value={newProvider.name} onChange={(e) => onNewProviderChange((prev) => ({ ...prev, name: e.target.value }))} placeholder="e.g., Ollama" className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-hidden" />
       </div>
       <div>
         <label className="text-xs text-muted-foreground block mb-1">{t("settings.baseUrl")}</label>
-        <input value={newProvider.apiBase} onChange={(e) => onNewProviderChange((prev) => ({ ...prev, apiBase: e.target.value }))} placeholder="http://localhost:11434/v1" className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none" />
+        <input value={newProvider.apiBase} onChange={(e) => onNewProviderChange((prev) => ({ ...prev, apiBase: e.target.value }))} placeholder="http://localhost:11434/v1" className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm focus:outline-hidden" />
       </div>
       <div>
         <label className="text-xs text-muted-foreground block mb-1">{t("settings.apiKey")}</label>
-        <input type="password" value={newProvider.apiKey} onChange={(e) => onNewProviderChange((prev) => ({ ...prev, apiKey: e.target.value }))} className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm font-mono focus:outline-none" />
+        <input type="password" value={newProvider.apiKey} onChange={(e) => onNewProviderChange((prev) => ({ ...prev, apiKey: e.target.value }))} className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm font-mono focus:outline-hidden" />
       </div>
       <div>
         <label className="text-xs text-muted-foreground block mb-1">{t("settings.modelId")}</label>
         <div className="flex gap-2">
-          <input list="provider-model-options" value={newProvider.modelId} onChange={(e) => onNewProviderChange((prev) => ({ ...prev, modelId: e.target.value }))} placeholder="gpt-4o-mini" className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-sm focus:outline-none" />
+          <input list="provider-model-options" value={newProvider.modelId} onChange={(e) => onNewProviderChange((prev) => ({ ...prev, modelId: e.target.value }))} placeholder="gpt-4o-mini" className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-sm focus:outline-hidden" />
           <ProviderIconButton label={t("settings.fetchModels")} onClick={onFetchModels}>
             {fetchingModels ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListRestart className="h-4 w-4" />}
           </ProviderIconButton>

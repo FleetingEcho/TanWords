@@ -133,8 +133,8 @@ export function RawMarkdownEditor({
               tabSize: 2,
               color: "var(--document-text-color, hsl(var(--foreground)))",
             }}
-            className={`min-h-0 flex-1 resize-none overflow-auto border-0 bg-transparent px-6 py-5 font-mono text-[14px] leading-7 outline-none placeholder:text-muted-foreground/30 ${
-              wrap ? "whitespace-pre-wrap break-words" : "whitespace-pre"
+            className={`min-h-0 flex-1 resize-none overflow-auto border-0 bg-transparent px-6 py-5 font-mono text-[14px] leading-7 outline-hidden placeholder:text-muted-foreground/30 ${
+              wrap ? "whitespace-pre-wrap wrap-break-word" : "whitespace-pre"
             }`}
           />
         </div>

@@ -372,7 +372,7 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
                     placeholder={t("settings.remoteDBUrlPlaceholder")}
                     spellCheck={false}
                     autoComplete="off"
-                    className="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs outline-none focus:border-primary"
+                    className="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs outline-hidden focus:border-primary"
                   />
                 </label>
                 <label className="block space-y-1">
@@ -384,7 +384,7 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
                     placeholder={t("settings.remoteDBTokenPlaceholder")}
                     spellCheck={false}
                     autoComplete="off"
-                    className="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs outline-none focus:border-primary"
+                    className="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs outline-hidden focus:border-primary"
                   />
                   <span className="block text-[11px] text-muted-foreground">{t("settings.remoteDBTokenHint")}</span>
                 </label>

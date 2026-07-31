@@ -22,7 +22,7 @@ export function CollectionView({
     <div className="h-full overflow-y-auto animate-fade-in">
       {/* Gradient hero banner — the collection's cover, stretched wide */}
       <div className="relative px-8 pt-8 pb-10" style={{ backgroundImage: cover.css }}>
-        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/10 to-transparent" />
+        <div className="absolute inset-0 bg-linear-to-t from-black/40 via-black/10 to-transparent" />
         <div className="relative max-w-4xl mx-auto">
           <Button
             variant="ghost"
@@ -32,7 +32,7 @@ export function CollectionView({
             <ChevronIcon direction="left" className="w-3.5 h-3.5" />
             {t("music.back")}
           </Button>
-          <h1 className="text-3xl font-bold tracking-tight text-white drop-shadow-sm">{displayName}</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-white drop-shadow-xs">{displayName}</h1>
           <p className="text-sm text-white/80 mt-1 mb-6">
             {t("music.tracksCount", { count: String(collection.tracks.length) })}
           </p>

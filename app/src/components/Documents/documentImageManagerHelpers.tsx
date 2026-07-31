@@ -68,7 +68,7 @@ export function AssetPreview({ asset, onClose }: { asset: DocumentAssetSummary |
     <Dialog open={asset !== null} onClose={onClose} maxWidth="max-w-[min(92vw,1200px)]" className="top-[4vh] overflow-hidden">
       <DialogTitle className="sr-only">{asset?.file_name ?? ""}</DialogTitle>
       <Button variant="ghost" size="icon" onClick={onClose}
-        className="absolute right-3 top-3 z-10 h-8 w-8 rounded-full bg-background/80 backdrop-blur">
+        className="absolute right-3 top-3 z-10 h-8 w-8 rounded-full bg-background/80 backdrop-blur-sm">
         <CloseIcon className="h-4 w-4" />
       </Button>
       <div className="flex max-h-[82vh] min-h-64 items-center justify-center bg-black/20 p-5">
