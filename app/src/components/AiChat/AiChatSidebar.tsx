@@ -104,7 +104,7 @@ export function AiChatSidebar({
               else if (e.key === "Escape") setRenamingId(null);
             }}
             onBlur={(e) => commitRename(session.id, e.currentTarget.value)}
-            className="w-full h-6 px-1.5 text-xs rounded-md border border-primary/40 bg-background focus:outline-none focus:ring-1 focus:ring-primary/30"
+            className="w-full h-6 px-1.5 text-xs rounded-md border border-primary/40 bg-background focus:outline-hidden focus:ring-1 focus:ring-primary/30"
           />
         ) : (
           // One line, truncated: `line-clamp-2` let every row pick its own
@@ -119,7 +119,7 @@ export function AiChatSidebar({
         * `group-has-` clause it reappears under the popup as soon as the
         * pointer leaves the row. */}
       <span className="relative flex w-16 shrink-0 items-center justify-end">
-        <span className="whitespace-nowrap text-[10px] tabular-nums text-muted-foreground/60 transition-opacity group-hover:opacity-0 group-has-[[data-state=open]]:opacity-0">
+        <span className="whitespace-nowrap text-[10px] tabular-nums text-muted-foreground/60 transition-opacity group-hover:opacity-0 group-has-data-[state=open]:opacity-0">
           {formatSessionDate(t, session.updated_at)}
         </span>
         <DropdownMenu>
@@ -194,7 +194,7 @@ export function AiChatSidebar({
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={t("aichat.searchPlaceholder")}
-            className="w-full h-7 pl-7 pr-2 text-xs rounded-md border border-input bg-background placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/30"
+            className="w-full h-7 pl-7 pr-2 text-xs rounded-md border border-input bg-background placeholder:text-muted-foreground/40 focus:outline-hidden focus:ring-1 focus:ring-primary/30"
           />
         </div>
         <DateRangePicker

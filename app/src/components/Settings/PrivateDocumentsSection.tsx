@@ -89,7 +89,7 @@ export function PrivateDocumentsSection() {
                 value={value as string}
                 onChange={(event) => (setter as (value: string) => void)(event.target.value)}
                 autoComplete="off"
-                className="mt-1.5 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+                className="mt-1.5 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-hidden focus:ring-2 focus:ring-primary/30"
               />
             </label>
           ))}

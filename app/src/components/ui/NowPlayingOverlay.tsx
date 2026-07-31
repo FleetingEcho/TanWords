@@ -63,7 +63,7 @@ export function NowPlayingOverlay({ onClose }: { onClose: () => void }) {
       {/* Native browser panel must step aside — see browserPanelStore. */}
       <BrowserPanelBlocker />
       {/* Darken toward the bottom so white text always reads */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/45 to-black/75" />
+      <div className="absolute inset-0 bg-linear-to-b from-black/30 via-black/45 to-black/75" />
 
       <div className="relative h-full flex flex-col items-center px-8 py-6">
         <Button
@@ -92,14 +92,14 @@ export function NowPlayingOverlay({ onClose }: { onClose: () => void }) {
             <div className="absolute inset-[12%] rounded-full border border-white/10" />
             <div className="absolute inset-[24%] rounded-full border border-white/10" />
             <div className="absolute inset-[36%] rounded-full border border-white/10" />
-            <div className="absolute inset-[42%] rounded-full bg-black/55 backdrop-blur-sm flex items-center justify-center">
+            <div className="absolute inset-[42%] rounded-full bg-black/55 backdrop-blur-xs flex items-center justify-center">
               <MusicIcon className="w-8 h-8 text-white/70" />
             </div>
           </div>
         </div>
 
         <div className="w-full max-w-xl text-center mb-2">
-          <h2 className="text-2xl font-bold text-white drop-shadow-sm truncate">{track.title}</h2>
+          <h2 className="text-2xl font-bold text-white drop-shadow-xs truncate">{track.title}</h2>
           <p className="text-sm text-white/70 mt-1 truncate">{track.feedTitle}</p>
         </div>
 

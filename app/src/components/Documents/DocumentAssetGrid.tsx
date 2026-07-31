@@ -35,7 +35,7 @@ export function DocumentAssetGrid({
           } cursor-pointer transition-colors ${selectedIds.has(asset.id) ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border"}`}
         >
           <div className={view === "grid"
-            ? "relative aspect-[4/3] overflow-hidden bg-muted"
+            ? "relative aspect-4/3 overflow-hidden bg-muted"
             : "relative h-12 w-16 shrink-0 overflow-hidden rounded-md bg-muted"
           }>
             <AssetThumbnail asset={asset} />

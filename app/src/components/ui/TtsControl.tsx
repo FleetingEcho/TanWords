@@ -137,7 +137,7 @@ export function TtsControl() {
                   variant="ghost"
                   onClick={() => setSpeed(s)}
                   className={`h-auto rounded-md px-1.5 py-0.5 text-[10px] font-medium transition-colors hover:bg-transparent ${
-                    speed === s ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                    speed === s ? "bg-background text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   {s}x

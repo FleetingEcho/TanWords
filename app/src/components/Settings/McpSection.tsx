@@ -133,19 +133,19 @@ export function McpSection() {
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border bg-card">
-        <div className="flex items-center justify-between gap-5 border-b border-border bg-gradient-to-r from-primary/[0.07] to-transparent px-5 py-4">
+        <div className="flex items-center justify-between gap-5 border-b border-border bg-linear-to-r from-primary/[0.07] to-transparent px-5 py-4">
           <div className="flex min-w-0 items-center gap-3">
             <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-primary/15 bg-primary/10 text-primary"><Server className="h-5 w-5" /></div>
             <div><p className="text-sm font-semibold">{t("settings.mcpLocalServer")}</p><p className="text-xs text-muted-foreground">{t("settings.mcpLocalOnly")}</p></div>
           </div>
           <button type="button" disabled={loading || saving} onClick={toggleServer} className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${config.enabled ? "bg-primary" : "bg-muted"}`} aria-label={t("settings.mcpEnable")}>
-            <span className={`pointer-events-none absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${config.enabled ? "translate-x-5" : "translate-x-0"}`} />
+            <span className={`pointer-events-none absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow-xs transition-transform ${config.enabled ? "translate-x-5" : "translate-x-0"}`} />
           </button>
         </div>
 
         <div className="space-y-5 p-5">
           <div className="grid gap-4 md:grid-cols-[180px_1fr]">
-            <label className="space-y-1.5"><span className="text-xs font-medium">{t("settings.mcpPort")}</span><input type="number" min={1024} max={65535} value={config.port} onChange={(event) => setConfig((current) => ({ ...current, port: Number(event.target.value) }))} className="h-9 w-full rounded-lg border border-input bg-background px-3 font-mono text-sm outline-none focus:ring-2 focus:ring-ring" /></label>
+            <label className="space-y-1.5"><span className="text-xs font-medium">{t("settings.mcpPort")}</span><input type="number" min={1024} max={65535} value={config.port} onChange={(event) => setConfig((current) => ({ ...current, port: Number(event.target.value) }))} className="h-9 w-full rounded-lg border border-input bg-background px-3 font-mono text-sm outline-hidden focus:ring-2 focus:ring-ring" /></label>
             <div className="space-y-1.5"><span className="text-xs font-medium">{t("settings.mcpEndpoint")}</span><div className="flex h-9 items-center gap-2 rounded-lg border border-input bg-muted/30 px-3"><code className="min-w-0 flex-1 truncate text-xs">{endpoint}</code><button type="button" onClick={() => copy(endpoint, "endpoint")} className="text-muted-foreground hover:text-foreground">{copied === "endpoint" ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}</button></div></div>
           </div>
 

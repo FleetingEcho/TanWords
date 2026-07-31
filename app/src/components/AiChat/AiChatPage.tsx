@@ -173,7 +173,7 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
                   onChange={(e) => s.setCustomPrompt(e.target.value)}
                   placeholder={t("aichat.customPromptPlaceholder")}
                   rows={8}
-                  className="max-h-[40vh] min-h-32 w-full resize-y rounded-xl border border-input bg-muted/20 px-4 py-3 font-mono text-xs leading-relaxed placeholder:text-muted-foreground/40 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  className="max-h-[40vh] min-h-32 w-full resize-y rounded-xl border border-input bg-muted/20 px-4 py-3 font-mono text-xs leading-relaxed placeholder:text-muted-foreground/40 focus:outline-hidden focus:ring-2 focus:ring-primary/30"
                 />
                 <div className="mt-2 flex items-center justify-end gap-2">
                   <Button

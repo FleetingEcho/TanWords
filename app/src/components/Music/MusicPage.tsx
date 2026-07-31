@@ -173,7 +173,7 @@ export default function MusicPage() {
                   onClick={() => switchView(id)}
                   title={label}
                   className={`h-7 w-8 p-0 rounded-md flex items-center justify-center transition-colors ${
-                    viewMode === id ? "bg-card shadow-sm text-foreground hover:bg-card" : "text-muted-foreground hover:text-foreground"
+                    viewMode === id ? "bg-card shadow-xs text-foreground hover:bg-card" : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -207,7 +207,7 @@ export default function MusicPage() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t("music.searchPlaceholder")}
-            className="w-full h-10 pl-9 pr-4 rounded-xl border border-input bg-card text-sm focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
+            className="w-full h-10 pl-9 pr-4 rounded-xl border border-input bg-card text-sm focus:outline-hidden focus:ring-1 focus:ring-ring placeholder:text-muted-foreground"
           />
         </div>
 
@@ -224,7 +224,7 @@ export default function MusicPage() {
                 <section key={collection.name}>
                   <div className="flex items-center gap-3 mb-1 px-1">
                     <span
-                      className="w-6 h-6 rounded-md shrink-0 shadow-sm"
+                      className="w-6 h-6 rounded-md shrink-0 shadow-xs"
                       style={{ backgroundImage: coverGradient(displayName).css }}
                     />
                     <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{displayName}</span>

@@ -164,7 +164,7 @@ export function TtsSection() {
             onValueChange={(v) => selectModel(v)}
             disabled={loadingPath !== null || models.length === 0}
           >
-            <SelectTrigger className="h-8 px-2 rounded-lg border border-input bg-background text-xs text-foreground focus:outline-none max-w-[220px]">
+            <SelectTrigger className="h-8 px-2 rounded-lg border border-input bg-background text-xs text-foreground focus:outline-hidden max-w-[220px]">
               <SelectValue placeholder={models.length ? t("tts.model") : t("tts.noModels")} />
             </SelectTrigger>
             <SelectContent>
@@ -196,7 +196,7 @@ export function TtsSection() {
             value={String(Math.min(Number(settings.ttsVoiceId) || 0, selected.voice_names.length - 1))}
             onValueChange={(v) => settings.setTtsVoiceId(v)}
           >
-            <SelectTrigger className="h-8 px-2 rounded-lg border border-input bg-background text-xs text-foreground focus:outline-none max-w-[220px]">
+            <SelectTrigger className="h-8 px-2 rounded-lg border border-input bg-background text-xs text-foreground focus:outline-hidden max-w-[220px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -217,7 +217,7 @@ export function TtsSection() {
             min={0}
             value={settings.ttsVoiceId}
             onChange={(e) => settings.setTtsVoiceId(String(Math.max(0, Number(e.target.value) || 0)))}
-            className="w-16 h-8 px-2 rounded-lg border border-input bg-background text-sm text-center focus:outline-none focus:ring-2 focus:ring-primary/30"
+            className="w-16 h-8 px-2 rounded-lg border border-input bg-background text-sm text-center focus:outline-hidden focus:ring-2 focus:ring-primary/30"
           />
         </SettingRow>
       )}
@@ -230,7 +230,7 @@ export function TtsSection() {
               variant="ghost"
               onClick={() => settings.setTtsSpeed(s)}
               className={`h-auto px-2.5 py-1 rounded-md text-xs font-medium transition-colors hover:bg-transparent ${
-                settings.ttsSpeed === s ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                settings.ttsSpeed === s ? "bg-card shadow-xs text-foreground" : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {s}x

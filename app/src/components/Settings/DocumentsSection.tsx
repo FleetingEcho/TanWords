@@ -98,7 +98,7 @@ export function DocumentsSection() {
             placeholder="#ddd"
             spellCheck={false}
             aria-label={t("settings.documentTextColorHex")}
-            className="h-8 w-24 rounded-lg border border-input bg-background px-2 font-mono text-xs outline-none focus:ring-2 focus:ring-primary/30"
+            className="h-8 w-24 rounded-lg border border-input bg-background px-2 font-mono text-xs outline-hidden focus:ring-2 focus:ring-primary/30"
           />
           <Button
             type="button"

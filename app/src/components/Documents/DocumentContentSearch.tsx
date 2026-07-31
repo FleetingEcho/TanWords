@@ -128,7 +128,7 @@ export function DocumentContentSearch({ rootRef }: {
   const move = (delta: number) => applyHighlights(query, activeIndex + delta);
 
   return (
-    <div className="relative flex h-6 items-center rounded-md bg-background/75 shadow-sm ring-1 ring-border/70">
+    <div className="relative flex h-6 items-center rounded-md bg-background/75 shadow-xs ring-1 ring-border/70">
       <Search className="ml-1.5 h-3 w-3 shrink-0 text-muted-foreground" />
       <input
         ref={inputRef}
@@ -145,7 +145,7 @@ export function DocumentContentSearch({ rootRef }: {
         }}
         placeholder={t("doc.searchContent")}
         aria-label={t("doc.searchContent")}
-        className="h-full w-28 bg-transparent px-1.5 text-[10px] outline-none placeholder:text-muted-foreground/60 focus:w-44"
+        className="h-full w-28 bg-transparent px-1.5 text-[10px] outline-hidden placeholder:text-muted-foreground/60 focus:w-44"
       />
       {query && (
         <>

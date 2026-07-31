@@ -111,7 +111,7 @@ export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, o
         onClick={() => onSelect(doc.id)}
         className={`group min-h-[58px] cursor-pointer rounded-xl border px-2.5 py-2 transition-colors ${
           active
-            ? "border-primary/25 bg-primary/10 text-foreground shadow-sm shadow-primary/5"
+            ? "border-primary/25 bg-primary/10 text-foreground shadow-xs shadow-primary/5"
             : "border-transparent text-foreground/90 hover:bg-muted/60"
         }`}
       >
@@ -142,7 +142,7 @@ export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, o
                     if (e.key === "Escape") { setRenaming(false); setRenameVal(doc.title); }
                   }}
                   onClick={(e) => e.stopPropagation()}
-                  className="flex-1 min-w-0 text-sm font-medium bg-card border border-primary/40 rounded px-1 outline-none"
+                  className="flex-1 min-w-0 text-sm font-medium bg-card border border-primary/40 rounded px-1 outline-hidden"
                 />
               ) : (
                 <p className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-5"><HighlightFuzzy text={doc.title || t("doc.untitled")} query={searchQuery} /></p>

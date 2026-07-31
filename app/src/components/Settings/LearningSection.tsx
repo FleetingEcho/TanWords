@@ -46,7 +46,7 @@ function EnrichPromptEditor() {
         onChange={(e) => onChange(e.target.value)}
         placeholder={t("settings.enrichPromptPlaceholder")}
         rows={8}
-        className="w-full px-3 py-2 rounded-lg border border-input bg-background text-xs font-mono leading-relaxed focus:outline-none focus:ring-1 focus:ring-ring resize-y"
+        className="w-full px-3 py-2 rounded-lg border border-input bg-background text-xs font-mono leading-relaxed focus:outline-hidden focus:ring-1 focus:ring-ring resize-y"
       />
     </div>
   );
@@ -113,7 +113,7 @@ export function LearningSection() {
                   )
                 }
                 className={`h-auto px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                  selected ? "bg-primary text-primary-foreground shadow-sm hover:bg-primary" : "text-muted-foreground hover:text-foreground hover:bg-transparent"
+                  selected ? "bg-primary text-primary-foreground shadow-xs hover:bg-primary" : "text-muted-foreground hover:text-foreground hover:bg-transparent"
                 }`}
               >
                 {lvl}
@@ -133,7 +133,7 @@ export function LearningSection() {
           }`}
         >
           <span
-            className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-all ${
+            className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white shadow-xs transition-all ${
               settings.showLevelBadges ? "left-[calc(100%-1rem)]" : "left-0.5"
             }`}
           />

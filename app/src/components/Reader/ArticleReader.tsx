@@ -79,7 +79,7 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
               onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void handlePasteSubmit(); }}
               placeholder={t("reader.pastePlaceholder")}
               rows={10}
-              className="w-full rounded-xl border border-border/60 bg-muted/30 px-4 py-3 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/50 resize-y outline-none transition-colors focus:border-primary/50 focus:bg-background"
+              className="w-full rounded-xl border border-border/60 bg-muted/30 px-4 py-3 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/50 resize-y outline-hidden transition-colors focus:border-primary/50 focus:bg-background"
             />
             <div className="mt-3 flex justify-end">
               <Button

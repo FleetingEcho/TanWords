@@ -132,7 +132,7 @@ export function BrowserAskPane({ onClose }: { onClose: () => void }) {
           // Grows with the text up to a ceiling instead of claiming the whole
           // column: a pane that is 90% empty box reads as "write an essay"
           // when the job is almost always one sentence.
-          className="max-h-[30vh] min-h-[4.5rem] w-full resize-none rounded-lg border border-input bg-background p-2.5 text-xs leading-relaxed outline-none transition-colors focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+          className="max-h-[30vh] min-h-18 w-full resize-none rounded-lg border border-input bg-background p-2.5 text-xs leading-relaxed outline-hidden transition-colors focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
         />
 
         {/* Same four slots, in the same order, as the floating toolbar

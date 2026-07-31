@@ -60,7 +60,7 @@ export function DocumentPasswordDialog({
               setPassword(event.target.value);
               setError("");
             }}
-            className="mt-1.5 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+            className="mt-1.5 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-hidden focus:ring-2 focus:ring-primary/30"
           />
         </label>
 
@@ -74,7 +74,7 @@ export function DocumentPasswordDialog({
                 setConfirmation(event.target.value);
                 setError("");
               }}
-              className="mt-1.5 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+              className="mt-1.5 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-hidden focus:ring-2 focus:ring-primary/30"
             />
           </label>
         )}

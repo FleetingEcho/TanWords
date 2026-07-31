@@ -137,7 +137,7 @@ export function BannerPositionModal({ open, src, initial, onCancel, onConfirm }:
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
           style={{ aspectRatio: `${FRAME_ASPECT} / 1` }}
-          className={`relative w-full touch-none select-none overflow-hidden rounded-xl bg-muted ring-1 ring-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+          className={`relative w-full touch-none select-none overflow-hidden rounded-xl bg-muted ring-1 ring-border focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary ${
             draggable ? "cursor-grab active:cursor-grabbing" : ""
           }`}
         >

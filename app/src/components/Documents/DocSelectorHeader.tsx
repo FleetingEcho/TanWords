@@ -69,7 +69,7 @@ export function DocSelectorHeader({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={t("doc.search")}
-          className="w-full h-7 pl-7 pr-2.5 text-xs rounded-lg border border-border bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+          className="w-full h-7 pl-7 pr-2.5 text-xs rounded-lg border border-border bg-card text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-1 focus:ring-primary/40"
         />
       </div>
 
@@ -96,7 +96,7 @@ export function DocSelectorHeader({
           <div className="space-y-2 pt-2.5">
             <div className="flex gap-1.5">
               <Select value={sort} onValueChange={setSort}>
-                <SelectTrigger className="flex-1 h-6 text-[11px] rounded-lg border border-border bg-card text-foreground focus:outline-none px-1.5 gap-1 [&_svg]:h-3 [&_svg]:w-3">
+                <SelectTrigger className="flex-1 h-6 text-[11px] rounded-lg border border-border bg-card text-foreground focus:outline-hidden px-1.5 gap-1 [&_svg]:h-3 [&_svg]:w-3">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -107,7 +107,7 @@ export function DocSelectorHeader({
               </Select>
               {allTags.length > 0 && (
                 <Select value={tagFilter || "__all__"} onValueChange={(v) => setTagFilter(v === "__all__" ? "" : v)}>
-                  <SelectTrigger className="flex-1 h-6 text-[11px] rounded-lg border border-border bg-card text-foreground focus:outline-none px-1.5 gap-1 [&_svg]:h-3 [&_svg]:w-3">
+                  <SelectTrigger className="flex-1 h-6 text-[11px] rounded-lg border border-border bg-card text-foreground focus:outline-hidden px-1.5 gap-1 [&_svg]:h-3 [&_svg]:w-3">
                     <SelectValue placeholder={t("doc.allTags")} />
                   </SelectTrigger>
                   <SelectContent>

@@ -46,7 +46,7 @@ export function LockedDocumentPanel({
 
   return (
     <div className="flex h-full items-center justify-center px-6">
-      <form onSubmit={submit} className="w-full max-w-sm rounded-2xl border border-border bg-card p-7 shadow-sm">
+      <form onSubmit={submit} className="w-full max-w-sm rounded-2xl border border-border bg-card p-7 shadow-xs">
         <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
           <LockKeyhole className="h-6 w-6" />
         </div>
@@ -58,7 +58,7 @@ export function LockedDocumentPanel({
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           placeholder={t("doc.password")}
-          className="mt-5 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+          className="mt-5 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-hidden focus:ring-2 focus:ring-primary/30"
         />
         {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
         <Button type="submit" disabled={!password || busy} className="mt-4 w-full">

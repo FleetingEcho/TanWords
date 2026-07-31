@@ -85,7 +85,7 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
             onBlur={handleTitleBlur}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); titleRef.current?.blur(); } }}
             placeholder={t("doc.untitled")}
-            className="document-editor-title flex-1 font-bold tracking-tight bg-transparent border-none outline-none placeholder:text-muted-foreground/30 text-foreground"
+            className="document-editor-title flex-1 font-bold tracking-tight bg-transparent border-none outline-hidden placeholder:text-muted-foreground/30 text-foreground"
           />
           <Button
             variant="ghost"
@@ -111,7 +111,7 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
             onChange={(e) => setTagsInput(e.target.value)}
             onBlur={handleTagsBlur}
             placeholder={t("doc.tagsPlaceholder")}
-            className="flex-1 text-xs bg-transparent border-none outline-none text-muted-foreground placeholder:text-muted-foreground/40"
+            className="flex-1 text-xs bg-transparent border-none outline-hidden text-muted-foreground placeholder:text-muted-foreground/40"
           />
           {tagChips.length > 0 && (
             <div className="flex gap-1 shrink-0">
@@ -132,10 +132,10 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
               title={t("doc.insertDocumentLink")} className="h-6 gap-1 px-2 text-[10px]">
               <Link2 className="h-3 w-3" /> {t("doc.link")}
             </Button>
-            <Button type="button" variant="ghost" disabled={switchingMode} onClick={() => void switchMode("rich")} className={`h-6 gap-1 px-2 text-[10px] ${mode === "rich" ? "bg-background shadow-sm" : ""}`}>
+            <Button type="button" variant="ghost" disabled={switchingMode} onClick={() => void switchMode("rich")} className={`h-6 gap-1 px-2 text-[10px] ${mode === "rich" ? "bg-background shadow-xs" : ""}`}>
               <Eye className="h-3 w-3" /> {t("doc.richMode")}
             </Button>
-            <Button type="button" variant="ghost" disabled={switchingMode} onClick={() => void switchMode("raw")} className={`h-6 gap-1 px-2 text-[10px] ${mode === "raw" ? "bg-background shadow-sm" : ""}`}>
+            <Button type="button" variant="ghost" disabled={switchingMode} onClick={() => void switchMode("raw")} className={`h-6 gap-1 px-2 text-[10px] ${mode === "raw" ? "bg-background shadow-xs" : ""}`}>
               <Code2 className="h-3 w-3" /> {t("doc.rawMode")}
             </Button>
             <span className="mx-0.5 h-3.5 w-px bg-border" />
@@ -241,7 +241,7 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input autoFocus value={links.linkQuery} onChange={(event) => links.setLinkQuery(event.target.value)}
               placeholder={t("doc.searchDocumentsToLink")}
-              className="h-9 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-primary/30" />
+              className="h-9 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm outline-hidden focus:ring-2 focus:ring-primary/30" />
           </div>
           <div className="mt-3 max-h-80 overflow-y-auto">
             {links.linkContext.candidates

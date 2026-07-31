@@ -69,7 +69,7 @@ function MermaidView({ code, onChange }: { code: string; onChange: (code: string
             rows={Math.max(4, draft.split("\n").length + 1)}
             spellCheck={false}
             placeholder="graph TD&#10;  A --> B"
-            className="w-full text-xs font-mono bg-transparent border-none outline-none resize-y text-foreground placeholder:text-muted-foreground/40"
+            className="w-full text-xs font-mono bg-transparent border-none outline-hidden resize-y text-foreground placeholder:text-muted-foreground/40"
           />
         </div>
       ) : (

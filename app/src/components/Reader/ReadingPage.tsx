@@ -76,7 +76,7 @@ export function ReadingPage() {
               key={id}
               onClick={() => setView(id)}
               className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                view === id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                view === id ? "bg-background text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {id === "paste" ? <PenLine className="h-3.5 w-3.5" /> : <Library className="h-3.5 w-3.5" />}

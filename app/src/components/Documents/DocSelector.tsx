@@ -39,7 +39,7 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, onCollap
     window.addEventListener("blur", dismiss);
     return () => {
       window.removeEventListener("mousedown", dismiss);
-      window.removeEventListener("blur", dismiss);
+      window.removeEventListener("blur-sm", dismiss);
     };
   }, [shelfMenu]);
 
@@ -121,7 +121,7 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, onCollap
           variant="ghost"
           size="icon"
           onClick={() => setImagesOpen(false)}
-          className="absolute right-3 top-3 z-20 h-8 w-8 rounded-full bg-background/80 backdrop-blur"
+          className="absolute right-3 top-3 z-20 h-8 w-8 rounded-full bg-background/80 backdrop-blur-sm"
           title={t("common.close")}
         >
           <CloseIcon className="h-4 w-4" />

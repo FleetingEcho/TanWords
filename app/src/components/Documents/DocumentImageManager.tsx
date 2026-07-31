@@ -49,12 +49,12 @@ export function DocumentImageManager({ writable }: { writable: boolean }) {
           </Button>
           <div className="flex rounded-lg border border-border bg-muted/40 p-0.5">
             <Button variant="ghost" size="icon" onClick={() => changeView("grid")}
-              className={`h-7 w-7 rounded-md ${view === "grid" ? "bg-background text-primary shadow-sm" : "text-muted-foreground"}`}
+              className={`h-7 w-7 rounded-md ${view === "grid" ? "bg-background text-primary shadow-xs" : "text-muted-foreground"}`}
               title={t("settings.documentImagesGrid")} aria-label={t("settings.documentImagesGrid")}>
               <Grid2X2 className="h-3.5 w-3.5" />
             </Button>
             <Button variant="ghost" size="icon" onClick={() => changeView("list")}
-              className={`h-7 w-7 rounded-md ${view === "list" ? "bg-background text-primary shadow-sm" : "text-muted-foreground"}`}
+              className={`h-7 w-7 rounded-md ${view === "list" ? "bg-background text-primary shadow-xs" : "text-muted-foreground"}`}
               title={t("settings.documentImagesList")} aria-label={t("settings.documentImagesList")}>
               <List className="h-4 w-4" />
             </Button>
@@ -67,7 +67,7 @@ export function DocumentImageManager({ writable }: { writable: boolean }) {
           value={query}
           onChange={(event) => { setQuery(event.target.value); setPage(0); }}
           placeholder={t("settings.documentAssetsSearch")}
-          className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-xs outline-none focus:ring-2 focus:ring-primary/30"
+          className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-xs outline-hidden focus:ring-2 focus:ring-primary/30"
         />
         <Select
           value={kindFilter}

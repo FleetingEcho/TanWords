@@ -140,7 +140,7 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
     window.addEventListener("pagehide", flushPending);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("blur", flushPending);
+      window.removeEventListener("blur-sm", flushPending);
       window.removeEventListener("pagehide", flushPending);
     };
   }, []);

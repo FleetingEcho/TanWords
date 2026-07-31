@@ -209,7 +209,7 @@ export function WordDetailPanel({
                   key={section.id}
                   onClick={() => jumpTo(section.id)}
                   title={section.label}
-                  className={`max-w-[11rem] truncate rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                  className={`max-w-44 truncate rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
                     activeSection === section.id ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   }`}
                 >

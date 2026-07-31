@@ -147,7 +147,7 @@ export function LocalDocsSidebar({
                 value={search}
                 onChange={(e) => onSearchChange(e.target.value)}
                 placeholder={t("doc.searchFilesAndContent")}
-                className="w-full h-7 px-2.5 text-xs rounded-lg border border-border bg-card text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/40"
+                className="w-full h-7 px-2.5 text-xs rounded-lg border border-border bg-card text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-1 focus:ring-primary/40"
               />
             </>
           )}

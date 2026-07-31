@@ -226,7 +226,7 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
             if (e.key === "Enter") { e.preventDefault(); void runSearch(); }
           }}
           placeholder={t("reading.search.placeholder")}
-          className="w-full h-8 pl-8 pr-7 rounded-lg border border-input bg-background text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground"
+          className="w-full h-8 pl-8 pr-7 rounded-lg border border-input bg-background text-xs focus:outline-hidden focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground"
         />
         {q && (
           <kbd className="absolute right-2 top-1/2 -translate-y-1/2 rounded border border-border bg-muted px-1 py-0.5 font-mono text-[9px] leading-none text-muted-foreground pointer-events-none">

@@ -63,7 +63,7 @@ export function ToolsModalTitleBar({
             onClick={(e) => { e.stopPropagation(); setActiveTab(tab); }}
             className={`h-auto px-3 py-1.5 text-xs font-semibold rounded-md transition-colors hover:bg-transparent ${
               activeTab === tab
-                ? "bg-background text-foreground shadow-sm hover:bg-background"
+                ? "bg-background text-foreground shadow-xs hover:bg-background"
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >

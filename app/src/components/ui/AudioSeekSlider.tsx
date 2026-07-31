@@ -50,8 +50,8 @@ export function AudioSeekSlider({ position, duration, onSeek, ariaLabel, variant
         <div
           className={`h-full rounded-full ${dragValue === null ? "transition-[width] duration-75" : "transition-none"} ${
             glass
-              ? "bg-gradient-to-r from-white/75 to-white shadow-[0_0_10px_rgba(255,255,255,.35)]"
-              : "bg-gradient-to-r from-primary/70 to-primary shadow-[0_0_8px_hsl(var(--primary)/.25)]"
+              ? "bg-linear-to-r from-white/75 to-white shadow-[0_0_10px_rgba(255,255,255,.35)]"
+              : "bg-linear-to-r from-primary/70 to-primary shadow-[0_0_8px_hsl(var(--primary)/.25)]"
           }`}
           style={{ width: `${progress}%` }}
         />

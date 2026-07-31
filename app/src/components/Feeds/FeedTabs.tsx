@@ -52,7 +52,7 @@ function formatTimeAgo(t: (key: string, vars?: Record<string, string | number>) 
 function UnreadBadge({ n }: { n: number }) {
   if (n <= 0) return null;
   return (
-    <span className="shrink-0 text-[10px] font-semibold tabular-nums rounded-full bg-primary/10 text-primary px-1.5 py-0.5 min-w-[1.25rem] text-center">
+    <span className="shrink-0 text-[10px] font-semibold tabular-nums rounded-full bg-primary/10 text-primary px-1.5 py-0.5 min-w-5 text-center">
       {n > 99 ? "99+" : n}
     </span>
   );
@@ -123,7 +123,7 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
   };
 
   return (
-    // relative z-20: backdrop-blur creates a stacking context, and without a
+    // relative z-20: backdrop-blur-sm creates a stacking context, and without a
     // z-index the content bars below (e.g. HackerNewsSection's blurred toolbar)
     // paint over the More / Recently-read dropdowns.
     <div className="relative z-20 flex shrink-0 items-center gap-3 border-b border-border bg-transparent backdrop-blur-xl px-4 py-2.5">
@@ -184,7 +184,7 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
             {moreOpen && (
               <div className="absolute right-0 top-10 z-50 w-80 overflow-hidden rounded-xl border border-border bg-card shadow-xl">
                 <div className="border-b border-border p-3">
-                  <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("feeds.searchFeeds")} className="h-8 w-full rounded-lg border border-input bg-background px-3 text-xs outline-none focus:ring-1 focus:ring-ring" />
+                  <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("feeds.searchFeeds")} className="h-8 w-full rounded-lg border border-input bg-background px-3 text-xs outline-hidden focus:ring-1 focus:ring-ring" />
                 </div>
                 <div className="max-h-96 overflow-y-auto p-2">
                   {(["article", "podcast"] as const).map((category) => {
@@ -300,7 +300,7 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
             aria-label={t("feeds.viewCard")}
             aria-pressed={viewMode === "card"}
             className={`flex h-6 w-6 items-center justify-center rounded-md p-0 transition-colors hover:bg-transparent ${
-              viewMode === "card" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              viewMode === "card" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
             }`}
           >
             <GridIcon className="h-3.5 w-3.5" />
@@ -312,7 +312,7 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
             aria-label={t("feeds.viewList")}
             aria-pressed={viewMode === "list"}
             className={`flex h-6 w-6 items-center justify-center rounded-md p-0 transition-colors hover:bg-transparent ${
-              viewMode === "list" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+              viewMode === "list" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
             }`}
           >
             <ListIcon className="h-3.5 w-3.5" />

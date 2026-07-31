@@ -79,7 +79,7 @@ export function AiChatComposer({
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!streaming) onSend(); } }}
           placeholder={enabledGroups.size > 0 ? t("aichat.placeholder") : t("aichat.placeholderPlain")}
           rows={3}
-          className="block min-h-[92px] max-h-[240px] w-full resize-none bg-transparent px-3 pb-2 pt-2 text-sm leading-6 placeholder:text-muted-foreground/35 focus:outline-none"
+          className="block min-h-[92px] max-h-[240px] w-full resize-none bg-transparent px-3 pb-2 pt-2 text-sm leading-6 placeholder:text-muted-foreground/35 focus:outline-hidden"
         />
 
         <div className="flex items-center gap-2 px-1">
@@ -90,7 +90,7 @@ export function AiChatComposer({
               title={t("aichat.accessTitle")}
               className={`h-8 gap-1.5 rounded-xl px-2.5 text-[11px] font-medium transition-colors ${
                 enabledGroups.size > 0
-                  ? "bg-primary/[0.08] text-primary hover:bg-primary/[0.12]"
+                  ? "bg-primary/8 text-primary hover:bg-primary/12"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
               }`}
             >
@@ -126,7 +126,7 @@ export function AiChatComposer({
                       ))}
                     </span>
                   </span>
-                  <span className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${active ? "bg-primary" : "bg-muted-foreground/25"}`}><span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${active ? "translate-x-[18px]" : "translate-x-0.5"}`} /></span>
+                  <span className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${active ? "bg-primary" : "bg-muted-foreground/25"}`}><span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-xs transition-transform ${active ? "translate-x-[18px]" : "translate-x-0.5"}`} /></span>
                 </button>
               );
             })}
@@ -149,7 +149,7 @@ export function AiChatComposer({
           <Button
             onClick={onSend}
             disabled={!input.trim() && !attachment}
-            className="h-8 shrink-0 gap-1.5 rounded-xl px-3.5 text-xs font-semibold shadow-sm shadow-primary/20 disabled:shadow-none"
+            className="h-8 shrink-0 gap-1.5 rounded-xl px-3.5 text-xs font-semibold shadow-xs shadow-primary/20 disabled:shadow-none"
           >
             {t("aichat.send")}
             <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5"><path d="M1.5 1.5l13 6.5-13 6.5V9.5l9-3-9-3V1.5z" /></svg>

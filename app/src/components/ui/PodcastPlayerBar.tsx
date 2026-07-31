@@ -57,7 +57,7 @@ export function PodcastPlayerBar() {
 
   return (
     <div
-      className="fixed bottom-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-sm px-4 py-2.5 flex items-center gap-3 animate-fade-in transition-[left] duration-200 cursor-pointer"
+      className="fixed bottom-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-xs px-4 py-2.5 flex items-center gap-3 animate-fade-in transition-[left] duration-200 cursor-pointer"
       style={{ left: sidebarCollapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH }}
       onClick={(e) => {
         // Only blank bar area expands — buttons and the slider keep their own clicks.
