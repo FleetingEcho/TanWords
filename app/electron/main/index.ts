@@ -7,6 +7,7 @@ import { initUpdater } from "./updater";
 import { BrowserPanelManager } from "./browserPanel";
 import { TrayManager, trayIconPath } from "./tray";
 import { wireWindowDevTools } from "./devtools";
+import { rememberedWindowBackground } from "./windowBackground";
 import { abortAllFor } from "./http";
 
 // Pin the app name before anything reads a path from it. `requestSingleInstance
@@ -115,6 +116,10 @@ function createWindow() {
     width: 1280,
     height: 800,
     show: false,
+    // Without this the window's own layer is white, which shows through as a
+    // flash on the first frame and during resizes before the renderer repaints.
+    // See windowBackground.ts for why this is the previous run's colour.
+    backgroundColor: rememberedWindowBackground(),
     // Windows/Linux take the window + taskbar icon from here. macOS ignores it
     // (it uses the .app bundle), which is handled separately below.
     icon: appIconPath(),

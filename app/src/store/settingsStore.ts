@@ -3,11 +3,11 @@ import {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR, DEFAULT_BANNER_POSITION,
   DOCUMENT_TEXT_COLOR_RE,
   type Theme, type SidebarTabId, type TopBarItemId, type RssTabSelection,
-  type DashboardWidgetLayout, type BannerPosition,
+  type BannerPosition,
 } from "./settings/types";
 import {
   cachedUiLanguage, cacheUiLanguage, cachedSidebarTabs, cacheSidebarTabs,
-  cachedDashboardLayout, cacheDashboardLayout, cachedTopBarItems, cacheTopBarItems,
+  cachedTopBarItems, cacheTopBarItems,
   cachedDefaultRssTab, cacheDefaultRssTab, cachedFeedsViewMode, cacheFeedsViewMode, saveSetting,
 } from "./settings/cache";
 import { applyTheme, applyDocumentFontSize, applyDocumentLineHeight, applyDocumentTextColor, applyHighlightColor } from "./settings/domEffects";
@@ -15,10 +15,10 @@ import { loadSettingsFromDB } from "./settings/loadFromDB";
 import type { SettingsState } from "./settings/state";
 
 export type {
-  Theme, SidebarTabId, TopBarItemId, RssTabSelection, DashboardWidgetId, DashboardWidgetLayout, BannerPosition,
+  Theme, SidebarTabId, TopBarItemId, RssTabSelection, BannerPosition,
 } from "./settings/types";
 export {
-  DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_DASHBOARD_WIDGET_LAYOUT,
+  DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS,
   DEFAULT_HIGHLIGHT_COLOR, HIGHLIGHT_PRESETS, DEFAULT_BANNER_POSITION,
 } from "./settings/types";
 export type { SettingsState } from "./settings/state";
@@ -38,7 +38,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   showGithubLink: true,
   selectionActions: true,
   visibleSidebarTabs: cachedSidebarTabs(),
-  dashboardWidgetLayout: cachedDashboardLayout(),
   visibleTopBarItems: cachedTopBarItems(),
   defaultRssTab: cachedDefaultRssTab(),
   feedsViewMode: cachedFeedsViewMode(),
@@ -90,12 +89,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ visibleSidebarTabs: next });
     cacheSidebarTabs(next);
     saveSetting("visible_sidebar_tabs", JSON.stringify(next));
-  },
-
-  setDashboardWidgetLayout: (layout) => {
-    set({ dashboardWidgetLayout: layout });
-    cacheDashboardLayout(layout);
-    saveSetting("dashboard_widget_layout", JSON.stringify(layout));
   },
 
   setTopBarItemVisible: (item, visible) => {

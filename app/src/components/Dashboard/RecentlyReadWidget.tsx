@@ -5,7 +5,7 @@ import { useNavStore } from "@/store/navStore";
 import { useFeedsNavStore } from "@/store/feedsNavStore";
 import { getRecentlyRead, type RecentlyReadItem } from "@/lib/recentlyRead";
 import { PlayIcon, FeedIcon } from "@/components/ui/icons";
-import { DashboardCard, DashboardRow, DashboardEmpty, DashboardFillRows, DASHBOARD_BODY_ROWS } from "./DashboardCard";
+import { DashboardCard, DashboardRow, DashboardEmpty, DashboardFill, DASHBOARD_BODY_ROWS } from "./DashboardCard";
 
 function formatTimeAgo(t: (key: string, vars?: Record<string, string | number>) => string, ts: number): string {
   const minutes = Math.max(0, Math.round((Date.now() - ts) / 60000));
@@ -20,14 +20,14 @@ function formatTimeAgo(t: (key: string, vars?: Record<string, string | number>) 
 /** Dashboard card: the last few articles opened in the RSS reader (lib/recentlyRead,
  *  the same localStorage-backed list behind Feeds' history dropdown) — clicking one
  *  jumps to Feeds and reopens it in-app via feedsNavStore's browse state. */
-export function RecentlyReadWidget() {
+export function RecentlyReadWidget({ maxRows = DASHBOARD_BODY_ROWS }: { maxRows?: number }) {
   const t = useT();
   const navigate = useNavStore((s) => s.navigate);
   const [items, setItems] = useState<RecentlyReadItem[]>([]);
 
   useEffect(() => {
-    setItems(getRecentlyRead().slice(0, DASHBOARD_BODY_ROWS));
-  }, []);
+    setItems(getRecentlyRead().slice(0, maxRows));
+  }, [maxRows]);
 
   const openItem = (item: RecentlyReadItem) => {
     useFeedsNavStore.getState().setBrowse(item);
@@ -64,7 +64,7 @@ export function RecentlyReadWidget() {
             <span className="shrink-0 text-[10px] text-muted-foreground">{formatTimeAgo(t, item.readAt)}</span>
           </DashboardRow>
         ))}
-        <DashboardFillRows count={DASHBOARD_BODY_ROWS - items.length} />
+        <DashboardFill />
         </>
       )}
     </DashboardCard>

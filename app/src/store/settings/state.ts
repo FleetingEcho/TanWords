@@ -1,5 +1,5 @@
 import type {
-  Theme, SidebarTabId, TopBarItemId, RssTabSelection, DashboardWidgetLayout, BannerPosition,
+  Theme, SidebarTabId, TopBarItemId, RssTabSelection, BannerPosition,
 } from "./types";
 
 export interface SettingsState {
@@ -25,8 +25,6 @@ export interface SettingsState {
   selectionActions: boolean;
   /** Main navigation tabs visible in the sidebar. Settings is always visible. */
   visibleSidebarTabs: SidebarTabId[];
-  /** Order of the Dashboard's draggable widget cards across its two columns. */
-  dashboardWidgetLayout: DashboardWidgetLayout;
   /** User-selected controls visible in the global command bar. */
   visibleTopBarItems: TopBarItemId[];
   /** RSS feed tab selected by default when opening Feeds — "all" or a specific feed's id.
@@ -78,7 +76,6 @@ export interface SettingsState {
   setShowGithubLink: (v: boolean) => void;
   setSelectionActions: (v: boolean) => void;
   setSidebarTabVisible: (tab: SidebarTabId, visible: boolean) => void;
-  setDashboardWidgetLayout: (layout: DashboardWidgetLayout) => void;
   setTopBarItemVisible: (item: TopBarItemId, visible: boolean) => void;
   setDefaultRssTab: (tab: RssTabSelection) => void;
   setFeedsViewMode: (mode: "card" | "list") => void;

@@ -7,12 +7,25 @@ import { QuickActionsBar } from "./QuickActionsBar";
 
 // ── Small pieces ────────────────────────────────────────────────────────────
 
-function StatTile({ value, label, accent }: { value: number; label: string; accent?: boolean }) {
+/** `value` is null until the sidecar handshake completes and the first stats
+ *  query returns — which on a cold start is long enough to see.
+ *
+ *  It used to render `stats?.word_count ?? 0`, so the dashboard came up
+ *  claiming four zeros and then snapped to the real numbers: not a load, but a
+ *  wrong answer being corrected. A placeholder bar of the same height says
+ *  "not known yet" and turns into the number without moving anything. */
+function StatTile({ value, label, accent }: { value: number | null; label: string; accent?: boolean }) {
   return (
     <div className="bg-card border border-border rounded-2xl px-5 py-4">
-      <p className={`text-3xl font-bold leading-none tabular-nums ${accent ? "text-primary" : ""}`}>
-        {value}
-      </p>
+      {value === null ? (
+        <div className="h-[30px] flex items-center" aria-hidden>
+          <div className="h-6 w-14 rounded-lg bg-muted animate-pulse" />
+        </div>
+      ) : (
+        <p className={`text-3xl font-bold leading-none tabular-nums h-[30px] ${accent ? "text-primary" : ""}`}>
+          {value}
+        </p>
+      )}
       <p className="text-[11px] font-medium text-muted-foreground mt-2 uppercase tracking-wider">
         {label}
       </p>
@@ -77,14 +90,13 @@ export function DashboardPage() {
         <p className="text-sm text-muted-foreground mt-1">{dateLabel}</p>
       </div>
 
-      {/* Stat tiles: what has been collected, not how diligently.
-        * `known_count` was already being computed by db_dashboard_stats and
-        * thrown away by the renderer — it costs nothing to show. */}
+      {/* Stat tiles: how much of each thing the app collects, not how
+        * diligently — one tile per kind of thing you accumulate. */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatTile value={stats?.word_count ?? 0} label={t("dash.stat.words")} />
-        <StatTile value={stats?.words_this_week ?? 0} label={t("dash.stat.week")} accent />
-        <StatTile value={stats?.known_count ?? 0} label={t("dash.stat.known")} />
-        <StatTile value={stats?.article_count ?? 0} label={t("dash.stat.articles")} />
+        <StatTile value={stats?.word_count ?? null} label={t("dash.stat.words")} />
+        <StatTile value={stats?.pattern_count ?? null} label={t("dash.stat.sentences")} accent />
+        <StatTile value={stats?.chat_count ?? null} label={t("dash.stat.chats")} />
+        <StatTile value={stats?.doc_count ?? null} label={t("dash.stat.docs")} />
       </div>
 
       {/* Navigation, not a "recent" anything — hence outside the grid below */}
