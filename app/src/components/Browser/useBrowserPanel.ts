@@ -18,6 +18,11 @@ export interface BrowserTab {
   loading: boolean;
   /** Showing the home screen: the webview (if any) is hidden, not closed. */
   atHome: boolean;
+  /** A still frame of the page, shown in place of the native view while a
+   *  modal has it hidden (see `blocked` below) — without this the page reads
+   *  as "gone" rather than "stepped aside" for the duration. Cleared as soon
+   *  as the view is shown again. */
+  preview: string | null;
 }
 
 interface RemoteTab {
@@ -45,6 +50,7 @@ const freshTab = (): BrowserTab => ({
   title: "",
   loading: false,
   atHome: true,
+  preview: null,
 });
 
 /** Turns any pasted text into something navigable: a bare domain gets a
@@ -159,6 +165,7 @@ export function useBrowserPanel() {
         patchTab(key, {
           panelId: id,
           atHome: false,
+          preview: null,
           ...(targetUrl ? { url: targetUrl } : {}),
         });
         setError(null);
@@ -191,6 +198,7 @@ export function useBrowserPanel() {
           title: t.title,
           loading: false,
           atHome: t.atHome,
+          preview: null,
         }));
         setTabs(restored);
         setActiveKey(restored.find((t) => t.panelId === state.active)?.key ?? restored[0].key);
@@ -205,8 +213,11 @@ export function useBrowserPanel() {
   useEffect(() => {
     if (!container || !active) return;
     if (blocked || active.atHome || !active.panelId) {
+      const key = active.key;
+      const wasShowing = blocked && !active.atHome && !!active.panelId;
       void enqueue(async () => {
-        await invoke("browser_hide", {}).catch(() => {});
+        const snapshot = await invoke<string | null>("browser_hide", {}).catch(() => null);
+        if (wasShowing) patchTab(key, { preview: snapshot });
       });
       return;
     }
@@ -292,13 +303,13 @@ export function useBrowserPanel() {
   const reload = () => onActive("browser_reload");
   const goBack = () => onActive("browser_go_back");
   const goForward = () => onActive("browser_go_forward");
-  /** Throws away cookies/localStorage/cache before reloading. Rejects rather
-   *  than swallowing, so the caller can surface a toast. */
-  const hardReload = () =>
-    active?.panelId
-      ? invoke("browser_hard_reload", { tabId: active.panelId })
-      : Promise.resolve();
-  const clearData = () => invoke("browser_clear_data");
+  /** Throws away cookies/localStorage/cache for every tab, then reloads the
+   *  active one so the effect is immediately visible. Rejects rather than
+   *  swallowing, so the caller can surface a toast. */
+  const clearData = async () => {
+    await invoke("browser_clear_data");
+    if (active?.panelId) await invoke("browser_reload", { tabId: active.panelId }).catch(() => {});
+  };
 
   return {
     setContainer,
@@ -307,7 +318,6 @@ export function useBrowserPanel() {
     error,
     open,
     reload,
-    hardReload,
     goBack,
     goForward,
     goHome,

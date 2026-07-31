@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, Eraser, Globe, Home, MessageSquareQuote, RotateCw, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, ExternalLink, Globe, Home, MessageSquareQuote, RotateCw, Trash2 } from "lucide-react";
+import { open as openShell } from "@tauri-apps/plugin-shell";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
@@ -13,7 +14,7 @@ export default function BrowserPage() {
   const t = useT();
   const {
     setContainer, tabs, active, error,
-    open, reload, hardReload, goBack, goForward, goHome, clearData,
+    open, reload, goBack, goForward, goHome, clearData,
     newTab, selectTab, closeTab,
   } = useBrowserPanel();
 
@@ -36,15 +37,6 @@ export default function BrowserPage() {
   }, [url, active?.key]);
 
   const go = () => void open(addressInput);
-
-  const handleHardReload = async () => {
-    try {
-      await hardReload();
-      toast.success(t("browser.hardReloadDone"));
-    } catch (e) {
-      toast.error(String(e));
-    }
-  };
 
   const handleClearData = async () => {
     setClearing(true);
@@ -114,18 +106,18 @@ export default function BrowserPage() {
         </div>
 
         <Button
+          variant="ghost" size="icon" onClick={() => void openShell(url)} disabled={!opened}
+          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          title={t("browser.openInDefaultBrowser")} aria-label={t("browser.openInDefaultBrowser")}
+        >
+          <ExternalLink className="h-4 w-4" />
+        </Button>
+        <Button
           variant="ghost" size="icon" onClick={() => setAskOpen((v) => !v)}
           className={`h-8 w-8 ${askOpen ? "text-primary" : "text-muted-foreground hover:text-primary"}`}
           title={t("browser.askSelection")} aria-label={t("browser.askSelection")}
         >
           <MessageSquareQuote className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost" size="icon" onClick={() => void handleHardReload()} disabled={!opened}
-          className="h-8 w-8 text-muted-foreground hover:text-foreground"
-          title={t("browser.hardReload")} aria-label={t("browser.hardReload")}
-        >
-          <Eraser className="h-4 w-4" />
         </Button>
         <Button
           variant="ghost" size="icon" onClick={() => setConfirmClear(true)}
@@ -144,7 +136,13 @@ export default function BrowserPage() {
 
       <div className="flex min-h-0 flex-1">
         <div ref={setContainer} className="relative min-h-0 flex-1 bg-muted/20">
-          {!opened && <BrowserEmptyState onOpen={(u) => void open(u)} />}
+          {!opened && !active?.preview && <BrowserEmptyState onOpen={(u) => void open(u)} />}
+          {active?.preview && (
+            // The native view is detached while a modal is up (it would
+            // otherwise render on top of it — see browserPanelStore.ts) —
+            // this still frame stands in so the page reads as paused, not gone.
+            <img src={active.preview} alt="" className="absolute inset-0 h-full w-full object-cover" />
+          )}
         </div>
         {askOpen && <BrowserAskPane onClose={() => setAskOpen(false)} />}
       </div>

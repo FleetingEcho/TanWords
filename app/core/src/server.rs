@@ -38,6 +38,7 @@ use crate::shim::{AppHandle, Registry};
 #[derive(Clone)]
 struct ServerState {
     ctx: Ctx,
+    shutdown: tokio::sync::watch::Receiver<()>,
 }
 
 /// Random 32-byte bearer token, base64url-encoded. Generated fresh per
@@ -128,7 +129,10 @@ async fn events_handler(
         let data = json!({ "name": event.name, "payload": event.payload }).to_string();
         Some(Ok(SseEvent::default().data(data)))
     });
-    Sse::new(stream)
+    let mut shutdown = state.shutdown;
+    Sse::new(stream.take_until(async move {
+        let _ = shutdown.changed().await;
+    }))
 }
 
 /// Range-capable file serving — the HTTP replacement for `convertFileSrc`.
@@ -158,6 +162,7 @@ async fn asset_handler(req: Request) -> Response {
 pub async fn serve(registry: Arc<Registry>, app_handle: AppHandle) {
     let ctx = Ctx::new(registry, app_handle);
     let token = Arc::new(generate_token());
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(());
 
     let invoke_routes = Router::new()
         .route("/invoke/{command}", post(invoke_handler))
@@ -183,7 +188,7 @@ pub async fn serve(registry: Arc<Registry>, app_handle: AppHandle) {
         .merge(invoke_routes)
         .merge(query_token_routes)
         .layer(cors)
-        .with_state(ServerState { ctx });
+        .with_state(ServerState { ctx, shutdown: shutdown_rx });
 
     let listener = tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
         .await
@@ -198,7 +203,13 @@ pub async fn serve(registry: Arc<Registry>, app_handle: AppHandle) {
     }
 
     axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_on_stdin_eof())
+        .with_graceful_shutdown(async move {
+            shutdown_on_stdin_eof().await;
+            // Wakes every open `/events` stream (see ServerState::shutdown)
+            // so they end immediately instead of holding graceful shutdown
+            // open until the supervisor's timeout forces a SIGTERM/SIGKILL.
+            let _ = shutdown_tx.send(());
+        })
         .await
         .expect("sidecar server exited unexpectedly");
 }
