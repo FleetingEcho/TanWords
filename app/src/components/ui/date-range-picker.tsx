@@ -1,7 +1,7 @@
 import * as React from "react";
-import { format, parseISO } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import { CalendarIcon, XIcon } from "lucide-react";
+import { formatCalendarDate, parseCalendarDate } from "@/lib/calendarDate";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -23,16 +23,18 @@ export function DateRangePicker({ from, to, onChange, placeholder, className }: 
   const [open, setOpen] = React.useState(false);
 
   const range: DateRange | undefined = from || to ? {
-    from: from ? parseISO(from) : undefined,
-    to: to ? parseISO(to) : undefined,
+    from: from ? parseCalendarDate(from) : undefined,
+    to: to ? parseCalendarDate(to) : undefined,
   } : undefined;
 
+  // `from`/`to` are already "yyyy-MM-dd", which is exactly what the label
+  // shows — the old code round-tripped them through parse+format for nothing.
   const label = from && to
-    ? `${format(parseISO(from), "yyyy-MM-dd")} → ${format(parseISO(to), "yyyy-MM-dd")}`
+    ? `${from} → ${to}`
     : from
-    ? `${format(parseISO(from), "yyyy-MM-dd")} →`
+    ? `${from} →`
     : to
-    ? `→ ${format(parseISO(to), "yyyy-MM-dd")}`
+    ? `→ ${to}`
     : placeholder;
 
   return (
@@ -67,7 +69,7 @@ export function DateRangePicker({ from, to, onChange, placeholder, className }: 
           mode="range"
           selected={range}
           onSelect={(r) => {
-            onChange(r?.from ? format(r.from, "yyyy-MM-dd") : "", r?.to ? format(r.to, "yyyy-MM-dd") : "");
+            onChange(r?.from ? formatCalendarDate(r.from) : "", r?.to ? formatCalendarDate(r.to) : "");
           }}
           numberOfMonths={1}
         />
