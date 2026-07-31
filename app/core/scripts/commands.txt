@@ -146,13 +146,10 @@ localdocs::markdown_export_bundles
 mcp::mcp_get_config
 mcp::mcp_apply_config
 mcp::mcp_generate_token
-tray::tray_update_now_playing
-tray::tray_set_language
 browser_panel::browser_get_state
 browser_panel::browser_show
 browser_panel::browser_navigate
 browser_panel::browser_reload
-browser_panel::browser_hard_reload
 browser_panel::browser_go_home
 browser_panel::browser_close_tab
 browser_panel::browser_go_back

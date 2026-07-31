@@ -1,13 +1,11 @@
 /** Main-side handlers for every channel `src/bridge/*.ts` calls via
  *  `window.tanwords.call(...)`. Grepped exhaustively from `tanwords?.call("` —
- *  see docs/electron-migration-handoff.md Task 3. `browser_*` is
- *  deliberately NOT implemented here: the browser panel is being built
- *  directly against native Electron APIs (WebContentsView), not ported from
- *  the old Rust command contract — see Task 4. It's stubbed with a clean
- *  rejection so an accidental call fails loudly instead of crashing the
- *  renderer. */
+ *  see docs/electron-migration-handoff.md Task 3. `browser_*` routes to
+ *  `BrowserPanelManager` — a native WebContentsView-based panel, not ported
+ *  from the old Rust command contract (see Task 4 / browserPanel.ts). */
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
 import type { UpdateInfoPayload } from "./updater";
+import type { BrowserPanelManager, PanelBounds } from "./browserPanel";
 
 export type IpcDeps = {
   getMainWindow: () => BrowserWindow | null;
@@ -16,6 +14,7 @@ export type IpcDeps = {
     check: () => Promise<UpdateInfoPayload | null>;
     downloadAndInstall: () => Promise<void>;
   };
+  browserPanel: BrowserPanelManager;
 };
 
 /** Schemes `shell:open` will actually hand to `shell.openExternal` — an
@@ -141,13 +140,51 @@ async function dispatch(channel: string, args: unknown, deps: IpcDeps): Promise<
       return app.getName();
     }
 
+    case "browser_show": {
+      const { tabId, url, ...bounds } = (args ?? {}) as { tabId: string | null; url: string | null } & PanelBounds;
+      return deps.browserPanel.show(tabId, bounds, url);
+    }
+    case "browser_set_bounds": {
+      deps.browserPanel.setBounds((args ?? {}) as PanelBounds);
+      return null;
+    }
+    case "browser_hide": {
+      return deps.browserPanel.hide();
+    }
+    case "browser_get_state": {
+      return deps.browserPanel.getState();
+    }
+    case "browser_go_home": {
+      const { tabId } = (args ?? {}) as { tabId: string };
+      deps.browserPanel.goHome(tabId);
+      return null;
+    }
+    case "browser_close_tab": {
+      const { tabId } = (args ?? {}) as { tabId: string };
+      deps.browserPanel.closeTab(tabId);
+      return null;
+    }
+    case "browser_reload": {
+      const { tabId } = (args ?? {}) as { tabId: string };
+      deps.browserPanel.reload(tabId);
+      return null;
+    }
+    case "browser_go_back": {
+      const { tabId } = (args ?? {}) as { tabId: string };
+      deps.browserPanel.goBack(tabId);
+      return null;
+    }
+    case "browser_go_forward": {
+      const { tabId } = (args ?? {}) as { tabId: string };
+      deps.browserPanel.goForward(tabId);
+      return null;
+    }
+    case "browser_clear_data": {
+      await deps.browserPanel.clearData();
+      return null;
+    }
+
     default: {
-      if (/^browser_/.test(channel)) {
-        // Owned by native-Electron browser panel work (Task 4), not by this
-        // Rust-command-contract port. Reject cleanly rather than crash so
-        // any not-yet-wired call site fails loudly and visibly.
-        throw new Error(`tanwords: "${channel}" is not implemented yet (browser panel, see Task 4)`);
-      }
       throw new Error(`tanwords: unknown IPC channel "${channel}"`);
     }
   }
