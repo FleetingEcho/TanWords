@@ -18,9 +18,9 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true
   },
-  // vite.config.ts is deliberately absent: vitest ships its own nested copy of
-  // vite, so `react()` typed against the top-level vite is structurally
+  // vitest.config.ts is deliberately absent: vitest ships its own nested copy
+  // of vite, so `react()` typed against the top-level vite is structurally
   // incompatible with vitest/config's `plugins`. It's a dependency-tree
   // artifact, not a real error, and vitest type-checks that file itself.
-  "include": ["electron.vite.config.ts", "electron/**/*.ts"]
+  "include": ["vite.config.ts", "electron/**/*.ts"]
 }

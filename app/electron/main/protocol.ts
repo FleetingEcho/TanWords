@@ -27,7 +27,7 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
-/** electron-vite's renderer build output (see electron.vite.config.ts). */
+/** The renderer build output (see vite.config.ts's `build.outDir`). */
 function rendererDir(): string {
   // Packaged: out/renderer sits next to out/main inside the asar/app dir.
   // Unpackaged: same relative layout, rooted at the project directory.

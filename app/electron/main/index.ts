@@ -123,7 +123,10 @@ function createWindow() {
     // lives in the system menu, not the window).
     autoHideMenuBar: true,
     webPreferences: {
-      preload: path.join(__dirname, "../preload/index.cjs"),
+      // `import.meta.dirname`, not `__dirname`: this bundle is ESM (the
+      // package is "type": "module" and vite-plugin-electron emits ES for
+      // main), and unlike electron-vite it injects no __dirname shim.
+      preload: path.join(import.meta.dirname, "../preload/index.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -153,7 +156,9 @@ function createWindow() {
   browserPanel.setWindow(win);
   wireWindowDevTools(win);
 
-  const devServerUrl = process.env["ELECTRON_RENDERER_URL"];
+  // Set by vite-plugin-electron when it spawns Electron from `vite dev`
+  // (electron-vite's equivalent was ELECTRON_RENDERER_URL).
+  const devServerUrl = process.env["VITE_DEV_SERVER_URL"];
   if (devServerUrl) {
     void win.loadURL(devServerUrl);
   } else {

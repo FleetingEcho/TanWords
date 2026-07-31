@@ -161,8 +161,8 @@ Electron 主进程里没有任何业务逻辑。所有数据访问、AI 编排�
 
 ### 体积：DMG 202MB → 129MB，asar 344MB → 17MB
 
-- **不再打包 `node_modules`。** 全部 30 个生产依赖都是渲染进程的库，Vite 已经把
-  它们打进了 `out/renderer`，而 electron-vite 把唯一那个主进程依赖内联进了
+- **不再打包 `node_modules`。** 全部 27 个生产依赖都是渲染进程的库，Vite 已经把
+  它们打进了 `out/renderer`，而 vite-plugin-electron 把唯一那个主进程依赖内联进了
   `out/main` —— 运行时没有任何东西需要从依赖树里解析。照旧打包会让 `app.asar`
   变成 344MB，而不是 **17MB**。
 - **字体：1.88MB → 0.17MB。** Monaspace 原本是 1487KB 的 WOFF1 Nerd Font 版本，

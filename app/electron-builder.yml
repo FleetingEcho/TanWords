@@ -38,7 +38,7 @@ publish:
 # "version" (already 1.0.0); duplicating it here would be a second source of truth.
 
 directories:
-  # electron-vite's build output (out/main, out/preload, out/renderer) is what
+  # The Vite build output (out/main, out/preload, out/renderer) is what
   # actually ships; core/ (Rust source + target/) and src/ (pre-bundle renderer
   # source) must NOT be swept into the app via the default "**/*" file matcher.
   output: ../dist-releases
@@ -55,7 +55,7 @@ files:
   # production dependencies on its own, tracked from package.json's
   # "dependencies" rather than from this list. Every one of those 30 packages
   # is a renderer library (React, Mantine, BlockNote, mermaid, date-fns…) that
-  # Vite has already bundled into out/renderer, and electron-vite inlines the
+  # Vite has already bundled into out/renderer, and vite-plugin-electron inlines
   # one main-process dependency (electron-updater) straight into
   # out/main/index.js — there is no `require` left for any of it to resolve.
   # Shipping the tree as well made app.asar 344MB instead of 18MB.
