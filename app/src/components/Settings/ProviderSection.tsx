@@ -4,28 +4,47 @@ import { toast } from "sonner";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { registerBuiltInProviders, registerCustomProvider, removeProvider } from "@/providers";
-import { getSecret, setSecret, secretDelete } from "@/lib/secrets";
+import {
+  ProviderConfig,
+  deleteProvider,
+  loadProviderConfigs,
+  upsertProvider,
+} from "@/providers/providerStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useT } from "@/hooks/useT";
-import { loadProviderModels, saveProviderModel } from "@/providers/modelPreferences";
-import { BUILT_IN_PROVIDERS, PRESET_PROVIDERS, ProviderDef, loadCustomProvidersMeta, saveCustomProvidersMeta } from "./providerConstants";
+import { DEFAULT_PROVIDER_MODELS } from "@/providers/modelPreferences";
+import { BUILT_IN_API_BASE, BUILT_IN_PROVIDERS, PRESET_PROVIDERS, ProviderDef } from "./providerConstants";
 import { ProviderRow } from "./ProviderList";
 import { ProviderKeyModelPanel } from "./ProviderKeyModelPanel";
 import { CustomProviderPanel } from "./CustomProviderPanel";
 import { CustomProviderAddForm } from "./CustomProviderAddForm";
+
+/** The row a provider starts from before it has ever been saved. Built-ins and
+ *  presets are always listed by the UI, so they need a config object well
+ *  before a row for them exists in the database. */
+function blankConfig(id: string): ProviderConfig {
+  const builtIn = BUILT_IN_PROVIDERS.find((p) => p.id === id);
+  const preset = PRESET_PROVIDERS.find((p) => p.id === id);
+  return {
+    id,
+    name: builtIn?.name ?? preset?.name ?? "",
+    kind: builtIn ? "builtin" : preset ? "preset" : "custom",
+    apiBase: BUILT_IN_API_BASE[id] ?? preset?.apiBase ?? "",
+    modelId: DEFAULT_PROVIDER_MODELS[id] ?? builtIn?.model ?? preset?.model ?? "",
+    hasKey: false,
+    apiKey: "",
+  };
+}
 
 export function ProviderSection() {
   const t = useT();
   // Which row is open. Purely a viewing state: the default provider is set
   // by its own button, so you can inspect a key without switching to it.
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [openaiKey, setOpenaiKey] = useState("");
-  const [claudeKey, setClaudeKey] = useState("");
-  const [customProviders, setCustomProviders] = useState<
-    { id: string; name: string; apiBase: string; modelId: string; apiKey: string }[]
-  >([]);
-  const [presetKeys, setPresetKeys] = useState<Record<string, string>>({});
-  const [keysLoaded, setKeysLoaded] = useState(false);
+  // Every configured provider, keyed by id — the single source of truth here,
+  // loaded from (and written straight back to) the `ai_providers` table.
+  const [configs, setConfigs] = useState<Record<string, ProviderConfig>>({});
+  const [loaded, setLoaded] = useState(false);
   const [showAddCustom, setShowAddCustom] = useState(false);
   const [newProvider, setNewProvider] = useState({ name: "", apiBase: "", apiKey: "", modelId: "" });
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -33,123 +52,108 @@ export function ProviderSection() {
   const [testStatus, setTestStatus] = useState<{ ok: boolean | null; text: string } | null>(null);
   const [fetchedModels, setFetchedModels] = useState<string[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
-  const [providerModels, setProviderModels] = useState<Record<string, string>>(() => loadProviderModels());
   const globalDefaultProvider = useSettingsStore((state) => state.defaultAiProvider);
 
+  // Mirrors `configs` so an event handler can build the next value without
+  // doing it inside a setState updater — those run twice under StrictMode, and
+  // persisting from in there would double every write.
+  const configsRef = useRef<Record<string, ProviderConfig>>({});
+  configsRef.current = configs;
 
+  // Debounced database writes, one timer per provider.
+  const persistTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
-  // Debounce timers for keychain writes (per key)
-  const debounceRefs = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-
-  /** Debounced write to keychain. Errors here were previously silent — a
-   * failed write (locked/denied keychain) left the UI looking saved while
-   * nothing actually persisted, so the key vanished on next launch. */
-  const debouncedSetSecret = useCallback((key: string, value: string) => {
-    if (debounceRefs.current[key]) clearTimeout(debounceRefs.current[key]);
-    debounceRefs.current[key] = setTimeout(() => {
-      setSecret(key, value).catch(() => {
-        toast.error(t("settings.keySaveFailed"));
-      });
-      delete debounceRefs.current[key];
-    }, 500);
+  /** Writes one provider's row. Debounced because the key and model inputs
+   * fire per keystroke. Errors surface as a toast rather than leaving the UI
+   * looking saved while nothing actually persisted. */
+  const persist = useCallback((config: ProviderConfig, immediate = false) => {
+    const write = () => {
+      delete persistTimers.current[config.id];
+      upsertProvider(
+        {
+          id: config.id,
+          name: config.name,
+          kind: config.kind,
+          apiBase: config.apiBase,
+          modelId: config.modelId,
+        },
+        config.apiKey,
+      ).catch(() => toast.error(t("settings.keySaveFailed")));
+    };
+    if (persistTimers.current[config.id]) clearTimeout(persistTimers.current[config.id]);
+    if (immediate) write();
+    else persistTimers.current[config.id] = setTimeout(write, 500);
   }, [t]);
 
-  // Cleanup debounce timers on unmount
+  /** Applies a patch to one provider in state and schedules the write. */
+  const updateConfig = useCallback((id: string, patch: Partial<ProviderConfig>, immediate = false) => {
+    const next = { ...(configsRef.current[id] ?? blankConfig(id)), ...patch };
+    configsRef.current = { ...configsRef.current, [id]: next };
+    setConfigs(configsRef.current);
+    persist(next, immediate);
+  }, [persist]);
+
+  // Flush pending writes on unmount — closing Settings mid-keystroke used to
+  // be enough to lose the last edit.
   useEffect(() => {
     return () => {
-      Object.values(debounceRefs.current).forEach(clearTimeout);
+      Object.values(persistTimers.current).forEach(clearTimeout);
     };
   }, []);
 
-  // Load all keys from keychain on mount
+  // Load this device's providers once.
   useEffect(() => {
     (async () => {
-      const [loadedOpenai, loadedClaude] = await Promise.all([
-        getSecret("apikey_openai"),
-        getSecret("apikey_claude"),
-      ]);
-      setOpenaiKey(loadedOpenai);
-      setClaudeKey(loadedClaude);
-
-      // Load preset keys (DeepSeek)
-      const presetResult: Record<string, string> = {};
-      for (const preset of PRESET_PROVIDERS) {
-        const key = await getSecret(`apikey_${preset.id}`);
-        if (key) presetResult[preset.id] = key;
+      let loadedConfigs: Record<string, ProviderConfig> = {};
+      try {
+        loadedConfigs = await loadProviderConfigs();
+      } catch (error) {
+        toast.error(String(error));
       }
-      setPresetKeys(presetResult);
-
-      // Load custom providers (metadata from localStorage, keys from keychain)
-      const metaProviders = loadCustomProvidersMeta();
-      const loadedCustom = await Promise.all(
-        metaProviders.map(async (m) => {
-          const key = await getSecret(`apikey_${m.id}`);
-          return { ...m, apiKey: key };
-        })
-      );
-      setCustomProviders(loadedCustom);
-
-      // Determine initial selected provider. Only override the persisted
-      // defaultAiProvider if it doesn't actually have a key — otherwise this
-      // effect would silently overwrite the user's real choice on every load.
-      const currentDefault = useSettingsStore.getState().defaultAiProvider;
-      const currentDefaultHasKey =
-        (currentDefault === "openai" && loadedOpenai) ||
-        (currentDefault === "claude" && loadedClaude) ||
-        presetResult[currentDefault] ||
-        loadedCustom.find((p) => p.id === currentDefault)?.apiKey;
+      configsRef.current = loadedConfigs;
+      setConfigs(loadedConfigs);
 
       // Repair a default that points at a provider with no key — otherwise
       // every AI call silently falls back to whichever one happens to work.
-      if (!currentDefaultHasKey) {
-        const firstWithKey =
-          (loadedOpenai && "openai") ||
-          (loadedClaude && "claude") ||
-          loadedCustom.find((p) => p.apiKey)?.id ||
-          Object.entries(presetResult).find(([, v]) => v)?.[0];
+      const currentDefault = useSettingsStore.getState().defaultAiProvider;
+      if (!loadedConfigs[currentDefault]?.apiKey) {
+        const firstWithKey = Object.values(loadedConfigs).find((c) => c.apiKey)?.id;
         if (firstWithKey) useSettingsStore.getState().setDefaultAiProvider(firstWithKey);
       }
 
-      setKeysLoaded(true);
+      setLoaded(true);
     })();
   }, []);
 
-  // Re-register built-in providers when keys change
+  // Keep the in-memory provider registry in step with the edits above, so a
+  // key typed here works everywhere else without a restart.
   useEffect(() => {
-    if (!keysLoaded) return;
-    registerBuiltInProviders(openaiKey, claudeKey, providerModels);
-  }, [openaiKey, claudeKey, keysLoaded, providerModels.openai, providerModels.claude]);
+    if (!loaded) return;
+    registerBuiltInProviders(
+      configs.openai?.apiKey || "",
+      configs.claude?.apiKey || "",
+      {
+        openai: configs.openai?.modelId || DEFAULT_PROVIDER_MODELS.openai,
+        claude: configs.claude?.modelId || DEFAULT_PROVIDER_MODELS.claude,
+      },
+    );
+  }, [loaded, configs.openai?.apiKey, configs.claude?.apiKey, configs.openai?.modelId, configs.claude?.modelId]);
 
-  // Persist + register custom providers
   useEffect(() => {
-    if (!keysLoaded) return;
-    const meta = customProviders.map(({ id, name, apiBase, modelId }) => ({ id, name, apiBase, modelId }));
-    saveCustomProvidersMeta(meta);
-    customProviders.forEach((p) => {
-      if (p.apiKey) registerCustomProvider(p.id, p.name, p.apiBase, p.apiKey, p.modelId);
-    });
-  }, [customProviders, keysLoaded]);
-
-  // Register/unregister preset providers
-  useEffect(() => {
-    if (!keysLoaded) return;
-    for (const preset of PRESET_PROVIDERS) {
-      const key = presetKeys[preset.id];
-      if (key) registerCustomProvider(preset.id, preset.name, preset.apiBase, key, providerModels[preset.id] || preset.model);
-      else removeProvider(preset.id);
+    if (!loaded) return;
+    for (const config of Object.values(configs)) {
+      if (config.kind === "builtin") continue;
+      if (config.apiKey) {
+        registerCustomProvider(config.id, config.name, config.apiBase, config.apiKey, config.modelId);
+      } else {
+        removeProvider(config.id);
+      }
     }
-  }, [presetKeys, keysLoaded, providerModels.deepseek]);
+  }, [loaded, configs]);
 
-  // Handle built-in key changes: write to keychain (debounced) + re-register
-  const handleOpenaiKeyChange = (value: string) => {
-    setOpenaiKey(value);
-    debouncedSetSecret("apikey_openai", value);
-  };
-
-  const handleClaudeKeyChange = (value: string) => {
-    setClaudeKey(value);
-    debouncedSetSecret("apikey_claude", value);
-  };
+  const configFor = (id: string): ProviderConfig => configs[id] ?? blankConfig(id);
+  const keyFor = (id: string): string => configs[id]?.apiKey || "";
+  const modelFor = (id: string): string => configs[id]?.modelId ?? blankConfig(id).modelId;
 
   const testConnection = async (providerId: string, apiBase: string, apiKey: string, modelId?: string) => {
     setTestStatus({ ok: null, text: t("settings.testing") });
@@ -222,136 +226,100 @@ export function ProviderSection() {
     }
   };
 
-  const updateProviderModel = (providerId: string, modelId: string) => {
-    setProviderModels((current) => ({ ...current, [providerId]: modelId }));
-    saveProviderModel(providerId, modelId);
-  };
-
   const addCustom = async () => {
     if (!newProvider.name || !newProvider.apiBase || !newProvider.modelId) return;
     const id = `custom_${Date.now()}`;
-    const p = { id, ...newProvider };
-    setCustomProviders((prev) => [...prev, p]);
-    if (p.apiKey) {
-      registerCustomProvider(id, p.name, p.apiBase, p.apiKey, p.modelId);
-      try {
-        await setSecret(`apikey_${id}`, p.apiKey);
-      } catch {
-        toast.error(t("settings.keySaveFailed"));
-      }
-    }
+    updateConfig(
+      id,
+      {
+        id,
+        name: newProvider.name,
+        kind: "custom",
+        apiBase: newProvider.apiBase,
+        modelId: newProvider.modelId,
+        apiKey: newProvider.apiKey,
+        hasKey: Boolean(newProvider.apiKey),
+      },
+      true,
+    );
     setNewProvider({ name: "", apiBase: "", apiKey: "", modelId: "" });
     setShowAddCustom(false);
     setExpandedId(id);
     // A provider you just took the trouble to add is almost certainly the one
     // you want used — but only if it can actually answer.
-    if (p.apiKey) useSettingsStore.getState().setDefaultAiProvider(id);
+    if (newProvider.apiKey) useSettingsStore.getState().setDefaultAiProvider(id);
   };
 
   const removeCustom = async (id: string) => {
+    // Cancel any debounced write first, or it would re-create the row it is
+    // still holding a copy of moments after the delete lands.
+    if (persistTimers.current[id]) {
+      clearTimeout(persistTimers.current[id]);
+      delete persistTimers.current[id];
+    }
     removeProvider(id);
-    setCustomProviders((prev) => prev.filter((p) => p.id !== id));
-    await secretDelete(`apikey_${id}`);
+    const { [id]: _removed, ...rest } = configsRef.current;
+    configsRef.current = rest;
+    setConfigs(rest);
+    try {
+      await deleteProvider(id);
+    } catch (error) {
+      toast.error(String(error));
+    }
   };
 
-  const saveEdit = async () => {
+  const saveEdit = () => {
     if (!editingId) return;
-    const updated = customProviders.map((p) =>
-      p.id === editingId ? { ...p, ...editForm } : p
+    updateConfig(
+      editingId,
+      {
+        name: editForm.name,
+        apiBase: editForm.apiBase,
+        modelId: editForm.modelId,
+        apiKey: editForm.apiKey,
+        hasKey: Boolean(editForm.apiKey),
+      },
+      true,
     );
-    setCustomProviders(updated);
-    // Persist key to keychain
-    if (editForm.apiKey) {
-      registerCustomProvider(editingId, editForm.name, editForm.apiBase, editForm.apiKey, editForm.modelId);
-      try {
-        await setSecret(`apikey_${editingId}`, editForm.apiKey);
-      } catch {
-        toast.error(t("settings.keySaveFailed"));
-      }
-    } else {
-      registerCustomProvider(editingId, editForm.name, editForm.apiBase, "", editForm.modelId);
-    }
     setEditingId(null);
   };
 
-  // Handle preset key changes: update state + keychain
-  const handlePresetKeyChange = (presetId: string, value: string) => {
-    setPresetKeys((prev) => ({ ...prev, [presetId]: value }));
-    debouncedSetSecret(`apikey_${presetId}`, value);
-  };
-
   const allCards: ProviderDef[] = [
-    ...BUILT_IN_PROVIDERS.map((provider) => ({ ...provider, model: providerModels[provider.id] || provider.model })),
-    ...PRESET_PROVIDERS.map((provider) => ({ ...provider, model: providerModels[provider.id] || provider.model })),
-    ...customProviders.map((p) => ({ id: p.id, name: p.name, model: p.modelId, dot: "#6366f1", isCustom: true, apiBase: p.apiBase })),
+    ...BUILT_IN_PROVIDERS.map((provider) => ({ ...provider, model: modelFor(provider.id) })),
+    ...PRESET_PROVIDERS.map((provider) => ({ ...provider, model: modelFor(provider.id) })),
+    ...Object.values(configs)
+      .filter((c) => c.kind === "custom")
+      .map((c) => ({ id: c.id, name: c.name, model: c.modelId, dot: "#6366f1", isCustom: true, apiBase: c.apiBase })),
   ];
 
-  /** The stored key for any provider, wherever it lives. */
-  const keyFor = (id: string): string =>
-    id === "openai" ? openaiKey
-    : id === "claude" ? claudeKey
-    : presetKeys[id] || customProviders.find((p) => p.id === id)?.apiKey || "";
-
-  /** The config form for one provider — same three panels as before, picked
-   *  by id instead of by what the dropdown had selected. */
+  /** The config form for one provider — built-ins and presets share the same
+   *  key/model panel; custom providers get the editable one. */
   const panelFor = (id: string) => {
-    if (id === "openai") {
+    const config = configFor(id);
+
+    if (config.kind === "builtin" || config.kind === "preset") {
+      const placeholder = id === "openai" ? "sk-..." : id === "claude" ? "sk-ant-..." : "API Key";
       return (
         <ProviderKeyModelPanel
-          apiKeyValue={openaiKey}
-          onApiKeyChange={handleOpenaiKeyChange}
-          apiKeyPlaceholder="sk-..."
-          modelValue={providerModels.openai || ""}
-          onModelChange={(model) => updateProviderModel("openai", model)}
+          apiKeyValue={config.apiKey}
+          onApiKeyChange={(value) => updateConfig(id, { apiKey: value, hasKey: Boolean(value) })}
+          apiKeyPlaceholder={placeholder}
+          modelValue={config.modelId}
+          onModelChange={(model) => updateConfig(id, { modelId: model })}
           fetchingModels={fetchingModels}
-          onFetchModels={() => void fetchModels("openai", "https://api.openai.com/v1", openaiKey, (model) => updateProviderModel("openai", model), providerModels.openai || "")}
-          onTest={() => testConnection("openai", "https://api.openai.com/v1", openaiKey, providerModels.openai)}
-          onClear={() => { handleOpenaiKeyChange(""); updateProviderModel("openai", ""); }}
+          onFetchModels={() => void fetchModels(id, config.apiBase, config.apiKey, (model) => updateConfig(id, { modelId: model }), config.modelId)}
+          onTest={() => testConnection(id, config.apiBase, config.apiKey, config.modelId)}
+          onClear={() => updateConfig(id, { apiKey: "", hasKey: false, modelId: "" }, true)}
           testStatus={testStatus}
           t={t}
         />
       );
     }
-    if (id === "claude") {
-      return (
-        <ProviderKeyModelPanel
-          apiKeyValue={claudeKey}
-          onApiKeyChange={handleClaudeKeyChange}
-          apiKeyPlaceholder="sk-ant-..."
-          modelValue={providerModels.claude || ""}
-          onModelChange={(model) => updateProviderModel("claude", model)}
-          fetchingModels={fetchingModels}
-          onFetchModels={() => void fetchModels("claude", "https://api.anthropic.com", claudeKey, (model) => updateProviderModel("claude", model), providerModels.claude || "")}
-          onTest={() => testConnection("claude", "https://api.anthropic.com", claudeKey, providerModels.claude)}
-          onClear={() => { handleClaudeKeyChange(""); updateProviderModel("claude", ""); }}
-          testStatus={testStatus}
-          t={t}
-        />
-      );
-    }
-    const preset = PRESET_PROVIDERS.find((p) => p.id === id);
-    if (preset) {
-      return (
-        <ProviderKeyModelPanel
-          apiKeyValue={presetKeys[preset.id] || ""}
-          onApiKeyChange={(value) => handlePresetKeyChange(preset.id, value)}
-          apiKeyPlaceholder="API Key"
-          modelValue={providerModels[preset.id] || ""}
-          onModelChange={(model) => updateProviderModel(preset.id, model)}
-          fetchingModels={fetchingModels}
-          onFetchModels={() => void fetchModels(preset.id, preset.apiBase!, presetKeys[preset.id] || "", (model) => updateProviderModel(preset.id, model), providerModels[preset.id] || "")}
-          onTest={() => testConnection(preset.id, preset.apiBase!, presetKeys[preset.id] || "", providerModels[preset.id] || preset.model)}
-          onClear={() => { handlePresetKeyChange(preset.id, ""); updateProviderModel(preset.id, ""); }}
-          testStatus={testStatus}
-          t={t}
-        />
-      );
-    }
-    const custom = customProviders.find((p) => p.id === id);
-    if (!custom) return null;
+
+    if (!configs[id]) return null;
     return (
       <CustomProviderPanel
-        provider={custom}
+        provider={config}
         editingId={editingId}
         editForm={editForm}
         onEditFormChange={setEditForm}
@@ -359,7 +327,7 @@ export function ProviderSection() {
         onCancelEdit={() => setEditingId(null)}
         onStartEdit={(provider) => { setEditingId(provider.id); setEditForm({ name: provider.name, apiBase: provider.apiBase, apiKey: provider.apiKey, modelId: provider.modelId }); }}
         fetchingModels={fetchingModels}
-        onFetchModelsForEdit={() => void fetchModels(custom.id, editForm.apiBase, editForm.apiKey, (model) => setEditForm((prev) => ({ ...prev, modelId: model })), editForm.modelId)}
+        onFetchModelsForEdit={() => void fetchModels(config.id, editForm.apiBase, editForm.apiKey, (model) => setEditForm((prev) => ({ ...prev, modelId: model })), editForm.modelId)}
         onTest={(provider) => testConnection(provider.id, provider.apiBase, provider.apiKey, provider.modelId)}
         testStatus={testStatus}
         onRemove={async (removeId) => { await removeCustom(removeId); setExpandedId(null); }}
