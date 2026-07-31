@@ -1,18 +1,14 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { toast } from "sonner";
-import { useDB } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
-import { findBestProvider } from "@/providers/select";
-import { fetchSentencePattern } from "@/lib/patternFromSentence";
-import { fetchBasicInfo } from "@/lib/basicInfo";
 import { positionSelectionToolbar } from "./selectionToolbarPosition";
 import {
   AI_MESSAGE_ATTR, MAX_SELECTION, CONTEXT_CHARS, IGNORED,
-  Anchor, AskMode, cleanWord, isWordish, renderSelectionOverlay, reposition, sourceFor,
+  Anchor, AskMode, renderSelectionOverlay, reposition, sourceFor,
 } from "./selectionAskHelpers";
 import { InlineAskPanel } from "./InlineAskPanel";
 import { SelectionToolbarButtons } from "./SelectionToolbarButtons";
+import { useSelectionActions } from "./useSelectionActions";
 
 export { AI_MESSAGE_ATTR };
 
@@ -35,16 +31,13 @@ export { AI_MESSAGE_ATTR };
  */
 export function SelectionAsk() {
   const t = useT();
-  const db = useDB();
-  const targetLevel = useSettingsStore((s) => s.targetLevels.join("/"));
   const enabled = useSettingsStore((s) => s.selectionActions);
   const [anchor, setAnchor] = useState<Anchor | null>(null);
   const [asking, setAsking] = useState<{ anchor: Anchor; mode: AskMode } | null>(null);
-  const [saving, setSaving] = useState(false);
-  // Whether the selected word is already collected, so the toolbar can say so
-  // instead of offering to add it again. One local SQLite query per selection.
-  const [collected, setCollected] = useState(false);
-  const [adding, setAdding] = useState(false);
+  const { collected, adding, saving, addWord, savePattern } = useSelectionActions(
+    anchor?.text ?? "",
+    anchor?.source ?? "app",
+  );
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [toolbarSize, setToolbarSize] = useState({ width: 0, height: 0 });
 
@@ -126,17 +119,6 @@ export function SelectionAsk() {
     };
   }, [enabled]);
 
-  const selectedWord = anchor && isWordish(anchor.text) ? cleanWord(anchor.text) : "";
-  useEffect(() => {
-    setCollected(false);
-    if (!selectedWord) return;
-    let cancelled = false;
-    void db.getWords({ search: selectedWord }).then((rows) => {
-      if (!cancelled) setCollected(rows.some((w) => w.word.toLowerCase() === selectedWord.toLowerCase()));
-    });
-    return () => { cancelled = true; };
-  }, [selectedWord, db]);
-
   useLayoutEffect(() => {
     const toolbar = toolbarRef.current;
     if (!anchor || !toolbar) return;
@@ -145,46 +127,6 @@ export function SelectionAsk() {
       current.width === next.width && current.height === next.height ? current : next
     );
   }, [anchor, adding, collected, saving]);
-
-  /** Adds the selected word with a real gloss/type/level behind it. The
-   *  dictionary call happens on click rather than on every selection — one
-   *  API request per word you actually keep, not per word you glance at. */
-  const addWord = async () => {
-    if (!selectedWord || adding || collected) return;
-    setAdding(true);
-    try {
-      const provider = findBestProvider();
-      const info = provider ? await fetchBasicInfo(provider, selectedWord, targetLevel) : {};
-      const result = await db.addWord(selectedWord, info.zh ?? "", info.wordType, info.level);
-      if (result.id > 0) {
-        setCollected(true);
-        window.dispatchEvent(new CustomEvent("vocab-updated"));
-        toast.success(t("sel.added", { word: selectedWord }));
-      }
-    } finally {
-      setAdding(false);
-    }
-  };
-
-  const savePattern = async (sentence: string) => {
-    if (saving) return;
-    setSaving(true);
-    try {
-      const provider = findBestProvider();
-      // The analysis is a nicety, not a gate: with no provider (or a failed
-      // call) the sentence still gets saved, just without a skeleton/note.
-      const info = provider ? await fetchSentencePattern(provider, sentence, targetLevel) : null;
-      const saved = await db.saveSentencePattern(
-        sentence, info?.zh ?? "", info?.skeleton ?? "", info?.note ?? "", info?.level ?? "", anchor?.source ?? "app"
-      );
-      if (saved) {
-        toast.success(saved.created ? t("sel.saved") : t("sel.alreadySaved"));
-        setAnchor(null);
-      }
-    } finally {
-      setSaving(false);
-    }
-  };
 
   if (!enabled) return null;
 
@@ -212,7 +154,9 @@ export function SelectionAsk() {
             adding={adding}
             saving={saving}
             addWord={() => void addWord()}
-            savePattern={(sentence) => void savePattern(sentence)}
+            // Dismiss on success only: a failed save leaves the toolbar up so
+            // the sentence can be retried rather than silently lost.
+            savePattern={(sentence) => void savePattern(sentence).then((ok) => ok && setAnchor(null))}
             setAnchor={setAnchor}
             setAsking={setAsking}
           />

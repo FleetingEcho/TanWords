@@ -7,15 +7,39 @@ export interface RecommendedTtsModel {
   url: string;
   sizeMb: number;
   descriptionKey: string;
-  group: "kokoro" | "piper";
+  group: "pocket" | "kokoro" | "piper";
 }
 
-/** Curated subset of sherpa-onnx's official TTS release assets — all
- * single-speaker (or Kokoro's built-in multi-voice) so the existing
- * speaker-id UI covers them without extra plumbing. Kokoro entries range
- * from the small int8 default up to the full-precision multi-lingual one;
- * Piper entries are small single-voice alternatives in a couple of accents. */
+/** Curated subset of sherpa-onnx's official TTS release assets, most capable
+ * first.
+ *
+ * Pocket leads: it is the newest architecture here and the best-sounding on
+ * CPU, but it is English-only, so the Kokoro multi-lang entries remain the
+ * answer for anyone reading Chinese. Kokoro entries range from the small int8
+ * build up to the full-precision multi-lingual one; Piper entries are small
+ * single-voice alternatives in a couple of accents. */
 export const RECOMMENDED_TTS_MODELS: RecommendedTtsModel[] = [
+  {
+    id: "sherpa-onnx-pocket-tts-int8-2026-01-26",
+    name: "Pocket TTS (English)",
+    url: `${RELEASE_BASE}sherpa-onnx-pocket-tts-int8-2026-01-26.tar.bz2`,
+    sizeMb: 98,
+    descriptionKey: "tts.model.pocket",
+    group: "pocket",
+  },
+  {
+    // Not simply "the better one": Pocket samples autoregressively, so
+    // quantization changes which tokens get drawn rather than just adding
+    // noise. The two bundles read a sentence differently — pacing and phrasing
+    // included — which is a preference, not a ranking. It is also 2.5x the disk
+    // and ~40% slower per sentence, so int8 stays the one listed first.
+    id: "sherpa-onnx-pocket-tts-2026-01-26",
+    name: "Pocket TTS HQ (English)",
+    url: `${RELEASE_BASE}sherpa-onnx-pocket-tts-2026-01-26.tar.bz2`,
+    sizeMb: 168,
+    descriptionKey: "tts.model.pocketHq",
+    group: "pocket",
+  },
   {
     id: "kokoro-int8-en-v0_19",
     name: "Kokoro (English)",

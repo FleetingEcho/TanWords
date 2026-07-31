@@ -49,30 +49,29 @@ files:
   - package.json
   # Everything else (src/, electron/ *.ts sources, core/ Rust source & target/,
   # docs/, scripts/) is excluded by omission — `files` replaces the default
-  # "**/*" glob once specified. Production node_modules (electron-updater and
-  # its deps) are added automatically by electron-builder regardless of this
-  # list; it tracks them from package.json's "dependencies" separately.
+  # "**/*" glob once specified.
+  #
+  # node_modules has to be excluded explicitly, though: electron-builder adds
+  # production dependencies on its own, tracked from package.json's
+  # "dependencies" rather than from this list. Every one of those 30 packages
+  # is a renderer library (React, Mantine, BlockNote, mermaid, date-fns…) that
+  # Vite has already bundled into out/renderer, and electron-vite inlines the
+  # one main-process dependency (electron-updater) straight into
+  # out/main/index.js — there is no `require` left for any of it to resolve.
+  # Shipping the tree as well made app.asar 344MB instead of 18MB.
+  - "!node_modules/**/*"
 asarUnpack: []
 
 # ---------------------------------------------------------------------------
-# extraResources: the tanwords-core sidecar + its sherpa-onnx/onnxruntime
-# shared libs. Common destination `core/tanwords-core` matches EXACTLY what
-# electron/main/sidecar.ts's resolveBinaryPath() looks up when app.isPackaged:
+# extraResources: the tanwords-core sidecar. Destination `core/tanwords-core`
+# matches EXACTLY what electron/main/sidecar.ts's resolveBinaryPath() looks up
+# when app.isPackaged:
 #   path.join(process.resourcesPath, "core", name)
 #
-# The sherpa-libs destination differs per platform because app/core/build.rs
-# bakes a platform-specific rpath into the sidecar binary at compile time
-# (already done, not touched by this task):
-#   macOS:  @executable_path/../Resources/sherpa-libs
-#           -> resourcesPath/core/tanwords-core's executable_path is
-#              resourcesPath/core/, so "../Resources/sherpa-libs" resolves to
-#              resourcesPath/sherpa-libs (Resources IS resourcesPath on mac).
-#   Linux:  $ORIGIN/../lib/TanWords/sherpa-libs
-#           -> $ORIGIN is resourcesPath/core/, so this resolves to
-#              resourcesPath/lib/TanWords/sherpa-libs.
-# Windows has no rpath mechanism; the DLL search order includes the
-# executable's own directory, so the sherpa DLLs just need to sit next to
-# tanwords-core.exe, i.e. the same `core/` destination as the binary.
+# The sidecar used to be accompanied by a per-platform `sherpa-libs` payload of
+# sherpa-onnx/onnxruntime shared libraries, positioned to match an rpath baked
+# in by app/core/build.rs. The `sherpa-onnx` crate links those statically, so
+# the binary is self-contained and none of that staging exists any more.
 # ---------------------------------------------------------------------------
 extraResources:
   - from: core/target/release/tanwords-core
@@ -83,6 +82,15 @@ extraResources:
   # all of core/ out of the app, so ship this one PNG explicitly.
   - from: core/icons/icon.png
     to: icon.png
+  # The menu-bar/tray icon, resolved at runtime by tray.ts's trayIconPath().
+  # Separate from the icons above: those dress the bundle, this one is loaded
+  # as a file by nativeImage. The @2x variant is never referenced by name —
+  # nativeImage picks it up automatically from the 1x path — but it has to sit
+  # beside it, or the icon renders upscaled and soft on a retina display.
+  - from: core/icons/tray-template.png
+    to: tray-template.png
+  - from: core/icons/tray-template@2x.png
+    to: tray-template@2x.png
 
 mac:
   target:
@@ -109,9 +117,6 @@ mac:
   # see the packaging report for what still needs a real Mac to check.
   binaries:
     - core/tanwords-core
-  extraResources:
-    - from: core/sherpa-libs
-      to: sherpa-libs
 
 linux:
   target:
@@ -128,9 +133,6 @@ linux:
   # they don't match its <N>x<N>.png naming pattern.
   icon: core/icons
   category: Education
-  extraResources:
-    - from: core/sherpa-libs
-      to: lib/TanWords/sherpa-libs
 
 # AppImage has no equivalent of Tauri's `bundle.linux.bundleMediaFramework`
 # (which bundled GStreamer's own codec plugins into the AppImage so it didn't
@@ -168,9 +170,6 @@ win:
     - target: nsis
       arch: [x64]
   icon: core/icons/icon.ico
-  extraResources:
-    - from: core/sherpa-libs
-      to: core
 
 nsis:
   oneClick: false

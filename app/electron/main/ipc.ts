@@ -5,6 +5,7 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, type WebContents } from "electron";
 import type { UpdateInfoPayload } from "./updater";
 import type { BrowserPanelManager, PanelBounds } from "./browserPanel";
+import type { TrayManager } from "./tray";
 import { abortFetch, startFetch } from "./http";
 
 export type IpcDeps = {
@@ -15,6 +16,7 @@ export type IpcDeps = {
     downloadAndInstall: () => Promise<void>;
   };
   browserPanel: BrowserPanelManager;
+  tray: TrayManager;
 };
 
 /** Schemes `shell:open` will actually hand to `shell.openExternal` — an
@@ -166,10 +168,30 @@ async function dispatch(
       return null;
     }
     case "browser_hide": {
-      return deps.browserPanel.hide();
+      const { withSnapshot } = (args ?? {}) as { withSnapshot?: boolean };
+      return deps.browserPanel.hide(withSnapshot === true);
     }
     case "browser_get_state": {
       return deps.browserPanel.getState();
+    }
+    // The tray's labels live in the main process but its language and playback
+    // state are the renderer's to know, so both are pushed in rather than
+    // polled (see src/hooks/useTraySync.ts).
+    case "tray_set_language": {
+      const { lang } = (args ?? {}) as { lang?: string };
+      deps.tray.setLanguage(lang === "zh" ? "zh" : "en");
+      return null;
+    }
+    case "tray_update_now_playing": {
+      const { title, playing, hasPlaylist } = (args ?? {}) as {
+        title?: string | null; playing?: boolean; hasPlaylist?: boolean;
+      };
+      deps.tray.setNowPlaying({
+        title: title ?? null,
+        playing: playing === true,
+        hasPlaylist: hasPlaylist === true,
+      });
+      return null;
     }
     case "browser_go_home": {
       const { tabId } = (args ?? {}) as { tabId: string };

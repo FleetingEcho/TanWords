@@ -1,51 +1,90 @@
 use std::path::{Path, PathBuf};
 
-use sherpa_rs::tts::{KokoroTts, KokoroTtsConfig, VitsTts, VitsTtsConfig};
+use sherpa_onnx::{
+    GenerationConfig, OfflineTts, OfflineTtsConfig, OfflineTtsKittenModelConfig,
+    OfflineTtsKokoroModelConfig, OfflineTtsModelConfig, OfflineTtsPocketModelConfig,
+    OfflineTtsVitsModelConfig, Wave,
+};
 
-use super::models::{detect_model_dir, TtsModelInfo};
+use super::models::{detect_model_dir, pocket_voice_files, TtsModelInfo};
 
-enum TtsHandle {
-    Kokoro(KokoroTts),
-    Vits(VitsTts),
-}
-
-impl TtsHandle {
-    fn synthesize(&mut self, text: &str, sid: i32, speed: f32) -> Result<(Vec<f32>, u32), String> {
-        let audio = match self {
-            TtsHandle::Kokoro(t) => t.create(text, sid, speed),
-            TtsHandle::Vits(t) => t.create(text, sid, speed),
-        }
-        .map_err(|e| e.to_string())?;
-        Ok((audio.samples, audio.sample_rate))
-    }
+/// A reference voice for the Pocket engine, kept decoded in memory.
+///
+/// Pocket has no speaker-id table: a voice *is* a few seconds of reference
+/// audio that the encoder turns into an embedding. Re-reading the wav on
+/// every sentence would be pure waste, so each one is decoded once at load
+/// time; sherpa's own `voice_embedding_cache_capacity` then keeps the
+/// derived embedding hot across calls.
+struct ReferenceVoice {
+    samples: Vec<f32>,
+    sample_rate: i32,
 }
 
 pub struct LoadedEngine {
     pub model_path: String,
     pub kind: String,
     pub sample_rate: u32,
-    handle: TtsHandle,
+    tts: OfflineTts,
+    /// Non-empty only for `kind == "pocket"`, indexed by speaker id.
+    voices: Vec<ReferenceVoice>,
 }
 
-fn file_if_exists(dir: &Path, name: &str) -> String {
-    let p = dir.join(name);
-    if p.is_file() {
-        p.to_string_lossy().to_string()
-    } else {
-        String::new()
+impl LoadedEngine {
+    fn synthesize(&self, text: &str, sid: i32, speed: f32) -> Result<(Vec<f32>, u32), String> {
+        let mut config = GenerationConfig { speed, sid, ..Default::default() };
+
+        // Pocket ignores `sid` entirely — the voice has to arrive as audio.
+        // Clamp rather than error: a stale ttsVoiceId from a previously
+        // selected model shouldn't leave the user with no speech at all.
+        if !self.voices.is_empty() {
+            let voice = &self.voices[(sid.max(0) as usize).min(self.voices.len() - 1)];
+            config.reference_audio = Some(voice.samples.clone());
+            config.reference_sample_rate = voice.sample_rate;
+            config.sid = 0;
+        }
+
+        let audio = self
+            .tts
+            .generate_with_config(text, &config, None::<fn(&[f32], f32) -> bool>)
+            .ok_or_else(|| "synthesis failed".to_string())?;
+        Ok((audio.samples().to_vec(), audio.sample_rate() as u32))
     }
 }
 
-fn dir_if_exists(dir: &Path, name: &str) -> String {
+fn file_if_exists(dir: &Path, name: &str) -> Option<String> {
     let p = dir.join(name);
-    if p.is_dir() {
-        p.to_string_lossy().to_string()
-    } else {
-        String::new()
-    }
+    p.is_file().then(|| p.to_string_lossy().to_string())
 }
 
-fn first_onnx(dir: &Path) -> String {
+fn dir_if_exists(dir: &Path, name: &str) -> Option<String> {
+    let p = dir.join(name);
+    p.is_dir().then(|| p.to_string_lossy().to_string())
+}
+
+/// Picks the single `.onnx` whose stem starts with `prefix` — Pocket ships
+/// its graphs under both plain and `.int8` names (`lm_main.int8.onnx`), so
+/// matching on a prefix keeps the quantized and full bundles interchangeable.
+fn onnx_with_prefix(dir: &Path, prefix: &str) -> Option<String> {
+    let mut matches: Vec<PathBuf> = std::fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.extension().map(|e| e == "onnx").unwrap_or(false))
+                .filter(|p| {
+                    p.file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|n| n.starts_with(prefix))
+                        .unwrap_or(false)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    matches.sort();
+    matches.into_iter().next().map(|p| p.to_string_lossy().to_string())
+}
+
+fn first_onnx(dir: &Path) -> Option<String> {
     let mut onnx: Vec<PathBuf> = std::fs::read_dir(dir)
         .map(|entries| {
             entries
@@ -56,15 +95,12 @@ fn first_onnx(dir: &Path) -> String {
         })
         .unwrap_or_default();
     onnx.sort();
-    onnx.into_iter()
-        .next()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default()
+    onnx.into_iter().next().map(|p| p.to_string_lossy().to_string())
 }
 
 /// Kokoro's multi-lang packages ship one or more `lexicon-*.txt` files that
-/// must all be passed in, comma-separated (per sherpa-rs's KokoroTtsConfig).
-fn lexicon_files(dir: &Path) -> String {
+/// must all be passed in, comma-separated.
+fn lexicon_files(dir: &Path) -> Option<String> {
     let mut files: Vec<String> = std::fs::read_dir(dir)
         .map(|entries| {
             entries
@@ -81,13 +117,24 @@ fn lexicon_files(dir: &Path) -> String {
         })
         .unwrap_or_default();
     files.sort();
-    files.join(",")
+    (!files.is_empty()).then(|| files.join(","))
 }
 
-fn build_handle(dir: &Path, kind: &str) -> Result<TtsHandle, String> {
+/// Every engine family shares one `OfflineTtsModelConfig`; only the sub-struct
+/// matching `kind` is filled in and sherpa dispatches on whichever one has
+/// paths set.
+fn build_config(dir: &Path, kind: &str) -> Result<OfflineTtsConfig, String> {
+    let mut model = OfflineTtsModelConfig {
+        // Pocket is autoregressive, so it actually scales with threads in a
+        // way the one-shot VITS/Kokoro graphs don't. Four is where the gain
+        // flattens out on the laptops we target.
+        num_threads: 4,
+        ..Default::default()
+    };
+
     match kind {
         "kokoro" => {
-            let config = KokoroTtsConfig {
+            model.kokoro = OfflineTtsKokoroModelConfig {
                 model: first_onnx(dir),
                 voices: file_if_exists(dir, "voices.bin"),
                 tokens: file_if_exists(dir, "tokens.txt"),
@@ -97,10 +144,9 @@ fn build_handle(dir: &Path, kind: &str) -> Result<TtsHandle, String> {
                 length_scale: 1.0,
                 ..Default::default()
             };
-            Ok(TtsHandle::Kokoro(KokoroTts::new(config)))
         }
         "piper" => {
-            let config = VitsTtsConfig {
+            model.vits = OfflineTtsVitsModelConfig {
                 model: first_onnx(dir),
                 tokens: file_if_exists(dir, "tokens.txt"),
                 data_dir: dir_if_exists(dir, "espeak-ng-data"),
@@ -108,10 +154,51 @@ fn build_handle(dir: &Path, kind: &str) -> Result<TtsHandle, String> {
                 length_scale: 1.0,
                 ..Default::default()
             };
-            Ok(TtsHandle::Vits(VitsTts::new(config)))
         }
-        other => Err(format!("unsupported model kind: {other}")),
+        "kitten" => {
+            model.kitten = OfflineTtsKittenModelConfig {
+                model: first_onnx(dir),
+                voices: file_if_exists(dir, "voices.bin"),
+                tokens: file_if_exists(dir, "tokens.txt"),
+                data_dir: dir_if_exists(dir, "espeak-ng-data"),
+                length_scale: 1.0,
+            };
+        }
+        "pocket" => {
+            model.pocket = OfflineTtsPocketModelConfig {
+                lm_flow: onnx_with_prefix(dir, "lm_flow"),
+                lm_main: onnx_with_prefix(dir, "lm_main"),
+                encoder: onnx_with_prefix(dir, "encoder"),
+                decoder: onnx_with_prefix(dir, "decoder"),
+                text_conditioner: onnx_with_prefix(dir, "text_conditioner"),
+                vocab_json: file_if_exists(dir, "vocab.json"),
+                token_scores_json: file_if_exists(dir, "token_scores.json"),
+                // Sentences are synthesized one at a time against a handful of
+                // reference voices, so the embedding for the active voice stays
+                // cached across an entire reading session.
+                voice_embedding_cache_capacity: 50,
+            };
+        }
+        other => return Err(format!("unsupported model kind: {other}")),
     }
+
+    Ok(OfflineTtsConfig { model, ..Default::default() })
+}
+
+fn load_reference_voices(dir: &Path, kind: &str) -> Vec<ReferenceVoice> {
+    if kind != "pocket" {
+        return Vec::new();
+    }
+    pocket_voice_files(dir)
+        .into_iter()
+        .filter_map(|path| {
+            let wave = Wave::read(&path.to_string_lossy())?;
+            Some(ReferenceVoice {
+                samples: wave.samples().to_vec(),
+                sample_rate: wave.sample_rate(),
+            })
+        })
+        .collect()
 }
 
 #[crate::shim::command]
@@ -130,15 +217,27 @@ pub async fn tts_load_model(
             return Err("model not recognized".to_string());
         }
 
-        let mut handle = build_handle(&dir, &info.kind)?;
-        let (_, sample_rate) = handle.synthesize(".", 0, 1.0)?;
-        let mut guard = tts.lock().map_err(|e| e.to_string())?;
-        *guard = Some(LoadedEngine {
+        let config = build_config(&dir, &info.kind)?;
+        let engine = OfflineTts::create(&config).ok_or_else(|| "failed to load model".to_string())?;
+        let voices = load_reference_voices(&dir, &info.kind);
+        if info.kind == "pocket" && voices.is_empty() {
+            return Err("model has no reference voices".to_string());
+        }
+
+        let loaded = LoadedEngine {
             model_path: path,
             kind: info.kind.clone(),
-            sample_rate,
-            handle,
-        });
+            sample_rate: engine.sample_rate() as u32,
+            tts: engine,
+            voices,
+        };
+        // Warm up so the first real sentence isn't paying for lazy graph
+        // initialization. Pocket's autoregressive loop makes that first call
+        // materially slower than the steady state.
+        loaded.synthesize(".", 0, 1.0)?;
+
+        let mut guard = tts.lock().map_err(|e| e.to_string())?;
+        *guard = Some(loaded);
         Ok(info)
     })
     .await
@@ -175,7 +274,7 @@ pub async fn tts_synthesize(
     speaker_id: u32,
     speed: f32,
 ) -> Result<String, String> {
-    // Kokoro/VITS inference is synchronous, CPU-bound ONNX work. Running it
+    // TTS inference is synchronous, CPU-bound ONNX work. Running it
     // inline inside the tokio-spawned command task (as `(async)` on a plain
     // fn would) blocks a shared executor worker thread for its full duration;
     // with several sentences in flight (current + prefetch) this starves
@@ -183,9 +282,9 @@ pub async fn tts_synthesize(
     // pool instead.
     let tts = state.tts.clone();
     tokio::task::spawn_blocking(move || {
-        let mut guard = tts.lock().map_err(|e| e.to_string())?;
-        let engine = guard.as_mut().ok_or_else(|| "model-not-loaded".to_string())?;
-        let (samples, sample_rate) = engine.handle.synthesize(&text, speaker_id as i32, speed)?;
+        let guard = tts.lock().map_err(|e| e.to_string())?;
+        let engine = guard.as_ref().ok_or_else(|| "model-not-loaded".to_string())?;
+        let (samples, sample_rate) = engine.synthesize(&text, speaker_id as i32, speed)?;
         let pcm = f32_samples_to_i16(&samples);
         let wav = pcm_to_wav(&pcm, sample_rate);
         Ok(base64_encode(&wav))
@@ -199,16 +298,21 @@ pub fn tts_engine_status(
     state: crate::shim::State<'_, crate::AppState>,
 ) -> Result<Option<TtsModelInfo>, String> {
     let guard = state.tts.lock().map_err(|e| e.to_string())?;
-    Ok(guard.as_ref().map(|engine| TtsModelInfo {
-        id: engine.model_path.clone(),
-        name: Path::new(&engine.model_path)
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default(),
-        kind: engine.kind.clone(),
-        path: engine.model_path.clone(),
-        num_speakers: 0,
-        voice_names: vec![],
+    Ok(guard.as_ref().map(|engine| {
+        // Re-detecting rather than caching the load-time info keeps the voice
+        // list in one place (`detect_model_dir`) instead of two that can drift.
+        let dir = PathBuf::from(&engine.model_path);
+        detect_model_dir(&dir).unwrap_or_else(|| TtsModelInfo {
+            id: engine.model_path.clone(),
+            name: Path::new(&engine.model_path)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default(),
+            kind: engine.kind.clone(),
+            path: engine.model_path.clone(),
+            num_speakers: 0,
+            voice_names: vec![],
+        })
     }))
 }
 
@@ -258,4 +362,67 @@ pub(crate) fn pcm_to_wav(samples: &[i16], sample_rate: u32) -> Vec<u8> {
 fn base64_encode(data: &[u8]) -> String {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD.encode(data)
+}
+
+/// Exercises the real engines against whatever the user has actually
+/// downloaded. Each case is skipped when its model directory is absent, so the
+/// suite still passes on a clean checkout or in CI — but on a developer machine
+/// with models installed it catches config-construction mistakes that the
+/// path-shape tests in `models.rs` cannot, because those never load a graph.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tts::models::default_models_dir;
+
+    fn synthesize_from(dir_name: &str, expected_kind: &str) {
+        let dir = default_models_dir().join(dir_name);
+        if !dir.is_dir() {
+            eprintln!("skipping {dir_name}: not installed");
+            return;
+        }
+
+        let info = detect_model_dir(&dir).expect("model not detected");
+        assert_eq!(info.kind, expected_kind, "wrong kind for {dir_name}");
+
+        let config = build_config(&dir, &info.kind).expect("config");
+        let tts = OfflineTts::create(&config).expect("engine failed to load");
+        let engine = LoadedEngine {
+            model_path: dir.to_string_lossy().to_string(),
+            kind: info.kind.clone(),
+            sample_rate: tts.sample_rate() as u32,
+            tts,
+            voices: load_reference_voices(&dir, &info.kind),
+        };
+
+        let (samples, rate) = engine.synthesize("The quick brown fox.", 0, 1.0).expect("synthesis");
+        assert!(rate >= 16000, "{dir_name}: implausible sample rate {rate}");
+        assert!(!samples.is_empty(), "{dir_name}: produced no audio");
+        // A graph wired up with the wrong config tends to emit digital silence
+        // rather than to fail loudly, so assert there is actually signal.
+        let peak = samples.iter().fold(0f32, |m, s| m.max(s.abs()));
+        assert!(peak > 0.01, "{dir_name}: output is silent (peak {peak})");
+    }
+
+    #[test]
+    fn pocket_synthesizes() {
+        synthesize_from("sherpa-onnx-pocket-tts-int8-2026-01-26", "pocket");
+    }
+
+    /// The full-precision bundle names its graphs `lm_main.onnx` where the
+    /// quantized one uses `lm_main.int8.onnx`, so this is the case that would
+    /// break if `onnx_with_prefix` ever stopped matching on a prefix.
+    #[test]
+    fn pocket_hq_synthesizes() {
+        synthesize_from("sherpa-onnx-pocket-tts-2026-01-26", "pocket");
+    }
+
+    #[test]
+    fn kokoro_still_synthesizes_after_migration() {
+        synthesize_from("kokoro-multi-lang-v1_1", "kokoro");
+    }
+
+    #[test]
+    fn piper_still_synthesizes_after_migration() {
+        synthesize_from("vits-piper-en_US-lessac-medium-int8", "piper");
+    }
 }

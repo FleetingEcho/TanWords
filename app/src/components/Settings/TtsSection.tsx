@@ -106,7 +106,20 @@ export function TtsSection() {
     setDeleting(true);
     try {
       await invoke("tts_delete_model", { path: pendingDelete.path });
+
+      // Clearing `loadedPath` alone only resets this screen. The *persisted*
+      // choice has to go too, or ttsBackend's self-heal keeps calling
+      // tts_load_model on a directory that no longer exists — once per
+      // sentence, silently degrading to webspeech instead of prompting the
+      // user to pick again. Compare against the saved path as well as the
+      // live one: they diverge whenever the engine failed to load this
+      // session.
+      if (settings.ttsModelPath === pendingDelete.path) {
+        settings.setTtsModelPath("");
+        settings.setTtsVoiceId("0");
+      }
       if (loadedPath === pendingDelete.path) setLoadedPath(null);
+
       await rescan();
     } catch (e) {
       toast.error(t("tts.deleteFailed", { error: String(e) }));
@@ -173,6 +186,29 @@ export function TtsSection() {
           </Button>
         </div>
       </SettingRow>
+
+      {/* Pocket names its voices (they are reference recordings, not entries in
+          a speaker table), so it gets a real picker instead of Kokoro's raw
+          speaker-id box. The stored value stays the index either way. */}
+      {selected && selected.voice_names.length > 0 && (
+        <SettingRow label={t("tts.voice")} sub={t("tts.voiceSub")}>
+          <Select
+            value={String(Math.min(Number(settings.ttsVoiceId) || 0, selected.voice_names.length - 1))}
+            onValueChange={(v) => settings.setTtsVoiceId(v)}
+          >
+            <SelectTrigger className="h-8 px-2 rounded-lg border border-input bg-background text-xs text-foreground focus:outline-none max-w-[220px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {selected.voice_names.map((name, i) => (
+                <SelectItem key={name} value={String(i)}>
+                  {name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingRow>
+      )}
 
       {selected?.kind === "kokoro" && (
         <SettingRow label={t("tts.speakerId")} sub={t("tts.speakerIdSub")}>

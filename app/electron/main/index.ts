@@ -5,6 +5,8 @@ import { SidecarSupervisor } from "./sidecar";
 import { registerIpcHandlers } from "./ipc";
 import { initUpdater } from "./updater";
 import { BrowserPanelManager } from "./browserPanel";
+import { TrayManager, trayIconPath } from "./tray";
+import { wireWindowDevTools } from "./devtools";
 import { abortAllFor } from "./http";
 
 // Pin the app name before anything reads a path from it. `requestSingleInstance
@@ -39,9 +41,23 @@ if (!gotLock) {
   app.exit(0);
 }
 
-// No File/Edit/View/Window menu bar — the UI has its own navigation and
-// nothing here depends on menu accelerators.
-Menu.setApplicationMenu(null);
+// A trimmed menu rather than `null`. The UI has its own navigation and wants
+// no File/View menu, but Chromium routes the renderer's clipboard, undo and
+// select-all shortcuts (Cmd/Ctrl + C/V/X/Z/A) through the application menu's
+// role accelerators — with no menu at all, paste silently stops working in
+// every input in the app, and on macOS Cmd+Q goes with it. So keep exactly the
+// roles those shortcuts need and nothing else.
+//
+// macOS shows the menu bar in the system bar, outside the window, so it costs
+// no screen real estate. On Windows/Linux the bar is suppressed per-window via
+// `autoHideMenuBar` below, which hides it without unbinding the accelerators.
+Menu.setApplicationMenu(
+  Menu.buildFromTemplate([
+    ...(process.platform === "darwin" ? [{ role: "appMenu" as const }] : []),
+    { role: "editMenu" as const },
+    ...(process.platform === "darwin" ? [{ role: "windowMenu" as const }] : []),
+  ]),
+);
 
 // ── Memory tuning ──────────────────────────────────────────────────────────
 // Chromium sizes its heaps for a general-purpose browser on the assumption it
@@ -66,6 +82,7 @@ app.commandLine.appendSwitch("js-flags", "--max-old-space-size=512");
 let mainWindow: BrowserWindow | null = null;
 const sidecar = new SidecarSupervisor();
 const browserPanel = new BrowserPanelManager();
+const tray = new TrayManager();
 
 /** The app icon as a real file on disk.
  *
@@ -101,6 +118,10 @@ function createWindow() {
     // Windows/Linux take the window + taskbar icon from here. macOS ignores it
     // (it uses the .app bundle), which is handled separately below.
     icon: appIconPath(),
+    // Keeps the Edit menu's accelerators alive on Windows/Linux without
+    // showing a menu bar the UI has no use for (macOS ignores this — its bar
+    // lives in the system menu, not the window).
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.cjs"),
       contextIsolation: true,
@@ -130,6 +151,7 @@ function createWindow() {
   });
 
   browserPanel.setWindow(win);
+  wireWindowDevTools(win);
 
   const devServerUrl = process.env["ELECTRON_RENDERER_URL"];
   if (devServerUrl) {
@@ -146,6 +168,7 @@ function createWindow() {
   });
 
   mainWindow = win;
+  tray.setWindow(win);
   win.on("closed", () => {
     abortAllFor(contentsId);
     mainWindow = null;
@@ -196,6 +219,9 @@ if (gotLock) {
 
     browserPanel.setEventSink(broadcastEvent);
 
+    tray.setEventSink(broadcastEvent);
+    tray.create(trayIconPath());
+
     // `window.tanwords.backend` resolves once this handshake resolves — the
     // preload just forwards this single invoke() call as-is, so a renderer
     // that mounts before the sidecar is ready naturally queues on it
@@ -208,6 +234,7 @@ if (gotLock) {
       broadcastEvent,
       updater,
       browserPanel,
+      tray,
     });
 
     createWindow();

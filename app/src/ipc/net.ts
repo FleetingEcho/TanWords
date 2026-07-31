@@ -57,13 +57,34 @@ export async function netFetch(
 
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
+      // The stream can settle without these handlers being told: cancelling
+      // the reader, or aborting the request, errors the controller here in the
+      // renderer while the bridge keeps delivering whatever main had already
+      // sent — including the `http:end` that follows main acknowledging the
+      // abort. `enqueue()` and `close()` both throw once that has happened
+      // ("Cannot close an errored readable stream"), and because this runs
+      // inside a stream callback the throw surfaces as an uncaught error
+      // rather than rejecting anything a caller can see.
+      let settled = false;
       const offChunk = bridge.on(`http:chunk:${id}`, (chunk: ArrayBuffer) => {
-        controller.enqueue(new Uint8Array(chunk));
+        if (settled) return;
+        try {
+          controller.enqueue(new Uint8Array(chunk));
+        } catch {
+          settled = true;
+        }
       });
       const offEnd = bridge.on(`http:end:${id}`, ({ error }: { error?: string }) => {
         offChunk();
         offEnd();
-        error ? controller.error(new Error(error)) : controller.close();
+        if (settled) return;
+        settled = true;
+        try {
+          if (error) controller.error(new Error(error));
+          else controller.close();
+        } catch {
+          // Raced with a cancel/abort that already settled the stream.
+        }
       });
     },
     cancel() {

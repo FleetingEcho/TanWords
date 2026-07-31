@@ -174,6 +174,13 @@ export function useArticleReaderState(params: {
     if (id > 0) {
       setArticleId(id);
       window.dispatchEvent(new CustomEvent("articles-updated"));
+      // Hand the page the row id so the reader switches from this throwaway
+      // scratch session to the saved article. Until it does, what's on screen
+      // has no identity the page can restore: navigating away and back would
+      // drop you on a blank sheet even though the text was already filed.
+      // Harmless mid-read — the library copy is the same text just written,
+      // and the reader is still at the top of it.
+      window.dispatchEvent(new CustomEvent("tanwords:open-article", { detail: { id } }));
     }
     useReaderNotesStore.getState().setArticle({
       url,
