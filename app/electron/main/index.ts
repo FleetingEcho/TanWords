@@ -7,12 +7,36 @@ import { initUpdater } from "./updater";
 import { BrowserPanelManager } from "./browserPanel";
 import { abortAllFor } from "./http";
 
-// Single instance: same purpose `tauri-plugin-single-instance` served —
-// stop a duplicate SQLite connection / duplicate MCP port bind from a
-// second app launch (migration plan §5).
+// Pin the app name before anything reads a path from it. `requestSingleInstance
+// Lock()` is keyed on `userData`, which Electron derives from `app.getName()` —
+// and that resolves from package.json's `productName` (absent here) falling back
+// to `name`, while electron-builder.yml carries its own `productName: TanWords`
+// for the bundle. If those ever disagree between a dev run and a packaged build,
+// the two get *different* userData dirs, therefore different locks, and both can
+// run at once against the one SQLite file the sidecar always opens at
+// `dirs::data_dir()/tanwords/`. Setting it explicitly removes that coupling.
+//
+// "tanwords" (lowercase) is deliberate: it matches both the existing dev
+// userData dir and the sidecar's data dir. No packaged Electron build has
+// shipped yet, so nothing is orphaned by fixing it here.
+app.setName("tanwords");
+
+// Single instance: same purpose `tauri-plugin-single-instance` served — stop a
+// duplicate SQLite connection / duplicate MCP port bind from a second app
+// launch (migration plan §5). Everything below that touches app state is
+// guarded by `gotLock`, so a losing instance sets up nothing before exiting.
+//
+// This covers the Electron process. The sidecar is covered separately and by a
+// different mechanism: it exits on stdin EOF (`shutdown_on_stdin_eof` in
+// core/src/server.rs), so it dies with its parent even when Electron is killed
+// ungracefully rather than being left orphaned holding the database.
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
-  app.quit();
+  // exit(), not quit(): quit() is a *deferred, graceful* shutdown that lets
+  // this process carry on initialising until the event loop unwinds — a
+  // duplicate launch should be gone immediately, and the running instance has
+  // already been signalled to focus itself via "second-instance".
+  app.exit(0);
 }
 
 // No File/Edit/View/Window menu bar — the UI has its own navigation and
@@ -115,14 +139,25 @@ function createWindow() {
 }
 
 if (gotLock) {
-  app.on("second-instance", () => {
+  // A duplicate launch surfaces the instance the user already has rather than
+  // doing nothing — otherwise double-clicking the app while it's running reads
+  // as "the app didn't start".
+  const focusExistingWindow = () => {
     const win = mainWindow;
-    if (win) {
+    if (win && !win.isDestroyed()) {
       if (win.isMinimized()) win.restore();
       win.show();
       win.focus();
+      return;
     }
-  });
+    // No window to focus. Either the second launch landed while the first was
+    // still starting up (createWindow hasn't run yet), or this is macOS, where
+    // the app deliberately outlives its last window. Only build one once the
+    // app is ready — before that, whenReady()'s own createWindow() will.
+    if (app.isReady()) createWindow();
+  };
+
+  app.on("second-instance", focusExistingWindow);
 
   app.whenReady().then(() => {
     registerAppProtocolHandler();
