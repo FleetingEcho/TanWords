@@ -9,6 +9,31 @@
 
 appId: com.tanner.tanwords
 productName: TanWords
+
+# ---------------------------------------------------------------------------
+# Update feed. Without this block electron-builder emits no `app-update.yml`
+# into the package, so `autoUpdater.checkForUpdates()` throws at runtime,
+# electron/main/updater.ts swallows it as "no update available", and the app
+# reports itself up to date forever. The Tauri config this replaced pointed at
+# the same repo's releases:
+#   https://github.com/FleetingEcho/TanWords/releases/latest/download/latest.json
+# The github provider is the direct equivalent — it publishes `latest-mac.yml`
+# / `latest.yml` / `latest-linux.yml` next to the artifacts and bakes the
+# matching app-update.yml into the build.
+#
+# NOTE (migration plan §10.2): installs from the Tauri-era 1.0.0 will NOT pick
+# this up. They check the old minisign-signed latest.json and have no code path
+# to electron-updater, so they need a manual reinstall once. Nothing here can
+# change that — it only matters that new builds update from here on.
+#
+# NOTE (macOS): electron-updater refuses to install an unsigned update on mac.
+# The `mac.identity` / notarization setup must be in place for this to do
+# anything on a real user's machine; an unsigned local build will download and
+# then fail to apply.
+publish:
+  provider: github
+  owner: FleetingEcho
+  repo: TanWords
 # version is NOT set here — electron-builder reads it from package.json's
 # "version" (already 1.0.0); duplicating it here would be a second source of truth.
 

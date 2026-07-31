@@ -1,11 +1,11 @@
-/** Main-side handlers for every channel `src/bridge/*.ts` calls via
- *  `window.tanwords.call(...)`. Grepped exhaustively from `tanwords?.call("` —
- *  see docs/electron-migration-handoff.md Task 3. `browser_*` routes to
- *  `BrowserPanelManager` — a native WebContentsView-based panel, not ported
- *  from the old Rust command contract (see Task 4 / browserPanel.ts). */
-import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
+/** Main-side handlers for every channel `src/ipc/*.ts` calls via
+ *  `window.tanwords.call(...)`. `browser_*` routes to `BrowserPanelManager` —
+ *  a native WebContentsView-based panel (see browserPanel.ts). `http:*` is the
+ *  streaming case and lives in its own module (see http.ts). */
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, type WebContents } from "electron";
 import type { UpdateInfoPayload } from "./updater";
 import type { BrowserPanelManager, PanelBounds } from "./browserPanel";
+import { abortFetch, startFetch } from "./http";
 
 export type IpcDeps = {
   getMainWindow: () => BrowserWindow | null;
@@ -19,19 +19,36 @@ export type IpcDeps = {
 
 /** Schemes `shell:open` will actually hand to `shell.openExternal` — an
  *  unvalidated openExternal is a known RCE vector on Windows (see the comment
- *  in src/bridge/shell.ts). */
+ *  in src/ipc/shell.ts). */
 const ALLOWED_EXTERNAL_SCHEMES = new Set(["http:", "https:", "mailto:"]);
 
 type DialogFilter = { name: string; extensions: string[] };
 
 export function registerIpcHandlers(deps: IpcDeps) {
-  ipcMain.handle("tanwords:call", async (_event, channel: string, args: unknown) => {
-    return dispatch(channel, args, deps);
+  ipcMain.handle("tanwords:call", async (event, channel: string, args: unknown) => {
+    return dispatch(channel, args, deps, event.sender);
   });
 }
 
-async function dispatch(channel: string, args: unknown, deps: IpcDeps): Promise<unknown> {
+async function dispatch(
+  channel: string,
+  args: unknown,
+  deps: IpcDeps,
+  sender: WebContents,
+): Promise<unknown> {
   switch (channel) {
+    // Streaming HTTP for the AI providers — resolves as soon as the request is
+    // started; the response arrives on the per-id event channels. See http.ts.
+    case "http:fetch": {
+      startFetch(sender, args as Parameters<typeof startFetch>[1]);
+      return null;
+    }
+    case "http:abort": {
+      const { id } = (args ?? {}) as { id: number };
+      abortFetch(sender, id);
+      return null;
+    }
+
     case "window:hide": {
       deps.getMainWindow()?.hide();
       return null;

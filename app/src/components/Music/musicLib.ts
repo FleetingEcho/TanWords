@@ -1,5 +1,5 @@
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { assetUrl, invoke } from "@/ipc/backend";
+import { openDialog } from "@/ipc/dialog";
 import { useSettingsStore } from "@/store/settingsStore";
 import { usePodcastPlayerStore, PodcastTrack } from "@/store/podcastPlayerStore";
 import { usePlayerOriginStore } from "@/store/playerOriginStore";
@@ -55,7 +55,7 @@ export function formatDuration(sec: number | null): string {
 
 export function toQueue(collection: MusicCollection, displayName: string): PodcastTrack[] {
   return collection.tracks.map((tr) => ({
-    audioUrl: convertFileSrc(tr.path),
+    audioUrl: assetUrl(tr.path),
     localPath: tr.path,
     title: tr.title,
     feedTitle: displayName,

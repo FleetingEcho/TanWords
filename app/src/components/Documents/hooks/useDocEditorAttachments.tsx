@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/ipc/backend";
 import { toast } from "sonner";
 import { FormattingToolbar, getFormattingToolbarItems } from "@blocknote/react";
 import { Download, Trash2 } from "lucide-react";

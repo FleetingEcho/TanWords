@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/ipc/backend";
 
 /** localStorage mirror, keyed distinctly from the pre-keychain legacy keys
  * (tanwords_openai_key etc., see initProviders.ts's one-time migration).

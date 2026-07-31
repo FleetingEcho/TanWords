@@ -8,8 +8,8 @@
 //!                             backs `<audio src>` / `<img src>`
 //!
 //! The exact shapes here (header vs. query auth, `{ "error": .. }` on
-//! failure, bare JSON on success) are dictated by `app/src/bridge/core.ts`
-//! and `app/src/bridge/event.ts`, which are already written against them.
+//! failure, bare JSON on success) are dictated by `app/src/ipc/backend.ts`
+//! and `app/src/ipc/events.ts`, which are already written against them.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;

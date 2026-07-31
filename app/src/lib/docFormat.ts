@@ -6,7 +6,11 @@
  * markdown, then parsed into blocks on load (lazy migration: the next save
  * persists the new format).
  */
-import { BlockNoteEditor, PartialBlock } from "@blocknote/core";
+// Type-only: the runtime import is dynamic (see getParser). @blocknote/core is
+// ~1.4MB, and a static import here pulled it into the main chunk through every
+// module that wanted only `blocksToText`/`blocksToStorage` — neither of which
+// touches an editor.
+import type { BlockNoteEditor, PartialBlock } from "@blocknote/core";
 
 // ── Legacy Lexical → Markdown ───────────────────────────────────────────────
 
@@ -75,19 +79,23 @@ function lexicalToMarkdown(json: any): string {
 
 // ── Content loading / saving ────────────────────────────────────────────────
 
-/** Headless editor used only for markdown parsing (no DOM mount needed). */
-let parserEditor: BlockNoteEditor | null = null;
-function getParser(): BlockNoteEditor {
-  if (!parserEditor) parserEditor = BlockNoteEditor.create();
+/** Headless editor used only for markdown parsing (no DOM mount needed).
+ *  The promise (not the editor) is cached, so concurrent first calls share one
+ *  module load and one editor rather than racing to build two. */
+let parserEditor: Promise<BlockNoteEditor> | null = null;
+function getParser(): Promise<BlockNoteEditor> {
+  if (!parserEditor) {
+    parserEditor = import("@blocknote/core").then((m) => m.BlockNoteEditor.create());
+  }
   return parserEditor;
 }
 
 export async function markdownToBlocks(md: string): Promise<PartialBlock[]> {
-  return await getParser().tryParseMarkdownToBlocks(md);
+  return await (await getParser()).tryParseMarkdownToBlocks(md);
 }
 
 export async function blocksToMarkdown(blocks: readonly unknown[]): Promise<string> {
-  return getParser().blocksToMarkdownLossy(blocks as any);
+  return (await getParser()).blocksToMarkdownLossy(blocks as any);
 }
 
 /**

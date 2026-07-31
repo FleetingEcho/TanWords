@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/ipc/backend";
 import type { DocEditorInstance } from "./useDocEditorContent";
 
 interface DocumentLinkItem { id: number; title: string }

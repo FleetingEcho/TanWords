@@ -1,9 +1,9 @@
-/** Wires `src/bridge/updater.ts`'s `updater:check` / `updater:downloadAndInstall`
- *  IPC contract to `electron-updater`. Full update-server configuration is out
- *  of scope for this task (migration plan §10.2 — existing 1.0.0 installs
- *  can't auto-migrate anyway) — this just makes the IPC contract correct and
- *  non-crashing: checking with no feed configured resolves to "no update
- *  available" rather than throwing. */
+/** Serves the `updater:check` / `updater:downloadAndInstall` IPC channels that
+ *  `src/ipc/updater.ts` calls, on top of `electron-updater`. Full update-server
+ *  configuration is out of scope (migration plan §10.2 — existing 1.0.0
+ *  installs can't auto-migrate anyway); this just makes the IPC contract
+ *  correct and non-crashing: checking with no feed configured resolves to "no
+ *  update available" rather than throwing. */
 import { autoUpdater } from "electron-updater";
 
 export type UpdateInfoPayload = {
@@ -16,23 +16,18 @@ export function initUpdater(emitEvent: (name: string, payload: unknown) => void)
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
 
-  let sentStarted = false;
-
-  autoUpdater.on("download-progress", (progress) => {
-    if (!sentStarted) {
-      sentStarted = true;
-      emitEvent("updater:progress", { event: "Started", data: { contentLength: progress.total } });
-    }
-    emitEvent("updater:progress", { event: "Progress", data: { chunkLength: progress.delta } });
+  // electron-updater already reports a cumulative percentage, so this forwards
+  // it as-is rather than making the renderer accumulate deltas.
+  autoUpdater.on("download-progress", ({ percent, transferred, total }) => {
+    emitEvent("updater:progress", { percent, transferred, total });
   });
 
   autoUpdater.on("update-downloaded", () => {
-    emitEvent("updater:progress", { event: "Finished", data: {} });
+    emitEvent("updater:progress", { percent: 100, transferred: 0, total: 0 });
   });
 
   return {
     async check(): Promise<UpdateInfoPayload | null> {
-      sentStarted = false;
       try {
         const result = await autoUpdater.checkForUpdates();
         if (!result || !result.isUpdateAvailable) return null;

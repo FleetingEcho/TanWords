@@ -3,7 +3,7 @@ import { claimAudioChannel, releaseAudioChannel } from "@/lib/audioChannel";
 import { toPlayableSrc } from "@/lib/localAudioSrc";
 import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
 import { PlayMode, nextIndexOnEnded, nextIndexOnSkip } from "@/features/music/queue";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/ipc/backend";
 
 export type PodcastStatus = "idle" | "loading" | "playing" | "paused" | "error";
 

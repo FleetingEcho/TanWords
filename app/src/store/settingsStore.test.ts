@@ -12,7 +12,7 @@ const { invoke } = vi.hoisted(() => {
   return { invoke: vi.fn() };
 });
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke }));
+vi.mock("@/ipc/backend", () => ({ invoke }));
 
 import { useSettingsStore } from "./settingsStore";
 

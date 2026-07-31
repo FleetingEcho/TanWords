@@ -65,13 +65,16 @@ vi.mock("./ExportMarkdownDialog", () => ({
   ExportMarkdownDialog: () => null,
 }));
 
-vi.mock("@tauri-apps/plugin-dialog", () => ({
-  open: vi.fn(),
+vi.mock("@/ipc/dialog", () => ({
+  openDialog: vi.fn(),
+  saveDialog: vi.fn(),
 }));
 
-vi.mock("@tauri-apps/api/core", () => ({
+vi.mock("@/ipc/backend", () => ({
   invoke: vi.fn(),
-  convertFileSrc: (path: string) => path,
+  assetUrl: (path: string) => path,
+  isAssetUrl: () => false,
+  assetUrlToPath: (url: string) => url,
 }));
 
 import { LocalDocsView } from "./LocalDocsView";

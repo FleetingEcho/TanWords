@@ -1,4 +1,5 @@
-@import "@blocknote/core/fonts/inter.css";
+/* Inter is declared in ./styles/fonts.css, not imported from
+ * @blocknote/core/fonts/inter.css — see the note there. */
 @import "./styles/fonts.css";
 @import "./styles/theme-vars.css";
 @import "./styles/base.css";

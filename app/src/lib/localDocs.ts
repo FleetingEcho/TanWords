@@ -1,10 +1,9 @@
 /**
- * Local markdown vault API — thin wrappers over the `localdocs_*` Tauri
+ * Local markdown vault API — thin wrappers over the sidecar's `localdocs_*`
  * commands. All paths are relative to the mounted root folder; the root
  * itself is persisted in settings under `LOCAL_DOCS_ROOT_KEY`.
  */
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { isAssetUrl, assetUrlToPath } from "@/bridge/core";
+import { invoke, assetUrl, isAssetUrl, assetUrlToPath } from "@/ipc/backend";
 import { prepareAssetUpload } from "./documentAssets";
 
 export const LOCAL_DOCS_ROOT_KEY = "localdocs.root";
@@ -91,7 +90,7 @@ export async function uploadLocalDocImage(root: string, file: File): Promise<str
     root,
     ...await prepareAssetUpload(file),
   });
-  return convertFileSrc(`${root}/${relPath}`);
+  return assetUrl(`${root}/${relPath}`);
 }
 
 // ── Image path rewriting ────────────────────────────────────────────────────
@@ -142,7 +141,7 @@ export function mdToDisplay(markdown: string, root: string, relPath: string): st
     if (/^(https?:|data:|blob:|asset:)/i.test(url)) return pre + url + post;
     const path = tryDecode(url);
     const abs = normalizePath(path.startsWith("/") ? path : `${baseDir}/${path}`);
-    return pre + convertFileSrc(abs) + post;
+    return pre + assetUrl(abs) + post;
   });
 }
 

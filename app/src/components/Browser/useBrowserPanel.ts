@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { invoke } from "@/ipc/backend";
+import { subscribeAll } from "@/ipc/events";
 import { useBrowserPanelBlockStore } from "@/store/browserPanelStore";
 
 /** One entry in the tab strip.
@@ -68,37 +67,14 @@ function normalizeAddress(input: string): string | null {
 
 const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
-let offsetCache: { value: number; at: number } | null = null;
-
-/** Vertical distance between the window's native content area (what the panel's
- *  bounds are measured in) and this document's viewport (what
- *  `getBoundingClientRect()` is measured in).
- *
- *  A child webview is a sibling NSView placed in the window's content view,
- *  whose origin on macOS is the top of the *window frame*. WKWebView, however,
- *  insets its own web content by the title bar height, so DOM y=0 sits that far
- *  down the content view. Measured live: content area 1201x801, DOM viewport
- *  1201x769 — a 32px gap. Passing a raw `rect.top` therefore placed the panel
- *  32px too high (covering the toolbar) and left it 32px short at the bottom.
- *
- *  Derived rather than hardcoded: it's 0 on Windows/Linux and in fullscreen,
- *  and it tracks whatever title bar style the window ends up with. */
-async function viewportOffsetY(): Promise<number> {
-  // Only ever changes when the title bar itself does (fullscreen), but the
-  // resize path calls this on every observed frame, so don't pay two IPC
-  // round-trips each time.
-  if (offsetCache && performance.now() - offsetCache.at < 250) return offsetCache.value;
-  try {
-    const win = getCurrentWindow();
-    const [size, scale] = await Promise.all([win.innerSize(), win.scaleFactor()]);
-    const value = Math.max(0, Math.round(size.height / scale - window.innerHeight));
-    offsetCache = { value, at: performance.now() };
-    return value;
-  } catch {
-    // Non-Tauri (browser dev server) — no native panel to misplace anyway.
-    return 0;
-  }
-}
+/** NOTE ON COORDINATES: `WebContentsView.setBounds` takes DIPs relative to the
+ *  host window's *content area*, which is exactly what this document's viewport
+ *  is — so `getBoundingClientRect()` values go through unmodified, with no
+ *  vertical offset. (Under the old Tauri/WKWebView backend a child webview was
+ *  a sibling NSView measured from the top of the window frame, which sat ~32px
+ *  above DOM y=0 and needed a correction. Electron does not: do not reintroduce
+ *  a nonzero offset here — a plausible-looking one is what puts the panel over
+ *  the page header.) */
 
 /** Owns the native browser panel's lifecycle: one webview per tab, positioned
  * under a placeholder element, plus the address/nav actions that drive them.
@@ -129,14 +105,13 @@ export function useBrowserPanel() {
 
   const active = tabs.find((t) => t.key === activeKey) ?? tabs[0];
 
-  /** The placeholder's rect, translated from viewport coordinates into the
-   *  window's native content-area coordinates the panel is positioned in. */
-  const currentBounds = async () => {
+  /** The placeholder's rect, in the content-area coordinates the panel is
+   *  positioned in — the same coordinates, see the note above. */
+  const currentBounds = () => {
     const el = containerRef.current;
     if (!el) return null;
     const rect = el.getBoundingClientRect();
-    const offsetY = await viewportOffsetY();
-    return { x: rect.left, y: rect.top + offsetY, width: rect.width, height: rect.height };
+    return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
   };
 
   const enqueue = (fn: () => Promise<void>) => {
@@ -242,17 +217,11 @@ export function useBrowserPanel() {
   useEffect(() => {
     const patchByPanel = (tabId: string, patch: Partial<BrowserTab>) =>
       setTabs((prev) => prev.map((t) => (t.panelId === tabId ? { ...t, ...patch } : t)));
-    const unlistens = [
-      listen<TabEvent<string>>("browser://navigated", (e) =>
-        patchByPanel(e.payload.tabId, { url: e.payload.value })),
-      listen<TabEvent<string>>("browser://title-changed", (e) =>
-        patchByPanel(e.payload.tabId, { title: e.payload.value })),
-      listen<TabEvent<boolean>>("browser://loading", (e) =>
-        patchByPanel(e.payload.tabId, { loading: e.payload.value })),
-    ];
-    return () => {
-      unlistens.forEach((p) => p.then((fn) => fn()).catch(() => {}));
-    };
+    return subscribeAll({
+      "browser://navigated": (e: TabEvent<string>) => patchByPanel(e.tabId, { url: e.value }),
+      "browser://title-changed": (e: TabEvent<string>) => patchByPanel(e.tabId, { title: e.value }),
+      "browser://loading": (e: TabEvent<boolean>) => patchByPanel(e.tabId, { loading: e.value }),
+    });
   }, []);
 
   // Leaving the page hides every panel so none of them render over whatever

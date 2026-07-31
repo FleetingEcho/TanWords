@@ -17,11 +17,25 @@ export type PanelBounds = { x: number; y: number; width: number; height: number 
 
 type TabRecord = {
   id: string;
-  view: WebContentsView;
+  /** Null once the tab has been discarded to reclaim its renderer process.
+   *  `url`/`title` survive, so the tab strip is unchanged and the page is
+   *  restored on next activation. */
+  view: WebContentsView | null;
   url: string;
   title: string;
   atHome: boolean;
+  /** Monotonic counter, bumped on activation — drives LRU discard. */
+  usedAt: number;
 };
+
+/** How many tabs keep a live renderer process. Every WebContentsView is a
+ *  full renderer (~80-150MB resident), and tabs here are deliberately long-
+ *  lived — without a cap, a browsing session grows without bound. Beyond this
+ *  many, the least-recently-active background tab is discarded: its process is
+ *  freed and the page reloads from its URL when the user returns to it. This
+ *  is what Chrome's own tab discarding does; the active tab is never a
+ *  candidate. */
+const MAX_LIVE_TABS = 3;
 
 function toIntBounds(b: PanelBounds) {
   return {
@@ -39,6 +53,7 @@ export class BrowserPanelManager {
   private attachedId: string | null = null;
   private lastBounds: PanelBounds | null = null;
   private nextId = 1;
+  private useSeq = 1;
   private onEvent: ((name: string, payload: unknown) => void) | null = null;
 
   setWindow(win: BrowserWindow) {
@@ -55,11 +70,29 @@ export class BrowserPanelManager {
 
   private createTab(): TabRecord {
     const id = `panel-${this.nextId++}`;
-    const view = new WebContentsView({
-      webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false },
-    });
-    const rec: TabRecord = { id, view, url: "", title: "", atHome: true };
+    const rec: TabRecord = { id, view: null, url: "", title: "", atHome: true, usedAt: 0 };
     this.tabs.set(id, rec);
+    this.buildView(rec);
+    return rec;
+  }
+
+  /** Builds (or rebuilds, after a discard) the tab's renderer. Split out of
+   *  createTab so a discarded tab can be brought back with its listeners and
+   *  handlers wired identically. */
+  private buildView(rec: TabRecord): WebContentsView {
+    const id = rec.id;
+    const view = new WebContentsView({
+      webPreferences: {
+        contextIsolation: true,
+        sandbox: true,
+        nodeIntegration: false,
+        // Chromium's default, made explicit: a detached/background tab has its
+        // timers and rAF throttled rather than continuing to burn CPU behind
+        // the app UI.
+        backgroundThrottling: true,
+      },
+    });
+    rec.view = view;
 
     const wc = view.webContents;
     wc.on("did-navigate", (_e, url) => {
@@ -83,7 +116,30 @@ export class BrowserPanelManager {
       return { action: "deny" };
     });
 
-    return rec;
+    return view;
+  }
+
+  /** The tab's live view, rebuilt and reloaded if it had been discarded. */
+  private liveView(rec: TabRecord): WebContentsView {
+    if (rec.view) return rec.view;
+    const view = this.buildView(rec);
+    if (rec.url) void view.webContents.loadURL(rec.url);
+    return view;
+  }
+
+  /** Frees the renderer processes of background tabs beyond MAX_LIVE_TABS,
+   *  least-recently-active first. The active tab is never discarded. */
+  private discardStaleTabs() {
+    const live = [...this.tabs.values()].filter((t) => t.view && t.id !== this.activeId);
+    const overBy = live.length + 1 - MAX_LIVE_TABS;
+    if (overBy <= 0) return;
+    live.sort((a, b) => a.usedAt - b.usedAt);
+    for (const rec of live.slice(0, overBy)) {
+      if (this.attachedId === rec.id) continue;
+      const view = rec.view;
+      rec.view = null;
+      view?.webContents.close();
+    }
   }
 
   private attach(rec: TabRecord) {
@@ -91,20 +147,23 @@ export class BrowserPanelManager {
     if (this.attachedId === rec.id) return;
     if (this.attachedId) {
       const prev = this.tabs.get(this.attachedId);
-      if (prev) this.win.contentView.removeChildView(prev.view);
+      if (prev?.view) this.win.contentView.removeChildView(prev.view);
     }
-    this.win.contentView.addChildView(rec.view);
+    this.win.contentView.addChildView(this.liveView(rec));
     this.attachedId = rec.id;
-    if (this.lastBounds) rec.view.setBounds(toIntBounds(this.lastBounds));
+    if (this.lastBounds) rec.view?.setBounds(toIntBounds(this.lastBounds));
   }
 
   show(tabId: string | null, bounds: PanelBounds, url: string | null): string {
     const rec = (tabId && this.tabs.get(tabId)) || this.createTab();
+    rec.usedAt = this.useSeq++;
     this.attach(rec);
     this.activeId = rec.id;
     rec.atHome = false;
     this.setBounds(bounds);
-    if (url) void rec.view.webContents.loadURL(url);
+    if (url) void rec.view?.webContents.loadURL(url);
+    // After the new active tab is settled, so it is never its own victim.
+    this.discardStaleTabs();
     return rec.id;
   }
 
@@ -112,7 +171,7 @@ export class BrowserPanelManager {
     this.lastBounds = bounds;
     if (!this.attachedId) return;
     const rec = this.tabs.get(this.attachedId);
-    rec?.view.setBounds(toIntBounds(bounds));
+    rec?.view?.setBounds(toIntBounds(bounds));
   }
 
   /** Detaches the active view and returns a still-frame of it as a data URL
@@ -126,6 +185,7 @@ export class BrowserPanelManager {
     this.attachedId = null;
     if (!rec) return null;
 
+    if (!rec.view) return null;
     let snapshot: string | null = null;
     try {
       snapshot = (await rec.view.webContents.capturePage()).toDataURL();
@@ -149,37 +209,43 @@ export class BrowserPanelManager {
     rec.atHome = true;
     rec.url = "";
     rec.title = "";
-    void rec.view.webContents.loadURL("about:blank");
+    // A discarded tab sent home has nothing to restore — leave it discarded
+    // rather than spending a process to render about:blank.
+    void rec.view?.webContents.loadURL("about:blank");
   }
 
   closeTab(tabId: string) {
     const rec = this.tabs.get(tabId);
     if (!rec) return;
-    if (this.attachedId === tabId) {
+    if (this.attachedId === tabId && rec.view) {
       this.win?.contentView.removeChildView(rec.view);
       this.attachedId = null;
     }
     if (this.activeId === tabId) this.activeId = null;
     this.tabs.delete(tabId);
-    rec.view.webContents.close();
+    rec.view?.webContents.close();
   }
 
   reload(tabId: string) {
-    this.tabs.get(tabId)?.view.webContents.reload();
+    const rec = this.tabs.get(tabId);
+    // Reloading a discarded tab is exactly what restoring it does.
+    if (rec) this.liveView(rec).webContents.reload();
   }
 
   goBack(tabId: string) {
-    const wc = this.tabs.get(tabId)?.view.webContents;
+    const wc = this.tabs.get(tabId)?.view?.webContents;
     if (wc?.navigationHistory.canGoBack()) wc.navigationHistory.goBack();
   }
 
   goForward(tabId: string) {
-    const wc = this.tabs.get(tabId)?.view.webContents;
+    const wc = this.tabs.get(tabId)?.view?.webContents;
     if (wc?.navigationHistory.canGoForward()) wc.navigationHistory.goForward();
   }
 
   async clearData(): Promise<void> {
-    const sessions = new Set([...this.tabs.values()].map((t) => t.view.webContents.session));
+    const sessions = new Set(
+      [...this.tabs.values()].flatMap((t) => (t.view ? [t.view.webContents.session] : [])),
+    );
     await Promise.all([...sessions].map((s) => s.clearStorageData()));
   }
 

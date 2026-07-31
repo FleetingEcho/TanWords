@@ -15,7 +15,7 @@ import { applyTheme, applyDocumentFontSize, applyDocumentLineHeight, applyDocume
  * definition purely because it's one long, mostly-linear async function. */
 export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"], get: StoreApi<SettingsState>["getState"]) {
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
+    const { invoke } = await import("@/ipc/backend");
     const keys = [
       "theme",
       "default_ai_provider",

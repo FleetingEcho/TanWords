@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { open as openShell } from "@tauri-apps/plugin-shell";
+import { invoke } from "@/ipc/backend";
+import { openExternal as openShell } from "@/ipc/shell";
 import { toast } from "sonner";
 import { useT } from "@/hooks/useT";
 import { useDB } from "@/hooks/useDB";

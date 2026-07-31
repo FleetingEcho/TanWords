@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/ipc/backend";
 import { serializeMarkedBatch, parseMarkedBatch } from "@/lib/markerBatch";
 
 export interface HnComment {

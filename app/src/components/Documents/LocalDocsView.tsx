@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { openDialog } from "@/ipc/dialog";
 import { toast } from "sonner";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/ipc/backend";
 
 import { useDB } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";

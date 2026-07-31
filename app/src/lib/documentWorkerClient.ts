@@ -14,6 +14,29 @@ let workerUnavailable = false;
 let nextId = 1;
 const pending = new Map<number, Pending>();
 
+/** The worker holds a live BlockNoteEditor (a full ProseMirror schema, ~1.4MB
+ *  of module code plus its instance state) for as long as it exists. Documents
+ *  are edited in bursts, so past this much idle time that memory is worth more
+ *  than the ~100ms of respawn on the next parse. */
+const WORKER_IDLE_TIMEOUT_MS = 60_000;
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+function stopWorker() {
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = null;
+  worker?.terminate();
+  worker = null;
+}
+
+/** Arm the idle shutdown, but only once nothing is in flight. */
+function scheduleIdleShutdown() {
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => {
+    idleTimer = null;
+    if (pending.size === 0) stopWorker();
+  }, WORKER_IDLE_TIMEOUT_MS);
+}
+
 function getWorker(): Worker | null {
   if (worker) return worker;
   if (workerUnavailable || typeof Worker === "undefined") return null;
@@ -25,6 +48,7 @@ function getWorker(): Worker | null {
       pending.delete(data.id);
       clearTimeout(request.timeout);
       data.error ? request.reject(new Error(data.error)) : request.resolve(data.result);
+      if (pending.size === 0) scheduleIdleShutdown();
     };
     worker.onerror = () => {
       for (const request of pending.values()) {
@@ -32,8 +56,7 @@ function getWorker(): Worker | null {
         request.reject(new Error("document worker failed"));
       }
       pending.clear();
-      worker?.terminate();
-      worker = null;
+      stopWorker();
       workerUnavailable = true;
     };
     return worker;
@@ -46,6 +69,12 @@ function getWorker(): Worker | null {
 function run<T>(operation: Operation, payload: string | readonly unknown[]): Promise<T> | null {
   const target = getWorker();
   if (!target) return null;
+  // Work is starting — don't let a shutdown armed by the previous batch fire
+  // underneath it.
+  if (idleTimer) {
+    clearTimeout(idleTimer);
+    idleTimer = null;
+  }
   const id = nextId++;
   return new Promise<T>((resolve, reject) => {
     const timeout = setTimeout(() => {
@@ -58,8 +87,7 @@ function run<T>(operation: Operation, payload: string | readonly unknown[]): Pro
         other.reject(new Error("document worker restarted after a timeout"));
       }
       pending.clear();
-      worker?.terminate();
-      worker = null;
+      stopWorker();
     // Large Markdown documents can legitimately take several seconds to parse
     // or serialize. A short timeout is counterproductive here: the catch path
     // repeats the same expensive work on the UI thread. Keep the work isolated

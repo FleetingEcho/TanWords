@@ -1,6 +1,6 @@
 import React from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { open as openUrl } from "@tauri-apps/plugin-shell";
+import { invoke } from "@/ipc/backend";
+import { openExternal as openUrl } from "@/ipc/shell";
 import {
   BrainCircuit, Check, ChevronsLeft, ChevronsRight, ClipboardPaste, Cloud, CloudOff, Database,
   FilePlus2, Languages, MessageSquarePlus, Monitor, Moon, Palette, Quote, Search, Server, Settings, Sun,

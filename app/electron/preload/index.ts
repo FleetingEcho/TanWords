@@ -3,7 +3,7 @@
  *  so this is the *only* bridge between the untrusted renderer and Node/
  *  Electron — everything else (all 150+ sidecar commands) goes straight from
  *  the renderer to the Rust sidecar over HTTP, bypassing main entirely. See
- *  app/src/bridge/core.ts for the shape this is written against. */
+ *  app/src/ipc/host.ts for the shape this is written against. */
 import { contextBridge, ipcRenderer } from "electron";
 
 contextBridge.exposeInMainWorld("tanwords", {
@@ -16,7 +16,7 @@ contextBridge.exposeInMainWorld("tanwords", {
 
   call: (channel: string, payload?: unknown) => ipcRenderer.invoke("tanwords:call", channel, payload),
 
-  /** `src/bridge/event.ts` only ever calls this as `on("event", ({name,
+  /** `src/ipc/events.ts` only ever calls this as `on("event", ({name,
    *  payload}) => ...)` — a single subscription to the one forwarding
    *  channel, receiving the `{name, payload}` envelope main broadcasts
    *  (see `broadcastEvent` in electron/main/index.ts). Generic over the

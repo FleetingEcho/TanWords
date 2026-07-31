@@ -3,7 +3,7 @@
  *  public hook, useDB.core.ts for vocabulary/translations/settings/documents. */
 
 import { useCallback, useMemo } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/ipc/backend";
 import { logError, reportWriteError } from "./useDB.errors";
 import {
   ChatSessionItem, ChatSessionDetail,

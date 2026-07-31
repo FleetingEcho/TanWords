@@ -2,24 +2,28 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   check: vi.fn(),
+  download: vi.fn().mockResolvedValue(undefined),
   relaunch: vi.fn(),
 }));
 
-vi.mock("@tauri-apps/plugin-updater", () => ({ check: mocks.check }));
-vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: mocks.relaunch }));
+vi.mock("@/ipc/updater", () => ({
+  checkForUpdate: mocks.check,
+  downloadAndInstall: mocks.download,
+}));
+vi.mock("@/ipc/app", () => ({ relaunch: mocks.relaunch }));
 
 import { useUpdaterStore } from "./updaterStore";
 
-function makeUpdate(overrides: Partial<{ version: string; body: string }> = {}) {
+function makeUpdate(overrides: Partial<{ version: string; notes: string }> = {}) {
   return {
     version: overrides.version ?? "0.2.0",
-    body: overrides.body ?? "notes",
-    downloadAndInstall: vi.fn().mockResolvedValue(undefined),
+    notes: overrides.notes ?? "notes",
   };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.download.mockResolvedValue(undefined);
   useUpdaterStore.setState({
     status: "idle",
     version: null,
@@ -31,7 +35,7 @@ beforeEach(() => {
 
 describe("checkForUpdate", () => {
   it("goes available with version and notes when an update exists", async () => {
-    mocks.check.mockResolvedValue(makeUpdate({ version: "0.2.0", body: "hello" }));
+    mocks.check.mockResolvedValue(makeUpdate({ version: "0.2.0", notes: "hello" }));
     await useUpdaterStore.getState().checkForUpdate();
     const s = useUpdaterStore.getState();
     expect(s.status).toBe("available");
@@ -72,14 +76,11 @@ describe("checkForUpdate", () => {
 
 describe("downloadAndInstall", () => {
   it("tracks progress events and lands on ready", async () => {
-    const update = makeUpdate();
-    update.downloadAndInstall.mockImplementation(async (onEvent: (e: unknown) => void) => {
-      onEvent({ event: "Started", data: { contentLength: 200 } });
-      onEvent({ event: "Progress", data: { chunkLength: 100 } });
-      onEvent({ event: "Progress", data: { chunkLength: 100 } });
-      onEvent({ event: "Finished" });
+    mocks.download.mockImplementation(async (onProgress: (p: unknown) => void) => {
+      onProgress({ percent: 50, transferred: 100, total: 200 });
+      onProgress({ percent: 100, transferred: 200, total: 200 });
     });
-    mocks.check.mockResolvedValue(update);
+    mocks.check.mockResolvedValue(makeUpdate());
 
     await useUpdaterStore.getState().checkForUpdate();
     await useUpdaterStore.getState().downloadAndInstall();
@@ -90,9 +91,8 @@ describe("downloadAndInstall", () => {
   });
 
   it("returns to available with the error on download failure", async () => {
-    const update = makeUpdate();
-    update.downloadAndInstall.mockRejectedValue(new Error("bad signature"));
-    mocks.check.mockResolvedValue(update);
+    mocks.download.mockRejectedValue(new Error("bad signature"));
+    mocks.check.mockResolvedValue(makeUpdate());
 
     await useUpdaterStore.getState().checkForUpdate();
     await useUpdaterStore.getState().downloadAndInstall();
@@ -103,9 +103,10 @@ describe("downloadAndInstall", () => {
     expect(s.progress).toBe(0);
   });
 
-  it("is a no-op without a pending update", async () => {
+  it("is a no-op unless an update is available", async () => {
     await useUpdaterStore.getState().downloadAndInstall();
     expect(useUpdaterStore.getState().status).toBe("idle");
+    expect(mocks.download).not.toHaveBeenCalled();
   });
 });
 
