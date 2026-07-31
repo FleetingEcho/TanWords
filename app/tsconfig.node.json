@@ -22,5 +22,5 @@
   // of vite, so `react()` typed against the top-level vite is structurally
   // incompatible with vitest/config's `plugins`. It's a dependency-tree
   // artifact, not a real error, and vitest type-checks that file itself.
-  "include": ["vite.config.ts", "electron/**/*.ts"]
+  "include": ["vite.config.ts", "electron/**/*.ts", "build-checks/**/*.ts"]
 }
