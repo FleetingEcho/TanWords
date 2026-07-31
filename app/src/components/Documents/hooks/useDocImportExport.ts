@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { openDialog } from "@/ipc/dialog";
 import { toast } from "sonner";
 import { useDB } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";

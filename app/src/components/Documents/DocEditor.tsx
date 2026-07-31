@@ -4,7 +4,6 @@ import {
 } from "@blocknote/react";
 import { offset, shift } from "@floating-ui/react";
 import { BlockNoteView } from "@blocknote/mantine";
-import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
 
 import { DocumentDetail } from "@/hooks/useDB";

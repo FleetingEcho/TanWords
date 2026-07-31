@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import { editorSchema } from "./editorSchema";
-import "@blocknote/core/fonts/inter.css";
 import "@blocknote/mantine/style.css";
 
 import { useT } from "@/hooks/useT";
@@ -18,7 +17,7 @@ import { blocksToText } from "@/lib/docFormat";
 import { toast } from "sonner";
 import { selectRichEditorContents } from "./editorSelection";
 import { clipboardImageFiles, clipboardImageFilesOrNative } from "./clipboardImages";
-import { readImage } from "@tauri-apps/plugin-clipboard-manager";
+import { readClipboardImage } from "@/ipc/clipboard";
 import { useSettingsStore } from "@/store/settingsStore";
 import { promoteLocalFileLinks } from "./localFileBlocks";
 import { isEmptyParagraph, withTrailingEditorParagraph, withoutTrailingEditorParagraph } from "./trailingEditorParagraph";
@@ -58,26 +57,7 @@ function countWords(text: string): number {
 
 async function readNativeClipboardImage(): Promise<File | null> {
   try {
-    const image = await readImage();
-    const [rgba, size] = await Promise.all([
-      image.rgba(),
-      image.size(),
-    ]);
-    const { width, height } = size;
-    if (!width || !height || rgba.length === 0) return null;
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("Image conversion is unavailable");
-    context.putImageData(new ImageData(new Uint8ClampedArray(rgba), width, height), 0, 0);
-    const blob = await new Promise<Blob>((resolve, reject) =>
-      canvas.toBlob(
-        (value) => value ? resolve(value) : reject(new Error("Clipboard image conversion failed")),
-        "image/png",
-      )
-    );
-    return new File([blob], `clipboard-${Date.now()}.png`, { type: "image/png" });
+    return await readClipboardImage();
   } catch {
     return null;
   }

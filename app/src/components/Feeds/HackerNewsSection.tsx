@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/ipc/backend";
 import { useT } from "@/hooks/useT";
 import type { RssFeed } from "@/hooks/useDB.types";
 import { SearchIcon, CloseIcon } from "@/components/ui/icons";

@@ -1,34 +1,37 @@
-/** Replaces `@tauri-apps/plugin-http`. The highest-risk bridge module.
+/** CORS-free HTTP, performed by Electron's `net.fetch` in the main process.
  *
- *  Why this can't just be `globalThis.fetch`: the renderer is subject to CORS,
- *  and the AI providers (`providers/openai.ts`, `providers/anthropic.ts`) call
- *  api.openai.com / api.anthropic.com directly with an API key. Tauri's plugin
- *  bypassed CORS by doing the request in Rust. In Electron the equivalent is
- *  `net.fetch` in the main process.
+ *  Why not plain `globalThis.fetch`: the renderer is subject to CORS, and the
+ *  AI providers (`providers/openai.ts`, `providers/anthropic.ts`) call
+ *  api.openai.com / api.anthropic.com directly with an API key.
  *
- *  Why it can't be a plain `ipcRenderer.invoke` either: both providers stream.
+ *  Why not a plain request/response IPC call: both providers stream.
  *  `providers/openai.ts` pipes the response through `ThinkTagFilter` and yields
- *  tokens as they arrive, so `response.body` must be a live ReadableStream. A
- *  request/response IPC call would buffer the whole completion and the chat UI
- *  would sit blank until the model finished.
+ *  tokens as they arrive, so `response.body` must be a live ReadableStream —
+ *  buffering the whole completion would leave the chat UI blank until the
+ *  model finished.
  *
- *  Contract with the main process:
+ *  Contract with the main process (electron/main/ipc.ts):
  *    call("http:fetch", { id, url, init })  starts the request
  *    on("http:head:<id>")  -> { status, statusText, headers }
- *    on("http:chunk:<id>") -> Uint8Array
+ *    on("http:chunk:<id>") -> ArrayBuffer
  *    on("http:end:<id>")   -> { error?: string }
  *    call("http:abort", { id })            on AbortSignal
  *
- *  Prefer a MessagePort per request if chunk throughput becomes a problem;
- *  the channel-per-id shape above is simpler and is fine for token streams. */
+ *  Prefer a MessagePort per request if chunk throughput becomes a problem; the
+ *  channel-per-id shape above is simpler and is fine for token streams. */
+
+import { host } from "./host";
 
 let nextId = 1;
 
-export async function fetch(input: string | URL | Request, init: RequestInit = {}): Promise<Response> {
+/** Same signature as the DOM `fetch`, so provider code reads unchanged. */
+export async function netFetch(
+  input: string | URL | Request,
+  init: RequestInit = {},
+): Promise<Response> {
   const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
   const id = nextId++;
-  const bridge = window.tanwords;
-  if (!bridge) throw new Error("preload bridge missing");
+  const bridge = host();
 
   const head = await new Promise<{ status: number; statusText: string; headers: Record<string, string> }>(
     (resolve, reject) => {

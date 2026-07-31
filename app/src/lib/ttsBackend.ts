@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/ipc/backend";
 import { useSettingsStore } from "@/store/settingsStore";
 
 /** Thrown by `synthesizeBlob` when the caller should fall back to

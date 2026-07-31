@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import { check, type Update } from "@tauri-apps/plugin-updater";
-import { relaunch } from "@tauri-apps/plugin-process";
+import { checkForUpdate, downloadAndInstall } from "@/ipc/updater";
+import { relaunch } from "@/ipc/app";
 
 export type UpdaterStatus =
   | "idle"
@@ -10,10 +10,6 @@ export type UpdaterStatus =
   | "downloading"
   | "ready"
   | "error";
-
-// The Update handle from check() isn't serializable UI state — it holds the
-// download methods and must be the same instance across check → download.
-let pendingUpdate: Update | null = null;
 
 interface UpdaterState {
   status: UpdaterStatus;
@@ -45,16 +41,13 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
     if (status === "checking" || status === "downloading" || status === "ready") return;
     set({ status: "checking", error: null });
     try {
-      const update = await check();
+      const update = await checkForUpdate();
       if (update) {
-        pendingUpdate = update;
-        set({ status: "available", version: update.version, notes: update.body ?? null });
+        set({ status: "available", version: update.version, notes: update.notes ?? null });
       } else {
-        pendingUpdate = null;
         set({ status: "upToDate" });
       }
     } catch (e) {
-      pendingUpdate = null;
       if (silent) {
         set({ status: "idle" });
       } else {
@@ -64,26 +57,13 @@ export const useUpdaterStore = create<UpdaterState>((set, get) => ({
   },
 
   downloadAndInstall: async () => {
-    if (!pendingUpdate || get().status !== "available") return;
+    if (get().status !== "available") return;
     set({ status: "downloading", progress: 0, error: null });
-    let total = 0;
-    let received = 0;
     try {
-      await pendingUpdate.downloadAndInstall((event) => {
-        switch (event.event) {
-          case "Started":
-            total = event.data.contentLength ?? 0;
-            break;
-          case "Progress":
-            received += event.data.chunkLength;
-            if (total > 0) {
-              set({ progress: Math.min(100, Math.round((received / total) * 100)) });
-            }
-            break;
-          case "Finished":
-            set({ progress: 100 });
-            break;
-        }
+      // Main owns the pending update between check and download, so there is
+      // no handle to carry across the two calls.
+      await downloadAndInstall(({ percent }) => {
+        set({ progress: Math.min(100, Math.round(percent)) });
       });
       set({ status: "ready" });
     } catch (e) {

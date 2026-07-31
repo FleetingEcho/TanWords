@@ -6,8 +6,8 @@
   "homepage": "https://github.com/FleetingEcho/TanWords",
   "scripts": {
     "dev": "bun run core:build:dev && electron-vite dev",
-    "dev:web": "vite",
-    "build": "tsc --noEmit && electron-vite build",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
+    "build": "bun run typecheck && electron-vite build",
     "core:build": "cd core && cargo build --release",
     "core:build:dev": "cd core && cargo build",
     "test": "vitest",

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { getVersion } from "@tauri-apps/api/app";
-import { open as openUrl } from "@tauri-apps/plugin-shell";
+import { getVersion } from "@/ipc/app";
+import { openExternal as openUrl } from "@/ipc/shell";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { UpgradeIcon } from "@/components/ui/icons";

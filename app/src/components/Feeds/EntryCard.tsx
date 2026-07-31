@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { open as openShell } from "@tauri-apps/plugin-shell";
+import { openExternal as openShell } from "@/ipc/shell";
 import { useT } from "@/hooks/useT";
 import { PlayIcon, UpvoteIcon, ReplyIcon, ExternalIcon, TranslateIcon, AnalyzeBackgroundIcon, CheckIcon } from "@/components/ui/icons";
 import { StatBadge } from "@/components/ui/StatBadge";

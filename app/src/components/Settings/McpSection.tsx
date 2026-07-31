@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/ipc/backend";
 import { Check, ChevronDown, Copy, Eye, EyeOff, RefreshCw, Server, ShieldCheck } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";

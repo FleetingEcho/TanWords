@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/ipc/backend";
 import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
 import { coverGradient } from "@/features/music/cover";

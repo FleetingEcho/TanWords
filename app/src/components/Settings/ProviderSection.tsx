@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { fetch } from "@tauri-apps/plugin-http";
+import { netFetch } from "@/ipc/net";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -160,7 +160,7 @@ export function ProviderSection() {
       if (providerId === "claude") {
         // Claude uses the Anthropic Messages API, not OpenAI-compatible chat/completions
         const base = apiBase.replace(/\/$/, "");
-        res = await fetch(`${base}/v1/messages`, {
+        res = await netFetch(`${base}/v1/messages`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -175,7 +175,7 @@ export function ProviderSection() {
         });
       } else {
         const base = apiBase.replace(/\/chat\/completions\/?$/, "").replace(/\/$/, "");
-        res = await fetch(`${base}/chat/completions`, {
+        res = await netFetch(`${base}/chat/completions`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
           body: JSON.stringify({ model, messages: [{ role: "user", content: "Hi" }], max_tokens: 3 }),
@@ -203,7 +203,7 @@ export function ProviderSection() {
         }
       }
       const modelsUrl = providerId === "claude" ? `${base}/v1/models` : `${base}/models`;
-      const response = await fetch(modelsUrl, { headers });
+      const response = await netFetch(modelsUrl, { headers });
       if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
       const body = await response.json();
       const rows = Array.isArray(body?.data) ? body.data : Array.isArray(body?.models) ? body.models : [];

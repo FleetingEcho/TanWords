@@ -5,6 +5,7 @@ import { SidecarSupervisor } from "./sidecar";
 import { registerIpcHandlers } from "./ipc";
 import { initUpdater } from "./updater";
 import { BrowserPanelManager } from "./browserPanel";
+import { abortAllFor } from "./http";
 
 // Single instance: same purpose `tauri-plugin-single-instance` served —
 // stop a duplicate SQLite connection / duplicate MCP port bind from a
@@ -17,6 +18,26 @@ if (!gotLock) {
 // No File/Edit/View/Window menu bar — the UI has its own navigation and
 // nothing here depends on menu accelerators.
 Menu.setApplicationMenu(null);
+
+// ── Memory tuning ──────────────────────────────────────────────────────────
+// Chromium sizes its heaps for a general-purpose browser on the assumption it
+// owns the machine. This app is a single-window desktop tool whose heavy work
+// (SQLite, ONNX/TTS, audio decode, search) lives in the Rust sidecar, so those
+// defaults are far larger than anything the renderer needs.
+
+// Chromium keeps a fully-initialized spare renderer process warm so the *next*
+// navigation to a new site starts instantly. That's a browser optimisation:
+// here the only thing that navigates across sites is the browser panel, and it
+// already pays a page load. The spare is a whole idle renderer (~60-90MB) that
+// exists purely to be fast once.
+app.commandLine.appendSwitch("disable-features", "SpareRendererForSitePerProcess");
+
+// V8 heap ceiling. The app's steady-state working set is small; the large
+// allocations are document parses, and those are transient and happen in the
+// worker. Capping this makes V8 collect at a smaller resident size rather than
+// letting the heap drift toward its multi-GB default before it feels any
+// pressure. If parsing a very large vault ever OOMs, raise this first.
+app.commandLine.appendSwitch("js-flags", "--max-old-space-size=512");
 
 let mainWindow: BrowserWindow | null = null;
 const sidecar = new SidecarSupervisor();
@@ -78,8 +99,16 @@ function createWindow() {
     void win.loadURL(rendererEntryUrl());
   }
 
+  // A reload or a close orphans any provider stream still being pumped into
+  // this renderer; without this they'd keep downloading into a dead sender.
+  const contentsId = win.webContents.id;
+  win.webContents.on("did-start-navigation", ({ isSameDocument }) => {
+    if (!isSameDocument) abortAllFor(contentsId);
+  });
+
   mainWindow = win;
   win.on("closed", () => {
+    abortAllFor(contentsId);
     mainWindow = null;
     browserPanel.reset();
   });

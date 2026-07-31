@@ -1,14 +1,7 @@
 import React, { useEffect } from "react";
 import { Toaster, toast } from "sonner";
 import { MainLayout } from "@/components/Layout/Sidebar";
-import { DashboardPage } from "@/components/Dashboard/DashboardPage";
-import { VocabularyPage } from "@/components/Vocabulary/VocabularyPage";
-import { SettingsPage } from "@/components/Settings/SettingsPage";
-import { DocumentsPage } from "@/components/Documents/DocumentsPage";
-import { FeedsPage } from "@/components/Feeds/FeedsPage";
-import { AiChatPage } from "@/components/AiChat/AiChatPage";
 import { WordDetailModal } from "@/components/WordDetailModal";
-import { ReadingPage } from "@/components/Reader/ReadingPage";
 import { SelectionAsk } from "@/components/shared/SelectionAsk";
 import { PlayerBar } from "@/components/ui/PlayerBar";
 import { PodcastPlayerBar } from "@/components/ui/PodcastPlayerBar";
@@ -21,15 +14,56 @@ import { useDB } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { useMcpSync } from "@/hooks/useMcpSync";
 import { initProviders } from "@/lib/initProviders";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/ipc/backend";
 import { ENRICHED_SEED_WORDS, BASIC_SEED_WORDS } from "@/data/seedWords";
 import { LOCAL_DOCS_ROOT_KEY, localDocsRootExists } from "@/lib/localDocs";
 
+/** Every page is code-split.
+ *
+ *  Only the landing page's chunk is needed to paint, so the rest — the editor
+ *  stack behind Documents, the chat providers, the charts on Dashboard — stay
+ *  out of the startup parse instead of riding along in the main chunk. The
+ *  named exports are re-shaped to the default export React.lazy wants.
+ *
+ *  Pages are prefetched shortly after mount (see the effect in App), so a
+ *  sidebar click still lands on an already-loaded chunk — the split costs
+ *  startup work, not navigation latency. */
+const DashboardPage = React.lazy(() =>
+  import("@/components/Dashboard/DashboardPage").then((m) => ({ default: m.DashboardPage })));
+const VocabularyPage = React.lazy(() =>
+  import("@/components/Vocabulary/VocabularyPage").then((m) => ({ default: m.VocabularyPage })));
+const SettingsPage = React.lazy(() =>
+  import("@/components/Settings/SettingsPage").then((m) => ({ default: m.SettingsPage })));
+const DocumentsPage = React.lazy(() =>
+  import("@/components/Documents/DocumentsPage").then((m) => ({ default: m.DocumentsPage })));
+const FeedsPage = React.lazy(() =>
+  import("@/components/Feeds/FeedsPage").then((m) => ({ default: m.FeedsPage })));
+const AiChatPage = React.lazy(() =>
+  import("@/components/AiChat/AiChatPage").then((m) => ({ default: m.AiChatPage })));
+const ReadingPage = React.lazy(() =>
+  import("@/components/Reader/ReadingPage").then((m) => ({ default: m.ReadingPage })));
 const MusicPage = React.lazy(() => import("@/components/Music/MusicPage"));
 const BrowserPage = React.lazy(() => import("@/components/Browser/BrowserPage"));
 
+/** Warm the chunks the user hasn't asked for yet, once the app is idle. */
+const PREFETCH_PAGES = [
+  () => import("@/components/Feeds/FeedsPage"),
+  () => import("@/components/Reader/ReadingPage"),
+  () => import("@/components/Dashboard/DashboardPage"),
+  () => import("@/components/Vocabulary/VocabularyPage"),
+  () => import("@/components/Documents/DocumentsPage"),
+  () => import("@/components/AiChat/AiChatPage"),
+  () => import("@/components/Settings/SettingsPage"),
+];
+
+const PageFallback = () => (
+  <div className="h-full flex items-center justify-center">
+    <div className="w-8 h-8 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+  </div>
+);
+
 function App() {
-  const { loadFromDB, isLoaded, ttsModelPath } = useSettingsStore();
+  const { loadFromDB } = useSettingsStore();
   const db = useDB();
   const t = useT();
   const { currentPage, currentWordId, navigate } = useNavStore();
@@ -49,6 +83,31 @@ function App() {
       ?? window.setTimeout(() => initProviders(), 500);
     loadFromDB();
     return () => {
+      if (window.cancelIdleCallback && typeof idle !== "number") window.cancelIdleCallback(idle);
+      else window.clearTimeout(idle as number);
+    };
+  }, []);
+
+  // Pull the other page chunks in once the app is idle. Code-splitting the
+  // routes is what keeps them out of the startup parse; this is what keeps the
+  // first click on each of them from paying a load. Sequential on purpose —
+  // seven parallel chunk loads would compete with the startup DB reads.
+  useEffect(() => {
+    let cancelled = false;
+    const warm = async () => {
+      for (const load of PREFETCH_PAGES) {
+        if (cancelled) return;
+        try {
+          await load();
+        } catch {
+          // A prefetch miss is invisible: React.lazy will just load it on demand.
+        }
+      }
+    };
+    const idle = window.requestIdleCallback?.(() => void warm())
+      ?? window.setTimeout(() => void warm(), 1500);
+    return () => {
+      cancelled = true;
       if (window.cancelIdleCallback && typeof idle !== "number") window.cancelIdleCallback(idle);
       else window.clearTimeout(idle as number);
     };
@@ -105,19 +164,15 @@ function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Preload the on-device TTS model at startup instead of on the first
-  // "Listen to article" click — sherpa-onnx session build + its own warm-up
-  // synth take a few seconds, and paying that cost eagerly here keeps the
-  // click-to-first-sentence latency down to just one real synth call.
-  useEffect(() => {
-    if (!isLoaded || !ttsModelPath) return;
-    // Let the first paint, settings hydration and initial DB reads settle
-    // before starting CPU-heavy ONNX session construction in the background.
-    const timer = window.setTimeout(() => {
-      invoke("tts_load_model", { path: ttsModelPath }).catch(() => {});
-    }, 2000);
-    return () => window.clearTimeout(timer);
-  }, [isLoaded, ttsModelPath]);
+  // NOTE: the on-device TTS model is deliberately NOT preloaded here.
+  // A loaded sherpa-onnx session is 60-120MB resident for the whole session,
+  // and preloading charged that to every launch — including the majority of
+  // launches where nobody ever presses "Listen". `lib/ttsBackend.ts` already
+  // loads the persisted model on demand (it treats "model-not-loaded" as a
+  // self-heal, not an error), and SpeakButton/useArticlePlayer hold their
+  // "loading" state across that call, so the cost lands as a slower first
+  // click for users who actually use TTS instead of as idle memory for
+  // everyone. Do not reintroduce an eager load without that tradeoff in mind.
 
   // Seed vocabulary once per install (localStorage flag prevents re-seeding)
   useEffect(() => {
@@ -159,34 +214,12 @@ function App() {
     switch (page) {
       case "dashboard":
         return <DashboardPage />;
-      case "feeds":
-        return <FeedsPage />;
       case "reading":
         return <ReadingPage />;
       case "music":
-        return (
-          <React.Suspense
-            fallback={
-              <div className="h-full flex items-center justify-center">
-                <div className="w-8 h-8 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
-              </div>
-            }
-          >
-            <MusicPage />
-          </React.Suspense>
-        );
+        return <MusicPage />;
       case "browser":
-        return (
-          <React.Suspense
-            fallback={
-              <div className="h-full flex items-center justify-center">
-                <div className="w-8 h-8 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
-              </div>
-            }
-          >
-            <BrowserPage />
-          </React.Suspense>
-        );
+        return <BrowserPage />;
       case "vocabulary":
         return <VocabularyPage initialWordId={wordId} initialSentenceId={sentenceId} />;
       case "documents":
@@ -195,6 +228,7 @@ function App() {
         return <AiChatPage initialSessionId={chatSessionId} />;
       case "settings":
         return <SettingsPage />;
+      case "feeds":
       default:
         return <FeedsPage />;
     }
@@ -208,7 +242,11 @@ function App() {
       onNavigate={(id) => navigate(id as any)}
       wordCount={wordCount}
     >
-      {renderPage()}
+      {/* Keyed on the page so switching pages shows the spinner rather than
+          holding the previous page mounted while the next chunk loads. */}
+      <React.Suspense key={page} fallback={<PageFallback />}>
+        {renderPage()}
+      </React.Suspense>
     </MainLayout>
     <WordDetailModal />
     <SelectionAsk />

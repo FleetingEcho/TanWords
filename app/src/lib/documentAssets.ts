@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/ipc/backend";
 
 export const DOCUMENT_ASSET_SCHEME = "tanwords-asset://";
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;

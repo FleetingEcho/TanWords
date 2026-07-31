@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@/ipc/backend";
+import { openDialog, saveDialog } from "@/ipc/dialog";
 import { toast } from "sonner";
 import { useT } from "@/hooks/useT";
 import {
