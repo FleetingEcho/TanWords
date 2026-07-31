@@ -1,6 +1,10 @@
-/* Inter is declared in ./styles/fonts.css, not imported from
- * @blocknote/core/fonts/inter.css — see the note there. */
-@import './styles/fonts.css' layer(base);
+/* ./styles/fonts.css is deliberately NOT imported here — main.tsx loads it
+ * directly. Tailwind's PostCSS plugin inlines @import itself and does not
+ * rebase relative url()s onto the importing file, so the @font-face
+ * `url("../static/…")` paths (correct relative to styles/) resolved against
+ * this file instead, and every woff2 silently vanished from the build.
+ * Importing it from TS keeps it a CSS module of its own, which Vite rebases
+ * and fingerprints normally. */
 @import './styles/theme-vars.css' layer(base);
 @import './styles/base.css' layer(base);
 /* These two override styles that BlockNote and the sanitized article HTML
