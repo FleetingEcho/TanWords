@@ -5,7 +5,7 @@ import "@blocknote/mantine/style.css";
 import { useIsDark } from "@/hooks/useIsDark";
 import { useT } from "@/hooks/useT";
 import { markdownToBlocks, blocksToText } from "@/lib/docFormat";
-import { CheckIcon } from "@heroicons/react/24/solid";
+import { Check } from "lucide-react";
 
 interface Props {
   /** Reload key — full reload of editor content happens when this changes (e.g. word switch). */
@@ -94,7 +94,7 @@ export function WordNotesEditor({ wordId, text, onChange, readOnly = false }: Pr
           {status === "saving" ? (
             t("chat.saving")
           ) : (
-            <span className="text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1"><CheckIcon className="w-3 h-3" /> {t("doc.autoSaved")}</span>
+            <span className="text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1"><Check className="w-3 h-3" /> {t("doc.autoSaved")}</span>
           )}
         </p>
       )}

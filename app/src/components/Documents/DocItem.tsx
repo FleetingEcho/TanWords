@@ -1,11 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
-import { PencilIcon, MapPinIcon, DocumentDuplicateIcon, TrashIcon } from "@heroicons/react/24/outline";
 import { DocumentListItem } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { PinIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { parseDbTimestamp } from "@/lib/dbTime";
-import { FileText, LockKeyhole, LockOpen, MoreHorizontal, ShieldCheck } from "lucide-react";
+import { Copy, FileText, LockKeyhole, LockOpen, MapPin, MoreHorizontal, Pencil, ShieldCheck, Trash2 } from "lucide-react";
 
 interface Props {
   doc: DocumentListItem;
@@ -194,7 +193,7 @@ export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, o
             onClick={() => { setMenu(null); setRenaming(true); setRenameVal(doc.title); }}
             className="h-auto w-full rounded-none flex items-center justify-start gap-2.5 px-3 py-2 text-sm hover:bg-muted text-left"
           >
-            <PencilIcon className="w-4 h-4 shrink-0" /> {t("doc.rename")}
+            <Pencil className="w-4 h-4 shrink-0" /> {t("doc.rename")}
           </Button>
           {doc.protected && (
             <Button
@@ -210,7 +209,7 @@ export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, o
             onClick={() => { setMenu(null); onExport(doc.id); }}
             className="h-auto w-full rounded-none flex items-center justify-start gap-2.5 px-3 py-2 text-sm hover:bg-muted text-left"
           >
-            <DocumentDuplicateIcon className="w-4 h-4 shrink-0" /> {t("doc.exportMarkdown")}
+            <Copy className="w-4 h-4 shrink-0" /> {t("doc.exportMarkdown")}
           </Button>
           <Button
             variant="ghost"
@@ -218,7 +217,7 @@ export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, o
             onClick={() => { setMenu(null); onPin(doc.id); }}
             className="h-auto w-full rounded-none flex items-center justify-start gap-2.5 px-3 py-2 text-sm hover:bg-muted text-left"
           >
-            <MapPinIcon className="w-4 h-4 shrink-0" /> {doc.pinned ? t("doc.unpin") : t("doc.pin")}
+            <MapPin className="w-4 h-4 shrink-0" /> {doc.pinned ? t("doc.unpin") : t("doc.pin")}
           </Button>
           <Button
             variant="ghost"
@@ -226,7 +225,7 @@ export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, o
             onClick={() => { setMenu(null); onDuplicate(doc.id); }}
             className="h-auto w-full rounded-none flex items-center justify-start gap-2.5 px-3 py-2 text-sm hover:bg-muted text-left"
           >
-            <DocumentDuplicateIcon className="w-4 h-4 shrink-0" /> {t("doc.duplicate")}
+            <Copy className="w-4 h-4 shrink-0" /> {t("doc.duplicate")}
           </Button>
           <Button
             variant="ghost"
@@ -249,7 +248,7 @@ export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, o
             onClick={() => { setMenu(null); onDelete(doc.id); }}
             className="h-auto w-full rounded-none flex items-center justify-start gap-2.5 px-3 py-2 text-sm hover:bg-destructive/10 text-destructive text-left"
           >
-            <TrashIcon className="w-4 h-4 shrink-0" /> {t("doc.delete")}
+            <Trash2 className="w-4 h-4 shrink-0" /> {t("doc.delete")}
           </Button>
         </div>
       )}

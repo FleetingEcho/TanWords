@@ -11,9 +11,8 @@ import { useT } from "@/hooks/useT";
 import { useIsDark } from "@/hooks/useIsDark";
 import { parseDbTimestamp } from "@/lib/dbTime";
 import { PinIcon } from "@/components/ui/icons";
-import { CheckIcon } from "@heroicons/react/24/solid";
 import { Button } from "@/components/ui/button";
-import { Code2, Eye, Link2, Paperclip, Search } from "lucide-react";
+import { Check, Code2, Eye, Link2, Paperclip, Search } from "lucide-react";
 import { RawMarkdownEditor } from "./RawMarkdownEditor";
 import type { SaveStatus } from "./useDocumentEditor";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
@@ -224,7 +223,7 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
               {t("doc.saving")}
             </span>
           ) : saveStatus === "saved" ? (
-            <span className="text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1"><CheckIcon className="w-3 h-3" /> {t("doc.autoSaved")}</span>
+            <span className="text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1"><Check className="w-3 h-3" /> {t("doc.autoSaved")}</span>
           ) : saveStatus === "dirty" ? (
             <span>{t("doc.unsavedChanges")}</span>
           ) : null}

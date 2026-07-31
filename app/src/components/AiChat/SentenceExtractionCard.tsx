@@ -5,7 +5,7 @@ import { useT } from "@/hooks/useT";
 import { SpeakButton } from "@/components/ui/SpeakButton";
 import { SparkIcon } from "@/components/ui/icons";
 import { LevelBadge } from "@/components/shared/LevelBadge";
-import { CheckIcon } from "@heroicons/react/24/solid";
+import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -149,7 +149,7 @@ export function SentenceExtractionCard({ items, variant = "generated" }: { items
               <div className="flex items-center gap-2 pt-0.5">
                 {isAdded ? (
                   <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-0.5">
-                    <CheckIcon className="w-3 h-3" /> {t("aichat.sentence.statusAdded")}
+                    <Check className="w-3 h-3" /> {t("aichat.sentence.statusAdded")}
                   </span>
                 ) : (
                   <Button variant="link" onClick={() => addOne(i)} className="h-auto p-0 text-[11px] font-semibold text-primary hover:underline">

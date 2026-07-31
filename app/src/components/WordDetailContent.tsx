@@ -1,5 +1,5 @@
 import { Skeleton } from "@/components/ui/Skeleton";
-import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
+import { TriangleAlert } from "lucide-react";
 
 // ── Skeleton Components ────────────────────────────────────────────────────
 
@@ -21,7 +21,7 @@ export function LoadingSkeleton({ t }: { t: (k: string) => string }) {
 export function ErrorState({ message, t }: { message: string; t: (k: string) => string }) {
   return (
     <div className="py-8 text-center space-y-3">
-      <p className="text-destructive text-sm inline-flex items-center gap-1.5"><ExclamationTriangleIcon className="w-4 h-4" /> {message}</p>
+      <p className="text-destructive text-sm inline-flex items-center gap-1.5"><TriangleAlert className="w-4 h-4" /> {message}</p>
       <p className="text-xs text-muted-foreground">{t("modal.noProviderSub")}</p>
     </div>
   );

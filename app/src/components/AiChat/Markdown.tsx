@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { CheckIcon } from "@heroicons/react/24/solid";
+import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -94,7 +94,7 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
       <div className="flex items-center justify-between px-3 py-1 bg-black/10 dark:bg-white/5 text-[10px] font-mono text-muted-foreground">
         <span>{lang || "code"}</span>
         <Button variant="link" onClick={copy} className="h-auto p-0 text-[10px] font-mono text-muted-foreground hover:text-foreground transition-colors">
-          {copied ? <CheckIcon className="w-3 h-3 inline" /> : "copy"}
+          {copied ? <Check className="w-3 h-3 inline" /> : "copy"}
         </Button>
       </div>
       <pre className="px-3 py-2 overflow-x-auto bg-black/5 dark:bg-black/30 text-[0.86em] font-mono leading-relaxed">

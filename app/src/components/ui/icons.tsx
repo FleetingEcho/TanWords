@@ -1,51 +1,50 @@
 import React from "react";
 import {
-  Squares2X2Icon,
-  MapIcon,
-  BookOpenIcon,
-  DocumentTextIcon,
-  ChatBubbleLeftRightIcon,
-  Cog6ToothIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  ArrowTopRightOnSquareIcon,
-  MagnifyingGlassIcon,
-  MapPinIcon as MapPinIconOutline,
-  ClipboardDocumentListIcon,
-  XMarkIcon,
-  RssIcon,
-  MusicalNoteIcon,
-  QueueListIcon,
-  FolderOpenIcon,
-  ArrowLongRightIcon,
-  ArrowPathRoundedSquareIcon,
-  ArrowsRightLeftIcon,
-  ArrowUpCircleIcon,
-  ChatBubbleLeftIcon,
-  ArrowUpIcon,
-  UserGroupIcon,
-  ChevronDownIcon as ChevronDownIconOutline,
-  PlusCircleIcon,
-  LanguageIcon,
-  BookmarkIcon as BookmarkIconOutline,
-  LightBulbIcon,
-  CheckIcon as HeroCheckIcon,
-  ArrowDownTrayIcon,
-} from "@heroicons/react/24/outline";
-import {
-  ArrowPathIcon,
-  MapPinIcon as MapPinIconSolid,
-  SpeakerWaveIcon,
-  SparklesIcon,
-  PlayIcon as HeroPlayIcon,
-  PauseIcon as HeroPauseIcon,
-  BackwardIcon,
-  ForwardIcon,
-} from "@heroicons/react/24/solid";
+  ArrowUp,
+  Bookmark,
+  BookOpen,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  CircleArrowUp,
+  CirclePlus,
+  ClipboardList,
+  Download,
+  ExternalLink,
+  FileText,
+  FolderOpen,
+  GripVertical,
+  Languages,
+  LayoutGrid,
+  Lightbulb,
+  List,
+  Map,
+  MapPin,
+  MessageSquare,
+  MessagesSquare,
+  MoveRight,
+  Music,
+  Pause,
+  Play,
+  RefreshCw,
+  Repeat,
+  Repeat1,
+  Rss,
+  Search,
+  Settings,
+  Shuffle,
+  SkipBack,
+  SkipForward,
+  Sparkles,
+  Users,
+  Volume2,
+  X,
+} from "lucide-react";
 
 /**
  * Central icon library — every icon in the app is re-exported from here,
- * backed by @heroicons/react (https://github.com/tailwindlabs/heroicons).
+ * backed by lucide-react (https://lucide.dev).
  * Callers size icons via `className` (e.g. "w-4 h-4") same as before.
  */
 
@@ -64,186 +63,171 @@ export function GitHubIcon({ className }: IconProps) {
 // ── Navigation (sidebar pages) ─────────────────────────────────────────────
 
 export function GridIcon({ className }: IconProps) {
-  return <Squares2X2Icon className={className} />;
+  return <LayoutGrid className={className} />;
 }
 
 export function CompassIcon({ className }: IconProps) {
-  return <MapIcon className={className} />;
+  return <Map className={className} />;
 }
 
 export function UpgradeIcon({ className }: IconProps) {
-  return <ArrowUpCircleIcon className={className} />;
+  return <CircleArrowUp className={className} />;
 }
 
 export function MusicIcon({ className }: IconProps) {
-  return <MusicalNoteIcon className={className} />;
+  return <Music className={className} />;
 }
 
 export function ListIcon({ className }: IconProps) {
-  return <QueueListIcon className={className} />;
+  return <List className={className} />;
 }
 
 export function FolderIcon({ className }: IconProps) {
-  return <FolderOpenIcon className={className} />;
+  return <FolderOpen className={className} />;
 }
 
 // ── Play modes (music queue) ───────────────────────────────────────────────
 
 export function PlayOrderIcon({ className }: IconProps) {
-  return <ArrowLongRightIcon className={className} />;
+  return <MoveRight className={className} />;
 }
 
 export function RepeatIcon({ className }: IconProps) {
-  return <ArrowPathRoundedSquareIcon className={className} />;
+  return <Repeat className={className} />;
 }
 
-/** Repeat-one: the repeat glyph with a tiny "1" badge. */
 export function RepeatOneIcon({ className }: IconProps) {
-  return (
-    <span className={`relative inline-flex ${className ?? ""}`}>
-      <ArrowPathRoundedSquareIcon className="w-full h-full" />
-      <span className="absolute inset-0 flex items-center justify-center text-[7px] font-bold leading-none">1</span>
-    </span>
-  );
+  return <Repeat1 className={className} />;
 }
 
 export function ShuffleIcon({ className }: IconProps) {
-  return <ArrowsRightLeftIcon className={className} />;
+  return <Shuffle className={className} />;
 }
 
 export function BookIcon({ className }: IconProps) {
-  return <BookOpenIcon className={className} />;
+  return <BookOpen className={className} />;
 }
 
 export function DocIcon({ className }: IconProps) {
-  return <DocumentTextIcon className={className} />;
+  return <FileText className={className} />;
 }
 
 export function ChatIcon({ className }: IconProps) {
-  return <ChatBubbleLeftRightIcon className={className} />;
+  return <MessagesSquare className={className} />;
 }
 
 export function SlidersIcon({ className }: IconProps) {
-  return <Cog6ToothIcon className={className} />;
+  return <Settings className={className} />;
 }
 
 export function FeedIcon({ className }: IconProps) {
-  return <RssIcon className={className} />;
+  return <Rss className={className} />;
 }
 
 // ── Actions & misc ─────────────────────────────────────────────────────────
 
 export function ChevronIcon({ className, direction }: IconProps & { direction: "left" | "right" }) {
-  return direction === "left" ? <ChevronLeftIcon className={className} /> : <ChevronRightIcon className={className} />;
+  return direction === "left" ? <ChevronLeft className={className} /> : <ChevronRight className={className} />;
 }
 
 export function ExternalIcon({ className }: IconProps) {
-  return <ArrowTopRightOnSquareIcon className={className} />;
+  return <ExternalLink className={className} />;
 }
 
 export function SearchIcon({ className }: IconProps) {
-  return <MagnifyingGlassIcon className={className} />;
+  return <Search className={className} />;
 }
 
 export function RefreshIcon({ className }: IconProps) {
-  return <ArrowPathIcon className={className} />;
+  return <RefreshCw className={className} />;
 }
 
 export function PinIcon({ filled = false, className }: IconProps & { filled?: boolean }) {
-  return filled ? <MapPinIconSolid className={className} /> : <MapPinIconOutline className={className} />;
+  // lucide ships outline-only glyphs, so "filled" is the same pin painted in.
+  return <MapPin className={className} fill={filled ? "currentColor" : "none"} />;
 }
 
 export function BookmarkIcon({ className }: IconProps) {
-  return <BookmarkIconOutline className={className} />;
+  return <Bookmark className={className} />;
 }
 
 export function AnalyzeBackgroundIcon({ className }: IconProps) {
   // Same icon as SparkIcon (ArticleReader's "Learn" button) — both trigger the exact
   // same headless learnChatStore job, just from different entry points (in-reader vs
   // the RSS/HN card), so they should read as the same feature at a glance.
-  return <SparklesIcon className={className} />;
+  return <Sparkles className={className} />;
 }
 
 export function NotesIcon({ className }: IconProps) {
-  return <LightBulbIcon className={className} />;
+  return <Lightbulb className={className} />;
 }
 
 export function CheckIcon({ className }: IconProps) {
-  return <HeroCheckIcon className={className} />;
+  return <Check className={className} />;
 }
 
 export function SpeakerIcon({ className }: IconProps) {
-  return <SpeakerWaveIcon className={className} />;
+  return <Volume2 className={className} />;
 }
 
 export function ClipboardListIcon({ className }: IconProps) {
-  return <ClipboardDocumentListIcon className={className} />;
+  return <ClipboardList className={className} />;
 }
 
 /** Four-pointed AI spark — replaces the ✦ text glyph used throughout the app. */
 export function SparkIcon({ className }: IconProps) {
-  return <SparklesIcon className={className} />;
+  return <Sparkles className={className} />;
 }
 
+// Transport controls read as solid shapes rather than outlines.
 export function PlayIcon({ className }: IconProps) {
-  return <HeroPlayIcon className={className} />;
+  return <Play className={className} fill="currentColor" />;
 }
 
 export function PauseIcon({ className }: IconProps) {
-  return <HeroPauseIcon className={className} />;
+  return <Pause className={className} fill="currentColor" />;
 }
 
 export function SkipPrevIcon({ className }: IconProps) {
-  return <BackwardIcon className={className} />;
+  return <SkipBack className={className} fill="currentColor" />;
 }
 
 export function SkipNextIcon({ className }: IconProps) {
-  return <ForwardIcon className={className} />;
+  return <SkipForward className={className} fill="currentColor" />;
 }
 
 export function CloseIcon({ className }: IconProps) {
-  return <XMarkIcon className={className} />;
+  return <X className={className} />;
 }
 
 export function ReplyIcon({ className }: IconProps) {
-  return <ChatBubbleLeftIcon className={className} />;
+  return <MessageSquare className={className} />;
 }
 
 export function UpvoteIcon({ className }: IconProps) {
-  return <ArrowUpIcon className={className} />;
+  return <ArrowUp className={className} />;
 }
 
 export function PeopleIcon({ className }: IconProps) {
-  return <UserGroupIcon className={className} />;
+  return <Users className={className} />;
 }
 
 export function ChevronDownIcon({ className }: IconProps) {
-  return <ChevronDownIconOutline className={className} />;
+  return <ChevronDown className={className} />;
 }
 
 export function LoadMoreIcon({ className }: IconProps) {
-  return <PlusCircleIcon className={className} />;
+  return <CirclePlus className={className} />;
 }
 
 export function TranslateIcon({ className }: IconProps) {
-  return <LanguageIcon className={className} />;
+  return <Languages className={className} />;
 }
 
 export function DownloadIcon({ className }: IconProps) {
-  return <ArrowDownTrayIcon className={className} />;
+  return <Download className={className} />;
 }
 
-/** A six-dot grip, the conventional "drag me" affordance — Heroicons has no
- *  equivalent, so this is hand-drawn rather than a repurposed unrelated icon. */
 export function GripIcon({ className }: IconProps) {
-  return (
-    <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" className={className}>
-      <circle cx="5" cy="3" r="1.3" />
-      <circle cx="11" cy="3" r="1.3" />
-      <circle cx="5" cy="8" r="1.3" />
-      <circle cx="11" cy="8" r="1.3" />
-      <circle cx="5" cy="13" r="1.3" />
-      <circle cx="11" cy="13" r="1.3" />
-    </svg>
-  );
+  return <GripVertical className={className} />;
 }

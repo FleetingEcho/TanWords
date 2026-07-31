@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { BookIcon, SearchIcon, SparkIcon, ClipboardListIcon, DocIcon, SlidersIcon } from "@/components/ui/icons";
-import { CogIcon, XCircleIcon, CheckCircleIcon } from "@heroicons/react/24/solid";
+import { Cog, CircleX, CircleCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export interface ToolCallDisplay {
@@ -74,11 +74,11 @@ export function ToolCallCard({ calls }: { calls: ToolCallDisplay[] }) {
         {/* Status icon */}
         <span className="shrink-0">
           {!allDone ? (
-            <CogIcon className="w-4 h-4 animate-spin" />
+            <Cog className="w-4 h-4 animate-spin" />
           ) : hasError ? (
-            <XCircleIcon className="w-4 h-4" />
+            <CircleX className="w-4 h-4" />
           ) : (
-            <CheckCircleIcon className="w-4 h-4" />
+            <CircleCheck className="w-4 h-4" />
           )}
         </span>
 
