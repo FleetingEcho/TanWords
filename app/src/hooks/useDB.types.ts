@@ -123,13 +123,6 @@ export interface DashboardStats {
   article_count: number;
   doc_count: number;
   known_count: number;
-  resume: {
-    article_id: number;
-    title: string;
-    origin: string;
-    total: number;
-    processed: number;
-  } | null;
   recent_words: { id: number; word: string; zh: string; level: string; updated_at: string }[];
   recent_docs: { id: number; title: string; updated_at: string }[];
 }

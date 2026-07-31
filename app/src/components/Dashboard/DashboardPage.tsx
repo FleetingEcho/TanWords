@@ -3,6 +3,7 @@ import { useDB, DashboardStats } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
 import { DashboardWidgetGrid } from "./DashboardWidgetGrid";
+import { QuickActionsBar } from "./QuickActionsBar";
 
 // ── Small pieces ────────────────────────────────────────────────────────────
 
@@ -76,14 +77,20 @@ export function DashboardPage() {
         <p className="text-sm text-muted-foreground mt-1">{dateLabel}</p>
       </div>
 
-      {/* Stat tiles: what has been collected, not how diligently */}
-      <div className="grid grid-cols-3 gap-3">
+      {/* Stat tiles: what has been collected, not how diligently.
+        * `known_count` was already being computed by db_dashboard_stats and
+        * thrown away by the renderer — it costs nothing to show. */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatTile value={stats?.word_count ?? 0} label={t("dash.stat.words")} />
         <StatTile value={stats?.words_this_week ?? 0} label={t("dash.stat.week")} accent />
+        <StatTile value={stats?.known_count ?? 0} label={t("dash.stat.known")} />
         <StatTile value={stats?.article_count ?? 0} label={t("dash.stat.articles")} />
       </div>
 
-      {/* Recents — drag any card by its handle to reorder, within or across columns */}
+      {/* Navigation, not a "recent" anything — hence outside the grid below */}
+      <QuickActionsBar />
+
+      {/* Recents — six cards, every one the same height (see DashboardCard) */}
       <DashboardWidgetGrid stats={stats} />
     </div>
   );
