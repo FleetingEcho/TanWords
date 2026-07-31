@@ -77,6 +77,12 @@ asarUnpack: []
 extraResources:
   - from: core/target/release/tanwords-core
     to: core/tanwords-core
+  # The window icon, read at runtime by electron/main/index.ts. mac.icon /
+  # win.icon / linux.icon above only dress the *bundle*; a BrowserWindow on
+  # Linux still needs a real file it can load, and `files` deliberately keeps
+  # all of core/ out of the app, so ship this one PNG explicitly.
+  - from: core/icons/icon.png
+    to: icon.png
 
 mac:
   target:

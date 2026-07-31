@@ -67,6 +67,18 @@ let mainWindow: BrowserWindow | null = null;
 const sidecar = new SidecarSupervisor();
 const browserPanel = new BrowserPanelManager();
 
+/** The app icon as a real file on disk.
+ *
+ *  Packaged builds get it from `extraResources` (electron-builder.yml); the
+ *  `files` list keeps all of core/ out of the asar, so the bundle's own
+ *  mac.icon/win.icon/linux.icon are not reachable at runtime. Unpackaged runs
+ *  read it straight out of the source tree. */
+function appIconPath(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "icon.png")
+    : path.join(app.getAppPath(), "core", "icons", "icon.png");
+}
+
 function broadcastEvent(name: string, payload: unknown) {
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send("event", { name, payload });
@@ -86,6 +98,9 @@ function createWindow() {
     width: 1280,
     height: 800,
     show: false,
+    // Windows/Linux take the window + taskbar icon from here. macOS ignores it
+    // (it uses the .app bundle), which is handled separately below.
+    icon: appIconPath(),
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.cjs"),
       contextIsolation: true,
@@ -160,6 +175,20 @@ if (gotLock) {
   app.on("second-instance", focusExistingWindow);
 
   app.whenReady().then(() => {
+    // macOS takes the dock icon from the .app bundle, which unpackaged runs
+    // don't have — they run stock Electron.app and so show the Electron logo.
+    // (Under Tauri this never came up: `tauri dev` built a real bundle.) Set it
+    // by hand for dev; packaged builds already have the right one from
+    // mac.icon, and overriding there would only risk a worse-quality icon than
+    // the .icns.
+    if (process.platform === "darwin" && !app.isPackaged) {
+      try {
+        app.dock?.setIcon(appIconPath());
+      } catch (error) {
+        console.warn("[icon] could not set dev dock icon:", error);
+      }
+    }
+
     registerAppProtocolHandler();
 
     sidecar.setEventSink(broadcastEvent);
