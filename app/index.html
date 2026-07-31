@@ -24,7 +24,11 @@
       })();
     </script>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <!-- Deliberately no favicon link. The Vite scaffold left one pointing at a
+         vite.svg that has never existed in this repo, so it 404'd on every
+         load. Electron renders no tab strip and a favicon has nowhere to
+         appear; the real app icon is set on the window in
+         electron/main/index.ts and on the bundle by electron-builder. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TanWords</title>
   </head>
