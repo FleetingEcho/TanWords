@@ -7,22 +7,10 @@
  *  electron/main/protocol.ts serves `out/renderer` over the app:// scheme.
  *
  *  Vitest reads vitest.config.ts, not this file, so tests never spawn Electron. */
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig } from "vite";
 import electron from "vite-plugin-electron";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
-
-/** vite-plugin-electron targets Vite 8, whose Rolldown accepts a `platform`
- *  input option; it injects `platform: "node"` into every nested build. On
- *  Vite 6 that reaches Rollup, which prints "Unknown input options: platform"
- *  on each of the two Electron builds. Harmless but noisy — strip it here
- *  until this project moves to Vite 8. */
-const dropRolldownPlatformOption: Plugin = {
-  name: "tanwords:drop-rolldown-platform-option",
-  config(config) {
-    delete (config.build?.rollupOptions as Record<string, unknown> | undefined)?.platform;
-  },
-};
 
 export default defineConfig({
   root: ".",
@@ -34,13 +22,12 @@ export default defineConfig({
     react(),
     electron([
       {
-        entry: path.resolve(__dirname, "electron/main/index.ts"),
+        entry: path.resolve(import.meta.dirname, "electron/main/index.ts"),
         // Default argv is ['.', '--no-sandbox']; drop the flag so a dev run
         // keeps the same Chromium sandbox the packaged app runs under
         // (the main window sets `sandbox: true`).
         onstart: ({ startup }) => void startup(["."]),
         vite: {
-          plugins: [dropRolldownPlatformOption],
           build: {
             outDir: "out/main",
             // package.json has "type": "module", so the plugin emits ESM here
@@ -62,16 +49,17 @@ export default defineConfig({
         // one file.
         onstart: ({ reload }) => reload(),
         vite: {
-          plugins: [dropRolldownPlatformOption],
           build: {
             outDir: "out/preload",
             minify: false,
             rollupOptions: {
-              input: path.resolve(__dirname, "electron/preload/index.ts"),
+              input: path.resolve(import.meta.dirname, "electron/preload/index.ts"),
               output: {
                 format: "cjs",
                 entryFileNames: "index.cjs",
-                inlineDynamicImports: true,
+                // The preload must stay a single file; rolldown
+                // spells that `codeSplitting: false` now.
+                codeSplitting: false,
               },
             },
           },
@@ -80,13 +68,13 @@ export default defineConfig({
     ]),
   ],
   resolve: {
-    alias: { "@": path.resolve(__dirname, "./src") },
+    alias: { "@": path.resolve(import.meta.dirname, "./src") },
   },
   build: {
     outDir: "out/renderer",
     emptyOutDir: true,
     rollupOptions: {
-      input: path.resolve(__dirname, "index.html"),
+      input: path.resolve(import.meta.dirname, "index.html"),
     },
     chunkSizeWarningLimit: 1600,
   },

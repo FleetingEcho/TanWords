@@ -73,7 +73,7 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
   const [expanded, setExpanded] = useState(0);
   const [addedEn, setAddedEn] = useState<string[]>([]);
   const [collectedEn, setCollectedEn] = useState<string[]>([]);
-  const quickAbortRef = useRef<AbortController>();
+  const quickAbortRef = useRef<AbortController | undefined>(undefined);
 
   const q = query.trim();
   const exactMatch = matches.find((w) => w.word.toLowerCase() === q.toLowerCase());

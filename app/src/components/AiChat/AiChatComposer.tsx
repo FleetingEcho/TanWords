@@ -28,7 +28,7 @@ interface Props {
   enabledGroups: Set<ToolGroupKey>;
   onToggleGroup: (g: ToolGroupKey) => void;
   tokenCount: number;
-  textareaRef: React.RefObject<HTMLTextAreaElement>;
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>;
 }
 
 export function AiChatComposer({

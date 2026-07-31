@@ -30,7 +30,7 @@ function highlightApi(): { registry: HighlightRegistry; Highlight: new (...range
 }
 
 export function DocumentContentSearch({ rootRef }: {
-  rootRef: React.RefObject<HTMLElement>;
+  rootRef: React.RefObject<HTMLElement | null>;
 }) {
   const t = useT();
   const inputRef = useRef<HTMLInputElement>(null);
