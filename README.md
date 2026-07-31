@@ -2,12 +2,39 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-A Tauri v2 desktop app for content-driven English vocabulary and sentence-pattern
-learning, calibrated to CEFR C1/C2. The product loop: **read a real article → AI
-extracts vocabulary and sentence patterns worth learning → accept into a personal
-library → (vocabulary side only) FSRS spaced-repetition review.**
+An Electron desktop app with a Rust sidecar, for content-driven English
+vocabulary and sentence-pattern learning, calibrated to CEFR C1/C2. The product
+loop: **read a real article → AI extracts vocabulary and sentence patterns worth
+learning → accept into a personal library → (vocabulary side only) FSRS
+spaced-repetition review.**
 
 Primary UI language is Chinese; the codebase (identifiers, comments) is English.
+
+## Install
+
+Download the latest `.dmg` from [Releases](https://github.com/FleetingEcho/TanWords/releases/latest)
+— `-arm64` for Apple Silicon, the unsuffixed one for Intel.
+
+### macOS: "TanWords is damaged and can't be opened"
+
+This is expected on first install, and the app is not damaged. I don't have a
+paid Apple Developer account, so the build carries no Developer ID signature —
+only an ad-hoc one. macOS quarantines anything downloaded from a browser and
+refuses to launch an unsigned bundle. Two commands fix it permanently:
+
+```bash
+xattr -cr /Applications/TanWords.app
+codesign --force --deep --sign - /Applications/TanWords.app
+```
+
+The second prints `replacing existing signature`, which is normal. Run both —
+`xattr` alone is not enough: it only strips the quarantine flag, while the
+bundle still fails signature validation (`Sealed Resources=none`) and macOS
+keeps reporting it as damaged.
+
+**You only need to do this once.** In-app updates download and verify their own
+archive rather than going through the browser, so nothing gets quarantined and
+later versions install without repeating these steps.
 
 ## Screenshots
 
@@ -93,24 +120,30 @@ single click away from anywhere in the app.
 ## Repo layout
 
 ```
-app/     # The desktop app — React + TypeScript frontend, Rust/Tauri backend, SQLite DB.
-         # See app/AGENT.md for the full architecture writeup.
-admin/   # Standalone local admin tool for the same SQLite DB — table CRUD and
-         # AI batch-generation (words/articles/patterns/documents), independent
-         # of the desktop app. See admin/README.md.
+app/
+  src/        # React + TypeScript renderer (~42k LOC incl. electron/)
+  src/ipc/    # Typed client for the sidecar's HTTP API + SSE event stream
+  electron/   # Electron main process & preload — windows, tray, updater,
+              # browser panel, sidecar lifecycle. No app data logic lives here.
+  core/       # The Rust sidecar (~15k LOC): SQLite/libsql, AI orchestration,
+              # TTS, RSS, MCP server. Ships as one static binary.
+docs/         # Audio-player internals, Windows build notes.
+scripts/      # Release helpers.
 ```
 
 ## Stack
 
-- **Frontend** (`app/`): React 18 + TypeScript + Tailwind + Zustand, Vite, BlockNote
-  (document editor).
-- **Backend** (`app/src-tauri/`): Rust, Tauri v2, `libsql` (SQLite, WAL mode) — one
-  API covering both a local database file and a Turso embedded replica, see
-  "Online database" below.
-- **Admin** (`admin/`): Node + Hono API + `better-sqlite3`, React/Vite web UI, plus a
-  standalone CLI for unattended batch content generation.
+- **Renderer** (`app/src/`): React 18 + TypeScript + Tailwind + Zustand, Vite,
+  BlockNote (document editor).
+- **Shell** (`app/electron/`): Electron main process — window/tray lifecycle,
+  the updater, the embedded browser panel, and supervising the sidecar. It is
+  deliberately *not* in the data path.
+- **Backend** (`app/core/`): Rust, `libsql` (SQLite, WAL mode) — one API covering
+  both a local database file and a Turso embedded replica, see "Online database"
+  below. Runs as a sidecar process, not as a Node server.
 - **AI**: bring-your-own-key, OpenAI-compatible providers (OpenAI, Anthropic/Claude,
-  DeepSeek presets, or any local model via Ollama/LM Studio).
+  DeepSeek presets, or any local model via Ollama/LM Studio). Keys are encrypted
+  at rest and scoped to the device that entered them — see "AI providers" below.
 - **TTS**: embedded on-device speech synthesis via `sherpa-rs`/sherpa-onnx —
   Kokoro and Piper/VITS voices, no external binary or network call at speak-time.
   Downloadable voice models, pluggable model directories, sentence-by-sentence
@@ -121,6 +154,104 @@ admin/   # Standalone local admin tool for the same SQLite DB — table CRUD and
   and the next couple of sentences are synthesized in the background while it
   plays. Synthesis itself runs off the async runtime on a dedicated blocking
   thread, so the UI stays responsive while sentences are generated.
+
+## Under the hood
+
+The app started on Tauri v2 and moved to Electron. That direction usually costs
+size and memory, so most of the work since has gone into not paying that bill.
+Every number below is measured, before → after.
+
+### A Rust sidecar, not a Node backend
+
+There is no application logic in the Electron main process. All data access, AI
+orchestration, TTS, RSS and the MCP server live in one statically linked Rust
+binary that the main process spawns and supervises. It serves a loopback HTTP
+API on an ephemeral port, gated by a bearer token handed to the renderer through
+the preload handshake, with an SSE stream for events. The renderer talks to it
+directly.
+
+Commands are plain Rust functions marked with an attribute; a build script scans
+the source and generates the dispatch table on every `cargo build`, so adding a
+command is one function plus one line in a manifest — there is no hand-maintained
+router to drift out of sync. 152 commands are wired this way today.
+
+### Bundle: 202MB → 129MB DMG, 344MB → 17MB asar
+
+- **`node_modules` is not shipped.** All 30 production dependencies are renderer
+  libraries Vite has already bundled into `out/renderer`, and electron-vite
+  inlines the single main-process dependency into `out/main` — nothing resolves
+  from the tree at runtime. Shipping it anyway made `app.asar` 344MB instead of
+  **17MB**.
+- **Fonts: 1.88MB → 0.17MB.** Monaspace shipped as a 1487KB WOFF1 Nerd Font
+  build whose 9,390 PUA icon glyphs are used nowhere in the source; subsetting
+  to WOFF2 gives **101KB**. Inter shipped 9 weights × 2 formats where the app
+  uses 4 weights and Chromium never needs the WOFF fallback.
+- **Main chunk: 3.69MB → 1.73MB.** BlockNote was being pulled into the entry
+  chunk by modules that only wanted a text-extraction helper; it is now a
+  dynamic import behind a cached promise, in its own chunk. All 9 routes are
+  code-split (7 used to be eager) with an idle prefetch so navigation stays warm.
+- **TTS runtime linked statically.** Moving to k2-fsa's official `sherpa-onnx`
+  removed the dylib staging in `build.rs`, the platform rpaths, and the
+  per-platform `sherpa-libs` payload from all three targets.
+
+### Memory
+
+- **Browser panel tabs were unbounded** — one full renderer process each, never
+  reclaimed. Now Chrome-style LRU discard (3 live tabs): the process is freed and
+  the page reloads from its URL on return.
+- **Chromium's spare renderer is disabled** (a permanently idle ~60–90MB process)
+  and the V8 heap is capped — measured 3586MB → **631MB** limit.
+- **The document worker** held a live editor instance forever after a single
+  parse; it now terminates after 60s idle.
+- **The TTS model is no longer preloaded at startup.** It loads on demand, so the
+  60–120MB session is not charged to launches that never speak.
+
+### Speech that doesn't block
+
+Article playback is pipelined rather than batched: only the sentence about to
+play is awaited, the next few are synthesized in the background, and synthesis
+runs on a dedicated blocking thread rather than the async runtime — so the UI
+stays responsive while audio is generated.
+
+### An updater that works without $99/year
+
+Electron's macOS updater delegates to Squirrel.Mac, which rejects any update
+whose code signature doesn't match the running app's. Without an Apple Developer
+ID the app is only ad-hoc signed, and an ad-hoc identity is derived from the
+binary's own hash — it changes every build, so that check can *never* pass. Auto
+-update on macOS was structurally dead, not misconfigured.
+
+So macOS gets its own updater: releases are signed with ed25519 (Node's built-in
+crypto, no dependency), and the client verifies the signature over the archive
+bytes **before** anything is unpacked. Installation is handed to a detached
+script that waits for the app to exit, moves the old bundle aside, swaps in the
+new one, restores it if the swap fails, and relaunches. Windows and Linux keep
+`electron-updater`; both sit behind the same interface, so the renderer is
+unchanged.
+
+### Schema and data
+
+26 forward-only migrations, each applied once inside a transactional batch and
+stamped in the same round-trip — a migration cannot half-apply and then replay
+on the next launch. The same code path drives a local SQLite file and a Turso
+embedded replica.
+
+## AI providers
+
+Bring your own key. Built-in OpenAI and Claude, a DeepSeek preset, and any
+OpenAI-compatible endpoint (Ollama, LM Studio, or a hosted service) as a custom
+provider.
+
+Provider configuration lives in the database, with two properties worth calling
+out:
+
+- **API keys are encrypted at rest** (AES-256-GCM) under a master key held in the
+  OS keychain, which the renderer can never read. Listing providers returns only
+  whether a key exists; the plaintext takes a separate, explicit call.
+- **Providers are scoped to the device that added them.** The device id is part
+  of the primary key, so if you sync via Turso, each machine sees only its own
+  providers and rows that reach the primary are undecryptable anywhere else.
+  Scoping is enforced by cryptography, not just by a query filter.
 
 ## Feature pages
 
@@ -177,14 +308,28 @@ The database belongs to your own Turso account; this project hosts nothing.
 
 ## Getting started
 
+Requires [Bun](https://bun.sh) and a Rust toolchain.
+
 ```bash
-cd app && npm install && npm run tauri dev   # desktop app
-cd admin && npm install && npm run dev       # admin tool (table browser + batch generate)
+cd app
+bun install
+bun run dev          # builds the Rust sidecar (debug), then starts Electron + Vite
 ```
+
+Other useful scripts:
+
+```bash
+bun run typecheck    # tsc over both the renderer and electron/
+bun run test:run     # vitest
+bun run package:mac  # dmg + zip into dist-releases/ (also :linux, :win)
+cd core && cargo test
+```
+
+> `bun run dev` prefers `core/target/release/tanwords-core` if one exists, so
+> after a release build run `cargo build` again (or delete the release binary)
+> or the dev app will keep launching the stale one.
 
 ## Further reading
 
-- [`app/AGENT.md`](app/AGENT.md) — full architecture, data access patterns, known
-  gotchas, and conventions for the desktop app.
-- [`admin/README.md`](admin/README.md) — admin tool setup, table browser, and the
-  `generate-cli.mjs` batch-generation modes.
+- [`docs/audio-player.md`](docs/audio-player.md) — audio playback internals.
+- [`docs/build-windows.md`](docs/build-windows.md) — Windows build notes.

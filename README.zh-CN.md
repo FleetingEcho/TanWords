@@ -2,11 +2,35 @@
 
 [English](README.md) | **简体中文**
 
-一款基于 Tauri v2 的桌面应用，主打「以内容驱动」的英语词汇与句型学习，面向 CEFR
-C1/C2 水平的学习者。产品闭环：**阅读一篇真实文章 → AI 提取值得学习的词汇和句型 →
-收录进个人词库/句型库 → （词汇部分）用 FSRS 间隔重复复习。**
+一款基于 Electron + Rust sidecar 的桌面应用，主打「以内容驱动」的英语词汇与句型
+学习，面向 CEFR C1/C2 水平的学习者。产品闭环：**阅读一篇真实文章 → AI 提取值得
+学习的词汇和句型 → 收录进个人词库/句型库 → （词汇部分）用 FSRS 间隔重复复习。**
 
 应用界面语言以中文为主；代码库本身（标识符、注释）使用英文。
+
+## 安装
+
+到 [Releases](https://github.com/FleetingEcho/TanWords/releases/latest) 下载最新的
+`.dmg` —— Apple Silicon 选带 `-arm64` 的，Intel 选不带后缀的那个。
+
+### macOS 报「TanWords 已损坏，无法打开」
+
+首次安装出现这个提示是预期内的，**应用本身没有损坏**。我没有付费的 Apple 开发者
+账号，所以构建产物没有 Developer ID 签名，只有 ad-hoc 签名；而 macOS 会给一切从
+浏览器下载的文件打上隔离标记，并拒绝启动未正确签名的 bundle。两条命令可以一劳
+永逸地解决：
+
+```bash
+xattr -cr /Applications/TanWords.app
+codesign --force --deep --sign - /Applications/TanWords.app
+```
+
+第二条会输出 `replacing existing signature`，属正常。**两条都要跑** —— 只跑
+`xattr` 不够：它仅清除隔离标记，bundle 本身仍然通不过签名校验
+（`Sealed Resources=none`），macOS 照样报「已损坏」。
+
+**这套操作只需做一次。** 应用内更新是自己下载并校验签名的，不经过浏览器，不会被
+打上隔离标记，之后的版本无需重复上述步骤。
 
 ## 截图
 
@@ -86,23 +110,29 @@ Docs 和 AI Chat 就在左侧导航栏里：个人笔记编辑器（BlockNote、
 ## 仓库结构
 
 ```
-app/     # 桌面应用 —— React + TypeScript 前端，Rust/Tauri 后端，SQLite 数据库。
-         # 完整架构说明见 app/AGENT.md。
-admin/   # 独立的本地管理工具，操作同一个 SQLite 数据库 —— 表格 CRUD 和
-         # AI 批量生成（单词/文章/句型/文档），与桌面应用相互独立。
-         # 见 admin/README.md。
+app/
+  src/        # React + TypeScript 渲染进程（含 electron/ 约 4.2 万行）
+  src/ipc/    # 访问 sidecar HTTP API 与 SSE 事件流的类型化客户端
+  electron/   # Electron 主进程与 preload —— 窗口、托盘、更新器、内置浏览器面板、
+              # sidecar 生命周期。不承载任何业务数据逻辑。
+  core/       # Rust sidecar（约 1.5 万行）：SQLite/libsql、AI 编排、TTS、RSS、
+              # MCP server。编译为单个静态二进制。
+docs/         # 音频播放器内部实现、Windows 构建说明。
+scripts/      # 发布辅助脚本。
 ```
 
 ## 技术栈
 
-- **前端**（`app/`）：React 18 + TypeScript + Tailwind + Zustand，Vite，BlockNote
-  （文档编辑器）。
-- **后端**（`app/src-tauri/`）：Rust，Tauri v2，`libsql`（SQLite，WAL 模式）—— 同一套
-  API 同时支持本地数据库文件和 Turso 嵌入式副本，见下方「在线数据库」。
-- **管理工具**（`admin/`）：Node + Hono API + `better-sqlite3`，React/Vite 网页界面，
-  外加一个用于无人值守批量生成内容的独立 CLI。
+- **渲染进程**（`app/src/`）：React 18 + TypeScript + Tailwind + Zustand，Vite，
+  BlockNote（文档编辑器）。
+- **外壳**（`app/electron/`）：Electron 主进程 —— 窗口/托盘生命周期、更新器、内置
+  浏览器面板，以及托管 sidecar。它刻意**不**位于数据链路上。
+- **后端**（`app/core/`）：Rust，`libsql`（SQLite，WAL 模式）—— 同一套 API 同时支持
+  本地数据库文件和 Turso 嵌入式副本，见下方「在线数据库」。以 sidecar 进程运行，
+  而非 Node 服务。
 - **AI**：自带 API Key，兼容 OpenAI 接口的任意服务商（OpenAI、Anthropic/Claude、
-  DeepSeek 预设，或通过 Ollama/LM Studio 接入的任意本地模型）。
+  DeepSeek 预设，或通过 Ollama/LM Studio 接入的任意本地模型）。API Key 加密落盘，
+  且按设备隔离 —— 见下方「AI 服务商」。
 - **TTS**：通过 `sherpa-rs`/sherpa-onnx 实现的本机嵌入式语音合成 —— 支持
   Kokoro 和 Piper/VITS 音色，朗读时不依赖外部二进制或网络请求。支持下载语音
   模型、自定义模型目录、逐句朗读全文，以及贯穿全应用的单词/例句朗读按钮；
@@ -111,6 +141,90 @@ admin/   # 独立的本地管理工具，操作同一个 SQLite 数据库 ——
   第一次朗读时才加载），播放时只等待"即将播放的这一句"，接下来的几句在后台
   提前合成；合成过程本身跑在独立的阻塞线程上，不占用异步运行时，朗读时界面
   不会卡顿。
+
+## 技术亮点
+
+这个应用最初基于 Tauri v2，后来迁移到了 Electron。这个方向通常意味着体积和内存的
+代价，所以迁移之后的大部分工作都花在「不为此买单」上。下面每个数字都是实测的
+「改动前 → 改动后」。
+
+### Rust sidecar，而不是 Node 后端
+
+Electron 主进程里没有任何业务逻辑。所有数据访问、AI 编排、TTS、RSS 和 MCP server
+都在一个静态链接的 Rust 二进制里，由主进程拉起并托管。它在随机端口上提供一套
+仅监听回环地址的 HTTP API，用 preload 握手时下发给渲染进程的 bearer token 鉴权，
+事件走 SSE。渲染进程直连它。
+
+命令就是标了属性宏的普通 Rust 函数；构建脚本在每次 `cargo build` 时扫描源码生成
+分发表，所以新增一个命令 = 一个函数 + 清单里一行，不存在需要手工维护、会逐渐和
+实现脱节的路由表。目前有 152 个命令通过这套机制接入。
+
+### 体积：DMG 202MB → 129MB，asar 344MB → 17MB
+
+- **不再打包 `node_modules`。** 全部 30 个生产依赖都是渲染进程的库，Vite 已经把
+  它们打进了 `out/renderer`，而 electron-vite 把唯一那个主进程依赖内联进了
+  `out/main` —— 运行时没有任何东西需要从依赖树里解析。照旧打包会让 `app.asar`
+  变成 344MB，而不是 **17MB**。
+- **字体：1.88MB → 0.17MB。** Monaspace 原本是 1487KB 的 WOFF1 Nerd Font 版本，
+  其中 9,390 个 PUA 图标字形在源码里一处都没用到；子集化并转 WOFF2 后只有
+  **101KB**。Inter 原本带 9 种字重 × 2 种格式，而应用只用 4 种字重，Chromium 也
+  永远用不到 WOFF 回退格式。
+- **主 chunk：3.69MB → 1.73MB。** BlockNote 原本被一些只想要「提取纯文本」这个
+  小工具函数的模块拽进了入口 chunk；现在改成缓存 Promise 背后的动态 import，
+  独立成块。9 条路由全部代码分割（原本有 7 条是急加载），并在空闲时预取，切页
+  依然跟手。
+- **TTS 运行时改为静态链接。** 换用 k2-fsa 官方的 `sherpa-onnx` 之后，`build.rs`
+  里的 dylib 拷贝逻辑、各平台 rpath，以及三个平台各自的 `sherpa-libs` 附带产物
+  全部删掉了。
+
+### 内存
+
+- **内置浏览器的标签页原本无上限** —— 每个一个完整渲染进程，且永不回收。现在改成
+  Chrome 式的 LRU 丢弃（保留 3 个活标签）：进程被释放，回到该标签时按 URL 重新
+  加载。
+- **关闭 Chromium 的 spare renderer**（一个常驻空转、约 60–90MB 的进程），并限制
+  V8 堆上限 —— 实测 3586MB → **631MB**。
+- **文档解析 worker** 原本在解析一次之后就一直持有编辑器实例；现在空闲 60 秒后
+  自行终止。
+- **TTS 模型不再在启动时预加载**，改为按需加载，那 60–120MB 不再摊到「本次根本
+  没用朗读」的启动上。
+
+### 不卡界面的朗读
+
+全文朗读是流水线式而非整篇批量合成：只等待「即将播放的这一句」，后面几句在后台
+提前合成，且合成本身跑在专用的阻塞线程上而非异步运行时 —— 所以生成音频的同时
+界面依然跟手。
+
+### 不用每年 $99 也能自动更新的更新器
+
+Electron 在 macOS 上把更新交给 Squirrel.Mac，而后者会拒绝任何代码签名与当前运行
+的应用不一致的更新包。没有 Apple Developer ID 时应用只有 ad-hoc 签名，而 ad-hoc
+的身份是从二进制自身的哈希推导出来的 —— 每次构建都会变，所以这个校验**永远**不
+可能通过。macOS 上的自动更新是结构性失效，不是配置问题。
+
+于是 macOS 用了一套自己的更新器：发布物用 ed25519 签名（Node 内置 crypto，零新增
+依赖），客户端在**解包之前**先校验整个压缩包字节的签名。安装交给一个分离的脚本：
+等应用退出、把旧 bundle 挪开、换上新的、失败则回滚，然后重新启动。Windows 和
+Linux 仍走 `electron-updater`；两条路径共用同一套接口，渲染进程无需区分。
+
+### 数据库与迁移
+
+26 个只进不退的迁移，每个都在一个事务批次里执行一次，并在同一次往返中写入版本
+戳 —— 迁移不会出现「执行了一半但没记录，下次启动重放」的情况。同一套代码同时驱动
+本地 SQLite 文件和 Turso 嵌入式副本。
+
+## AI 服务商
+
+自带 API Key。内置 OpenAI 和 Claude，预置 DeepSeek，此外任何兼容 OpenAI 接口的
+端点（Ollama、LM Studio 或托管服务）都能作为自定义服务商接入。
+
+服务商配置存在数据库里，有两点值得说明：
+
+- **API Key 加密落盘**（AES-256-GCM），主密钥保存在系统钥匙串中，渲染进程永远读
+  不到。列出服务商时只返回「是否配置了 Key」，明文需要单独、显式地调用才能取到。
+- **服务商按添加它的设备隔离。** 设备标识是主键的一部分，所以即使你用 Turso 同步，
+  每台机器也只看到自己的服务商；同步到主库的行在别处根本解不开。隔离是靠密码学
+  保证的，而不只是靠一个查询条件。
 
 ## 功能页面
 
@@ -159,14 +273,28 @@ turso db tokens create tanwords       # → token       填到「Auth Token」
 
 ## 快速开始
 
+需要 [Bun](https://bun.sh) 和 Rust 工具链。
+
 ```bash
-cd app && npm install && npm run tauri dev   # 桌面应用
-cd admin && npm install && npm run dev       # 管理工具（表格浏览器 + 批量生成）
+cd app
+bun install
+bun run dev          # 先编译 Rust sidecar（debug），再启动 Electron + Vite
 ```
+
+其他常用脚本：
+
+```bash
+bun run typecheck    # 对渲染进程和 electron/ 一起跑 tsc
+bun run test:run     # vitest
+bun run package:mac  # 产出 dmg + zip 到 dist-releases/（另有 :linux、:win）
+cd core && cargo test
+```
+
+> `bun run dev` 会优先使用已存在的 `core/target/release/tanwords-core`，所以打过
+> release 包之后要重新 `cargo build`（或删掉 release 二进制），否则开发版会一直
+> 启动那个旧的。
 
 ## 延伸阅读
 
-- [`app/AGENT.md`](app/AGENT.md) —— 桌面应用的完整架构说明、数据访问方式、
-  已知坑点和开发约定。
-- [`admin/README.md`](admin/README.md) —— 管理工具的搭建方式、表格浏览器，以及
-  `generate-cli.mjs` 的各种批量生成模式。
+- [`docs/audio-player.md`](docs/audio-player.md) —— 音频播放的内部实现。
+- [`docs/build-windows.md`](docs/build-windows.md) —— Windows 构建说明。
