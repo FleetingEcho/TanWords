@@ -80,3 +80,40 @@ pub(super) const MIGRATION_25: Migration = Migration {
             UPDATE patterns SET updated_at = created_at;
         ",
 };
+
+pub(super) const MIGRATION_26: Migration = Migration {
+    version: 26,
+    description: "ai_providers: device-scoped provider config with encrypted API keys",
+    sql: "
+            -- Provider config used to live in the renderer's localStorage
+            -- (metadata) and the OS keychain (keys), neither of which travels
+            -- with the database — so a Turso-synced second device showed no
+            -- providers at all and looked unconfigured.
+            --
+            -- device_id is part of the primary key, not just a column: a
+            -- provider belongs to the machine it was added on. Two devices
+            -- both configuring 'openai' are two independent rows, and each
+            -- device only ever reads its own. That is also what makes storing
+            -- the key here safe — api_key_enc is sealed with a master key
+            -- that never leaves that device's OS keychain, so the rows that
+            -- sync to the primary are undecryptable anywhere else.
+            CREATE TABLE IF NOT EXISTS ai_providers (
+                device_id   TEXT NOT NULL,
+                id          TEXT NOT NULL,
+                name        TEXT NOT NULL DEFAULT '',
+                -- 'builtin' (openai/claude), 'preset' (deepseek), 'custom'.
+                -- Built-ins and presets have their api_base fixed in code;
+                -- only custom rows carry a meaningful one.
+                kind        TEXT NOT NULL DEFAULT 'custom',
+                api_base    TEXT NOT NULL DEFAULT '',
+                model_id    TEXT NOT NULL DEFAULT '',
+                -- base64(12-byte nonce || AES-256-GCM ciphertext); '' means
+                -- no key configured. Never plaintext, on any code path.
+                api_key_enc TEXT NOT NULL DEFAULT '',
+                created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (device_id, id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_ai_providers_device ON ai_providers(device_id);
+        ",
+};

@@ -63,6 +63,7 @@ pub mod srs;
 pub mod search_history;
 pub mod scene_lab;
 pub mod patterns;
+pub mod ai_providers;
 
 pub use settings::*;
 pub use words_types::*;

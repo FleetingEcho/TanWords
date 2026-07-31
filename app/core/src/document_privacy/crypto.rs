@@ -6,7 +6,9 @@ use argon2::Argon2;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use rand::{rngs::OsRng, RngCore};
 
-pub(super) fn random<const N: usize>() -> [u8; N] {
+/// Crate-visible (not just `pub(super)`) because `secrets::device_key` mints
+/// the AI-provider master key with it.
+pub fn random<const N: usize>() -> [u8; N] {
     let mut bytes = [0_u8; N];
     OsRng.fill_bytes(&mut bytes);
     bytes
