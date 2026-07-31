@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { SpeakButton } from "@/components/ui/SpeakButton";
 import { useNavStore } from "@/store/navStore";
 import { filterSentencePatterns } from "./sentenceSearch";
+import { useDismissOnOutside } from "@/hooks/useDismissOnOutside";
 import { BrowserPanelBlocker } from "@/store/browserPanelStore";
 
 /** Global sentence-library box, the Sentences-mode sibling of WordSearchBox:
@@ -40,8 +41,14 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeFailed, setAnalyzeFailed] = useState(false);
   const [noProvider, setNoProvider] = useState(false);
+  /** Whether the results dropdown is showing. Separate from `searched` so
+   *  dismissing it only hides the panel — the analysis behind it survives,
+   *  and re-opening costs nothing. */
+  const [open, setOpen] = useState(false);
   const analyzeAbortRef = useRef<AbortController | undefined>(undefined);
   const anchorRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const loadPatterns = () => db.listPatterns().then(setAllPatterns);
   useEffect(() => { loadPatterns(); }, []);
@@ -72,6 +79,8 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
 
   useEffect(() => () => analyzeAbortRef.current?.abort(), []);
 
+  useDismissOnOutside(inline && open, () => setOpen(false), [containerRef, panelRef]);
+
   // Pressing Enter before `listPatterns()` resolves would otherwise search an
   // empty snapshot and never retry; recompute if the library lands afterwards.
   useEffect(() => {
@@ -81,6 +90,7 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
 
   const runSearch = async () => {
     if (!q) return;
+    setOpen(true);
     analyzeAbortRef.current?.abort();
     const found = filterSentencePatterns(allPatterns, q).slice(0, 8);
     setMatches(found);
@@ -233,15 +243,23 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
   const anchorRect = inline ? anchorRef.current?.getBoundingClientRect() : undefined;
 
   return (
-    <div className={inline ? "relative" : "space-y-2"}>
+    <div ref={containerRef} className={inline ? "relative" : "space-y-2"}>
       <div ref={anchorRef} className="relative">
         <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
         <input
           autoFocus={!inline}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          onFocus={() => { if (searched) setOpen(true); }}
           onKeyDown={(e) => {
-            if (e.key === "Enter") { e.preventDefault(); runSearch(); }
+            if (e.key !== "Enter") return;
+            e.preventDefault();
+            // Editing the query resets `searched`, so reaching here with it
+            // still set means the text is unchanged and the analysis on file
+            // is the answer to it — re-open rather than ask the model again.
+            // A run that failed left nothing to re-open, so that one retries.
+            if (searched && !analyzeFailed && !noProvider) { setOpen(true); return; }
+            runSearch();
           }}
           placeholder={t("vocab.patterns.quickSearchPlaceholder")}
           className="w-full h-8 pl-8 pr-7 rounded-lg border border-input bg-background text-xs focus:outline-hidden focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground"
@@ -253,10 +271,11 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
         )}
       </div>
 
-      {q && searched && (
+      {q && searched && open && (
         inline && anchorRect
           ? createPortal(
               <div
+                ref={panelRef}
                 className="fixed z-100 max-h-[min(28rem,calc(100vh-5rem))] overflow-y-auto rounded-xl border border-border bg-popover p-2 shadow-2xl"
                 style={{
                   left: anchorRect.left,
