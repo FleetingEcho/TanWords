@@ -4,9 +4,8 @@ import { openExternal as openUrl } from "@/ipc/shell";
 import {
   BrainCircuit, Check, ChevronsLeft, ChevronsRight, ClipboardPaste, Cloud, CloudOff, Database,
   FilePlus2, Languages, MessageSquarePlus, Monitor, Moon, Palette, Quote, Search, Server, Settings, Sun,
-  Type, Unplug, User, X,
+  Grid2x2Plus, Type, Unplug, User, X,
 } from "lucide-react";
-import { SquaresPlusIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -273,7 +272,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
             title={t("tools.ballLabel")}
             className="h-8 w-8 rounded-lg text-muted-foreground"
           >
-            <SquaresPlusIcon className="h-4 w-4" />
+            <Grid2x2Plus className="h-4 w-4" />
           </Button>
           {visible("db") && <Tooltip>
             <TooltipTrigger asChild>

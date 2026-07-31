@@ -8,10 +8,9 @@ import { useT } from "@/hooks/useT";
 import { useIsDark } from "@/hooks/useIsDark";
 import { blocksToMarkdownOffThread, blocksToMarkdownWithStatsOffThread, markdownToBlocksOffThread } from "@/lib/documentWorkerClient";
 import { liftMermaid, lowerMermaid } from "./mermaidTransforms";
-import { CheckIcon } from "@heroicons/react/24/solid";
 import { SaveStatus } from "./useDocumentEditor";
 import { Button } from "@/components/ui/button";
-import { Code2, Eye, Maximize2, Minimize2, Paperclip } from "lucide-react";
+import { Check, Code2, Eye, Maximize2, Minimize2, Paperclip } from "lucide-react";
 import { RawMarkdownEditor } from "./RawMarkdownEditor";
 import { blocksToText } from "@/lib/docFormat";
 import { toast } from "sonner";
@@ -399,7 +398,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
               {t("doc.saving")}
             </span>
           ) : saveStatus === "saved" ? (
-            <span className="text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1"><CheckIcon className="w-3 h-3" /> {t("doc.savedToDisk")}</span>
+            <span className="text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1"><Check className="w-3 h-3" /> {t("doc.savedToDisk")}</span>
           ) : saveStatus === "dirty" ? (
             <span>{t("doc.unsavedChanges")}</span>
           ) : null}

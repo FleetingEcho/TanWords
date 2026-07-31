@@ -8,7 +8,7 @@ import { SpeakButton } from "@/components/ui/SpeakButton";
 import { LazyWordNotesEditor } from "@/components/LazyWordNotesEditor";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { SparkIcon, RefreshIcon, NotesIcon, ChevronDownIcon } from "@/components/ui/icons";
-import { ExclamationTriangleIcon } from "@heroicons/react/24/solid";
+import { TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 /** Shared by the header and the scrolling body so the word, its jump nav and the
@@ -246,7 +246,7 @@ export function WordDetailPanel({
           {/* Enrich error */}
           {!enriched && !enriching && enrichError && (
             <div className="flex flex-col items-center gap-3 py-14 text-center">
-              <p className="inline-flex items-center gap-1.5 text-sm text-destructive"><ExclamationTriangleIcon className="h-4 w-4" /> {enrichError}</p>
+              <p className="inline-flex items-center gap-1.5 text-sm text-destructive"><TriangleAlert className="h-4 w-4" /> {enrichError}</p>
               <Button variant="outline" onClick={onRetry} className="h-8 rounded-lg px-4 text-xs font-semibold">{t("vocab.retry")}</Button>
             </div>
           )}

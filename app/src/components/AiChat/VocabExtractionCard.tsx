@@ -4,7 +4,7 @@ import { useDB } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { SpeakButton } from "@/components/ui/SpeakButton";
 import { SparkIcon } from "@/components/ui/icons";
-import { CheckIcon } from "@heroicons/react/24/solid";
+import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { LevelBadge } from "@/components/shared/LevelBadge";
@@ -183,7 +183,7 @@ export function VocabExtractionCard({ items }: { items: ExtractedVocabItem[] }) 
                     </Button>
                   </>
                 ) : status === "added" ? (
-                  <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-0.5"><CheckIcon className="w-3 h-3" /> {t("aichat.vocab.statusAdded")}</span>
+                  <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-0.5"><Check className="w-3 h-3" /> {t("aichat.vocab.statusAdded")}</span>
                 ) : (
                   <span className="text-[11px] text-muted-foreground">{t("aichat.vocab.statusKnown")}</span>
                 )}
