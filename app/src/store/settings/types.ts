@@ -24,15 +24,22 @@ export const DEFAULT_TOPBAR_ITEMS: TopBarItemId[] = [
   "search", "context", "scratch", "db", "mcp", "ai", "language", "theme", "updates", "github",
 ];
 
-/** The draggable cards on the Dashboard's "Recents" grid. */
-export type DashboardWidgetId = "quickActions" | "feedUpdates" | "latestWords" | "recentlyRead" | "recentDocuments";
+/** The cards on the Dashboard's "Recents" grid.
+ *
+ *  "quickActions" was here too until it moved out of the grid entirely — it
+ *  carried no list, so nothing sized it, and it sat at a third the height of
+ *  its neighbours. It is now a full-width strip under the greeting
+ *  (QuickActionsBar). A stored layout still naming it is handled by
+ *  `sanitizeDashboardLayout`, which drops ids it no longer knows. */
+export type DashboardWidgetId =
+  | "feedUpdates" | "latestWords" | "recentlyRead" | "recentDocuments" | "patterns" | "listenNext";
 export interface DashboardWidgetLayout {
   left: DashboardWidgetId[];
   right: DashboardWidgetId[];
 }
 export const DEFAULT_DASHBOARD_WIDGET_LAYOUT: DashboardWidgetLayout = {
-  left: ["quickActions", "feedUpdates", "latestWords"],
-  right: ["recentlyRead", "recentDocuments"],
+  left: ["patterns", "feedUpdates", "recentDocuments"],
+  right: ["latestWords", "listenNext", "recentlyRead"],
 };
 const ALL_DASHBOARD_WIDGETS: DashboardWidgetId[] = [
   ...DEFAULT_DASHBOARD_WIDGET_LAYOUT.left,
@@ -59,9 +66,14 @@ export interface BannerPosition {
 export const DEFAULT_BANNER_POSITION: BannerPosition = { x: 50, y: 50 };
 
 /** Guards against a stored layout that's drifted from `ALL_DASHBOARD_WIDGETS` —
- *  an older install missing a widget added since, or (in principle) corrupt
- *  JSON — by dropping unknown ids and appending any missing ones to "left"
- *  rather than ever silently losing or duplicating a card. */
+ *  an older install missing a widget added since, or one naming a widget that
+ *  has been retired — by dropping unknown ids and re-placing any missing ones
+ *  rather than ever silently losing or duplicating a card.
+ *
+ *  Missing ids go to whichever column is shorter at the time, not always to
+ *  "left": the grid is two equal columns, and an install upgrading across
+ *  several new widgets at once would otherwise end up with everything stacked
+ *  down one side. */
 export function sanitizeDashboardLayout(raw: unknown): DashboardWidgetLayout {
   const rawLeft = Array.isArray((raw as Partial<DashboardWidgetLayout>)?.left) ? (raw as DashboardWidgetLayout).left : [];
   const rawRight = Array.isArray((raw as Partial<DashboardWidgetLayout>)?.right) ? (raw as DashboardWidgetLayout).right : [];
@@ -77,5 +89,9 @@ export function sanitizeDashboardLayout(raw: unknown): DashboardWidgetLayout {
     return true;
   });
   const missing = ALL_DASHBOARD_WIDGETS.filter((id) => !seen.has(id));
-  return { left: [...left, ...missing], right };
+  const balanced = { left: [...left], right: [...right] };
+  for (const id of missing) {
+    (balanced.left.length <= balanced.right.length ? balanced.left : balanced.right).push(id);
+  }
+  return balanced;
 }

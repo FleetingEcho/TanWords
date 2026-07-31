@@ -5,9 +5,7 @@ import { useNavStore } from "@/store/navStore";
 import { useFeedsNavStore } from "@/store/feedsNavStore";
 import { getRecentlyRead, type RecentlyReadItem } from "@/lib/recentlyRead";
 import { PlayIcon, FeedIcon } from "@/components/ui/icons";
-import { Button } from "@/components/ui/button";
-
-const PREVIEW_COUNT = 5;
+import { DashboardCard, DashboardRow, DashboardEmpty, DashboardFillRows, DASHBOARD_BODY_ROWS } from "./DashboardCard";
 
 function formatTimeAgo(t: (key: string, vars?: Record<string, string | number>) => string, ts: number): string {
   const minutes = Math.max(0, Math.round((Date.now() - ts) / 60000));
@@ -28,7 +26,7 @@ export function RecentlyReadWidget() {
   const [items, setItems] = useState<RecentlyReadItem[]>([]);
 
   useEffect(() => {
-    setItems(getRecentlyRead().slice(0, PREVIEW_COUNT));
+    setItems(getRecentlyRead().slice(0, DASHBOARD_BODY_ROWS));
   }, []);
 
   const openItem = (item: RecentlyReadItem) => {
@@ -37,52 +35,38 @@ export function RecentlyReadWidget() {
   };
 
   return (
-    <div className="bg-card border border-border rounded-2xl overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
-        <h2 className="text-sm font-semibold inline-flex items-center gap-1.5">
-          <History className="w-3.5 h-3.5 text-muted-foreground" />
-          {t("dash.recentlyRead.title")}
-        </h2>
-        <Button
-          variant="link"
-          onClick={() => navigate("feeds")}
-          className="h-auto p-0 text-[11px] font-semibold text-primary hover:underline"
-        >
-          {t("dash.viewAll")}
-        </Button>
-      </div>
-
+    <DashboardCard
+      title={t("dash.recentlyRead.title")}
+      icon={<History className="w-3.5 h-3.5 text-muted-foreground" />}
+      onViewAll={() => navigate("feeds")}
+    >
       {items.length === 0 ? (
-        <p className="px-4 py-6 text-xs text-muted-foreground leading-relaxed">{t("dash.empty.recentlyRead")}</p>
+        <DashboardEmpty>{t("dash.empty.recentlyRead")}</DashboardEmpty>
       ) : (
-        <div className="divide-y divide-border">
-          {items.map((item) => (
-            <Button
-              key={item.url}
-              variant="ghost"
-              onClick={() => openItem(item)}
-              className="h-auto w-full rounded-none flex items-center justify-start gap-2.5 px-4 py-2.5 hover:bg-muted/40 transition-colors text-left"
-            >
-              {item.audioUrl ? (
-                <span className="shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center">
-                  <PlayIcon className="w-2.5 h-2.5" />
-                </span>
-              ) : (
-                <span className="shrink-0 w-5 h-5 rounded-full bg-muted text-muted-foreground flex items-center justify-center">
-                  <FeedIcon className="w-2.5 h-2.5" />
-                </span>
-              )}
-              <span className="flex-1 min-w-0">
-                <span className="block text-xs font-medium text-foreground truncate">{item.title}</span>
-                <span className="block text-[10px] text-muted-foreground truncate">
-                  {item.feedTitle || item.domain}
-                </span>
+        <>
+        {items.map((item) => (
+          <DashboardRow key={item.url} onClick={() => openItem(item)}>
+            {item.audioUrl ? (
+              <span className="shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+                <PlayIcon className="w-2.5 h-2.5" />
               </span>
-              <span className="shrink-0 text-[10px] text-muted-foreground">{formatTimeAgo(t, item.readAt)}</span>
-            </Button>
-          ))}
-        </div>
+            ) : (
+              <span className="shrink-0 w-5 h-5 rounded-full bg-muted text-muted-foreground flex items-center justify-center">
+                <FeedIcon className="w-2.5 h-2.5" />
+              </span>
+            )}
+            <span className="flex-1 min-w-0">
+              <span className="block text-xs font-medium text-foreground truncate">{item.title}</span>
+              <span className="block text-[10px] text-muted-foreground truncate">
+                {item.feedTitle || item.domain}
+              </span>
+            </span>
+            <span className="shrink-0 text-[10px] text-muted-foreground">{formatTimeAgo(t, item.readAt)}</span>
+          </DashboardRow>
+        ))}
+        <DashboardFillRows count={DASHBOARD_BODY_ROWS - items.length} />
+        </>
       )}
-    </div>
+    </DashboardCard>
   );
 }
