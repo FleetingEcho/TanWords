@@ -1,10 +1,18 @@
 /** Serves the `updater:check` / `updater:downloadAndInstall` IPC channels that
- *  `src/ipc/updater.ts` calls, on top of `electron-updater`. Full update-server
- *  configuration is out of scope (migration plan §10.2 — existing 1.0.0
- *  installs can't auto-migrate anyway); this just makes the IPC contract
- *  correct and non-crashing: checking with no feed configured resolves to "no
- *  update available" rather than throwing. */
+ *  `src/ipc/updater.ts` calls.
+ *
+ *  Two implementations behind one contract. Windows and Linux use
+ *  `electron-updater` against the GitHub feed electron-builder publishes.
+ *  macOS cannot: electron-updater delegates to native Squirrel.Mac, which
+ *  rejects an update whose code signature doesn't match the running app's, and
+ *  without an Apple Developer ID the app is only ad-hoc signed — an identity
+ *  that changes with every build. See ./macUpdater.ts for the replacement,
+ *  which is what the Tauri version did before this one.
+ *
+ *  Checking resolves to "no update available" rather than throwing when there
+ *  is no feed (dev builds, or a release that predates it). */
 import { autoUpdater } from "electron-updater";
+import { createMacUpdater } from "./macUpdater";
 
 export type UpdateInfoPayload = {
   version: string;
@@ -13,6 +21,11 @@ export type UpdateInfoPayload = {
 };
 
 export function initUpdater(emitEvent: (name: string, payload: unknown) => void) {
+  if (process.platform === "darwin") return createMacUpdater(emitEvent);
+  return initElectronUpdater(emitEvent);
+}
+
+function initElectronUpdater(emitEvent: (name: string, payload: unknown) => void) {
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
 
