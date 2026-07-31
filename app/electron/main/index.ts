@@ -1,9 +1,10 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, shell } from "electron";
 import path from "node:path";
 import { registerAppProtocolHandler, rendererEntryUrl } from "./protocol";
 import { SidecarSupervisor } from "./sidecar";
 import { registerIpcHandlers } from "./ipc";
 import { initUpdater } from "./updater";
+import { BrowserPanelManager } from "./browserPanel";
 
 // Single instance: same purpose `tauri-plugin-single-instance` served —
 // stop a duplicate SQLite connection / duplicate MCP port bind from a
@@ -13,8 +14,13 @@ if (!gotLock) {
   app.quit();
 }
 
+// No File/Edit/View/Window menu bar — the UI has its own navigation and
+// nothing here depends on menu accelerators.
+Menu.setApplicationMenu(null);
+
 let mainWindow: BrowserWindow | null = null;
 const sidecar = new SidecarSupervisor();
+const browserPanel = new BrowserPanelManager();
 
 function broadcastEvent(name: string, payload: unknown) {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -28,9 +34,9 @@ function broadcastEvent(name: string, payload: unknown) {
 const STARTUP_SHOW_TIMEOUT_MS = 15000;
 
 function createWindow() {
-  // NOTE: Task 4 turns this into a BaseWindow hosting the UI as its own
-  // WebContentsView, so browser-panel WebContentsViews can layer above it.
-  // A plain BrowserWindow is the correct shape for this task.
+  // A plain BrowserWindow is fine as the browser panel's host — its
+  // `contentView` has taken child WebContentsViews since Electron 30,
+  // no separate BaseWindow needed (see browserPanel.ts).
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -57,11 +63,13 @@ function createWindow() {
   });
 
   // Deny popups from the main UI (the browser panel's own WebContentsViews
-  // get their own, separate setWindowOpenHandler in Task 4).
+  // have their own, separate setWindowOpenHandler — see browserPanel.ts).
   win.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);
     return { action: "deny" };
   });
+
+  browserPanel.setWindow(win);
 
   const devServerUrl = process.env["ELECTRON_RENDERER_URL"];
   if (devServerUrl) {
@@ -73,6 +81,7 @@ function createWindow() {
   mainWindow = win;
   win.on("closed", () => {
     mainWindow = null;
+    browserPanel.reset();
   });
 }
 
@@ -92,6 +101,8 @@ if (gotLock) {
     sidecar.setEventSink(broadcastEvent);
     sidecar.start();
 
+    browserPanel.setEventSink(broadcastEvent);
+
     // `window.tanwords.backend` resolves once this handshake resolves — the
     // preload just forwards this single invoke() call as-is, so a renderer
     // that mounts before the sidecar is ready naturally queues on it
@@ -103,6 +114,7 @@ if (gotLock) {
       getMainWindow: () => mainWindow,
       broadcastEvent,
       updater,
+      browserPanel,
     });
 
     createWindow();
