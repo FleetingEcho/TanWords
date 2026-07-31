@@ -1,117 +1,58 @@
-import React, { useRef, useState } from "react";
-import { toast } from "sonner";
+import React from "react";
 import { useT } from "@/hooks/useT";
-import { useSettingsStore } from "@/store/settingsStore";
 import { SpeakerIcon } from "@/components/ui/icons";
-import { claimAudioChannel, releaseAudioChannel } from "@/lib/audioChannel";
-import { consumeFallbackWarning, synthesizeBlob, WebSpeechFallbackRequired } from "@/lib/ttsBackend";
+import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
 import { Button } from "@/components/ui/button";
 
-const CACHE_CAPACITY = 50;
-// Insertion order doubles as LRU recency — re-inserting a key on access
-// (delete + set) moves it to the "most recent" end.
-const blobCache = new Map<string, string>();
-
-function cacheGet(key: string): string | undefined {
-  const url = blobCache.get(key);
-  if (url === undefined) return undefined;
-  blobCache.delete(key);
-  blobCache.set(key, url);
-  return url;
-}
-
-function cacheSet(key: string, url: string) {
-  blobCache.set(key, url);
-  if (blobCache.size > CACHE_CAPACITY) {
-    const oldestKey = blobCache.keys().next().value as string;
-    const oldestUrl = blobCache.get(oldestKey);
-    blobCache.delete(oldestKey);
-    if (oldestUrl) URL.revokeObjectURL(oldestUrl);
-  }
-}
-
-type Status = "idle" | "loading" | "playing";
+/** Stable per-text key, so clicking the same word twice resumes/stops the same
+ *  playback instead of starting a second one — and so the synthesis cache in
+ *  `useArticlePlayer`, which is scoped to a sourceKey, survives a repeat click. */
+const sourceKeyFor = (text: string) => `speak:${text}`;
 
 /** Small inline speaker button for a single word/sentence — used anywhere a
  * piece of English text is shown (word lists, examples, idioms, patterns).
- * Shares the LRU blob cache across every instance, and the audio channel
- * with the article PlayerBar so only one thing plays at a time. */
+ *
+ * It owns no audio of its own. Pressing it hands the text to `ttsPlayerStore`,
+ * the same player the reader uses, which means a long selection is split into
+ * sentences and synthesized a couple ahead rather than in one slow blocking
+ * call — and that it keeps playing, controllable from the top bar, after
+ * whatever surfaced this button (a selection toolbar, a popover) has closed.
+ *
+ * The podcast/music player is separate and untouched; the two only ever
+ * interact through `audioChannel`, which stops one when the other starts. */
 export function SpeakButton({ text, className }: { text: string; className?: string }) {
   const t = useT();
-  const ttsVoiceId = useSettingsStore((s) => s.ttsVoiceId);
-  const ttsSpeed = useSettingsStore((s) => s.ttsSpeed);
-  const [status, setStatus] = useState<Status>("idle");
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const status = useTtsPlayerStore((s) => s.status);
+  const sourceKey = useTtsPlayerStore((s) => s.sourceKey);
+  const start = useTtsPlayerStore((s) => s.start);
+  const stop = useTtsPlayerStore((s) => s.stop);
 
-  const stop = () => {
-    audioRef.current?.pause();
-    window.speechSynthesis?.cancel();
-    setStatus("idle");
-  };
+  const trimmed = text.trim();
+  const mine = sourceKey === sourceKeyFor(trimmed) && status !== "idle";
+  const active = mine && (status === "playing" || status === "loading");
 
-  const handleClick = async (e: React.MouseEvent) => {
+  const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (status !== "idle") {
+    if (!trimmed) return;
+    // Pressing the speaker that is already speaking means "stop", not
+    // "pause" — the button is a toggle with no transport of its own; the top
+    // bar is where pause/skip live.
+    if (mine) {
       stop();
-      releaseAudioChannel(stop);
       return;
     }
-    const trimmed = text.trim();
-    if (!trimmed) return;
-
-    setStatus("loading");
-    const cacheKey = `${trimmed}::${ttsVoiceId}`;
-    try {
-      let url = cacheGet(cacheKey);
-      if (!url) {
-        const blob = await synthesizeBlob(trimmed);
-        url = URL.createObjectURL(blob);
-        cacheSet(cacheKey, url);
-      }
-      const audio = new Audio(url);
-      audio.playbackRate = ttsSpeed;
-      audioRef.current = audio;
-      audio.onended = () => {
-        releaseAudioChannel(stop);
-        setStatus("idle");
-      };
-      audio.onerror = () => {
-        releaseAudioChannel(stop);
-        setStatus("idle");
-      };
-      claimAudioChannel(stop);
-      await audio.play();
-      setStatus("playing");
-    } catch (err) {
-      if (err instanceof WebSpeechFallbackRequired) {
-        if (consumeFallbackWarning()) toast(t("tts.fallbackToSystemVoice"));
-        const utterance = new SpeechSynthesisUtterance(trimmed);
-        utterance.rate = ttsSpeed;
-        utterance.onend = () => {
-          releaseAudioChannel(stop);
-          setStatus("idle");
-        };
-        utterance.onerror = () => {
-          releaseAudioChannel(stop);
-          setStatus("idle");
-        };
-        claimAudioChannel(stop);
-        window.speechSynthesis.speak(utterance);
-        setStatus("playing");
-      } else {
-        setStatus("idle");
-      }
-    }
+    start(sourceKeyFor(trimmed), trimmed);
   };
 
   return (
     <Button
       variant="ghost"
       onClick={handleClick}
-      disabled={status === "loading"}
+      // Not disabled while synthesizing: a long selection takes a moment, and
+      // the press that cancels it has to land on the button that started it.
       title={t("tts.preview")}
       className={`h-auto w-auto p-0 inline-flex items-center justify-center shrink-0 transition-colors hover:bg-transparent disabled:opacity-40 ${
-        status === "playing" ? "text-primary" : "text-muted-foreground hover:text-primary"
+        active ? "text-primary" : "text-muted-foreground hover:text-primary"
       } ${className ?? ""}`}
     >
       <SpeakerIcon className="w-full h-full" />

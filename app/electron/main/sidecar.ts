@@ -36,29 +36,6 @@ function resolveBinaryPath(): string {
   return debugPath;
 }
 
-/** `core/build.rs` bakes an rpath for the *packaged* layout only
- *  (`$ORIGIN/../lib/<Product>/sherpa-libs` on Linux, `@executable_path/../Resources/sherpa-libs`
- *  on macOS) — a plain `cargo build` binary run from `target/{debug,release}`
- *  doesn't match either, so it can't find `libsherpa-onnx-c-api.so` on its
- *  own. `core/sherpa-libs/` (staged by that same build.rs) always has it;
- *  point the dynamic linker at it explicitly for unpackaged dev/CI runs.
- *  Packaged builds don't need this — extraResources (Task 5) lays sherpa-libs
- *  out exactly where the baked-in rpath already looks. */
-function devLibraryPathEnv(): NodeJS.ProcessEnv {
-  const sherpaLibsDir = path.join(app.getAppPath(), "core", "sherpa-libs");
-  if (!fs.existsSync(sherpaLibsDir)) return {};
-
-  if (process.platform === "linux") {
-    const existing = process.env["LD_LIBRARY_PATH"];
-    return { LD_LIBRARY_PATH: existing ? `${sherpaLibsDir}:${existing}` : sherpaLibsDir };
-  }
-  if (process.platform === "darwin") {
-    const existing = process.env["DYLD_LIBRARY_PATH"];
-    return { DYLD_LIBRARY_PATH: existing ? `${sherpaLibsDir}:${existing}` : sherpaLibsDir };
-  }
-  return {};
-}
-
 export class SidecarSupervisor {
   private child: ChildProcessWithoutNullStreams | null = null;
   private shuttingDown = false;
@@ -105,10 +82,7 @@ export class SidecarSupervisor {
     const child = spawn(binPath, [], {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
-      env: {
-        ...process.env,
-        ...(app.isPackaged ? {} : devLibraryPathEnv()),
-      },
+      env: process.env,
     });
     this.child = child;
 

@@ -1,6 +1,6 @@
 [package]
 name = "tanwords"
-version = "1.0.0"
+version = "1.1.0"
 description = "TanWords - AI-powered English learning assistant"
 authors = ["Tanner"]
 edition = "2021"
@@ -14,12 +14,6 @@ name = "tanwords-core"
 path = "src/main.rs"
 
 [build-dependencies]
-# Forces sherpa-rs-sys's build script (which populates the sherpa-rs OS
-# cache dir consumed by stage_sherpa_libs() in build.rs) to finish before
-# our own build.rs runs. Without this edge, Cargo may schedule the two
-# build scripts concurrently and our cache scan can race ahead of the
-# download on a fresh machine.
-sherpa-rs = "0.6"
 # Used by generate_dispatch_table() in build.rs to scan src/ for
 # `#[crate::shim::command]`-annotated functions and generate dispatch.rs.
 regex = "1"
@@ -43,7 +37,12 @@ dom_smoothie = "0.18"
 ammonia = "4"
 rs-fsrs = "1"
 chrono = "0.4"
-sherpa-rs = "0.6"
+# k2-fsa's own binding, not the third-party `sherpa-rs` wrapper we used to
+# depend on: that crate stalled at sherpa-onnx's older C API and only ever
+# exposed vits/matcha/kokoro/kitten, so pocket/supertonic/zipvoice were
+# unreachable. This one tracks upstream and links statically, which is why
+# build.rs no longer has to stage any dylibs.
+sherpa-onnx = "1.13.4"
 tar = "0.4"
 bzip2 = "0.4"
 futures-util = "0.3"

@@ -12,6 +12,7 @@ import { useVocabWordDetail } from "./hooks/useVocabWordDetail";
 import { useVocabBulkEnrich } from "./hooks/useVocabBulkEnrich";
 import { useVocabEnrichSelected } from "./hooks/useVocabEnrichSelected";
 import { useVocabLookup } from "./hooks/useVocabLookup";
+import { SentenceModal } from "./SentenceModal";
 
 export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWordId?: number; initialSentenceId?: number }) {
   const db = useDB();
@@ -37,7 +38,22 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
   });
 
   const [view, setView] = useState<"words" | "patterns">("words");
-  const [patternSeed, setPatternSeed] = useState<string | null>(null);
+  // The generate-sentences modal lives here rather than inside PatternLibrary
+  // so asking a word on the Words tab for examples doesn't have to switch tabs
+  // to reach it — the modal opens over whichever tab you were already on.
+  const [genWord, setGenWord] = useState<string | null>(null);
+  const [existingSentences, setExistingSentences] = useState<string[]>([]);
+
+  // Only needed to dedupe generated candidates, so it is loaded when the modal
+  // opens rather than kept in sync with the library all the time.
+  useEffect(() => {
+    if (genWord === null) return;
+    let cancelled = false;
+    void db.listPatterns().then((patterns) => {
+      if (!cancelled) setExistingSentences(patterns.flatMap((p) => p.examples.map((e) => e.sentence)));
+    });
+    return () => { cancelled = true; };
+  }, [genWord, db]);
   useEffect(() => {
     if (initialSentenceId) setView("patterns");
     else if (initialWordId) setView("words");
@@ -127,7 +143,7 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
           else if (selected) enrichSelected(selected.word.word);
         }}
         onReenrich={() => selected && enrichSelected(selected.word.word)}
-        onGeneratePatterns={chatWord ? () => { setPatternSeed(chatWord); setView("patterns"); } : undefined}
+        onGeneratePatterns={chatWord ? () => setGenWord(chatWord) : undefined}
       />
   );
 
@@ -146,7 +162,7 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
           ))}
         </div>
       </div>
-      {view === "patterns" ? <PatternLibrary initialQuery={patternSeed} initialSentenceId={initialSentenceId} onSeedConsumed={() => setPatternSeed(null)} /> : (
+      {view === "patterns" ? <PatternLibrary initialSentenceId={initialSentenceId} /> : (
       <div className="flex min-h-0 flex-1">
       <WordListPanel
         words={list.visibleWords}
@@ -222,6 +238,18 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
           if (selected && ids.has(selected.word.id)) detail.setSelected(null);
         })}
         onCancel={() => !list.deletingSelected && list.setDeleteSelectedOpen(false)}
+      />
+
+      {/* Rendered at page level, not inside PatternLibrary: asking a word for
+        * example sentences should open this over the Words tab you are on, not
+        * throw you across to the Sentences tab to reach the same dialog. */}
+      <SentenceModal
+        open={genWord !== null}
+        onClose={() => setGenWord(null)}
+        initialMode="generate"
+        initialQuery={genWord}
+        existingSentences={existingSentences}
+        onAdded={() => window.dispatchEvent(new CustomEvent("patterns-updated"))}
       />
     </div>
   );

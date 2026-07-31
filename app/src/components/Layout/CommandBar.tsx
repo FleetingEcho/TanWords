@@ -14,6 +14,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { WordSearchBox } from "@/components/shared/WordSearchBox";
+import { TtsControl } from "@/components/ui/TtsControl";
 import { SentenceSearchBox } from "@/components/shared/SentenceSearchBox";
 import { useT } from "@/hooks/useT";
 import { useDB } from "@/hooks/useDB";
@@ -155,10 +156,14 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
 
   return (
     <>
-      {/* Keep the global bar above page-local sticky toolbars (FeedTabs also
-          uses z-20). Inline search results live inside this stacking context,
-          so equal z-indices let the later page toolbar paint over them. */}
-      <header className="relative flex h-12 shrink-0 select-none items-center gap-1.5 border-b border-border/80 bg-background/90 px-3 backdrop-blur-xl">
+      {/* `z-30` is load-bearing, not decoration. `backdrop-blur` makes this
+          header a stacking context, so the inline search dropdown's own `z-50`
+          only orders it *within* the header — it cannot lift it above anything
+          outside. Without a z-index here the header and the page below it are
+          both `auto`, so the page paints later and its toolbars (the Browser
+          address bar, FeedTabs at z-20, sticky list headers at z-10) come out
+          on top of the dropdown. This has to stay above all of those. */}
+      <header className="relative z-30 flex h-12 shrink-0 select-none items-center gap-1.5 border-b border-border/80 bg-background/90 px-3 backdrop-blur-xl">
         {visible("search") && (
           <div className="flex min-w-0 max-w-80 flex-1 items-center gap-1">
             <div className="min-w-0 flex-1">
@@ -177,6 +182,13 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
         )}
 
         {visible("context") && context && <><div className="mx-1 hidden h-5 w-px bg-border sm:block" /><Button variant="ghost" onClick={context.run} className="h-8 gap-2 rounded-lg px-2.5 text-xs font-medium text-foreground"><context.icon className="h-4 w-4 text-primary" /><span className="hidden lg:inline">{context.label}</span></Button></>}
+
+        {/* Any speech in the app — the reader's article playback and the
+          * selection toolbar's speak button both drive ttsPlayerStore — shows
+          * up here and can be paused, skipped or cancelled from here. Renders
+          * nothing while idle. Unrelated to the podcast/music player, which
+          * keeps its own bar. */}
+        <TtsControl />
 
         {/* Learn/analyze keeps running in the background if you navigate away from
           * Reading (or if it was queued straight from the Feeds list or the reader's

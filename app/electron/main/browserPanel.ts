@@ -10,6 +10,7 @@
  *  itself is off-screen (nav'd away, or a modal needs to sit above native
  *  content — see useBrowserPanel's `blocked`). */
 import { BrowserWindow, WebContentsView } from "electron";
+import { wireDevToolsShortcut } from "./devtools";
 
 export type BrowserTabState = { id: string; url: string; title: string; atHome: boolean };
 export type BrowserPanelState = { tabs: BrowserTabState[]; active: string | null };
@@ -95,6 +96,9 @@ export class BrowserPanelManager {
     rec.view = view;
 
     const wc = view.webContents;
+    // Its own inspector, not the app shell's — while the embedded page has
+    // focus it is the thing you are trying to debug.
+    wireDevToolsShortcut(wc);
     wc.on("did-navigate", (_e, url) => {
       rec.url = url;
       this.emit(id, "browser://navigated", url);
@@ -174,18 +178,29 @@ export class BrowserPanelManager {
     rec?.view?.setBounds(toIntBounds(bounds));
   }
 
-  /** Detaches the active view and returns a still-frame of it as a data URL
-   *  (or null if there was nothing attached, or the capture failed) — the
-   *  renderer shows this in place of the now-hidden native view so a modal
-   *  opening over the browser page reads as "stepped aside", not "the page
-   *  vanished" (see useBrowserPanel's `blocked`). */
-  async hide(): Promise<string | null> {
+  /** Detaches the active view, optionally returning a still-frame of it as a
+   *  data URL — the renderer shows that in place of the now-hidden native view
+   *  so a modal opening over the browser page reads as "stepped aside", not
+   *  "the page vanished" (see useBrowserPanel's `blocked`).
+   *
+   *  `withSnapshot` is opt-in because `capturePage()` has to be awaited while
+   *  the view is still attached, and on a page that is still loading it can
+   *  take a second or more — during which the view stays visible. That is a
+   *  fair price for the modal case, which needs the frame. It is pure lag when
+   *  the browser page is being left entirely: nothing is left mounted to
+   *  render the snapshot, so the capture only delays the detach the user is
+   *  waiting on. */
+  async hide(withSnapshot = false): Promise<string | null> {
     if (!this.win || !this.attachedId) return null;
     const rec = this.tabs.get(this.attachedId);
     this.attachedId = null;
-    if (!rec) return null;
+    if (!rec?.view) return null;
 
-    if (!rec.view) return null;
+    if (!withSnapshot) {
+      this.win.contentView.removeChildView(rec.view);
+      return null;
+    }
+
     let snapshot: string | null = null;
     try {
       snapshot = (await rec.view.webContents.capturePage()).toDataURL();
