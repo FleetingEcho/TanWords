@@ -9,7 +9,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { useSettingsStore, type SidebarTabId } from "@/store/settingsStore";
 import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
-import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
 import { CommandBar } from "@/components/Layout/CommandBar";
 import type { NavPage } from "@/store/navStore";
 
@@ -99,7 +98,6 @@ export function MainLayout({
   const visibleSidebarTabs = useSettingsStore((s) => s.visibleSidebarTabs);
   const hasCustomAppBackground = useSettingsStore((s) => !!s.appBackgroundImage && s.appBackgroundVisible);
   const podcastActive = usePodcastPlayerStore((s) => s.status !== "idle" && s.track !== null);
-  const ttsActive = useTtsPlayerStore((s) => s.status !== "idle");
   const NAV_ITEMS: NavItemDef[] = NAV_ITEM_DEFS
     .filter((d) => visibleSidebarTabs.includes(d.id))
     .map((d) => ({ ...d, label: t(`nav.${d.id}`) }));
@@ -156,9 +154,13 @@ export function MainLayout({
 
       </aside>
 
+      {/* Only the podcast bar is docked at the bottom and needs room reserved.
+        * Speech used to have a bar of its own here too; its controls now live
+        * in the top bar, so reserving space for it would just shove the page
+        * up by 80px the moment anything started reading. */}
       <main
         className={`flex min-w-0 flex-1 flex-col overflow-hidden box-border transition-[padding-bottom] duration-200 ${
-          ttsActive ? "pb-20" : podcastActive ? "pb-16" : "pb-0"
+          podcastActive ? "pb-16" : "pb-0"
         }`}
       >
         <CommandBar activePage={activeNav as NavPage} />

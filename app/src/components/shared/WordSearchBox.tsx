@@ -12,6 +12,7 @@ import { fetchBasicInfo, BasicInfo } from "@/lib/basicInfo";
 import { fetchReverseLookup, ReverseCandidate } from "@/lib/reverseLookup";
 import { EnrichmentText } from "@/components/EnrichmentText";
 import { SearchIcon } from "@/components/ui/icons";
+import { BrowserPanelBlocker } from "@/store/browserPanelStore";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { SpeakButton } from "@/components/ui/SpeakButton";
@@ -236,6 +237,11 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
 
       {q && searched && (
         <div className={inline ? "absolute left-0 right-0 top-full z-50 mt-2 space-y-1 rounded-xl border border-border bg-popover p-2 shadow-2xl" : "space-y-1"}>
+          {/* Only in the floating variant: the inline one renders in normal
+            * flow and is not an overlay. On the Browser page the native panel
+            * is composited above this document, so `z-50` loses to it — the
+            * panel has to step aside instead. */}
+          {inline && <BrowserPanelBlocker />}
           {matches.map((w) => (
             <div
               key={w.id}
@@ -263,7 +269,7 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
           ))}
 
           {isZh ? (
-            <div className="space-y-1.5 rounded-lg border border-border/60 bg-muted/20 p-2">
+            <div className="space-y-1.5 rounded-lg">
               {quickError && <p className="px-1 text-xs text-destructive">{quickError}</p>}
               {noProvider && <p className="px-1 text-xs text-muted-foreground">{t("modal.noProvider")}</p>}
               {!quickLoading && !quickError && !noProvider && candidates.length === 0 && (

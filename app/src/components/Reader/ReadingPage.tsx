@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { Library, PenLine } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { ReaderView } from "@/components/Reader/ReaderView";
 import { ReadingLibrary } from "@/components/Reader/ReadingLibrary";
 import { useReaderNotesStore } from "@/store/readerNotesStore";
+import { useReadingPageStore } from "@/store/readingPageStore";
 import { LIBRARY_URL_PREFIX, SCRATCH_URL_PREFIX } from "@/components/Reader/ArticleReader";
 import { Button } from "@/components/ui/button";
 
@@ -18,11 +19,15 @@ import { Button } from "@/components/ui/button";
  */
 export function ReadingPage() {
   const t = useT();
-  const [view, setView] = useState<"paste" | "library">("paste");
-  const [openArticleId, setOpenArticleId] = useState<number | null>(null);
+  // In a store, not useState: App.tsx unmounts this page whenever you navigate
+  // elsewhere, so anything local is gone by the time you come back.
+  const view = useReadingPageStore((s) => s.view);
+  const setView = useReadingPageStore((s) => s.setView);
+  const openArticleId = useReadingPageStore((s) => s.openArticleId);
+  const setOpenArticleId = useReadingPageStore((s) => s.openArticle);
   // A fresh sheet per paste session — bumped after an article is opened so
   // returning to "paste" doesn't show the last one.
-  const [session, setSession] = useState(1);
+  const session = useReadingPageStore((s) => s.session);
   const articleTitle = useReaderNotesStore((s) => s.article?.title);
   // The blank paste sheet has nothing to go back to yet, so its reader bar
   // (and the toolbar portaled into it — copy/translate/listen/notes) stays
@@ -32,7 +37,7 @@ export function ReadingPage() {
   const hasArticle = useReaderNotesStore((s) => !!s.article);
 
   useEffect(() => {
-    const onShowLibrary = () => { setOpenArticleId(null); setView("library"); };
+    const onShowLibrary = () => useReadingPageStore.getState().backToLibrary();
     const onOpenArticle = (e: Event) => {
       const detail = (e as CustomEvent<{ id: number }>).detail;
       if (detail?.id) setOpenArticleId(detail.id);
@@ -45,7 +50,7 @@ export function ReadingPage() {
     };
   }, []);
 
-  const backToLibrary = () => { setOpenArticleId(null); setView("library"); setSession((n) => n + 1); };
+  const backToLibrary = () => useReadingPageStore.getState().backToLibrary();
 
   if (openArticleId !== null) {
     return (

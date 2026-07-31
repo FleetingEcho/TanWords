@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { SpeakButton } from "@/components/ui/SpeakButton";
 import { useNavStore } from "@/store/navStore";
 import { filterSentencePatterns } from "./sentenceSearch";
+import { BrowserPanelBlocker } from "@/store/browserPanelStore";
 
 /** Global sentence-library box, the Sentences-mode sibling of WordSearchBox:
  *  fuzzy-search the saved sentence library (pattern, translation, note, or
@@ -180,6 +181,11 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
                   width: Math.min(720, window.innerWidth - anchorRect.left - 16),
                 }}
               >
+                {/* Only in the floating variant: the inline one renders in
+                  * normal flow and is not an overlay. On the Browser page the
+                  * native panel is composited above this document, so `z-100`
+                  * loses to it — the panel has to step aside instead. */}
+                <BrowserPanelBlocker />
                 {resultsPanel}
               </div>,
               document.body

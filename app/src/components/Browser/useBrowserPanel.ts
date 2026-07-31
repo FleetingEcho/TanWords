@@ -99,6 +99,12 @@ export function useBrowserPanel() {
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const queueRef = useRef<Promise<void>>(Promise.resolve());
+  // Queued work outlives this hook: `showAt` waits two animation frames before
+  // it measures, and those keep firing after the page is gone. Without this
+  // flag a show that was in flight when the user navigated away lands *after*
+  // the unmount hide and re-attaches the view over the next page, where
+  // nothing is left mounted to hide it again.
+  const unmountedRef = useRef(false);
   // A modal/dropdown is up. The panel is a native view composited above all
   // of our HTML, so it has to step aside rather than lose a z-index fight.
   const blocked = useBrowserPanelBlockStore((s) => s.blockers > 0);
@@ -133,6 +139,7 @@ export function useBrowserPanel() {
     enqueue(async () => {
       await nextFrame();
       await nextFrame();
+      if (unmountedRef.current) return;
       const rect = await currentBounds();
       if (!rect) return;
       try {
@@ -189,9 +196,12 @@ export function useBrowserPanel() {
     if (!container || !active) return;
     if (blocked || active.atHome || !active.panelId) {
       const key = active.key;
+      // Only a blocker needs the still frame: going home or switching to a
+      // tab with no webview has nothing to stand in for, so skip the capture
+      // and its latency.
       const wasShowing = blocked && !active.atHome && !!active.panelId;
       void enqueue(async () => {
-        const snapshot = await invoke<string | null>("browser_hide", {}).catch(() => null);
+        const snapshot = await invoke<string | null>("browser_hide", { withSnapshot: wasShowing }).catch(() => null);
         if (wasShowing) patchTab(key, { preview: snapshot });
       });
       return;
@@ -225,8 +235,22 @@ export function useBrowserPanel() {
   }, []);
 
   // Leaving the page hides every panel so none of them render over whatever
-  // page comes next — see browser_panel's module doc.
-  useEffect(() => () => { invoke("browser_hide", {}).catch(() => {}); }, []);
+  // page comes next — see browser_panel's module doc. Deliberately not queued
+  // and deliberately without a snapshot: this has to detach *now*, and both
+  // waiting behind pending work and capturing a frame nobody will render just
+  // leave the page hanging over the next screen.
+  useEffect(() => {
+    // Reset on every mount, not just initialised once: this hook is remounted
+    // whenever the Browser page is navigated back to (and twice at startup
+    // under StrictMode). Leaving the flag stuck at `true` from the previous
+    // unmount makes every later `showAt` bail out, which reads as a browser
+    // where nothing — shortcuts, the address bar — does anything at all.
+    unmountedRef.current = false;
+    return () => {
+      unmountedRef.current = true;
+      invoke("browser_hide", { withSnapshot: false }).catch(() => {});
+    };
+  }, []);
 
   const open = (raw: string) => {
     const target = normalizeAddress(raw);

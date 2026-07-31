@@ -22,7 +22,7 @@ const SENTENCE_PAGE_SIZE_KEY = "vocab-sentences-page-size";
  *  "pattern" row already is a phrase/translation/note/level bundle with one
  *  saved example sentence, which is exactly what a flat sentence library
  *  needs). */
-export function PatternLibrary({ initialQuery, initialSentenceId, onSeedConsumed }: { initialQuery?: string | null; initialSentenceId?: number; onSeedConsumed?: () => void }) {
+export function PatternLibrary({ initialSentenceId }: { initialSentenceId?: number }) {
   const db = useDB();
   const t = useT();
 
@@ -106,14 +106,9 @@ export function PatternLibrary({ initialQuery, initialSentenceId, onSeedConsumed
     return () => window.removeEventListener("patterns-updated", load);
   }, []);
 
-  // A word picked in the Words tab ("generate sentences" button) seeds a run.
-  useEffect(() => {
-    if (!initialQuery?.trim()) return;
-    setModalMode("generate");
-    setModalSeed(initialQuery);
-    setModalOpen(true);
-    onSeedConsumed?.();
-  }, [initialQuery]);
+  // NOTE: the Words tab's "generate sentences" button no longer routes through
+  // here. It opens the same modal from VocabularyPage instead, so asking a word
+  // for examples stays on the Words tab rather than switching to this one.
 
   // Multi-token AND search: every whitespace-separated token must match
   // somewhere in the sentence bundle (sentence text, translation, note,

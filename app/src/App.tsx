@@ -3,7 +3,6 @@ import { Toaster, toast } from "sonner";
 import { MainLayout } from "@/components/Layout/Sidebar";
 import { WordDetailModal } from "@/components/WordDetailModal";
 import { SelectionAsk } from "@/components/shared/SelectionAsk";
-import { PlayerBar } from "@/components/ui/PlayerBar";
 import { PodcastPlayerBar } from "@/components/ui/PodcastPlayerBar";
 import { ToolsModal } from "@/components/ui/ToolsModal";
 import { AppBackground } from "@/components/Layout/AppBackground";
@@ -13,6 +12,7 @@ import { useNavStore } from "@/store/navStore";
 import { useDB } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { useMcpSync } from "@/hooks/useMcpSync";
+import { useTraySync } from "@/hooks/useTraySync";
 import { initProviders } from "@/lib/initProviders";
 import { invoke } from "@/ipc/backend";
 import { ENRICHED_SEED_WORDS, BASIC_SEED_WORDS } from "@/data/seedWords";
@@ -73,6 +73,7 @@ function App() {
   const [wordCount, setWordCount] = React.useState(0);
 
   useMcpSync();
+  useTraySync();
 
   // Initialize providers from keychain (with localStorage fallback/migration) on startup.
   // Deferred past first paint so the OS keychain prompt (macOS asks the first
@@ -251,7 +252,6 @@ function App() {
     <WordDetailModal />
     <SelectionAsk />
     <ToolsModal />
-    <PlayerBar />
     <PodcastPlayerBar />
     <Toaster position="bottom-right" richColors closeButton />
     </>
