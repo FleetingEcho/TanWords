@@ -40,7 +40,7 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeFailed, setAnalyzeFailed] = useState(false);
   const [noProvider, setNoProvider] = useState(false);
-  const analyzeAbortRef = useRef<AbortController>();
+  const analyzeAbortRef = useRef<AbortController | undefined>(undefined);
   const anchorRef = useRef<HTMLDivElement>(null);
 
   const loadPatterns = () => db.listPatterns().then(setAllPatterns);

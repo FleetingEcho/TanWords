@@ -40,7 +40,7 @@ export function InlineAskPanel({ anchor, mode: initialMode, onClose, layout = "f
   const [basicInfo, setBasicInfo] = useState<BasicInfo>({});
   const [collected, setCollected] = useState(false);
   const [adding, setAdding] = useState(false);
-  const abortRef = useRef<AbortController>();
+  const abortRef = useRef<AbortController | undefined>(undefined);
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Clicking away closes it. Scrolling no longer does — the card follows the
