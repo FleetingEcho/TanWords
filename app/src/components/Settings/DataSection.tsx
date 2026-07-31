@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { save as saveDialog, open as openDialog } from "@tauri-apps/plugin-dialog";
+import { saveDialog, openDialog } from "@/ipc/dialog";
 import { useT } from "@/hooks/useT";
 import { useDB } from "@/hooks/useDB";
 import { DbConnection, ImportDecisions, ImportPlan } from "@/hooks/useDB.types";

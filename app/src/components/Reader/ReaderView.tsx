@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { open as openShell } from "@tauri-apps/plugin-shell";
+import { openExternal as openShell } from "@/ipc/shell";
 import { toast } from "sonner";
 import { Maximize2, Minimize2, X } from "lucide-react";
 import { useT } from "@/hooks/useT";

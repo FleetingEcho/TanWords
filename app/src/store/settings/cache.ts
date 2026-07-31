@@ -116,7 +116,7 @@ export function cacheFeedsViewMode(mode: "card" | "list") {
 
 export async function saveSetting(key: string, value: string) {
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
+    const { invoke } = await import("@/ipc/backend");
     await invoke("db_set_setting", { key, value });
   } catch {
     // Web mode fallback

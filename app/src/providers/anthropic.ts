@@ -1,4 +1,4 @@
-import { fetch } from "@tauri-apps/plugin-http";
+import { netFetch } from "@/ipc/net";
 import { AIProvider, TranslateParams, ExplainParams, buildSystemPrompt, buildEnrichSystemPrompt, buildEnrichUserPrompt, ToolDef, ApiMessage, ToolCallResponse } from "./base";
 import { useSettingsStore } from "@/store/settingsStore";
 
@@ -54,7 +54,7 @@ export class AnthropicProvider implements AIProvider {
     signal?: AbortSignal,
     maxTokens?: number,
   ): AsyncGenerator<string> {
-    const response = await fetch(`${this.apiBase}/v1/messages`, {
+    const response = await netFetch(`${this.apiBase}/v1/messages`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -94,7 +94,7 @@ export class AnthropicProvider implements AIProvider {
     signal?: AbortSignal,
     onText?: (chunk: string) => void,
   ): Promise<ToolCallResponse> {
-    const response = await fetch(`${this.apiBase}/v1/messages`, {
+    const response = await netFetch(`${this.apiBase}/v1/messages`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -184,7 +184,7 @@ export class AnthropicProvider implements AIProvider {
     };
     body.max_tokens = maxTokens || 4096;
 
-    const response = await fetch(`${this.apiBase}/v1/messages`, {
+    const response = await netFetch(`${this.apiBase}/v1/messages`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/ipc/backend";
 import { toast } from "sonner";
 import { useDB, DocumentListItem } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";

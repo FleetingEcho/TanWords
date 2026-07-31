@@ -1,4 +1,4 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { assetUrl } from "@/ipc/backend";
 import { useT } from "@/hooks/useT";
 import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
 import { PlayIcon, PauseIcon } from "@/components/ui/icons";
@@ -29,7 +29,7 @@ export function TrackRows({
   return (
     <>
       {shown.map(({ tr, i }) => {
-        const isCurrent = currentUrl === convertFileSrc(tr.path) && status !== "idle";
+        const isCurrent = currentUrl === assetUrl(tr.path) && status !== "idle";
         return (
           <button
             key={tr.path}

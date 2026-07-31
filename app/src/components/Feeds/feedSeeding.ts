@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/ipc/backend";
 import type { useDB } from "@/hooks/useDB";
 import type { RssFeed } from "@/hooks/useDB.types";
 import { DEFAULT_FEEDS, INITIAL_FEEDS } from "./defaultFeeds";

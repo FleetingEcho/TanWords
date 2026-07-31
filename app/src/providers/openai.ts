@@ -1,4 +1,4 @@
-import { fetch } from "@tauri-apps/plugin-http";
+import { netFetch } from "@/ipc/net";
 import { AIProvider, TranslateParams, ExplainParams, buildSystemPrompt, buildEnrichSystemPrompt, buildEnrichUserPrompt, ToolDef, ApiMessage, ToolCallResponse, ContentBlock } from "./base";
 import { useSettingsStore } from "@/store/settingsStore";
 import { ThinkTagFilter } from "./thinkTagFilter";
@@ -98,7 +98,7 @@ export class OpenAIProvider implements AIProvider {
       function: { name: t.name, description: t.description, parameters: t.input_schema },
     }));
 
-    const response = await fetch(`${this.apiBase}/chat/completions`, {
+    const response = await netFetch(`${this.apiBase}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.apiKey}` },
       body: JSON.stringify({ model: this.modelId, messages: oaiMessages, tools: oaiTools, stream: true }),
@@ -175,7 +175,7 @@ export class OpenAIProvider implements AIProvider {
     if (maxTokens) body.max_tokens = maxTokens;
     if (jsonMode) body.response_format = { type: "json_object" };
 
-    const response = await fetch(`${this.apiBase}/chat/completions`, {
+    const response = await netFetch(`${this.apiBase}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.apiKey}` },
       body: JSON.stringify(body),

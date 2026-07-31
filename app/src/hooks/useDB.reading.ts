@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/ipc/backend";
 import { logError, reportWriteError } from "./useDB.errors";
 
 /** Where an article entered the library. */

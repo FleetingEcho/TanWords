@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@/ipc/backend";
+import { subscribe } from "@/ipc/events";
+import { openDialog } from "@/ipc/dialog";
 import { toast } from "sonner";
 import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -56,12 +56,7 @@ export function TtsSection() {
   }, []);
 
   useEffect(() => {
-    const unlisten = listen<TtsDownloadProgress>("tts-download-progress", (event) => {
-      setProgress(event.payload);
-    }).catch(() => undefined);
-    return () => {
-      unlisten.then((f) => f?.());
-    };
+    return subscribe<TtsDownloadProgress>("tts-download-progress", setProgress);
   }, []);
 
   const selectModel = async (path: string) => {

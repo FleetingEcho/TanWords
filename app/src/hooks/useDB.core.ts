@@ -2,7 +2,7 @@
  *  composed public hook, useDB.extra.ts for chat/reading/SRS/data-management. */
 
 import { useCallback, useMemo } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/ipc/backend";
 import { logError, reportWriteError } from "./useDB.errors";
 import {
   WordListItem, WordDetail, TranslationItem, EnrichmentInput,

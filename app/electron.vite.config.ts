@@ -2,24 +2,6 @@ import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 
-// Renderer alias table is the Tauri compatibility bridge (see vite.config.ts's
-// own copy and src/bridge/README.md) — duplicated here rather than imported
-// because electron-vite's renderer config is its own Vite instance, not a
-// consumer of the root vite.config.ts (that one is vitest's config only).
-const rendererAliases = {
-  "@": path.resolve(__dirname, "./src"),
-  "@tauri-apps/api/core": path.resolve(__dirname, "./src/bridge/core.ts"),
-  "@tauri-apps/api/event": path.resolve(__dirname, "./src/bridge/event.ts"),
-  "@tauri-apps/api/window": path.resolve(__dirname, "./src/bridge/window.ts"),
-  "@tauri-apps/api/app": path.resolve(__dirname, "./src/bridge/app.ts"),
-  "@tauri-apps/plugin-dialog": path.resolve(__dirname, "./src/bridge/dialog.ts"),
-  "@tauri-apps/plugin-shell": path.resolve(__dirname, "./src/bridge/shell.ts"),
-  "@tauri-apps/plugin-http": path.resolve(__dirname, "./src/bridge/http.ts"),
-  "@tauri-apps/plugin-clipboard-manager": path.resolve(__dirname, "./src/bridge/clipboard.ts"),
-  "@tauri-apps/plugin-updater": path.resolve(__dirname, "./src/bridge/updater.ts"),
-  "@tauri-apps/plugin-process": path.resolve(__dirname, "./src/bridge/process.ts"),
-};
-
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
@@ -57,7 +39,7 @@ export default defineConfig({
     base: "./",
     plugins: [react()],
     resolve: {
-      alias: rendererAliases,
+      alias: { "@": path.resolve(__dirname, "./src") },
     },
     build: {
       outDir: "out/renderer",

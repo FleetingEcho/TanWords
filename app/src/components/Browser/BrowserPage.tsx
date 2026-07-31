@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ArrowLeft, ArrowRight, ExternalLink, Globe, Home, MessageSquareQuote, RotateCw, Trash2 } from "lucide-react";
-import { open as openShell } from "@tauri-apps/plugin-shell";
+import { openExternal as openShell } from "@/ipc/shell";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";

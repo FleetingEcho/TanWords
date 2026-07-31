@@ -1,14 +1,26 @@
+/* The Node-side sources: build configs, and the Electron main + preload
+ * processes. These were previously unchecked — `tsc --noEmit` on tsconfig.json
+ * only covers src/ (the renderer). */
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2023"],
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
     "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "types": ["node"],
+    "noEmit": true,
     "strict": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["vite.config.ts"]
+  // vite.config.ts is deliberately absent: vitest ships its own nested copy of
+  // vite, so `react()` typed against the top-level vite is structurally
+  // incompatible with vitest/config's `plugins`. It's a dependency-tree
+  // artifact, not a real error, and vitest type-checks that file itself.
+  "include": ["electron.vite.config.ts", "electron/**/*.ts"]
 }

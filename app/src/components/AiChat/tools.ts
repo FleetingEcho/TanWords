@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/ipc/backend";
 import { ToolDef } from "@/providers/base";
 import { contentToBlocks, markdownToBlocks, blocksToText, blocksToStorage } from "@/lib/docFormat";
 

@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/ipc/backend";
 import { LockKeyhole } from "lucide-react";
 import { toast } from "sonner";
 import { useT } from "@/hooks/useT";
