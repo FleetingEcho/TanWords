@@ -8,6 +8,11 @@ const ALLOWED_PREFIX: &str = "apikey_";
 /// read it back out afterwards.
 const TURSO_TOKEN_KEY: &str = "turso_auth_token";
 
+/// Master key that seals `ai_providers.api_key_enc`. Like the Turso token it
+/// sits outside `ALLOWED_PREFIX` deliberately: the webview must never be able
+/// to read it, or storing the provider keys encrypted would buy nothing.
+const DEVICE_KEY: &str = "device_provider_key";
+
 fn entry(key: &str) -> Result<keyring::Entry, String> {
     keyring::Entry::new("tanwords", key).map_err(|e| e.to_string())
 }
@@ -25,6 +30,34 @@ pub fn turso_token_set(token: &str) -> Result<(), String> {
 pub fn turso_token_clear() {
     if let Ok(entry) = entry(TURSO_TOKEN_KEY) {
         let _ = entry.delete_credential();
+    }
+}
+
+/// The device's provider-encryption key, creating one on first use.
+///
+/// Returns `None` when the OS keychain is unusable (an unsigned macOS build
+/// with no keychain-access-group entitlement, a headless Linux box with no
+/// Secret Service). Callers treat that as "this device cannot hold secrets"
+/// and refuse to store a key rather than falling back to plaintext.
+pub fn device_key() -> Option<[u8; 32]> {
+    let entry = entry(DEVICE_KEY).ok()?;
+    match entry.get_password() {
+        Ok(encoded) => {
+            let raw = base64::Engine::decode(
+                &base64::engine::general_purpose::STANDARD,
+                encoded.as_bytes(),
+            )
+            .ok()?;
+            raw.try_into().ok()
+        }
+        Err(keyring::Error::NoEntry) => {
+            let key = crate::document_privacy::random::<32>();
+            let encoded =
+                base64::Engine::encode(&base64::engine::general_purpose::STANDARD, key);
+            entry.set_password(&encoded).ok()?;
+            Some(key)
+        }
+        Err(_) => None,
     }
 }
 
