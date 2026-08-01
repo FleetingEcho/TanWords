@@ -6,7 +6,7 @@
  *    Open main window
  *    Music Control  ▸  ⏸ <track>  /  ⏮ Previous  /  ⏭ Next
  *    ─────────────
- *    ⟳ Refresh RSS
+ *    Refresh RSS
  *    ─────────────
  *    Quit
  *
@@ -82,11 +82,14 @@ export class TrayManager {
 
   /** `iconPath` is the 32x32 template PNG. macOS reads "template" images as a
    *  mask and recolours them for the current menu bar, which is why the asset
-   *  is a flat alpha shape rather than a full-colour icon. */
+   *  is a flat alpha shape rather than a full-colour icon. Linux ignores the
+   *  template flag and shows the raw pixels, so it gets the white variant
+   *  directly (see trayIconPath) — the black template would vanish against a
+   *  dark panel. */
   create(iconPath: string) {
     if (this.tray) return;
     const image = nativeImage.createFromPath(iconPath);
-    image.setTemplateImage(true);
+    image.setTemplateImage(process.platform === "darwin");
     this.tray = new Tray(image);
     this.tray.setToolTip(app.getName());
     // Clicking the icon itself is the fastest path back to the app; the menu
@@ -156,7 +159,7 @@ export class TrayManager {
         ],
       },
       { type: "separator" },
-      { label: `⟳  ${s.refreshRss}`, click: () => emit("tray://refresh-rss") },
+      { label: `${s.refreshRss}`, click: () => emit("tray://refresh-rss") },
       { type: "separator" },
       { label: s.quit, click: () => app.quit() },
     ]);
@@ -192,9 +195,15 @@ export class TrayManager {
 }
 
 /** Packaged builds get the icon from extraResources; a dev run reads it out of
- *  the repo, mirroring how `appIconPath()` resolves the window icon. */
+ *  the repo, mirroring how `appIconPath()` resolves the window icon.
+ *
+ *  Linux takes the white variant: the status-notifier host paints the image
+ *  as-is (no template recolouring) and panel themes are overwhelmingly dark,
+ *  where the black template shape is invisible. Windows keeps the plain asset —
+ *  its tray background adapts to the system theme either way. */
 export function trayIconPath(): string {
+  const name = process.platform === "linux" ? "tray-template-white.png" : "tray-template.png";
   return app.isPackaged
-    ? path.join(process.resourcesPath, "tray-template.png")
-    : path.join(app.getAppPath(), "core", "icons", "tray-template.png");
+    ? path.join(process.resourcesPath, name)
+    : path.join(app.getAppPath(), "core", "icons", name);
 }

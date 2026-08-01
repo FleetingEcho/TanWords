@@ -33,4 +33,34 @@ describe("ReadOnlyBlockNote render", () => {
 
     await waitFor(() => expect(screen.getByText(/Hello article body/)).toBeTruthy(), { timeout: 5000 });
   });
+
+  it("hides the outline column when the article has no headings", async () => {
+    const { container } = render(
+      <ReadOnlyBlockNote
+        html="<article><p>Just a plain paragraph, no headings at all.</p></article>"
+        fallbackText="Fallback body text"
+      />,
+    );
+
+    await waitFor(
+      () => expect(container.querySelector(".bn-editor")?.textContent ?? "").toContain("Just a plain paragraph"),
+      { timeout: 5000 },
+    );
+    expect(container.querySelector("aside")).toBeNull();
+    expect(container.textContent ?? "").not.toContain("outline");
+  });
+
+  it("renders the header slot inside the article column", async () => {
+    const { container } = render(
+      <ReadOnlyBlockNote
+        html="<article><h2>Section One</h2><p>Hello article body</p></article>"
+        fallbackText="Fallback body text"
+        header={<h1>How Do I Profile eBPF Code?</h1>}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText("How Do I Profile eBPF Code?")).toBeTruthy(), { timeout: 5000 });
+    // The article has a heading, so the outline column shows its entry.
+    await waitFor(() => expect(container.querySelectorAll("aside button").length).toBe(1), { timeout: 5000 });
+  });
 });

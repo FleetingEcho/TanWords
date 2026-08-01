@@ -30,7 +30,15 @@ import { ListenNextWidget } from "./ListenNextWidget";
  *  bento cannot express — size and position are part of the composition now,
  *  not a free ordering — and nothing had been able to write to it since the
  *  drag handles were removed. */
-export function DashboardWidgetGrid({ stats }: { stats: DashboardStats | null }) {
+export function DashboardWidgetGrid({ stats, statsFailed = false }: {
+  stats: DashboardStats | null;
+  /** True once the stats query settled with an error (e.g. no DB connected yet).
+   *  The stats-fed cards then render their empty states instead of skeletons. */
+  statsFailed?: boolean;
+}) {
+  const recentWords = stats?.recent_words ?? (statsFailed ? [] : undefined);
+  const recentDocs = stats?.recent_docs ?? (statsFailed ? [] : undefined);
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-2">
       <div className="lg:col-span-7">
@@ -40,7 +48,7 @@ export function DashboardWidgetGrid({ stats }: { stats: DashboardStats | null })
         * which is what keeps their outer edges level with the hero's. */}
       <div className="lg:col-span-5 flex flex-col gap-2">
         <div className="flex-1 min-h-0">
-          <LatestWordsWidget words={stats?.recent_words} maxRows={3} />
+          <LatestWordsWidget words={recentWords} maxRows={3} />
         </div>
         <div className="flex-1 min-h-0">
           <ListenNextWidget maxRows={3} />
@@ -54,7 +62,7 @@ export function DashboardWidgetGrid({ stats }: { stats: DashboardStats | null })
         <RecentlyReadWidget maxRows={4} />
       </div>
       <div className="lg:col-span-3">
-        <RecentDocumentsWidget docs={stats?.recent_docs} maxRows={4} />
+        <RecentDocumentsWidget docs={recentDocs} maxRows={4} />
       </div>
     </div>
   );

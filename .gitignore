@@ -12,3 +12,5 @@ app/docs/
 ./**/*/.claude/
 
 app/out/
+
+app/core/sherpa-libs/

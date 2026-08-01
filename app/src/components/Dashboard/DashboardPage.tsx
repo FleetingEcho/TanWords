@@ -45,11 +45,20 @@ export function DashboardPage() {
   const bannerPosition = useSettingsStore((s) => s.dashboardBannerPosition);
   const nickname = useSettingsStore((s) => s.nickname);
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  // getDashboardStats resolves null when the DB is unreachable ("not connected
+  // yet" looks identical to "still loading" in `stats` alone). Without this
+  // flag the stat tiles pulse and the recents cards keep their skeletons
+  // running forever on a fresh install that has no database yet.
+  const [statsSettled, setStatsSettled] = useState(false);
 
   useEffect(() => {
     let alive = true;
     const load = () => {
-      db.getDashboardStats().then((s) => { if (alive) setStats(s); });
+      db.getDashboardStats().then((s) => {
+        if (!alive) return;
+        setStats(s);
+        setStatsSettled(true);
+      });
     };
     load();
     window.addEventListener("vocab-updated", load);
@@ -93,17 +102,17 @@ export function DashboardPage() {
       {/* Stat tiles: how much of each thing the app collects, not how
         * diligently — one tile per kind of thing you accumulate. */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatTile value={stats?.word_count ?? null} label={t("dash.stat.words")} />
-        <StatTile value={stats?.pattern_count ?? null} label={t("dash.stat.sentences")} accent />
-        <StatTile value={stats?.chat_count ?? null} label={t("dash.stat.chats")} />
-        <StatTile value={stats?.doc_count ?? null} label={t("dash.stat.docs")} />
+        <StatTile value={statsSettled ? stats?.word_count ?? 0 : null} label={t("dash.stat.words")} />
+        <StatTile value={statsSettled ? stats?.pattern_count ?? 0 : null} label={t("dash.stat.sentences")} accent />
+        <StatTile value={statsSettled ? stats?.chat_count ?? 0 : null} label={t("dash.stat.chats")} />
+        <StatTile value={statsSettled ? stats?.doc_count ?? 0 : null} label={t("dash.stat.docs")} />
       </div>
 
       {/* Navigation, not a "recent" anything — hence outside the grid below */}
       <QuickActionsBar />
 
       {/* Recents — six cards, every one the same height (see DashboardCard) */}
-      <DashboardWidgetGrid stats={stats} />
+      <DashboardWidgetGrid stats={stats} statsFailed={statsSettled && !stats} />
     </div>
   );
 }
