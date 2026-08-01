@@ -368,13 +368,33 @@ pub async fn db_sync_now(state: State<'_, AppState>) -> std::result::Result<(), 
 #[crate::shim::command]
 pub async fn db_export_backup(
     dest: String,
+    password: Option<String>,
     conn: State<'_, AppState>,
 ) -> std::result::Result<(), String> {
     if !conn.descriptor()?.caps.export {
         return Err("Online databases do not support exporting backups".into());
     }
     let db = db::conn(&conn)?;
-    export_backup(&db, &dest).await
+    match password.as_deref().map(str::trim).filter(|p| !p.is_empty()) {
+        Some(password) => {
+            let temp_snapshot = std::env::temp_dir().join(format!(
+                "tanwords-export-{}.db",
+                uuid::Uuid::new_v4()
+            ));
+            let result = async {
+                export_backup(&db, &temp_snapshot.to_string_lossy()).await?;
+                crate::db::import::create_encrypted_backup(
+                    std::path::Path::new(&temp_snapshot),
+                    std::path::Path::new(&dest),
+                    password,
+                )
+            }
+            .await;
+            let _ = std::fs::remove_file(&temp_snapshot);
+            result
+        }
+        None => export_backup(&db, &dest).await,
+    }
 }
 
 #[crate::shim::command]
