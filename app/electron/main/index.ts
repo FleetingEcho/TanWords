@@ -116,6 +116,11 @@ function createWindow() {
     width: 1280,
     height: 800,
     show: false,
+    // No native title bar on any platform: the renderer owns the drag region
+    // and the minimize/maximize/fullscreen/close buttons, so the window
+    // controls sit in the same place everywhere.
+    frame: false,
+    roundedCorners: true,
     // Without this the window's own layer is white, which shows through as a
     // flash on the first frame and during resizes before the renderer repaints.
     // See windowBackground.ts for why this is the previous run's colour.
@@ -160,6 +165,18 @@ function createWindow() {
 
   browserPanel.setWindow(win);
   wireWindowDevTools(win);
+
+  const emitWindowState = () => {
+    if (win.isDestroyed()) return;
+    broadcastEvent("window:state-changed", {
+      maximized: win.isMaximized(),
+      fullScreen: win.isFullScreen(),
+    });
+  };
+  win.on("maximize", emitWindowState);
+  win.on("unmaximize", emitWindowState);
+  win.on("enter-full-screen", emitWindowState);
+  win.on("leave-full-screen", emitWindowState);
 
   // Set by vite-plugin-electron when it spawns Electron from `vite dev`
   // (electron-vite's equivalent was ELECTRON_RENDERER_URL).

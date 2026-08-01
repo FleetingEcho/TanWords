@@ -84,11 +84,13 @@
 .tanwords-editor:not(.tanwords-editor-compact) .bn-block-content {
   padding-block: 6px;
 }
-.tanwords-editor:not(.tanwords-editor-compact)
-  .bn-block-content[data-content-type="paragraph"]:has(.bn-inline-content > br.ProseMirror-trailingBreak:only-child) {
-  min-height: 0;
-  padding-block: 0;
-  line-height: 0.75;
+
+/* Match the side menu height to the actual text row height: line-height *
+ * font-size + the two 6px content paddings above. Without this the plus
+ * button and drag handle sit above/below the cursor on empty paragraphs. */
+.tanwords-editor:not(.tanwords-editor-compact) .bn-side-menu {
+  height: calc(var(--document-line-height, 1.9) * var(--document-font-size, 16px) + 12px);
+  align-items: center;
 }
 
 .document-editor-title {

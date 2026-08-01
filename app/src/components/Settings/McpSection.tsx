@@ -10,14 +10,17 @@ type McpStatus = { running: boolean; endpoint: string | null; error: string | nu
 
 /** Grouped by the resource each tool acts on, mirroring src-tauri/src/mcp/tools.rs. */
 const MCP_TOOL_GROUPS: { key: string; tools: string[] }[] = [
-  { key: "vocabulary", tools: ["vocabulary_search", "vocabulary_get", "vocabulary_add", "vocabulary_add_batch", "vocabulary_update", "vocabulary_delete"] },
-  { key: "documents", tools: ["documents_search", "documents_get", "documents_create", "documents_update", "documents_append", "documents_delete"] },
-  { key: "patterns", tools: ["patterns_search", "patterns_add"] },
+  { key: "vocabulary", tools: ["vocabulary_search", "vocabulary_known_words", "vocabulary_get", "vocabulary_add", "vocabulary_add_batch", "vocabulary_update", "vocabulary_delete"] },
+  { key: "documents", tools: ["documents_list", "documents_search", "documents_get", "documents_create", "documents_update", "documents_append", "documents_delete"] },
+  { key: "patterns", tools: ["patterns_list", "patterns_search", "patterns_add"] },
   { key: "articles", tools: ["articles_add", "articles_list", "articles_get", "articles_comment"] },
+  { key: "feeds", tools: ["feeds_list", "feeds_entries"] },
+  { key: "hackernews", tools: ["hackernews_list", "hackernews_search", "hackernews_comments"] },
 ];
 
 function McpToolsDetail({ t }: { t: (key: string, vars?: Record<string, string | number>) => string }) {
   const [expanded, setExpanded] = useState(false);
+  const toolCount = MCP_TOOL_GROUPS.reduce((count, group) => count + group.tools.length, 0);
 
   return (
     <div className="rounded-lg border border-border/60">
@@ -26,7 +29,7 @@ function McpToolsDetail({ t }: { t: (key: string, vars?: Record<string, string |
         onClick={() => setExpanded((v) => !v)}
         className="flex w-full items-center justify-between gap-2 px-3 py-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
       >
-        <span>{t("settings.mcpTools")}</span>
+        <span>{t("settings.mcpTools", { n: toolCount })}</span>
         <span className="flex items-center gap-1 shrink-0">
           {expanded ? t("settings.mcpToolsCollapse") : t("settings.mcpToolsExpand")}
           <ChevronDown className={`h-3.5 w-3.5 transition-transform ${expanded ? "rotate-180" : ""}`} />

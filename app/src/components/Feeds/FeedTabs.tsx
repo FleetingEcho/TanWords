@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { History } from "lucide-react";
 import { useT } from "@/hooks/useT";
-import { CloseIcon, RefreshIcon, GridIcon, ListIcon, TranslateIcon } from "@/components/ui/icons";
+import { CloseIcon, RefreshIcon, GridIcon, ListIcon, TranslateIcon, BookmarkIcon } from "@/components/ui/icons";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
-import type { RssFeed } from "@/hooks/useDB.types";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import type { RssFeed, FeedBookmark } from "@/hooks/useDB.types";
 import type { RssTabSelection } from "@/store/settingsStore";
 import type { FeedViewMode } from "./EntryGrid";
 import { domainOf } from "./feedUtils";
@@ -37,6 +38,10 @@ interface Props {
   onOpenRecent: (item: RecentlyReadItem) => void;
   onClearRecentlyRead: () => void;
   onRemoveRecent: (url: string) => void;
+  bookmarks: FeedBookmark[];
+  onOpenBookmark: (bookmark: FeedBookmark) => void;
+  onRemoveBookmark: (url: string) => void;
+  bookmarkPendingUrls: Set<string>;
 }
 
 function formatTimeAgo(t: (key: string, vars?: Record<string, string | number>) => string, ts: number): string {
@@ -59,35 +64,16 @@ function UnreadBadge({ n }: { n: number }) {
 }
 
 /** Single-row switcher: pinned feeds stay visible; the full categorized library lives in More. */
-export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, onSelect, onDelete, onPreferences, onAdd, onRefresh, viewMode, onSetViewMode, showTitleTranslations, onToggleTitleTranslations, recentlyRead, onOpenRecent, onClearRecentlyRead, onRemoveRecent }: Props) {
+export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, onSelect, onDelete, onPreferences, onAdd, onRefresh, viewMode, onSetViewMode, showTitleTranslations, onToggleTitleTranslations, recentlyRead, onOpenRecent, onClearRecentlyRead, onRemoveRecent, bookmarks, onOpenBookmark, onRemoveBookmark, bookmarkPendingUrls }: Props) {
   const t = useT();
   const totalUnread = [...unreadByFeed.values()].reduce((a, b) => a + b, 0);
   const translatingTitles = useTitleTranslateStore((s) => s.pending.size > 0);
   const [pendingDelete, setPendingDelete] = useState<RssFeed | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [recentOpen, setRecentOpen] = useState(false);
+  const [bookmarkOpen, setBookmarkOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [savingId, setSavingId] = useState<number | null>(null);
-  const moreRef = useRef<HTMLDivElement>(null);
-  const recentRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!moreOpen) return;
-    const close = (e: MouseEvent) => {
-      if (!moreRef.current?.contains(e.target as Node)) setMoreOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [moreOpen]);
-
-  useEffect(() => {
-    if (!recentOpen) return;
-    const close = (e: MouseEvent) => {
-      if (!recentRef.current?.contains(e.target as Node)) setRecentOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [recentOpen]);
 
   const visibleFeeds = useMemo(() => {
     const pinned = feeds.filter((f) => f.is_pinned).slice(0, 5);
@@ -177,12 +163,13 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
 
       <div className="flex h-8 shrink-0 items-center gap-2">
         {feeds.length > 0 && (
-          <div ref={moreRef} className="relative shrink-0">
-            <button onClick={() => setMoreOpen((v) => !v)} className={pill(moreOpen)} aria-expanded={moreOpen}>
-              {t("feeds.more")} {hiddenCount > 0 ? hiddenCount : ""} <span aria-hidden>▾</span>
-            </button>
-            {moreOpen && (
-              <div className="absolute right-0 top-10 z-50 w-80 overflow-hidden rounded-xl border border-border bg-card shadow-xl">
+          <Popover open={moreOpen} onOpenChange={setMoreOpen}>
+            <PopoverTrigger asChild>
+              <button className={pill(moreOpen)} aria-expanded={moreOpen}>
+                {t("feeds.more")} {hiddenCount > 0 ? hiddenCount : ""} <span aria-hidden>▾</span>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-80 p-0 overflow-hidden rounded-xl border-border bg-card shadow-xl">
                 <div className="border-b border-border p-3">
                   <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("feeds.searchFeeds")} className="h-8 w-full rounded-lg border border-input bg-background px-3 text-xs outline-hidden focus:ring-1 focus:ring-ring" />
                 </div>
@@ -216,26 +203,89 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
                   })}
                   {matchingFeeds.length === 0 && <p className="px-2 py-6 text-center text-xs text-muted-foreground">{t("feeds.noFeedResults")}</p>}
                 </div>
-              </div>
-            )}
-          </div>
+            </PopoverContent>
+          </Popover>
         )}
         {syncing && <span className="text-[11px] text-muted-foreground">{t("feeds.refreshing")}</span>}
-        <div ref={recentRef} className="relative shrink-0">
-          <Button
-            variant="ghost"
-            onClick={() => setRecentOpen((v) => !v)}
-            title={t("feeds.recentlyRead.button")}
-            aria-label={t("feeds.recentlyRead.button")}
-            aria-pressed={recentOpen}
-            className={`flex h-7 w-7 items-center justify-center rounded-md p-0 transition-colors ${
-              recentOpen ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-            }`}
-          >
-            <History className="h-4 w-4" />
-          </Button>
-          {recentOpen && (
-            <div className="absolute right-0 top-10 z-50 w-80 overflow-hidden rounded-xl border border-border bg-card shadow-xl">
+        <Popover open={bookmarkOpen} onOpenChange={setBookmarkOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              title={t("feeds.bookmarks.title")}
+              aria-label={t("feeds.bookmarks.title")}
+              aria-pressed={bookmarkOpen}
+              className={`relative flex h-7 w-7 items-center justify-center rounded-md p-0 transition-colors ${
+                bookmarkOpen || bookmarks.length > 0
+                  ? "bg-primary/10 text-primary hover:bg-primary/15"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              <BookmarkIcon filled={bookmarks.length > 0 || bookmarkOpen} className="h-4 w-4" />
+              {bookmarks.length > 0 && (
+                <span className="absolute right-0 top-0 h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-80 p-0 overflow-hidden rounded-xl border-border bg-card shadow-xl">
+              <div className="flex items-center justify-between border-b border-border px-3 py-2">
+                <span className="text-xs font-semibold">{t("feeds.bookmarks.title")}</span>
+                <span className="text-[10px] text-muted-foreground">{bookmarks.length}</span>
+              </div>
+              <div className="max-h-96 overflow-y-auto p-1.5">
+                {bookmarks.length === 0 ? (
+                  <p className="px-2 py-6 text-center text-xs text-muted-foreground">{t("feeds.bookmarks.empty")}</p>
+                ) : (
+                  bookmarks.map((bookmark) => (
+                    <div key={bookmark.url} className="group relative flex items-center rounded-lg hover:bg-muted">
+                      <button
+                        onClick={() => { onOpenBookmark(bookmark); setBookmarkOpen(false); }}
+                        className="flex min-w-0 flex-1 flex-col items-start gap-0.5 px-2.5 py-2 text-left"
+                      >
+                        <span className="w-full truncate pr-5 text-xs font-medium text-foreground">{bookmark.title}</span>
+                        <span className="flex w-full items-center gap-1.5 text-[10px] text-muted-foreground">
+                          <span className="truncate">{bookmark.feed_title || bookmark.domain}</span>
+                          {bookmark.created_at && (
+                            <>
+                              <span className="shrink-0">·</span>
+                              <span className="shrink-0">{formatTimeAgo(t, new Date(bookmark.created_at).getTime())}</span>
+                            </>
+                          )}
+                        </span>
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onRemoveBookmark(bookmark.url); }}
+                        disabled={bookmarkPendingUrls.has(bookmark.url)}
+                        title={t("feeds.unbookmark")}
+                        aria-label={t("feeds.unbookmark")}
+                        className="absolute right-1.5 top-1/2 hidden h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-destructive/15 hover:text-destructive group-hover:flex"
+                      >
+                        {bookmarkPendingUrls.has(bookmark.url) ? (
+                          <span className="h-2.5 w-2.5 rounded-full border-2 border-muted-foreground/30 border-t-foreground animate-spin" />
+                        ) : (
+                          <CloseIcon className="h-2.5 w-2.5" />
+                        )}
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+          </PopoverContent>
+        </Popover>
+        <Popover open={recentOpen} onOpenChange={setRecentOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              title={t("feeds.recentlyRead.button")}
+              aria-label={t("feeds.recentlyRead.button")}
+              aria-pressed={recentOpen}
+              className={`flex h-7 w-7 items-center justify-center rounded-md p-0 transition-colors ${
+                recentOpen ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              <History className="h-4 w-4" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-80 p-0 overflow-hidden rounded-xl border-border bg-card shadow-xl">
               <div className="flex items-center justify-between border-b border-border px-3 py-2">
                 <span className="text-xs font-semibold">{t("feeds.recentlyRead.title")}</span>
                 {recentlyRead.length > 0 && (
@@ -273,9 +323,8 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
                   ))
                 )}
               </div>
-            </div>
-          )}
-        </div>
+          </PopoverContent>
+        </Popover>
         <Button
           variant="ghost"
           onClick={onToggleTitleTranslations}

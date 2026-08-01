@@ -12,7 +12,7 @@ import type { DocActionsState } from "./hooks/useDocActions";
  * useDocActions. */
 export function DocShelfList({
   list, actions, activeId, onSelect, onExport,
-  normalOpen, setNormalOpen, privateOpen, setPrivateOpen,
+  onExportHtml, onExportPdf, normalOpen, setNormalOpen, privateOpen, setPrivateOpen,
   shelfMenu, setShelfMenu, createInShelf,
 }: {
   list: DocListState;
@@ -20,6 +20,8 @@ export function DocShelfList({
   activeId: number | null;
   onSelect: (id: number) => void;
   onExport: (id: number) => void;
+  onExportHtml: (id: number) => void;
+  onExportPdf: (id: number) => void;
   normalOpen: boolean;
   setNormalOpen: (v: boolean) => void;
   privateOpen: boolean;
@@ -88,6 +90,8 @@ export function DocShelfList({
                   onDelete={handleDelete}
                   searchQuery={search}
                   onExport={onExport}
+                  onExportHtml={onExportHtml}
+                  onExportPdf={onExportPdf}
                   onPrivacyAction={(item) => void handlePrivacyAction(item)}
                   onRemoveProtection={(item) => void handleRemoveProtection(item)}
                 />

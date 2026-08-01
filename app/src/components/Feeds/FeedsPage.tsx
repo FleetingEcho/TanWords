@@ -10,9 +10,10 @@ import { useLearnChatStore } from "@/store/learnChatStore";
 import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
 import { usePlayerOriginStore } from "@/store/playerOriginStore";
 import { useFeedsNavStore } from "@/store/feedsNavStore";
+import { useFeedBookmarksStore } from "@/store/feedBookmarksStore";
 import { useSettingsStore, type RssTabSelection } from "@/store/settingsStore";
 import type { FetchedArticle } from "@/components/Reader/ArticleReader";
-import type { RssEntryRow, RssFeed } from "@/hooks/useDB.types";
+import type { RssEntryRow, RssFeed, FeedBookmark } from "@/hooks/useDB.types";
 import { FeedTabs } from "./FeedTabs";
 import { AddFeedDialog } from "./AddFeedDialog";
 import { FeedsMainContent, type BrowseTarget } from "./FeedsMainContent";
@@ -38,6 +39,11 @@ export function FeedsPage() {
   const { startLearn } = useLearnArticle();
   const feedsViewMode = useSettingsStore((s) => s.feedsViewMode);
   const setFeedsViewMode = useSettingsStore((s) => s.setFeedsViewMode);
+  const bookmarks = useFeedBookmarksStore((s) => s.items);
+  const bookmarkedUrls = useFeedBookmarksStore((s) => s.urls);
+  const bookmarkPendingUrls = useFeedBookmarksStore((s) => s.pending);
+  const toggleBookmarkStore = useFeedBookmarksStore((s) => s.toggle);
+  const removeBookmarkStore = useFeedBookmarksStore((s) => s.remove);
 
   const [feeds, setFeeds] = useState<RssFeed[]>([]);
   const [entries, setEntries] = useState<RssEntryRow[]>([]);
@@ -160,6 +166,10 @@ export function FeedsPage() {
     return () => { if (syncTimer !== undefined) window.clearTimeout(syncTimer); };
   }, []);
 
+  useEffect(() => {
+    void useFeedBookmarksStore.getState().refresh();
+  }, []);
+
   const selectFeed = (sel: RssTabSelection) => {
     setSelected(sel);
     selectedRef.current = sel;
@@ -212,6 +222,39 @@ export function FeedsPage() {
       audioUrl: entry.audio_url ?? null,
       feedTitle: feedsById.get(entry.feed_id)?.title ?? domainOf(entry.url),
       hnItemId: entry.hn_item_id ?? null,
+    };
+    setBrowse(target);
+    addRecentlyRead(target);
+    setRecentlyRead(getRecentlyRead());
+  };
+
+  const toggleBookmark = (entry: RssEntryRow) => {
+    const feedTitle =
+      entry.feed_id === -1
+        ? "Hacker News"
+        : feedsById.get(entry.feed_id)?.title ?? domainOf(entry.url);
+    void toggleBookmarkStore({
+      url: entry.url,
+      title: entry.title,
+      feedTitle,
+      domain: domainOf(entry.url),
+      summary: entry.summary,
+      imageUrl: entry.image_url,
+      audioUrl: entry.audio_url ?? null,
+      audioDuration: entry.audio_duration ?? null,
+      hnItemId: entry.hn_item_id ?? null,
+      published: entry.published || new Date().toISOString(),
+    });
+  };
+
+  const openBookmark = (bookmark: FeedBookmark) => {
+    const target: BrowseTarget = {
+      url: bookmark.url,
+      title: bookmark.title,
+      domain: bookmark.domain,
+      audioUrl: bookmark.audio_url,
+      feedTitle: bookmark.feed_title || bookmark.domain,
+      hnItemId: bookmark.hn_item_id,
     };
     setBrowse(target);
     addRecentlyRead(target);
@@ -340,6 +383,10 @@ export function FeedsPage() {
         onOpenRecent={openRecent}
         onClearRecentlyRead={clearRecent}
         onRemoveRecent={removeRecent}
+        bookmarks={bookmarks}
+        onOpenBookmark={openBookmark}
+        onRemoveBookmark={(url) => void removeBookmarkStore(url)}
+        bookmarkPendingUrls={bookmarkPendingUrls}
       />
 
       <div className="flex-1 min-w-0 min-h-0 flex flex-col">
@@ -362,6 +409,9 @@ export function FeedsPage() {
           onPlayEntry={playEntry}
           onTranslateEntry={translateEntry}
           onAnalyzeBackground={analyzeInBackground}
+          bookmarkedUrls={bookmarkedUrls}
+          bookmarkPendingUrls={bookmarkPendingUrls}
+          onToggleBookmark={toggleBookmark}
           onShowAdd={() => setShowAdd(true)}
         />
       </div>

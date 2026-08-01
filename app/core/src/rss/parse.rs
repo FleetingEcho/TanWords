@@ -1,9 +1,11 @@
 //! Feed fetching and parsing: turning a raw RSS/Atom document into our
 //! `RssFeedMeta`/`RssEntry` shapes.
 
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use super::types::{RssEntry, RssFeedMeta};
+use regex::Regex;
 
 const USER_AGENT: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
@@ -156,6 +158,60 @@ fn strip_html(input: &str) -> String {
     result.trim().to_string()
 }
 
+/// feed-rs parses `<itunes:duration>` through media NPT rules, which reject the
+/// podcast-standard `MM:SS` form and fall back to treating it as seconds. Convert
+/// that form to whole seconds before feed-rs sees it.
+fn itunes_duration_to_seconds(raw: &str) -> Option<String> {
+    let parts: Vec<&str> = raw.trim().split(':').collect();
+    if parts.is_empty() || parts.len() > 3 {
+        return None;
+    }
+
+    let mut seconds = 0f64;
+    for (index, part) in parts.iter().enumerate() {
+        let value: f64 = part.trim().parse().ok()?;
+        let multiplier = match parts.len() {
+            1 => 1.0,
+            2 if index == 0 => 60.0,
+            2 => 1.0,
+            3 if index == 0 => 3600.0,
+            3 if index == 1 => 60.0,
+            _ => 1.0,
+        };
+        seconds += value * multiplier;
+    }
+
+    (seconds > 0.0).then_some(seconds.to_string())
+}
+
+fn normalize_itunes_durations(body: &[u8]) -> Vec<u8> {
+    static DURATION_PATTERN: OnceLock<Regex> = OnceLock::new();
+
+    let text = String::from_utf8_lossy(body);
+    if !text.contains("itunes:duration") {
+        return body.to_vec();
+    }
+
+    let pattern = DURATION_PATTERN.get_or_init(|| {
+        Regex::new(r"(?is)<itunes:duration[^>]*>([^<]*)</itunes:duration>").expect("valid regex")
+    });
+
+    pattern
+        .replace_all(&text, |caps: &regex::Captures<'_>| {
+            let raw = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
+            match itunes_duration_to_seconds(raw) {
+                Some(seconds) => format!("<itunes:duration>{seconds}</itunes:duration>"),
+                None => caps
+                    .get(0)
+                    .map(|m| m.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+            }
+        })
+        .into_owned()
+        .into_bytes()
+}
+
 /// Fetch and parse an RSS/Atom feed from a URL. Shared by the `fetch_rss` preview
 /// command and `db_sync_rss_feed`.
 pub(super) async fn fetch_feed_meta(url: &str) -> Result<RssFeedMeta, String> {
@@ -188,7 +244,9 @@ pub(super) async fn fetch_feed_meta(url: &str) -> Result<RssFeedMeta, String> {
 }
 
 fn parse_feed_body(body: &[u8]) -> Result<RssFeedMeta, String> {
-    let feed = feed_rs::parser::parse(body).map_err(|e| format!("Feed parse error: {e}"))?;
+    let normalized_body = normalize_itunes_durations(body);
+    let feed = feed_rs::parser::parse(normalized_body.as_slice())
+        .map_err(|e| format!("Feed parse error: {e}"))?;
 
     let site_link = feed
         .links
@@ -247,4 +305,50 @@ fn parse_feed_body(body: &[u8]) -> Result<RssFeedMeta, String> {
 #[crate::shim::command]
 pub async fn fetch_rss(url: String) -> Result<RssFeedMeta, String> {
     fetch_feed_meta(&url).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalizes_common_itunes_duration_formats() {
+        assert_eq!(itunes_duration_to_seconds("20:18").as_deref(), Some("1218"));
+        assert_eq!(
+            itunes_duration_to_seconds("1:02:03").as_deref(),
+            Some("3723")
+        );
+        assert_eq!(itunes_duration_to_seconds("90").as_deref(), Some("90"));
+        assert_eq!(itunes_duration_to_seconds("1:2").as_deref(), Some("62"));
+        assert_eq!(itunes_duration_to_seconds("").as_deref(), None);
+    }
+
+    #[test]
+    fn parses_podcast_enclosure_with_colon_duration() {
+        let xml = br#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>Test podcast</title>
+    <link>https://example.com</link>
+    <description>Test</description>
+    <item>
+      <title>Episode</title>
+      <link>https://example.com/episode</link>
+      <guid>ep-1</guid>
+      <description>Summary</description>
+      <itunes:duration>20:18</itunes:duration>
+      <enclosure url="https://example.com/episode.mp3" type="audio/mpeg" length="123" />
+    </item>
+  </channel>
+</rss>"#;
+
+        let meta = parse_feed_body(xml).expect("parse sample feed");
+        assert_eq!(meta.title, "Test podcast");
+        assert_eq!(meta.entries.len(), 1);
+        assert_eq!(
+            meta.entries[0].audio_url.as_deref(),
+            Some("https://example.com/episode.mp3")
+        );
+        assert_eq!(meta.entries[0].audio_duration, Some(1218));
+    }
 }

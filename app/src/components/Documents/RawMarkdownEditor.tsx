@@ -1,6 +1,100 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { FileCode2, ListOrdered, WrapText } from "lucide-react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { ListOrdered, WrapText } from "lucide-react";
 import { Button } from "@/components/ui/button";
+
+const BLOCK_PREFIX_RE = /^(#{1,6}\s+)?((?:>\s*)+|(?:[-*+]\s+)?(?:\d+\.\s+)?(?:\[[ xX]\]\s+)?|-{3,}|\*{3,}|_{3,})/;
+const INLINE_TOKEN_RE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*)|(~~[^~\n]+~~)|(\[[^\]\n]+\]\([^)\s]+\))/g;
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function renderInline(text: string): string {
+  let out = "";
+  let last = 0;
+  for (const match of text.matchAll(INLINE_TOKEN_RE)) {
+    const index = match.index ?? 0;
+    if (index > last) out += escapeHtml(text.slice(last, index));
+    const token = match[0];
+    if (token.startsWith("`")) {
+      out += `<span class="rm-code">${escapeHtml(token)}</span>`;
+    } else if (token.startsWith("**")) {
+      out += `<span class="rm-strong">${escapeHtml(token.slice(2, -2))}</span>`;
+    } else if (token.startsWith("~~")) {
+      out += `<span class="rm-strike">${escapeHtml(token.slice(2, -2))}</span>`;
+    } else if (token.startsWith("*")) {
+      out += `<span class="rm-em">${escapeHtml(token.slice(1, -1))}</span>`;
+    } else {
+      const link = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+      if (link) {
+        out += `<span class="rm-link-label">${escapeHtml(link[1])}</span><span class="rm-link">${escapeHtml(`(${link[2]})`)}</span>`;
+      } else {
+        out += escapeHtml(token);
+      }
+    }
+    last = index + token.length;
+  }
+  return out + escapeHtml(text.slice(last));
+}
+
+function highlightMarkdown(markdown: string): string {
+  const lines = markdown.split("\n");
+  const html: string[] = [];
+  let fence: string | null = null;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (fence) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith(fence) && /^`{3,}\s*$/.test(trimmed)) {
+        html.push(`<span class="rm-fence">${escapeHtml(line)}</span>`);
+        fence = null;
+      } else {
+        html.push(`<span class="rm-code-line">${escapeHtml(line)}</span>`);
+      }
+      continue;
+    }
+
+    const trimmed = line.trim();
+    const fenceMatch = trimmed.match(/^(`{3,}|~{3,})/);
+    if (fenceMatch) {
+      fence = fenceMatch[1][0] === "~" ? "~~~" : "```";
+      html.push(`<span class="rm-fence">${escapeHtml(line)}</span>`);
+      continue;
+    }
+
+    if (trimmed === "---" || trimmed === "***" || trimmed === "___") {
+      html.push(`<span class="rm-hr">${escapeHtml(line)}</span>`);
+      continue;
+    }
+
+    if (/^(#{1,6})\s/.test(line)) {
+      const match = line.match(/^(#{1,6})\s+(.*)$/);
+      if (match) {
+        html.push(`<span class="rm-heading">${escapeHtml(match[1])}</span> <span class="rm-heading-text">${renderInline(match[2])}</span>`);
+        continue;
+      }
+    }
+
+    const prefix = line.match(BLOCK_PREFIX_RE)?.[0] ?? "";
+    if (prefix) {
+      const rest = line.slice(prefix.length);
+      const trimmedPrefix = prefix.trimEnd();
+      html.push(`<span class="rm-block">${escapeHtml(trimmedPrefix)}</span>${rest ? `<span>${renderInline(rest)}</span>` : ""}`);
+      continue;
+    }
+
+    html.push(renderInline(line));
+  }
+
+  if (fence) {
+    html.push(`<span class="rm-fence">${escapeHtml("```")}</span>`);
+  }
+  return html.join("<br/>");
+}
 
 export function RawMarkdownEditor({
   value,
@@ -13,7 +107,7 @@ export function RawMarkdownEditor({
 }) {
   const lineNumberRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [cursorLine, setCursorLine] = useState(1);
+  const preScrollRef = useRef<HTMLDivElement>(null);
   const [wrap, setWrap] = useState(
     () => localStorage.getItem("tanwords_raw_markdown_wrap") !== "0",
   );
@@ -21,12 +115,6 @@ export function RawMarkdownEditor({
     () => localStorage.getItem("tanwords_raw_markdown_lines") !== "0",
   );
   const [editorColumns, setEditorColumns] = useState(80);
-
-  const stats = useMemo(() => {
-    const lines = value.split("\n").length;
-    const words = value.trim() ? value.trim().split(/\s+/).length : 0;
-    return { lines, words, characters: value.length };
-  }, [value]);
 
   const lineNumbers = useMemo(() => value.split("\n").map((line, index) => {
     const expandedLength = line.replace(/\t/g, "  ").length;
@@ -36,11 +124,20 @@ export function RawMarkdownEditor({
     };
   }), [editorColumns, value, wrap]);
 
+  const highlighted = useMemo(() => highlightMarkdown(value), [value]);
+
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current;
+    if (textarea && preScrollRef.current) {
+      preScrollRef.current.scrollTop = textarea.scrollTop;
+      preScrollRef.current.scrollLeft = textarea.scrollLeft;
+    }
+  });
+
   useEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
     const updateColumns = () => {
-      // 14px monospace characters are ~8.4px wide; horizontal padding is 48px.
       setEditorColumns(Math.max(12, Math.floor((textarea.clientWidth - 48) / 8.4)));
     };
     updateColumns();
@@ -49,8 +146,13 @@ export function RawMarkdownEditor({
     return () => observer.disconnect();
   }, []);
 
-  const updateCursorLine = (element: HTMLTextAreaElement) => {
-    setCursorLine(value.slice(0, element.selectionStart).split("\n").length);
+  const syncScroll = () => {
+    const textarea = textareaRef.current;
+    if (lineNumberRef.current) lineNumberRef.current.scrollTop = textarea?.scrollTop ?? 0;
+    if (preScrollRef.current && textarea) {
+      preScrollRef.current.scrollTop = textarea.scrollTop;
+      preScrollRef.current.scrollLeft = textarea.scrollLeft;
+    }
   };
 
   const toggleWrap = () => {
@@ -69,83 +171,92 @@ export function RawMarkdownEditor({
     });
   };
 
-  return (
-    <div className="flex min-h-0 flex-1 flex-col px-6 pb-4 pt-2">
-      <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col overflow-hidden rounded-xl border border-border/60 bg-background shadow-[0_10px_35px_-28px_rgba(0,0,0,0.55)] focus-within:border-primary/25 focus-within:ring-1 focus-within:ring-primary/10">
-        <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border/50 bg-muted/20 px-3">
-          <FileCode2 className="h-3.5 w-3.5 text-primary/70" />
-          <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
-          <span className="text-[10px] text-muted-foreground/50">Markdown</span>
-          <div className="ml-auto flex items-center gap-0.5">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={toggleLines}
-              title="Toggle line numbers"
-              className={`h-6 w-6 rounded-md ${showLineNumbers ? "bg-muted text-foreground" : "text-muted-foreground"}`}
-            >
-              <ListOrdered className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={toggleWrap}
-              title="Toggle word wrap"
-              className={`h-6 w-6 rounded-md ${wrap ? "bg-muted text-foreground" : "text-muted-foreground"}`}
-            >
-              <WrapText className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </div>
+  const editorBaseClass = "border-0 bg-transparent px-6 py-5 font-mono text-[14px] leading-7 outline-hidden placeholder:text-muted-foreground/30 tab-size-2";
+  const editorTextareaClass = `${editorBaseClass} block w-full min-h-0 resize-none overflow-y-scroll ${
+    wrap ? "overflow-x-hidden whitespace-pre-wrap break-words" : "overflow-x-auto whitespace-pre"
+  }`;
+  const editorPreClass = `${editorBaseClass} w-full min-w-full ${
+    wrap ? "whitespace-pre-wrap break-words" : "whitespace-pre w-max min-w-full"
+  }`;
 
-        <div className="flex min-h-0 flex-1 overflow-hidden bg-muted/[0.035]">
+  return (
+    <div className="raw-markdown-editor flex min-h-0 flex-1 flex-col px-6 pb-4 pt-2">
+      <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col overflow-hidden rounded-xl bg-background">
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div className="mx-auto flex min-h-0 w-full max-w-[960px] flex-1">
           {showLineNumbers && (
             <div
               ref={lineNumberRef}
               aria-hidden="true"
-              className="w-11 shrink-0 overflow-hidden border-r border-border/35 bg-muted/15 py-5 text-right font-mono text-[11px] leading-7 text-muted-foreground/30 select-none"
+              className="rm-line-numbers w-11 shrink-0 overflow-hidden bg-muted/15 py-5 text-right font-mono text-[11px] leading-7 text-muted-foreground/30 select-none"
             >
               {lineNumbers.map((line) => (
-                <div key={line.number} style={{ height: `${line.visualRows * 28}px` }} className="pr-3">
+                <div
+                  key={line.number}
+                  style={{ height: `${line.visualRows * 28}px` }}
+                  className="pr-3"
+                >
                   {line.number}
                 </div>
               ))}
             </div>
           )}
-          <textarea
-            ref={textareaRef}
-            autoFocus
-            value={value}
-            onChange={(event) => {
-              onChange(event.target.value);
-              updateCursorLine(event.currentTarget);
-            }}
-            onSelect={(event) => updateCursorLine(event.currentTarget)}
-            onScroll={(event) => {
-              if (lineNumberRef.current) lineNumberRef.current.scrollTop = event.currentTarget.scrollTop;
-            }}
-            spellCheck={false}
-            aria-label={label}
-            wrap={wrap ? "soft" : "off"}
-            style={{
-              tabSize: 2,
-              color: "var(--document-text-color, hsl(var(--foreground)))",
-            }}
-            className={`min-h-0 flex-1 resize-none overflow-auto border-0 bg-transparent px-6 py-5 font-mono text-[14px] leading-7 outline-hidden placeholder:text-muted-foreground/30 ${
-              wrap ? "whitespace-pre-wrap wrap-break-word" : "whitespace-pre"
-            }`}
-          />
+
+          <div className="rm-scroll-surface relative min-h-0 flex-1 overflow-hidden">
+            <div className="absolute right-2 top-2 z-20 flex items-center gap-1 rounded-lg bg-muted/70 p-0.5 backdrop-blur-sm">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={toggleLines}
+                title="Toggle line numbers"
+                className={`h-6 w-6 rounded-md ${showLineNumbers ? "bg-background text-foreground shadow-xs" : "text-muted-foreground"}`}
+              >
+                <ListOrdered className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={toggleWrap}
+                title="Toggle word wrap"
+                className={`h-6 w-6 rounded-md ${wrap ? "bg-background text-foreground shadow-xs" : "text-muted-foreground"}`}
+              >
+                <WrapText className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            <div
+              ref={preScrollRef}
+              aria-hidden="true"
+              className={`rm-sync-overlay pointer-events-none absolute inset-0 overflow-y-scroll ${wrap ? "overflow-x-hidden" : "overflow-x-auto"}`}
+            >
+              <pre
+                className={`${editorPreClass} overflow-visible ${wrap ? "rm-wrap" : "rm-nowrap"}`}
+                dangerouslySetInnerHTML={{ __html: highlighted }}
+              />
+            </div>
+            <textarea
+              ref={textareaRef}
+              autoFocus
+              value={value}
+              onChange={(event) => {
+                onChange(event.target.value);
+              }}
+              onScroll={syncScroll}
+              spellCheck={false}
+              aria-label={label}
+              wrap={wrap ? "soft" : "off"}
+              style={{
+                tabSize: 2,
+                color: "transparent",
+                caretColor: "var(--document-text-color, hsl(var(--foreground)))",
+              }}
+              className={`${editorTextareaClass} rm-editor-input relative z-10`}
+            />
+          </div>
+          </div>
         </div>
 
-        <div className="flex h-7 shrink-0 items-center gap-3 border-t border-border/40 bg-muted/15 px-3 font-mono text-[10px] tabular-nums text-muted-foreground/55">
-          <span>Ln {cursorLine}</span>
-          <span>{stats.lines} lines</span>
-          <span>{stats.words} words</span>
-          <span className="ml-auto">{stats.characters.toLocaleString()} chars</span>
-          <span>UTF-8</span>
-        </div>
       </div>
     </div>
   );

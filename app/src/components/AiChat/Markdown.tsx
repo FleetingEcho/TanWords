@@ -24,13 +24,41 @@ const INLINE_RE = new RegExp(
   "g"
 );
 
-export function renderInline(text: string, keyBase: string): React.ReactNode[] {
+const WORD_RE = /([A-Za-z]+(?:['’\-][A-Za-z]+)*)/g;
+
+function renderClickableText(
+  text: string,
+  keyBase: string,
+  onWordClick?: (word: string) => void,
+): React.ReactNode {
+  if (!onWordClick) return text;
+  return text.split(WORD_RE).map((part, i) => {
+    const word = /^[A-Za-z]+(?:['’\-][A-Za-z]+)*$/.exec(part)?.[0];
+    if (!word) return part;
+    return (
+      <button
+        key={`${keyBase}-${i}`}
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onWordClick(word); }}
+        className="rounded px-px text-primary underline-offset-2 transition-colors hover:bg-primary/10 hover:underline"
+      >
+        {part}
+      </button>
+    );
+  });
+}
+
+export function renderInline(
+  text: string,
+  keyBase: string,
+  onWordClick?: (word: string) => void,
+): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
   let last = 0;
   let i = 0;
   for (const m of text.matchAll(INLINE_RE)) {
     const idx = m.index ?? 0;
-    if (idx > last) nodes.push(text.slice(last, idx));
+    if (idx > last) nodes.push(renderClickableText(text.slice(last, idx), `${keyBase}-p${i}`, onWordClick));
     const tok = m[0];
     const key = `${keyBase}-${i++}`;
     if (tok.startsWith("`")) {
@@ -43,11 +71,11 @@ export function renderInline(text: string, keyBase: string): React.ReactNode[] {
       // Colour lives in one CSS custom property (see index.css / applyHighlightColor)
       // rather than a className threaded down from callers — the user can recolour
       // every highlight in the app without this renderer knowing the setting exists.
-      nodes.push(<mark key={key}>{renderInline(tok.slice(2, -2), key)}</mark>);
+      nodes.push(<mark key={key}>{renderInline(tok.slice(2, -2), key, onWordClick)}</mark>);
     } else if (tok.startsWith("**")) {
-      nodes.push(<strong key={key}>{renderInline(tok.slice(2, -2), key)}</strong>);
+      nodes.push(<strong key={key}>{renderInline(tok.slice(2, -2), key, onWordClick)}</strong>);
     } else if (tok.startsWith("*")) {
-      nodes.push(<em key={key}>{renderInline(tok.slice(1, -1), key)}</em>);
+      nodes.push(<em key={key}>{renderInline(tok.slice(1, -1), key, onWordClick)}</em>);
     } else {
       const match = tok.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
       if (match) {
@@ -74,7 +102,7 @@ export function renderInline(text: string, keyBase: string): React.ReactNode[] {
     }
     last = idx + tok.length;
   }
-  if (last < text.length) nodes.push(text.slice(last));
+  if (last < text.length) nodes.push(renderClickableText(text.slice(last), `${keyBase}-tail`, onWordClick));
   return nodes;
 }
 
@@ -111,7 +139,12 @@ interface ListItem {
   indent: number;
 }
 
-function renderList(items: ListItem[], ordered: boolean, keyBase: string): React.ReactNode {
+function renderList(
+  items: ListItem[],
+  ordered: boolean,
+  keyBase: string,
+  onWordClick?: (word: string) => void,
+): React.ReactNode {
   // Two-level nesting: group consecutive indented items under the previous top-level item
   const Tag = ordered ? "ol" : "ul";
   const cls = ordered ? "list-decimal" : "list-disc";
@@ -124,11 +157,11 @@ function renderList(items: ListItem[], ordered: boolean, keyBase: string): React
     <Tag key={keyBase} className={`${cls} pl-5 my-2.5 space-y-1.5 leading-relaxed`}>
       {roots.map((r, i) => (
         <li key={i}>
-          {renderInline(r.text, `${keyBase}-${i}`)}
+          {renderInline(r.text, `${keyBase}-${i}`, onWordClick)}
           {r.children.length > 0 && (
             <ul className="list-[circle] pl-4 mt-1.5 space-y-1">
               {r.children.map((c, j) => (
-                <li key={j}>{renderInline(c, `${keyBase}-${i}-${j}`)}</li>
+                <li key={j}>{renderInline(c, `${keyBase}-${i}-${j}`, onWordClick)}</li>
               ))}
             </ul>
           )}
@@ -177,11 +210,14 @@ const TABLE_SEP_RE = /^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?$/;
 export function Markdown({
   text,
   renderBlockquote,
+  onWordClick,
 }: {
   text: string;
   /** Override how a blockquote's lines render (default: quoted paragraphs).
    * Used by EnrichmentText to attach a speak button to example sentences. */
   renderBlockquote?: (lines: string[], key: string) => React.ReactNode;
+  /** When set, English words in plain markdown become clickable lookup buttons. */
+  onWordClick?: (word: string) => void;
 }) {
   const lines = text.split("\n");
   const out: React.ReactNode[] = [];
@@ -215,7 +251,7 @@ export function Markdown({
       const sizes = ["text-[1.15em]", "text-[1.08em]", "text-[1.02em]", "text-[1em]"];
       out.push(
         <p key={key++} className={`font-bold mt-5 mb-2 first:mt-0 ${sizes[level - 1]}`}>
-          {renderInline(h[2], `h${key}`)}
+          {renderInline(h[2], `h${key}`, onWordClick)}
         </p>
       );
       i++;
@@ -243,7 +279,7 @@ export function Markdown({
         ) : (
           <blockquote key={bqKey} className="border-l-2 border-border pl-3.5 my-3 leading-relaxed text-muted-foreground italic">
             {quote.map((q, j) => (
-              <p key={j}>{renderInline(q, `q${bqKey}-${j}`)}</p>
+              <p key={j}>{renderInline(q, `q${bqKey}-${j}`, onWordClick)}</p>
             ))}
           </blockquote>
         )
@@ -274,7 +310,7 @@ export function Markdown({
         items.push({ indent: m[1].length, text: m[3] });
         i++;
       }
-      out.push(renderList(items, ordered, `l${key++}`));
+      out.push(renderList(items, ordered, `l${key++}`, onWordClick));
       continue;
     }
 
@@ -298,7 +334,7 @@ export function Markdown({
         {para.map((p, j) => (
           <React.Fragment key={j}>
             {j > 0 && <br />}
-            {renderInline(p, `p${key}-${j}`)}
+            {renderInline(p, `p${key}-${j}`, onWordClick)}
           </React.Fragment>
         ))}
       </p>

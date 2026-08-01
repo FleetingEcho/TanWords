@@ -7,14 +7,19 @@ import { ScratchPasteScreen } from "@/components/Reader/ScratchPasteScreen";
 import { ArticleComments } from "@/components/Reader/ArticleComments";
 import { TranslationPane } from "@/components/shared/TranslationPane";
 import { Markdown } from "@/components/AiChat/Markdown";
+import { renderStudyBlockquote } from "@/components/AiChat/SpeakingPhrase";
 import { AiChatModal } from "@/components/AiChat/AiChatModal";
+import { useWordModalStore } from "@/store/wordModalStore";
 import type { PodcastTrack } from "@/store/podcastPlayerStore";
 import { useArticleReaderState } from "./hooks/useArticleReaderState";
 import { ReaderToolbar } from "./ReaderToolbar";
 import { FONT_STEPS, SCRATCH_URL_PREFIX, LIBRARY_URL_PREFIX, type FetchedArticle } from "./articleReaderHelpers";
+import { LazyReadOnlyBlockNote } from "./LazyReadOnlyBlockNote";
 
 export type { FetchedArticle } from "./articleReaderHelpers";
 export { SCRATCH_URL_PREFIX, LIBRARY_URL_PREFIX } from "./articleReaderHelpers";
+
+const lookupWord = (word: string) => useWordModalStore.getState().openWordModal(word);
 
 interface Props {
   url: string;
@@ -144,19 +149,15 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
         </div>
 
         {toolbarSlot && createPortal(
-          <ReaderToolbar state={state} url={url} audio={audio} hnItemId={hnItemId} />,
+          <ReaderToolbar state={state} url={url} domain={domain} audio={audio} hnItemId={hnItemId} />,
           toolbarSlot
         )}
 
         {/* data-reader-selectable tells the global selection toolbar that
           * anything picked in here (article body or HN comments) came from
           * the reader, so saved sentences are attributed to it. */}
-        <div data-reader-selectable className={`mt-6 min-w-0 ${hasSidePanes ? "" : "w-full max-w-[68ch] mx-auto"}`}>
-          <div
-            className="reader-article-content text-foreground"
-            style={{ fontSize: `${FONT_STEPS[fontStep]}px`, lineHeight: 1.85 }}
-            dangerouslySetInnerHTML={{ __html: article.content_html }}
-          />
+        <div data-reader-selectable className="mt-6 min-w-0 w-full">
+          <LazyReadOnlyBlockNote html={article.content_html} fallbackText={article.text_content} fontSize={FONT_STEPS[fontStep]} />
           {hnItemId != null && <HnComments storyId={hnItemId} onLoaded={handleHnCommentsLoaded} />}
         </div>
       </div>
@@ -193,7 +194,11 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
                   {t("command.analyzing")}
                 </div>
               ) : notesMarkdown ? (
-                <Markdown text={notesMarkdown} />
+                <Markdown
+                  text={notesMarkdown}
+                  renderBlockquote={renderStudyBlockquote}
+                  onWordClick={lookupWord}
+                />
               ) : (
                 <p className="text-xs text-muted-foreground">{t("reading.notesEmpty")}</p>
               )}

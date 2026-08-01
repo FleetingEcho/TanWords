@@ -33,6 +33,8 @@ describe("LocalDocTree", () => {
         onDelete={noop}
         onImport={noop}
         onExport={noop}
+        onExportHtml={noop}
+        onExportPdf={noop}
         onMove={noop}
         onCreateInFolder={noop}
       />,

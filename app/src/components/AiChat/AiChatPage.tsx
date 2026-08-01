@@ -5,16 +5,21 @@ import { ToolCallCard } from "./ToolCallCard";
 import { VocabExtractionCard, VOCAB_CARD_TOOL_NAMES, vocabItemsFromToolInput } from "./VocabExtractionCard";
 import { SentenceExtractionCard, SENTENCE_CARD_TOOL_NAMES, sentenceItemsFromToolInput } from "./SentenceExtractionCard";
 import { NoteCard, NOTE_CARD_TOOL_NAMES, noteFromToolInput } from "./NoteCard";
+import { renderSpeakingBlockquote } from "./SpeakingPhrase";
 import { AiChatSidebar } from "./AiChatSidebar";
 import { AiChatComposer } from "./AiChatComposer";
 import { useAiChatSession, PRESET_IDS } from "./useAiChatSession";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowDown, Bot, ChevronDown, Eraser, PlugZap, Unplug } from "lucide-react";
+import { ArrowDown, Bot, ChevronDown, Eraser, FilePlus2, PlugZap, Unplug } from "lucide-react";
 import { useNavStore } from "@/store/navStore";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useWordModalStore } from "@/store/wordModalStore";
+import { usePendingChatSelectionStore } from "@/store/pendingChatSelectionStore";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { buildPresetPrompt } from "./aiChatHelpers";
+
+const lookupWord = (word: string) => useWordModalStore.getState().openWordModal(word);
 
 export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSessionId?: string; onActiveIdChange?: (id: string | null) => void } = {}) {
   const t = useT();
@@ -28,6 +33,17 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
   const [promptExpanded, setPromptExpanded] = React.useState(
     () => localStorage.getItem("aichat-prompt-expanded") === "1"
   );
+  const isSpeakingCoach = s.selectedPreset === "speaking-coach";
+
+  React.useEffect(() => {
+    const pending = usePendingChatSelectionStore.getState().consume();
+    if (pending) {
+      s.setInput(t("sel.askPrefill", { text: pending }));
+      window.setTimeout(() => s.textareaRef.current?.focus(), 0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.setInput, t]);
+
   const messages = React.useMemo(() => s.displayItems.flatMap((item) => item.kind === "message" ? [item.msg] : []), [s.displayItems]);
   const activeProvider = s.providers.find((provider) => provider.id === s.selectedProviderId) ?? s.providers[0];
   // With a wallpaper set, the app canvas is transparent (see AppBackground) —
@@ -126,9 +142,21 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
             </Button>
           )}
           {s.displayItems.length > 0 && (
-            <Button variant="ghost" onClick={() => setConfirmClear(true)} title={t("aichat.clear")} aria-label={t("aichat.clear")} className="h-9 w-9 rounded-xl p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive shrink-0">
-              <Eraser className="h-4 w-4" />
-            </Button>
+            <>
+              <Button
+                variant="ghost"
+                onClick={s.summarizeAndSave}
+                disabled={s.streaming}
+                title={t("aichat.summarizeAndSaveHint")}
+                className="h-9 gap-1.5 rounded-xl px-2.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground shrink-0"
+              >
+                <FilePlus2 className="h-3.5 w-3.5" />
+                <span className="hidden md:inline">{t("aichat.summarizeAndSave")}</span>
+              </Button>
+              <Button variant="ghost" onClick={() => setConfirmClear(true)} title={t("aichat.clear")} aria-label={t("aichat.clear")} className="h-9 w-9 rounded-xl p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive shrink-0">
+                <Eraser className="h-4 w-4" />
+              </Button>
+            </>
           )}
         </div>
 
@@ -211,6 +239,7 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
                 const otherCalls = item.calls.filter((c) =>
                   !VOCAB_CARD_TOOL_NAMES.has(c.name) && !SENTENCE_CARD_TOOL_NAMES.has(c.name) && !NOTE_CARD_TOOL_NAMES.has(c.name)
                 );
+                const saveCall = otherCalls.find((c) => c.name === "save_note_as_document");
                 // Mirrors MessageBubble's own box model exactly (avatar-width
                 // spacer + gap-3, content capped at min(82%,48rem)) so a tool call
                 // sitting between two AI messages lines up on both edges, not
@@ -233,7 +262,11 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
                         />
                       ))}
                       {noteCalls.map((c) => (
-                        <NoteCard key={c.id} note={noteFromToolInput(c.input)} />
+                        <NoteCard
+                          key={c.id}
+                          note={noteFromToolInput(c.input)}
+                          alreadySaved={!!saveCall && !saveCall.is_error}
+                        />
                       ))}
                       {otherCalls.length > 0 && <ToolCallCard calls={otherCalls} />}
                     </div>
@@ -262,6 +295,8 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
                   index={idx}
                   onEdit={item.msg.role === "user" && !s.streaming ? s.editUserMessage : undefined}
                   onRegenerate={isLastAssistant && s.canRegenerate ? s.regenerate : undefined}
+                  renderBlockquote={isSpeakingCoach ? renderSpeakingBlockquote : undefined}
+                  onWordClick={isSpeakingCoach ? lookupWord : undefined}
                 />
               );
             })

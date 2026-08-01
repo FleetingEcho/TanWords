@@ -61,3 +61,19 @@ pub struct RssFeed {
     pub is_pinned: bool,
     pub pin_order: Option<i64>,
 }
+
+#[derive(Serialize)]
+pub struct FeedBookmark {
+    pub id: i64,
+    pub url: String,
+    pub title: String,
+    pub feed_title: String,
+    pub domain: String,
+    pub summary: String,
+    pub image_url: Option<String>,
+    pub audio_url: Option<String>,
+    pub audio_duration: Option<i64>,
+    pub hn_item_id: Option<i64>,
+    pub published: String,
+    pub created_at: String,
+}

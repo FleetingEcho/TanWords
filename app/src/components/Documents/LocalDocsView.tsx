@@ -30,12 +30,19 @@ import { liftMermaid } from "./mermaidTransforms";
 import { ExportMarkdownDialog } from "./ExportMarkdownDialog";
 import { LocalDocsSidebar } from "./LocalDocsSidebar";
 import { LocalDocsEditorPane } from "./LocalDocsEditorPane";
+import { exportMarkdownAsHtml, exportMarkdownAsPdf } from "@/lib/documentExport";
 
 const LAST_LOCAL_PATH_KEY = "tanwords_doc_last_local_path";
 
 /** The "local folder" source of the Documents page: mount a folder, then
  *  list/edit/create/delete the markdown files inside it. */
-export function LocalDocsView() {
+export function LocalDocsView({
+  refreshTick = 0,
+  onRefreshingChange,
+}: {
+  refreshTick?: number;
+  onRefreshingChange?: (refreshing: boolean) => void;
+}) {
   const db = useDB();
   const t = useT();
 
@@ -110,6 +117,14 @@ export function LocalDocsView() {
   }, [root]);
 
   useEffect(() => { if (root) refresh(root); }, [root]);
+  useEffect(() => {
+    if (refreshTick === 0) return;
+    void refresh();
+  }, [refreshTick, refresh]);
+
+  useEffect(() => {
+    onRefreshingChange?.(filesLoading);
+  }, [filesLoading, onRefreshingChange]);
 
   useEffect(() => {
     if (!zenMode) return;
@@ -220,6 +235,28 @@ export function LocalDocsView() {
       const count = await exportLocalDocs(root, relPaths, destination);
       toast.success(t("doc.exportedCount", { n: count }));
     } catch (error) { toast.error(String(error)); }
+  };
+
+  const handleExportHtml = async (relPath: string) => {
+    if (!root) return;
+    try {
+      const content = await readLocalDoc(root, relPath);
+      const title = relPath.split("/").pop()?.replace(/\.(md|markdown)$/i, "") || t("doc.untitled");
+      await exportMarkdownAsHtml(title, mdToDisplay(content, root, relPath));
+    } catch (error) {
+      toast.error(String(error));
+    }
+  };
+
+  const handleExportPdf = async (relPath: string) => {
+    if (!root) return;
+    try {
+      const content = await readLocalDoc(root, relPath);
+      const title = relPath.split("/").pop()?.replace(/\.(md|markdown)$/i, "") || t("doc.untitled");
+      await exportMarkdownAsPdf(title, mdToDisplay(content, root, relPath));
+    } catch (error) {
+      toast.error(String(error));
+    }
   };
 
   const handleSave = useCallback(async (markdown: string) => {
@@ -335,7 +372,6 @@ export function LocalDocsView() {
           onSidebarOpenChange={setSidebarOpen}
           root={root}
           onMount={handleMount}
-          onRefresh={() => void refresh()}
           onNewFile={(directory) => void handleNewFile(directory)}
           onImportFiles={() => void handleImportFiles()}
           onOpenExportPicker={() => setExportPickerOpen(true)}
@@ -350,6 +386,8 @@ export function LocalDocsView() {
           onDelete={setPendingDelete}
           onImport={(relPath) => void requestImportToDatabase(relPath)}
           onExport={(relPath) => void handleExportFiles([relPath])}
+          onExportHtml={(relPath) => void handleExportHtml(relPath)}
+          onExportPdf={(relPath) => void handleExportPdf(relPath)}
           onMove={(relPath, targetDir) => void handleMoveFile(relPath, targetDir)}
         />
       )}

@@ -1,9 +1,10 @@
 /// <reference lib="webworker" />
 import { BlockNoteEditor } from "@blocknote/core";
+import { htmlToMarkdown } from "../lib/htmlToMarkdown";
 
 type Request = {
   id: number;
-  operation: "markdownToBlocks" | "contentToBlocks" | "blocksToMarkdown" | "blocksToMarkdownWithStats" | "blocksToStorage";
+  operation: "markdownToBlocks" | "contentToBlocks" | "blocksToMarkdown" | "blocksToMarkdownWithStats" | "blocksToStorage" | "htmlToMarkdown";
   payload: string | readonly unknown[];
 };
 
@@ -37,6 +38,8 @@ async function handle(data: Request) {
     let result: unknown;
     if (data.operation === "markdownToBlocks") {
       result = await getParser().tryParseMarkdownToBlocks(data.payload as string);
+    } else if (data.operation === "htmlToMarkdown") {
+      result = htmlToMarkdown(data.payload as string);
     } else if (data.operation === "contentToBlocks") {
       const content = data.payload as string;
       try {

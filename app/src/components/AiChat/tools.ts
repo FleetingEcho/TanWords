@@ -16,6 +16,21 @@ export interface ToolResult {
   is_error?: boolean;
 }
 
+/** Persists a Markdown note as a new document and tells Documents to refresh. */
+export async function saveNoteAsDocument(title: string, content: string): Promise<number> {
+  const blocks = await markdownToBlocks(content);
+  const storage = blocksToStorage(blocks);
+  const docId: number = await invoke("db_create_document_with_content", {
+    title,
+    content: storage.content,
+    contentText: storage.contentText,
+    tags: JSON.stringify(["ai-chat-note"]),
+    wordCount: storage.wordCount,
+  });
+  window.dispatchEvent(new CustomEvent("docs-updated"));
+  return docId;
+}
+
 // ── Tool Groups ────────────────────────────────────────────────────────────
 
 export const TOOL_GROUPS = {
@@ -314,15 +329,7 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
 
       case "save_note_as_document": {
         const { title, content: mdContent } = input as { title: string; content: string };
-        const blocks = await markdownToBlocks(mdContent);
-        const storage = blocksToStorage(blocks);
-        const docId: number = await invoke("db_create_document_with_content", {
-          title,
-          content: storage.content,
-          contentText: storage.contentText,
-          tags: JSON.stringify(["ai-chat-note"]),
-          wordCount: storage.wordCount,
-        });
+        const docId = await saveNoteAsDocument(title, mdContent);
         return { tool_use_id: id, content: `✓ Saved "${title}" to Documents (#${docId}).` };
       }
 

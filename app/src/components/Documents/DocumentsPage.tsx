@@ -6,7 +6,7 @@ import { useDocumentEditor } from "./useDocumentEditor";
 import { LocalDocsView } from "./LocalDocsView";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
-import { ChevronsRight } from "lucide-react";
+import { ChevronsRight, RefreshCw } from "lucide-react";
 import { LIST_PANEL_WIDTH, LIST_PANEL_COLLAPSED_WIDTH, LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
 import { LockedDocumentPanel } from "./LockedDocumentPanel";
 
@@ -21,14 +21,26 @@ export function DocumentsPage() {
     const saved = localStorage.getItem(LAST_SOURCE_KEY);
     return saved === "local" ? saved : "db";
   });
+  const [dbRefreshKey, setDbRefreshKey] = useState(0);
+  const [localRefreshTick, setLocalRefreshTick] = useState(0);
+  const [dbRefreshing, setDbRefreshing] = useState(false);
+  const [localRefreshing, setLocalRefreshing] = useState(false);
+  const refreshActiveTab = () => {
+    if (source === "db") setDbRefreshKey((key) => key + 1);
+    else setLocalRefreshTick((tick) => tick + 1);
+  };
   const setSource = (s: DocSource) => {
     localStorage.setItem(LAST_SOURCE_KEY, s);
     setSourceState(s);
+    // Switching tabs must show a fresh list for the tab that just appeared.
+    if (s === "db") setDbRefreshKey((key) => key + 1);
+    else setLocalRefreshTick((tick) => tick + 1);
   };
   // The local-folder pane only ever mounts once the user has actually looked at that tab
   // (it does real filesystem I/O) — but if that's where they left off last session, restore
   // it immediately instead of waiting for a click that will never come this visit.
   const [localMounted, setLocalMounted] = useState(() => localStorage.getItem(LAST_SOURCE_KEY) === "local");
+  const [dbZenMode, setDbZenMode] = useState(false);
   const [dbSidebarOpen, setDbSidebarOpenState] = useState(() => localStorage.getItem("tanwords_doc_db_sidebar_collapsed") !== "1");
   const setDbSidebarOpen = (open: boolean) => {
     localStorage.setItem("tanwords_doc_db_sidebar_collapsed", open ? "0" : "1");
@@ -40,6 +52,32 @@ export function DocumentsPage() {
     unlockDocument, removeLockedProtection,
   } = useDocumentEditor();
 
+  // BlockNote is split out of the main bundle, so the first open pays for both
+  // chunk download and editor construction. Preload both editor variants once
+  // the user lands on Documents; they can finish during idle time instead of
+  // making the first click wait.
+  useEffect(() => {
+    let cancelled = false;
+    const loadEditors = () => {
+      if (cancelled) return;
+      void import("./DocEditor");
+      void import("./LocalDocEditor");
+    };
+    const w = window as any;
+    let cancel: () => void;
+    if (typeof w.requestIdleCallback === "function") {
+      const id = w.requestIdleCallback(loadEditors, { timeout: 2500 });
+      cancel = () => w.cancelIdleCallback(id);
+    } else {
+      const id = window.setTimeout(loadEditors, 1200);
+      cancel = () => window.clearTimeout(id);
+    }
+    return () => {
+      cancelled = true;
+      cancel();
+    };
+  }, []);
+
   // Reopen whichever database doc was open last session.
   useEffect(() => {
     const lastId = Number(localStorage.getItem(LAST_DB_ID_KEY));
@@ -50,6 +88,26 @@ export function DocumentsPage() {
   useEffect(() => {
     if (activeId != null) localStorage.setItem(LAST_DB_ID_KEY, String(activeId));
   }, [activeId]);
+
+  useEffect(() => {
+    if (!dbZenMode) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setDbZenMode(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [dbZenMode]);
+
+  // Returning to Documents from another page (or another app window) should
+  // not show a stale DB/local list from the previous session.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refreshActiveTab();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally refresh whichever tab is active now.
+  }, [source]);
 
   useEffect(() => {
     const onNewDocument = () => { setSource("db"); void handleNewDoc(); };
@@ -68,6 +126,7 @@ export function DocumentsPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Source tabs: database docs vs mounted local folder */}
+      {!dbZenMode && (
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2.5 bg-transparent">
         <div className="flex items-center gap-1">
           {(["db", "local"] as const).map((s) => (
@@ -89,10 +148,24 @@ export function DocumentsPage() {
             </Button>
           ))}
         </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={refreshActiveTab}
+          disabled={source === "db" ? dbRefreshing : localRefreshing}
+          title={t("doc.refreshDocuments")}
+          aria-label={t("doc.refreshDocuments")}
+          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${(source === "db" ? dbRefreshing : localRefreshing) ? "animate-spin" : ""}`} />
+        </Button>
       </div>
+      )}
 
       <div className="relative flex-1 overflow-hidden">
-        <div className={`absolute inset-0 ${source === "db" ? "flex" : "hidden"} overflow-hidden`}>
+        <div className={`absolute inset-0 ${source === "db" ? "flex" : "hidden"} overflow-hidden ${dbZenMode ? "fixed inset-0 z-50 bg-background" : ""}`}>
+            {!dbZenMode && (
             <Collapsible open={dbSidebarOpen} onOpenChange={setDbSidebarOpen} asChild>
               <div className={`${dbSidebarOpen ? LIST_PANEL_WIDTH : LIST_PANEL_COLLAPSED_WIDTH} h-full shrink-0 transition-[width] duration-200`}>
                 {!dbSidebarOpen && <div className="flex h-full justify-center border-r border-border bg-card pt-3">
@@ -101,10 +174,19 @@ export function DocumentsPage() {
                   </CollapsibleTrigger>
                 </div>}
                 <CollapsibleContent className="h-full">
-                  <DocSelector activeId={activeId} onSelect={loadDoc} onNewDoc={handleNewDoc} refreshKey={refreshKey} onCollapse={() => setDbSidebarOpen(false)} />
+                  <DocSelector
+                    activeId={activeId}
+                    onSelect={loadDoc}
+                    onNewDoc={handleNewDoc}
+                    refreshKey={refreshKey}
+                    manualRefreshKey={dbRefreshKey}
+                    onRefreshingChange={setDbRefreshing}
+                    onCollapse={() => setDbSidebarOpen(false)}
+                  />
                 </CollapsibleContent>
               </div>
             </Collapsible>
+            )}
 
             <div className="flex-1 overflow-hidden">
               {doc ? (
@@ -117,6 +199,8 @@ export function DocumentsPage() {
                   onTagsChange={handleTagsChange}
                   onPinToggle={handlePinToggle}
                   saveStatus={saveStatus}
+                  zenMode={dbZenMode}
+                  onZenModeChange={setDbZenMode}
                 />
               ) : lockedId !== null ? (
                 <LockedDocumentPanel
@@ -143,7 +227,10 @@ export function DocumentsPage() {
 
         {localMounted && (
           <div className={`absolute inset-0 ${source === "local" ? "block" : "hidden"}`}>
-            <LocalDocsView />
+            <LocalDocsView
+              refreshTick={localRefreshTick}
+              onRefreshingChange={setLocalRefreshing}
+            />
           </div>
         )}
       </div>

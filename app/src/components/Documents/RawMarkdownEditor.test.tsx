@@ -9,7 +9,7 @@ class ResizeObserverMock {
 
 vi.stubGlobal("ResizeObserver", ResizeObserverMock);
 
-it("uses the configured document text color for raw Markdown", () => {
+it("keeps the raw Markdown textarea transparent over the highlighted layer", () => {
   render(
     <RawMarkdownEditor
       value="# Raw Markdown"
@@ -19,6 +19,8 @@ it("uses the configured document text color for raw Markdown", () => {
   );
 
   expect(screen.getByRole("textbox", { name: "Raw Markdown" })).toHaveStyle({
-    color: "var(--document-text-color, hsl(var(--foreground)))",
+    color: "rgba(0, 0, 0, 0)",
   });
+  expect(document.querySelector(".rm-heading")).not.toBeNull();
+  expect(document.querySelector(".rm-heading-text")?.textContent).toBe("Raw Markdown");
 });

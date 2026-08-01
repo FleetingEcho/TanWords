@@ -8,6 +8,11 @@ import { useChatSession } from "./hooks/useChatSession";
 import { useChatComposer } from "./hooks/useChatComposer";
 import { useSendMessage } from "./hooks/useSendMessage";
 
+const SUMMARIZE_AND_SAVE_PROMPT =
+  "Summarize this conversation as a concise Markdown note, then save it to Documents. " +
+  "Call summarize_conversation to prepare the note, then save_note_as_document to persist it. " +
+  "Use a short descriptive title and structure the body as: key points, conclusions, and anything worth keeping.";
+
 /** All state and business logic behind AiChatPage — split out so the page
  *  component itself only has to worry about rendering. Composes:
  *  - useChatSidebar: the session list, search, and saveSession
@@ -58,6 +63,14 @@ export function useAiChatSession(initialSessionId?: string) {
     setPendingSend(buildArticleBody(article));
   };
 
+  /** One-click "summarize + save": makes sure Documents access is on, then
+   *  asks the agent to run the existing two-step tool flow. */
+  const summarizeAndSave = () => {
+    if (session.streaming) return;
+    if (!session.enabledGroups.has("documents")) session.toggleGroup("documents");
+    setPendingSend(SUMMARIZE_AND_SAVE_PROMPT);
+  };
+
   useEffect(() => {
     if (pendingSend === null) return;
     setPendingSend(null);
@@ -104,7 +117,7 @@ export function useAiChatSession(initialSessionId?: string) {
     dateFrom: sidebar.dateFrom, dateTo: sidebar.dateTo, setDateRange: sidebar.setDateRange,
     activeId: session.activeId, switchSession, deleteSession: session.deleteSession,
     toggleArchived: sidebar.toggleArchived, togglePinned: sidebar.togglePinned,
-    renameSession: session.renameSession, startNew, startWithArticle,
+    renameSession: session.renameSession, startNew, startWithArticle, summarizeAndSave,
     // active session
     displayItems: session.displayItems, activeTitle: session.activeTitle,
     isNewSession: session.isNewSession, streaming: session.streaming,

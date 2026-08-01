@@ -7,7 +7,7 @@ export const PAGE_SIZE = 10_000;
  * the load that ties them together. Split out of DocSelector so the CRUD
  * and import/export hooks (useDocActions, useDocImportExport) can share one
  * `load`/`page` without owning the filter state themselves. */
-export function useDocList(refreshKey: number) {
+export function useDocList(refreshKey: string | number) {
   const db = useDB();
   const [docs, setDocs] = useState<DocumentListItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -50,6 +50,28 @@ export function useDocList(refreshKey: number) {
     window.addEventListener("docs-updated", onExternalChange);
     return () => window.removeEventListener("docs-updated", onExternalChange);
   }, [load, page]);
+  // Save updates the DB asynchronously, but reloading the whole list after
+  // every keystroke caused noticeable UI churn. Patch the in-memory item in
+  // place so counts/titles/tags stay current without a full refetch.
+  useEffect(() => {
+    const onItemUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ id: number; wordCount?: number; title?: string; tags?: string; pinned?: boolean }>).detail;
+      if (!detail || typeof detail.id !== "number") return;
+      setDocs((current) => current.map((doc) => (
+        doc.id === detail.id
+          ? {
+              ...doc,
+              word_count: detail.wordCount ?? doc.word_count,
+              title: detail.title ?? doc.title,
+              tags: detail.tags ?? doc.tags,
+              pinned: detail.pinned ?? doc.pinned,
+            }
+          : doc
+      )));
+    };
+    window.addEventListener("docs-item-updated", onItemUpdated);
+    return () => window.removeEventListener("docs-item-updated", onItemUpdated);
+  }, []);
   useEffect(() => { db.getAllTags().then(setAllTags); }, [refreshKey]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useCreateBlockNote } from "@blocknote/react";
+import { FormattingToolbar, FormattingToolbarController, getFormattingToolbarItems } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import { editorSchema } from "./editorSchema";
 import "@blocknote/mantine/style.css";
@@ -10,7 +11,7 @@ import { blocksToMarkdownOffThread, blocksToMarkdownWithStatsOffThread, markdown
 import { liftMermaid, lowerMermaid } from "./mermaidTransforms";
 import { SaveStatus } from "./useDocumentEditor";
 import { Button } from "@/components/ui/button";
-import { Check, Code2, Eye, Maximize2, Minimize2, Paperclip } from "lucide-react";
+import { Check, Maximize2, Minimize2 } from "lucide-react";
 import { RawMarkdownEditor } from "./RawMarkdownEditor";
 import { blocksToText } from "@/lib/docFormat";
 import { toast } from "sonner";
@@ -23,6 +24,18 @@ import { isEmptyParagraph, withTrailingEditorParagraph, withoutTrailingEditorPar
 import { DocumentPreviewScrollArea } from "./DocumentPreviewScrollArea";
 import { DocumentContentSearch } from "./DocumentContentSearch";
 import { refreshCodeBlockTheme } from "./codeBlockTheme";
+import { ImageOptionsButton } from "./ImageOptionsButton";
+import { EditorAiButton } from "./EditorAiButton";
+import { BlockTemplatesMenu } from "./BlockTemplatesMenu";
+import { DocumentOutline } from "./DocumentOutline";
+import { exportEditorHtml, exportEditorPdf } from "@/lib/documentExport";
+import { DocumentHistoryModal } from "./DocumentHistoryModal";
+import {
+  saveLocalDocumentRevision,
+  listLocalDocumentRevisions,
+  type DocumentRevision,
+} from "@/lib/documentRevisions";
+import { DocumentToolbarActions } from "./DocumentToolbarActions";
 
 type EditorMode = "rich" | "raw";
 
@@ -77,6 +90,9 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
   // area renders blank in between: the title/path header is already there, but the
   // body looks empty rather than loading, for however long the parse takes.
   const [richLoading, setRichLoading] = useState(true);
+  const [outlineOpen, setOutlineOpen] = useState(false);
+  const [outlineTick, setOutlineTick] = useState(0);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const searchRootRef = useRef<HTMLDivElement>(null);
@@ -101,11 +117,20 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
     if (maxSaveTimer.current) clearTimeout(maxSaveTimer.current);
     saveTimer.current = null;
     maxSaveTimer.current = null;
-    if (force || markdown !== lastSavedRaw.current) {
+    const changed = force || markdown !== lastSavedRaw.current;
+    if (changed) {
       await onSave(markdown);
+      if (markdown !== lastSavedRaw.current) {
+        saveLocalDocumentRevision(relPath, {
+          title,
+          content: markdown,
+          contentText: markdown,
+          wordCount: countWords(markdown),
+        });
+      }
       lastSavedRaw.current = markdown;
     }
-  }, [onSave]);
+  }, [onSave, relPath, title]);
 
   const flushSave = useCallback(async (force = false) => {
     const hasChanges = dirty.current;
@@ -282,12 +307,15 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
       }
     };
     const flushPending = () => { void flushRef.current().catch(() => {}); };
+    const flushWhenHidden = () => { if (document.visibilityState === "hidden") flushPending(); };
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("blur", flushPending);
+    document.addEventListener("visibilitychange", flushWhenHidden);
     window.addEventListener("pagehide", flushPending);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("blur-sm", flushPending);
+      window.removeEventListener("blur", flushPending);
+      document.removeEventListener("visibilitychange", flushWhenHidden);
       window.removeEventListener("pagehide", flushPending);
     };
   }, []);
@@ -334,37 +362,24 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
             {zenMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           </Button>
         </div>
-        <div className="mt-2 flex items-center gap-2">
-          <p className="min-w-0 flex-1 truncate text-xs font-mono text-muted-foreground/60">{relPath}</p>
-          <div className="flex items-center rounded-md bg-muted p-0.5">
+        <div className="mt-2 space-y-2">
+          <p className="truncate text-xs font-mono text-muted-foreground/60">{relPath}</p>
+          <div className="flex items-center gap-2">
             {mode === "rich" && <DocumentContentSearch rootRef={searchRootRef} />}
-            <Button type="button" variant="ghost" onClick={() => attachmentInputRef.current?.click()}
-              title={t("doc.attachFile")} className="h-6 gap-1 px-2 text-[10px]">
-              <Paperclip className="h-3 w-3" /> {t("doc.attach")}
-            </Button>
-            <Button type="button" variant="ghost" disabled={switchingMode} onClick={() => void switchMode("rich")} className={`h-6 gap-1 px-2 text-[10px] ${mode === "rich" ? "bg-background shadow-xs" : ""}`}>
-              <Eye className="h-3 w-3" /> {t("doc.richMode")}
-            </Button>
-            <Button type="button" variant="ghost" disabled={switchingMode} onClick={() => void switchMode("raw")} className={`h-6 gap-1 px-2 text-[10px] ${mode === "raw" ? "bg-background shadow-xs" : ""}`}>
-              <Code2 className="h-3 w-3" /> {t("doc.rawMode")}
-            </Button>
-            <span className="mx-0.5 h-3.5 w-px bg-border" />
-            <Button type="button" variant="ghost" size="icon"
-              disabled={documentFontSize <= 12}
-              onClick={() => setDocumentFontSize(documentFontSize - 1)}
-              title={`${t("settings.documentFontSize")}: ${documentFontSize - 1}px`}
-              aria-label={`${t("settings.documentFontSize")} -`}
-              className="h-6 w-auto rounded-md px-1.5 text-[11px] font-semibold text-muted-foreground">
-              A−
-            </Button>
-            <Button type="button" variant="ghost" size="icon"
-              disabled={documentFontSize >= 24}
-              onClick={() => setDocumentFontSize(documentFontSize + 1)}
-              title={`${t("settings.documentFontSize")}: ${documentFontSize + 1}px`}
-              aria-label={`${t("settings.documentFontSize")} +`}
-              className="h-6 w-auto rounded-md px-1.5 text-[13px] font-semibold text-muted-foreground">
-              A+
-            </Button>
+            <DocumentToolbarActions
+              mode={mode}
+              switching={switchingMode}
+              onMode={(nextMode) => void switchMode(nextMode)}
+              onAttach={() => attachmentInputRef.current?.click()}
+              templatesMenu={<BlockTemplatesMenu editor={editor} />}
+              outlineActive={outlineOpen}
+              onToggleOutline={() => setOutlineOpen((v) => !v)}
+              onHistory={() => setHistoryOpen(true)}
+              onExportHtml={() => void exportEditorHtml(editor, title).catch((error) => toast.error(String(error)))}
+              onExportPdf={() => void exportEditorPdf(editor, title).catch((error) => toast.error(String(error)))}
+              documentFontSize={documentFontSize}
+              onFontSizeChange={setDocumentFontSize}
+            />
           </div>
         </div>
         <div className="mt-3 border-b border-border/60" />
@@ -374,16 +389,29 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
 
       {mode === "rich" ? (
         <div ref={searchRootRef} className="contents">
-          <DocumentPreviewScrollArea onPasteCapture={handleImagePaste}
-            onKeyDownCapture={handleRichEditorKeyDown}>
-            {richLoading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-10">
-                <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-              </div>
-            )}
-            <BlockNoteView editor={editor} theme={isDark ? "dark" : "light"} onChange={handleChange}
-              className="tanwords-editor" />
-          </DocumentPreviewScrollArea>
+          <div className="flex min-h-0 flex-1">
+            <DocumentPreviewScrollArea onPasteCapture={handleImagePaste}
+              onKeyDownCapture={handleRichEditorKeyDown}>
+              {richLoading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-10">
+                  <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                </div>
+              )}
+              <BlockNoteView editor={editor} theme={isDark ? "dark" : "light"} onChange={() => { setOutlineTick((tick) => tick + 1); handleChange(); }}
+                formattingToolbar={false} className="tanwords-editor">
+                <FormattingToolbarController
+                  formattingToolbar={() => (
+                    <FormattingToolbar>
+                      {getFormattingToolbarItems()}
+                      <ImageOptionsButton />
+                      <EditorAiButton />
+                    </FormattingToolbar>
+                  )}
+                />
+              </BlockNoteView>
+            </DocumentPreviewScrollArea>
+            {outlineOpen && <DocumentOutline editor={editor} tick={outlineTick} />}
+          </div>
         </div>
       ) : (
         <RawMarkdownEditor value={rawMarkdown} onChange={handleRawChange} label={t("doc.rawMode")} />
@@ -406,6 +434,22 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
         <span className="ml-auto">{t("doc.wordCount", { n: wordCount })}</span>
         <span>{modifiedMs ? new Date(modifiedMs).toLocaleString() : ""}</span>
       </div>
+      <DocumentHistoryModal
+        open={historyOpen}
+        revisions={listLocalDocumentRevisions(relPath)}
+        onClose={() => setHistoryOpen(false)}
+        onRestore={(revision: DocumentRevision) => {
+          void (async () => {
+            const blocks = await markdownToBlocksOffThread(revision.content);
+            editor.replaceBlocks(
+              editor.document,
+              withTrailingEditorParagraph(promoteLocalFileLinks(liftMermaid(blocks))) as any,
+            );
+            dirty.current = true;
+            scheduleSave();
+          })().catch((error) => toast.error(String(error)));
+        }}
+      />
     </div>
   );
 }

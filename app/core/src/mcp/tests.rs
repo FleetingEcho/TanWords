@@ -8,7 +8,7 @@ use super::controller::McpController;
 use super::tools::TanWordsMcp;
 use super::types::{
     AddArticle, AddArticleComment, AddPattern, AddVocabulary, AppendDocument, CreateDocument, GetDocument, SearchDocuments,
-    ListArticles, SearchPatterns, SearchVocabulary, UpdateVocabulary,
+    ListArticles, ListDocuments, ListKnownWords, ListPatterns, SearchPatterns, SearchVocabulary, UpdateVocabulary,
 };
 
 /// Change notifications and the DB handle both go through callbacks, so tests
@@ -267,5 +267,71 @@ async fn articles_are_deduplicated_searchable_and_annotatable() {
     assert!(fetched.contains("cost model 这个说法"));
     assert!(fetched.contains("anchorText"));
 
+    let _ = std::fs::remove_file(path);
+}
+
+#[tokio::test]
+async fn list_tools_and_known_words_are_available() {
+    let (database, path) = test_database().await;
+    database
+        .conn()
+        .execute(
+            "INSERT INTO user_known_words(word, source) VALUES ('serendipity', 'test')",
+            (),
+        )
+        .await
+        .unwrap();
+    let server = test_server(database);
+
+    let known = server
+        .vocabulary_known_words(Parameters(ListKnownWords {
+            query: Some("serend".into()),
+            limit: 10,
+        }))
+        .await;
+    assert!(known.contains("serendipity"));
+
+    let docs = server
+        .documents_list(Parameters(ListDocuments {
+            query: None,
+            tag: None,
+            limit: 10,
+            offset: 0,
+        }))
+        .await;
+    assert!(docs.contains("\"items\""));
+
+    let patterns = server
+        .patterns_list(Parameters(ListPatterns {
+            query: None,
+            limit: 10,
+            offset: 0,
+        }))
+        .await;
+    assert!(patterns.contains("\"items\""));
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[tokio::test]
+async fn resources_and_prompts_are_available() {
+    let (database, path) = test_database().await;
+    let server = test_server(database);
+
+    assert_eq!(TanWordsMcp::resource_definitions().len(), 1);
+    assert!(TanWordsMcp::resource_template_definitions().len() >= 4);
+    assert!(TanWordsMcp::prompt_definitions().len() >= 4);
+
+    let stats = server.read_resource_value("tanwords://stats").await.unwrap();
+    assert_eq!(stats.contents.len(), 1);
+
+    let mut args = serde_json::Map::new();
+    args.insert("text".into(), serde_json::json!("Hello world"));
+    let messages = server.prompt_messages("extract-vocabulary", Some(args)).unwrap();
+    assert_eq!(messages.len(), 1);
+    let content = serde_json::to_string(&messages[0].content).unwrap();
+    assert!(content.contains("Hello world"));
+
+    drop(server);
     let _ = std::fs::remove_file(path);
 }

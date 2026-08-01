@@ -306,6 +306,7 @@ export function ProviderSection() {
           apiKeyPlaceholder={placeholder}
           modelValue={config.modelId}
           onModelChange={(model) => updateConfig(id, { modelId: model })}
+          modelOptions={fetchedModels}
           fetchingModels={fetchingModels}
           onFetchModels={() => void fetchModels(id, config.apiBase, config.apiKey, (model) => updateConfig(id, { modelId: model }), config.modelId)}
           onTest={() => testConnection(id, config.apiBase, config.apiKey, config.modelId)}
@@ -328,6 +329,7 @@ export function ProviderSection() {
         onStartEdit={(provider) => { setEditingId(provider.id); setEditForm({ name: provider.name, apiBase: provider.apiBase, apiKey: provider.apiKey, modelId: provider.modelId }); }}
         fetchingModels={fetchingModels}
         onFetchModelsForEdit={() => void fetchModels(config.id, editForm.apiBase, editForm.apiKey, (model) => setEditForm((prev) => ({ ...prev, modelId: model })), editForm.modelId)}
+        modelOptions={fetchedModels}
         onTest={(provider) => testConnection(provider.id, provider.apiBase, provider.apiKey, provider.modelId)}
         testStatus={testStatus}
         onRemove={async (removeId) => { await removeCustom(removeId); setExpandedId(null); }}
@@ -374,14 +376,13 @@ export function ProviderSection() {
           onNewProviderChange={setNewProvider}
           fetchingModels={fetchingModels}
           onFetchModels={() => void fetchModels("custom", newProvider.apiBase, newProvider.apiKey, (model) => setNewProvider((prev) => ({ ...prev, modelId: model })), newProvider.modelId)}
+          modelOptions={fetchedModels}
           onAdd={addCustom}
           onCancel={() => setShowAddCustom(false)}
           t={t}
         />
       )}
 
-      {/* Model suggestions from "fetch models", shared by every panel above. */}
-      <datalist id="provider-model-options">{fetchedModels.map((model) => <option key={model} value={model} />)}</datalist>
     </section>
   );
 }

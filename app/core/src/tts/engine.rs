@@ -267,6 +267,18 @@ pub fn tts_delete_model(
     std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())
 }
 
+/// Releases the active TTS engine without touching any model files on disk.
+/// Called from the renderer after an idle period; the next speak request
+/// self-heals by loading the persisted model again.
+#[crate::shim::command]
+pub fn tts_unload_model(
+    state: crate::shim::State<'_, crate::AppState>,
+) -> Result<(), String> {
+    let mut guard = state.tts.lock().map_err(|e| e.to_string())?;
+    *guard = None;
+    Ok(())
+}
+
 #[crate::shim::command]
 pub async fn tts_synthesize(
     state: crate::shim::State<'_, crate::AppState>,

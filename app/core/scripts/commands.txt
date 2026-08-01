@@ -99,6 +99,7 @@ tts::models::tts_scan_models
 tts::models::tts_default_models_dir
 tts::engine::tts_load_model
 tts::engine::tts_delete_model
+tts::engine::tts_unload_model
 tts::engine::tts_synthesize
 tts::engine::tts_engine_status
 tts::download::tts_download_model
@@ -119,6 +120,9 @@ rss::db_sync_rss_feed
 rss::db_get_rss_entries
 rss::db_mark_rss_entry_read
 rss::db_get_rss_unread_counts
+rss::db_toggle_feed_bookmark
+rss::db_get_feed_bookmarks
+rss::db_remove_feed_bookmark
 music::music_scan_library
 native_audio::native_audio_probe_duration
 native_audio::native_audio_load

@@ -8,6 +8,20 @@ import { useSettingsStore } from "@/store/settingsStore";
 export class WebSpeechFallbackRequired extends Error {}
 
 let warnedFallback = false;
+const TTS_IDLE_UNLOAD_MS = 5 * 60_000;
+let ttsUnloadTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Arms the sidecar's TTS model to be released after it has sat unused. The
+ *  loaded sherpa-onnx session is the app's biggest optional resident cost
+ *  (60-120MB), and the frontend already self-heals on the next request, so an
+ *  idle timeout is a low-risk way to return that memory to the OS. */
+export function markTtsActivity() {
+  if (ttsUnloadTimer) clearTimeout(ttsUnloadTimer);
+  ttsUnloadTimer = setTimeout(() => {
+    ttsUnloadTimer = null;
+    void invoke("tts_unload_model").catch(() => {});
+  }, TTS_IDLE_UNLOAD_MS);
+}
 
 /** Returns true the first time it's called after a fallback occurs, so
  * callers can show a one-time toast instead of one per sentence. */
@@ -38,6 +52,7 @@ export async function synthesizeBlob(text: string): Promise<Blob> {
   }
   try {
     await invoke("tts_load_model", { path: ttsModelPath });
+    markTtsActivity();
   } catch {
     throw new WebSpeechFallbackRequired();
   }
@@ -50,6 +65,7 @@ export async function synthesizeBlob(text: string): Promise<Blob> {
 
 async function synthesizeOnce(text: string, speakerId: number): Promise<Blob> {
   const wavBase64 = await invoke<string>("tts_synthesize", { text, speakerId, speed: 1.0 });
+  markTtsActivity();
   const bytes = Uint8Array.from(atob(wavBase64), (c) => c.charCodeAt(0));
   return new Blob([bytes], { type: "audio/wav" });
 }

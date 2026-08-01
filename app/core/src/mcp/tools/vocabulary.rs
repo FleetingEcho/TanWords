@@ -4,10 +4,42 @@ use serde_json::{json, Value};
 
 use super::TanWordsMcp;
 use crate::db;
-use crate::mcp::types::{json_text, AddVocabulary, AddVocabularyBatch, GetVocabulary, SearchVocabulary, UpdateVocabulary};
+use crate::mcp::types::{json_text, AddVocabulary, AddVocabularyBatch, GetVocabulary, ListKnownWords, SearchVocabulary, UpdateVocabulary};
 
 #[tool_router(router = vocabulary_tool_router, vis = "pub(crate)")]
 impl TanWordsMcp {
+    #[tool(description = "List the user's known words, optionally filtering by word prefix")]
+    pub(in crate::mcp) async fn vocabulary_known_words(&self, Parameters(input): Parameters<ListKnownWords>) -> String {
+        let result: Result<Value, String> = async {
+            let conn = self.connect().await?;
+            let limit = input.limit.min(500) as i64;
+            let items = match input.query.as_deref().map(str::trim).filter(|q| !q.is_empty()) {
+                Some(query) => {
+                    let pattern = format!("%{}%", query);
+                    db::fetch_all(
+                        &conn,
+                        "SELECT word, created_at FROM user_known_words WHERE word LIKE ?1 ORDER BY created_at DESC LIMIT ?2",
+                        params![pattern, limit],
+                        |row| Ok(json!({"word":row.get::<String>(0)?,"createdAt":row.get::<String>(1)?})),
+                    )
+                    .await?
+                }
+                None => {
+                    db::fetch_all(
+                        &conn,
+                        "SELECT word, created_at FROM user_known_words ORDER BY created_at DESC LIMIT ?1",
+                        params![limit],
+                        |row| Ok(json!({"word":row.get::<String>(0)?,"createdAt":row.get::<String>(1)?})),
+                    )
+                    .await?
+                }
+            };
+            Ok(json!({"items": items}))
+        }
+        .await;
+        result.map(json_text).unwrap_or_else(|error| json_text(json!({"error":error})))
+    }
+
     #[tool(
         description = "Fuzzy-search the user's TanWords vocabulary by English word or Chinese meaning"
     )]

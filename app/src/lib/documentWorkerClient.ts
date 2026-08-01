@@ -1,7 +1,7 @@
 import type { PartialBlock } from "@blocknote/core";
 import { blocksToMarkdown, blocksToStorage, blocksToText, contentToBlocks, markdownToBlocks } from "./docFormat";
 
-type Operation = "markdownToBlocks" | "contentToBlocks" | "blocksToMarkdown" | "blocksToMarkdownWithStats" | "blocksToStorage";
+type Operation = "markdownToBlocks" | "contentToBlocks" | "blocksToMarkdown" | "blocksToMarkdownWithStats" | "blocksToStorage" | "htmlToMarkdown";
 export type MarkdownWithStats = { markdown: string; wordCount: number };
 type Pending = {
   resolve: (value: any) => void;
@@ -18,7 +18,7 @@ const pending = new Map<number, Pending>();
  *  of module code plus its instance state) for as long as it exists. Documents
  *  are edited in bursts, so past this much idle time that memory is worth more
  *  than the ~100ms of respawn on the next parse. */
-const WORKER_IDLE_TIMEOUT_MS = 60_000;
+const WORKER_IDLE_TIMEOUT_MS = 30_000;
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
 
 function stopWorker() {
@@ -140,4 +140,19 @@ export async function blocksToMarkdownWithStatsOffThread(
 export async function blocksToStorageOffThread(blocks: readonly unknown[]) {
   try { return await (run<ReturnType<typeof blocksToStorage>>("blocksToStorage", blocks) ?? Promise.resolve(blocksToStorage(blocks))); }
   catch { return blocksToStorage(blocks); }
+}
+
+export async function htmlToMarkdownOffThread(html: string): Promise<string> {
+  const result = await run<string>("htmlToMarkdown", html);
+  if (!result) throw new Error("document worker unavailable");
+  return result;
+}
+
+export async function blocksToHtmlOffThread(blocks: readonly unknown[]): Promise<string> {
+  // Worker cannot serialize HTML without a DOM, so this runs on the renderer.
+  // Kept behind a named function so export can move off the main thread later
+  // without changing callers.
+  const { BlockNoteEditor } = await import("@blocknote/core");
+  const editor = BlockNoteEditor.create();
+  return editor.blocksToHTMLLossy(blocks as any);
 }

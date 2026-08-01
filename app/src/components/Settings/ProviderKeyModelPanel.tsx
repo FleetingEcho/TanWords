@@ -1,7 +1,8 @@
 import React, { useState } from "react";
-import { Loader2, ListRestart, PlugZap, Trash2 } from "lucide-react";
+import { PlugZap, Trash2 } from "lucide-react";
 import { ProviderIconButton, TestStatusBadge } from "./ProviderFormControls";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { ProviderModelSelect } from "./ProviderModelSelect";
 
 interface ProviderKeyModelPanelProps {
   apiKeyValue: string;
@@ -11,6 +12,7 @@ interface ProviderKeyModelPanelProps {
   onModelChange: (model: string) => void;
   fetchingModels: boolean;
   onFetchModels: () => void;
+  modelOptions: string[];
   onTest: () => void;
   onClear: () => void;
   testStatus: { ok: boolean | null; text: string } | null;
@@ -28,6 +30,7 @@ export function ProviderKeyModelPanel({
   onModelChange,
   fetchingModels,
   onFetchModels,
+  modelOptions,
   onTest,
   onClear,
   testStatus,
@@ -42,13 +45,16 @@ export function ProviderKeyModelPanel({
         <input type="password" value={apiKeyValue} onChange={(e) => onApiKeyChange(e.target.value)} placeholder={apiKeyPlaceholder} className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm font-mono focus:outline-hidden focus:ring-2 focus:ring-primary/30" />
       </div>
       <div>
-        <label className="text-xs text-muted-foreground block mb-1">{t("settings.modelId")}</label>
-        <div className="flex gap-2">
-          <input list="provider-model-options" value={modelValue} onChange={(e) => onModelChange(e.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-sm font-mono focus:outline-hidden" />
-          <ProviderIconButton label={t("settings.fetchModels")} onClick={onFetchModels}>
-            {fetchingModels ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListRestart className="h-4 w-4" />}
-          </ProviderIconButton>
-        </div>
+        <label className="text-xs text-muted-foreground block mb-1">{t("settings.modelLabel")}</label>
+        <ProviderModelSelect
+          value={modelValue}
+          onChange={onModelChange}
+          options={modelOptions}
+          fetchingModels={fetchingModels}
+          onFetchModels={onFetchModels}
+          placeholder={t("settings.modelSelectPlaceholder")}
+          t={t}
+        />
       </div>
       <div className="flex items-center gap-1">
         <ProviderIconButton label={t("settings.testConnection")} onClick={onTest}><PlugZap className="h-4 w-4" /></ProviderIconButton>

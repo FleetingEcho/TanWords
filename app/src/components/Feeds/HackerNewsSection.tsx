@@ -63,6 +63,9 @@ interface Props {
   translatingId?: number | null;
   onAnalyzeBackground?: (entry: DisplayEntry) => void;
   analyzingBackgroundIds?: Set<number>;
+  bookmarkedUrls?: Set<string>;
+  bookmarkPendingUrls?: Set<string>;
+  onToggleBookmark?: (entry: DisplayEntry) => void;
   showTitleTranslations?: boolean;
   titleTranslations?: Record<string, string>;
 }
@@ -70,7 +73,7 @@ interface Props {
 /** Native Hacker News browser — New/Top/Best via HN's Firebase API, or search via
  *  Algolia's HN Search API, both paginated via an explicit "More" click. Nothing
  *  here is persisted: no read tracking, no offline cache. */
-export function HackerNewsSection({ viewMode, onOpen, onTranslate, translatingId, onAnalyzeBackground, analyzingBackgroundIds, showTitleTranslations, titleTranslations }: Props) {
+export function HackerNewsSection({ viewMode, onOpen, onTranslate, translatingId, onAnalyzeBackground, analyzingBackgroundIds, bookmarkedUrls, bookmarkPendingUrls, onToggleBookmark, showTitleTranslations, titleTranslations }: Props) {
   const t = useT();
   const section = useHnBrowseStore((s) => s.section);
   const setSection = useHnBrowseStore((s) => s.setSection);
@@ -227,6 +230,9 @@ export function HackerNewsSection({ viewMode, onOpen, onTranslate, translatingId
             translatingId={translatingId}
             onAnalyzeBackground={onAnalyzeBackground}
             analyzingBackgroundIds={analyzingBackgroundIds}
+            bookmarkedUrls={bookmarkedUrls}
+            bookmarkPendingUrls={bookmarkPendingUrls}
+            onToggleBookmark={onToggleBookmark}
             titleTranslations={titleTranslations}
             viewMode={viewMode}
             trackRead={false}

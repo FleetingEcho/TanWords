@@ -3,7 +3,8 @@ import { LocalDocItem } from "@/lib/localDocs";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Copy, Download, FilePlus2, FileText, MoreHorizontal, Trash2 } from "lucide-react";
+import { Copy, Download, FilePlus2, FileText, MoreHorizontal, Trash2, FileType2, FileOutput, Loader2 } from "lucide-react";
+import { subscribeToExportBusy } from "@/lib/documentExport";
 
 interface Props {
   files: LocalDocItem[];
@@ -14,6 +15,8 @@ interface Props {
   onDelete: (relPath: string) => void;
   onImport: (relPath: string) => void;
   onExport: (relPath: string) => void;
+  onExportHtml: (relPath: string) => void;
+  onExportPdf: (relPath: string) => void;
   onMove: (relPath: string, targetDir: string) => void;
   onCreateInFolder: (directory: string) => void;
 }
@@ -41,7 +44,7 @@ function buildTree(files: LocalDocItem[]): DirNode {
   return rootNode;
 }
 
-function FileRow({ file, active, depth, rowRef, onOpen, onDelete, onImport, onExport }: {
+function FileRow({ file, active, depth, rowRef, onOpen, onDelete, onImport, onExport, onExportHtml, onExportPdf }: {
   file: LocalDocItem;
   active: boolean;
   depth: number;
@@ -50,8 +53,13 @@ function FileRow({ file, active, depth, rowRef, onOpen, onDelete, onImport, onEx
   onDelete: (relPath: string) => void;
   onImport: (relPath: string) => void;
   onExport: (relPath: string) => void;
+  onExportHtml: (relPath: string) => void;
+  onExportPdf: (relPath: string) => void;
 }) {
   const t = useT();
+  const [exportBusy, setExportBusy] = useState(false);
+
+  useEffect(() => subscribeToExportBusy(setExportBusy), []);
   return (
     <div
       ref={rowRef}
@@ -104,6 +112,12 @@ function FileRow({ file, active, depth, rowRef, onOpen, onDelete, onImport, onEx
             <DropdownMenuItem onSelect={() => onExport(file.rel_path)}>
               <Download className="h-3.5 w-3.5" /> {t("doc.exportMarkdown")}
             </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onExportHtml(file.rel_path)} disabled={exportBusy}>
+              {exportBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileType2 className="h-3.5 w-3.5" />} {t("doc.exportHtml")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onExportPdf(file.rel_path)} disabled={exportBusy}>
+              {exportBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileOutput className="h-3.5 w-3.5" />} {t("doc.exportPdf")}
+            </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => onDelete(file.rel_path)} className="text-destructive focus:bg-destructive/10 focus:text-destructive">
               <Trash2 className="h-3.5 w-3.5" /> {t("doc.delete")}
             </DropdownMenuItem>
@@ -114,7 +128,7 @@ function FileRow({ file, active, depth, rowRef, onOpen, onDelete, onImport, onEx
   );
 }
 
-export function LocalDocTree({ files, activePath, flat, onOpen, onDelete, onImport, onExport, onMove, onCreateInFolder }: Props) {
+export function LocalDocTree({ files, activePath, flat, onOpen, onDelete, onImport, onExport, onExportHtml, onExportPdf, onMove, onCreateInFolder }: Props) {
   const t = useT();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [dropTarget, setDropTarget] = useState<string | null>(null);
@@ -135,7 +149,7 @@ export function LocalDocTree({ files, activePath, flat, onOpen, onDelete, onImpo
     return (
       <>
         {files.map((f) => (
-          <FileRow key={f.rel_path} file={f} active={activePath === f.rel_path} depth={0} rowRef={activePath === f.rel_path ? activeRowRef : undefined} onOpen={onOpen} onDelete={onDelete} onImport={onImport} onExport={onExport} />
+          <FileRow key={f.rel_path} file={f} active={activePath === f.rel_path} depth={0} rowRef={activePath === f.rel_path ? activeRowRef : undefined} onOpen={onOpen} onDelete={onDelete} onImport={onImport} onExport={onExport} onExportHtml={onExportHtml} onExportPdf={onExportPdf} />
         ))}
       </>
     );
@@ -243,7 +257,7 @@ export function LocalDocTree({ files, activePath, flat, onOpen, onDelete, onImpo
           );
         })}
         {node.files.map((f) => (
-          <FileRow key={f.rel_path} file={f} active={activePath === f.rel_path} depth={depth} rowRef={activePath === f.rel_path ? activeRowRef : undefined} onOpen={onOpen} onDelete={onDelete} onImport={onImport} onExport={onExport} />
+          <FileRow key={f.rel_path} file={f} active={activePath === f.rel_path} depth={depth} rowRef={activePath === f.rel_path ? activeRowRef : undefined} onOpen={onOpen} onDelete={onDelete} onImport={onImport} onExport={onExport} onExportHtml={onExportHtml} onExportPdf={onExportPdf} />
         ))}
       </React.Fragment>
     );

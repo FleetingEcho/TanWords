@@ -8,7 +8,8 @@ import { logError, reportWriteError } from "./useDB.errors";
 import {
   ChatSessionItem, ChatSessionDetail,
   DashboardStats, DueCard, ReviewResult, SrsRating, SearchHistoryItem,
-  RssFeedMeta, RssFeed, RssEntryRow, DbConnection, ImportPlan, ImportDecisions, ImportResult,
+  RssFeedMeta, RssFeed, RssEntryRow, FeedBookmark, FeedBookmarkInput,
+  DbConnection, ImportPlan, ImportDecisions, ImportResult,
 } from "./useDB.types";
 
 function serializeChatSession(s: {
@@ -314,6 +315,43 @@ export function useDBExtra() {
     } catch (e) {
       logError("getRssUnreadCounts", e);
       return [];
+    }
+  }, []);
+
+  const toggleFeedBookmark = useCallback(async (input: FeedBookmarkInput): Promise<boolean> => {
+    try {
+      return await invoke<boolean>("db_toggle_feed_bookmark", {
+        url: input.url,
+        title: input.title,
+        feedTitle: input.feedTitle,
+        domain: input.domain,
+        summary: input.summary,
+        imageUrl: input.imageUrl,
+        audioUrl: input.audioUrl,
+        audioDuration: input.audioDuration,
+        hnItemId: input.hnItemId,
+        published: input.published,
+      });
+    } catch (e) {
+      reportWriteError("toggleFeedBookmark", e, "切换收藏失败");
+      return false;
+    }
+  }, []);
+
+  const getFeedBookmarks = useCallback(async (limit = 500, offset = 0): Promise<FeedBookmark[]> => {
+    try {
+      return await invoke<FeedBookmark[]>("db_get_feed_bookmarks", { limit, offset });
+    } catch (e) {
+      logError("getFeedBookmarks", e);
+      return [];
+    }
+  }, []);
+
+  const removeFeedBookmark = useCallback(async (url: string): Promise<void> => {
+    try {
+      await invoke("db_remove_feed_bookmark", { url });
+    } catch (e) {
+      reportWriteError("removeFeedBookmark", e, "取消收藏失败");
     }
   }, []);
 

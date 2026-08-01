@@ -1,4 +1,5 @@
 import React, { useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   FormattingToolbarController,
 } from "@blocknote/react";
@@ -12,7 +13,7 @@ import { useIsDark } from "@/hooks/useIsDark";
 import { parseDbTimestamp } from "@/lib/dbTime";
 import { PinIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
-import { Check, Code2, Eye, Link2, Paperclip, Search } from "lucide-react";
+import { Check, Link2, Maximize2, Minimize2, Search } from "lucide-react";
 import { RawMarkdownEditor } from "./RawMarkdownEditor";
 import type { SaveStatus } from "./useDocumentEditor";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
@@ -24,6 +25,15 @@ import { DocumentContentSearch } from "./DocumentContentSearch";
 import { useDocEditorContent } from "./hooks/useDocEditorContent";
 import { useDocEditorLinks } from "./hooks/useDocEditorLinks";
 import { useDocEditorAttachments } from "./hooks/useDocEditorAttachments";
+import { BlockTemplatesMenu } from "./BlockTemplatesMenu";
+import { DocumentOutline } from "./DocumentOutline";
+import { exportEditorHtml, exportEditorPdf } from "@/lib/documentExport";
+import { DocumentHistoryModal } from "./DocumentHistoryModal";
+import type { DocumentRevision } from "@/lib/documentRevisions";
+import { DocumentToolbarActions } from "./DocumentToolbarActions";
+import { contentToBlocksOffThread } from "@/lib/documentWorkerClient";
+import { withTrailingEditorParagraph } from "./trailingEditorParagraph";
+import { liftMermaid } from "./mermaidTransforms";
 
 interface Props {
   doc: DocumentDetail;
@@ -33,9 +43,11 @@ interface Props {
   onTagsChange: (tags: string) => void;
   onPinToggle: () => void;
   saveStatus: SaveStatus;
+  zenMode: boolean;
+  onZenModeChange: (enabled: boolean) => void;
 }
 
-export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, onPinToggle, saveStatus }: Props) {
+export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, onPinToggle, saveStatus, zenMode, onZenModeChange }: Props) {
   const t = useT();
   const isDark = useIsDark();
   const documentFontSize = useSettingsStore((state) => state.documentFontSize);
@@ -48,6 +60,9 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const searchRootRef = useRef<HTMLDivElement>(null);
   const [toolbarPortalElement, setToolbarPortalElement] = useState<HTMLDivElement | null>(null);
+  const [outlineOpen, setOutlineOpen] = useState(false);
+  const [outlineTick, setOutlineTick] = useState(0);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const content = useDocEditorContent(doc, onSave, onDirty);
   const { editor, mode, rawMarkdown, switchingMode, richLoading, switchMode, handleChange, handleRawChange, scheduleSave } = content;
@@ -99,63 +114,58 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
           >
             <PinIcon filled={doc.pinned} className="w-4 h-4" />
           </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => onZenModeChange(!zenMode)}
+            title={zenMode ? t("doc.exitZenMode") : t("doc.zenMode")}
+            aria-label={zenMode ? t("doc.exitZenMode") : t("doc.zenMode")}
+            className="mt-2 h-8 w-8 shrink-0 text-muted-foreground"
+          >
+            {zenMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </Button>
         </div>
-        <div className="flex items-center gap-2 mt-2">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3.5 h-3.5 text-muted-foreground/50 shrink-0">
-            <path d="M3.5 10.5v-6a1 1 0 011-1h6l6 6-7 7-6-6z" strokeLinejoin="round" />
-            <circle cx="7.5" cy="7.5" r="1" fill="currentColor" stroke="none" />
-          </svg>
-          <input
-            type="text"
-            value={tagsInput}
-            onChange={(e) => setTagsInput(e.target.value)}
-            onBlur={handleTagsBlur}
-            placeholder={t("doc.tagsPlaceholder")}
-            className="flex-1 text-xs bg-transparent border-none outline-hidden text-muted-foreground placeholder:text-muted-foreground/40"
-          />
-          {tagChips.length > 0 && (
-            <div className="flex gap-1 shrink-0">
-              {tagChips.slice(0, 4).map((tag) => (
-                <span key={tag} className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                  {tag}
-                </span>
-              ))}
-            </div>
-          )}
-          <div className="ml-auto flex items-center rounded-md bg-muted p-0.5">
+        <div className="mt-2 space-y-2">
+          <div className="flex items-center gap-2">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3.5 h-3.5 text-muted-foreground/50 shrink-0">
+              <path d="M3.5 10.5v-6a1 1 0 011-1h6l6 6-7 7-6-6z" strokeLinejoin="round" />
+              <circle cx="7.5" cy="7.5" r="1" fill="currentColor" stroke="none" />
+            </svg>
+            <input
+              type="text"
+              value={tagsInput}
+              onChange={(e) => setTagsInput(e.target.value)}
+              onBlur={handleTagsBlur}
+              placeholder={t("doc.tagsPlaceholder")}
+              className="flex-1 text-xs bg-transparent border-none outline-hidden text-muted-foreground placeholder:text-muted-foreground/40"
+            />
+            {tagChips.length > 0 && (
+              <div className="flex gap-1 shrink-0">
+                {tagChips.slice(0, 4).map((tag) => (
+                  <span key={tag} className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
             {mode === "rich" && <DocumentContentSearch rootRef={searchRootRef} />}
-            <Button type="button" variant="ghost" onClick={() => attachmentInputRef.current?.click()}
-              title={t("doc.attachFile")} className="h-6 gap-1 px-2 text-[10px]">
-              <Paperclip className="h-3 w-3" /> {t("doc.attach")}
-            </Button>
-            <Button type="button" variant="ghost" onClick={() => links.setLinkPickerOpen(true)}
-              title={t("doc.insertDocumentLink")} className="h-6 gap-1 px-2 text-[10px]">
-              <Link2 className="h-3 w-3" /> {t("doc.link")}
-            </Button>
-            <Button type="button" variant="ghost" disabled={switchingMode} onClick={() => void switchMode("rich")} className={`h-6 gap-1 px-2 text-[10px] ${mode === "rich" ? "bg-background shadow-xs" : ""}`}>
-              <Eye className="h-3 w-3" /> {t("doc.richMode")}
-            </Button>
-            <Button type="button" variant="ghost" disabled={switchingMode} onClick={() => void switchMode("raw")} className={`h-6 gap-1 px-2 text-[10px] ${mode === "raw" ? "bg-background shadow-xs" : ""}`}>
-              <Code2 className="h-3 w-3" /> {t("doc.rawMode")}
-            </Button>
-            <span className="mx-0.5 h-3.5 w-px bg-border" />
-            <Button type="button" variant="ghost" size="icon"
-              disabled={documentFontSize <= 12}
-              onClick={() => setDocumentFontSize(documentFontSize - 1)}
-              title={`${t("settings.documentFontSize")}: ${documentFontSize - 1}px`}
-              aria-label={`${t("settings.documentFontSize")} -`}
-              className="h-6 w-auto rounded-md px-1.5 text-[11px] font-semibold text-muted-foreground">
-              A−
-            </Button>
-            <Button type="button" variant="ghost" size="icon"
-              disabled={documentFontSize >= 24}
-              onClick={() => setDocumentFontSize(documentFontSize + 1)}
-              title={`${t("settings.documentFontSize")}: ${documentFontSize + 1}px`}
-              aria-label={`${t("settings.documentFontSize")} +`}
-              className="h-6 w-auto rounded-md px-1.5 text-[13px] font-semibold text-muted-foreground">
-              A+
-            </Button>
           </div>
+          <DocumentToolbarActions
+            mode={mode}
+            switching={switchingMode}
+            onMode={(nextMode) => void switchMode(nextMode)}
+            onAttach={() => attachmentInputRef.current?.click()}
+            onInsertLink={() => links.setLinkPickerOpen(true)}
+            templatesMenu={<BlockTemplatesMenu editor={editor} />}
+            outlineActive={outlineOpen}
+            onToggleOutline={() => setOutlineOpen((v) => !v)}
+            onHistory={() => setHistoryOpen(true)}
+            onExportHtml={() => void exportEditorHtml(editor, doc.title).catch((error) => toast.error(String(error)))}
+            onExportPdf={() => void exportEditorPdf(editor, doc.title).catch((error) => toast.error(String(error)))}
+            documentFontSize={documentFontSize}
+            onFontSizeChange={setDocumentFontSize}
+          />
         </div>
         <div className="mt-3 border-b border-border/60" />
         <input ref={attachmentInputRef} type="file" className="hidden"
@@ -164,28 +174,31 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
 
       {mode === "rich" ? (
         <div ref={searchRootRef} className="contents">
-          <DocumentPreviewScrollArea onClickCapture={links.handleEditorClick}
-            onKeyDownCapture={(e) => attachments.handleRichEditorKeyDown(e, selectRichEditorContents)}>
-            {richLoading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-10">
-                <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-              </div>
-            )}
-            <BlockNoteView editor={editor} theme={isDark ? "dark" : "light"} onChange={handleChange}
-              formattingToolbar={false} className="tanwords-editor">
-              <FormattingToolbarController
-                formattingToolbar={attachments.formattingToolbar}
-                portalElement={toolbarPortalElement}
-                floatingUIOptions={{
-                  useFloatingOptions: {
-                    placement: "bottom-start",
-                    middleware: [offset(10), shift({ padding: 8 })],
-                  },
-                  elementProps: { style: { zIndex: 100 } },
-                }}
-              />
-            </BlockNoteView>
-          </DocumentPreviewScrollArea>
+          <div className="flex min-h-0 flex-1">
+            <DocumentPreviewScrollArea onClickCapture={links.handleEditorClick}
+              onKeyDownCapture={(e) => attachments.handleRichEditorKeyDown(e, selectRichEditorContents)}>
+              {richLoading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-10">
+                  <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                </div>
+              )}
+              <BlockNoteView editor={editor} theme={isDark ? "dark" : "light"} onChange={() => { setOutlineTick((tick) => tick + 1); handleChange(); }}
+                formattingToolbar={false} className="tanwords-editor">
+                <FormattingToolbarController
+                  formattingToolbar={attachments.formattingToolbar}
+                  portalElement={toolbarPortalElement}
+                  floatingUIOptions={{
+                    useFloatingOptions: {
+                      placement: "bottom-start",
+                      middleware: [offset(10), shift({ padding: 8 })],
+                    },
+                    elementProps: { style: { zIndex: 100 } },
+                  }}
+                />
+              </BlockNoteView>
+            </DocumentPreviewScrollArea>
+            {outlineOpen && <DocumentOutline editor={editor} tick={outlineTick} />}
+          </div>
         </div>
       ) : (
         <RawMarkdownEditor value={rawMarkdown} onChange={handleRawChange} label={t("doc.rawMode")} />
@@ -261,6 +274,24 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
         request={attachments.passwordRequest}
         onCancel={() => attachments.finishPasswordRequest(null)}
         onSubmit={(password) => attachments.finishPasswordRequest(password)}
+      />
+      <DocumentHistoryModal
+        open={historyOpen}
+        documentId={doc.id}
+        onClose={() => setHistoryOpen(false)}
+        onRestore={(revision: DocumentRevision) => {
+          void (async () => {
+            const blocks = await contentToBlocksOffThread(revision.content);
+            editor.replaceBlocks(
+              editor.document,
+              withTrailingEditorParagraph(liftMermaid(blocks)) as any,
+            );
+            onDirty();
+            scheduleSave();
+            setTitle(revision.title);
+            onTitleChange(revision.title);
+          })().catch((error) => toast.error(String(error)));
+        }}
       />
     </div>
   );

@@ -19,13 +19,19 @@ interface Props {
   onSelect: (id: number) => void;
   onNewDoc: () => void;
   refreshKey: number;
+  manualRefreshKey?: number;
+  onRefreshingChange?: (refreshing: boolean) => void;
   onCollapse?: () => void;
 }
 
-export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, onCollapse }: Props) {
+export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, manualRefreshKey = 0, onRefreshingChange, onCollapse }: Props) {
   const t = useT();
-  const list = useDocList(refreshKey);
-  const { db, page, load, total, totalPages } = list;
+  const list = useDocList(`${refreshKey}:${manualRefreshKey}`);
+  const { db, page, load, total, totalPages, loading: listLoading } = list;
+
+  React.useEffect(() => {
+    onRefreshingChange?.(listLoading);
+  }, [listLoading, onRefreshingChange]);
 
   const [imagesOpen, setImagesOpen] = useState(false);
   const [normalOpen, setNormalOpen] = useState(() => localStorage.getItem("tanwords_docs_normal_open") !== "0");
@@ -39,12 +45,13 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, onCollap
     window.addEventListener("blur", dismiss);
     return () => {
       window.removeEventListener("mousedown", dismiss);
-      window.removeEventListener("blur-sm", dismiss);
+      window.removeEventListener("blur", dismiss);
     };
   }, [shelfMenu]);
 
   const actions = useDocActions({ db, activeId, onSelect, load, page, setPrivateOpen });
   const importExport = useDocImportExport({ db, onSelect, load, requestPassword: actions.requestPassword });
+  const { exportDocumentHtml, exportDocumentPdf } = importExport;
 
   const createInShelf = (privateShelf: boolean) => {
     setShelfMenu(null);
@@ -69,6 +76,8 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, onCollap
         activeId={activeId}
         onSelect={onSelect}
         onExport={(id) => void importExport.exportDocuments([id])}
+        onExportHtml={(id) => void exportDocumentHtml(id)}
+        onExportPdf={(id) => void exportDocumentPdf(id)}
         normalOpen={normalOpen}
         setNormalOpen={setNormalOpen}
         privateOpen={privateOpen}

@@ -36,7 +36,7 @@ type TabRecord = {
  *  freed and the page reloads from its URL when the user returns to it. This
  *  is what Chrome's own tab discarding does; the active tab is never a
  *  candidate. */
-const MAX_LIVE_TABS = 3;
+const MAX_LIVE_TABS = 2;
 
 function toIntBounds(b: PanelBounds) {
   return {

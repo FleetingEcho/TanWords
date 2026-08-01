@@ -109,7 +109,7 @@ export function MainLayout({
           collapsed ? "w-[60px]" : "w-[210px]"
         }`}
       >
-        <div className={`flex items-center pt-5 pb-2 ${collapsed ? "px-2 justify-center" : "px-4 justify-between"}`}>
+        <div className={`app-drag-region flex items-center pt-5 pb-2 ${collapsed ? "px-2 justify-center" : "px-4 justify-between"}`}>
           {!collapsed && (
             <p className="text-[10px] font-semibold tracking-widest uppercase text-[hsl(var(--sidebar-muted))]">
               {t("nav.workspace")}

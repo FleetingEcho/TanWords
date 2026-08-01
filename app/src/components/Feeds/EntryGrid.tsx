@@ -21,6 +21,10 @@ interface Props {
    *  run at once, so entries in flight are tracked as a set rather than a single id. */
   onAnalyzeBackground?: (entry: DisplayEntry) => void;
   analyzingBackgroundIds?: Set<number>;
+  /** URLs already bookmarked — enables the standalone bookmark button on each entry. */
+  bookmarkedUrls?: Set<string>;
+  bookmarkPendingUrls?: Set<string>;
+  onToggleBookmark?: (entry: DisplayEntry) => void;
   /** key (titleTranslateKey) -> Chinese title, shown under the English one when present. */
   titleTranslations?: Record<string, string>;
   /** "list" trades cover art and the hero layout for a dense one-line-per-entry view. */
@@ -87,7 +91,7 @@ function GroupHeader({
 
 /** Magazine flow: date-grouped sections; the very first entry renders as a hero card.
  *  In list mode, groups collapse into a dense one-line-per-entry list instead (no hero, no cover art). */
-export function EntryGrid({ entries, feedsById, onOpen, onPlay, onTranslate, translatingId = null, onAnalyzeBackground, analyzingBackgroundIds, titleTranslations, viewMode, trackRead = true, coverColor, coverLetter, hasMore = false, loadingMore = false, onLoadMore }: Props) {
+export function EntryGrid({ entries, feedsById, onOpen, onPlay, onTranslate, translatingId = null, onAnalyzeBackground, analyzingBackgroundIds, bookmarkedUrls, bookmarkPendingUrls, onToggleBookmark, titleTranslations, viewMode, trackRead = true, coverColor, coverLetter, hasMore = false, loadingMore = false, onLoadMore }: Props) {
   const t = useT();
   const [collapsedGroups, setCollapsedGroups] = useState<Set<DateGroup>>(new Set());
 
@@ -146,6 +150,9 @@ export function EntryGrid({ entries, feedsById, onOpen, onPlay, onTranslate, tra
                   translating={translatingId === e.id}
                   onAnalyzeBackground={onAnalyzeBackground ? () => onAnalyzeBackground(e) : undefined}
                   analyzingBackground={analyzingBackgroundIds?.has(e.id) ?? false}
+                  bookmarked={bookmarkedUrls?.has(e.url) ?? false}
+                  bookmarkPending={bookmarkPendingUrls?.has(e.url) ?? false}
+                  onToggleBookmark={onToggleBookmark ? () => onToggleBookmark(e) : undefined}
                   chineseTitle={titleTranslations?.[titleTranslateKey(e)]}
                   trackRead={trackRead}
                 />
@@ -163,6 +170,9 @@ export function EntryGrid({ entries, feedsById, onOpen, onPlay, onTranslate, tra
                     translating={translatingId === hero.id}
                     onAnalyzeBackground={onAnalyzeBackground ? () => onAnalyzeBackground(hero) : undefined}
                     analyzingBackground={analyzingBackgroundIds?.has(hero.id) ?? false}
+                    bookmarked={bookmarkedUrls?.has(hero.url) ?? false}
+                    bookmarkPending={bookmarkPendingUrls?.has(hero.url) ?? false}
+                    onToggleBookmark={onToggleBookmark ? () => onToggleBookmark(hero) : undefined}
                     chineseTitle={titleTranslations?.[titleTranslateKey(hero)]}
                     trackRead={trackRead}
                     coverColor={coverColor}
@@ -182,6 +192,9 @@ export function EntryGrid({ entries, feedsById, onOpen, onPlay, onTranslate, tra
                         translating={translatingId === e.id}
                         onAnalyzeBackground={onAnalyzeBackground ? () => onAnalyzeBackground(e) : undefined}
                         analyzingBackground={analyzingBackgroundIds?.has(e.id) ?? false}
+                        bookmarked={bookmarkedUrls?.has(e.url) ?? false}
+                        bookmarkPending={bookmarkPendingUrls?.has(e.url) ?? false}
+                        onToggleBookmark={onToggleBookmark ? () => onToggleBookmark(e) : undefined}
                         chineseTitle={titleTranslations?.[titleTranslateKey(e)]}
                         trackRead={trackRead}
                         coverColor={coverColor}

@@ -212,11 +212,40 @@ export function useArticleReaderState(params: {
           setStatus("error");
           return;
         }
-        setArticle({ ...articleFromPastedText(detail.content, detail.title), title: detail.title });
+        if (detail.content.trim()) {
+          setArticle({ ...articleFromPastedText(detail.content, detail.title), title: detail.title });
+          setArticleId(detail.id);
+          setStatus("ready");
+          useReaderNotesStore.getState().setArticle({
+            url, title: detail.title, text: detail.content, hnItemId: null,
+          });
+          return;
+        }
+        // A library row saved earlier can be empty when the original fetch
+        // failed. If we kept its source URL, refetch the live page instead of
+        // showing a permanently blank reader.
+        if (detail.source_url) {
+          invoke<FetchedArticle>("fetch_article", { url: detail.source_url })
+            .then((a) => {
+              if (seq !== requestSeq.current) return;
+              setArticle(a);
+              setArticleId(detail.id);
+              setStatus("ready");
+              useReaderNotesStore.getState().setArticle({
+                url, title: a.title, text: a.text_content, hnItemId: null,
+              });
+            })
+            .catch(() => {
+              if (seq !== requestSeq.current) return;
+              setStatus("error");
+            });
+          return;
+        }
+        setArticle({ ...articleFromPastedText("", detail.title), title: detail.title });
         setArticleId(detail.id);
         setStatus("ready");
         useReaderNotesStore.getState().setArticle({
-          url, title: detail.title, text: detail.content, hnItemId: null,
+          url, title: detail.title, text: "", hnItemId: null,
         });
       });
       return;

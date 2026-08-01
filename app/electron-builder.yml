@@ -10,6 +10,14 @@
 appId: com.tanner.tanwords
 productName: TanWords
 
+# Keep only the UI languages the app actually ships. Electron's default
+# framework ships ~220 locale packs (~47MB unpacked) for Chromium's built-in
+# UI; removing every language except English and Simplified Chinese is the
+# largest single installer-size lever left after node_modules exclusion.
+electronLanguages:
+  - en
+  - zh_CN
+
 # ---------------------------------------------------------------------------
 # Update feed. Without this block electron-builder emits no `app-update.yml`
 # into the package, so `autoUpdater.checkForUpdates()` throws at runtime,

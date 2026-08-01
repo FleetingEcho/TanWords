@@ -149,11 +149,11 @@ scripts/      # Release helpers.
   Downloadable voice models, pluggable model directories, sentence-by-sentence
   article playback, and per-word/example "speak" buttons throughout the app; falls
   back to the browser's `speechSynthesis` if no local model is loaded.
-  Article playback is pipelined rather than batched: the model is preloaded at
-  app startup (not on first use), only the sentence about to play is awaited,
-  and the next couple of sentences are synthesized in the background while it
-  plays. Synthesis itself runs off the async runtime on a dedicated blocking
-  thread, so the UI stays responsive while sentences are generated.
+  Article playback is pipelined rather than batched: the model is loaded on
+  demand, only the sentence about to play is awaited, and the next couple of
+  sentences are synthesized in the background while it plays. Synthesis itself
+  runs off the async runtime on a dedicated blocking thread, so the UI stays
+  responsive while sentences are generated.
 
 ## Under the hood
 
@@ -175,21 +175,27 @@ the source and generates the dispatch table on every `cargo build`, so adding a
 command is one function plus one line in a manifest — there is no hand-maintained
 router to drift out of sync. 152 commands are wired this way today.
 
-### Bundle: 202MB → 129MB DMG, 344MB → 17MB asar
+### Bundle: 202MB → 123MB arm64 zip, 344MB → 11MB asar
 
 - **`node_modules` is not shipped.** All 27 production dependencies are renderer
   libraries Vite has already bundled into `out/renderer`, and vite-plugin-electron
   inlines the single main-process dependency into `out/main` — nothing resolves
   from the tree at runtime. Shipping it anyway made `app.asar` 344MB instead of
-  **17MB**.
+  **11MB**.
 - **Fonts: 1.88MB → 0.17MB.** Monaspace shipped as a 1487KB WOFF1 Nerd Font
   build whose 9,390 PUA icon glyphs are used nowhere in the source; subsetting
   to WOFF2 gives **101KB**. Inter shipped 9 weights × 2 formats where the app
   uses 4 weights and Chromium never needs the WOFF fallback.
+- **Electron locale packs: 220 → 2.** Electron's framework ships ~47MB of
+  Chromium locale `.pak` files by default; only `en` and `zh_CN` are needed by
+  this app, and `electronLanguages` drops the rest from every target. On the
+  current arm64 build this takes the zip from 129MB to 123MB.
 - **Main chunk: 3.69MB → 1.73MB.** BlockNote was being pulled into the entry
   chunk by modules that only wanted a text-extraction helper; it is now a
   dynamic import behind a cached promise, in its own chunk. All 9 routes are
-  code-split (7 used to be eager) with an idle prefetch so navigation stays warm.
+  code-split (7 used to be eager) and load on first navigation, so unused
+  routes do not stay resident in the renderer. Global overlays (word detail,
+  tools modal, podcast bar) are also lazy and only load when first opened.
 - **TTS runtime linked statically.** Moving to k2-fsa's official `sherpa-onnx`
   removed the dylib staging in `build.rs`, the platform rpaths, and the
   per-platform `sherpa-libs` payload from all three targets.
@@ -197,14 +203,15 @@ router to drift out of sync. 152 commands are wired this way today.
 ### Memory
 
 - **Browser panel tabs were unbounded** — one full renderer process each, never
-  reclaimed. Now Chrome-style LRU discard (3 live tabs): the process is freed and
+  reclaimed. Now Chrome-style LRU discard (2 live tabs): the process is freed and
   the page reloads from its URL on return.
 - **Chromium's spare renderer is disabled** (a permanently idle ~60–90MB process)
   and the V8 heap is capped — measured 3586MB → **631MB** limit.
 - **The document worker** held a live editor instance forever after a single
-  parse; it now terminates after 60s idle.
-- **The TTS model is no longer preloaded at startup.** It loads on demand, so the
-  60–120MB session is not charged to launches that never speak.
+  parse; it now terminates after 30s idle.
+- **The TTS model is no longer preloaded at startup.** It loads on demand and is
+  released again after 5 minutes without synthesis, so the 60–120MB session is
+  not charged to launches that never speak or to users who leave reading idle.
 
 ### Speech that doesn't block
 

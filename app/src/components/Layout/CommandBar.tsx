@@ -15,6 +15,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { WordSearchBox } from "@/components/shared/WordSearchBox";
 import { TtsControl } from "@/components/ui/TtsControl";
 import { SentenceSearchBox } from "@/components/shared/SentenceSearchBox";
+import { WindowControls } from "@/components/Layout/WindowControls";
 import { useT } from "@/hooks/useT";
 import { useDB } from "@/hooks/useDB";
 import type { DbConnection } from "@/hooks/useDB.types";
@@ -162,7 +163,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
           both `auto`, so the page paints later and its toolbars (the Browser
           address bar, FeedTabs at z-20, sticky list headers at z-10) come out
           on top of the dropdown. This has to stay above all of those. */}
-      <header className="relative z-30 flex h-12 shrink-0 select-none items-center gap-1.5 border-b border-border/80 bg-background/90 px-3 backdrop-blur-xl">
+      <header className="app-drag-region relative z-30 flex h-12 shrink-0 select-none items-center gap-1.5 border-b border-border/80 bg-background/90 px-3 backdrop-blur-xl">
         {visible("search") && (
           <div className="flex min-w-0 max-w-80 flex-1 items-center gap-1">
             <div className="min-w-0 flex-1">
@@ -254,7 +255,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
           <span className="hidden lg:inline">{t("scratch.open")}</span>
         </Button>}
 
-        <div className="flex items-center gap-0.5 border-l border-border pl-2">
+        <div className="flex shrink-0 items-center gap-0.5 border-l border-border pl-2">
           <Button
             variant="ghost"
             size="icon"
@@ -348,6 +349,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
             {userAvatar ? <img src={userAvatar} alt="" className="h-full w-full object-cover" /> : <User className="h-4 w-4" />}
           </Button>
         </div>
+        <WindowControls />
       </header>
 
       {paletteOpen && <div className="fixed inset-0 z-100 flex justify-center bg-black/45 px-4 pt-[14vh] backdrop-blur-xs" onMouseDown={() => setPaletteOpen(false)}><div className="h-fit w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-popover shadow-2xl" onMouseDown={(event) => event.stopPropagation()}><div className="flex h-12 items-center gap-3 border-b border-border px-4"><Search className="h-4 w-4 text-muted-foreground" /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.key === "Escape" && setPaletteOpen(false)} placeholder={t("command.searchPlaceholder")} className="min-w-0 flex-1 bg-transparent text-sm outline-hidden" /><button onClick={() => setPaletteOpen(false)}><X className="h-4 w-4 text-muted-foreground" /></button></div><div className="max-h-80 overflow-y-auto p-2">{commands.map((command, index) => <button key={`${command.label}-${index}`} onClick={() => { command.run(); setPaletteOpen(false); setQuery(""); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-muted"><command.icon className="h-4 w-4 text-muted-foreground" /><span>{command.label}</span></button>)}</div></div></div>}
