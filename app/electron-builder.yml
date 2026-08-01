@@ -99,6 +99,13 @@ extraResources:
     to: tray-template.png
   - from: core/icons/tray-template@2x.png
     to: tray-template@2x.png
+  # Linux tray: the status-notifier host shows raw pixels (no template
+  # recolouring), so tray.ts's trayIconPath() swaps in this white variant —
+  # panels are overwhelmingly dark and the black template shape is invisible.
+  - from: core/icons/tray-template-white.png
+    to: tray-template-white.png
+  - from: core/icons/tray-template-white@2x.png
+    to: tray-template-white@2x.png
 
 mac:
   target:

@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import { BlockNoteEditor } from "@blocknote/core";
 import "@blocknote/mantine/style.css";
 import { editorSchema } from "@/components/Documents/editorSchema";
 import { useIsDark } from "@/hooks/useIsDark";
-import { DocumentOutline } from "@/components/Documents/DocumentOutline";
+import { DocumentOutline, useOutlineItems } from "@/components/Documents/DocumentOutline";
 import { htmlToMarkdownOffThread } from "@/lib/documentWorkerClient";
 import { htmlToMarkdown } from "@/lib/htmlToMarkdown";
 
@@ -16,18 +16,34 @@ export function ReadOnlyBlockNote({
   html,
   fontSize = 17.5,
   fallbackText = "",
+  header,
 }: {
   html: string;
   fontSize?: number;
   fallbackText?: string;
+  /** Rendered at the top of the article column with the same geometry as the
+   *  BlockNote body below (see .reader-article-header in reader-content.css),
+   *  so the article title lines up with the parsed content. */
+  header?: ReactNode;
 }) {
   const editor = useCreateBlockNote({ schema: editorSchema }, [html]);
-  const parsedRef = useRef<string | null>(null);
+  /** Editors that already hold this article, marked only AFTER the blocks were
+   *  actually inserted — a StrictMode remount (or any effect re-run that follows
+   *  a cancelled parse) must parse again, while a no-op re-run for an already
+   *  loaded editor must not. Keyed on the editor because `useCreateBlockNote`
+   *  hands out a fresh instance when `html` changes. */
+  const [loadedRef] = useState(() => new WeakMap<object, string>());
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [outlineTick, setOutlineTick] = useState(0);
   const [parsing, setParsing] = useState(true);
   const [plainText, setPlainText] = useState<string | null>(null);
   const isDark = useIsDark();
+  // The reader can't add headings, so an empty outline has nothing to say —
+  // hide it when the article has no headings. It also drops below xl
+  // viewports, where a fixed 224px column would squeeze the reading column
+  // to a sliver. The body centers itself in whatever space remains to the
+  // outline's left, so there is no "balancing" spacer on the other side.
+  const outlineItems = useOutlineItems(editor, outlineTick);
 
   const parseMarkdown = (markdown: string) => {
     const headless = BlockNoteEditor.create({ schema: editorSchema });
@@ -35,6 +51,7 @@ export function ReadOnlyBlockNote({
   };
 
   useEffect(() => {
+    let cancelled = false;
     if (!html.trim()) {
       if (fallbackText.trim()) {
         try {
@@ -52,12 +69,10 @@ export function ReadOnlyBlockNote({
       setParsing(false);
       return;
     }
-    if (parsedRef.current === html) {
+    if (loadedRef.get(editor) === html) {
       setParsing(false);
       return;
     }
-    parsedRef.current = html;
-    let cancelled = false;
     setParsing(true);
     const fallbackTimer = window.setTimeout(() => {
       if (cancelled) return;
@@ -77,6 +92,7 @@ export function ReadOnlyBlockNote({
         try {
           const blocks = parseMarkdown(markdown);
           editor.replaceBlocks(editor.document, blocks as any);
+          loadedRef.set(editor, html);
           window.setTimeout(() => {
             if (cancelled) return;
             const hasText = rootRef.current?.querySelector(".bn-editor")?.textContent?.trim();
@@ -93,6 +109,7 @@ export function ReadOnlyBlockNote({
         try {
           const blocks = parseMarkdown(htmlToMarkdown(html));
           editor.replaceBlocks(editor.document, blocks as any);
+          loadedRef.set(editor, html);
           window.setTimeout(() => {
             if (cancelled) return;
             const hasText = rootRef.current?.querySelector(".bn-editor")?.textContent?.trim();
@@ -104,6 +121,7 @@ export function ReadOnlyBlockNote({
               type: "paragraph",
               content: [{ type: "text", text: html, styles: {} }],
             }] as any);
+            loadedRef.set(editor, html);
             setPlainText(null);
           } catch {
             // Never let a malformed article keep the reader stuck on loading.
@@ -150,8 +168,8 @@ export function ReadOnlyBlockNote({
       data-color-scheme={isDark ? "dark" : "light"}
     >
       <div className="relative flex min-h-0 flex-1 gap-2">
-        <div aria-hidden="true" className="w-56 shrink-0" />
         <div className="min-w-0 flex-1">
+          {header && <div className="reader-article-header">{header}</div>}
           {plainText ? (
             <div className="whitespace-pre-wrap break-words px-6 py-5 text-[17px] leading-8 text-foreground">
               {plainText}
@@ -169,9 +187,11 @@ export function ReadOnlyBlockNote({
             />
           )}
         </div>
-        <div className="sticky top-4 max-h-[calc(100vh-8rem)] w-56 shrink-0 self-start overflow-y-auto">
-          <DocumentOutline editor={editor} tick={outlineTick} />
-        </div>
+        {outlineItems.length > 0 && (
+          <div className="sticky top-4 hidden max-h-[calc(100vh-8rem)] w-56 shrink-0 self-start overflow-y-auto xl:block">
+            <DocumentOutline editor={editor} tick={outlineTick} />
+          </div>
+        )}
         {parsing && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60">
             <span className="h-5 w-5 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />

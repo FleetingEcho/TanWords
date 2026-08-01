@@ -7,6 +7,28 @@
   padding-inline: 1rem;
   color: hsl(var(--foreground)) !important;
 }
+
+/* Reading measure: cap the reader column (and the matching header column
+   below) at a comfortable ~68 characters instead of the document editor's
+   960px, so articles rest in the middle of wide windows with real side
+   padding. ch tracks the body font size, so the A-/A+ controls keep the
+   same number of characters per line. Specificity must beat the base
+   .tanwords-editor:not(.tanwords-editor-compact) .bn-editor max-width. */
+.tanwords-editor.tanwords-editor-readonly .bn-editor {
+  max-width: 68ch;
+}
+
+/* Article header (title / byline / font controls) column inside the reader —
+   identical geometry to the body column so the title's left edge lines up
+   with the first character of the text. */
+.tanwords-editor-readonly .reader-article-header {
+  font-size: var(--document-font-size, 17.5px);
+  width: 100%;
+  max-width: 68ch;
+  margin-inline: auto;
+  padding-inline: 1rem;
+  padding-bottom: 1.5rem;
+}
 .tanwords-editor-readonly .bn-block-content {
   padding-block: 0.25em;
 }

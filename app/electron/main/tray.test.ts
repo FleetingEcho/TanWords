@@ -65,7 +65,7 @@ describe("TrayManager menu", () => {
       "Open main window",
       "Music Control",
       undefined, // separator
-      "⟳  Refresh RSS",
+      "Refresh RSS",
       undefined,
       "Quit",
     ]);

@@ -1,4 +1,6 @@
 import { app, BrowserWindow, ipcMain, Menu, shell } from "electron";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { registerAppProtocolHandler, rendererEntryUrl } from "./protocol";
 import { SidecarSupervisor } from "./sidecar";
@@ -23,6 +25,39 @@ import { abortAllFor } from "./http";
 // userData dir and the sidecar's data dir. No packaged Electron build has
 // shipped yet, so nothing is orphaned by fixing it here.
 app.setName("tanwords");
+
+// Linux dev only: GNOME-style docks resolve a running window's icon through a
+// .desktop file whose StartupWMClass matches the window class — an unpackaged
+// Electron run has no desktop file, so `bun run dev` shows the generic gear no
+// matter what `BrowserWindow.icon` says. Register a dev desktop entry pointing
+// at this checkout's icon (user-level dir, no root), rewritten on each start
+// so moving the repo can't leave a stale path behind. Packaged builds get
+// their entry from electron-builder instead and never take this branch.
+if (process.platform === "linux" && !app.isPackaged) {
+  try {
+    const desktopDir = path.join(os.homedir(), ".local", "share", "applications");
+    const contents = [
+      "[Desktop Entry]",
+      "Name=TanWords (dev)",
+      `Exec=${process.execPath} ${app.getAppPath()}`,
+      "Terminal=false",
+      "Type=Application",
+      `Icon=${path.join(app.getAppPath(), "core", "icons", "icon.png")}`,
+      // The window class is what setName("tanwords") just pinned — keep aligned.
+      "StartupWMClass=tanwords",
+      "Categories=Education;",
+      "",
+    ].join("\n");
+    const file = path.join(desktopDir, "tanwords-dev.desktop");
+    fs.mkdirSync(desktopDir, { recursive: true });
+    if (!fs.existsSync(file) || fs.readFileSync(file, "utf8") !== contents) {
+      fs.writeFileSync(file, contents);
+    }
+    app.setDesktopName("tanwords-dev.desktop");
+  } catch (error) {
+    console.warn("[icon] could not register dev desktop entry:", error);
+  }
+}
 
 // Single instance: same purpose `tauri-plugin-single-instance` served — stop a
 // duplicate SQLite connection / duplicate MCP port bind from a second app

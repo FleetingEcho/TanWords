@@ -43,14 +43,22 @@ function collect(blocks: any[], out: OutlineItem[]): void {
   }
 }
 
-export function DocumentOutline({ editor, tick }: { editor: any; tick: number }) {
-  const t = useT();
-  const items = useMemo(() => {
+/** Heading list for a BlockNote document, recomputed when `tick` changes.
+ *  Exported so a surrounding layout (the read-only article reader) can hide
+ *  the whole outline column — including its balancing spacer — when the
+ *  document has no headings at all. */
+export function useOutlineItems(editor: any, tick: number): OutlineItem[] {
+  return useMemo(() => {
     const out: OutlineItem[] = [];
     collect(editor.document, out);
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, tick]);
+}
+
+export function DocumentOutline({ editor, tick }: { editor: any; tick: number }) {
+  const t = useT();
+  const items = useOutlineItems(editor, tick);
 
   return (
     <aside className="w-56 shrink-0 overflow-y-auto border-l border-border/60 bg-background/40 p-3">

@@ -116,37 +116,6 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
     <div className="flex-1 min-h-0 flex">
       <div className="min-w-0 flex-1 overflow-y-auto">
       <div className="px-6 py-10">
-        <div className={hasSidePanes ? "" : "max-w-[68ch] mx-auto"}>
-          {/* Font size control */}
-          <div className="flex items-center justify-end gap-1 mb-6 -mt-2">
-            <Button
-              variant="ghost"
-              onClick={() => setFontStep((s) => Math.max(0, s - 1))}
-              disabled={fontStep === 0}
-              className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 transition-colors text-xs font-bold"
-              title={t("reader.fontSmaller")}
-            >
-              A-
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => setFontStep((s) => Math.min(FONT_STEPS.length - 1, s + 1))}
-              disabled={fontStep === FONT_STEPS.length - 1}
-              className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 transition-colors text-sm font-bold"
-              title={t("reader.fontLarger")}
-            >
-              A+
-            </Button>
-          </div>
-
-          <h1 className="text-[1.9em] font-bold leading-tight text-foreground">{article.title}</h1>
-          {(article.byline || article.site_name) && (
-            <p className="text-xs text-muted-foreground mt-3">
-              {[article.byline, article.site_name].filter(Boolean).join(" · ")}
-            </p>
-          )}
-
-        </div>
 
         {toolbarSlot && createPortal(
           <ReaderToolbar state={state} url={url} domain={domain} audio={audio} hnItemId={hnItemId} />,
@@ -156,8 +125,44 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
         {/* data-reader-selectable tells the global selection toolbar that
           * anything picked in here (article body or HN comments) came from
           * the reader, so saved sentences are attributed to it. */}
-        <div data-reader-selectable className="mt-6 min-w-0 w-full">
-          <LazyReadOnlyBlockNote html={article.content_html} fallbackText={article.text_content} fontSize={FONT_STEPS[fontStep]} />
+        <div data-reader-selectable className="min-w-0 w-full">
+          <LazyReadOnlyBlockNote
+            html={article.content_html}
+            fallbackText={article.text_content}
+            fontSize={FONT_STEPS[fontStep]}
+            header={
+              <>
+                {/* Font size control */}
+                <div className="flex items-center justify-end gap-1 mb-6 -mt-2">
+                  <Button
+                    variant="ghost"
+                    onClick={() => setFontStep((s) => Math.max(0, s - 1))}
+                    disabled={fontStep === 0}
+                    className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 transition-colors text-xs font-bold"
+                    title={t("reader.fontSmaller")}
+                  >
+                    A-
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => setFontStep((s) => Math.min(FONT_STEPS.length - 1, s + 1))}
+                    disabled={fontStep === FONT_STEPS.length - 1}
+                    className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 transition-colors text-sm font-bold"
+                    title={t("reader.fontLarger")}
+                  >
+                    A+
+                  </Button>
+                </div>
+
+                <h1 className="text-[1.9rem] font-bold leading-tight text-foreground">{article.title}</h1>
+                {(article.byline || article.site_name) && (
+                  <p className="text-xs text-muted-foreground mt-3">
+                    {[article.byline, article.site_name].filter(Boolean).join(" · ")}
+                  </p>
+                )}
+              </>
+            }
+          />
           {hnItemId != null && <HnComments storyId={hnItemId} onLoaded={handleHnCommentsLoaded} />}
         </div>
       </div>
