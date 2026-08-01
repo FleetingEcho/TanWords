@@ -41,6 +41,13 @@
   -webkit-app-region: no-drag;
 }
 
+/* Full-screen overlays that sit over the frameless window's drag strip need
+ * the same opt-out at the overlay level; otherwise Electron's drag region can
+ * still swallow clicks on controls near the top of the window. */
+.app-region-no-drag {
+  -webkit-app-region: no-drag;
+}
+
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { @apply bg-transparent; }
 ::-webkit-scrollbar-thumb { @apply bg-muted-foreground/25 rounded-full; }

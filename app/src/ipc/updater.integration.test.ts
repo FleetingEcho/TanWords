@@ -23,6 +23,7 @@ function installFakeHost() {
 
   window.tanwords = {
     backend,
+    refreshBackend: () => backend,
     call: async (channel: string, payload?: unknown) => {
       calls.push({ channel, payload });
       const responder = responses.get(channel);

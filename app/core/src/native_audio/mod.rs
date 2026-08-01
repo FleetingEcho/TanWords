@@ -13,6 +13,7 @@ mod robust;
 mod tests;
 
 use rodio::Source;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
 use std::sync::{mpsc, Arc, Mutex};
 use crate::shim::State;
@@ -21,7 +22,7 @@ pub use decoder::DecodedTrack;
 pub use playback::NativeAudioSnapshot;
 
 use decoder::open_decoder;
-use playback::{playback_worker, Command, Session};
+use playback::{playback_worker, set_error, Command, Session};
 
 /// Exact duration of an MP3, measured from its frame headers; `None` for every
 /// other format (where the container already declares an exact length) and for
@@ -157,12 +158,15 @@ impl NativeAudioState {
 /// actually concurrent rather than serialized behind one thread.
 #[crate::shim::command(async)]
 pub fn native_audio_probe_duration(path: String) -> Result<f64, String> {
-    let path = PathBuf::from(path);
-    if !path.is_absolute() || !path.is_file() {
-        return Err("invalid local audio path".into());
-    }
-    let decoder = open_decoder(&path)?;
-    Ok(accurate_duration(&path, &decoder))
+    catch_unwind(AssertUnwindSafe(|| {
+        let path = PathBuf::from(path);
+        if !path.is_absolute() || !path.is_file() {
+            return Err("invalid local audio path".into());
+        }
+        let decoder = open_decoder(&path)?;
+        Ok(accurate_duration(&path, &decoder))
+    }))
+    .map_err(|_| "audio processing panicked".to_string())?
 }
 
 /// Not `#[crate::shim::command(async)]`: `open_decoder` is fast enough that
@@ -177,38 +181,49 @@ pub fn native_audio_load(
     autoplay: bool,
     state: State<'_, NativeAudioState>,
 ) -> Result<NativeAudioSnapshot, String> {
-    let _guard = state.op_lock.lock().map_err(|e| e.to_string())?;
-    let path = PathBuf::from(path);
-    if !path.is_absolute() || !path.is_file() {
-        return Err("invalid local audio path".into());
-    }
-    let mut decoder = open_decoder(&path)?;
-    let duration = accurate_duration(&path, &decoder);
-    if duration > 0.0 {
-        decoder.set_total_duration(std::time::Duration::from_secs_f64(duration));
-    }
-    let rate = decoder.sample_rate().get();
-    let channels = decoder.channels().get();
-    let generation = state.snapshot.lock().map_err(|e| e.to_string())?.generation + 1;
-    if let Some(old) = state.session.lock().map_err(|e| e.to_string())?.take() {
-        let _ = old.commands.send(Command::Stop);
-    }
-    let value = NativeAudioSnapshot {
-        status: if autoplay { "playing" } else { "paused" },
-        position_sec: 0.0,
-        duration_sec: duration,
-        speed: 1.0,
-        error: None,
-        generation,
-    };
-    *state.snapshot.lock().map_err(|e| e.to_string())? = value.clone();
-    let shared = state.snapshot.clone();
-    let (tx, rx) = mpsc::channel();
-    std::thread::spawn(move || {
-        playback_worker(decoder, rate, channels, autoplay, generation, shared, rx)
-    });
-    *state.session.lock().map_err(|e| e.to_string())? = Some(Session { commands: tx });
-    Ok(value)
+    catch_unwind(AssertUnwindSafe(|| {
+        let _guard = state.op_lock.lock().map_err(|e| e.to_string())?;
+        let path = PathBuf::from(path);
+        if !path.is_absolute() || !path.is_file() {
+            return Err("invalid local audio path".into());
+        }
+        let mut decoder = open_decoder(&path)?;
+        let duration = accurate_duration(&path, &decoder);
+        if duration > 0.0 {
+            decoder.set_total_duration(std::time::Duration::from_secs_f64(duration));
+        }
+        let rate = decoder.sample_rate().get();
+        let channels = decoder.channels().get();
+        if rate == 0 || channels == 0 || channels > 255 {
+            return Err("unsupported audio format".into());
+        }
+        let generation = state.snapshot.lock().map_err(|e| e.to_string())?.generation + 1;
+        if let Some(old) = state.session.lock().map_err(|e| e.to_string())?.take() {
+            let _ = old.commands.send(Command::Stop);
+        }
+        let value = NativeAudioSnapshot {
+            status: if autoplay { "playing" } else { "paused" },
+            position_sec: 0.0,
+            duration_sec: duration,
+            speed: 1.0,
+            error: None,
+            generation,
+        };
+        *state.snapshot.lock().map_err(|e| e.to_string())? = value.clone();
+        let shared = state.snapshot.clone();
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                playback_worker(decoder, rate, channels, autoplay, generation, shared.clone(), rx)
+            }));
+            if result.is_err() {
+                set_error(&shared, "audio playback thread panicked".to_string());
+            }
+        });
+        *state.session.lock().map_err(|e| e.to_string())? = Some(Session { commands: tx });
+        Ok(value)
+    }))
+    .map_err(|_| "audio processing panicked".to_string())?
 }
 
 #[crate::shim::command]

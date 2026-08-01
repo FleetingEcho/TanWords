@@ -65,8 +65,8 @@ impl Output {
                 .get(b"pa_simple_free\0")
                 .map_err(|e| e.to_string())?
         };
-        let name = CString::new("TanWords").unwrap();
-        let stream = CString::new("Local music").unwrap();
+        let name = CString::new("TanWords").map_err(|e| e.to_string())?;
+        let stream = CString::new("Local music").map_err(|e| e.to_string())?;
         let spec = SampleSpec {
             format: 5,
             rate,

@@ -18,10 +18,10 @@ export interface GeneratedSentenceItem {
 }
 
 /** Tool calls whose input carries a sentence list meant to render as review
- *  cards rather than the generic collapsed ToolCallCard — generate_sentences
- *  (sentences the model wrote) and extract_patterns (sentences quoted verbatim
- *  from a text the user shared); same item shape, different header wording. */
-export const SENTENCE_CARD_TOOL_NAMES = new Set(["generate_sentences", "extract_patterns"]);
+ *  cards rather than the generic collapsed ToolCallCard — extract_patterns
+ *  (sentences quoted verbatim from a text the user shared); legacy
+ *  generate_sentences calls from saved chats still render for compatibility. */
+export const SENTENCE_CARD_TOOL_NAMES = new Set(["extract_patterns", "generate_sentences"]);
 
 export function sentenceItemsFromToolInput(input: Record<string, unknown>): GeneratedSentenceItem[] {
   return (input.items as GeneratedSentenceItem[] | undefined) ?? [];

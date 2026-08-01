@@ -9,7 +9,7 @@ import {
   ChatSessionItem, ChatSessionDetail,
   DashboardStats, DueCard, ReviewResult, SrsRating, SearchHistoryItem,
   RssFeedMeta, RssFeed, RssEntryRow, FeedBookmark, FeedBookmarkInput,
-  DbConnection, ImportPlan, ImportDecisions, ImportResult,
+  DbConnection, RememberedTursoConnection, ImportPlan, ImportDecisions, ImportResult,
 } from "./useDB.types";
 
 function serializeChatSession(s: {
@@ -441,6 +441,17 @@ export function useDBExtra() {
     }
   }, []);
 
+  /** Reads the last Turso URL and whether the keychain still has a token, so
+   *  the Settings form can prefill a reconnect without exposing the token. */
+  const getRememberedTurso = useCallback(async (): Promise<RememberedTursoConnection | null> => {
+    try {
+      return await invoke<RememberedTursoConnection>("db_get_remembered_turso");
+    } catch (e) {
+      logError("getRememberedTurso", e);
+      return null;
+    }
+  }, []);
+
   /** Clears a saved Turso profile that can't be reconnected right now (lost
    *  token, wiped keychain, …), without needing a live connection to it. */
   const forgetSavedProfile = useCallback(async (): Promise<void> => {
@@ -515,7 +526,7 @@ export function useDBExtra() {
     syncRssFeed, getRssEntries, markRssEntryRead, getRssUnreadCounts,
     getDbPath, getDbSize, exportBackup, switchDbPath, clearTranslations,
     getConnection, connectTurso, disconnectRemote, syncNow,
-    getStartupWarning, isSavedProfileTurso, forgetSavedProfile,
+    getStartupWarning, isSavedProfileTurso, forgetSavedProfile, getRememberedTurso,
     importAnalyze, importApply,
   }), [
     listChatSessions, setChatSessionArchived, setChatSessionPinned, renameChatSession, getChatSession, upsertChatSession, deleteChatSession, searchChatSessions,
@@ -527,7 +538,7 @@ export function useDBExtra() {
     syncRssFeed, getRssEntries, markRssEntryRead, getRssUnreadCounts,
     getDbPath, getDbSize, exportBackup, switchDbPath, clearTranslations,
     getConnection, connectTurso, disconnectRemote, syncNow,
-    getStartupWarning, isSavedProfileTurso, forgetSavedProfile,
+    getStartupWarning, isSavedProfileTurso, forgetSavedProfile, getRememberedTurso,
     importAnalyze, importApply,
   ]);
 }

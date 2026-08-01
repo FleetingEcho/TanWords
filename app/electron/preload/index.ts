@@ -14,6 +14,11 @@ contextBridge.exposeInMainWorld("tanwords", {
    *  queuing needed on either side. */
   backend: ipcRenderer.invoke("tanwords:backend"),
 
+  /** Re-resolves the current sidecar handshake after a restart. The initial
+   *  promise above is intentionally one-shot; keep this separate so the
+   *  renderer can reconnect without reloading the whole app. */
+  refreshBackend: () => ipcRenderer.invoke("tanwords:backend"),
+
   call: (channel: string, payload?: unknown) => ipcRenderer.invoke("tanwords:call", channel, payload),
 
   /** `src/ipc/events.ts` only ever calls this as `on("event", ({name,

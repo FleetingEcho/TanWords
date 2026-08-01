@@ -85,7 +85,7 @@ export function ReadingLibrary({ onOpen }: { onOpen: (id: number) => void }) {
     <div className="flex h-full min-h-0 flex-col">
       {/* Centered search with secondary filters collapsed out of the way. */}
       <div className="shrink-0 border-b border-border/60">
-        <div className="mx-auto max-w-4xl px-5 py-3">
+        <div className="mx-auto px-5 py-3">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/50" />
             <input
@@ -165,7 +165,7 @@ export function ReadingLibrary({ onOpen }: { onOpen: (id: number) => void }) {
                 <div
                   key={item.id}
                   onClick={() => onOpen(item.id)}
-                  className="group flex cursor-pointer gap-4 rounded-xl px-3 py-3 transition-colors hover:bg-muted/40"
+                  className="group flex cursor-pointer gap-4 rounded-xl px-3 py-3 transition-colors hover:bg-muted"
                 >
                   <div className="w-11 shrink-0 pt-0.5 text-right">
                     <p className="text-[11px] font-semibold tabular-nums text-foreground/70">{day}</p>

@@ -1,4 +1,3 @@
-use rodio::Source;
 use serde::Serialize;
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
@@ -51,6 +50,10 @@ pub(super) fn playback_worker(
     snapshot: Arc<Mutex<NativeAudioSnapshot>>,
     commands: mpsc::Receiver<Command>,
 ) {
+    if rate == 0 || channels == 0 {
+        set_error(&snapshot, "unsupported audio format".to_string());
+        return;
+    }
     let mut output = match super::pulse::Output::open(rate, channels) {
         Ok(v) => v,
         Err(e) => {
@@ -123,10 +126,16 @@ pub(super) fn playback_worker(
 
 #[cfg(target_os = "linux")]
 fn resample_speed(input: &[f32], channels: usize, speed: f32) -> Vec<f32> {
+    if channels == 0 {
+        return Vec::new();
+    }
     if (speed - 1.0).abs() < f32::EPSILON {
         return input.to_vec();
     }
     let frames = input.len() / channels;
+    if frames == 0 {
+        return Vec::new();
+    }
     let out_frames = (frames as f32 / speed) as usize;
     let mut output = Vec::with_capacity(out_frames * channels);
     for frame in 0..out_frames {

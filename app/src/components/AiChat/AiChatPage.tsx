@@ -194,7 +194,7 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
           </div>
           {promptExpanded && (
             <div className="border-t border-border/50 px-5 pb-4 pt-3">
-              <div className="mx-auto max-w-4xl">
+              <div className="mx-auto max-w-5xl">
                 <p className="mb-2 text-xs text-muted-foreground">{t("aichat.promptDescription")}</p>
                 <textarea
                   value={s.customPrompt}

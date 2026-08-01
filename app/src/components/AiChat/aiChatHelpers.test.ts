@@ -35,6 +35,18 @@ describe("reading tutor prompt", () => {
   });
 });
 
+describe("vocab mastery prompt", () => {
+  it("uses saved vocabulary tools, one question at a time, and related recommendations", () => {
+    const prompt = buildPresetPrompt("vocab-mastery", "C1");
+    expect(prompt).toContain("get_vocabulary_stats");
+    expect(prompt).toContain("list_vocabulary");
+    expect(prompt).toContain("Sentence construction");
+    expect(prompt).toContain("## 融会贯通");
+    expect(prompt).toContain("save_sentences");
+    expect(prompt).toContain("do not ask multiple questions in one turn");
+  });
+});
+
 describe("trimItemsToBudget", () => {
   const convo = [
     user("first question"), ai("first answer"),

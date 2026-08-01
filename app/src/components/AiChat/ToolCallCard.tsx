@@ -14,11 +14,13 @@ export interface ToolCallDisplay {
 
 const TOOL_ICONS: Record<string, React.FC<{ className?: string }>> = {
   save_word:           BookIcon,
+  get_vocabulary_stats: SlidersIcon,
+  list_vocabulary:     ClipboardListIcon,
   search_vocabulary:   SearchIcon,
   extract_vocabulary:  SparkIcon,
   extract_patterns:    SparkIcon,
   add_words_to_vocab:  BookIcon,
-  generate_sentences:  SparkIcon,
+  save_sentences:      SparkIcon,
   list_documents:      ClipboardListIcon,
   insert_into_document: DocIcon,
   summarize_conversation: SparkIcon,
@@ -27,11 +29,13 @@ const TOOL_ICONS: Record<string, React.FC<{ className?: string }>> = {
 
 export const TOOL_LABELS: Record<string, string> = {
   save_word:           "Save word",
+  get_vocabulary_stats:"Vocabulary stats",
+  list_vocabulary:     "List vocabulary",
   search_vocabulary:   "Search vocabulary",
   extract_vocabulary:  "Extract vocabulary",
   extract_patterns:    "Extract sentence patterns",
   add_words_to_vocab:  "Add words to vocabulary",
-  generate_sentences:  "Generate sentences",
+  save_sentences:      "Save sentences",
   list_documents:      "List documents",
   insert_into_document:"Insert into document",
   summarize_conversation:"Summarize to note",
@@ -41,10 +45,12 @@ export const TOOL_LABELS: Record<string, string> = {
 function inputSummary(name: string, input: Record<string, unknown>): string {
   switch (name) {
     case "save_word":           return `"${input.word}" → ${input.zh}`;
+    case "get_vocabulary_stats":return "";
+    case "list_vocabulary":     return `${input.limit ?? 30} words${input.random ? " (random)" : ""}`;
     case "search_vocabulary":   return `"${input.query}"`;
     case "extract_vocabulary":  return `${(input.items as unknown[])?.length ?? 0} items`;
     case "add_words_to_vocab":  return `${(input.words as unknown[])?.length ?? 0} words`;
-    case "generate_sentences":  return `${(input.items as unknown[])?.length ?? 0} sentences`;
+    case "save_sentences":      return `${(input.sentences as unknown[])?.length ?? 0} sentences`;
     case "extract_patterns":    return `${(input.items as unknown[])?.length ?? 0} sentences`;
     case "list_documents":      return "";
     case "insert_into_document":return `doc #${input.doc_id}`;
@@ -99,7 +105,7 @@ export function ToolCallCard({ calls }: { calls: ToolCallDisplay[] }) {
       </Button>
 
       {expanded && (
-        <div className="mt-1 ml-2 space-y-2">
+        <div className="mt-1 space-y-2">
           {calls.map((c) => (
             <div key={c.id} className="border border-border rounded-lg overflow-hidden">
               {/* Header */}
@@ -112,7 +118,7 @@ export function ToolCallCard({ calls }: { calls: ToolCallDisplay[] }) {
               </div>
 
               {/* Input */}
-              <div className="px-3 py-2 border-b border-border/50">
+              <div className="pl-[34px] pr-3 py-2 border-b border-border/50">
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground/50 mb-1">Input</p>
                 <pre className="text-xs font-mono text-muted-foreground whitespace-pre-wrap break-all leading-snug">
                   {JSON.stringify(c.input, null, 2)}
@@ -121,7 +127,7 @@ export function ToolCallCard({ calls }: { calls: ToolCallDisplay[] }) {
 
               {/* Result */}
               {c.result !== undefined && (
-                <div className="px-3 py-2">
+                <div className="pl-[34px] pr-3 py-2">
                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground/50 mb-1">Result</p>
                   <p className={`text-xs leading-snug whitespace-pre-wrap ${c.is_error ? "text-destructive" : "text-foreground"}`}>
                     {c.result}

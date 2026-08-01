@@ -9,6 +9,8 @@
 export type TanwordsHost = {
   /** Resolves once the sidecar has handshaken. */
   backend: Promise<{ port: number; token: string }>;
+  /** Resolves with the handshake of the current sidecar process. */
+  refreshBackend: () => Promise<{ port: number; token: string }>;
   /** Main-process commands: browser panel, dialogs, shell, clipboard, ... */
   call: (channel: string, payload?: unknown) => Promise<any>;
   on: (channel: string, handler: (payload: any) => void) => () => void;
