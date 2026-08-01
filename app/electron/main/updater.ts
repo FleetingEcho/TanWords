@@ -20,12 +20,18 @@ export type UpdateInfoPayload = {
   notes?: string;
 };
 
-export function initUpdater(emitEvent: (name: string, payload: unknown) => void) {
+export function initUpdater(
+  emitEvent: (name: string, payload: unknown) => void,
+  beforeInstall: () => Promise<void> = () => Promise.resolve(),
+) {
   if (process.platform === "darwin") return createMacUpdater(emitEvent);
-  return initElectronUpdater(emitEvent);
+  return initElectronUpdater(emitEvent, beforeInstall);
 }
 
-function initElectronUpdater(emitEvent: (name: string, payload: unknown) => void) {
+function initElectronUpdater(
+  emitEvent: (name: string, payload: unknown) => void,
+  beforeInstall: () => Promise<void>,
+) {
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
 
@@ -60,6 +66,12 @@ function initElectronUpdater(emitEvent: (name: string, payload: unknown) => void
 
     async downloadAndInstall(): Promise<void> {
       await autoUpdater.downloadUpdate();
+      // quitAndInstall() spawns the NSIS/AppImage installer *before* calling
+      // app.quit(), and our before-quit handler would otherwise hold the
+      // process alive draining the sidecar — with the installer already
+      // running, prompting (or force-killing us mid-drain). Drain first, so
+      // the quit passes straight through.
+      await beforeInstall();
       autoUpdater.quitAndInstall();
     },
   };

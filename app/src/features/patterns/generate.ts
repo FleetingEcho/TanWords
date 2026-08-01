@@ -27,7 +27,10 @@ async function collect(provider: AIProvider, system: string, user: string, signa
   const run = (async () => {
     const chunks: string[] = [];
     let lastEmit = 0;
-    for await (const c of provider.generate(system, user)) {
+    // The signal must reach the provider: per-chunk `signal.aborted` checks
+    // never fire if the model stalls without emitting, so the HTTP request
+    // (and its token spend) would run to completion even after cancel.
+    for await (const c of provider.generate(system, user, signal)) {
       if (signal?.aborted) throw new DOMException("aborted", "AbortError");
       chunks.push(c);
       const now = Date.now();
@@ -35,6 +38,9 @@ async function collect(provider: AIProvider, system: string, user: string, signa
     }
     return chunks.join("");
   })();
+  // When the timeout wins the race, `run` is orphaned — swallow a late
+  // rejection so it can't surface as an unhandled promise rejection.
+  run.catch(() => {});
   let timer: number | undefined;
   const timeout = new Promise<string>((_, reject) => { timer = window.setTimeout(() => reject(new Error("模型生成超时")), 60000); });
   try { return await Promise.race([run, timeout]); } finally { if (timer) window.clearTimeout(timer); }

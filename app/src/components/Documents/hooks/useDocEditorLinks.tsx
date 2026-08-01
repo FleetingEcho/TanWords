@@ -24,9 +24,14 @@ export function useDocEditorLinks(params: {
   const [linkQuery, setLinkQuery] = useState("");
 
   useEffect(() => {
-    invoke<DocumentLinkContext>("db_get_document_link_context", { documentId })
-      .then(setLinkContext)
-      .catch(() => {});
+    // documentContent changes on every autosave — debounce so a typing burst
+    // (and its periodic saves) costs one link-context query, not one per save.
+    const timer = setTimeout(() => {
+      invoke<DocumentLinkContext>("db_get_document_link_context", { documentId })
+        .then(setLinkContext)
+        .catch(() => {});
+    }, 1000);
+    return () => clearTimeout(timer);
   }, [documentId, documentContent]);
 
   const insertDocumentLink = (target: DocumentLinkItem) => {

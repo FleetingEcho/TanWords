@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useT } from "@/hooks/useT";
 import { relativeTime, placeholderGradient } from "@/components/Feeds/feedUtils";
 import { ReplyIcon, PeopleIcon } from "@/components/ui/icons";
 import { StatBadge } from "@/components/ui/StatBadge";
 import { countHnComments, countHnCommentAuthors, type HnComment } from "@/lib/hnComments";
+import { sanitizeRemoteHtml } from "@/lib/sanitizeHtml";
 import { useHnCommentsStore } from "@/store/hnCommentsStore";
 
 /** Replies use a slightly smaller avatar — frees up room in the indented gutter and reinforces the hierarchy. */
@@ -24,6 +25,9 @@ function CommentNode({ comment, depth, parentAuthor }: { comment: HnComment; dep
   const [collapsed, setCollapsed] = useState(false);
   const replyCount = countHnComments(comment.children);
   const author = comment.by || t("hn.comments.anonymous");
+  // comment.text is remote-provided HTML — it goes through the allowlist
+  // sanitizer before injection (see sanitizeRemoteHtml for why).
+  const safeHtml = useMemo(() => sanitizeRemoteHtml(comment.text ?? ""), [comment.text]);
 
   return (
     <div className={depth > 0 ? "mt-3 border-l border-border/50 pl-4" : "mt-5"}>

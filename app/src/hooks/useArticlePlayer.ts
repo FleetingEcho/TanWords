@@ -158,6 +158,11 @@ export function useArticlePlayer() {
         if (epochRef.current === myEpoch) setStatus("error", "playback failed");
       };
       claimAudioChannel(() => audio.pause());
+      // The user may have pressed pause while synthesis was still running —
+      // toggle() during "loading" records that as status "paused". The blob
+      // is staged above (src set, position 0), so we only skip starting
+      // playback; the pause/resume effect plays it in place on resume.
+      if (useTtsPlayerStore.getState().status === "paused") return;
       try {
         await audio.play();
         if (!cancelled && epochRef.current === myEpoch) setStatus("playing");

@@ -125,6 +125,27 @@ export function useDocumentEditor() {
     setSaveStatus("dirty");
   }, []);
 
+  // handleSave rewrites the whole record (title/tags/pinned included) from
+  // this hook's doc state. The sidebar's rename/pin (useDocActions) goes
+  // straight to the DB — without this subscription, the open editor's next
+  // autosave would write the old metadata back and silently revert them.
+  useEffect(() => {
+    const onItemUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ id: number; title?: string; tags?: string; pinned?: boolean }>).detail;
+      if (!detail || detail.id !== activeIdRef.current) return;
+      setDoc((prev) => (prev && prev.id === detail.id
+        ? {
+            ...prev,
+            title: detail.title ?? prev.title,
+            tags: detail.tags ?? prev.tags,
+            pinned: detail.pinned ?? prev.pinned,
+          }
+        : prev));
+    };
+    window.addEventListener("docs-item-updated", onItemUpdated);
+    return () => window.removeEventListener("docs-item-updated", onItemUpdated);
+  }, []);
+
   const handleTitleChange = useCallback(async (title: string) => {
     if (!doc) return;
     setDoc((prev) => (prev ? { ...prev, title } : prev));

@@ -92,8 +92,8 @@ export function DocShelfList({
                   onExport={onExport}
                   onExportHtml={onExportHtml}
                   onExportPdf={onExportPdf}
-                  onPrivacyAction={(item) => void handlePrivacyAction(item)}
-                  onRemoveProtection={(item) => void handleRemoveProtection(item)}
+                  onPrivacyAction={handlePrivacyAction}
+                  onRemoveProtection={handleRemoveProtection}
                 />
               ))}
             </div>

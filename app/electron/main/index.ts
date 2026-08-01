@@ -2,9 +2,9 @@ import { app, BrowserWindow, ipcMain, Menu, shell } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { registerAppProtocolHandler, rendererEntryUrl } from "./protocol";
+import { registerAppProtocolHandler, rendererEntryUrl, APP_SCHEME } from "./protocol";
 import { SidecarSupervisor } from "./sidecar";
-import { registerIpcHandlers } from "./ipc";
+import { isExternalUrlAllowed, registerIpcHandlers } from "./ipc";
 import { initUpdater } from "./updater";
 import { BrowserPanelManager } from "./browserPanel";
 import { TrayManager, trayIconPath } from "./tray";
@@ -120,6 +120,12 @@ const sidecar = new SidecarSupervisor();
 const browserPanel = new BrowserPanelManager();
 const tray = new TrayManager();
 
+/** Set once the app has committed to quitting: before-quit lets the real
+ *  quit pass through instead of preventDefault-ing it again. The updater's
+ *  install path sets this early (its installer spawns *before* app.quit(),
+ *  so the sidecar drain must already be done by then) — see updater.ts. */
+let quitting = false;
+
 /** The app icon as a real file on disk.
  *
  *  Packaged builds get it from `extraResources` (electron-builder.yml); the
@@ -193,9 +199,40 @@ function createWindow() {
 
   // Deny popups from the main UI (the browser panel's own WebContentsViews
   // have their own, separate setWindowOpenHandler — see browserPanel.ts).
+  // The allowlist matches shell:open's — an unvalidated openExternal is an
+  // RCE vector on Windows, and several renderers fall back to window.open
+  // with a remote-controlled URL (feeds, HN, AI output).
   win.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url);
+    if (isExternalUrlAllowed(url)) void shell.openExternal(url);
     return { action: "deny" };
+  });
+
+  // Never let the app window navigate away from its own entry point. Remote
+  // HTML is injected into this window unsanitized (HN comments use
+  // dangerouslySetInnerHTML) and it carries plain <a href> links — one click
+  // would load arbitrary remote content *with the privileged preload
+  // attached*, which reaches window.tanwords (file:write, the sidecar token).
+  // Legitimate outbound links go through shell.openExternal instead.
+  const entryOrigin = new URL(
+    process.env["VITE_DEV_SERVER_URL"] ?? rendererEntryUrl(),
+  ).origin;
+  win.webContents.on("will-navigate", (event, url) => {
+    let allowed: boolean;
+    try {
+      // Same-origin reload/navigation is fine (Vite HMR, the app:// entry).
+      // about:blank and data: are emitted transiently by some Chromium paths.
+      allowed =
+        new URL(url).origin === entryOrigin ||
+        url === "about:blank" ||
+        url.startsWith(`${APP_SCHEME}://`);
+    } catch {
+      allowed = false;
+    }
+    if (allowed) return;
+    event.preventDefault();
+    // A clicked http(s) link should still do what the user meant — just in
+    // the system browser, not in the privileged window.
+    if (isExternalUrlAllowed(url)) void shell.openExternal(url);
   });
 
   browserPanel.setWindow(win);
@@ -290,7 +327,10 @@ if (gotLock) {
     // (migration plan §8's "startup ordering inverts").
     ipcMain.handle("tanwords:backend", async () => sidecar.backendReady());
 
-    const updater = initUpdater(broadcastEvent);
+    const updater = initUpdater(broadcastEvent, async () => {
+      quitting = true;
+      await sidecar.shutdown().catch(() => {});
+    });
     registerIpcHandlers({
       getMainWindow: () => mainWindow,
       broadcastEvent,
@@ -312,11 +352,10 @@ if (gotLock) {
     if (process.platform !== "darwin") app.quit();
   });
 
-  let quitting = false;
   app.on("before-quit", (event) => {
     if (quitting) return;
-    quitting = true;
     event.preventDefault();
+    quitting = true;
     void sidecar.shutdown().finally(() => {
       app.exit();
     });

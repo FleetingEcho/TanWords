@@ -62,7 +62,13 @@ pub async fn fetch_article(url: String) -> Result<FetchedArticle, String> {
         return Err(format!("Server returned {}", resp.status()));
     }
 
-    let html = resp.text().await.map_err(|e| e.to_string())?;
+    // Same cap as the RSS path — the parsed DOM cost scales with input size.
+    // (Trade-off accepted: charset from Content-Type is no longer honored for
+    // non-UTF-8 legacy pages; they used to decode via resp.text().)
+    let html = String::from_utf8_lossy(
+        &crate::http_util::read_body_capped(resp, 25 * 1024 * 1024).await?,
+    )
+    .into_owned();
 
     let cfg = Config {
         max_elements_to_parse: 20_000,

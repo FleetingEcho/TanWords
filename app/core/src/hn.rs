@@ -167,7 +167,13 @@ pub async fn fetch_hn_section(section: String, offset: i64, limit: i64) -> Resul
     let ids = fetch_id_list(&client, endpoint).await?;
     let total = ids.len() as i64;
     let start = offset.clamp(0, total) as usize;
-    let end = (offset.max(0) + limit.max(0)).clamp(0, total) as usize;
+    // saturating_add: offset/limit arrive as raw i64 (MCP clients can supply
+    // i64::MAX) — plain `+` overflows: panic in debug, wrap-negative in
+    // release, and then `ids[start..end]` panics on the inverted range.
+    let end = offset
+        .max(0)
+        .saturating_add(limit.max(0))
+        .clamp(start as i64, total) as usize;
 
     let sem = Semaphore::new(MAX_CONCURRENCY);
     let futs: Vec<_> = ids[start..end]

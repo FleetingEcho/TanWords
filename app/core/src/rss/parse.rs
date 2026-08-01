@@ -10,17 +10,23 @@ use regex::Regex;
 const USER_AGENT: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 
+/// Feed-supplied URLs are rendered/played in the UI; only real web addresses
+/// pass, so a feed can't inject `javascript:`/`file:`/`data:` links.
+fn http_only(url: url::Url) -> Option<String> {
+    matches!(url.scheme(), "http" | "https").then(|| url.to_string())
+}
+
 /// Resolve a possibly-relative image URL against the entry/feed's page URL.
 fn resolve_url(raw: &str, base: &str) -> Option<String> {
     if raw.is_empty() {
         return None;
     }
     if let Ok(u) = url::Url::parse(raw) {
-        return Some(u.to_string());
+        return http_only(u);
     }
     if let Ok(base_url) = url::Url::parse(base) {
         if let Ok(joined) = base_url.join(raw) {
-            return Some(joined.to_string());
+            return http_only(joined);
         }
     }
     None
@@ -231,7 +237,10 @@ pub(super) async fn fetch_feed_meta(url: &str) -> Result<RssFeedMeta, String> {
         return Err(format!("Server returned {}", resp.status()));
     }
 
-    let body = resp.bytes().await.map_err(|e| e.to_string())?.to_vec();
+    // Capped: a "feed" is remote-controlled content; without a byte limit a
+    // hostile or broken server could stream unbounded data into memory well
+    // inside the 15s request timeout, and the XML parser amplifies it.
+    let body = crate::http_util::read_body_capped(resp, 25 * 1024 * 1024).await?;
 
     // feed-rs performs synchronous XML parsing. Large "full refresh" batches
     // used to run that CPU work on Tokio's async executor, where it could delay
@@ -269,7 +278,12 @@ fn parse_feed_body(body: &[u8]) -> Result<RssFeedMeta, String> {
                     .as_ref()
                     .map(|t| t.content.clone())
                     .unwrap_or_default(),
-                url: href.clone(),
+                // Entry URL becomes a clickable link in feeds — gate it to
+                // web schemes like every other remote URL in this module.
+                url: url::Url::parse(&href)
+                    .ok()
+                    .and_then(http_only)
+                    .unwrap_or_default(),
                 author: e
                     .authors
                     .first()

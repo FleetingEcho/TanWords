@@ -11,10 +11,17 @@ type PrivatePasswordStatus = {
   legacy_documents: number;
 };
 
+/** Let an editor holding this doc open know its metadata changed, so its
+ *  next autosave (which rewrites the whole record from its own state)
+ *  doesn't revert the change. The list listens to the same event. */
+function notifyDocItemUpdated(detail: { id: number; title?: string; tags?: string; pinned?: boolean; wordCount?: number }) {
+  window.dispatchEvent(new CustomEvent("docs-item-updated", { detail }));
+}
+
 /** Per-document actions: rename/pin/duplicate/delete, and the
- * privacy/password flow (protect, unlock, remove protection, create a new
- * private doc). Split out of DocSelector because it's the largest cluster
- * of handlers and shares no state with the list/filter concerns. */
+ *  privacy/password flow (protect, unlock, remove protection, create a new
+ *  private doc). Split out of DocSelector because it's the largest cluster
+ *  of handlers and shares no state with the list/filter concerns. */
 export function useDocActions(params: {
   db: ReturnType<typeof useDB>;
   activeId: number | null;
@@ -41,29 +48,33 @@ export function useDocActions(params: {
     resolve?.(password);
   };
 
-  const handleRename = async (id: number, title: string) => {
+  // useCallback on every action: memoized DocItem rows receive these as
+  // props; unstable identities would defeat the memo on every parent render.
+  const handleRename = useCallback(async (id: number, title: string) => {
     const doc = await db.getDocument(id);
     if (!doc) return;
     await db.updateDocument(id, title, doc.content, doc.content_text, doc.tags, doc.pinned, doc.word_count);
+    notifyDocItemUpdated({ id, title, tags: doc.tags, pinned: doc.pinned });
     load(page);
-  };
+  }, [db, load, page]);
 
-  const handlePin = async (id: number) => {
+  const handlePin = useCallback(async (id: number) => {
     const doc = await db.getDocument(id);
     if (!doc) return;
     await db.updateDocument(id, doc.title, doc.content, doc.content_text, doc.tags, !doc.pinned, doc.word_count);
+    notifyDocItemUpdated({ id, title: doc.title, tags: doc.tags, pinned: !doc.pinned });
     load(page);
-  };
+  }, [db, load, page]);
 
-  const handleDuplicate = async (id: number) => {
+  const handleDuplicate = useCallback(async (id: number) => {
     const newId = await db.duplicateDocument(id);
     load(page);
     onSelect(newId);
-  };
+  }, [db, load, page, onSelect]);
 
-  const handleDelete = (id: number) => setPendingDeleteId(id);
+  const handleDelete = useCallback((id: number) => setPendingDeleteId(id), []);
 
-  const passwordForPrivateDocument = async (): Promise<string | undefined | null> => {
+  const passwordForPrivateDocument = useCallback(async (): Promise<string | undefined | null> => {
     const status = await invoke<PrivatePasswordStatus>("db_private_password_status");
     if (status.configured && status.unlocked) return undefined;
     return requestPassword({
@@ -71,9 +82,9 @@ export function useDocActions(params: {
       description: status.configured ? t("doc.sharedPasswordPrompt") : t("doc.sharedPasswordSetupHint"),
       confirm: !status.configured,
     });
-  };
+  }, [requestPassword, t]);
 
-  const handlePrivacyAction = async (doc: DocumentListItem) => {
+  const handlePrivacyAction = useCallback(async (doc: DocumentListItem) => {
     if (doc.protected && !doc.unlocked) {
       onSelect(doc.id);
       return;
@@ -91,9 +102,9 @@ export function useDocActions(params: {
     } catch (error) {
       toast.error(String(error));
     }
-  };
+  }, [db, onSelect, activeId, load, page, passwordForPrivateDocument, t]);
 
-  const handleRemoveProtection = async (doc: DocumentListItem) => {
+  const handleRemoveProtection = useCallback(async (doc: DocumentListItem) => {
     const password = await requestPassword({
       title: t("doc.removeProtection"),
       description: t("doc.passwordPrompt"),
@@ -106,9 +117,9 @@ export function useDocActions(params: {
     } catch {
       toast.error(t("doc.invalidPassword"));
     }
-  };
+  }, [db, load, page, requestPassword, activeId, onSelect, t]);
 
-  const handleNewPrivateDoc = async () => {
+  const handleNewPrivateDoc = useCallback(async () => {
     const password = await passwordForPrivateDocument();
     if (password === null) return;
     let id = 0;
@@ -124,9 +135,9 @@ export function useDocActions(params: {
       if (id) await db.deleteDocument(id);
       toast.error(String(error));
     }
-  };
+  }, [db, passwordForPrivateDocument, load, onSelect, setPrivateOpen, t]);
 
-  const confirmDelete = async () => {
+  const confirmDelete = useCallback(async () => {
     const id = pendingDeleteId;
     if (id === null) return;
     setPendingDeleteId(null);
@@ -134,7 +145,7 @@ export function useDocActions(params: {
     toast.success(t("doc.delete"));
     load(page);
     if (activeId === id) onSelect(-1);
-  };
+  }, [db, load, page, pendingDeleteId, activeId, onSelect, t]);
 
   return {
     pendingDeleteId, setPendingDeleteId, confirmDelete,

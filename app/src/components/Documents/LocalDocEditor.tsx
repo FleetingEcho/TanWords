@@ -103,10 +103,17 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
   const maxSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flushRef = useRef<(force?: boolean) => Promise<void>>(async () => {});
 
+  // Deps deliberately EMPTY, not [relPath]: rename keeps this component
+  // mounted (LocalDocsView does not bump editorKey for it), and recreating
+  // the editor here would give a brand-new EMPTY instance while the
+  // content-load effect below ([] deps) never re-runs — the next autosave
+  // would then write that empty document over the renamed file. File
+  // switches remount via key={editorKey}, and onUploadImage only depends on
+  // root (stable for the mounted folder), so nothing needs re-creation.
   const editor = useCreateBlockNote({
     schema: editorSchema,
     uploadFile: onUploadImage,
-  }, [relPath]);
+  }, []);
 
   useEffect(() => {
     refreshCodeBlockTheme(editor);

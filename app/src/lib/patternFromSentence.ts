@@ -58,6 +58,8 @@ export async function fetchSentencePattern(
     }
     return raw;
   })();
+  // If the timeout wins, `run` is orphaned — swallow a late rejection.
+  run.catch(() => {});
   const timeout = new Promise<string>((resolve) => { window.setTimeout(() => resolve(""), 20000); });
   try {
     return parseSentencePattern(await Promise.race([run, timeout]));

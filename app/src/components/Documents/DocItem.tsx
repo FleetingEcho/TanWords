@@ -67,7 +67,11 @@ function contentExcerpt(content: string, query: string): string | null {
   return `${start > 0 ? "…" : ""}${normalized.slice(start, end)}${end < normalized.length ? "…" : ""}`;
 }
 
-export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, onDelete, onExport, onExportHtml, onExportPdf, onPrivacyAction, onRemoveProtection, searchQuery = "" }: Props) {
+/** Memoized: with large libraries (PAGE_SIZE is 10k) every autosave rebuilds
+ * the shelf arrays, and without this each save reconciles every row. Identity
+ * stability holds up because the list patches items in place (useDocList's
+ * docs-item-updated listener) and all handlers are useCallback'd above. */
+export const DocItem = React.memo(function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, onDelete, onExport, onExportHtml, onExportPdf, onPrivacyAction, onRemoveProtection, searchQuery = "" }: Props) {
   const t = useT();
   const [renaming, setRenaming] = useState(false);
   const [renameVal, setRenameVal] = useState(doc.title);
@@ -228,4 +232,4 @@ export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, o
       </div>
     </>
   );
-}
+});

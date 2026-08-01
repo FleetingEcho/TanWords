@@ -62,6 +62,9 @@ export function ProviderSection() {
 
   // Debounced database writes, one timer per provider.
   const persistTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  // The write closures behind those timers, so unmount can FLUSH rather than
+  // discard a pending edit (pages unmount on navigation — App.tsx).
+  const pendingWrites = useRef<Record<string, () => void>>({});
 
   /** Writes one provider's row. Debounced because the key and model inputs
    * fire per keystroke. Errors surface as a toast rather than leaving the UI
@@ -69,6 +72,7 @@ export function ProviderSection() {
   const persist = useCallback((config: ProviderConfig, immediate = false) => {
     const write = () => {
       delete persistTimers.current[config.id];
+      delete pendingWrites.current[config.id];
       upsertProvider(
         {
           id: config.id,
@@ -82,7 +86,10 @@ export function ProviderSection() {
     };
     if (persistTimers.current[config.id]) clearTimeout(persistTimers.current[config.id]);
     if (immediate) write();
-    else persistTimers.current[config.id] = setTimeout(write, 500);
+    else {
+      pendingWrites.current[config.id] = write;
+      persistTimers.current[config.id] = setTimeout(write, 500);
+    }
   }, [t]);
 
   /** Applies a patch to one provider in state and schedules the write. */
@@ -94,10 +101,13 @@ export function ProviderSection() {
   }, [persist]);
 
   // Flush pending writes on unmount — closing Settings mid-keystroke used to
-  // be enough to lose the last edit.
+  // be enough to lose the last edit. The write behind each timer outlives the
+  // component: the loopback HTTP call needs no mounted UI to complete.
   useEffect(() => {
     return () => {
       Object.values(persistTimers.current).forEach(clearTimeout);
+      Object.values(pendingWrites.current).forEach((write) => write());
+      pendingWrites.current = {};
     };
   }, []);
 

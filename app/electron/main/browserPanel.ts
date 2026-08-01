@@ -9,12 +9,28 @@
  *  `hide()` detaches with nothing to replace it, for when the browser page
  *  itself is off-screen (nav'd away, or a modal needs to sit above native
  *  content — see useBrowserPanel's `blocked`). */
-import { BrowserWindow, WebContentsView } from "electron";
+import { BrowserWindow, session, WebContentsView } from "electron";
 import { wireDevToolsShortcut } from "./devtools";
 
 export type BrowserTabState = { id: string; url: string; title: string; atHome: boolean };
 export type BrowserPanelState = { tabs: BrowserTabState[]; active: string | null };
 export type PanelBounds = { x: number; y: number; width: number; height: number };
+
+/** The panel gets its own persistent session, separate from the app shell's
+ *  defaultSession: it runs arbitrary remote sites, so its cookies/cache must
+ *  never mix with the app UI's storage — and "clear browser data" must not be
+ *  able to wipe the shell's localStorage (theme cache, UI prefs), which an
+ *  unfiltered clearStorageData() on the shared session used to do. */
+const PANEL_PARTITION = "persist:browser-panel";
+
+/** Arbitrary remote content must not acquire permissions the app itself
+ *  never asks for (notifications, media devices, …). Deny by default, on the
+ *  panel's session only — the app shell is untouched. */
+function hardenPanelSession() {
+  const ses = session.fromPartition(PANEL_PARTITION);
+  ses.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
+  ses.setPermissionCheckHandler(() => false);
+}
 
 type TabRecord = {
   id: string;
@@ -82,8 +98,10 @@ export class BrowserPanelManager {
    *  handlers wired identically. */
   private buildView(rec: TabRecord): WebContentsView {
     const id = rec.id;
+    hardenPanelSession();
     const view = new WebContentsView({
       webPreferences: {
+        partition: PANEL_PARTITION,
         contextIsolation: true,
         sandbox: true,
         nodeIntegration: false,
@@ -258,10 +276,11 @@ export class BrowserPanelManager {
   }
 
   async clearData(): Promise<void> {
-    const sessions = new Set(
-      [...this.tabs.values()].flatMap((t) => (t.view ? [t.view.webContents.session] : [])),
-    );
-    await Promise.all([...sessions].map((s) => s.clearStorageData()));
+    // All views live on PANEL_PARTITION — clear that session directly. (The
+    // previous version collected sessions from *live* views, so it silently
+    // cleared nothing once tabs were discarded — and while views still
+    // shared the default session, it wiped the app shell's own storage too.)
+    await session.fromPartition(PANEL_PARTITION).clearStorageData();
   }
 
   /** The window (and every child view still attached to it) is gone —

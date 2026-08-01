@@ -128,8 +128,15 @@ impl Output {
         }
     }
     pub fn latency_sec(&mut self) -> f64 {
+        // pa_simple_get_latency returns (pa_usec_t)-1 on failure — unchecked,
+        // that's ~1.8e13 "seconds" and a Pause would compute audible=0 and
+        // restart the track from the top. Fall back to 0 (caller clamps).
         let mut error = 0;
-        unsafe { (self.latency)(self.handle, &mut error) as f64 / 1_000_000.0 }
+        let usec = unsafe { (self.latency)(self.handle, &mut error) };
+        if error != 0 || usec == u64::MAX {
+            return 0.0;
+        }
+        usec as f64 / 1_000_000.0
     }
 }
 impl Drop for Output {

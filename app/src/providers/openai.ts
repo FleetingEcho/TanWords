@@ -119,7 +119,10 @@ export class OpenAIProvider implements AIProvider {
     const thinkFilter = new ThinkTagFilter();
 
     try {
-      while (true) {
+      // Same labeled break as streamChat below: plain `break` here exits only
+      // the per-line for loop, and the read loop would hang on gateways that
+      // hold the connection open after [DONE].
+      outer: while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
@@ -129,7 +132,7 @@ export class OpenAIProvider implements AIProvider {
           const trimmed = line.trim();
           if (!trimmed.startsWith("data: ")) continue;
           const data = trimmed.slice(6);
-          if (data === "[DONE]") break;
+          if (data === "[DONE]") break outer;
           try {
             const p = JSON.parse(data);
             const delta = p.choices?.[0]?.delta;

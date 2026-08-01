@@ -26,8 +26,8 @@ pub async fn db_import_apply(
         password.as_deref(),
     )?;
     let source_path_for_open = temp
-        .as_deref()
-        .map(|path| path.to_string_lossy().into_owned())
+        .as_ref()
+        .map(|t| t.path().to_string_lossy().into_owned())
         .unwrap_or_else(|| source_path.clone());
     let source = open_source(&source_path_for_open).await?;
     let result = async {
@@ -76,9 +76,8 @@ pub async fn db_import_apply(
     }
     .await;
 
-    if let Some(temp) = temp {
-        let _ = std::fs::remove_file(temp);
-    }
+    // `temp` (declared before `source`) drops after the source connection here,
+    // and its Drop impl scrubs the plaintext snapshot on every exit path.
     result
 }
 

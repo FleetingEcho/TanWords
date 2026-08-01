@@ -29,7 +29,8 @@ type SetStateFn = unsafe extern "C" fn(*mut GstElement, c_int) -> c_int;
 type GetStateFn = unsafe extern "C" fn(*mut GstElement, *mut c_int, *mut c_int, u64) -> c_int;
 type QueryDurationFn = unsafe extern "C" fn(*mut GstElement, c_int, *mut i64) -> c_int;
 type SeekSimpleFn = unsafe extern "C" fn(*mut GstElement, c_int, u32, i64) -> c_int;
-type PullSampleFn = unsafe extern "C" fn(*mut GstElement) -> *mut GstSample;
+type TryPullSampleFn = unsafe extern "C" fn(*mut GstElement, u64) -> *mut GstSample;
+type IsEosFn = unsafe extern "C" fn(*mut GstElement) -> c_int;
 type SampleGetBufferFn = unsafe extern "C" fn(*mut GstSample) -> *mut GstBuffer;
 type BufferMapFn = unsafe extern "C" fn(*mut GstBuffer, *mut GstMapInfo, u32) -> c_int;
 type BufferUnmapFn = unsafe extern "C" fn(*mut GstBuffer, *mut GstMapInfo);
@@ -41,12 +42,36 @@ struct Api {
     _gobject: libloading::Library,
     set_state: SetStateFn,
     seek_simple: SeekSimpleFn,
-    pull_sample: PullSampleFn,
+    try_pull_sample: TryPullSampleFn,
+    is_eos: IsEosFn,
     sample_get_buffer: SampleGetBufferFn,
     buffer_map: BufferMapFn,
     buffer_unmap: BufferUnmapFn,
     sample_unref: UnrefFn,
     object_unref: UnrefFn,
+}
+
+/// Bounded sample pull: waits up to `timeout`, distinguishing a stalled
+/// pipeline (timeout → null) from a real end-of-stream (is_eos → null).
+///
+/// The blocking `gst_app_sink_pull_sample` waits for a sample *or* EOS, and
+/// when decodebin can never link the appsink (missing codec plugins, rejected
+/// stream) neither ever arrives — it hangs forever. `native_audio_load` holds
+/// the subsystem-wide op_lock across open(), so one such file used to wedge
+/// every native_audio_* command until app restart.
+unsafe fn pull_bounded(api: &Api, sink: *mut GstElement, timeout: Duration) -> *mut GstSample {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        if remaining.is_zero() {
+            return std::ptr::null_mut();
+        }
+        let step_ns = remaining.min(Duration::from_millis(50)).as_nanos().min(u64::MAX as u128) as u64;
+        let sample = (api.try_pull_sample)(sink, step_ns);
+        if !sample.is_null() || (api.is_eos)(sink) != 0 {
+            return sample; // a sample, or null at real EOS
+        }
+    }
 }
 
 pub(crate) struct GstreamerDecoder {
@@ -100,9 +125,14 @@ impl GstreamerDecoder {
             unsafe { *gst.get(b"gst_buffer_map\0").map_err(|e| e.to_string())? };
         let buffer_unmap: BufferUnmapFn =
             unsafe { *gst.get(b"gst_buffer_unmap\0").map_err(|e| e.to_string())? };
-        let pull_sample: PullSampleFn = unsafe {
+        let try_pull_sample: TryPullSampleFn = unsafe {
             *gst_app
-                .get(b"gst_app_sink_pull_sample\0")
+                .get(b"gst_app_sink_try_pull_sample\0")
+                .map_err(|e| e.to_string())?
+        };
+        let is_eos: IsEosFn = unsafe {
+            *gst_app
+                .get(b"gst_app_sink_is_eos\0")
                 .map_err(|e| e.to_string())?
         };
         let sample_unref: UnrefFn = unsafe {
@@ -116,6 +146,24 @@ impl GstreamerDecoder {
         };
         static GST_INIT: Once = Once::new();
         GST_INIT.call_once(|| unsafe { init(std::ptr::null_mut(), std::ptr::null_mut()) });
+
+        // Bundle the entry points now: every sample pull below goes through
+        // the bounded variant on it (never a blocking pull).
+        let api = Api {
+            _gst: gst,
+            _gst_app: gst_app,
+            _gobject: gobject,
+            set_state,
+            seek_simple,
+            try_pull_sample,
+            is_eos,
+            sample_get_buffer,
+            buffer_map,
+            buffer_unmap,
+            sample_unref,
+            object_unref,
+        };
+
         let location = path
             .to_string_lossy()
             .replace('\\', "\\\\")
@@ -150,7 +198,10 @@ impl GstreamerDecoder {
 
         // Some MP3 demuxers only expose duration after the first decoded buffer.
         // Preserve that preroll buffer so querying metadata never skips audible PCM.
-        let first_sample = unsafe { pull_sample(sink) };
+        // Bounded: a pipeline that can't link the appsink never produces EOS
+        // either, and an unbounded pull here wedges the whole audio subsystem
+        // (op_lock is held across open()).
+        let first_sample = unsafe { pull_bounded(&api, sink, Duration::from_secs(3)) };
         if first_sample.is_null() {
             unsafe {
                 set_state(pipeline, 1);
@@ -204,7 +255,7 @@ impl GstreamerDecoder {
                 has_duration = true;
                 break;
             }
-            let sample = unsafe { pull_sample(sink) };
+            let sample = unsafe { pull_bounded(&api, sink, Duration::from_millis(250)) };
             if sample.is_null() {
                 break;
             }
@@ -243,19 +294,7 @@ impl GstreamerDecoder {
         }
 
         Ok(Self {
-            api: Api {
-                _gst: gst,
-                _gst_app: gst_app,
-                _gobject: gobject,
-                set_state,
-                seek_simple,
-                pull_sample,
-                sample_get_buffer,
-                buffer_map,
-                buffer_unmap,
-                sample_unref,
-                object_unref,
-            },
+            api,
             pipeline,
             sink,
             samples: prerolled,
@@ -265,7 +304,9 @@ impl GstreamerDecoder {
     }
 
     fn refill(&mut self) -> Option<()> {
-        let sample = unsafe { (self.api.pull_sample)(self.sink) };
+        // Bounded like open(): a mid-stream stall must read as EOF, not hang
+        // the playback worker.
+        let sample = unsafe { pull_bounded(&self.api, self.sink, Duration::from_secs(5)) };
         if sample.is_null() {
             return None;
         }

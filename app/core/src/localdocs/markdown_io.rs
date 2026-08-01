@@ -99,17 +99,58 @@ pub fn markdown_export_bundles(
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or("Document.md");
-        fs::write(unique_md_path(dir, safe_name), &file.content)
-            .map_err(|e| format!("Failed to export document: {e}"))?;
+        // Assets are written IMMEDIATELY (not staged) so unique_asset_path
+        // sees same-run duplicates on disk — and their final names are known
+        // before the markdown is written: several documents can carry
+        // same-named attachments (as can an export into a reused folder).
+        let mut content = file.content.clone();
         for asset in &file.assets {
             let safe_asset_name = Path::new(&asset.name)
                 .file_name()
                 .and_then(|name| name.to_str())
                 .ok_or("Invalid asset name")?;
             let data = STANDARD.decode(&asset.data_base64).map_err(|_| "Invalid asset data")?;
-            fs::write(assets_dir.join(safe_asset_name), data)
+            let dest = unique_asset_path(&assets_dir, safe_asset_name);
+            let dest_name = dest
+                .file_name()
+                .and_then(|value| value.to_str())
+                .ok_or("Invalid asset name")?;
+            fs::write(&dest, data)
                 .map_err(|e| format!("Failed to export image: {e}"))?;
+            if dest_name != safe_asset_name {
+                content = replace_asset_ref(&content, safe_asset_name, dest_name);
+            }
         }
+        fs::write(unique_md_path(dir, safe_name), &content)
+            .map_err(|e| format!("Failed to export document: {e}"))?;
     }
     Ok(files.len())
+}
+
+/// Repoints `assets/<from>` references in exported markdown to `assets/<to>`
+/// after a name collision forced a rename. Only replaces where the next
+/// character closes the reference (`)`, `"`, `'`, whitespace) so a longer
+/// name sharing the prefix (`img.png` vs `img.png.bak`) is never clobbered.
+fn replace_asset_ref(content: &str, from: &str, to: &str) -> String {
+    let needle_plain = format!("assets/{from}");
+    let mut out = String::with_capacity(content.len());
+    let mut rest = content;
+    while let Some(idx) = rest.find(&needle_plain) {
+        let after = idx + needle_plain.len();
+        let boundary = rest[after..]
+            .chars()
+            .next()
+            .map(|c| c == ')' || c == '"' || c == '\'' || c.is_whitespace())
+            .unwrap_or(true);
+        if boundary {
+            out.push_str(&rest[..idx]);
+            out.push_str(&format!("assets/{to}"));
+            rest = &rest[after..];
+        } else {
+            out.push_str(&rest[..after]);
+            rest = &rest[after..];
+        }
+    }
+    out.push_str(rest);
+    out
 }

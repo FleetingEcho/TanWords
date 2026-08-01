@@ -1,7 +1,12 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useDB, DocumentListItem } from "@/hooks/useDB";
 
 export const PAGE_SIZE = 10_000;
+
+/** Keystroke-to-query debounce for the search box: each change used to fire
+ *  an FTS5 query immediately, and out-of-order responses could rewrite the
+ *  list with stale results. */
+const SEARCH_DEBOUNCE_MS = 250;
 
 /** The document list itself: search/sort/tag/date filters, pagination, and
  * the load that ties them together. Split out of DocSelector so the CRUD
@@ -13,6 +18,9 @@ export function useDocList(refreshKey: string | number) {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
+  // What queries actually run against — search trails `search` by the
+  // debounce, so typing bursts cost one query, not one per keystroke.
+  const [effectiveSearch, setEffectiveSearch] = useState("");
   const [sort, setSort] = useState("modified");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -21,35 +29,59 @@ export function useDocList(refreshKey: string | number) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const load = useCallback(async (p = page) => {
+  const pageRef = useRef(page);
+  pageRef.current = page;
+  // Response ordering: a slow earlier query must not overwrite a newer one.
+  // (The local-files shelf has the same guard via LocalDocsView's
+  // searchSequence.)
+  const querySeq = useRef(0);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setEffectiveSearch(search), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Note: depends on pageRef, not page — including `page` here would make
+  // the filter effect (dep [load]) refire on mere page navigation.
+  const load = useCallback(async (p = pageRef.current) => {
     setLoading(true);
+    const mySeq = ++querySeq.current;
     try {
       const result = await db.getDocuments({
-        search: search || undefined,
+        search: effectiveSearch || undefined,
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
         tag: tagFilter || undefined,
         sort,
         page: p,
       });
+      if (mySeq !== querySeq.current) return;
       setDocs(result.items);
       setTotal(result.total);
     } finally {
-      setLoading(false);
+      if (mySeq === querySeq.current) setLoading(false);
     }
-  }, [search, sort, dateFrom, dateTo, tagFilter, page]);
+  }, [effectiveSearch, sort, dateFrom, dateTo, tagFilter]);
 
-  useEffect(() => { load(0); setPage(0); }, [search, sort, dateFrom, dateTo, tagFilter, refreshKey]);
-  useEffect(() => { load(page); }, [page]);
+  // New filters always start from page 0. If we're already there the load
+  // happens here; otherwise the [page] effect's load covers the reset —
+  // doing both fired the same query twice whenever a filter changed while
+  // on a later page.
+  useEffect(() => {
+    if (pageRef.current === 0) void load(0);
+    else setPage(0);
+  }, [load, refreshKey]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- pagination reuses whatever filters/load are current.
+  useEffect(() => { void load(page); }, [page]);
 
   // An outside agent can write documents through the MCP server while this
   // list is on screen (see hooks/useMcpSync) — reload rather than showing a
   // list that silently disagrees with the database.
   useEffect(() => {
-    const onExternalChange = () => { void load(page); };
+    const onExternalChange = () => { void load(pageRef.current); };
     window.addEventListener("docs-updated", onExternalChange);
     return () => window.removeEventListener("docs-updated", onExternalChange);
-  }, [load, page]);
+  }, [load]);
   // Save updates the DB asynchronously, but reloading the whole list after
   // every keystroke caused noticeable UI churn. Patch the in-memory item in
   // place so counts/titles/tags stay current without a full refetch.

@@ -242,7 +242,13 @@ async function playAtInner(index: number) {
     usePodcastPlayerStore.setState({ track, playlistIndex: index, status: "loading", position: 0, duration: 0 });
     try {
       const loaded = await invoke<NativeAudioSnapshot>("native_audio_load", { path: track.localPath, autoplay: true });
-      if (usePodcastPlayerStore.getState().track !== track) return;
+      if (usePodcastPlayerStore.getState().track !== track) {
+        // Superseded while the decoder was loading — but native_audio_load
+        // ran with autoplay: true, so Rust has ALREADY started this track.
+        // Stop it here or it keeps playing underneath the newer track.
+        void invoke("native_audio_stop").catch(() => {});
+        return;
+      }
       await invoke("native_audio_set_speed", { speed: s.speed });
       usePodcastPlayerStore.setState({ status: "playing", duration: loaded.durationSec, position: 0 });
       startNativePoll(track);
@@ -371,6 +377,9 @@ export const usePodcastPlayerStore = create<PodcastPlayerState>((set, get) => ({
 
   stop: () => {
     const el = getAudio();
+    // Same invalidation as play(): a queued playAt() must not surface after
+    // the user has stopped the player.
+    loadRequestSeq++;
     el.pause();
     el.removeAttribute("src");
     stopNativePoll();

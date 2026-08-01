@@ -1,3 +1,5 @@
+#[cfg(target_os = "linux")]
+use rodio::Source;
 use serde::Serialize;
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
@@ -51,13 +53,13 @@ pub(super) fn playback_worker(
     commands: mpsc::Receiver<Command>,
 ) {
     if rate == 0 || channels == 0 {
-        set_error(&snapshot, "unsupported audio format".to_string());
+        set_error(&snapshot, "unsupported audio format".to_string(), generation);
         return;
     }
     let mut output = match super::pulse::Output::open(rate, channels) {
         Ok(v) => v,
         Err(e) => {
-            set_error(&snapshot, e);
+            set_error(&snapshot, e, generation);
             return;
         }
     };
@@ -68,10 +70,15 @@ pub(super) fn playback_worker(
             match command {
                 Command::Play => playing = true,
                 Command::Pause => {
-                    let audible = (frames as f64 / rate as f64 - output.latency_sec()).max(0.0);
+                    // latency_sec() is WALL-clock time of buffered output, but
+                    // frames/rate is SOURCE time — at speed s the buffered wall
+                    // time corresponds to latency*s of source. Without the
+                    // factor, pausing at 2x re-seeks ~latency seconds PAST what
+                    // was heard (skipped audio on resume); at 0.5x it repeats.
+                    let audible = (frames as f64 / rate as f64 - output.latency_sec() * speed as f64).max(0.0);
                     output.flush();
                     if let Err(e) = decoder.try_seek(Duration::from_secs_f64(audible)) {
-                        set_error(&snapshot, e.to_string());
+                        set_error(&snapshot, e.to_string(), generation);
                         return;
                     }
                     frames = (audible * rate as f64) as u64;
@@ -81,7 +88,7 @@ pub(super) fn playback_worker(
                     let target = seconds.max(0.0);
                     output.flush();
                     if let Err(e) = decoder.try_seek(Duration::from_secs_f64(target)) {
-                        set_error(&snapshot, e.to_string());
+                        set_error(&snapshot, e.to_string(), generation);
                         return;
                     }
                     frames = (target * rate as f64) as u64;
@@ -98,7 +105,7 @@ pub(super) fn playback_worker(
                 return;
             }
             s.status = if playing { "playing" } else { "paused" };
-            s.position_sec = (frames as f64 / rate as f64 - output.latency_sec()).max(0.0);
+            s.position_sec = (frames as f64 / rate as f64 - output.latency_sec() * speed as f64).max(0.0);
             s.speed = speed;
         }
         if !playing {
@@ -109,15 +116,20 @@ pub(super) fn playback_worker(
         if input.is_empty() {
             output.drain();
             if let Ok(mut s) = snapshot.lock() {
-                s.status = "ended";
-                s.position_sec = s.duration_sec;
+                // A superseded worker must not stamp "ended" onto the NEW
+                // track's snapshot — the rodio worker guards every write with
+                // the generation check; this path raced it on track switch.
+                if s.generation == generation {
+                    s.status = "ended";
+                    s.position_sec = s.duration_sec;
+                }
             }
             return;
         }
         let input_frames = input.len() / channels as usize;
         let rendered = resample_speed(&input, channels as usize, speed);
         if let Err(e) = output.write(&rendered) {
-            set_error(&snapshot, e);
+            set_error(&snapshot, e, generation);
             return;
         }
         frames += input_frames as u64;
@@ -145,8 +157,13 @@ fn resample_speed(input: &[f32], channels: usize, speed: f32) -> Vec<f32> {
     output
 }
 
-pub(super) fn set_error(snapshot: &Arc<Mutex<NativeAudioSnapshot>>, error: String) {
+pub(super) fn set_error(snapshot: &Arc<Mutex<NativeAudioSnapshot>>, error: String, generation: u64) {
     if let Ok(mut s) = snapshot.lock() {
+        // A superseded worker (old track) may fail asynchronously; its error
+        // must not brand the new track's running snapshot.
+        if s.generation != generation {
+            return;
+        }
         s.status = "error";
         s.error = Some(error);
     }
@@ -165,7 +182,7 @@ pub(super) fn playback_worker(
     let output = match rodio::DeviceSinkBuilder::open_default_sink() {
         Ok(value) => value,
         Err(error) => {
-            set_error(&snapshot, error.to_string());
+            set_error(&snapshot, error.to_string(), generation);
             return;
         }
     };
@@ -181,7 +198,7 @@ pub(super) fn playback_worker(
             Ok(Command::Pause) => player.pause(),
             Ok(Command::Seek(seconds)) => {
                 if let Err(error) = player.try_seek(Duration::from_secs_f64(seconds.max(0.0))) {
-                    set_error(&snapshot, error.to_string());
+                    set_error(&snapshot, error.to_string(), generation);
                     return;
                 }
             }
