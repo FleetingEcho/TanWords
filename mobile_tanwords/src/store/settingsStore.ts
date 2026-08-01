@@ -8,6 +8,7 @@ import { create } from "zustand";
 import { getDb } from "@/db/connection";
 
 export type UiLanguage = "zh" | "en";
+export type ThemeMode = "system" | "light" | "dark";
 
 interface SettingsState {
   /** Loaded from `user_settings.ui_language`; default zh (Chinese-first, D3). */
@@ -17,6 +18,8 @@ interface SettingsState {
   customEnrichPrompt: string;
   ttsSpeed: number;
   defaultAiProvider: string;
+  /** `user_settings.theme_mode` (mobile-only key; desktop ignores it). */
+  themeMode: ThemeMode;
   loaded: boolean;
   loadFromDb: () => Promise<void>;
   /** Port of command db_set_setting. */
@@ -31,12 +34,13 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   customEnrichPrompt: "",
   ttsSpeed: 1,
   defaultAiProvider: "openai",
+  themeMode: "system",
   loaded: false,
 
   loadFromDb: async () => {
     const db = getDb();
     const rows = await db.getAllAsync<{ key: string; value: string }>(
-      "SELECT key, value FROM user_settings WHERE key IN ('ui_language','target_level','custom_enrich_prompt','tts_speed','default_ai_provider')"
+      "SELECT key, value FROM user_settings WHERE key IN ('ui_language','target_level','custom_enrich_prompt','tts_speed','default_ai_provider','theme_mode')"
     );
     const v: Record<string, string> = {};
     for (const r of rows) v[r.key] = r.value;
@@ -57,6 +61,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       customEnrichPrompt: v.custom_enrich_prompt ?? "",
       ttsSpeed: Number(v.tts_speed) || 1,
       defaultAiProvider: v.default_ai_provider || "openai",
+      themeMode: v.theme_mode === "light" || v.theme_mode === "dark" ? v.theme_mode : "system",
       loaded: true,
     });
   },

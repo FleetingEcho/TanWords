@@ -21,6 +21,7 @@ export const hackernews: Dict = {
     "hn.section.best": "Best",
     "hn.section.error": "Couldn't load Hacker News.",
     "hn.search.placeholder": "Search Hacker News…",
+    "hn.search.submit": "Search",
     "hn.search.clear": "Clear search",
     "hn.search.empty": "No results.",
 };

@@ -1,19 +1,29 @@
 /** @type {import('tailwindcss').Config} */
+// Semantic colors resolve through CSS variables injected at the app root
+// (NativeWind `vars()`, see src/lib/theme.ts + app/_layout.tsx). Values are
+// the desktop app's theme-vars.css HSL triplets, so dark mode and any future
+// theme port over with zero className changes.
+const v = (name) => `hsl(var(--${name}))`;
+
 module.exports = {
   content: ["./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
   presets: [require("nativewind/preset")],
   theme: {
     extend: {
       colors: {
-        // Desktop app token names (app/src/index.css) so classNames port 1:1.
-        background: "hsl(0 0% 100%)",
-        foreground: "hsl(240 10% 4%)",
-        muted: "hsl(240 5% 96%)",
-        "muted-foreground": "hsl(240 4% 46%)",
-        primary: "hsl(243 75% 59%)",
-        destructive: "hsl(0 84% 60%)",
-        border: "hsl(240 6% 90%)",
-        card: "hsl(0 0% 100%)",
+        background: v("background"),
+        foreground: v("foreground"),
+        card: { DEFAULT: v("card"), foreground: v("card-foreground") },
+        popover: { DEFAULT: v("popover"), foreground: v("popover-foreground") },
+        primary: { DEFAULT: v("primary"), foreground: v("primary-foreground") },
+        secondary: { DEFAULT: v("secondary"), foreground: v("secondary-foreground") },
+        muted: { DEFAULT: v("muted"), foreground: v("muted-foreground") },
+        accent: { DEFAULT: v("accent"), foreground: v("accent-foreground") },
+        destructive: { DEFAULT: v("destructive"), foreground: v("destructive-foreground") },
+        border: v("border"),
+        input: v("input"),
+        ring: v("ring"),
+        ink: v("ink"),
       },
     },
   },
