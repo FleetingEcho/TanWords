@@ -18,7 +18,9 @@ pub(super) fn unique_md_path(dir: &Path, file_name: &str) -> PathBuf {
             return candidate;
         }
     }
-    dir.join(format!("{stem}-copy.{ext}"))
+    // Never fall back to an unchecked name — the old `{stem}-copy` fallback
+    // silently overwrote an existing file when all 999 candidates were taken.
+    dir.join(format!("{}-{}.{}", stem, uuid::Uuid::new_v4(), ext))
 }
 
 pub(super) fn unique_asset_path(dir: &Path, file_name: &str) -> PathBuf {
@@ -56,7 +58,35 @@ pub(super) fn resolve(root: &str, rel: &str) -> Result<PathBuf, String> {
     {
         return Err(format!("Invalid path: {rel}"));
     }
-    Ok(root_p.join(rel_p))
+    let candidate = root_p.join(rel_p);
+
+    // The lexical checks above can't catch a *symlink inside the vault*
+    // pointing outside it (synced folders, unzipped archives) — every command
+    // here promises "cannot escape the root", so enforce it physically:
+    // canonicalize the root and the target's nearest existing ancestor (the
+    // target itself may legitimately not exist yet on create/write paths).
+    let canon_root = std::fs::canonicalize(root_p)
+        .map_err(|e| format!("Invalid mounted directory: {e}"))?;
+    let mut probe: &Path = &candidate;
+    loop {
+        match std::fs::canonicalize(probe) {
+            Ok(canon) => {
+                if !canon.starts_with(&canon_root) {
+                    return Err(format!("Path escapes the mounted directory: {rel}"));
+                }
+                break;
+            }
+            Err(_) => match probe.parent() {
+                // Climb toward the root until something exists. rel_p had no
+                // `..`/prefix, so the walk cannot pass above root_p, and
+                // root_p itself canonicalizes (checked above) — the loop
+                // always terminates inside the vault.
+                Some(p) => probe = p,
+                None => break,
+            },
+        }
+    }
+    Ok(candidate)
 }
 
 pub(super) fn ensure_md(path: &Path) -> Result<(), String> {

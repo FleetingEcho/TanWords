@@ -4,6 +4,7 @@
  *  streaming case and lives in its own module (see http.ts). */
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, type WebContents } from "electron";
 import { writeFile } from "node:fs/promises";
+import path from "node:path";
 import type { UpdateInfoPayload } from "./updater";
 import type { BrowserPanelManager, PanelBounds } from "./browserPanel";
 import type { TrayManager } from "./tray";
@@ -23,8 +24,43 @@ export type IpcDeps = {
 
 /** Schemes `shell:open` will actually hand to `shell.openExternal` — an
  *  unvalidated openExternal is a known RCE vector on Windows (see the comment
- *  in src/ipc/shell.ts). */
-const ALLOWED_EXTERNAL_SCHEMES = new Set(["http:", "https:", "mailto:"]);
+ *  in src/ipc/shell.ts). Also imported by index.ts, which applies the same
+ *  gate to window.open and full-window navigation attempts. */
+export const ALLOWED_EXTERNAL_SCHEMES = new Set(["http:", "https:", "mailto:"]);
+
+/** True for URLs `shell.openExternal` may safely receive. Shared by every
+ *  code path that hands a renderer-controlled URL to the OS. */
+export function isExternalUrlAllowed(url: string): boolean {
+  try {
+    return ALLOWED_EXTERNAL_SCHEMES.has(new URL(url).protocol);
+  } catch {
+    return false;
+  }
+}
+
+/** Permit-list of paths `file:write` / `window:printHtmlToPdf` may target.
+ *  Both IPC handlers used to take an arbitrary renderer-supplied path — any
+ *  renderer compromise (one navigation, one injected element) became an
+ *  arbitrary local file write. Instead, `dialog:save` is the mint: the main
+ *  process records every path the user picked in this session, and a write
+ *  is only honored for one of those. This is transparent to the real flows —
+ *  they all call `dialog:save` immediately before writing — and costs no UI
+ *  change. Paths are normalized so separators/case can't smuggle a variant. */
+const saveDialogPaths = new Set<string>();
+
+function normalizeWritePath(p: string): string {
+  return path.normalize(p);
+}
+
+function recordSavePath(p: string): void {
+  saveDialogPaths.add(normalizeWritePath(p));
+}
+
+function isAllowedWritePath(p: string): boolean {
+  return saveDialogPaths.has(normalizeWritePath(p));
+}
+
+export const __writePathGuardForTests = { recordSavePath, isAllowedWritePath, saveDialogPaths };
 
 type DialogFilter = { name: string; extensions: string[] };
 
@@ -142,19 +178,28 @@ async function dispatch(
         ? await dialog.showSaveDialog(win, { defaultPath: opts.defaultPath, filters: opts.filters })
         : await dialog.showSaveDialog({ defaultPath: opts.defaultPath, filters: opts.filters });
       if (result.canceled || !result.filePath) return null;
+      // The user just picked this path in a real OS dialog — it is the only
+      // kind of path `file:write` / `printHtmlToPdf` will accept afterwards.
+      recordSavePath(result.filePath);
       return result.filePath;
     }
 
     case "file:write": {
-      const { path, data } = (args ?? {}) as { path?: string; data?: string };
-      if (!path || typeof data !== "string") throw new Error("file:write requires path and data");
-      await writeFile(path, data, "utf8");
+      const { path: filePath, data } = (args ?? {}) as { path?: string; data?: string };
+      if (!filePath || typeof data !== "string") throw new Error("file:write requires path and data");
+      if (!isAllowedWritePath(filePath)) {
+        throw new Error("file:write only writes to paths the user picked in a save dialog this session");
+      }
+      await writeFile(filePath, data, "utf8");
       return null;
     }
 
     case "window:printHtmlToPdf": {
-      const { path, html } = (args ?? {}) as { path?: string; html?: string };
-      if (!path || typeof html !== "string") throw new Error("printHtmlToPdf requires path and html");
+      const { path: pdfPath, html } = (args ?? {}) as { path?: string; html?: string };
+      if (!pdfPath || typeof html !== "string") throw new Error("printHtmlToPdf requires path and html");
+      if (!isAllowedWritePath(pdfPath)) {
+        throw new Error("printHtmlToPdf only writes to paths the user picked in a save dialog this session");
+      }
       const win = new BrowserWindow({
         show: false,
         width: 1200,
@@ -174,7 +219,7 @@ async function dispatch(
           printBackground: true,
           pageSize: "A4",
         });
-        await writeFile(path, pdf);
+        await writeFile(pdfPath, pdf);
       } finally {
         if (!win.isDestroyed()) win.destroy();
       }
@@ -183,9 +228,8 @@ async function dispatch(
 
     case "shell:open": {
       const { url } = (args ?? {}) as { url: string };
-      const parsed = new URL(url);
-      if (!ALLOWED_EXTERNAL_SCHEMES.has(parsed.protocol)) {
-        throw new Error(`refusing to open URL with scheme ${parsed.protocol}`);
+      if (!isExternalUrlAllowed(url)) {
+        throw new Error(`refusing to open URL with scheme ${new URL(url).protocol}`);
       }
       await shell.openExternal(url);
       return null;
@@ -206,8 +250,13 @@ async function dispatch(
     }
 
     case "process:relaunch": {
+      // quit(), not exit(): exit() skips before-quit, so the old sidecar would
+      // still be draining its final Turso sync while the relaunched instance
+      // spawns a new one against the same SQLite data dir. Going through
+      // quit() lets index.ts's before-quit run the normal graceful shutdown
+      // first; Electron carries the relaunch flag across the deferred exit.
       app.relaunch();
-      app.exit();
+      app.quit();
       return null;
     }
     case "process:exit": {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { openDialog } from "@/ipc/dialog";
 import { toast } from "sonner";
 import { useDB } from "@/hooks/useDB";
@@ -31,7 +31,9 @@ export function useDocImportExport(params: {
   const t = useT();
   const [exportChoices, setExportChoices] = useState<MarkdownExportChoice[] | null>(null);
 
-  const handleImport = async () => {
+  // useCallback on every exported handler: DocItem is memoized, so these
+  // identities must not churn per render or the memo does nothing.
+  const handleImport = useCallback(async () => {
     const picked = await openDialog({ multiple: true, filters: [{ name: "Markdown", extensions: ["md", "markdown"] }] });
     const paths = typeof picked === "string" ? [picked] : picked;
     if (!paths?.length) return;
@@ -50,9 +52,9 @@ export function useDocImportExport(params: {
       if (firstImportedId !== null) onSelect(firstImportedId);
       toast.success(t("doc.importedCount", { n: sources.length }));
     } catch (error) { toast.error(String(error)); }
-  };
+  }, [db, load, onSelect, t]);
 
-  const exportDocuments = async (ids: number[]) => {
+  const exportDocuments = useCallback(async (ids: number[]) => {
     try {
       const firstPage = await db.getDocuments({ sort: "title", page: 0 });
       const allDocuments = [...firstPage.items];
@@ -95,16 +97,16 @@ export function useDocImportExport(params: {
       const count = await exportMarkdownBundles(destination, files);
       toast.success(t("doc.exportedCount", { n: count }));
     } catch (error) { toast.error(String(error)); }
-  };
+  }, [db, requestPassword, t]);
 
-  const documentToDisplayMarkdown = async (id: number): Promise<string | null> => {
+  const documentToDisplayMarkdown = useCallback(async (id: number): Promise<string | null> => {
     const detail = await db.getDocument(id);
     if (!detail) return null;
     const blocks = lowerMermaid(await contentToBlocksOffThread(detail.content));
     return blocksToMarkdownOffThread(blocks);
-  };
+  }, [db]);
 
-  const exportDocumentHtml = async (id: number) => {
+  const exportDocumentHtml = useCallback(async (id: number) => {
     const detail = await db.getDocument(id);
     if (!detail) return;
     try {
@@ -112,9 +114,9 @@ export function useDocImportExport(params: {
     } catch (error) {
       toast.error(String(error));
     }
-  };
+  }, [db, documentToDisplayMarkdown, t]);
 
-  const exportDocumentPdf = async (id: number) => {
+  const exportDocumentPdf = useCallback(async (id: number) => {
     const detail = await db.getDocument(id);
     if (!detail) return;
     try {
@@ -122,9 +124,9 @@ export function useDocImportExport(params: {
     } catch (error) {
       toast.error(String(error));
     }
-  };
+  }, [db, documentToDisplayMarkdown, t]);
 
-  const handleExportAll = async () => {
+  const handleExportAll = useCallback(async () => {
     try {
       const firstPage = await db.getDocuments({ sort: "title", page: 0 });
       const allDocs = [...firstPage.items];
@@ -142,7 +144,7 @@ export function useDocImportExport(params: {
     } catch (error) {
       toast.error(String(error));
     }
-  };
+  }, [db, t]);
 
   return {
     exportChoices, setExportChoices, handleImport, exportDocuments, handleExportAll,

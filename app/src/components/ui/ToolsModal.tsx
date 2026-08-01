@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useToolsBallStore } from "@/store/toolsBallStore";
 import { useNavStore } from "@/store/navStore";
 import { useSelectedWordStore } from "@/store/selectedWordStore";
-import { ToolsModalTitleBar } from "@/components/ui/ToolsModalTitleBar";
+import { ToolsModalTitleBar, type ToolsModalTab } from "@/components/ui/ToolsModalTitleBar";
 import { ToolsModalWordTab } from "@/components/ui/ToolsModalWordTab";
 import { ToolsModalResizeHandle } from "@/components/ui/ToolsModalResizeHandle";
 import { BrowserPanelBlocker } from "@/store/browserPanelStore";
@@ -96,10 +96,24 @@ export function ToolsModal() {
   const isVocabPage = useNavStore((s) => s.currentPage()) === "vocabulary";
   const selectedWord = useSelectedWordStore();
 
+  // When the main window is already ON a page the modal hosts, mounting that
+  // page inside the modal puts two live DocumentsPage/AiChatPage instances
+  // side by side — two useDocumentEditor editors with independent save
+  // queues, where the last autosave silently wins over the other's edits.
+  // Hide those tabs outright in that case (the page itself is behind the
+  // modal anyway).
+  const isDocumentsPage = useNavStore((s) => s.currentPage()) === "documents";
+  const isChatPage = useNavStore((s) => s.currentPage()) === "chat";
+
   // Fall back to another tab if the user leaves the Vocabulary page while on "word"
   useEffect(() => {
     if (!isVocabPage && activeTab === "word") setActiveTab("documents");
   }, [isVocabPage, activeTab, setActiveTab]);
+
+  useEffect(() => {
+    if (isDocumentsPage && activeTab === "documents") setActiveTab("chat");
+    else if (isChatPage && activeTab === "chat") setActiveTab("documents");
+  }, [isDocumentsPage, isChatPage, activeTab, setActiveTab]);
 
   // ── Esc to close ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -217,6 +231,7 @@ export function ToolsModal() {
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           isVocabPage={isVocabPage}
+          hiddenTabs={(isDocumentsPage ? ["documents"] : []).concat(isChatPage ? ["chat"] : []) as ToolsModalTab[]}
           closeModal={closeModal}
           maximized={maximized}
           toggleMaximized={toggleMaximized}
@@ -228,14 +243,14 @@ export function ToolsModal() {
 
         {/* ── Body: the real pages, shown/hidden per tab ──────────────────── */}
         <div className="flex-1 min-h-0 overflow-hidden">
-          {mountedTabs.has("documents") && (
+          {!isDocumentsPage && mountedTabs.has("documents") && (
             <div style={{ display: activeTab === "documents" ? "block" : "none", height: "100%" }}>
               <React.Suspense fallback={<PageFallback />}>
                 <DocumentsPage />
               </React.Suspense>
             </div>
           )}
-          {mountedTabs.has("chat") && (
+          {!isChatPage && mountedTabs.has("chat") && (
             <div style={{ display: activeTab === "chat" ? "block" : "none", height: "100%" }}>
               <React.Suspense fallback={<PageFallback />}>
                 <AiChatPage />

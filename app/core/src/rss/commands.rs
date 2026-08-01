@@ -303,7 +303,13 @@ pub async fn db_sync_rss_feed(feed_id: i64, conn: State<'_, AppState>) -> Result
                summary=excluded.summary, image_url=excluded.image_url,
                audio_url=excluded.audio_url, audio_duration=excluded.audio_duration,
                hn_item_id=excluded.hn_item_id,
-               published=excluded.published, fetched_at=excluded.fetched_at",
+               published=excluded.published, fetched_at=excluded.fetched_at
+             -- The UNIQUE constraint is on url alone (schema limitation), so a
+             -- URL shared by two feeds would otherwise MOVE the row to the
+             -- feed that synced last, silently emptying the other feed's list
+             -- and corrupting unread counts. Without the guard the update is
+             -- dropped (no error), leaving the entry with its original feed.
+             WHERE rss_entries.feed_id = excluded.feed_id",
             params![
                 feed_id,
                 e.title.clone(),

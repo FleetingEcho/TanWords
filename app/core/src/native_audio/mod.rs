@@ -217,7 +217,7 @@ pub fn native_audio_load(
                 playback_worker(decoder, rate, channels, autoplay, generation, shared.clone(), rx)
             }));
             if result.is_err() {
-                set_error(&shared, "audio playback thread panicked".to_string());
+                set_error(&shared, "audio playback thread panicked".to_string(), generation);
             }
         });
         *state.session.lock().map_err(|e| e.to_string())? = Some(Session { commands: tx });

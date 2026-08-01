@@ -38,13 +38,35 @@ pub fn create_encrypted_backup(plain_db: &Path, dest: &Path, password: &str) -> 
     Ok(())
 }
 
+/// A decrypted plaintext snapshot in the temp dir, scrubbed on drop.
+///
+/// The import commands used to get back a bare PathBuf and delete it only on
+/// their success paths — any error (junk `tanwords.db` entry, failed analyze,
+/// aborted apply) leaked a world-readable plaintext database in the shared
+/// temp dir until reboot. The guard removes the file on EVERY exit path, and
+/// the file is created 0600 so other users on the machine can't read it
+/// while it exists.
+pub struct TempDatabase(PathBuf);
+
+impl TempDatabase {
+    pub fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDatabase {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
 /// Extracts `tanwords.db` from a password-protected zip to a temp file.
 /// Returns `None` for a normal SQLite file, so callers can treat the original
 /// path as the source unchanged.
 pub fn extract_encrypted_backup_to_temp(
     source: &Path,
     password: Option<&str>,
-) -> Result<Option<PathBuf>, String> {
+) -> Result<Option<TempDatabase>, String> {
     if !is_encrypted_backup(source) {
         return Ok(None);
     }
@@ -66,10 +88,22 @@ pub fn extract_encrypted_backup_to_temp(
     };
 
     let temp = std::env::temp_dir().join(format!("tanwords-import-{}.db", uuid::Uuid::new_v4()));
-    let mut output = File::create(&temp).map_err(|e| format!("Could not write temp database: {e}"))?;
-    std::io::copy(&mut entry, &mut output)
-        .map_err(|e| format!("Could not decrypt backup database: {e}"))?;
-    Ok(Some(temp))
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut output = options
+        .open(&temp)
+        .map_err(|e| format!("Could not write temp database: {e}"))?;
+    if let Err(e) = std::io::copy(&mut entry, &mut output) {
+        drop(output);
+        let _ = std::fs::remove_file(&temp);
+        return Err(format!("Could not decrypt backup database: {e}"));
+    }
+    Ok(Some(TempDatabase(temp)))
 }
 
 fn map_zip_password_error(error: zip::result::ZipError) -> String {
@@ -95,7 +129,7 @@ mod tests {
         let extracted = extract_encrypted_backup_to_temp(&zip, Some("secret"))
             .unwrap()
             .unwrap();
-        assert_eq!(std::fs::read(&extracted).unwrap(), b"sqlite-snapshot-bytes");
+        assert_eq!(std::fs::read(extracted.path()).unwrap(), b"sqlite-snapshot-bytes");
 
         let wrong = extract_encrypted_backup_to_temp(&zip, Some("wrong"));
         assert!(wrong.is_err());

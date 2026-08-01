@@ -51,7 +51,11 @@ export const useTtsPlayerStore = create<TtsPlayerState>((set, get) => ({
 
   toggle: () => {
     const { status } = get();
-    if (status === "playing") set({ status: "paused" });
+    // "loading" counts as playing for pause purposes: synthesis can take
+    // seconds (first-play model load), and dropping the click means playback
+    // starts anyway after the user pressed pause. The play effect in
+    // useArticlePlayer checks status before starting audio.
+    if (status === "playing" || status === "loading") set({ status: "paused" });
     else if (status === "paused") set({ status: "playing" });
     else if (status === "error") get().retry();
   },

@@ -73,6 +73,9 @@ function bundlePath(): string {
 
 export function createMacUpdater(emitEvent: (name: string, payload: unknown) => void) {
   let pending: { entry: PlatformEntry; version: string } | null = null;
+  // Reentrancy guard: a second invoke would run two ~130MB downloads and two
+  // swap scripts racing the same bundle path.
+  let installInFlight = false;
 
   async function fetchManifest(): Promise<Manifest | null> {
     const response = await fetch(FEED_URL, { redirect: "follow" });
@@ -103,7 +106,18 @@ export function createMacUpdater(emitEvent: (name: string, payload: unknown) => 
 
     async downloadAndInstall(): Promise<void> {
       if (!pending) throw new Error("no update has been checked for");
-      const { entry, version } = pending;
+      if (installInFlight) return;
+      installInFlight = true;
+      try {
+        await downloadVerifyAndStage(pending);
+      } finally {
+        installInFlight = false;
+      }
+    },
+  };
+
+  async function downloadVerifyAndStage(current: { entry: PlatformEntry; version: string }): Promise<void> {
+      const { entry, version } = current;
 
       const target = bundlePath();
       // Fail before downloading 130MB the swap could never apply — an app
@@ -158,8 +172,7 @@ export function createMacUpdater(emitEvent: (name: string, payload: unknown) => 
         await rm(staging, { recursive: true, force: true });
         throw error;
       }
-    },
-  };
+  }
 }
 
 function run(command: string, args: string[]): Promise<void> {

@@ -84,7 +84,12 @@ export class AnthropicProvider implements AIProvider {
           } catch {}
         }
       }
-    } finally { reader.releaseLock(); }
+    } finally {
+      // cancel(), not releaseLock(): cancel flows into netFetch's cancel() →
+      // "http:abort" in main; releasing the lock alone leaves main pumping
+      // the rest of the stream into an abandoned buffer.
+      void reader.cancel().catch(() => {});
+    }
   }
 
   async chatWithTools(
@@ -165,7 +170,10 @@ export class AnthropicProvider implements AIProvider {
           } catch {}
         }
       }
-    } finally { reader.releaseLock(); }
+    } finally {
+      // See the note in generate(): cancel also tells main to stop the stream.
+      void reader.cancel().catch(() => {});
+    }
 
     return { textContent, toolCalls, stopReason };
   }

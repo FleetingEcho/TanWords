@@ -8,7 +8,7 @@ import {
 import {
   cachedUiLanguage, cacheUiLanguage, cachedSidebarTabs, cacheSidebarTabs,
   cachedTopBarItems, cacheTopBarItems,
-  cachedDefaultRssTab, cacheDefaultRssTab, cachedFeedsViewMode, cacheFeedsViewMode, saveSetting,
+  cachedDefaultRssTab, cacheDefaultRssTab, cachedFeedsViewMode, cacheFeedsViewMode, saveSetting, saveSettingDebounced,
 } from "./settings/cache";
 import { applyTheme, applyDocumentFontSize, applyDocumentLineHeight, applyDocumentTextColor, applyHighlightColor } from "./settings/domEffects";
 import { loadSettingsFromDB } from "./settings/loadFromDB";
@@ -137,7 +137,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   setAppBackgroundBlur: (px) => {
     set({ appBackgroundBlur: px });
-    saveSetting("app_background_blur", JSON.stringify(px));
+    // Slider-bound (GeneralSection): persist trailing-edge, not per drag tick.
+    saveSettingDebounced("app_background_blur", JSON.stringify(px));
   },
 
   setAppBackgroundVisible: (visible) => {
@@ -149,14 +150,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     const size = Math.min(24, Math.max(12, Math.round(px)));
     set({ documentFontSize: size });
     applyDocumentFontSize(size);
-    saveSetting("document_font_size", JSON.stringify(size));
+    // Slider-bound (DocumentsSection): persist trailing-edge, not per drag tick.
+    saveSettingDebounced("document_font_size", JSON.stringify(size));
   },
 
   setDocumentLineHeight: (value) => {
     const lineHeight = Math.min(2.2, Math.max(1.4, Math.round(value * 10) / 10));
     set({ documentLineHeight: lineHeight });
     applyDocumentLineHeight(lineHeight);
-    saveSetting("document_line_height", JSON.stringify(lineHeight));
+    // Slider-bound (DocumentsSection): persist trailing-edge, not per drag tick.
+    saveSettingDebounced("document_line_height", JSON.stringify(lineHeight));
   },
 
   setDocumentTextColor: (hex) => {

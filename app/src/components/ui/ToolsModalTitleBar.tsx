@@ -2,12 +2,14 @@ import { Maximize2, Minimize2 } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 
-type ToolsModalTab = "documents" | "chat" | "word";
+export type ToolsModalTab = "documents" | "chat" | "word";
 
 interface ToolsModalTitleBarProps {
   activeTab: ToolsModalTab;
   setActiveTab: (tab: ToolsModalTab) => void;
   isVocabPage: boolean;
+  /** Tabs that would duplicate the page behind the modal — not offered. */
+  hiddenTabs?: ToolsModalTab[];
   closeModal: () => void;
   maximized: boolean;
   toggleMaximized: () => void;
@@ -22,6 +24,7 @@ export function ToolsModalTitleBar({
   activeTab,
   setActiveTab,
   isVocabPage,
+  hiddenTabs = [],
   closeModal,
   maximized,
   toggleMaximized,
@@ -32,7 +35,8 @@ export function ToolsModalTitleBar({
 }: ToolsModalTitleBarProps) {
   const t = useT();
 
-  const tabs: ToolsModalTab[] = isVocabPage ? ["documents", "chat", "word"] : ["documents", "chat"];
+  const tabs: ToolsModalTab[] = (isVocabPage ? ["documents", "chat", "word"] as const : ["documents", "chat"] as const)
+    .filter((tab) => !hiddenTabs.includes(tab));
 
   return (
     <div

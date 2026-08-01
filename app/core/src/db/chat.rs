@@ -170,8 +170,10 @@ pub async fn db_get_chat_session(
             })
         },
     )
-    .await
-    .unwrap_or(None);
+    .await?;
+    // NOT `.unwrap_or(None)`: fetch_optional already returns Ok(None) for a
+    // missing row; squashing real errors into None made callers treat an
+    // existing session as new and overwrite its messages on the next upsert.
     Ok(result)
 }
 

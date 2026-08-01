@@ -8,6 +8,7 @@ pub mod document_privacy;
 pub mod tts;
 pub mod reader;
 pub mod secrets;
+pub mod http_util;
 pub mod rss;
 pub mod hn;
 pub mod music;

@@ -103,3 +103,17 @@ export async function saveSetting(key: string, value: string) {
     localStorage.setItem(`tanwords_${key}`, value);
   }
 }
+
+// One trailing-edge timer per key. Range-slider setters (background blur,
+// document font size/line height) attach to onChange, which fires per drag
+// tick — without a debounce one drag is tens of HTTP+SQLite writes.
+const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+export function saveSettingDebounced(key: string, value: string, delayMs = 300) {
+  const existing = debounceTimers.get(key);
+  if (existing) clearTimeout(existing);
+  debounceTimers.set(key, setTimeout(() => {
+    debounceTimers.delete(key);
+    void saveSetting(key, value);
+  }, delayMs));
+}

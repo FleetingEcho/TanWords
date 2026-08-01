@@ -21,9 +21,16 @@ fn walk(dir: &Path, root: &Path, depth: usize, out: &mut Vec<LocalDocItem>) {
         if name.starts_with('.') {
             continue;
         }
-        if path.is_dir() {
+        // DirEntry::file_type does NOT follow links: skip symlinks outright so
+        // a vault containing a link to elsewhere can't leak outside files into
+        // the listing (resolve() rejects reads/writes through them anyway).
+        let Ok(file_type) = entry.file_type() else { continue };
+        if file_type.is_symlink() {
+            continue;
+        }
+        if file_type.is_dir() {
             walk(&path, root, depth + 1, out);
-        } else if ensure_md(&path).is_ok() {
+        } else if file_type.is_file() && ensure_md(&path).is_ok() {
             let meta = match entry.metadata() {
                 Ok(m) => m,
                 Err(_) => continue,

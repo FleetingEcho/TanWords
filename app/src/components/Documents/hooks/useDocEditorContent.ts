@@ -11,6 +11,10 @@ import { isEmptyParagraph, withTrailingEditorParagraph, withoutTrailingEditorPar
 // debounced long enough to keep keystrokes smooth. Leaving the editor, the
 // app window, or the page still flushes immediately (see listeners below).
 const AUTOSAVE_DEBOUNCE_MS = 15_000;
+/** Ceiling: with only the debounce, someone who types without pausing never
+ *  saves (every keystroke re-arms the timer). Force a flush at least this
+ *  often while changes keep coming, like the local-file editor does. */
+const AUTOSAVE_MAX_INTERVAL_MS = 8_000;
 
 /** The editor instance, its rich/raw mode, and everything about getting
  * content in and keeping it saved: loading stored content, the debounced
@@ -30,6 +34,7 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
   const loaded = useRef(false);
   const rawDirty = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const maxSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dirty = useRef(false);
   const flushRef = useRef<() => Promise<void>>(async () => {});
 
@@ -39,7 +44,11 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
     resolveFileUrl: resolveDocumentAssetUrl,
   }, [doc.id]);
 
-  // Load stored content (BlockNote JSON, or legacy Lexical — lazily migrated)
+  // Load stored content (BlockNote JSON, or legacy Lexical — lazily migrated).
+  // Keyed on the editor instance, not []: useCreateBlockNote re-creates it
+  // when doc.id changes, and a fresh instance starts EMPTY — without this
+  // dep such an editor would silently receive no content (masked today by
+  // the key={doc.id} remount upstream, but that prop is easy to lose).
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -53,20 +62,26 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- doc.content identity tracks doc.id, which the editor instance itself keys on.
+  }, [editor]);
 
   const scheduleSave = useCallback(() => {
     dirty.current = true;
     onDirty();
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => { void flushRef.current().catch(() => {}); }, AUTOSAVE_DEBOUNCE_MS);
+    if (!maxSaveTimer.current) {
+      maxSaveTimer.current = setTimeout(() => { void flushRef.current().catch(() => {}); }, AUTOSAVE_MAX_INTERVAL_MS);
+    }
   }, [onDirty]);
 
   const flushSave = useCallback(async () => {
     if (!dirty.current || !loaded.current) return;
     dirty.current = false;
     if (saveTimer.current) clearTimeout(saveTimer.current);
+    if (maxSaveTimer.current) clearTimeout(maxSaveTimer.current);
     saveTimer.current = null;
+    maxSaveTimer.current = null;
     try {
       const blocks = mode === "raw"
         ? liftMermaid(await markdownToBlocksOffThread(rawMarkdown))
@@ -99,10 +114,22 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
     if (next === mode || switchingMode) return;
     setSwitchingMode(true);
     if (saveTimer.current) clearTimeout(saveTimer.current);
+    if (maxSaveTimer.current) clearTimeout(maxSaveTimer.current);
+    saveTimer.current = null;
+    maxSaveTimer.current = null;
     try {
       if (next === "raw") {
-        const contentBlocks = withoutTrailingEditorParagraph(editor.document);
-        setRawMarkdown(await editor.blocksToMarkdownLossy(lowerMermaid(contentBlocks) as any));
+        const lowered = lowerMermaid(withoutTrailingEditorParagraph(editor.document) as any);
+        setRawMarkdown(await editor.blocksToMarkdownLossy(lowered));
+        // Mirror the raw→rich branch: pending edits must not be left unsaved
+        // with no timer armed (they'd wait for the next blur/visibility
+        // flush, which is fire-and-forget and can lose to an app quit).
+        if (dirty.current) {
+          const { content, contentText, wordCount } = await blocksToStorageOffThread(lowered);
+          await onSave(content, contentText, wordCount);
+          dirty.current = false;
+          rawDirty.current = false;
+        }
       } else {
         loaded.current = false;
         setRichLoading(true);
@@ -152,6 +179,7 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
   useEffect(() => () => {
     void flushRef.current().catch(() => {});
     if (saveTimer.current) clearTimeout(saveTimer.current);
+    if (maxSaveTimer.current) clearTimeout(maxSaveTimer.current);
   }, []);
 
   return {

@@ -133,6 +133,7 @@ export function TtsSection() {
 
   const preview = async () => {
     setPreviewing(true);
+    let url: string | null = null;
     try {
       const wavBase64 = await invoke<string>("tts_synthesize", {
         text: t("tts.previewText"),
@@ -142,15 +143,21 @@ export function TtsSection() {
       markTtsActivity();
       const bytes = Uint8Array.from(atob(wavBase64), (c) => c.charCodeAt(0));
       const blob = new Blob([bytes], { type: "audio/wav" });
-      const url = URL.createObjectURL(blob);
+      url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audio.playbackRate = settings.ttsSpeed;
-      audio.onended = () => {
-        URL.revokeObjectURL(url);
+      const finish = () => {
+        if (url) URL.revokeObjectURL(url);
+        url = null;
         setPreviewing(false);
       };
+      audio.onended = finish;
+      // Without this, a decode/playback failure mid-run leaves `previewing`
+      // stuck true (button dead until remount) and the blob URL leaked.
+      audio.onerror = finish;
       await audio.play();
     } catch {
+      if (url) URL.revokeObjectURL(url);
       toast.error(t("tts.previewFailed"));
       setPreviewing(false);
     }

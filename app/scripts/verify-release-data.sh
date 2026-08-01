@@ -4,11 +4,18 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUNDLE_DIR="$ROOT/src-tauri/target/universal-apple-darwin/release/bundle"
-APP="$BUNDLE_DIR/macos/TanWords.app"
-DMG_DIR="$BUNDLE_DIR/dmg"
+# electron-builder outputs to the repo-level dist-releases/ (see
+# app/electron-builder.yml → directories.output), NOT the old
+# src-tauri/target/... path this script used before the Electron migration.
+BUNDLE_DIR="$ROOT/../dist-releases"
 
-[[ -d "$APP" ]] || { echo "Missing app bundle: $APP" >&2; exit 1; }
+APP="$(find "$BUNDLE_DIR" -maxdepth 2 -type d -name 'TanWords.app' -print 2>/dev/null | sort | tail -1)"
+if [[ -z "$APP" ]]; then
+  # Fall back to any *.app the platform target produced (e.g. mac--x64 dirs).
+  APP="$(find "$BUNDLE_DIR" -maxdepth 3 -type d -name '*.app' -print 2>/dev/null | sort | tail -1)"
+fi
+[[ -n "$APP" ]] || { echo "No .app bundle found under $BUNDLE_DIR — run bun run package:mac first." >&2; exit 1; }
+DMG_DIR="$BUNDLE_DIR"
 
 find_databases() {
   find "$1" -type f \( \
@@ -19,12 +26,12 @@ find_databases() {
 
 FOUND="$(find_databases "$APP")"
 if [[ -n "$FOUND" ]]; then
-  echo "Release blocked: database files were found inside TanWords.app:" >&2
+  echo "Release blocked: database files were found inside $APP:" >&2
   echo "$FOUND" >&2
   exit 1
 fi
 
-DMG="$(find "$DMG_DIR" -maxdepth 1 -type f -name 'TanWords_*_universal.dmg' -print | sort | tail -1)"
+DMG="$(find "$DMG_DIR" -maxdepth 1 -type f -name 'TanWords-*.dmg' -print | sort | tail -1)"
 if [[ -n "$DMG" ]]; then
   MOUNT="$(mktemp -d)"
   cleanup() {

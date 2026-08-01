@@ -99,14 +99,25 @@ export function DocumentContentSearch({ rootRef }: {
   // Set up once (not on every keystroke) so there's only ever one observer
   // instance to reason about; it always re-reads queryRef.current, so a
   // mutation it reacts to is never highlighted against a stale query.
+  // Coalesced through rAF + a short timeout: with a query active, each
+  // editor keystroke is a mutation batch, and applyHighlights re-walks the
+  // whole document (plus up to 1,000 Ranges) per batch otherwise.
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
-    const observer = new MutationObserver(() =>
-      applyHighlights(queryRef.current, activeIndexRef.current, false)
-    );
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const observer = new MutationObserver(() => {
+      if (timer !== null) return;
+      timer = setTimeout(() => {
+        timer = null;
+        applyHighlights(queryRef.current, activeIndexRef.current, false);
+      }, 100);
+    });
     observer.observe(root, { childList: true, subtree: true, characterData: true });
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (timer !== null) clearTimeout(timer);
+    };
   }, [applyHighlights, rootRef]);
 
   useEffect(() => {
