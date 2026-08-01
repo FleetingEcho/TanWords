@@ -1,5 +1,12 @@
 # TanWords Mobile (Expo) — Implementation Plan
 
+## Status (updated 2025-08-01)
+
+**Done — foundation**: tab shell w/ large-title headers, light/dark theming (`src/lib/theme.ts` + NativeWind vars, tokens ported from desktop `theme-vars.css`), themable tab bar w/ haptics, shared UI primitives (`src/components/ui.tsx`), UX conventions (`docs/UX-CONVENTIONS.md`), Dashboard screen (M2-quality: review CTA, stats, recent words/read) with full loading/empty/pull-refresh states. Data layer: connection+schema bootstrap, words/patterns/srs/feeds/reading/dashboard/settings/providers/translations/knownWords/searchHistory. Services: rss, hn, readability, tts (expo-speech), secrets. Providers (base/anthropic/openai/custom) + providerStore. i18n zh+en copied. `ts-fsrs`, FlashList, expo-haptics installed.
+**In flight (parallel)**: → **LANDED**: Learn area (words/patterns/review segments, `/word/[word]` detail, `/review` FSRS session), Feeds area (articles/podcasts/HN/bookmarks segments, `/reader/[url]` RN-native reader, `/feed/hackernews`, global MiniPlayer above tab bar via `src/services/player.ts`), Reading area (paste/URL import, streaming AI extraction, bottom-sheet accept flow, `/reading/[id]` sentence-level reader), Docs area (FTS search, markdown editor `/doc/[id]`), More/Settings (`/settings` appearance + instant theme switch, TTS speed, AI providers w/ SecureStore-only keys). Full repo `tsc --noEmit` clean; zh/en i18n key parity verified.
+**Next up**: M5 sync (Turso profile connect in `connection.tsx` + "sync now" in settings), AI Chat (M4 remainder — routes exist as 即将推出 placeholders), Knowledge Map / Scene Lab / Music (M6), polish pass (M7: EAS profiles, error toasts).
+**Carried constraints**: `EXPECTED_SCHEMA_VERSION` currently 27 — bump to match desktop when Turso sync lands (M5). Streaming AI relies on SDK 57 `expo/fetch` global — do NOT set `EXPO_PUBLIC_USE_RN_FETCH=1` (risk #5). Desktop-encrypted docs render locked notices only (argon2 port pending, risk #8).
+
 Target: re-implement **all features of the TanWords desktop app** (Electron + React + Rust sidecar) as a native-feeling **Expo SDK 57** app, Chinese-first UI, sharing **one Turso database** with the desktop app.
 
 Source app (reference implementation, read as the spec): `/home/zteng/work/Tools/TanWords`

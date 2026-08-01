@@ -160,4 +160,9 @@ export const documents: Dict = {
     "doc.sensitiveActionPasswordHint": "请输入文档密码以继续。仅解锁编辑不会授权下载或删除。",
     "doc.lockedTitle": "此文档已锁定",
     "doc.lockedHint": "输入密码后，可在本次会话中查看文档及其附件。",
+    "doc.edit": "编辑",
+    "doc.titlePlaceholder": "标题",
+    "doc.bodyPlaceholder": "开始写作…",
+    "doc.updated": "更新于 {time}",
+    "doc.protectedMobile": "此文档已在桌面端加密，移动端暂不支持解锁",
 };

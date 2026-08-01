@@ -160,4 +160,9 @@ export const documents: Dict = {
     "doc.sensitiveActionPasswordHint": "Enter the document password to continue. Unlocking for editing does not authorize downloads or deletion.",
     "doc.lockedTitle": "This document is locked",
     "doc.lockedHint": "Enter its password to open the document and its attachments for this session.",
+    "doc.edit": "Edit",
+    "doc.titlePlaceholder": "Title",
+    "doc.bodyPlaceholder": "Start writing…",
+    "doc.updated": "Updated {time}",
+    "doc.protectedMobile": "Encrypted on the desktop app — unlocking is not available on mobile yet",
 };

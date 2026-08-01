@@ -7,11 +7,21 @@
  * profile persistence, fallback warning) extends this file — same exports.
  */
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { ActivityIndicator, View } from "react-native";
 import * as SQLite from "expo-sqlite";
 
 export const EXPECTED_SCHEMA_VERSION = 27;
 
 const dbContext = createContext<SQLite.SQLiteDatabase | null>(null);
+
+/** The live connection, available to non-React code (db modules, stores).
+ *  Set by DbProvider once the DB is open; db/* modules import getDb(). */
+let currentDb: SQLite.SQLiteDatabase | null = null;
+
+export function getDb(): SQLite.SQLiteDatabase {
+  if (!currentDb) throw new Error("DB not ready (DbProvider has not finished opening)");
+  return currentDb;
+}
 
 async function openLocal(): Promise<SQLite.SQLiteDatabase> {
   const db = await SQLite.openDatabaseAsync("tanwords.db", {
@@ -46,7 +56,15 @@ export function DbProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  if (!db) return null;
+  if (!db) {
+    // Boot splash while the DB opens (schema bootstrap on first launch can
+    // take a beat) — a themed surface instead of a white flash.
+    return (
+      <View style={{ flex: 1 }} className="bg-background items-center justify-center">
+        <ActivityIndicator size="large" color="hsl(226 68% 51%)" />
+      </View>
+    );
+  }
   return <dbContext.Provider value={db}>{children}</dbContext.Provider>;
 }
 

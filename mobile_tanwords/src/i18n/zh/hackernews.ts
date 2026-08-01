@@ -21,6 +21,7 @@ export const hackernews: Dict = {
     "hn.section.best": "精选",
     "hn.section.error": "加载 Hacker News 失败。",
     "hn.search.placeholder": "搜索 Hacker News…",
+    "hn.search.submit": "搜索",
     "hn.search.clear": "清除搜索",
     "hn.search.empty": "没有找到结果。",
 };
