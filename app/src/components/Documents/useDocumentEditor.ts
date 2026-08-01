@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useDB, DocumentDetail } from "@/hooks/useDB";
 import { pruneDocumentAssets } from "@/lib/documentAssets";
+import { saveDocumentRevision } from "@/lib/documentRevisions";
 
 export type SaveStatus = "idle" | "dirty" | "saving" | "saved";
 
@@ -18,6 +19,7 @@ export function useDocumentEditor() {
   const [loading, setLoading] = useState(false);
   const [lockedId, setLockedId] = useState<number | null>(null);
   const activeIdRef = useRef<number | null>(null);
+  const lastSavedContent = useRef<string | null>(null);
 
   const pendingSave = useRef<{ content: string; contentText: string; wordCount: number } | null>(null);
   const saveQueue = useRef(Promise.resolve());
@@ -42,6 +44,7 @@ export function useDocumentEditor() {
       if (detail) {
         setLockedId(null);
         setDoc(detail);
+        lastSavedContent.current = detail.content;
         setActiveId(id);
         activeIdRef.current = id;
         setSaveStatus("idle");
@@ -93,12 +96,18 @@ export function useDocumentEditor() {
         const saved = await db.updateDocument(documentId, title, content, contentText, tags, pinned, wordCount);
         if (!saved) throw new Error("Save failed");
         await pruneDocumentAssets(documentId, content);
+        if (content !== lastSavedContent.current) {
+          saveDocumentRevision(documentId, { title, content, contentText, wordCount });
+          lastSavedContent.current = content;
+        }
         if (activeIdRef.current === documentId && pendingSave.current?.content === content) {
           setSaveStatus("saved");
           if (savedStatusTimer.current) clearTimeout(savedStatusTimer.current);
           savedStatusTimer.current = setTimeout(() => setSaveStatus("idle"), 1800);
         }
-        setRefreshKey((k) => k + 1);
+        window.dispatchEvent(new CustomEvent("docs-item-updated", {
+          detail: { id: documentId, wordCount, title, tags, pinned },
+        }));
         setDoc((prev) => (prev?.id === documentId
           ? { ...prev, content, content_text: contentText, word_count: wordCount }
           : prev));

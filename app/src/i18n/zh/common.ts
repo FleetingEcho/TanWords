@@ -66,4 +66,10 @@ export const common: Dict = {
     "scratch.titlePlaceholder": "给这篇文章起个标题…",
     "scratch.newRead": "新的一篇",
     "library.filters": "筛选",
+    "windowControls.minimize": "最小化",
+    "windowControls.maximize": "放大",
+    "windowControls.restore": "还原",
+    "windowControls.fullscreen": "全屏",
+    "windowControls.exitFullscreen": "退出全屏",
+    "windowControls.close": "关闭",
 };

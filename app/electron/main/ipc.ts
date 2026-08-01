@@ -3,6 +3,7 @@
  *  a native WebContentsView-based panel (see browserPanel.ts). `http:*` is the
  *  streaming case and lives in its own module (see http.ts). */
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, type WebContents } from "electron";
+import { writeFile } from "node:fs/promises";
 import type { UpdateInfoPayload } from "./updater";
 import type { BrowserPanelManager, PanelBounds } from "./browserPanel";
 import type { TrayManager } from "./tray";
@@ -62,6 +63,33 @@ async function dispatch(
       win?.focus();
       return null;
     }
+    case "window:minimize": {
+      deps.getMainWindow()?.minimize();
+      return null;
+    }
+    case "window:toggleMaximize": {
+      const win = deps.getMainWindow();
+      if (!win) return false;
+      if (win.isMaximized()) win.unmaximize();
+      else win.maximize();
+      return win.isMaximized();
+    }
+    case "window:toggleFullScreen": {
+      const win = deps.getMainWindow();
+      if (!win) return false;
+      win.setFullScreen(!win.isFullScreen());
+      return win.isFullScreen();
+    }
+    case "window:close": {
+      deps.getMainWindow()?.close();
+      return null;
+    }
+    case "window:state": {
+      const win = deps.getMainWindow();
+      return win
+        ? { maximized: win.isMaximized(), fullScreen: win.isFullScreen() }
+        : { maximized: false, fullScreen: false };
+    }
     /** The renderer reporting its resolved theme background, so the next
      *  launch can create the window in that colour instead of white. */
     case "window:background": {
@@ -115,6 +143,42 @@ async function dispatch(
         : await dialog.showSaveDialog({ defaultPath: opts.defaultPath, filters: opts.filters });
       if (result.canceled || !result.filePath) return null;
       return result.filePath;
+    }
+
+    case "file:write": {
+      const { path, data } = (args ?? {}) as { path?: string; data?: string };
+      if (!path || typeof data !== "string") throw new Error("file:write requires path and data");
+      await writeFile(path, data, "utf8");
+      return null;
+    }
+
+    case "window:printHtmlToPdf": {
+      const { path, html } = (args ?? {}) as { path?: string; html?: string };
+      if (!path || typeof html !== "string") throw new Error("printHtmlToPdf requires path and html");
+      const win = new BrowserWindow({
+        show: false,
+        width: 1200,
+        height: 1600,
+        webPreferences: {
+          sandbox: true,
+          contextIsolation: true,
+          nodeIntegration: false,
+        },
+      });
+      try {
+        await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+        await win.webContents.executeJavaScript(
+          `document.fonts?.ready ?? Promise.resolve()`,
+        );
+        const pdf = await win.webContents.printToPDF({
+          printBackground: true,
+          pageSize: "A4",
+        });
+        await writeFile(path, pdf);
+      } finally {
+        if (!win.isDestroyed()) win.destroy();
+      }
+      return null;
     }
 
     case "shell:open": {

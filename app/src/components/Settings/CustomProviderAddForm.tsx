@@ -1,7 +1,6 @@
 import React from "react";
-import { Loader2, ListRestart } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ProviderIconButton } from "./ProviderFormControls";
+import { ProviderModelSelect } from "./ProviderModelSelect";
 
 interface NewProviderForm {
   name: string;
@@ -15,6 +14,7 @@ interface CustomProviderAddFormProps {
   onNewProviderChange: (updater: (prev: NewProviderForm) => NewProviderForm) => void;
   fetchingModels: boolean;
   onFetchModels: () => void;
+  modelOptions: string[];
   onAdd: () => void;
   onCancel: () => void;
   t: (key: string) => string;
@@ -22,7 +22,7 @@ interface CustomProviderAddFormProps {
 
 /** Form for adding a brand-new custom (OpenAI-compatible) provider, e.g. a
  * local Ollama or LM Studio server. */
-export function CustomProviderAddForm({ newProvider, onNewProviderChange, fetchingModels, onFetchModels, onAdd, onCancel, t }: CustomProviderAddFormProps) {
+export function CustomProviderAddForm({ newProvider, onNewProviderChange, fetchingModels, onFetchModels, modelOptions, onAdd, onCancel, t }: CustomProviderAddFormProps) {
   return (
     <div className="mt-4 bg-card border border-border rounded-xl p-5 space-y-3">
       <h3 className="text-sm font-semibold">{t("settings.addCustomTitle")}</h3>
@@ -39,13 +39,16 @@ export function CustomProviderAddForm({ newProvider, onNewProviderChange, fetchi
         <input type="password" value={newProvider.apiKey} onChange={(e) => onNewProviderChange((prev) => ({ ...prev, apiKey: e.target.value }))} className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm font-mono focus:outline-hidden" />
       </div>
       <div>
-        <label className="text-xs text-muted-foreground block mb-1">{t("settings.modelId")}</label>
-        <div className="flex gap-2">
-          <input list="provider-model-options" value={newProvider.modelId} onChange={(e) => onNewProviderChange((prev) => ({ ...prev, modelId: e.target.value }))} placeholder="gpt-4o-mini" className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-sm focus:outline-hidden" />
-          <ProviderIconButton label={t("settings.fetchModels")} onClick={onFetchModels}>
-            {fetchingModels ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListRestart className="h-4 w-4" />}
-          </ProviderIconButton>
-        </div>
+        <label className="text-xs text-muted-foreground block mb-1">{t("settings.modelLabel")}</label>
+        <ProviderModelSelect
+          value={newProvider.modelId}
+          onChange={(model) => onNewProviderChange((prev) => ({ ...prev, modelId: model }))}
+          options={modelOptions}
+          fetchingModels={fetchingModels}
+          onFetchModels={onFetchModels}
+          placeholder={t("settings.modelSelectPlaceholder")}
+          t={t}
+        />
       </div>
       <div className="flex gap-2">
         <Button onClick={onAdd} disabled={!newProvider.name || !newProvider.apiBase || !newProvider.modelId} className="h-auto px-4 py-1.5 rounded-lg text-xs font-medium bg-primary text-white hover:bg-primary/90 disabled:opacity-50 transition-colors">{t("settings.add")}</Button>

@@ -116,4 +116,13 @@ describe("LocalDocsView editor render isolation", () => {
 
     expect(editorRender).not.toHaveBeenCalled();
   });
+
+  it("refreshes the local file list when the parent asks for a refresh", async () => {
+    const { rerender } = render(<LocalDocsView refreshTick={0} />);
+    await screen.findByText("large editor");
+    expect(listLocalDocs).toHaveBeenCalledTimes(1);
+
+    rerender(<LocalDocsView refreshTick={1} />);
+    await waitFor(() => expect(listLocalDocs).toHaveBeenCalledTimes(2));
+  });
 });

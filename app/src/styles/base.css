@@ -24,6 +24,23 @@
   }
 }
 
+/* Frameless macOS window: the native title bar is hidden, so the top app bars
+ * own the drag region. Interactive children must opt out or they cannot be
+ * clicked (draggable regions ignore pointer events). */
+.app-drag-region {
+  -webkit-app-region: drag;
+}
+
+.app-drag-region button,
+.app-drag-region input,
+.app-drag-region textarea,
+.app-drag-region select,
+.app-drag-region a,
+.app-drag-region [role="button"],
+.app-drag-region [role="combobox"] {
+  -webkit-app-region: no-drag;
+}
+
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { @apply bg-transparent; }
 ::-webkit-scrollbar-thumb { @apply bg-muted-foreground/25 rounded-full; }

@@ -3,8 +3,9 @@ import { DocumentListItem } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { PinIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { parseDbTimestamp } from "@/lib/dbTime";
-import { Copy, FileText, LockKeyhole, LockOpen, MapPin, MoreHorizontal, Pencil, ShieldCheck, Trash2 } from "lucide-react";
+import { Copy, FileText, FileType2, FileOutput, LockKeyhole, LockOpen, MapPin, MoreHorizontal, Pencil, ShieldCheck, Trash2 } from "lucide-react";
 
 interface Props {
   doc: DocumentListItem;
@@ -16,11 +17,11 @@ interface Props {
   onDelete: (id: number) => void;
   searchQuery?: string;
   onExport: (id: number) => void;
+  onExportHtml: (id: number) => void;
+  onExportPdf: (id: number) => void;
   onPrivacyAction: (doc: DocumentListItem) => void;
   onRemoveProtection: (doc: DocumentListItem) => void;
 }
-
-const MENU_WIDTH = 160;
 
 function formatDate(iso: string): string {
   const d = parseDbTimestamp(iso);
@@ -66,34 +67,15 @@ function contentExcerpt(content: string, query: string): string | null {
   return `${start > 0 ? "…" : ""}${normalized.slice(start, end)}${end < normalized.length ? "…" : ""}`;
 }
 
-export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, onDelete, onExport, onPrivacyAction, onRemoveProtection, searchQuery = "" }: Props) {
+export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, onDelete, onExport, onExportHtml, onExportPdf, onPrivacyAction, onRemoveProtection, searchQuery = "" }: Props) {
   const t = useT();
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [renameVal, setRenameVal] = useState(doc.title);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const menuBtnRef = useRef<HTMLButtonElement>(null);
   const renameRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!menu) return;
-    const dismiss = (e: MouseEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) setMenu(null);
-    };
-    document.addEventListener("mousedown", dismiss);
-    return () => document.removeEventListener("mousedown", dismiss);
-  }, [menu]);
 
   useEffect(() => {
     if (renaming) renameRef.current?.select();
   }, [renaming]);
-
-  const openMenu = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    const rect = menuBtnRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    setMenu({ x: rect.right - MENU_WIDTH, y: rect.bottom + 4 });
-  };
 
   const commitRename = () => {
     const val = renameVal.trim() || t("doc.untitled");
@@ -147,15 +129,81 @@ export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, o
               ) : (
                 <p className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-5"><HighlightFuzzy text={doc.title || t("doc.untitled")} query={searchQuery} /></p>
               )}
-              <Button
-                ref={menuBtnRef}
-                variant="ghost"
-                onClick={openMenu}
-                title={t("doc.moreActions")}
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded p-0 text-muted-foreground/60 opacity-70 transition-all hover:bg-muted hover:text-foreground group-hover:opacity-100"
-              >
-                <MoreHorizontal className="h-3.5 w-3.5" />
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    onClick={(e) => e.stopPropagation()}
+                    title={t("doc.moreActions")}
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded p-0 text-muted-foreground/60 opacity-70 transition-all hover:bg-muted hover:text-foreground group-hover:opacity-100 data-[state=open]:opacity-100"
+                  >
+                    <MoreHorizontal className="h-3.5 w-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44 p-1" onClick={(e) => e.stopPropagation()}>
+                  <DropdownMenuItem
+                    disabled={doc.protected && !doc.unlocked}
+                    onSelect={() => { setRenaming(true); setRenameVal(doc.title); }}
+                    className="gap-2.5 text-sm"
+                  >
+                    <Pencil className="w-4 h-4 shrink-0" /> {t("doc.rename")}
+                  </DropdownMenuItem>
+                  {doc.protected && (
+                    <DropdownMenuItem onSelect={() => onRemoveProtection(doc)} className="gap-2.5 text-sm">
+                      <ShieldCheck className="w-4 h-4 shrink-0" /> {t("doc.removeProtection")}
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem onSelect={() => onExport(doc.id)} className="gap-2.5 text-sm">
+                    <Copy className="w-4 h-4 shrink-0" /> {t("doc.exportMarkdown")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={doc.protected && !doc.unlocked}
+                    onSelect={() => onExportHtml(doc.id)}
+                    className="gap-2.5 text-sm"
+                  >
+                    <FileType2 className="w-4 h-4 shrink-0" /> {t("doc.exportHtml")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={doc.protected && !doc.unlocked}
+                    onSelect={() => onExportPdf(doc.id)}
+                    className="gap-2.5 text-sm"
+                  >
+                    <FileOutput className="w-4 h-4 shrink-0" /> {t("doc.exportPdf")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={doc.protected && !doc.unlocked}
+                    onSelect={() => onPin(doc.id)}
+                    className="gap-2.5 text-sm"
+                  >
+                    <MapPin className="w-4 h-4 shrink-0" /> {doc.pinned ? t("doc.unpin") : t("doc.pin")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={doc.protected && !doc.unlocked}
+                    onSelect={() => onDuplicate(doc.id)}
+                    className="gap-2.5 text-sm"
+                  >
+                    <Copy className="w-4 h-4 shrink-0" /> {t("doc.duplicate")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => onPrivacyAction(doc)} className="gap-2.5 text-sm">
+                    {doc.protected
+                      ? doc.unlocked
+                        ? <LockOpen className="w-4 h-4 shrink-0" />
+                        : <LockKeyhole className="w-4 h-4 shrink-0" />
+                      : <ShieldCheck className="w-4 h-4 shrink-0" />}
+                    {doc.protected
+                      ? doc.unlocked ? t("doc.lockNow") : t("doc.unlock")
+                      : t("doc.protect")}
+                  </DropdownMenuItem>
+                  <div className="my-1 h-px bg-border" />
+                  <DropdownMenuItem
+                    disabled={doc.protected && !doc.unlocked}
+                    onSelect={() => onDelete(doc.id)}
+                    className="gap-2.5 text-sm text-destructive focus:bg-destructive/10 focus:text-destructive"
+                  >
+                    <Trash2 className="w-4 h-4 shrink-0" /> {t("doc.delete")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
             {excerpt && (
               <p className="mt-1.5 line-clamp-2 text-[10px] font-normal leading-4 text-muted-foreground">
@@ -178,80 +226,6 @@ export function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, o
           </div>
         </div>
       </div>
-
-      {/* Actions dropdown, anchored to the more button */}
-      {menu && (
-        <div
-          ref={menuRef}
-          style={{ position: "fixed", top: menu.y, left: menu.x, zIndex: 9999 }}
-          className="bg-popover border border-border rounded-xl shadow-lg py-1 min-w-[160px] animate-fade-in"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <Button
-            variant="ghost"
-            disabled={doc.protected && !doc.unlocked}
-            onClick={() => { setMenu(null); setRenaming(true); setRenameVal(doc.title); }}
-            className="h-auto w-full rounded-none flex items-center justify-start gap-2.5 px-3 py-2 text-sm hover:bg-muted text-left"
-          >
-            <Pencil className="w-4 h-4 shrink-0" /> {t("doc.rename")}
-          </Button>
-          {doc.protected && (
-            <Button
-              variant="ghost"
-              onClick={() => { setMenu(null); onRemoveProtection(doc); }}
-              className="h-auto w-full rounded-none flex items-center justify-start gap-2.5 px-3 py-2 text-sm hover:bg-muted text-left"
-            >
-              <ShieldCheck className="w-4 h-4 shrink-0" /> {t("doc.removeProtection")}
-            </Button>
-          )}
-          <Button
-            variant="ghost"
-            onClick={() => { setMenu(null); onExport(doc.id); }}
-            className="h-auto w-full rounded-none flex items-center justify-start gap-2.5 px-3 py-2 text-sm hover:bg-muted text-left"
-          >
-            <Copy className="w-4 h-4 shrink-0" /> {t("doc.exportMarkdown")}
-          </Button>
-          <Button
-            variant="ghost"
-            disabled={doc.protected && !doc.unlocked}
-            onClick={() => { setMenu(null); onPin(doc.id); }}
-            className="h-auto w-full rounded-none flex items-center justify-start gap-2.5 px-3 py-2 text-sm hover:bg-muted text-left"
-          >
-            <MapPin className="w-4 h-4 shrink-0" /> {doc.pinned ? t("doc.unpin") : t("doc.pin")}
-          </Button>
-          <Button
-            variant="ghost"
-            disabled={doc.protected && !doc.unlocked}
-            onClick={() => { setMenu(null); onDuplicate(doc.id); }}
-            className="h-auto w-full rounded-none flex items-center justify-start gap-2.5 px-3 py-2 text-sm hover:bg-muted text-left"
-          >
-            <Copy className="w-4 h-4 shrink-0" /> {t("doc.duplicate")}
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={() => { setMenu(null); onPrivacyAction(doc); }}
-            className="h-auto w-full rounded-none flex items-center justify-start gap-2.5 px-3 py-2 text-sm hover:bg-muted text-left"
-          >
-            {doc.protected
-              ? doc.unlocked
-                ? <LockOpen className="w-4 h-4 shrink-0" />
-                : <LockKeyhole className="w-4 h-4 shrink-0" />
-              : <ShieldCheck className="w-4 h-4 shrink-0" />}
-            {doc.protected
-              ? doc.unlocked ? t("doc.lockNow") : t("doc.unlock")
-              : t("doc.protect")}
-          </Button>
-          <div className="border-t border-border my-1" />
-          <Button
-            variant="ghost"
-            disabled={doc.protected && !doc.unlocked}
-            onClick={() => { setMenu(null); onDelete(doc.id); }}
-            className="h-auto w-full rounded-none flex items-center justify-start gap-2.5 px-3 py-2 text-sm hover:bg-destructive/10 text-destructive text-left"
-          >
-            <Trash2 className="w-4 h-4 shrink-0" /> {t("doc.delete")}
-          </Button>
-        </div>
-      )}
     </>
   );
 }

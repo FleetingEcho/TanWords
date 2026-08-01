@@ -1,14 +1,14 @@
 import React, { useEffect } from "react";
 import { Toaster, toast } from "sonner";
 import { MainLayout } from "@/components/Layout/Sidebar";
-import { WordDetailModal } from "@/components/WordDetailModal";
 import { SelectionAsk } from "@/components/shared/SelectionAsk";
-import { PodcastPlayerBar } from "@/components/ui/PodcastPlayerBar";
-import { ToolsModal } from "@/components/ui/ToolsModal";
 import { AppBackground } from "@/components/Layout/AppBackground";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useUpdaterStore } from "@/store/updaterStore";
 import { useNavStore } from "@/store/navStore";
+import { useWordModalStore } from "@/store/wordModalStore";
+import { useToolsBallStore } from "@/store/toolsBallStore";
+import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
 import { useDB } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { useMcpSync } from "@/hooks/useMcpSync";
@@ -25,9 +25,8 @@ import { LOCAL_DOCS_ROOT_KEY, localDocsRootExists } from "@/lib/localDocs";
  *  out of the startup parse instead of riding along in the main chunk. The
  *  named exports are re-shaped to the default export React.lazy wants.
  *
- *  Pages are prefetched shortly after mount (see the effect in App), so a
- *  sidebar click still lands on an already-loaded chunk — the split costs
- *  startup work, not navigation latency. */
+ *  They load on first navigation; there is no idle prefetch, so unused routes
+ *  do not keep their parser/runtime costs resident for the whole session. */
 const DashboardPage = React.lazy(() =>
   import("@/components/Dashboard/DashboardPage").then((m) => ({ default: m.DashboardPage })));
 const VocabularyPage = React.lazy(() =>
@@ -44,17 +43,12 @@ const ReadingPage = React.lazy(() =>
   import("@/components/Reader/ReadingPage").then((m) => ({ default: m.ReadingPage })));
 const MusicPage = React.lazy(() => import("@/components/Music/MusicPage"));
 const BrowserPage = React.lazy(() => import("@/components/Browser/BrowserPage"));
-
-/** Warm the chunks the user hasn't asked for yet, once the app is idle. */
-const PREFETCH_PAGES = [
-  () => import("@/components/Feeds/FeedsPage"),
-  () => import("@/components/Reader/ReadingPage"),
-  () => import("@/components/Dashboard/DashboardPage"),
-  () => import("@/components/Vocabulary/VocabularyPage"),
-  () => import("@/components/Documents/DocumentsPage"),
-  () => import("@/components/AiChat/AiChatPage"),
-  () => import("@/components/Settings/SettingsPage"),
-];
+const WordDetailModal = React.lazy(() =>
+  import("@/components/WordDetailModal").then((m) => ({ default: m.WordDetailModal })));
+const ToolsModal = React.lazy(() =>
+  import("@/components/ui/ToolsModal").then((m) => ({ default: m.ToolsModal })));
+const PodcastPlayerBar = React.lazy(() =>
+  import("@/components/ui/PodcastPlayerBar").then((m) => ({ default: m.PodcastPlayerBar })));
 
 const PageFallback = () => (
   <div className="h-full flex items-center justify-center">
@@ -69,6 +63,9 @@ function App() {
   const { currentPage, currentWordId, navigate } = useNavStore();
   const chatSessionId = useNavStore((s) => s.chatSessionId);
   const sentenceId = useNavStore((s) => s.sentenceId);
+  const wordModalWord = useWordModalStore((s) => s.word);
+  const toolsModalOpen = useToolsBallStore((s) => s.isOpen);
+  const podcastVisible = usePodcastPlayerStore((s) => s.status !== "idle" && !!s.track);
 
   const [wordCount, setWordCount] = React.useState(0);
 
@@ -84,31 +81,6 @@ function App() {
       ?? window.setTimeout(() => initProviders(), 500);
     loadFromDB();
     return () => {
-      if (window.cancelIdleCallback && typeof idle !== "number") window.cancelIdleCallback(idle);
-      else window.clearTimeout(idle as number);
-    };
-  }, []);
-
-  // Pull the other page chunks in once the app is idle. Code-splitting the
-  // routes is what keeps them out of the startup parse; this is what keeps the
-  // first click on each of them from paying a load. Sequential on purpose —
-  // seven parallel chunk loads would compete with the startup DB reads.
-  useEffect(() => {
-    let cancelled = false;
-    const warm = async () => {
-      for (const load of PREFETCH_PAGES) {
-        if (cancelled) return;
-        try {
-          await load();
-        } catch {
-          // A prefetch miss is invisible: React.lazy will just load it on demand.
-        }
-      }
-    };
-    const idle = window.requestIdleCallback?.(() => void warm())
-      ?? window.setTimeout(() => void warm(), 1500);
-    return () => {
-      cancelled = true;
       if (window.cancelIdleCallback && typeof idle !== "number") window.cancelIdleCallback(idle);
       else window.clearTimeout(idle as number);
     };
@@ -249,10 +221,22 @@ function App() {
         {renderPage()}
       </React.Suspense>
     </MainLayout>
-    <WordDetailModal />
+    {wordModalWord && (
+      <React.Suspense fallback={null}>
+        <WordDetailModal />
+      </React.Suspense>
+    )}
     <SelectionAsk />
-    <ToolsModal />
-    <PodcastPlayerBar />
+    {toolsModalOpen && (
+      <React.Suspense fallback={null}>
+        <ToolsModal />
+      </React.Suspense>
+    )}
+    {podcastVisible && (
+      <React.Suspense fallback={null}>
+        <PodcastPlayerBar />
+      </React.Suspense>
+    )}
     <Toaster position="bottom-right" richColors closeButton />
     </>
   );

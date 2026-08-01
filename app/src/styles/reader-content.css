@@ -1,4 +1,40 @@
 /* Reader mode — sanitized article HTML from fetch_article */
+.tanwords-editor-readonly {
+  min-height: 60vh;
+}
+.tanwords-editor-readonly .bn-editor {
+  margin-top: 0;
+  padding-inline: 1rem;
+  color: hsl(var(--foreground)) !important;
+}
+.tanwords-editor-readonly .bn-block-content {
+  padding-block: 0.25em;
+}
+.tanwords-editor-readonly a {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.tanwords-editor-readonly img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.75rem;
+}
+.tanwords-editor-readonly blockquote {
+  border-left: 3px solid hsl(var(--border));
+  padding-left: 1.1em;
+  color: hsl(var(--muted-foreground));
+}
+.tanwords-editor-readonly table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.tanwords-editor-readonly th,
+.tanwords-editor-readonly td {
+  border: 1px solid hsl(var(--border));
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
 .reader-article-content,
 .reader-article-content * {
   font-family: var(--app-font);

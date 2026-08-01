@@ -3,7 +3,7 @@ import { LocalDocItem, LocalDocSearchResult } from "@/lib/localDocs";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronsLeft, ChevronsRight, Copy, Download, FileInput, FileText, FolderOpen, Loader2, MoreHorizontal, RefreshCw } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, Copy, Download, FileInput, FileText, FolderOpen, Loader2, MoreHorizontal } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { LocalDocTree } from "./LocalDocTree";
 import { LocalDocSearchResults } from "./LocalDocSearchResults";
@@ -15,7 +15,6 @@ interface Props {
   onSidebarOpenChange: (open: boolean) => void;
   root: string | null;
   onMount: () => void;
-  onRefresh: () => void;
   onNewFile: (directory?: string) => void;
   onImportFiles: () => void;
   onOpenExportPicker: () => void;
@@ -32,6 +31,8 @@ interface Props {
   onDelete: (relPath: string) => void;
   onImport: (relPath: string) => void;
   onExport: (relPath: string) => void;
+  onExportHtml: (relPath: string) => void;
+  onExportPdf: (relPath: string) => void;
   onMove: (relPath: string, targetDir: string) => void;
 }
 
@@ -40,7 +41,6 @@ export function LocalDocsSidebar({
   onSidebarOpenChange,
   root,
   onMount,
-  onRefresh,
   onNewFile,
   onImportFiles,
   onOpenExportPicker,
@@ -55,6 +55,8 @@ export function LocalDocsSidebar({
   onDelete,
   onImport,
   onExport,
+  onExportHtml,
+  onExportPdf,
   onMove,
 }: Props) {
   const t = useT();
@@ -128,18 +130,6 @@ export function LocalDocsSidebar({
                 >
                   <Copy className="h-3.5 w-3.5" />
                 </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  title={t("doc.refreshFolder")}
-                  aria-label={t("doc.refreshFolder")}
-                  disabled={filesLoading}
-                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
-                  onClick={onRefresh}
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${filesLoading ? "animate-spin" : ""}`} />
-                </Button>
               </div>
 
               <input
@@ -193,6 +183,8 @@ export function LocalDocsSidebar({
               onDelete={onDelete}
               onImport={onImport}
               onExport={onExport}
+              onExportHtml={onExportHtml}
+              onExportPdf={onExportPdf}
               onMove={onMove}
               onCreateInFolder={onNewFile}
             />

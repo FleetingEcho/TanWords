@@ -66,4 +66,10 @@ export const common: Dict = {
     "scratch.titlePlaceholder": "Give this article a title…",
     "scratch.newRead": "New text",
     "library.filters": "Filters",
+    "windowControls.minimize": "Minimize",
+    "windowControls.maximize": "Maximize",
+    "windowControls.restore": "Restore",
+    "windowControls.fullscreen": "Fullscreen",
+    "windowControls.exitFullscreen": "Exit fullscreen",
+    "windowControls.close": "Close",
 };

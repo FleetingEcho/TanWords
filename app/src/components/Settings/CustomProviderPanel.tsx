@@ -1,6 +1,7 @@
 import React from "react";
-import { Check, ListRestart, Loader2, Pencil, PlugZap, Trash2, X } from "lucide-react";
+import { Check, Pencil, PlugZap, Trash2, X } from "lucide-react";
 import { ProviderIconButton, TestStatusBadge } from "./ProviderFormControls";
+import { ProviderModelSelect } from "./ProviderModelSelect";
 
 interface CustomProviderMeta {
   id: string;
@@ -27,6 +28,7 @@ interface CustomProviderPanelProps {
   onStartEdit: (provider: CustomProviderMeta) => void;
   fetchingModels: boolean;
   onFetchModelsForEdit: () => void;
+  modelOptions: string[];
   onTest: (provider: CustomProviderMeta) => void;
   testStatus: { ok: boolean | null; text: string } | null;
   onRemove: (id: string) => void;
@@ -45,6 +47,7 @@ export function CustomProviderPanel({
   onStartEdit,
   fetchingModels,
   onFetchModelsForEdit,
+  modelOptions,
   onTest,
   testStatus,
   onRemove,
@@ -67,13 +70,16 @@ export function CustomProviderPanel({
             <input type="password" value={editForm.apiKey} onChange={(e) => onEditFormChange((prev) => ({ ...prev, apiKey: e.target.value }))} className="w-full h-9 px-3 rounded-lg border border-input bg-background text-sm font-mono focus:outline-hidden" />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground block mb-1">{t("settings.modelId")}</label>
-            <div className="flex gap-2">
-              <input list="provider-model-options" value={editForm.modelId} onChange={(e) => onEditFormChange((prev) => ({ ...prev, modelId: e.target.value }))} className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-sm focus:outline-hidden" />
-              <ProviderIconButton label={t("settings.fetchModels")} onClick={onFetchModelsForEdit}>
-                {fetchingModels ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListRestart className="h-4 w-4" />}
-              </ProviderIconButton>
-            </div>
+            <label className="text-xs text-muted-foreground block mb-1">{t("settings.modelLabel")}</label>
+            <ProviderModelSelect
+              value={editForm.modelId}
+              onChange={(model) => onEditFormChange((prev) => ({ ...prev, modelId: model }))}
+              options={modelOptions}
+              fetchingModels={fetchingModels}
+              onFetchModels={onFetchModelsForEdit}
+              placeholder={t("settings.modelSelectPlaceholder")}
+              t={t}
+            />
           </div>
           <div className="flex gap-2">
             <ProviderIconButton label={t("settings.save")} onClick={onSaveEdit}><Check className="h-4 w-4" /></ProviderIconButton>

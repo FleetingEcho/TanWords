@@ -38,7 +38,7 @@ export function UpdateButton({ collapsed = false, placement = "sidebar" }: { col
         <Button
           variant="ghost"
           title={toolbar || collapsed ? t("updater.tooltip") : undefined}
-          className={`${toolbar ? "h-8 w-8 justify-center p-0 text-muted-foreground" : "h-auto w-full text-[hsl(var(--sidebar-foreground))]"} flex items-center rounded-lg text-sm font-medium transition-colors duration-100 hover:bg-[hsl(var(--muted))] ${
+          className={`${toolbar ? "h-8 w-8 justify-center p-0 text-muted-foreground" : "h-auto w-full text-[hsl(var(--sidebar-foreground))]"} flex items-center rounded-lg text-sm font-medium transition-colors duration-100 ${
             toolbar ? "" : collapsed ? "justify-center px-0 py-[9px]" : "gap-2.5 px-3 py-[7px]"
           }`}
         >

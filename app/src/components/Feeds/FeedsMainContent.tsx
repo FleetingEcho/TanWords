@@ -41,6 +41,9 @@ interface Props {
   onPlayEntry: (entry: RssEntryRow) => void;
   onTranslateEntry: (entry: RssEntryRow) => void;
   onAnalyzeBackground: (entry: RssEntryRow) => void;
+  bookmarkedUrls: Set<string>;
+  bookmarkPendingUrls: Set<string>;
+  onToggleBookmark: (entry: RssEntryRow) => void;
   onShowAdd: () => void;
 }
 
@@ -66,6 +69,9 @@ export function FeedsMainContent({
   onPlayEntry,
   onTranslateEntry,
   onAnalyzeBackground,
+  bookmarkedUrls,
+  bookmarkPendingUrls,
+  onToggleBookmark,
   onShowAdd,
 }: Props) {
   const t = useT();
@@ -97,6 +103,9 @@ export function FeedsMainContent({
         translatingId={translatingId}
         onAnalyzeBackground={onAnalyzeBackground}
         analyzingBackgroundIds={analyzingBackgroundIds}
+        bookmarkedUrls={bookmarkedUrls}
+        bookmarkPendingUrls={bookmarkPendingUrls}
+        onToggleBookmark={onToggleBookmark}
         showTitleTranslations={showTitleTranslations}
         titleTranslations={titleTranslations}
       />
@@ -133,6 +142,9 @@ export function FeedsMainContent({
           translatingId={translatingId}
           onAnalyzeBackground={onAnalyzeBackground}
           analyzingBackgroundIds={analyzingBackgroundIds}
+          bookmarkedUrls={bookmarkedUrls}
+          bookmarkPendingUrls={bookmarkPendingUrls}
+          onToggleBookmark={onToggleBookmark}
           titleTranslations={titleTranslations}
           viewMode={feedsViewMode}
         />

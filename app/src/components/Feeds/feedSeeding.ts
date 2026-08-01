@@ -18,6 +18,14 @@ const V2_DEFAULT_URLS = new Set([
   "https://feed.syntax.fm",
 ]);
 
+/** Same idea as V2: installs that seeded before TED Talks Daily was part of
+ *  the default set should still get it once, without re-adding anything they
+ *  deliberately unsubscribed from later. */
+const SEEDED_FLAG_V3 = "rss_defaults_seeded_v3";
+const V3_DEFAULT_URLS = new Set([
+  "https://feeds.acast.com/public/shows/67587e77c705e441797aff96",
+]);
+
 /** One-time follow-up for installs that already ran the original seeding
  * before this batch of defaults existed. Adds any of V2_DEFAULT_URLS not
  * already subscribed, then never touches them again. */
@@ -31,6 +39,19 @@ async function seedV2Defaults(db: DB, existing: RssFeed[]): Promise<RssFeed[]> {
     await db.addRssFeed(p.url, p.title, "", p.desc);
   }
   await invoke("db_set_setting", { key: SEEDED_FLAG_V2, value: "true" });
+  return toAdd.length > 0 ? await db.getRssFeeds() : existing;
+}
+
+async function seedV3Defaults(db: DB, existing: RssFeed[]): Promise<RssFeed[]> {
+  const seededV3 = await invoke<string | null>("db_get_setting", { key: SEEDED_FLAG_V3 });
+  if (seededV3) return existing;
+
+  const subscribedUrls = new Set(existing.map((f) => f.url));
+  const toAdd = DEFAULT_FEEDS.filter((p) => V3_DEFAULT_URLS.has(p.url) && !subscribedUrls.has(p.url));
+  for (const p of toAdd) {
+    await db.addRssFeed(p.url, p.title, "", p.desc);
+  }
+  await invoke("db_set_setting", { key: SEEDED_FLAG_V3, value: "true" });
   return toAdd.length > 0 ? await db.getRssFeeds() : existing;
 }
 
@@ -48,7 +69,8 @@ export async function seedDefaults(db: DB, existing: RssFeed[]): Promise<RssFeed
       await invoke("db_set_setting", { key: SEEDED_FLAG, value: "true" });
       return existing.length === 0 ? await db.getRssFeeds() : existing;
     }
-    return await seedV2Defaults(db, existing);
+    const afterV2 = await seedV2Defaults(db, existing);
+    return await seedV3Defaults(db, afterV2);
   } catch {
     return existing; // web mode / settings unavailable — skip seeding
   }

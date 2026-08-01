@@ -4,9 +4,16 @@ import { toast } from "sonner";
 import { useDB } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { exportMarkdownBundles, readMarkdownFiles } from "@/lib/localDocs";
-import { getDocumentAssets, prepareDocumentAssetsForExport, rewriteDocumentLinksForExport } from "@/lib/documentAssets";
+import {
+  DOCUMENT_ASSET_SCHEME,
+  getDocumentAssets,
+  prepareDocumentAssetsForExport,
+  rewriteDocumentLinksForExport,
+} from "@/lib/documentAssets";
 import { blocksToMarkdown, blocksToStorage, contentToBlocks, markdownToBlocks } from "@/lib/docFormat";
+import { blocksToMarkdownOffThread, contentToBlocksOffThread } from "@/lib/documentWorkerClient";
 import { liftMermaid, lowerMermaid } from "../mermaidTransforms";
+import { exportMarkdownAsHtml, exportMarkdownAsPdf } from "@/lib/documentExport";
 import type { MarkdownExportChoice } from "../ExportMarkdownDialog";
 import type { DocumentPasswordRequest } from "../DocumentPasswordDialog";
 import { PAGE_SIZE } from "./useDocList";
@@ -75,15 +82,46 @@ export function useDocImportExport(params: {
         if (!detail) continue;
         const blocks = lowerMermaid(await contentToBlocks(detail.content));
         const markdown = await blocksToMarkdown(blocks);
+        const allAssets = await getDocumentAssets(id);
+        const referencedAssets = allAssets.filter((asset) =>
+          markdown.includes(`${DOCUMENT_ASSET_SCHEME}${asset.id}`),
+        );
         const prepared = prepareDocumentAssetsForExport(
           rewriteDocumentLinksForExport(markdown, allDocuments),
-          await getDocumentAssets(id),
+          referencedAssets,
         );
         files.push({ name: `${detail.title || t("doc.untitled")}.md`, ...prepared });
       }
       const count = await exportMarkdownBundles(destination, files);
       toast.success(t("doc.exportedCount", { n: count }));
     } catch (error) { toast.error(String(error)); }
+  };
+
+  const documentToDisplayMarkdown = async (id: number): Promise<string | null> => {
+    const detail = await db.getDocument(id);
+    if (!detail) return null;
+    const blocks = lowerMermaid(await contentToBlocksOffThread(detail.content));
+    return blocksToMarkdownOffThread(blocks);
+  };
+
+  const exportDocumentHtml = async (id: number) => {
+    const detail = await db.getDocument(id);
+    if (!detail) return;
+    try {
+      await exportMarkdownAsHtml(detail.title || t("doc.untitled"), await documentToDisplayMarkdown(id) ?? "");
+    } catch (error) {
+      toast.error(String(error));
+    }
+  };
+
+  const exportDocumentPdf = async (id: number) => {
+    const detail = await db.getDocument(id);
+    if (!detail) return;
+    try {
+      await exportMarkdownAsPdf(detail.title || t("doc.untitled"), await documentToDisplayMarkdown(id) ?? "");
+    } catch (error) {
+      toast.error(String(error));
+    }
   };
 
   const handleExportAll = async () => {
@@ -106,5 +144,8 @@ export function useDocImportExport(params: {
     }
   };
 
-  return { exportChoices, setExportChoices, handleImport, exportDocuments, handleExportAll };
+  return {
+    exportChoices, setExportChoices, handleImport, exportDocuments, handleExportAll,
+    exportDocumentHtml, exportDocumentPdf,
+  };
 }

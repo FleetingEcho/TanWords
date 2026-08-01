@@ -5,12 +5,58 @@ use serde_json::{json, Value};
 use super::TanWordsMcp;
 use crate::db;
 use crate::mcp::types::{
-    json_text, fts_query, AppendDocument, CreateDocument, GetDocument, SearchDocuments,
+    json_text, fts_query, AppendDocument, CreateDocument, GetDocument, ListDocuments, SearchDocuments,
     UpdateDocument,
 };
 
 #[tool_router(router = documents_tool_router, vis = "pub(crate)")]
 impl TanWordsMcp {
+    #[tool(description = "List or full-text search documents; omit query to see the most recently updated")]
+    pub(in crate::mcp) async fn documents_list(&self, Parameters(input): Parameters<ListDocuments>) -> String {
+        let result: Result<Value, String> = async {
+            let conn = self.connect().await?;
+            let limit = input.limit.min(100) as i64;
+            let offset = input.offset as i64;
+            let items = match input.query.as_deref().map(str::trim).filter(|q| !q.is_empty()) {
+                Some(query) => {
+                    let terms = fts_query(query);
+                    if terms.is_empty() {
+                        Vec::new()
+                    } else {
+                        db::fetch_all(
+                            &conn,
+                            "SELECT d.id,d.title,d.tags,d.pinned,d.word_count,d.updated_at,
+                                    snippet(documents_fts,1,'','','…',24)
+                             FROM documents_fts f JOIN documents d ON d.id=f.rowid
+                             WHERE documents_fts MATCH ?1 AND d.protected=0
+                               AND (?2 IS NULL OR EXISTS(SELECT 1 FROM json_each(d.tags) WHERE value=?2))
+                             ORDER BY d.pinned DESC, bm25(documents_fts)
+                             LIMIT ?3 OFFSET ?4",
+                            params![terms, input.tag, limit, offset],
+                            |row| Ok(json!({"id":row.get::<i64>(0)?,"title":row.get::<String>(1)?,"tags":serde_json::from_str::<Value>(&row.get::<String>(2)?).unwrap_or(json!([])),"pinned":row.get::<i64>(3)?!=0,"wordCount":row.get::<i64>(4)?,"updatedAt":row.get::<String>(5)?,"excerpt":row.get::<String>(6)?})),
+                        )
+                        .await?
+                    }
+                }
+                None => {
+                    db::fetch_all(
+                        &conn,
+                        "SELECT id,title,tags,pinned,word_count,updated_at,'' FROM documents
+                         WHERE protected=0
+                           AND (?1 IS NULL OR EXISTS(SELECT 1 FROM json_each(tags) WHERE value=?1))
+                         ORDER BY pinned DESC, updated_at DESC LIMIT ?2 OFFSET ?3",
+                        params![input.tag, limit, offset],
+                        |row| Ok(json!({"id":row.get::<i64>(0)?,"title":row.get::<String>(1)?,"tags":serde_json::from_str::<Value>(&row.get::<String>(2)?).unwrap_or(json!([])),"pinned":row.get::<i64>(3)?!=0,"wordCount":row.get::<i64>(4)?,"updatedAt":row.get::<String>(5)?,"excerpt":row.get::<String>(6)?})),
+                    )
+                    .await?
+                }
+            };
+            Ok(json!({"items": items}))
+        }
+        .await;
+        result.map(json_text).unwrap_or_else(|error| json_text(json!({"error":error})))
+    }
+
     #[tool(
         description = "Full-text search of TanWords documents by title and body, optionally filtered by tag. Ranked by relevance; returns a matching snippet."
     )]

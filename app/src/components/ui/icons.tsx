@@ -147,8 +147,8 @@ export function PinIcon({ filled = false, className }: IconProps & { filled?: bo
   return <MapPin className={className} fill={filled ? "currentColor" : "none"} />;
 }
 
-export function BookmarkIcon({ className }: IconProps) {
-  return <Bookmark className={className} />;
+export function BookmarkIcon({ filled = false, className }: IconProps & { filled?: boolean }) {
+  return <Bookmark className={className} fill={filled ? "currentColor" : "none"} />;
 }
 
 export function AnalyzeBackgroundIcon({ className }: IconProps) {

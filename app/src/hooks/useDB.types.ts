@@ -189,6 +189,36 @@ export interface RssFeed {
   pin_order: number | null;
 }
 
+/** One persisted feed/HN bookmark. */
+export interface FeedBookmark {
+  id: number;
+  url: string;
+  title: string;
+  feed_title: string;
+  domain: string;
+  summary: string;
+  image_url: string | null;
+  audio_url: string | null;
+  audio_duration: number | null;
+  hn_item_id: number | null;
+  published: string;
+  created_at: string;
+}
+
+/** Metadata passed when bookmarking from any feed/HN surface. */
+export interface FeedBookmarkInput {
+  url: string;
+  title: string;
+  feedTitle: string;
+  domain: string;
+  summary: string;
+  imageUrl: string | null;
+  audioUrl: string | null;
+  audioDuration: number | null;
+  hnItemId: number | null;
+  published: string;
+}
+
 /** A cached entry row from the rss_entries table (plan2.md §A). */
 export interface RssEntryRow {
   id: number;

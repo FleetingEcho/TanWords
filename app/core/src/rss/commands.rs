@@ -8,7 +8,7 @@ use crate::db;
 use crate::AppState;
 
 use super::parse::fetch_feed_meta;
-use super::types::{RssEntryRow, RssFeed};
+use super::types::{FeedBookmark, RssEntryRow, RssFeed};
 
 #[crate::shim::command]
 pub async fn db_add_rss_feed(
@@ -84,6 +84,112 @@ pub async fn db_get_rss_feeds(conn: State<'_, AppState>) -> Result<Vec<RssFeed>,
         },
     )
     .await
+}
+
+/// Bookmark a feed/HN entry by URL (metadata is snapshotted so the drilldown
+/// stays useful even if the feed later drops or edits the entry). Returns
+/// whether the bookmark was newly created; calling it again removes it.
+#[crate::shim::command]
+pub async fn db_toggle_feed_bookmark(
+    url: String,
+    title: String,
+    feed_title: String,
+    domain: String,
+    summary: String,
+    image_url: Option<String>,
+    audio_url: Option<String>,
+    audio_duration: Option<i64>,
+    hn_item_id: Option<i64>,
+    published: Option<String>,
+    conn: State<'_, AppState>,
+) -> Result<bool, String> {
+    let db = db::conn(&conn)?;
+    let existing = db::scalar_i64(
+        &db,
+        "SELECT COUNT(*) FROM feed_bookmarks WHERE url = ?1",
+        params![url.clone()],
+    )
+    .await?;
+    if existing > 0 {
+        db.execute(
+            "DELETE FROM feed_bookmarks WHERE url = ?1",
+            params![url],
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+        return Ok(false);
+    }
+
+    db.execute(
+        "INSERT INTO feed_bookmarks
+            (url, title, feed_title, domain, summary, image_url, audio_url, audio_duration, hn_item_id, published)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        params![
+            url,
+            title,
+            feed_title,
+            domain,
+            summary,
+            image_url,
+            audio_url,
+            audio_duration,
+            hn_item_id,
+            published.unwrap_or_default()
+        ],
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+#[crate::shim::command]
+pub async fn db_get_feed_bookmarks(
+    limit: Option<i64>,
+    offset: Option<i64>,
+    conn: State<'_, AppState>,
+) -> Result<Vec<FeedBookmark>, String> {
+    let db = db::conn(&conn)?;
+    db::fetch_all(
+        &db,
+        "SELECT id, url, title, feed_title, domain, summary, image_url, audio_url,
+                audio_duration, hn_item_id, published, created_at
+         FROM feed_bookmarks
+         ORDER BY created_at DESC, id DESC
+         LIMIT ?1 OFFSET ?2",
+        params![limit.unwrap_or(500), offset.unwrap_or(0)],
+        |row| {
+            Ok(FeedBookmark {
+                id: row.get(0)?,
+                url: row.get(1)?,
+                title: row.get(2)?,
+                feed_title: row.get(3)?,
+                domain: row.get(4)?,
+                summary: row.get(5)?,
+                image_url: row.get(6)?,
+                audio_url: row.get(7)?,
+                audio_duration: row.get(8)?,
+                hn_item_id: row.get(9)?,
+                published: row.get(10)?,
+                created_at: row.get(11)?,
+            })
+        },
+    )
+    .await
+}
+
+#[crate::shim::command]
+pub async fn db_remove_feed_bookmark(
+    url: String,
+    conn: State<'_, AppState>,
+) -> Result<(), String> {
+    let db = db::conn(&conn)?;
+    db.execute(
+        "DELETE FROM feed_bookmarks WHERE url = ?1",
+        params![url],
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[crate::shim::command]

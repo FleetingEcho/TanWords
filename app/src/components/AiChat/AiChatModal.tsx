@@ -5,7 +5,14 @@ import { Button } from "@/components/ui/button";
 import { CloseIcon } from "@/components/ui/icons";
 import { useNavStore } from "@/store/navStore";
 import { useT } from "@/hooks/useT";
-import { AiChatPage } from "./AiChatPage";
+
+const AiChatPage = React.lazy(() =>
+  import("./AiChatPage").then((m) => ({ default: m.AiChatPage })));
+const ChatFallback = () => (
+  <div className="flex h-full items-center justify-center">
+    <div className="w-8 h-8 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+  </div>
+);
 
 interface Props {
   open: boolean;
@@ -60,7 +67,9 @@ export function AiChatModal({ open, onClose, sessionId }: Props) {
         </Button>
       </div>
       <div className="min-h-0 flex-1">
-        <AiChatPage initialSessionId={sessionId} onActiveIdChange={(id) => { activeIdRef.current = id; }} />
+        <React.Suspense fallback={<ChatFallback />}>
+          <AiChatPage initialSessionId={sessionId} onActiveIdChange={(id) => { activeIdRef.current = id; }} />
+        </React.Suspense>
       </div>
     </Dialog>
   );

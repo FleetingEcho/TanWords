@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { openExternal as openShell } from "@/ipc/shell";
 import { useT } from "@/hooks/useT";
-import { PlayIcon, UpvoteIcon, ReplyIcon, ExternalIcon, TranslateIcon, AnalyzeBackgroundIcon, CheckIcon } from "@/components/ui/icons";
+import { PlayIcon, UpvoteIcon, ReplyIcon, ExternalIcon, TranslateIcon, AnalyzeBackgroundIcon, CheckIcon, BookmarkIcon } from "@/components/ui/icons";
 import { StatBadge } from "@/components/ui/StatBadge";
 import type { RssEntryRow } from "@/hooks/useDB.types";
 import { domainOf, relativeTime, placeholderGradient } from "./feedUtils";
@@ -39,6 +39,10 @@ interface Props {
   /** True while this card's background analysis is in flight (fetch phase only — the AI call
    *  itself is tracked per-URL in learnChatStore, read directly below for the "done" state). */
   analyzingBackground?: boolean;
+  /** Current bookmark state; the button is hidden when the handler is omitted. */
+  bookmarked?: boolean;
+  bookmarkPending?: boolean;
+  onToggleBookmark?: () => void;
   /** Chinese translation of the title (see FeedTabs' "show Chinese titles" toggle) —
    *  shown as a second line under the English title when present. */
   chineseTitle?: string;
@@ -127,6 +131,36 @@ function TranslateButton({ translating, onTranslate, label }: { translating: boo
   );
 }
 
+function BookmarkButton({ bookmarked, pending = false, onToggle, label, removeLabel }: {
+  bookmarked: boolean;
+  pending: boolean;
+  onToggle: (e: React.MouseEvent) => void;
+  label: string;
+  removeLabel: string;
+}) {
+  return (
+    <Button
+      variant="ghost"
+      onClick={onToggle}
+      disabled={pending}
+      title={bookmarked ? removeLabel : label}
+      aria-label={bookmarked ? removeLabel : label}
+      aria-pressed={bookmarked}
+      className={`h-8 w-8 p-0 inline-flex items-center justify-center rounded-full shadow-xs transition-all border ${
+        bookmarked
+          ? "bg-primary/10 text-primary border-primary/25 opacity-100"
+          : "bg-card/90 text-foreground border-border hover:bg-card"
+      }`}
+    >
+      {pending ? (
+        <span className="w-3.5 h-3.5 rounded-full border-2 border-muted-foreground/30 border-t-foreground animate-spin" />
+      ) : (
+        <BookmarkIcon filled={bookmarked} className="w-3.5 h-3.5" />
+      )}
+    </Button>
+  );
+}
+
 /** Reads the shared learnChatStore job for this entry's URL — the same store ArticleReader's
  *  "Learn" button uses — so the checkmark survives navigating away and back, and clicking it
  *  once done opens the very chat conversation the background analysis produced. */
@@ -169,7 +203,7 @@ function AnalyzeBackgroundButton({ url, analyzing, onAnalyze, analyzeLabel, done
   );
 }
 
-export function EntryCard({ entry, feedTitle, hero = false, onOpen, onPlay, onTranslate, translating = false, onAnalyzeBackground, analyzingBackground = false, chineseTitle, trackRead = true, coverColor, coverLetter }: Props) {
+export function EntryCard({ entry, feedTitle, hero = false, onOpen, onPlay, onTranslate, translating = false, onAnalyzeBackground, analyzingBackground = false, bookmarked = false, bookmarkPending = false, onToggleBookmark, chineseTitle, trackRead = true, coverColor, coverLetter }: Props) {
   const t = useT();
   const unread = trackRead && !entry.is_read;
   const meta = (
@@ -210,6 +244,11 @@ export function EntryCard({ entry, feedTitle, hero = false, onOpen, onPlay, onTr
     onAnalyzeBackground?.();
   };
 
+  const toggleBookmark = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onToggleBookmark?.();
+  };
+
   if (hero) {
     return (
       <div
@@ -238,6 +277,15 @@ export function EntryCard({ entry, feedTitle, hero = false, onOpen, onPlay, onTr
           )}
         </div>
         <div className="absolute top-3 right-3 flex items-center gap-2">
+          {onToggleBookmark && (
+            <BookmarkButton
+              bookmarked={bookmarked}
+              pending={bookmarkPending}
+              onToggle={toggleBookmark}
+              label={t("feeds.bookmark")}
+              removeLabel={t("feeds.unbookmark")}
+            />
+          )}
           {onPlay && <PlayButton onPlay={play} label={t("feeds.playEpisode")} />}
           {onTranslate && <TranslateButton translating={translating} onTranslate={translate} label={t("feeds.translate")} />}
           {onAnalyzeBackground && (
@@ -278,6 +326,15 @@ export function EntryCard({ entry, feedTitle, hero = false, onOpen, onPlay, onTr
         <div className="mt-auto pt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground min-w-0">{meta}</div>
       </div>
       <div className="absolute top-2.5 right-2.5 flex items-center gap-2">
+        {onToggleBookmark && (
+          <BookmarkButton
+            bookmarked={bookmarked}
+            pending={bookmarkPending}
+            onToggle={toggleBookmark}
+            label={t("feeds.bookmark")}
+            removeLabel={t("feeds.unbookmark")}
+          />
+        )}
         {onPlay && <PlayButton onPlay={play} label={t("feeds.playEpisode")} />}
         {onTranslate && <TranslateButton translating={translating} onTranslate={translate} label={t("feeds.translate")} />}
         {onAnalyzeBackground && (
@@ -295,7 +352,7 @@ export function EntryCard({ entry, feedTitle, hero = false, onOpen, onPlay, onTr
 }
 
 /** Dense one-line row for list mode — many entries (e.g. a 60-item HN page) at a glance, no cover art. */
-export function EntryListRow({ entry, feedTitle, onOpen, onPlay, onTranslate, translating = false, onAnalyzeBackground, analyzingBackground = false, chineseTitle, trackRead = true }: Props) {
+export function EntryListRow({ entry, feedTitle, onOpen, onPlay, onTranslate, translating = false, onAnalyzeBackground, analyzingBackground = false, bookmarked = false, bookmarkPending = false, onToggleBookmark, chineseTitle, trackRead = true }: Props) {
   const t = useT();
   const unread = trackRead && !entry.is_read;
   const backgroundJobStatus = useLearnChatStore((s) => s.jobs[entry.url]?.status);
@@ -315,6 +372,11 @@ export function EntryListRow({ entry, feedTitle, onOpen, onPlay, onTranslate, tr
   const analyzeBackground = (e: React.MouseEvent) => {
     e.stopPropagation();
     onAnalyzeBackground?.();
+  };
+
+  const toggleBookmark = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onToggleBookmark?.();
   };
 
   return (
@@ -367,7 +429,30 @@ export function EntryListRow({ entry, feedTitle, onOpen, onPlay, onTranslate, tr
           <CheckIcon className="w-3 h-3" />
         </Button>
       )}
-      <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+      <div className={`flex items-center gap-0.5 shrink-0 transition-opacity ${
+        bookmarked ? "opacity-100" : "opacity-0"
+      } group-hover:opacity-100 focus-within:opacity-100`}>
+        {onToggleBookmark && (
+          <Button
+            variant="ghost"
+            onClick={toggleBookmark}
+            disabled={bookmarkPending}
+            title={bookmarked ? t("feeds.unbookmark") : t("feeds.bookmark")}
+            aria-label={bookmarked ? t("feeds.unbookmark") : t("feeds.bookmark")}
+            aria-pressed={bookmarked}
+            className={`h-6 w-6 p-0 rounded-full flex items-center justify-center transition-colors ${
+              bookmarked
+                ? "text-primary hover:bg-primary/10"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+            }`}
+          >
+            {bookmarkPending ? (
+              <span className="w-3 h-3 rounded-full border-2 border-muted-foreground/30 border-t-foreground animate-spin" />
+            ) : (
+              <BookmarkIcon filled={bookmarked} className="w-3 h-3" />
+            )}
+          </Button>
+        )}
         {onPlay && (
           <Button
             variant="ghost"

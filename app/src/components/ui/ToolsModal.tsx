@@ -2,12 +2,20 @@ import React, { useEffect, useRef, useState } from "react";
 import { useToolsBallStore } from "@/store/toolsBallStore";
 import { useNavStore } from "@/store/navStore";
 import { useSelectedWordStore } from "@/store/selectedWordStore";
-import { DocumentsPage } from "@/components/Documents/DocumentsPage";
-import { AiChatPage } from "@/components/AiChat/AiChatPage";
 import { ToolsModalTitleBar } from "@/components/ui/ToolsModalTitleBar";
 import { ToolsModalWordTab } from "@/components/ui/ToolsModalWordTab";
 import { ToolsModalResizeHandle } from "@/components/ui/ToolsModalResizeHandle";
 import { BrowserPanelBlocker } from "@/store/browserPanelStore";
+
+const DocumentsPage = React.lazy(() =>
+  import("@/components/Documents/DocumentsPage").then((m) => ({ default: m.DocumentsPage })));
+const AiChatPage = React.lazy(() =>
+  import("@/components/AiChat/AiChatPage").then((m) => ({ default: m.AiChatPage })));
+const PageFallback = () => (
+  <div className="h-full flex items-center justify-center">
+    <div className="w-8 h-8 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+  </div>
+);
 
 const MIN_W = 500;
 const MIN_H = 400;
@@ -222,12 +230,16 @@ export function ToolsModal() {
         <div className="flex-1 min-h-0 overflow-hidden">
           {mountedTabs.has("documents") && (
             <div style={{ display: activeTab === "documents" ? "block" : "none", height: "100%" }}>
-              <DocumentsPage />
+              <React.Suspense fallback={<PageFallback />}>
+                <DocumentsPage />
+              </React.Suspense>
             </div>
           )}
           {mountedTabs.has("chat") && (
             <div style={{ display: activeTab === "chat" ? "block" : "none", height: "100%" }}>
-              <AiChatPage />
+              <React.Suspense fallback={<PageFallback />}>
+                <AiChatPage />
+              </React.Suspense>
             </div>
           )}
           {isVocabPage && mountedTabs.has("word") && (

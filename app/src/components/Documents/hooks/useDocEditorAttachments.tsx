@@ -10,6 +10,8 @@ import { refreshCodeBlockTheme } from "../codeBlockTheme";
 import { DocumentPasswordRequest } from "../DocumentPasswordDialog";
 import { requiresAttachmentPassword, type PrivateAttachmentAction } from "../privateDocumentPolicy";
 import type { DocEditorInstance } from "./useDocEditorContent";
+import { ImageOptionsButton } from "../ImageOptionsButton";
+import { EditorAiButton } from "../EditorAiButton";
 
 /** Attachments (uploading a file into the document, previewing/deleting one
  * through the formatting toolbar) and the password gate a protected
@@ -43,17 +45,21 @@ export function useDocEditorAttachments(params: {
 
   const insertAttachment = async (file: File | undefined) => {
     if (!file) return;
-    const url = await uploadDocumentAsset(doc.id, file);
-    const type = file.type.startsWith("image/") ? "image"
-      : file.type.startsWith("audio/") ? "audio"
-      : file.type.startsWith("video/") ? "video"
-      : "file";
-    const current = editor.getTextCursorPosition().block;
-    editor.insertBlocks([{
-      type,
-      props: { url, name: file.name || "attachment" },
-    } as any], current, "after");
-    scheduleSave();
+    try {
+      const url = await uploadDocumentAsset(doc.id, file);
+      const type = file.type.startsWith("image/") ? "image"
+        : file.type.startsWith("audio/") ? "audio"
+        : file.type.startsWith("video/") ? "video"
+        : "file";
+      const current = editor.getTextCursorPosition().block;
+      editor.insertBlocks([{
+        type,
+        props: { url, name: file.name || "attachment" },
+      } as any], current, "after");
+      scheduleSave();
+    } catch (error) {
+      toast.error(String(error));
+    }
   };
 
   const handleRichEditorKeyDown = (event: React.KeyboardEvent<HTMLDivElement>, selectRichEditorContents: (root: HTMLElement) => void) => {
@@ -84,6 +90,7 @@ export function useDocEditorAttachments(params: {
     if (action === "delete") {
       editor.focus();
       editor.removeBlocks([block.id]);
+      scheduleSave();
       return;
     }
     const downloadUrl = editor.resolveFileUrl
@@ -94,7 +101,15 @@ export function useDocEditorAttachments(params: {
 
   const formattingToolbar = useCallback(() => {
     const defaults = getFormattingToolbarItems();
-    if (!doc.protected) return <FormattingToolbar>{defaults}</FormattingToolbar>;
+    if (!doc.protected) {
+      return (
+        <FormattingToolbar>
+          {defaults}
+          <ImageOptionsButton />
+          <EditorAiButton />
+        </FormattingToolbar>
+      );
+    }
     const selected = editor.getSelection()?.blocks || [editor.getTextCursorPosition().block];
     const block: any = selected.length === 1 ? selected[0] : null;
     const isFile = Boolean(block?.props && typeof block.props.url === "string");
@@ -116,7 +131,13 @@ export function useDocEditorAttachments(params: {
         </button>,
       );
     }
-    return <FormattingToolbar>{items}</FormattingToolbar>;
+    return (
+      <FormattingToolbar>
+        {items}
+        <ImageOptionsButton />
+        <EditorAiButton />
+      </FormattingToolbar>
+    );
   }, [doc.protected, editor, sensitiveAttachmentAction, t]);
 
   return {

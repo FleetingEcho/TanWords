@@ -8,6 +8,14 @@ pub(super) struct SearchVocabulary {
     #[serde(default = "default_limit")]
     pub(super) limit: usize,
 }
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub(super) struct ListKnownWords {
+    #[schemars(description = "Optional prefix or full word to filter by")]
+    pub(super) query: Option<String>,
+    #[serde(default = "default_limit")]
+    pub(super) limit: usize,
+}
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub(super) struct GetVocabulary {
     #[schemars(description = "Unique vocabulary ID")]
@@ -33,6 +41,17 @@ pub(super) struct SearchDocuments {
     pub(super) tag: Option<String>,
     #[serde(default = "default_limit")]
     pub(super) limit: usize,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub(super) struct ListDocuments {
+    #[schemars(description = "Optional full-text query; omit to list recent documents")]
+    pub(super) query: Option<String>,
+    pub(super) tag: Option<String>,
+    #[serde(default = "default_limit")]
+    pub(super) limit: usize,
+    #[serde(default)]
+    pub(super) offset: usize,
 }
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub(super) struct GetDocument {
@@ -79,6 +98,16 @@ pub(super) struct SearchPatterns {
     pub(super) query: String,
     #[serde(default = "default_limit")]
     pub(super) limit: usize,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub(super) struct ListPatterns {
+    #[schemars(description = "Optional pattern skeleton, meaning, or example to filter by")]
+    pub(super) query: Option<String>,
+    #[serde(default = "default_limit")]
+    pub(super) limit: usize,
+    #[serde(default)]
+    pub(super) offset: usize,
 }
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub(super) struct AddPattern {
@@ -135,6 +164,41 @@ pub(super) struct AddArticleComment {
     pub(super) anchor_text: Option<String>,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub(super) struct ListFeeds {}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub(super) struct ListFeedEntries {
+    pub(super) feed_id: Option<i64>,
+    #[serde(default = "default_limit")]
+    pub(super) limit: usize,
+    #[serde(default)]
+    pub(super) offset: usize,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub(super) struct HackerNewsList {
+    #[schemars(description = "Hacker News section: new, top, or best")]
+    pub(super) section: String,
+    #[serde(default)]
+    pub(super) offset: i64,
+    #[serde(default = "default_limit_i64")]
+    pub(super) limit: i64,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub(super) struct HackerNewsSearch {
+    pub(super) query: String,
+    #[serde(default)]
+    pub(super) page: i64,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub(super) struct HackerNewsComments {
+    #[schemars(description = "Hacker News story/item ID")]
+    pub(super) story_id: i64,
+}
+
 /// Turns a user query into an FTS5 MATCH expression: every word becomes a
 /// prefix term, ANDed together. Quoting each term keeps FTS operators and
 /// punctuation in the query from being parsed as syntax (an unbalanced quote
@@ -150,6 +214,9 @@ pub(super) fn fts_query(query: &str) -> String {
 }
 
 pub(super) fn default_limit() -> usize {
+    20
+}
+pub(super) fn default_limit_i64() -> i64 {
     20
 }
 pub(super) fn json_text(value: Value) -> String {

@@ -7,6 +7,11 @@ import { liftMermaid, lowerMermaid } from "../mermaidTransforms";
 import { resolveDocumentAssetUrl, uploadDocumentAsset } from "@/lib/documentAssets";
 import { isEmptyParagraph, withTrailingEditorParagraph, withoutTrailingEditorParagraph } from "../trailingEditorParagraph";
 
+// Online documents are saved by the sidecar DB, so editing is deliberately
+// debounced long enough to keep keystrokes smooth. Leaving the editor, the
+// app window, or the page still flushes immediately (see listeners below).
+const AUTOSAVE_DEBOUNCE_MS = 15_000;
+
 /** The editor instance, its rich/raw mode, and everything about getting
  * content in and keeping it saved: loading stored content, the debounced
  * autosave, and switching between rich and raw-markdown modes. Split out of
@@ -25,7 +30,6 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
   const loaded = useRef(false);
   const rawDirty = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const maxSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dirty = useRef(false);
   const flushRef = useRef<() => Promise<void>>(async () => {});
 
@@ -51,13 +55,18 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
     return () => { cancelled = true; };
   }, []);
 
+  const scheduleSave = useCallback(() => {
+    dirty.current = true;
+    onDirty();
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => { void flushRef.current().catch(() => {}); }, AUTOSAVE_DEBOUNCE_MS);
+  }, [onDirty]);
+
   const flushSave = useCallback(async () => {
     if (!dirty.current || !loaded.current) return;
     dirty.current = false;
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    if (maxSaveTimer.current) clearTimeout(maxSaveTimer.current);
     saveTimer.current = null;
-    maxSaveTimer.current = null;
     try {
       const blocks = mode === "raw"
         ? liftMermaid(await markdownToBlocksOffThread(rawMarkdown))
@@ -67,22 +76,15 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
       );
       rawDirty.current = false;
       await onSave(content, contentText, wordCount);
+      // The user kept typing while this save was in flight; schedule the next
+      // debounce instead of silently leaving those changes dirty with no timer.
+      if (dirty.current) scheduleSave();
     } catch (error) {
       dirty.current = true;
       throw error;
     }
-  }, [editor, mode, onSave, rawMarkdown]);
+  }, [editor, mode, onSave, rawMarkdown, scheduleSave]);
   flushRef.current = flushSave;
-
-  const scheduleSave = useCallback(() => {
-    dirty.current = true;
-    onDirty();
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => { void flushRef.current().catch(() => {}); }, 1000);
-    if (!maxSaveTimer.current) {
-      maxSaveTimer.current = setTimeout(() => { void flushRef.current().catch(() => {}); }, 8000);
-    }
-  }, [onDirty]);
 
   const handleChange = useCallback(() => {
     if (!loaded.current) return;
@@ -97,7 +99,6 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
     if (next === mode || switchingMode) return;
     setSwitchingMode(true);
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    if (maxSaveTimer.current) clearTimeout(maxSaveTimer.current);
     try {
       if (next === "raw") {
         const contentBlocks = withoutTrailingEditorParagraph(editor.document);
@@ -135,12 +136,15 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
       }
     };
     const flushPending = () => { void flushRef.current().catch(() => {}); };
+    const flushWhenHidden = () => { if (document.visibilityState === "hidden") flushPending(); };
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("blur", flushPending);
+    document.addEventListener("visibilitychange", flushWhenHidden);
     window.addEventListener("pagehide", flushPending);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("blur-sm", flushPending);
+      window.removeEventListener("blur", flushPending);
+      document.removeEventListener("visibilitychange", flushWhenHidden);
       window.removeEventListener("pagehide", flushPending);
     };
   }, []);
@@ -148,7 +152,6 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
   useEffect(() => () => {
     void flushRef.current().catch(() => {});
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    if (maxSaveTimer.current) clearTimeout(maxSaveTimer.current);
   }, []);
 
   return {

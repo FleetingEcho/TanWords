@@ -5,6 +5,7 @@ import { openDialog } from "@/ipc/dialog";
 import { toast } from "sonner";
 import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
+import { markTtsActivity } from "@/lib/ttsBackend";
 import { SettingRow } from "./SettingsShared";
 import { RecommendedTtsModel } from "@/lib/recommendedTtsModels";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
@@ -63,6 +64,7 @@ export function TtsSection() {
     setLoadingPath(path);
     try {
       const info = await invoke<TtsModelInfo>("tts_load_model", { path });
+      markTtsActivity();
       settings.setTtsModelPath(path);
       settings.setTtsVoiceId("0");
       setLoadedPath(info.path);
@@ -137,6 +139,7 @@ export function TtsSection() {
         speakerId: Number(settings.ttsVoiceId) || 0,
         speed: 1.0,
       });
+      markTtsActivity();
       const bytes = Uint8Array.from(atob(wavBase64), (c) => c.charCodeAt(0));
       const blob = new Blob([bytes], { type: "audio/wav" });
       const url = URL.createObjectURL(blob);

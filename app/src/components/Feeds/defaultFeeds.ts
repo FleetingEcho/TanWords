@@ -6,7 +6,8 @@
  *  Essays) was removed 2026-07-17 at the user's request; JS Party removed
  *  because the show ended (last episode Feb 2025). Aeon/Psyche stay excluded:
  *  Vercel bot-challenge breaks in-app reading (verified 2026-07-12).
- *  Every feed below was verified alive 2026-07-17. Hacker News (hnrss.org)
+ *  Every feed below was verified alive 2026-07-17; TED Talks Daily was
+ *  verified 2026-07-31. Hacker News (hnrss.org)
  *  removed 2026-07-22 — replaced by the native New/Top/Best browser in
  *  FeedTabs, which reads HN's own API instead of an RSS mirror. */
 
@@ -55,6 +56,7 @@ export const DEFAULT_FEEDS: DefaultFeed[] = [
   { category: "podcast", title: "The Changelog", url: "https://changelog.com/podcast/feed", desc: "Conversations with open source maintainers" },
   { category: "podcast", title: "Latent Space", url: "https://api.substack.com/feed/podcast/1084089.rss", desc: "AI engineering interviews, very current" },
   { category: "podcast", title: "Practical AI", url: "https://changelog.com/practicalai/feed", desc: "Applied machine learning, approachable" },
+  { category: "podcast", title: "TED Talks Daily", url: "https://feeds.acast.com/public/shows/67587e77c705e441797aff96", desc: "Daily TED talks as free audio episodes" },
   { category: "podcast", title: "Hard Fork", url: "https://feeds.simplecast.com/l2i9YnTd", desc: "NYT's weekly take on tech and AI news" },
   { category: "podcast", title: "Software Engineering Daily", url: "https://softwareengineeringdaily.com/feed/podcast/", desc: "Daily engineering interviews" },
   { category: "podcast", title: "Darknet Diaries", url: "https://feeds.megaphone.fm/darknetdiaries", desc: "True stories from the dark side of the internet" },
@@ -68,6 +70,7 @@ export const DEFAULT_FEEDS: DefaultFeed[] = [
 const INITIAL_FEED_URLS = new Set([
   "https://feed.syntax.fm",
   "https://changelog.com/practicalai/feed",
+  "https://feeds.acast.com/public/shows/67587e77c705e441797aff96",
 ]);
 
 /** RSS subscriptions created on first launch. Hacker News is always available

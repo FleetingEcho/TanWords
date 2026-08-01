@@ -1,8 +1,10 @@
-import { SpeakerIcon, SparkIcon, TranslateIcon, ReplyIcon, CheckIcon, PlayIcon, PauseIcon } from "@/components/ui/icons";
+import { useEffect } from "react";
+import { SpeakerIcon, SparkIcon, TranslateIcon, ReplyIcon, CheckIcon, PlayIcon, PauseIcon, BookmarkIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { MessageSquareText, Copy } from "lucide-react";
 import type { PodcastTrack } from "@/store/podcastPlayerStore";
+import { useFeedBookmarksStore } from "@/store/feedBookmarksStore";
 import type { ArticleReaderState } from "./hooks/useArticleReaderState";
 
 /** The learn/listen/translate/comments buttons that portal into the reader
@@ -10,22 +12,66 @@ import type { ArticleReaderState } from "./hooks/useArticleReaderState";
  * purely for size — it's one big, mostly self-contained JSX block that reads
  * from useArticleReaderState's return value. */
 export function ReaderToolbar({
-  state, url, audio, hnItemId,
+  state, url, domain, audio, hnItemId,
 }: {
   state: ArticleReaderState;
   url: string;
+  domain: string;
   audio?: PodcastTrack;
   hnItemId?: number | null;
 }) {
+  const bookmarked = useFeedBookmarksStore((s) => s.urls.has(url));
+  const bookmarkPending = useFeedBookmarksStore((s) => s.pending.has(url));
+  const bookmarksLoaded = useFeedBookmarksStore((s) => s.loaded);
+  const toggleBookmarkStore = useFeedBookmarksStore((s) => s.toggle);
   const {
-    t, copied, handleCopyMarkdown, learnMenuOpen, setLearnMenuOpen, learnJob,
+    t, article, copied, handleCopyMarkdown, learnMenuOpen, setLearnMenuOpen, learnJob,
     keepLearnMenuOpen, scheduleLearnMenuClose, handleLearnClick, setChatModalSessionId, cancelLearn,
     handleListen, podcastActive, podcastStatus, playerActive, showTranslation, setShowTranslation, setRightView,
     articleId, showComments, setShowComments, comments, handleListenComments, hnComments, commentsPlayerActive,
   } = state;
 
+  useEffect(() => {
+    if (!bookmarksLoaded) void useFeedBookmarksStore.getState().refresh();
+  }, [bookmarksLoaded]);
+
+  const toggleBookmark = async () => {
+    if (!article) return;
+    await toggleBookmarkStore({
+      url,
+      title: article.title || url,
+      feedTitle: audio?.feedTitle || domain,
+      domain,
+      summary: article.text_content.slice(0, 300),
+      imageUrl: null,
+      audioUrl: audio?.audioUrl ?? null,
+      audioDuration: null,
+      hnItemId: hnItemId ?? null,
+      published: new Date().toISOString(),
+    });
+  };
+
   return (
     <>
+      <Button
+        variant="ghost"
+        onClick={() => void toggleBookmark()}
+        disabled={bookmarkPending}
+        title={t(bookmarked ? "feeds.unbookmark" : "feeds.bookmark")}
+        aria-label={t(bookmarked ? "feeds.unbookmark" : "feeds.bookmark")}
+        aria-pressed={bookmarked}
+        className={`w-7 h-7 p-0 rounded-md flex items-center justify-center transition-colors shrink-0 ${
+          bookmarked
+            ? "bg-primary/10 text-primary hover:bg-primary/15"
+            : "text-muted-foreground hover:text-foreground hover:bg-muted"
+        }`}
+      >
+        {bookmarkPending ? (
+          <span className="w-3.5 h-3.5 rounded-full border-2 border-muted-foreground/30 border-t-foreground animate-spin" />
+        ) : (
+          <BookmarkIcon filled={bookmarked} className="w-4 h-4" />
+        )}
+      </Button>
       <Button
         variant="ghost"
         onClick={() => void handleCopyMarkdown()}

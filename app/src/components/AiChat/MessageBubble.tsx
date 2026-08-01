@@ -33,6 +33,10 @@ interface Props {
   onEdit?: (index: number) => void;
   /** Re-run the last user turn — set only on the final assistant message. */
   onRegenerate?: () => void;
+  /** Custom renderer for blockquotes, e.g. Speaking Coach's TTS/save lines. */
+  renderBlockquote?: (lines: string[], key: string) => React.ReactNode;
+  /** When set, English words in assistant markdown open the word lookup modal. */
+  onWordClick?: (word: string) => void;
 }
 
 /** User messages longer than this render collapsed (pasted articles etc.) */
@@ -43,7 +47,7 @@ function countWords(text: string): number {
   return text.match(/[\p{L}\p{N}]+(?:['’.-][\p{L}\p{N}]+)*/gu)?.length ?? 0;
 }
 
-export const MessageBubble = React.memo(function MessageBubble({ msg, compact = false, isTyping = false, fillCardWidth = false, index = 0, onEdit, onRegenerate }: Props) {
+export const MessageBubble = React.memo(function MessageBubble({ msg, compact = false, isTyping = false, fillCardWidth = false, index = 0, onEdit, onRegenerate, renderBlockquote, onWordClick }: Props) {
   const t = useT();
   const userAvatar = useSettingsStore((s) => s.userAvatar);
   const [copied, setCopied] = useState(false);
@@ -93,7 +97,7 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, compact = 
             ))}
           </span>
         ) : msg.role === "assistant" ? (
-          <Markdown text={msg.content} />
+          <Markdown text={msg.content} renderBlockquote={renderBlockquote} onWordClick={onWordClick} />
         ) : isLongUserMsg && !expanded ? (
           <>
             <p className="whitespace-pre-wrap">{msg.content.slice(0, COLLAPSE_PREVIEW)}…</p>
