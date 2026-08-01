@@ -14,9 +14,18 @@ use crate::AppState;
 #[crate::shim::command]
 pub async fn db_import_analyze(
     source_path: String,
+    password: Option<String>,
     conn: State<'_, AppState>,
 ) -> Result<ImportPlan, String> {
-    let source = open_source(&source_path).await?;
+    let temp = super::extract_encrypted_backup_to_temp(
+        std::path::Path::new(&source_path),
+        password.as_deref(),
+    )?;
+    let source_path_for_open = temp
+        .as_deref()
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_else(|| source_path.clone());
+    let source = open_source(&source_path_for_open).await?;
     let target = db::conn(&conn)?;
     let mut groups = Vec::new();
 
@@ -184,5 +193,9 @@ pub async fn db_import_analyze(
         groups.push(ImportGroup { kind: "knownWords".into(), new_count, conflicts: Vec::new() });
     }
 
-    Ok(ImportPlan { source_path, groups })
+    let result = ImportPlan { source_path, groups };
+    if let Some(temp) = temp {
+        let _ = std::fs::remove_file(temp);
+    }
+    Ok(result)
 }

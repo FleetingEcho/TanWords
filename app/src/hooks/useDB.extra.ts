@@ -375,9 +375,9 @@ export function useDBExtra() {
     }
   }, []);
 
-  const exportBackup = useCallback(async (dest: string): Promise<void> => {
+  const exportBackup = useCallback(async (dest: string, password: string | null = null): Promise<void> => {
     try {
-      await invoke("db_export_backup", { dest });
+      await invoke("db_export_backup", { dest, password });
     } catch (e) {
       reportWriteError("exportBackup", e, "导出备份失败");
       throw e;
@@ -476,9 +476,9 @@ export function useDBExtra() {
 
   /** Reads another TanWords database and reports what would be added and what
    *  already exists. Writes nothing — the source is opened read-only. */
-  const importAnalyze = useCallback(async (sourcePath: string): Promise<ImportPlan> => {
+  const importAnalyze = useCallback(async (sourcePath: string, password: string | null = null): Promise<ImportPlan> => {
     try {
-      return await invoke<ImportPlan>("db_import_analyze", { sourcePath });
+      return await invoke<ImportPlan>("db_import_analyze", { sourcePath, password });
     } catch (e) {
       reportWriteError("importAnalyze", e, "读取数据库文件失败");
       throw e;
@@ -487,9 +487,9 @@ export function useDBExtra() {
 
   /** Applies an import with a decision for every conflict, in one transaction. */
   const importApply = useCallback(
-    async (sourcePath: string, decisions: ImportDecisions): Promise<ImportResult> => {
+    async (sourcePath: string, decisions: ImportDecisions, password: string | null = null): Promise<ImportResult> => {
       try {
-        return await invoke<ImportResult>("db_import_apply", { sourcePath, decisions });
+        return await invoke<ImportResult>("db_import_apply", { sourcePath, decisions, password });
       } catch (e) {
         reportWriteError("importApply", e, "导入失败");
         throw e;

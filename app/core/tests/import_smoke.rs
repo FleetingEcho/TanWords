@@ -106,14 +106,14 @@ async fn importing_into_an_empty_database_brings_everything_over() {
     let app_state = app_with(&dest).await;
     let state = tanwords_lib::shim::State::from_ref(&app_state);
 
-    let plan = tanwords_lib::db::db_import_analyze(src.clone(), state.clone())
+    let plan = tanwords_lib::db::db_import_analyze(src.clone(), None, state.clone())
         .await
         .expect("analyze");
     let words = plan.groups.iter().find(|g| g.kind == "words").expect("words group");
     assert_eq!(words.new_count, 2, "both words are new");
     assert!(words.conflicts.is_empty(), "an empty target has no conflicts");
 
-    let result = tanwords_lib::db::db_import_apply(src.clone(), ImportDecisions::default(), state.clone())
+    let result = tanwords_lib::db::db_import_apply(src.clone(), None, ImportDecisions::default(), state.clone())
         .await
         .expect("apply");
     assert!(result.added >= 5, "words, pattern, document and known word all land");
@@ -171,7 +171,7 @@ async fn conflicts_are_reported_and_skipped_by_default() {
     let app_state = app_with(&dest).await;
     let state = tanwords_lib::shim::State::from_ref(&app_state);
 
-    let plan = tanwords_lib::db::db_import_analyze(src.clone(), state.clone())
+    let plan = tanwords_lib::db::db_import_analyze(src.clone(), None, state.clone())
         .await
         .expect("analyze");
     let words = plan.groups.iter().find(|g| g.kind == "words").unwrap();
@@ -183,7 +183,7 @@ async fn conflicts_are_reported_and_skipped_by_default() {
     assert!(!conflict.existing.is_empty(), "existing side is described too");
 
     // Default decisions overwrite nothing.
-    tanwords_lib::db::db_import_apply(src.clone(), ImportDecisions::default(), state.clone())
+    tanwords_lib::db::db_import_apply(src.clone(), None, ImportDecisions::default(), state.clone())
         .await
         .expect("apply");
 
@@ -234,6 +234,7 @@ async fn overwriting_replaces_content_but_never_review_progress() {
     overwrite.insert("words".to_string(), vec!["blacksmith".to_string()]);
     let result = tanwords_lib::db::db_import_apply(
         src.clone(),
+        None,
         ImportDecisions { overwrite, include_new: true },
         state.clone(),
     )
@@ -274,14 +275,14 @@ async fn importing_the_same_file_twice_is_a_no_op() {
     let app_state = app_with(&dest).await;
     let state = tanwords_lib::shim::State::from_ref(&app_state);
 
-    tanwords_lib::db::db_import_apply(src.clone(), ImportDecisions::default(), state.clone())
+    tanwords_lib::db::db_import_apply(src.clone(), None, ImportDecisions::default(), state.clone())
         .await
         .unwrap();
     let after_first = scalar(&state, "SELECT COUNT(*) FROM words").await;
     let defs_first = scalar(&state, "SELECT COUNT(*) FROM word_definitions").await;
     let examples_first = scalar(&state, "SELECT COUNT(*) FROM pattern_examples").await;
 
-    let second = tanwords_lib::db::db_import_apply(src.clone(), ImportDecisions::default(), state.clone())
+    let second = tanwords_lib::db::db_import_apply(src.clone(), None, ImportDecisions::default(), state.clone())
         .await
         .unwrap();
     assert_eq!(second.added, 0, "nothing new the second time");
@@ -308,7 +309,7 @@ async fn a_non_tanwords_file_is_rejected() {
     let app_state = app_with(&dest).await;
     let state = tanwords_lib::shim::State::from_ref(&app_state);
 
-    let err = tanwords_lib::db::db_import_analyze(stray.clone(), state)
+    let err = tanwords_lib::db::db_import_analyze(stray.clone(), None, state)
         .await
         .expect_err("a stray SQLite file must be refused");
     assert!(err.contains("TanWords"), "error should say what's wrong, got: {err}");

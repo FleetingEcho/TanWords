@@ -416,7 +416,7 @@ async fn a_local_database_can_be_imported_into_turso() {
     };
     let state = tanwords_lib::shim::State::from_ref(&app_state);
 
-    let plan = tanwords_lib::db::db_import_analyze(source.clone(), state.clone())
+    let plan = tanwords_lib::db::db_import_analyze(source.clone(), None, state.clone())
         .await
         .expect("analyze against a remote target");
     let words = plan.groups.iter().find(|g| g.kind == "words").expect("words group");
@@ -424,6 +424,7 @@ async fn a_local_database_can_be_imported_into_turso() {
 
     let result = tanwords_lib::db::db_import_apply(
         source.clone(),
+        None,
         tanwords_lib::db::ImportDecisions::default(),
         state.clone(),
     )
@@ -446,6 +447,7 @@ async fn a_local_database_can_be_imported_into_turso() {
     // Re-running must be a no-op rather than duplicating.
     let again = tanwords_lib::db::db_import_apply(
         source.clone(),
+        None,
         tanwords_lib::db::ImportDecisions::default(),
         state.clone(),
     )

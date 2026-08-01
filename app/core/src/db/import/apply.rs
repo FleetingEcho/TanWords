@@ -14,58 +14,72 @@ use crate::AppState;
 #[crate::shim::command]
 pub async fn db_import_apply(
     source_path: String,
+    password: Option<String>,
     decisions: ImportDecisions,
     conn: State<'_, AppState>,
 ) -> Result<ImportResult, String> {
     if !conn.descriptor()?.caps.writable {
         return Err("The current database is read-only and cannot import".into());
     }
-    let source = open_source(&source_path).await?;
-    let target = db::txn_conn(&conn).await?;
-    let empty = Vec::new();
-    let chosen = |kind: &str| -> HashSet<String> {
-        decisions
-            .overwrite
-            .get(kind)
-            .unwrap_or(&empty)
-            .iter()
-            .cloned()
-            .collect()
-    };
+    let temp = super::extract_encrypted_backup_to_temp(
+        std::path::Path::new(&source_path),
+        password.as_deref(),
+    )?;
+    let source_path_for_open = temp
+        .as_deref()
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_else(|| source_path.clone());
+    let source = open_source(&source_path_for_open).await?;
+    let result = async {
+        let target = db::txn_conn(&conn).await?;
+        let empty = Vec::new();
+        let chosen = |kind: &str| -> HashSet<String> {
+            decisions
+                .overwrite
+                .get(kind)
+                .unwrap_or(&empty)
+                .iter()
+                .cloned()
+                .collect()
+        };
 
-    let tx = target.transaction().await.map_err(|e| e.to_string())?;
-    let mut result = ImportResult::default();
+        let tx = target.transaction().await.map_err(|e| e.to_string())?;
+        let mut result = ImportResult::default();
 
+        result
+            .outcomes
+            .push(apply_words(&source, &tx, &chosen("words"), decisions.include_new).await?);
+        if has_table(&source, "patterns").await {
+            result.outcomes
+                .push(apply_patterns(&source, &tx, &chosen("patterns"), decisions.include_new).await?);
+        }
+        if has_table(&source, "reading_articles").await {
+            result.outcomes
+                .push(apply_articles(&source, &tx, &chosen("articles"), decisions.include_new).await?);
+        }
+        if has_table(&source, "documents").await {
+            result.outcomes
+                .push(apply_documents(&source, &tx, &chosen("documents"), decisions.include_new).await?);
+        }
+        if has_table(&source, "user_known_words").await {
+            result.outcomes.push(apply_known_words(&source, &tx, decisions.include_new).await?);
+        }
+
+        tx.commit().await.map_err(|e| e.to_string())?;
+
+        for outcome in &result.outcomes {
+            result.added += outcome.added;
+            result.overwritten += outcome.overwritten;
+            result.skipped += outcome.skipped;
+        }
+        Ok(result)
+    }
+    .await;
+
+    if let Some(temp) = temp {
+        let _ = std::fs::remove_file(temp);
+    }
     result
-        .outcomes
-        .push(apply_words(&source, &tx, &chosen("words"), decisions.include_new).await?);
-    if has_table(&source, "patterns").await {
-        result
-            .outcomes
-            .push(apply_patterns(&source, &tx, &chosen("patterns"), decisions.include_new).await?);
-    }
-    if has_table(&source, "reading_articles").await {
-        result
-            .outcomes
-            .push(apply_articles(&source, &tx, &chosen("articles"), decisions.include_new).await?);
-    }
-    if has_table(&source, "documents").await {
-        result
-            .outcomes
-            .push(apply_documents(&source, &tx, &chosen("documents"), decisions.include_new).await?);
-    }
-    if has_table(&source, "user_known_words").await {
-        result.outcomes.push(apply_known_words(&source, &tx, decisions.include_new).await?);
-    }
-
-    tx.commit().await.map_err(|e| e.to_string())?;
-
-    for outcome in &result.outcomes {
-        result.added += outcome.added;
-        result.overwritten += outcome.overwritten;
-        result.skipped += outcome.skipped;
-    }
-    Ok(result)
 }
 
 pub(super) async fn apply_words(
