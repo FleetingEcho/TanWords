@@ -130,7 +130,7 @@ impl GstreamerDecoder {
         if pipeline.is_null() {
             return Err("GStreamer could not create the MP3 pipeline".into());
         }
-        let sink_name = CString::new("tanwords_sink").unwrap();
+        let sink_name = CString::new("tanwords_sink").map_err(|e| e.to_string())?;
         let sink = unsafe { bin_get_by_name(pipeline, sink_name.as_ptr()) };
         if sink.is_null() {
             unsafe { object_unref(pipeline) };
@@ -173,11 +173,19 @@ impl GstreamerDecoder {
         let first_bytes = unsafe { std::slice::from_raw_parts(first_map.data, first_map.size) };
         let mut prerolled: Vec<f32> = first_bytes
             .chunks_exact(4)
-            .map(|bytes| f32::from_le_bytes(bytes.try_into().unwrap()))
+            .map(|bytes| f32::from_le_bytes(bytes.try_into().unwrap_or([0, 0, 0, 0])))
             .collect();
         unsafe {
             buffer_unmap(first_buffer, &mut first_map);
             sample_unref(first_sample);
+        }
+        if prerolled.is_empty() {
+            unsafe {
+                set_state(pipeline, 1);
+                object_unref(sink);
+                object_unref(pipeline);
+            }
+            return Err("GStreamer produced no decodable audio".into());
         }
 
         const GST_FORMAT_TIME: c_int = 3;
@@ -210,7 +218,7 @@ impl GstreamerDecoder {
             prerolled.extend(
                 bytes
                     .chunks_exact(4)
-                    .map(|bytes| f32::from_le_bytes(bytes.try_into().unwrap())),
+                    .map(|bytes| f32::from_le_bytes(bytes.try_into().unwrap_or([0, 0, 0, 0]))),
             );
             unsafe {
                 buffer_unmap(buffer, &mut map);
@@ -269,15 +277,18 @@ impl GstreamerDecoder {
         }
         self.samples.clear();
         let bytes = unsafe { std::slice::from_raw_parts(map.data, map.size) };
-        self.samples.extend(
-            bytes
-                .chunks_exact(4)
-                .map(|bytes| f32::from_le_bytes(bytes.try_into().unwrap())),
-        );
+        let samples: Vec<f32> = bytes
+            .chunks_exact(4)
+            .map(|bytes| f32::from_le_bytes(bytes.try_into().unwrap_or([0, 0, 0, 0])))
+            .collect();
         unsafe {
             (self.api.buffer_unmap)(buffer, &mut map);
             (self.api.sample_unref)(sample);
         }
+        if samples.is_empty() {
+            return None;
+        }
+        self.samples = samples;
         self.offset = 0;
         Some(())
     }

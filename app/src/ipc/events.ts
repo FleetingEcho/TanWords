@@ -9,7 +9,7 @@
  *  the underlying transports are started lazily in the background, so there is
  *  nothing for a caller to await. */
 
-import { backendOrigin, backendToken } from "./backend";
+import { backendOrigin, backendToken, refreshBackendInfo } from "./backend";
 import { host } from "./host";
 
 export type Unsubscribe = () => void;
@@ -51,6 +51,7 @@ async function startStream() {
     } catch {
       // fall through to the backoff below
     }
+    await refreshBackendInfo().catch(() => {});
     await new Promise((r) => setTimeout(r, 1000));
   }
 }

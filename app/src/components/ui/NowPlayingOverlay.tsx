@@ -59,7 +59,7 @@ export function NowPlayingOverlay({ onClose }: { onClose: () => void }) {
   const ModeIcon = MODE_ICONS[playMode];
 
   return (
-    <div className="fixed inset-0 z-50 animate-fade-in overflow-hidden" style={{ backgroundImage: cover.css }}>
+    <div className="fixed inset-0 z-50 app-region-no-drag animate-fade-in overflow-hidden" style={{ backgroundImage: cover.css }}>
       {/* Native browser panel must step aside — see browserPanelStore. */}
       <BrowserPanelBlocker />
       {/* Darken toward the bottom so white text always reads */}
@@ -67,12 +67,15 @@ export function NowPlayingOverlay({ onClose }: { onClose: () => void }) {
 
       <div className="relative h-full flex flex-col items-center px-8 py-6">
         <Button
+          type="button"
           variant="ghost"
+          onPointerDown={onClose}
           onClick={onClose}
           title={t("music.collapsePlayer")}
-          className="self-start w-9 h-9 p-0 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition-colors -rotate-90"
+          aria-label={t("music.collapsePlayer")}
+          className="app-region-no-drag absolute left-5 top-5 z-50 w-12 h-12 p-0 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition-colors"
         >
-          <ChevronIcon direction="left" className="w-5 h-5" />
+          <ChevronIcon direction="left" className="w-5 h-5 -rotate-90" />
         </Button>
 
         {/* Disc — spins while playing, freezes on pause */}

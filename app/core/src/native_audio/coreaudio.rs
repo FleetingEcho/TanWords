@@ -153,7 +153,13 @@ impl CoreAudioDecoder {
                 (&mut file_format as *mut AudioStreamBasicDescription).cast(),
             )
         };
-        if status != 0 || file_format.channels_per_frame == 0 || file_format.sample_rate <= 0.0 {
+        if status != 0
+            || file_format.channels_per_frame == 0
+            || file_format.channels_per_frame > 255
+            || !file_format.sample_rate.is_finite()
+            || file_format.sample_rate <= 0.0
+            || file_format.sample_rate > u32::MAX as f64
+        {
             unsafe { ExtAudioFileDispose(file) };
             return Err(format!("could not read the source audio format ({status})"));
         }

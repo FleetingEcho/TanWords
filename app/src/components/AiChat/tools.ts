@@ -34,7 +34,7 @@ export async function saveNoteAsDocument(title: string, content: string): Promis
 // ── Tool Groups ────────────────────────────────────────────────────────────
 
 export const TOOL_GROUPS = {
-  vocabulary: { label: "Vocabulary", tools: ["save_word", "search_vocabulary", "add_words_to_vocab", "generate_sentences"] },
+  vocabulary: { label: "Vocabulary", tools: ["get_vocabulary_stats", "list_vocabulary", "search_vocabulary", "save_word", "add_words_to_vocab", "save_sentences"] },
   documents:  { label: "Documents",  tools: ["list_documents", "insert_into_document", "summarize_conversation", "save_note_as_document"] },
 } as const;
 
@@ -43,6 +43,29 @@ export type ToolGroupKey = keyof typeof TOOL_GROUPS;
 // ── Tool Definitions ───────────────────────────────────────────────────────
 
 const ALL_TOOL_DEFS: Record<string, ToolDef> = {
+  get_vocabulary_stats: {
+    name: "get_vocabulary_stats",
+    description: "Get the total number of English words in the user's vocabulary database. Call this whenever the user asks how many words they have saved, or wants an overview of their vocabulary size.",
+    input_schema: { type: "object", properties: {}, required: [] },
+  },
+
+  list_vocabulary: {
+    name: "list_vocabulary",
+    description: "List words from the user's vocabulary for review, quizzing, or planning. Use this when the user asks you to quiz them with their saved words, pick words from their library, or see what they have saved. Returns word, Chinese meaning, CEFR level, and SRS level. Use query to narrow by word or Chinese meaning, limit and offset to page, levelFilter to target a CEFR band, or random to draw a sample for a quiz.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Optional word or Chinese meaning search. Empty returns the whole library." },
+        limit: { type: "number", description: "Maximum words to return. Default 30, maximum 100." },
+        offset: { type: "number", description: "Skip this many words from the sorted result. Use with limit to page through the library." },
+        sortBy: { type: "string", enum: ["recent", "alpha", "freq"], description: "Order words by recently updated, alphabetical, or frequency." },
+        levelFilter: { type: "string", enum: ["A1", "A2", "B1", "B2", "C1", "C2", "B1-"], description: "Optional CEFR level filter." },
+        random: { type: "boolean", description: "Set true to return a random sample. Useful for building quizzes." },
+      },
+      required: [],
+    },
+  },
+
   save_word: {
     name: "save_word",
     description: "Save an English word to the user's vocabulary database. Call this when the user asks to save, add, or remember a word.",
@@ -147,29 +170,28 @@ const ALL_TOOL_DEFS: Record<string, ToolDef> = {
     },
   },
 
-  generate_sentences: {
-    name: "generate_sentences",
-    description: "Generate example sentences worth saving to the user's sentence library, for a word, topic, or reusable pattern they want to practice. Call this when the user asks you to generate/give them example sentences or sentence patterns — do the generation yourself and pass the results as structured items; do not just list them in prose. The results are shown to the user as review cards, not saved automatically.",
+  save_sentences: {
+    name: "save_sentences",
+    description: "Save generated or recommended English sentences directly to the user's sentence library in one call. Use when the user asks you to save, keep, or add sentences you just produced (for example model sentences, quiz feedback examples, or related usage examples). Each item needs the exact English sentence; include a Chinese meaning, reusable skeleton, usage note, and CEFR level when available. Duplicates are skipped automatically.",
     input_schema: {
       type: "object",
       properties: {
-        items: {
+        sentences: {
           type: "array",
-          description: "Generated example sentences, each built on a distinct reusable sentence pattern",
           items: {
             type: "object",
             properties: {
-              sentence: { type: "string", description: "The English sentence" },
-              zh:       { type: "string", description: "Natural Chinese translation" },
-              level:    { type: "string", enum: ["A2", "B1", "B2", "C1", "C2"], description: "Estimated CEFR level" },
-              skeleton: { type: "string", description: "Reusable sentence pattern skeleton, e.g. 'be shortlisted for + noun'" },
-              note:     { type: "string", description: "Short Chinese note on the scenario or register this pattern fits" },
+              sentence: { type: "string", description: "The exact English sentence to save" },
+              zh:       { type: "string", description: "Chinese meaning / translation" },
+              skeleton: { type: "string", description: "Reusable sentence pattern skeleton, e.g. 'It is not until X that Y'" },
+              note:     { type: "string", description: "Short usage note" },
+              level:    { type: "string", enum: ["A1", "A2", "B1", "B2", "C1", "C2"], description: "Estimated CEFR level" },
             },
-            required: ["sentence", "zh"],
+            required: ["sentence"],
           },
         },
       },
-      required: ["items"],
+      required: ["sentences"],
     },
   },
 
@@ -249,6 +271,50 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
         return { tool_use_id: id, content: `Found: ${list}` };
       }
 
+      case "get_vocabulary_stats": {
+        const wordCount: number = await invoke("db_get_word_count");
+        return {
+          tool_use_id: id,
+          content: `Vocabulary stats: ${wordCount} saved word${wordCount === 1 ? "" : "s"}.`,
+        };
+      }
+
+      case "list_vocabulary": {
+        const { query, limit, offset, sortBy, levelFilter, random } = input as any;
+        const safeLimit = Math.min(Math.max(Number(limit) || 30, 1), 100);
+        const safeOffset = Math.max(Number(offset) || 0, 0);
+        const results: any[] = await invoke("db_get_words", {
+          search: query || null,
+          levelFilter: levelFilter || null,
+          sortBy: sortBy || null,
+          dateField: null,
+          dateFrom: null,
+          dateTo: null,
+        });
+        const pool = random ? shuffle(results) : results;
+        const page = pool.slice(safeOffset, safeOffset + safeLimit);
+        if (page.length === 0) {
+          return {
+            tool_use_id: id,
+            content: results.length === 0
+              ? "No vocabulary words found."
+              : `No words found at offset ${safeOffset}. The library has ${results.length} words.`,
+          };
+        }
+        const lines = page.map((w: any, i: number) => {
+          const meaning = w.zh ? ` (${w.zh})` : "";
+          const level = w.level ? ` [${w.level}]` : "";
+          const srs = Number(w.srs_level || 0) > 0 ? ` SRS${w.srs_level}` : "";
+          return `${safeOffset + i + 1}. ${w.word}${meaning}${level}${srs}`;
+        }).join("\n");
+        const total = results.length;
+        const shown = page.length;
+        return {
+          tool_use_id: id,
+          content: `Vocabulary has ${total} words; showing ${shown} (${safeOffset + 1}-${safeOffset + shown}):\n${lines}`,
+        };
+      }
+
       case "extract_vocabulary": {
         // No DB write here — the caller renders these as interactive review
         // cards (VocabExtractionCard) and the user accepts individually.
@@ -278,12 +344,31 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
         };
       }
 
-      case "generate_sentences": {
-        // No DB write here — the caller renders these as interactive review
-        // cards (SentenceExtractionCard) and the user accepts individually.
-        const { items } = input as { items: unknown[] };
-        const n = Array.isArray(items) ? items.length : 0;
-        return { tool_use_id: id, content: `✓ Generated ${n} sentence${n === 1 ? "" : "s"} — review the cards below.` };
+      case "save_sentences": {
+        const { sentences } = input as { sentences?: { sentence: string; zh?: string; skeleton?: string; note?: string; level?: string }[] };
+        const items = sentences ?? [];
+        if (items.length === 0) {
+          return { tool_use_id: id, content: "No sentences provided to save.", is_error: true };
+        }
+        let added = 0;
+        let skipped = 0;
+        for (const item of items) {
+          const sentence = item.sentence?.trim();
+          if (!sentence) continue;
+          const result: { created: boolean } | null = await invoke("db_save_sentence_pattern", {
+            sentence,
+            zh: item.zh ?? "",
+            skeleton: item.skeleton ?? "",
+            note: item.note ?? "",
+            level: item.level ?? "",
+            source: "chat",
+          });
+          if (result?.created) added += 1;
+          else if (result) skipped += 1;
+        }
+        if (added > 0) window.dispatchEvent(new CustomEvent("patterns-updated"));
+        const suffix = skipped > 0 ? `, skipped ${skipped} already saved` : "";
+        return { tool_use_id: id, content: `✓ Saved ${added} sentence${added === 1 ? "" : "s"} to the sentence library${suffix}.` };
       }
 
       case "list_documents": {
@@ -339,4 +424,13 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
   } catch (e: any) {
     return { tool_use_id: id, content: `Error in ${name}: ${e?.message ?? String(e)}`, is_error: true };
   }
+}
+
+function shuffle<T>(items: T[]): T[] {
+  const result = [...items];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
 }

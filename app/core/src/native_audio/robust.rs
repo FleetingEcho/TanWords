@@ -219,7 +219,7 @@ impl RobustDecoder {
                     Ok(decoded) => {
                         let spec = *decoded.spec();
                         let frames = decoded.capacity() as u64;
-                        let needed = frames as usize * spec.channels.count();
+                        let needed = frames.saturating_mul(spec.channels.count() as u64) as usize;
                         if self.buffer.capacity() < needed {
                             self.buffer = SampleBuffer::<f32>::new(frames, spec);
                         }
@@ -421,7 +421,7 @@ impl Source for RobustDecoder {
         // Drop the overshoot so position reporting and A/B looping stay honest.
         if let Some(base) = self.time_base {
             let skew = base.calc_time(seeked.required_ts.saturating_sub(seeked.actual_ts));
-            let channels = self.channels().get() as usize;
+            let channels = (self.channels().get() as usize).max(1);
             let mut to_skip = (Duration::from(skew).as_secs_f64()
                 * self.sample_rate().get() as f64
                 * channels as f64) as usize;

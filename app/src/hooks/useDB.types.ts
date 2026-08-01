@@ -262,6 +262,13 @@ export interface DbConnection {
   offline: boolean;
 }
 
+/** Last Turso connection kept across an explicit disconnect. Mirrors
+ *  `RememberedTursoConnection` in core/src/db/settings.rs. */
+export interface RememberedTursoConnection {
+  url: string | null;
+  tokenPresent: boolean;
+}
+
 /** One source row that already exists in the target, with both sides described
  *  so the user can choose. Mirrors `ImportConflict` in db/import.rs. */
 export interface ImportConflict {

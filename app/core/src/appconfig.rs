@@ -28,6 +28,11 @@ struct AppConfig {
     /// *not* travel with the data.
     #[serde(skip_serializing_if = "Option::is_none")]
     device_id: Option<String>,
+    /// Last Turso URL the user connected to, kept across an explicit
+    /// disconnect so the Settings form can prefill it. Secret-free: the auth
+    /// token stays in the OS keychain.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_turso_url: Option<String>,
 }
 
 fn config_file_path() -> PathBuf {
@@ -80,6 +85,25 @@ pub fn clear_db_profile() {
     let mut cfg = load();
     cfg.db_path = None;
     cfg.db_profile = None;
+    let _ = save(&cfg);
+}
+
+/// The URL of the most recent Turso connection, if the user has not explicitly
+/// forgotten it. Unlike the active profile, this does not make the app try to
+/// reconnect at startup.
+pub fn load_remembered_turso_url() -> Option<String> {
+    load().last_turso_url.filter(|url| !url.trim().is_empty())
+}
+
+pub fn save_remembered_turso_url(url: &str) -> std::io::Result<()> {
+    let mut cfg = load();
+    cfg.last_turso_url = Some(url.trim().to_string());
+    save(&cfg)
+}
+
+pub fn clear_remembered_turso_url() {
+    let mut cfg = load();
+    cfg.last_turso_url = None;
     let _ = save(&cfg);
 }
 

@@ -5,6 +5,13 @@ use crate::db;
 use crate::db::connection::{DbDescriptor, DbProfile};
 use crate::AppState;
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RememberedTursoConnection {
+    pub url: Option<String>,
+    pub token_present: bool,
+}
+
 fn database_disk_size(path: &str) -> std::result::Result<u64, String> {
     [
         path.to_string(),
@@ -153,7 +160,18 @@ pub fn db_saved_profile_is_turso() -> bool {
 #[crate::shim::command]
 pub fn db_forget_saved_profile() {
     crate::appconfig::clear_db_profile();
+    crate::appconfig::clear_remembered_turso_url();
     crate::secrets::turso_token_clear();
+}
+
+/// Returns the last Turso URL the user connected to and whether the keychain
+/// still holds an auth token for it. Never returns the token itself.
+#[crate::shim::command]
+pub fn db_get_remembered_turso() -> RememberedTursoConnection {
+    RememberedTursoConnection {
+        url: crate::appconfig::load_remembered_turso_url(),
+        token_present: crate::secrets::turso_token_get().is_some(),
+    }
 }
 
 /// Mounts a different SQLite file as the app's active database — creating it
@@ -205,16 +223,20 @@ pub async fn db_connect_turso(
     state: State<'_, AppState>,
 ) -> std::result::Result<DbDescriptor, String> {
     let url = url.trim().to_string();
-    let token = token.trim().to_string();
+    let mut token = token.trim().to_string();
     if url.is_empty() {
         return Err("Please fill in the Turso database URL".into());
     }
     if token.is_empty() {
-        return Err("Please fill in the Turso auth token".into());
+        // Reconnect path: the token was kept in the keychain on disconnect and
+        // the UI deliberately never reads it back. Fall back to it so the user
+        // only has to press Connect again.
+        token = crate::secrets::turso_token_get()
+            .ok_or_else(|| "Please fill in the Turso auth token".to_string())?;
     }
 
     let replica_path = crate::replica_db_path();
-    let profile = DbProfile::Turso { path: replica_path.clone(), url };
+    let profile = DbProfile::Turso { path: replica_path.clone(), url: url.clone() };
 
     // The replica path is fixed, not derived from the URL, so a file can be
     // sitting here from a previous connection to a *different* Turso database
@@ -245,6 +267,7 @@ pub async fn db_connect_turso(
 
     crate::secrets::turso_token_set(&token)?;
     crate::appconfig::save_db_profile(&profile).map_err(|e| e.to_string())?;
+    crate::appconfig::save_remembered_turso_url(&url).map_err(|e| e.to_string())?;
     state.replace_db(database)?;
     Ok(descriptor)
 }
@@ -280,6 +303,10 @@ fn snapshot_destination() -> String {
 pub async fn db_disconnect_remote(
     state: State<'_, AppState>,
 ) -> std::result::Result<DbDescriptor, String> {
+    let remembered_url = match crate::appconfig::load_db_profile() {
+        Some(DbProfile::Turso { url, .. }) => Some(url),
+        _ => None,
+    };
     let replica_path = crate::replica_db_path();
     let snapshot = snapshot_destination();
 
@@ -307,7 +334,9 @@ pub async fn db_disconnect_remote(
 
     state.replace_db(database)?;
     crate::appconfig::save_db_profile(&profile).map_err(|e| e.to_string())?;
-    crate::secrets::turso_token_clear();
+    if let Some(url) = remembered_url {
+        crate::appconfig::save_remembered_turso_url(&url).map_err(|e| e.to_string())?;
+    }
 
     // Only now is the replica redundant — and only if its contents were saved.
     if snapshotted {

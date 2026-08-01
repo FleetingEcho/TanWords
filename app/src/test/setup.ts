@@ -32,6 +32,7 @@ backend.catch(() => {});
 
 window.tanwords = {
   backend,
+  refreshBackend: () => backend,
   call: () => Promise.reject(new Error("no main process in tests")),
   on: () => () => {},
 };

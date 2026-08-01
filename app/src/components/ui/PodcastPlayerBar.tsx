@@ -1,7 +1,6 @@
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import { useT } from "@/hooks/useT";
 import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
-import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
 import { usePlayerOriginStore } from "@/store/playerOriginStore";
 import { useLayoutStore, SIDEBAR_WIDTH, SIDEBAR_WIDTH_COLLAPSED } from "@/store/layoutStore";
 import {
@@ -24,8 +23,8 @@ function formatTime(sec: number): string {
 }
 
 /** Bottom bar for podcast episode playback. Mount exactly once (in App.tsx).
- * Yields the bar slot to the TTS PlayerBar whenever TTS is active — by then
- * the audioChannel has already paused the episode, so hiding is safe. */
+ * When sentence TTS starts, audioChannel pauses the episode; the bar stays
+ * visible so the page doesn't suddenly lose its bottom edge. */
 export function PodcastPlayerBar() {
   const t = useT();
   const status = usePodcastPlayerStore((s) => s.status);
@@ -42,14 +41,15 @@ export function PodcastPlayerBar() {
   const playMode = usePodcastPlayerStore((s) => s.playMode);
   const skip = usePodcastPlayerStore((s) => s.skip);
   const setPlayMode = usePodcastPlayerStore((s) => s.setPlayMode);
-  const ttsActive = useTtsPlayerStore((s) => s.status !== "idle");
   const goToOrigin = usePlayerOriginStore((s) => s.goToOrigin);
   const sidebarCollapsed = useLayoutStore((s) => s.sidebarCollapsed);
   const [expanded, setExpanded] = useState(false);
+  const closeOverlay = useCallback(() => setExpanded(false), []);
+  const openOverlay = useCallback(() => setExpanded(true), []);
 
-  if (status === "idle" || !track || ttsActive) return null;
+  if (status === "idle" || !track) return null;
 
-  if (expanded) return <NowPlayingOverlay onClose={() => setExpanded(false)} />;
+  if (expanded) return <NowPlayingOverlay onClose={closeOverlay} />;
 
   const isPlaying = status === "playing";
   const isError = status === "error";
@@ -61,7 +61,7 @@ export function PodcastPlayerBar() {
       style={{ left: sidebarCollapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH }}
       onClick={(e) => {
         // Only blank bar area expands — buttons and the slider keep their own clicks.
-        if (e.target === e.currentTarget) setExpanded(true);
+        if (e.target === e.currentTarget) openOverlay();
       }}
       title={t("music.expandPlayer")}
     >
@@ -184,7 +184,7 @@ export function PodcastPlayerBar() {
 
       <Button
         variant="ghost"
-        onClick={() => setExpanded(true)}
+        onClick={openOverlay}
         className="w-8 h-8 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0 rotate-90"
         title={t("music.expandPlayer")}
       >

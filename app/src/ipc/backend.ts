@@ -12,11 +12,27 @@ import { host, callMain } from "./host";
 const MAIN_PROCESS_COMMANDS = /^(browser|tray)_/;
 
 let cached: { port: number; token: string } | null = null;
+let cachedPromise: Promise<{ port: number; token: string }> | null = null;
 
 async function handshake() {
-  if (cached) return cached;
-  cached = await host().backend;
-  return cached;
+  if (cachedPromise) return cachedPromise;
+  cachedPromise = host().backend.then((info) => {
+    cached = info;
+    return info;
+  });
+  return cachedPromise;
+}
+
+/** Invalidates the renderer's cached port/token and asks main for the current
+ *  sidecar handshake. This is how calls recover after the sidecar crashes and
+ *  is restarted on a new port. */
+export async function refreshBackendInfo() {
+  cached = null;
+  cachedPromise = host().refreshBackend().then((info) => {
+    cached = info;
+    return info;
+  });
+  return cachedPromise;
 }
 
 /** Base URL of the sidecar. Exported because the SSE stream in ./events.ts
@@ -39,12 +55,24 @@ export async function invoke<T = unknown>(command: string, args: Record<string, 
     return callMain<T>(command, args);
   }
 
-  const { port, token } = await handshake();
-  const response = await fetch(`http://127.0.0.1:${port}/invoke/${command}`, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-    body: JSON.stringify(args),
-  });
+  const send = async () => {
+    const { port, token } = await handshake();
+    return fetch(`http://127.0.0.1:${port}/invoke/${command}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify(args),
+    });
+  };
+
+  let response: Response;
+  try {
+    response = await send();
+  } catch (error) {
+    // The sidecar died between commands; main restarts it on a new port. Retry
+    // once against the refreshed handshake instead of failing every caller.
+    await refreshBackendInfo();
+    response = await send();
+  }
 
   if (!response.ok) {
     const body = await response.text();

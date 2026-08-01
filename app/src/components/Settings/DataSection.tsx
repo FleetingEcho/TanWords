@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { saveDialog, openDialog } from "@/ipc/dialog";
 import { useT } from "@/hooks/useT";
 import { useDB } from "@/hooks/useDB";
-import { DbConnection, ImportDecisions, ImportPlan } from "@/hooks/useDB.types";
+import { DbConnection, ImportDecisions, ImportPlan, RememberedTursoConnection } from "@/hooks/useDB.types";
 import { ImportPreviewModal } from "./ImportPreviewModal";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
   const [tursoOpen, setTursoOpen] = useState(false);
   const [tursoUrl, setTursoUrl] = useState("");
   const [tursoToken, setTursoToken] = useState("");
+  const [rememberedTurso, setRememberedTurso] = useState<RememberedTursoConnection | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -57,6 +58,10 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
         }
       }
     );
+    db.getRememberedTurso().then((saved) => {
+      setRememberedTurso(saved);
+      if (saved?.url) setTursoUrl(saved.url);
+    });
   }, []);
 
   const isRemote = connection?.kind === "turso";
@@ -110,6 +115,8 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
   const handleConnectTurso = async () => {
     setConnecting(true);
     try {
+      // On reconnect, the token is kept in the keychain and intentionally not
+      // shown here. Pass an empty token and let the backend fall back to it.
       await db.connectTurso(tursoUrl, tursoToken);
       setTursoToken("");
       toast.success(t("settings.remoteDBConnectOk"));
@@ -136,6 +143,7 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
     try {
       await db.forgetSavedProfile();
       setStuckTursoWarning(null);
+      setRememberedTurso(null);
       toast.success(t("settings.remoteDBForgetOk"));
     } catch {
       // useDB already toasts the failure
@@ -387,11 +395,14 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
                     className="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs outline-hidden focus:border-primary"
                   />
                   <span className="block text-[11px] text-muted-foreground">{t("settings.remoteDBTokenHint")}</span>
+                  {rememberedTurso?.tokenPresent && !tursoToken.trim() && (
+                    <span className="mt-1 block text-[11px] font-medium text-primary">{t("settings.remoteDBTokenSaved")}</span>
+                  )}
                 </label>
                 <div className="flex justify-end">
                   <Button
                     onClick={handleConnectTurso}
-                    disabled={connecting || !tursoUrl.trim() || !tursoToken.trim()}
+                    disabled={connecting || !tursoUrl.trim() || (!tursoToken.trim() && !rememberedTurso?.tokenPresent)}
                     className="h-8 px-4 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
                   >
                     {connecting ? t("settings.remoteDBConnecting") : t("settings.remoteDBConnect")}
