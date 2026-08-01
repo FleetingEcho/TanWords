@@ -80,7 +80,7 @@ describe("TrayManager menu", () => {
       "打开主窗口",
       "音乐控制",
       undefined,
-      "⟳  刷新 RSS",
+      "刷新 RSS",
       undefined,
       "退出",
     ]);
