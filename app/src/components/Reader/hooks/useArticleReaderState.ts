@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { flattenHnComments, commentsToSpeechText, type HnComment } from "@/lib/hnComments";
 import { buildArticleMarkdown } from "@/lib/articleMarkdown";
 import { articleFromPastedText, FetchedArticle, LIBRARY_URL_PREFIX, SCRATCH_URL_PREFIX } from "../articleReaderHelpers";
+import { hostCapabilities } from "@/platform";
 
 /** All state, effects, and handlers behind ArticleReader — split out so the
  * component itself only has to worry about rendering (the loading/error
@@ -95,7 +96,7 @@ export function useArticleReaderState(params: {
       return;
     }
     if (playerActive) playerToggle();
-    else if (article) {
+    else if (hostCapabilities.nativeTts && article) {
       playerStart(sourceKey, article.text_content);
       setReaderOrigin();
     }
@@ -152,6 +153,7 @@ export function useArticleReaderState(params: {
   };
 
   const handleListenComments = () => {
+    if (!hostCapabilities.nativeTts) return;
     if (commentsPlayerActive) {
       playerToggle();
       return;

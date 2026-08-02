@@ -385,14 +385,19 @@ export function EntryListRow({ entry, feedTitle, onOpen, onPlay, onTranslate, tr
       tabIndex={0}
       onClick={onOpen}
       onKeyDown={(e) => e.key === "Enter" && onOpen()}
-      className="group flex items-center gap-2.5 rounded-lg px-2.5 py-2 cursor-pointer hover:bg-muted/50 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
+      className="group flex items-start gap-2.5 rounded-lg px-2.5 py-2 cursor-pointer hover:bg-muted/50 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
     >
       {trackRead && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${unread ? "bg-primary" : "bg-transparent"}`} aria-hidden="true" />}
       <div className="min-w-0 flex-1">
-        <h3 className={`truncate text-[13.5px] ${unread || !trackRead ? "font-medium text-foreground" : "text-muted-foreground"}`}>
+        <h3 className={`wrap-break-word whitespace-normal text-[13.5px] leading-snug ${unread || !trackRead ? "font-medium text-foreground" : "text-muted-foreground"}`}>
           {entry.title}
         </h3>
-        {chineseTitle && <p className="truncate text-[11.5px] text-muted-foreground/80">{chineseTitle}</p>}
+        {chineseTitle && <p className="line-clamp-2 text-[11.5px] leading-snug text-muted-foreground/80">{chineseTitle}</p>}
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground lg:hidden">
+          <span className="max-w-[140px] truncate">{feedTitle || domainOf(entry.url)}</span>
+          {(entry.points != null || entry.commentCount != null) && <EngagementBadges entry={entry} />}
+          {entry.author && <span className="max-w-[110px] truncate">{entry.author}</span>}
+        </div>
       </div>
       {(entry.points != null || entry.commentCount != null) && (
         <span className="hidden md:flex shrink-0 items-center gap-1">

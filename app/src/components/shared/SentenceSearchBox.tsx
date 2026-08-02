@@ -12,6 +12,7 @@ import { LevelBadge } from "@/components/shared/LevelBadge";
 import { SearchIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { SpeakButton } from "@/components/ui/SpeakButton";
+import { hostCapabilities } from "@/platform";
 import { useNavStore } from "@/store/navStore";
 import { filterSentencePatterns } from "./sentenceSearch";
 import { useDismissOnOutside } from "@/hooks/useDismissOnOutside";
@@ -177,7 +178,7 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
             className="flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted"
           >
             <span className="min-w-0 flex-1 whitespace-normal text-xs font-medium leading-relaxed text-foreground">{sentence}</span>
-            <SpeakButton text={sentence} className="mt-0.5 h-3.5 w-3.5" />
+            {hostCapabilities.nativeTts && <SpeakButton text={sentence} className="mt-0.5 h-3.5 w-3.5" />}
             <LevelBadge level={p.level} />
             <span className="mt-0.5 shrink-0 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
               {t("vocab.patterns.inLibrary")}
@@ -198,7 +199,7 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
         <div className="mt-1 rounded-lg border border-border bg-muted/30 p-2.5">
           <div className="flex items-start gap-2">
             <p className="min-w-0 flex-1 text-xs font-medium leading-relaxed text-foreground">{q}</p>
-            <SpeakButton text={q} className="mt-0.5 h-3.5 w-3.5" />
+            {hostCapabilities.nativeTts && <SpeakButton text={q} className="mt-0.5 h-3.5 w-3.5" />}
             {analysis?.level && <LevelBadge level={analysis.level} />}
           </div>
 

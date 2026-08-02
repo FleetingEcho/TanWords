@@ -117,7 +117,7 @@ export function WordDetailModal() {
   };
 
   return (
-    <Dialog open={!!word} onClose={closeWordModal} maxWidth="max-w-xl">
+    <Dialog open={!!word} onClose={closeWordModal} maxWidth="max-w-xl" className="max-lg:h-screen max-lg:w-screen max-lg:max-h-none max-lg:rounded-none max-lg:border-0">
       <div className="relative">
         <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-border">
           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t("modal.wordDetail")}</span>

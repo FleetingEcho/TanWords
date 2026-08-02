@@ -13,6 +13,7 @@ export type Theme =
   | "system";
 export type SidebarTabId = Exclude<NavPage, "settings">;
 export type TopBarItemId = "search" | "context" | "scratch" | "db" | "mcp" | "ai" | "language" | "theme" | "updates" | "github";
+export type LayoutMode = "flexible" | "fixed";
 
 /** Feeds page tab selector: a specific RSS feed, "all" of them, or the native Hacker News browser. */
 export type RssTabSelection = number | "all" | "hackernews";
@@ -23,6 +24,7 @@ export const DEFAULT_SIDEBAR_TABS: SidebarTabId[] = [
 export const DEFAULT_TOPBAR_ITEMS: TopBarItemId[] = [
   "search", "context", "scratch", "db", "mcp", "ai", "language", "theme", "updates", "github",
 ];
+export const DEFAULT_LAYOUT_MODE: LayoutMode = "flexible";
 
 /** Amber, matching the emphasis colour word notes used before highlights had
  *  their own `==` syntax. Kept in sync with the fallback in index.css. */
@@ -42,4 +44,3 @@ export interface BannerPosition {
 
 /** What a plain `object-fit: cover` does on its own: dead centre. */
 export const DEFAULT_BANNER_POSITION: BannerPosition = { x: 50, y: 50 };
-

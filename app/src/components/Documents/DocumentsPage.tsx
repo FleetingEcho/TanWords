@@ -6,14 +6,16 @@ import { useDocumentEditor } from "./useDocumentEditor";
 import { LocalDocsView } from "./LocalDocsView";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
-import { ChevronsRight, RefreshCw } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, RefreshCw } from "lucide-react";
 import { LIST_PANEL_WIDTH, LIST_PANEL_COLLAPSED_WIDTH, LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
 import { LockedDocumentPanel } from "./LockedDocumentPanel";
+import { useIsNarrow } from "@/components/Vocabulary/hooks/useMediaQuery";
 
 type DocSource = "db" | "local";
 
 const LAST_SOURCE_KEY = "tanwords_doc_last_source";
 const LAST_DB_ID_KEY = "tanwords_doc_last_db_id";
+const SHOW_DOC_LIST_FLAG = "tanwords_show_doc_list";
 
 export function DocumentsPage() {
   const t = useT();
@@ -32,6 +34,7 @@ export function DocumentsPage() {
   const setSource = (s: DocSource) => {
     localStorage.setItem(LAST_SOURCE_KEY, s);
     setSourceState(s);
+    setShowMobileEditor(false);
     // Switching tabs must show a fresh list for the tab that just appeared.
     if (s === "db") setDbRefreshKey((key) => key + 1);
     else setLocalRefreshTick((tick) => tick + 1);
@@ -40,17 +43,26 @@ export function DocumentsPage() {
   // (it does real filesystem I/O) — but if that's where they left off last session, restore
   // it immediately instead of waiting for a click that will never come this visit.
   const [localMounted, setLocalMounted] = useState(() => localStorage.getItem(LAST_SOURCE_KEY) === "local");
+  const [showMobileEditor, setShowMobileEditor] = useState(false);
+  const isNarrow = useIsNarrow();
   const [dbZenMode, setDbZenMode] = useState(false);
   const [dbSidebarOpen, setDbSidebarOpenState] = useState(() => localStorage.getItem("tanwords_doc_db_sidebar_collapsed") !== "1");
   const setDbSidebarOpen = (open: boolean) => {
     localStorage.setItem("tanwords_doc_db_sidebar_collapsed", open ? "0" : "1");
     setDbSidebarOpenState(open);
   };
+  useEffect(() => {
+    if (isNarrow) setDbSidebarOpenState(true);
+  }, [isNarrow]);
   const {
     activeId, doc, lockedId, saveStatus, refreshKey, loading,
     loadDoc, handleNewDoc, handleSave, markDirty, handleTitleChange, handleTagsChange, handlePinToggle,
     unlockDocument, removeLockedProtection,
   } = useDocumentEditor();
+
+  useEffect(() => {
+    if (activeId != null) setShowMobileEditor(true);
+  }, [activeId]);
 
   // BlockNote is split out of the main bundle, so the first open pays for both
   // chunk download and editor construction. Preload both editor variants once
@@ -81,6 +93,13 @@ export function DocumentsPage() {
   // Reopen whichever database doc was open last session.
   useEffect(() => {
     const lastId = Number(localStorage.getItem(LAST_DB_ID_KEY));
+    if (localStorage.getItem(SHOW_DOC_LIST_FLAG) === "1") {
+      localStorage.removeItem(SHOW_DOC_LIST_FLAG);
+      setSourceState("db");
+      setShowMobileEditor(false);
+      void loadDoc(-1);
+      return;
+    }
     if (lastId > 0) loadDoc(lastId);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot restore on mount only.
   }, []);
@@ -129,6 +148,19 @@ export function DocumentsPage() {
       {!dbZenMode && (
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2.5 bg-transparent">
         <div className="flex items-center gap-1">
+          {showMobileEditor && isNarrow && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowMobileEditor(false)}
+              title={t("doc.collapseFiles")}
+              aria-label={t("doc.collapseFiles")}
+              className="h-7 w-7 shrink-0 lg:hidden text-muted-foreground hover:text-foreground"
+            >
+              <ChevronsLeft className="h-4 w-4" />
+            </Button>
+          )}
           {(["db", "local"] as const).map((s) => (
             <Button
               key={s}
@@ -167,7 +199,7 @@ export function DocumentsPage() {
         <div className={`absolute inset-0 ${source === "db" ? "flex" : "hidden"} overflow-hidden ${dbZenMode ? "fixed inset-0 z-50 bg-background" : ""}`}>
             {!dbZenMode && (
             <Collapsible open={dbSidebarOpen} onOpenChange={setDbSidebarOpen} asChild>
-              <div className={`${dbSidebarOpen ? LIST_PANEL_WIDTH : LIST_PANEL_COLLAPSED_WIDTH} h-full shrink-0 transition-[width] duration-200`}>
+              <div className={`${dbSidebarOpen ? LIST_PANEL_WIDTH : LIST_PANEL_COLLAPSED_WIDTH} h-full shrink-0 transition-[width] duration-200 max-lg:w-full max-lg:shrink ${showMobileEditor ? "max-lg:hidden" : ""}`}>
                 {!dbSidebarOpen && <div className="flex h-full justify-center border-r border-border bg-card pt-3">
                   <CollapsibleTrigger asChild>
                     <Button variant="ghost" size="icon" className={`h-7 w-7 ${LIST_PANEL_TOGGLE_CLASS}`} title={t("doc.expandFiles")}><ChevronsRight className="h-3.5 w-3.5" /></Button>
@@ -188,7 +220,7 @@ export function DocumentsPage() {
             </Collapsible>
             )}
 
-            <div className="flex-1 overflow-hidden">
+            <div className={`flex-1 overflow-hidden min-w-0 ${showMobileEditor ? "" : "max-lg:hidden"}`}>
               {doc ? (
                 <LazyDocEditor
                   key={doc.id}

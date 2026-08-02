@@ -1,8 +1,9 @@
 import React from "react";
 import { useT } from "@/hooks/useT";
 import { useNavStore } from "@/store/navStore";
-import { ChatIcon, MusicIcon } from "@/components/ui/icons";
+import { ChatIcon, MusicIcon, BookIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
+import { hostCapabilities } from "@/platform";
 
 /** Two one-tap jumps, under the greeting rather than inside the Recents grid —
  *  this is navigation, not a "recent" anything.
@@ -27,7 +28,9 @@ export function QuickActionsBar() {
         window.setTimeout(() => window.dispatchEvent(new CustomEvent("tanwords:new-chat")), 0);
       },
     },
-    { icon: MusicIcon, label: t("dash.quick.music"), go: () => navigate("music") },
+    hostCapabilities.music
+      ? { icon: MusicIcon, label: t("dash.quick.music"), go: () => navigate("music") }
+      : { icon: BookIcon, label: t("dash.quick.reading"), go: () => navigate("reading") },
   ];
 
   return (

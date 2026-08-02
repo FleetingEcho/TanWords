@@ -5,6 +5,8 @@ import type { DashboardStats } from "@/hooks/useDB";
 import { DocIcon } from "@/components/ui/icons";
 import { DashboardCard, DashboardRow, DashboardEmpty, DashboardSkeleton, DashboardFill, DASHBOARD_BODY_ROWS } from "./DashboardCard";
 
+const SHOW_DOC_LIST_FLAG = "tanwords_show_doc_list";
+
 /** Dashboard card: recently touched documents. `docs` comes from the parent's
  *  single shared `getDashboardStats()` call rather than fetching its own copy. */
 export function RecentDocumentsWidget({ docs, maxRows = DASHBOARD_BODY_ROWS }: {
@@ -19,7 +21,10 @@ export function RecentDocumentsWidget({ docs, maxRows = DASHBOARD_BODY_ROWS }: {
     <DashboardCard
       title={t("dash.recentDocs")}
       icon={<DocIcon className="w-3.5 h-3.5 text-muted-foreground" />}
-      onViewAll={() => navigate("documents")}
+      onViewAll={() => {
+        localStorage.setItem(SHOW_DOC_LIST_FLAG, "1");
+        navigate("documents");
+      }}
     >
       {docs === undefined ? (
         <DashboardSkeleton rows={maxRows} />

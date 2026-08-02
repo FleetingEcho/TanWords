@@ -18,6 +18,7 @@ import { ProviderRow } from "./ProviderList";
 import { ProviderKeyModelPanel } from "./ProviderKeyModelPanel";
 import { CustomProviderPanel } from "./CustomProviderPanel";
 import { CustomProviderAddForm } from "./CustomProviderAddForm";
+import { isDesktopHost } from "@/platform";
 
 /** The row a provider starts from before it has ever been saved. Built-ins and
  *  presets are always listed by the UI, so they need a config object well
@@ -126,8 +127,9 @@ export function ProviderSection() {
       // Repair a default that points at a provider with no key — otherwise
       // every AI call silently falls back to whichever one happens to work.
       const currentDefault = useSettingsStore.getState().defaultAiProvider;
-      if (!loadedConfigs[currentDefault]?.apiKey) {
-        const firstWithKey = Object.values(loadedConfigs).find((c) => c.apiKey)?.id;
+      const hasConfiguredKey = (config: ProviderConfig) => isDesktopHost ? Boolean(config.apiKey) : config.hasKey;
+      if (!hasConfiguredKey(loadedConfigs[currentDefault])) {
+        const firstWithKey = Object.values(loadedConfigs).find(hasConfiguredKey)?.id;
         if (firstWithKey) useSettingsStore.getState().setDefaultAiProvider(firstWithKey);
       }
 
@@ -153,7 +155,9 @@ export function ProviderSection() {
     if (!loaded) return;
     for (const config of Object.values(configs)) {
       if (config.kind === "builtin") continue;
-      if (config.apiKey) {
+      if (!isDesktopHost) {
+        registerCustomProvider(config.id, config.name, config.apiBase, "", config.modelId);
+      } else if (config.apiKey) {
         registerCustomProvider(config.id, config.name, config.apiBase, config.apiKey, config.modelId);
       } else {
         removeProvider(config.id);
@@ -170,6 +174,27 @@ export function ProviderSection() {
     const model = modelId || "gpt-4o-mini";
 
     try {
+      if (!isDesktopHost) {
+        const base = `/api/ai-proxy/${encodeURIComponent(providerId)}`;
+        let res: Response;
+        if (providerId === "claude") {
+          res = await netFetch(`${base}/v1/messages`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01" },
+            body: JSON.stringify({ model, max_tokens: 3, messages: [{ role: "user", content: "Hi" }] }),
+          });
+        } else {
+          res = await netFetch(`${base}/chat/completions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ model, messages: [{ role: "user", content: "Hi" }], max_tokens: 3 }),
+          });
+        }
+        setTestStatus(res.ok ? { ok: true, text: t("settings.testOk") } : { ok: false, text: String(res.status) });
+        setTimeout(() => setTestStatus(null), 3000);
+        return;
+      }
+
       let res: Response;
       if (providerId === "claude") {
         // Claude uses the Anthropic Messages API, not OpenAI-compatible chat/completions
@@ -206,6 +231,24 @@ export function ProviderSection() {
     if (!apiBase.trim()) return;
     setFetchingModels(true);
     try {
+      if (!isDesktopHost) {
+        const base = `/api/ai-proxy/${encodeURIComponent(providerId)}`;
+        const modelsUrl = providerId === "claude" ? `${base}/v1/models` : `${base}/models`;
+        const response = await netFetch(modelsUrl, { headers: { Accept: "application/json" } });
+        if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
+        const body = await response.json();
+        const rows = Array.isArray(body?.data) ? body.data : Array.isArray(body?.models) ? body.models : [];
+        const modelIds: string[] = rows
+          .map((item: any) => item?.id ?? item?.model ?? item?.name)
+          .filter((id: unknown): id is string => typeof id === "string" && Boolean(id.trim()));
+        const models = [...new Set<string>(modelIds)].sort();
+        if (!models.length) throw new Error(t("settings.modelsEmpty"));
+        setFetchedModels(models);
+        if (!currentModel.trim() || models.length === 1) selectFirst(models[0]);
+        toast.success(t("settings.modelsFetched", { count: models.length }));
+        return;
+      }
+
       const base = apiBase.trim().replace(/\/chat\/completions\/?$/, "").replace(/\/$/, "");
       const headers: Record<string, string> = { Accept: "application/json" };
       if (apiKey.trim()) {

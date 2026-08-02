@@ -3,8 +3,10 @@ import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import { BlockNoteEditor } from "@blocknote/core";
 import "@blocknote/mantine/style.css";
+import { ListTree } from "lucide-react";
 import { editorSchema } from "@/components/Documents/editorSchema";
 import { useIsDark } from "@/hooks/useIsDark";
+import { useT } from "@/hooks/useT";
 import { DocumentOutline, useOutlineItems } from "@/components/Documents/DocumentOutline";
 import { htmlToMarkdownOffThread } from "@/lib/documentWorkerClient";
 import { htmlToMarkdown } from "@/lib/htmlToMarkdown";
@@ -35,9 +37,11 @@ export function ReadOnlyBlockNote({
   const [loadedRef] = useState(() => new WeakMap<object, string>());
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [outlineTick, setOutlineTick] = useState(0);
+  const [outlineOpen, setOutlineOpen] = useState(true);
   const [parsing, setParsing] = useState(true);
   const [plainText, setPlainText] = useState<string | null>(null);
   const isDark = useIsDark();
+  const t = useT();
   // The reader can't add headings, so an empty outline has nothing to say —
   // hide it when the article has no headings. It also drops below xl
   // viewports, where a fixed 224px column would squeeze the reading column
@@ -188,7 +192,18 @@ export function ReadOnlyBlockNote({
           )}
         </div>
         {outlineItems.length > 0 && (
-          <div className="sticky top-4 hidden max-h-[calc(100vh-8rem)] w-56 shrink-0 self-start overflow-y-auto xl:block">
+          <button
+            type="button"
+            onClick={() => setOutlineOpen((open) => !open)}
+            title={t("doc.outlineToggle")}
+            aria-label={t("doc.outlineToggle")}
+            className="sticky top-4 hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background/80 text-muted-foreground shadow-xs backdrop-blur transition-colors hover:bg-muted hover:text-foreground lg:flex"
+          >
+            <ListTree className="h-4 w-4" />
+          </button>
+        )}
+        {outlineOpen && outlineItems.length > 0 && (
+          <div className="sticky top-4 max-h-[calc(100vh-8rem)] w-56 shrink-0 self-start overflow-y-auto">
             <DocumentOutline editor={editor} tick={outlineTick} />
           </div>
         )}

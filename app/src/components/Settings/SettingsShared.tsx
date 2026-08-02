@@ -3,12 +3,12 @@ import { Button } from "@/components/ui/button";
 
 export function SettingRow({ label, sub, children }: { label: string; sub?: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between py-3.5 border-b border-border last:border-0 gap-4">
-      <div className="min-w-0">
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between py-3.5 border-b border-border last:border-0 gap-2 sm:gap-4">
+      <div className="min-w-0 w-full sm:w-auto">
         <p className="text-sm font-medium">{label}</p>
         {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
       </div>
-      <div className="shrink-0">{children}</div>
+      <div className="shrink-0 w-full sm:w-auto">{children}</div>
     </div>
   );
 }

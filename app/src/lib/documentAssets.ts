@@ -1,4 +1,5 @@
-import { invoke } from "@/ipc/backend";
+import { invoke, assetUrlById } from "@/ipc/backend";
+import { isDesktopHost } from "@/platform";
 
 export const DOCUMENT_ASSET_SCHEME = "tanwords-asset://";
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -102,6 +103,7 @@ export async function uploadDocumentImage(documentId: number, file: File): Promi
 export async function resolveDocumentAssetUrl(url: string): Promise<string> {
   if (!url.startsWith(DOCUMENT_ASSET_SCHEME)) return url;
   const id = url.slice(DOCUMENT_ASSET_SCHEME.length);
+  if (!isDesktopHost) return assetUrlById(id);
   const cached = blobUrlCache.get(id);
   if (cached) {
     blobUrlCache.delete(id);

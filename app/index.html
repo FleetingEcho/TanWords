@@ -24,12 +24,17 @@
       })();
     </script>
     <meta charset="UTF-8" />
-    <!-- Deliberately no favicon link. The Vite scaffold left one pointing at a
-         vite.svg that has never existed in this repo, so it 404'd on every
-         load. Electron renders no tab strip and a favicon has nowhere to
-         appear; the real app icon is set on the window in
-         electron/main/index.ts and on the bundle by electron-builder. -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- PWA-lite: installable to a phone home screen. Harmless in Electron,
+         where the real window/tray icons are set by the shell instead. -->
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <meta name="theme-color" content="#f5f7f9" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="TanWords" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>TanWords</title>
   </head>
   <body class="antialiased">

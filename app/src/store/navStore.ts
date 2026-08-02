@@ -31,6 +31,7 @@ interface NavState {
 
   navigate: (page: NavPage, wordId?: number, settingsSection?: SettingsSection) => void;
   openVocabularySentence: (sentenceId: number) => void;
+  openVocabularyPatterns: () => void;
   openChatSession: (sessionId?: string) => void;
 }
 
@@ -47,5 +48,6 @@ export const useNavStore = create<NavState>((set, get) => ({
 
   navigate: (page, wordId, settingsSection) => set({ page, wordId, sentenceId: undefined, settingsSection, chatSessionId: undefined }),
   openVocabularySentence: (sentenceId) => set({ page: "vocabulary", wordId: undefined, sentenceId, settingsSection: undefined, chatSessionId: undefined }),
+  openVocabularyPatterns: () => set({ page: "vocabulary", wordId: undefined, sentenceId: 0, settingsSection: undefined, chatSessionId: undefined }),
   openChatSession: (sessionId) => set({ page: "chat", wordId: undefined, sentenceId: undefined, settingsSection: undefined, chatSessionId: sessionId }),
 }));

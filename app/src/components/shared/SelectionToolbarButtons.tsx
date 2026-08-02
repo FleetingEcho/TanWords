@@ -1,6 +1,7 @@
 import { BookmarkPlus, BookPlus, Check, Languages, MessageSquareQuote, Search } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { SpeakButton } from "@/components/ui/SpeakButton";
+import { hostCapabilities } from "@/platform";
 import { Button } from "@/components/ui/button";
 import { Anchor, AskMode, isWordish } from "./selectionAskHelpers";
 
@@ -100,7 +101,7 @@ export function SelectionToolbarButtons({
       {/* 4 — hear it */}
       <span className="mx-0.5 h-4 w-px bg-border/70" />
       <span className="grid h-7 w-7 place-items-center">
-        <SpeakButton text={anchor.text} className="w-3.5 h-3.5" />
+        {hostCapabilities.nativeTts && <SpeakButton text={anchor.text} className="w-3.5 h-3.5" />}
       </span>
     </div>
   );

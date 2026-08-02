@@ -1,4 +1,5 @@
 import React from "react";
+import { Plus } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { ReaderView } from "@/components/Reader/ReaderView";
 import type { RssEntryRow, RssFeed } from "@/hooks/useDB.types";
@@ -121,9 +122,10 @@ export function FeedsMainContent({
           <p className="text-sm text-muted-foreground max-w-sm">{t("feeds.noFeeds")}</p>
           <Button
             onClick={onShowAdd}
-            className="h-9 px-4 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+            className="h-9 w-9 lg:w-auto lg:px-4 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
           >
-            + {t("feeds.addFeed")}
+            <Plus className="h-4 w-4 lg:hidden" />
+            <span className="hidden lg:inline">+ {t("feeds.addFeed")}</span>
           </Button>
         </div>
       ) : entries.length === 0 ? (

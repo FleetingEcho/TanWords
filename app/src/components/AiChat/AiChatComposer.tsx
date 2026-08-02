@@ -79,7 +79,7 @@ export function AiChatComposer({
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!streaming) onSend(); } }}
           placeholder={enabledGroups.size > 0 ? t("aichat.placeholder") : t("aichat.placeholderPlain")}
           rows={3}
-          className="block min-h-[92px] max-h-[240px] w-full resize-none bg-transparent px-3 pb-2 pt-2 text-sm leading-6 placeholder:text-muted-foreground/35 focus:outline-hidden"
+          className="block min-h-[92px] max-h-[240px] w-full resize-none bg-transparent px-3 pb-2 pt-2 text-[16px] lg:text-sm leading-6 placeholder:text-muted-foreground/35 focus:outline-hidden"
         />
 
         <div className="flex items-center gap-2 px-1">

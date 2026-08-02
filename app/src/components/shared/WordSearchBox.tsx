@@ -16,6 +16,7 @@ import { BrowserPanelBlocker } from "@/store/browserPanelStore";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { SpeakButton } from "@/components/ui/SpeakButton";
+import { hostCapabilities } from "@/platform";
 import { useNavStore } from "@/store/navStore";
 import { useDismissOnOutside } from "@/hooks/useDismissOnOutside";
 import { LevelBadge } from "@/components/shared/LevelBadge";
@@ -278,7 +279,7 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
               className="h-auto w-full flex items-center justify-start gap-2 px-2 py-1.5 rounded-lg hover:bg-muted transition-colors text-left"
             >
               <span className="text-xs font-semibold text-foreground">{w.word}</span>
-              <SpeakButton text={w.word} className="h-3.5 w-3.5" />
+              {hostCapabilities.nativeTts && <SpeakButton text={w.word} className="h-3.5 w-3.5" />}
               <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 ml-auto shrink-0">
                 {t("reading.search.inVocab")}
               </span>
@@ -311,7 +312,7 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
                         )}
                         {c.zh && <span className="truncate text-[11px] text-muted-foreground">{c.zh}</span>}
                       </button>
-                      <SpeakButton text={c.en} className="mt-0.5 h-3.5 w-3.5" />
+                      {hostCapabilities.nativeTts && <SpeakButton text={c.en} className="mt-0.5 h-3.5 w-3.5" />}
                     </div>
 
                     {c.note && <p className="mt-0.5 text-[10px] leading-relaxed text-muted-foreground">{c.note}</p>}
@@ -378,7 +379,7 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
               <div className="space-y-1 px-1">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-semibold text-foreground">{q}</span>
-                  <SpeakButton text={q} className="h-3.5 w-3.5" />
+                  {hostCapabilities.nativeTts && <SpeakButton text={q} className="h-3.5 w-3.5" />}
                   {(quickBasicInfo.zh || quick.zhShort) && <span className="text-xs text-muted-foreground">{quickBasicInfo.zh || quick.zhShort}</span>}
                   {showLevelBadges && <span className="ml-auto"><LevelBadge level={quickBasicInfo.level || quick.level} /></span>}
                 </div>

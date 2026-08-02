@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { saveDialog, openDialog } from "@/ipc/dialog";
+import { saveDialog, openDialog, pickFile } from "@/ipc/dialog";
+import { webUploadForImport, webExportBackup } from "@/platform/webClient";
+import { isDesktopHost } from "@/platform";
 import { useT } from "@/hooks/useT";
 import { useDB } from "@/hooks/useDB";
 import { DbConnection, ImportDecisions, ImportPlan, RememberedTursoConnection } from "@/hooks/useDB.types";
@@ -158,7 +160,7 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
   const [importing, setImporting] = useState(false);
 
   useEffect(() => {
-    db.getDbPath().then(setDbPath);
+    if (isDesktopHost) db.getDbPath().then(setDbPath);
     db.getDbSize().then(setDbSize);
     db.getConnection().then((c) => {
       setConnection(c);
@@ -283,6 +285,25 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
   };
 
   const handleChooseImportFile = async () => {
+    if (!isDesktopHost) {
+      const file = await pickFile({ accept: ".db,.zip" });
+      if (!file) return;
+      let path: string;
+      try {
+        path = await webUploadForImport(file);
+      } catch (error) {
+        toast.error(String(error));
+        return;
+      }
+      if (file.name.toLowerCase().endsWith(".zip")) {
+        setPendingImportPath(path);
+        setShowImportPassword(true);
+        return;
+      }
+      void analyzeImport(path, null);
+      return;
+    }
+
     const picked = await openDialog({
       multiple: false,
       filters: [
@@ -336,6 +357,17 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
   };
 
   const startExport = async (password: string | null) => {
+    if (!isDesktopHost) {
+      setExporting(true);
+      try {
+        webExportBackup(password);
+        toast.success(t("settings.exportOk"));
+      } finally {
+        setTimeout(() => setExporting(false), 1200);
+      }
+      return;
+    }
+
     const dest = await saveDialog({
       defaultPath: `tanwords-backup-${new Date().toISOString().slice(0, 10)}${password ? ".zip" : ".db"}`,
       filters: password
@@ -400,12 +432,18 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
                 {connection?.remoteUrl}
               </span>
             )}
-            <span
-              className="max-w-[320px] truncate font-mono text-[11px] text-muted-foreground"
-              title={isRemote ? `${t("settings.remoteDBReplicaNote")}: ${dbPath}` : dbPath}
-            >
-              {isRemote ? `(${t("settings.remoteDBReplicaNote")}) ` : ""}{dbPath || "…"}
-            </span>
+            {isDesktopHost ? (
+              <span
+                className="max-w-[320px] truncate font-mono text-[11px] text-muted-foreground"
+                title={isRemote ? `${t("settings.remoteDBReplicaNote")}: ${dbPath}` : dbPath}
+              >
+                {isRemote ? `(${t("settings.remoteDBReplicaNote")}) ` : ""}{dbPath || "…"}
+              </span>
+            ) : (
+              <span className="max-w-[320px] truncate font-mono text-[11px] text-muted-foreground">
+                {isRemote ? `(${t("settings.remoteDBReplicaNote")}) ` : ""}{t("settings.dbLocationServer")}
+              </span>
+            )}
           </div>
           <span className="shrink-0 rounded-full border border-border bg-muted/60 px-2 py-0.5 font-mono text-[10px] font-medium text-foreground" title={t("settings.dbSizeIncludesAuxiliary")}>{formattedDbSize}</span>
         </div>
@@ -420,7 +458,7 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
         />
 
         {activeTab === "local" ? (
-          canSwitchPath ? (
+          isDesktopHost && canSwitchPath ? (
             <SettingRow label={t("settings.switchDB")} sub={t("settings.switchDBSub")}>
               <div className="flex items-center gap-2">
                 <Button
@@ -439,8 +477,10 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
                 </Button>
               </div>
             </SettingRow>
-          ) : (
+          ) : isDesktopHost ? (
             <p className="text-xs text-muted-foreground py-2">{t("settings.switchDBUnavailableRemote")}</p>
+          ) : (
+            <p className="text-xs text-muted-foreground py-2">{t("settings.remoteDBLocal")}</p>
           )
         ) : (
           <div className="space-y-3">

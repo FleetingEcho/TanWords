@@ -1,9 +1,10 @@
 import { useCallback, useState } from "react";
-import { openDialog } from "@/ipc/dialog";
+import { openDialog, pickFiles, downloadText } from "@/ipc/dialog";
 import { toast } from "sonner";
 import { useDB } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { exportMarkdownBundles, readMarkdownFiles } from "@/lib/localDocs";
+import { isDesktopHost } from "@/platform";
 import {
   DOCUMENT_ASSET_SCHEME,
   getDocumentAssets,
@@ -34,6 +35,27 @@ export function useDocImportExport(params: {
   // useCallback on every exported handler: DocItem is memoized, so these
   // identities must not churn per render or the memo does nothing.
   const handleImport = useCallback(async () => {
+    if (!isDesktopHost) {
+      const picked = await pickFiles({ multiple: true, accept: ".md,.markdown,text/markdown" });
+      if (!picked.length) return;
+      try {
+        const sources = await Promise.all(picked.map(async (file) => ({ name: file.name, content: await file.text() })));
+        let firstImportedId: number | null = null;
+        for (const source of sources) {
+          const blocks = liftMermaid(await markdownToBlocks(source.content));
+          const { content, contentText, wordCount } = blocksToStorage(blocks);
+          const id = await db.createDocument();
+          if (firstImportedId === null) firstImportedId = id;
+          const title = source.name.replace(/\.(md|markdown)$/i, "");
+          await db.updateDocument(id, title, content, contentText, "[]", false, wordCount);
+        }
+        await load(0);
+        if (firstImportedId !== null) onSelect(firstImportedId);
+        toast.success(t("doc.importedCount", { n: sources.length }));
+      } catch (error) { toast.error(String(error)); }
+      return;
+    }
+
     const picked = await openDialog({ multiple: true, filters: [{ name: "Markdown", extensions: ["md", "markdown"] }] });
     const paths = typeof picked === "string" ? [picked] : picked;
     if (!paths?.length) return;
@@ -76,8 +98,6 @@ export function useDocImportExport(params: {
           return;
         }
       }
-      const destination = await openDialog({ directory: true, multiple: false });
-      if (typeof destination !== "string") return;
       const files = [];
       for (const id of ids) {
         const detail = await db.getDocument(id);
@@ -94,6 +114,15 @@ export function useDocImportExport(params: {
         );
         files.push({ name: `${detail.title || t("doc.untitled")}.md`, ...prepared });
       }
+      if (!isDesktopHost) {
+        for (const file of files) {
+          downloadText(file.name, (file as { content?: string }).content ?? "");
+        }
+        toast.success(t("doc.exportedCount", { n: files.length }));
+        return;
+      }
+      const destination = await openDialog({ directory: true, multiple: false });
+      if (typeof destination !== "string") return;
       const count = await exportMarkdownBundles(destination, files);
       toast.success(t("doc.exportedCount", { n: count }));
     } catch (error) { toast.error(String(error)); }

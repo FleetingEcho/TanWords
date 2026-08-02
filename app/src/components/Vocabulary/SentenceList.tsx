@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LevelDateFilter, LevelFilter } from "@/components/shared/LevelDateFilter";
 import { Plus, Sparkles, ListChecks, Trash2, X, RefreshCw, Star } from "lucide-react";
+import { hostCapabilities } from "@/platform";
 
 interface Props {
   items: PatternItem[];
@@ -134,7 +135,7 @@ export function SentenceList({
               variant="ghost"
               onClick={onOpenAdd}
               title={t("vocab.patterns.addTooltip")}
-              className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-primary hover:bg-primary/10 transition-colors shrink-0"
+              className="w-10 h-10 lg:w-6 lg:h-6 p-0 rounded-md flex items-center justify-center text-primary hover:bg-primary/10 transition-colors shrink-0"
             >
               <Plus className="w-3.5 h-3.5" />
             </Button>
@@ -142,7 +143,7 @@ export function SentenceList({
               variant="ghost"
               onClick={onOpenGenerate}
               title={t("vocab.patterns.genTooltip")}
-              className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-primary hover:bg-primary/10 transition-colors shrink-0"
+              className="w-10 h-10 lg:w-6 lg:h-6 p-0 rounded-md flex items-center justify-center text-primary hover:bg-primary/10 transition-colors shrink-0"
             >
               <Sparkles className="w-3.5 h-3.5" />
             </Button>
@@ -150,7 +151,7 @@ export function SentenceList({
               variant="ghost"
               onClick={onToggleSelectMode}
               title={selectMode ? t("vocab.exitSelectMode") : t("vocab.enterSelectMode")}
-              className={`w-6 h-6 p-0 rounded-md flex items-center justify-center transition-colors shrink-0 ${
+              className={`w-10 h-10 lg:w-6 lg:h-6 p-0 rounded-md flex items-center justify-center transition-colors shrink-0 ${
                 selectMode ? "bg-primary/15 text-primary hover:bg-primary/20" : "text-muted-foreground hover:bg-muted hover:text-foreground"
               }`}
             >
@@ -173,7 +174,7 @@ export function SentenceList({
                 onClick={onReanalyzeSelected}
                 disabled={selectedIds.size === 0 || reanalyzingId !== null}
                 title={t("vocab.reanalyzeSelected")}
-                className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-primary hover:bg-primary/10 disabled:opacity-30 transition-colors shrink-0"
+                className="w-10 h-10 lg:w-6 lg:h-6 p-0 rounded-md flex items-center justify-center text-primary hover:bg-primary/10 disabled:opacity-30 transition-colors shrink-0"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${reanalyzingId !== null ? "animate-spin" : ""}`} />
               </Button>
@@ -182,7 +183,7 @@ export function SentenceList({
                 onClick={onDeleteSelected}
                 disabled={selectedIds.size === 0}
                 title={t("vocab.deleteSelected")}
-                className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-destructive hover:bg-destructive/10 disabled:opacity-30 transition-colors shrink-0"
+                className="w-10 h-10 lg:w-6 lg:h-6 p-0 rounded-md flex items-center justify-center text-destructive hover:bg-destructive/10 disabled:opacity-30 transition-colors shrink-0"
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </Button>
@@ -190,7 +191,7 @@ export function SentenceList({
                 variant="ghost"
                 onClick={onToggleSelectMode}
                 title={t("vocab.exitSelectMode")}
-                className="w-6 h-6 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0"
+                className="w-10 h-10 lg:w-6 lg:h-6 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors shrink-0"
               >
                 <X className="w-3.5 h-3.5" />
               </Button>
@@ -271,9 +272,10 @@ export function SentenceList({
                     />
                   )}
                   <div className="min-w-0 flex-1">
-                    <p className={`text-sm font-medium ${expanded ? "wrap-break-word" : "truncate"}`}>
+                    <p className="text-sm font-medium wrap-break-word">
                       <Highlight text={sentence} tokens={searchTokens} />
                     </p>
+                    {hostCapabilities.nativeTts && <SpeakButton text={sentence} className="w-3.5 h-3.5" />}
                     {hiddenMatch && (
                       <p className="text-xs text-muted-foreground truncate mt-0.5">
                         <Highlight text={hiddenMatch} tokens={searchTokens} />
@@ -281,14 +283,11 @@ export function SentenceList({
                     )}
                   </div>
                   <LevelBadge level={item.level} />
-                  <span onClick={(e) => e.stopPropagation()} className="flex items-center shrink-0">
-                    <SpeakButton text={sentence} className="w-3.5 h-3.5" />
-                  </span>
                   <Button
                     variant="ghost"
                     onClick={(e) => { e.stopPropagation(); onToggleStar(item.id); }}
                     title={item.starred ? t("vocab.unstar") : t("vocab.star")}
-                    className="w-5 h-5 p-0 rounded flex items-center justify-center shrink-0 hover:bg-transparent"
+                    className="w-9 h-9 lg:w-5 lg:h-5 p-0 rounded flex items-center justify-center shrink-0 hover:bg-transparent"
                   >
                     <Star className={`w-3.5 h-3.5 ${item.starred ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground/50"}`} />
                   </Button>
@@ -319,10 +318,10 @@ export function SentenceList({
                         <div className="space-y-2.5">
                           {rest.map((example) => (
                             <div key={example.id} className="flex items-start gap-2 rounded-xl border border-border bg-card px-3 py-2.5">
-                              <SpeakButton text={example.sentence} className="mt-0.5 w-3.5 h-3.5 shrink-0" />
                               <p className="min-w-0 flex-1 wrap-break-word text-sm leading-6">
                                 <Highlight text={example.sentence} tokens={searchTokens} />
                               </p>
+                              {hostCapabilities.nativeTts && <SpeakButton text={example.sentence} className="mt-0.5 w-3.5 h-3.5 shrink-0" />}
                               {example.source && (
                                 <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">{example.source}</span>
                               )}
@@ -383,7 +382,7 @@ export function SentenceList({
               variant="ghost"
               onClick={() => onPageChange(Math.max(0, page - 1))}
               disabled={page === 0}
-              className="w-7 h-7 p-0 flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted disabled:opacity-30 transition-colors"
+              className="w-10 h-10 lg:w-7 lg:h-7 p-0 flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted disabled:opacity-30 transition-colors"
             >
               <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
                 <path fillRule="evenodd" d="M9.78 12.78a.75.75 0 01-1.06 0L4.47 8.53a.75.75 0 010-1.06l4.25-4.25a.75.75 0 011.06 1.06L6.06 8l3.72 3.72a.75.75 0 010 1.06z" clipRule="evenodd" />
@@ -396,7 +395,7 @@ export function SentenceList({
               variant="ghost"
               onClick={() => onPageChange(Math.min(totalPages - 1, page + 1))}
               disabled={(page + 1) * pageSize >= items.length}
-              className="w-7 h-7 p-0 flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted disabled:opacity-30 transition-colors"
+              className="w-10 h-10 lg:w-7 lg:h-7 p-0 flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted disabled:opacity-30 transition-colors"
             >
               <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
                 <path fillRule="evenodd" d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z" clipRule="evenodd" />

@@ -98,9 +98,11 @@ export class OpenAIProvider implements AIProvider {
       function: { name: t.name, description: t.description, parameters: t.input_schema },
     }));
 
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (this.apiKey) headers.Authorization = `Bearer ${this.apiKey}`;
     const response = await netFetch(`${this.apiBase}/chat/completions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.apiKey}` },
+      headers,
       body: JSON.stringify({ model: this.modelId, messages: oaiMessages, tools: oaiTools, stream: true }),
       signal,
     });
@@ -178,9 +180,11 @@ export class OpenAIProvider implements AIProvider {
     if (maxTokens) body.max_tokens = maxTokens;
     if (jsonMode) body.response_format = { type: "json_object" };
 
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (this.apiKey) headers.Authorization = `Bearer ${this.apiKey}`;
     const response = await netFetch(`${this.apiBase}/chat/completions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.apiKey}` },
+      headers,
       body: JSON.stringify(body),
       signal,
     });

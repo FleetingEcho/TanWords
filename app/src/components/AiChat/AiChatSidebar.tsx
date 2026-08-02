@@ -5,7 +5,7 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Button } from "@/components/ui/button";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { Archive, ArchiveRestore, ChevronDown, ChevronsLeft, ChevronsRight, MessageSquare, MessageSquarePlus, MoreHorizontal, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, ChevronDown, ChevronsLeft, ChevronsRight, MessageSquare, MessageSquarePlus, MoreHorizontal, Pencil, Pin, PinOff, Trash2, X } from "lucide-react";
 import { LIST_PANEL_WIDTH, LIST_PANEL_COLLAPSED_WIDTH, LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
 
 /** Same compact pill as Documents' "+ New Doc" button (DocSelector) — kept in
@@ -53,13 +53,18 @@ interface Props {
   onNewChat: () => void;
   collapsed: boolean;
   onToggleCollapsed: () => void;
+  /** "inline" is the desktop column; "drawer" is the <lg overlay panel, which
+   *  fills its fixed-position host and offers a close button instead of a
+   *  collapse rail. */
+  variant?: "inline" | "drawer";
+  onRequestClose?: () => void;
 }
 
 export function AiChatSidebar({
   displaySessions, archivedSessions, searchQuery, onSearchChange,
   dateFrom, dateTo, onDateRangeChange,
   activeId, onSwitchSession, onDeleteSession, onToggleArchived, onTogglePinned, onRenameSession,
-  onNewChat, collapsed, onToggleCollapsed,
+  onNewChat, collapsed, onToggleCollapsed, variant = "inline", onRequestClose,
 }: Props) {
   const t = useT();
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
@@ -79,7 +84,7 @@ export function AiChatSidebar({
     <div
       onClick={() => onSwitchSession(session.id)}
       title={session.title}
-      className={`group relative flex h-9 items-center gap-2 px-2.5 mx-1 rounded-lg cursor-pointer transition-colors ${
+      className={`group relative flex h-10 lg:h-9 items-center gap-2 px-2.5 mx-1 rounded-lg cursor-pointer transition-colors ${
         session.id === activeId
           ? "bg-[hsl(var(--sidebar-active-bg))] text-[hsl(var(--sidebar-active-fg))]"
           : "text-[hsl(var(--sidebar-foreground))] hover:bg-muted"
@@ -104,7 +109,7 @@ export function AiChatSidebar({
               else if (e.key === "Escape") setRenamingId(null);
             }}
             onBlur={(e) => commitRename(session.id, e.currentTarget.value)}
-            className="w-full h-6 px-1.5 text-xs rounded-md border border-primary/40 bg-background focus:outline-hidden focus:ring-1 focus:ring-primary/30"
+            className="w-full h-6 px-1.5 text-[16px] lg:text-xs rounded-md border border-primary/40 bg-background focus:outline-hidden focus:ring-1 focus:ring-primary/30"
           />
         ) : (
           // One line, truncated: `line-clamp-2` let every row pick its own
@@ -128,7 +133,8 @@ export function AiChatSidebar({
             variant="ghost"
             onClick={(e) => e.stopPropagation()}
             title={t("aichat.sessionMenu")}
-            className="absolute right-0 h-5 w-5 shrink-0 p-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100 hover:text-foreground"
+            // Touch has no hover — the row menu stays visible below lg.
+            className="absolute right-0 h-5 w-5 shrink-0 p-0 text-muted-foreground lg:opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100 hover:text-foreground"
           >
             <MoreHorizontal className="h-3.5 w-3.5" />
           </Button>
@@ -164,7 +170,9 @@ export function AiChatSidebar({
   );
 
   return (
-    <aside className={`${collapsed ? LIST_PANEL_COLLAPSED_WIDTH : LIST_PANEL_WIDTH} shrink-0 border-r border-border/60 flex flex-col backdrop-blur-xl transition-[width] duration-300 ease-out bg-card`}>
+    <aside className={variant === "drawer"
+      ? "flex h-full w-full flex-col bg-card"
+      : `${collapsed ? LIST_PANEL_COLLAPSED_WIDTH : LIST_PANEL_WIDTH} shrink-0 border-r border-border/60 flex flex-col backdrop-blur-xl transition-[width] duration-300 ease-out bg-card`}>
       {collapsed ? (
         <div className="p-3 pb-2 border-b border-border flex flex-col items-center gap-2">
           <Button variant="ghost" onClick={onToggleCollapsed} className={`h-7 w-7 p-0 ${LIST_PANEL_TOGGLE_CLASS}`} title={t("aichat.sidebarExpand")}>
@@ -177,9 +185,15 @@ export function AiChatSidebar({
       ) : (
         <div className="px-3 pt-4 pb-2 border-b border-border">
           <div className="flex items-center justify-between">
+            {variant === "drawer" ? (
+              <Button variant="ghost" size="icon" onClick={onRequestClose} className="h-6 w-6" title={t("aichat.closeSessions")} aria-label={t("aichat.closeSessions")}>
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            ) : (
             <Button variant="ghost" size="icon" onClick={onToggleCollapsed} className={`h-6 w-6 ${LIST_PANEL_TOGGLE_CLASS}`} title={t("aichat.sidebarCollapse")}>
               <ChevronsLeft className="h-3.5 w-3.5" />
             </Button>
+            )}
             <Button onClick={onNewChat} className={NEW_BUTTON_CLASS}>+ {t("aichat.newChat")}</Button>
           </div>
         </div>
@@ -194,7 +208,8 @@ export function AiChatSidebar({
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={t("aichat.searchPlaceholder")}
-            className="w-full h-7 pl-7 pr-2 text-xs rounded-md border border-input bg-background placeholder:text-muted-foreground/40 focus:outline-hidden focus:ring-1 focus:ring-primary/30"
+            // 16px below lg: iOS would otherwise zoom the page on focus.
+            className="w-full h-7 pl-7 pr-2 text-[16px] lg:text-xs rounded-md border border-input bg-background placeholder:text-muted-foreground/40 focus:outline-hidden focus:ring-1 focus:ring-primary/30"
           />
         </div>
         <DateRangePicker

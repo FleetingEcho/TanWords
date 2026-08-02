@@ -11,6 +11,8 @@ import { useSettingsStore, type SidebarTabId } from "@/store/settingsStore";
 import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
 import { CommandBar } from "@/components/Layout/CommandBar";
 import type { NavPage } from "@/store/navStore";
+import { hostCapabilities } from "@/platform";
+import { useIsNarrow } from "@/components/Vocabulary/hooks/useMediaQuery";
 
 interface NavItemDef {
   id: SidebarTabId;
@@ -20,7 +22,7 @@ interface NavItemDef {
   showCount?: "word";
 }
 
-const NAV_ITEM_DEFS: Omit<NavItemDef, "label">[] = [
+const BASE_NAV_ITEM_DEFS: Omit<NavItemDef, "label">[] = [
   { id: "dashboard", icon: GridIcon },
   { id: "browser", icon: Globe },
   { id: "feeds", icon: FeedIcon },
@@ -29,6 +31,22 @@ const NAV_ITEM_DEFS: Omit<NavItemDef, "label">[] = [
   { id: "vocabulary", icon: BookIcon, showCount: "word" },
   { id: "chat", icon: ChatIcon },
   { id: "music", icon: MusicIcon },
+];
+
+const NAV_ITEM_DEFS = BASE_NAV_ITEM_DEFS.filter((item) => {
+  if (item.id === "browser") return hostCapabilities.browser;
+  if (item.id === "music") return hostCapabilities.music;
+  return true;
+});
+
+/** Fixed bottom tabs for flexible/narrow viewports. Feeds stays reachable
+ * through Reading on the web-oriented shell; Settings is pinned for reach. */
+const MOBILE_TAB_DEFS: { id: NavPage; icon: React.FC<{ className?: string }> }[] = [
+  { id: "dashboard" as NavPage, icon: GridIcon as React.FC<{ className?: string }> },
+  { id: "vocabulary" as NavPage, icon: BookIcon as React.FC<{ className?: string }> },
+  { id: "reading" as NavPage, icon: ClipboardPaste as React.FC<{ className?: string }> },
+  { id: "chat" as NavPage, icon: ChatIcon as React.FC<{ className?: string }> },
+  { id: "documents" as NavPage, icon: DocIcon as React.FC<{ className?: string }> },
 ];
 
 /** Shared button chrome for both the customizable nav items and the pinned Settings
@@ -98,14 +116,23 @@ export function MainLayout({
   const visibleSidebarTabs = useSettingsStore((s) => s.visibleSidebarTabs);
   const hasCustomAppBackground = useSettingsStore((s) => !!s.appBackgroundImage && s.appBackgroundVisible);
   const podcastActive = usePodcastPlayerStore((s) => s.status !== "idle" && s.track !== null);
+  const layoutMode = useSettingsStore((s) => s.layoutMode);
+  const isNarrow = useIsNarrow();
+  // Fixed is a wide-screen preference only. Below lg the mobile shell stays
+  // in charge so a phone never gets a fixed desktop layout.
+  const effectiveMode = layoutMode === "fixed" && !isNarrow ? "fixed" : "flexible";
+  const mobile = effectiveMode === "flexible" && isNarrow;
   const NAV_ITEMS: NavItemDef[] = NAV_ITEM_DEFS
     .filter((d) => visibleSidebarTabs.includes(d.id))
     .map((d) => ({ ...d, label: t(`nav.${d.id}`) }));
 
   return (
-    <div className={`flex h-screen overflow-hidden ${hasCustomAppBackground ? "" : "bg-background"}`}>
+    <div
+      data-layout-mode={effectiveMode}
+      className={`flex h-screen overflow-hidden ${hasCustomAppBackground ? "" : "bg-background"}`}
+    >
       <aside
-        className={`shrink-0 flex flex-col h-screen border-r border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar))] select-none transition-[width] duration-200 ${
+        className={`${mobile ? "hidden" : "flex"} shrink-0 flex-col h-screen border-r border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar))] select-none transition-[width] duration-200 ${
           collapsed ? "w-[60px]" : "w-[210px]"
         }`}
       >
@@ -159,13 +186,38 @@ export function MainLayout({
         * in the top bar, so reserving space for it would just shove the page
         * up by 80px the moment anything started reading. */}
       <main
-        className={`flex min-w-0 flex-1 flex-col overflow-hidden box-border transition-[padding-bottom] duration-200 ${
-          podcastActive ? "pb-16" : "pb-0"
-        }`}
+        className={`flex min-w-0 flex-1 flex-col overflow-hidden box-border transition-[padding-bottom] duration-200 pb-[calc(4rem+env(safe-area-inset-bottom))] ${podcastActive ? "lg:pb-16" : "lg:pb-0"}`}
       >
         <CommandBar activePage={activeNav as NavPage} />
         <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
       </main>
+
+      {mobile && (
+        <nav
+          className="fixed bottom-0 inset-x-0 z-40 border-t border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar))] pb-[env(safe-area-inset-bottom)] select-none"
+          aria-label="main navigation"
+        >
+          <div className="grid grid-cols-5">
+            {MOBILE_TAB_DEFS.map(({ id, icon: Icon }) => {
+              const isActive = activeNav === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => onNavigate(id)}
+                  aria-current={isActive ? "page" : undefined}
+                  className={`flex h-14 flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors ${
+                    isActive ? "text-primary" : "text-muted-foreground"
+                  }`}
+                >
+                  <Icon className="h-[18px] w-[18px]" />
+                  <span>{t(`nav.${id}`)}</span>
+                </button>
+              );
+            })}
+          </div>
+        </nav>
+      )}
     </div>
   );
 }

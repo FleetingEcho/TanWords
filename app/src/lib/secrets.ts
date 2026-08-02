@@ -1,4 +1,5 @@
 import { invoke } from "@/ipc/backend";
+import { isDesktopHost } from "@/platform";
 
 /** localStorage mirror, keyed distinctly from the pre-keychain legacy keys
  * (tanwords_openai_key etc., see initProviders.ts's one-time migration).
@@ -12,6 +13,7 @@ const FALLBACK_PREFIX = "tanwords_secret_";
 /** Get a secret: OS keychain first, falling back to the localStorage mirror
  * if the keychain is unavailable or the entry isn't there. */
 export async function getSecret(name: string): Promise<string> {
+  if (!isDesktopHost) return localStorage.getItem(FALLBACK_PREFIX + name) || "";
   try {
     const result = await invoke<string | null>("secret_get", { key: name });
     if (result) return result;
@@ -27,6 +29,7 @@ export async function getSecret(name: string): Promise<string> {
 export async function setSecret(name: string, value: string): Promise<void> {
   if (value) localStorage.setItem(FALLBACK_PREFIX + name, value);
   else localStorage.removeItem(FALLBACK_PREFIX + name);
+  if (!isDesktopHost) return;
 
   try {
     await invoke("secret_set", { key: name, value });
@@ -40,6 +43,7 @@ export async function setSecret(name: string, value: string): Promise<void> {
 /** Delete a secret from both the localStorage mirror and the OS keychain. */
 export async function secretDelete(name: string): Promise<void> {
   localStorage.removeItem(FALLBACK_PREFIX + name);
+  if (!isDesktopHost) return;
   try {
     await invoke("secret_delete", { key: name });
   } catch {

@@ -2,10 +2,13 @@ import type { StoreApi } from "zustand";
 import type { SettingsState } from "./state";
 import {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR,
+  DEFAULT_LAYOUT_MODE,
   DOCUMENT_TEXT_COLOR_RE, type Theme, type RssTabSelection,
+  type LayoutMode,
 } from "./types";
 import {
   cacheUiLanguage, cacheSidebarTabs, cacheTopBarItems, cacheDefaultRssTab, cacheFeedsViewMode,
+  cacheLayoutMode,
 } from "./cache";
 import { applyTheme, applyDocumentFontSize, applyDocumentLineHeight, applyDocumentTextColor, applyHighlightColor, parseBannerPosition } from "./domEffects";
 
@@ -31,6 +34,7 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       "show_github_link",
       "visible_sidebar_tabs",
       "visible_topbar_items",
+      "layout_mode",
       "default_rss_tab",
       "feeds_view_mode",
       "user_avatar",
@@ -73,6 +77,8 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       ? DEFAULT_TOPBAR_ITEMS.filter((id) => (values.visible_topbar_items as unknown as string[]).includes(id))
       : DEFAULT_TOPBAR_ITEMS;
     cacheTopBarItems(resolvedTopBarItems);
+    const resolvedLayoutMode: LayoutMode = values.layout_mode === "fixed" ? "fixed" : DEFAULT_LAYOUT_MODE;
+    cacheLayoutMode(resolvedLayoutMode);
 
     const rawDefaultRssTab = values.default_rss_tab as unknown;
     const resolvedDefaultRssTab: RssTabSelection =
@@ -106,6 +112,7 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       selectionActions: (values.selection_actions as unknown) !== false && values.selection_actions !== "false",
       visibleSidebarTabs: resolvedSidebarTabs,
       visibleTopBarItems: resolvedTopBarItems,
+      layoutMode: resolvedLayoutMode,
       defaultRssTab: resolvedDefaultRssTab,
       feedsViewMode: resolvedFeedsViewMode,
       userAvatar: values.user_avatar || "",

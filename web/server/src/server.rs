@@ -49,6 +49,7 @@ use tanwords_lib::rpc::dispatch::dispatch;
 use tanwords_lib::rpc::Args;
 use tanwords_lib::AppState;
 
+use crate::embedded::Assets;
 use crate::auth::{bearer_token, constant_time_eq, RateLimiter};
 use crate::config::Config;
 use crate::runtime::{RuntimePool, UserRuntime};
@@ -855,24 +856,34 @@ async fn spa_handler(State(state): State<WebState>, request: Request) -> Respons
         }
     }
 
-    let mut is_index = false;
-    let mut is_hashed_asset = path.starts_with("/assets/");
-    let mut file = match resolve_dist(&state.config.web_dist, &path) {
-        Some(f) if f.is_file() => f,
-        _ => {
-            // SPA fallback: client-side routes get index.html.
-            is_index = true;
-            is_hashed_asset = false;
-            state.config.web_dist.join("index.html")
-        }
-    };
-    if !is_index && file == state.config.web_dist {
-        is_index = true;
-        file = state.config.web_dist.join("index.html");
-    }
+    let (bytes, content_type, cache): (Vec<u8>, &'static str, &'static str) =
+        if let Some(dist) = state.config.web_dist.as_ref() {
+            let mut is_index = false;
+            let mut is_hashed_asset = path.starts_with("/assets/");
+            let mut file = match resolve_dist(dist, &path) {
+                Some(f) if f.is_file() => f,
+                _ => {
+                    // SPA fallback: client-side routes get index.html.
+                    is_index = true;
+                    is_hashed_asset = false;
+                    dist.join("index.html")
+                }
+            };
+            if !is_index && file == *dist {
+                is_index = true;
+                file = dist.join("index.html");
+            }
 
-    match tokio::fs::read(&file).await {
-        Ok(bytes) => {
+            let bytes = match tokio::fs::read(&file).await {
+                Ok(bytes) => bytes,
+                Err(_) => {
+                    return json_error(
+                        StatusCode::NOT_FOUND,
+                        "not found (is the frontend built into TANWORDS_WEB_DIST?)",
+                    );
+                }
+            };
+            let content_type = content_type_for(&file);
             let cache = if is_index {
                 "no-store"
             } else if is_hashed_asset {
@@ -880,17 +891,42 @@ async fn spa_handler(State(state): State<WebState>, request: Request) -> Respons
             } else {
                 "public, max-age=3600"
             };
-            (
-                [
-                    (header::CONTENT_TYPE, content_type_for(&file)),
-                    (header::CACHE_CONTROL, cache),
-                ],
-                bytes,
-            )
-                .into_response()
-        }
-        Err(_) => json_error(StatusCode::NOT_FOUND, "not found (is the frontend built into TANWORDS_WEB_DIST?)"),
-    }
+            (bytes, content_type, cache)
+        } else {
+            let relative = path.trim_start_matches('/');
+            let mut is_index = false;
+            let mut is_hashed_asset = path.starts_with("/assets/");
+            let data = Assets::get(relative).or_else(|| {
+                is_index = true;
+                is_hashed_asset = false;
+                Assets::get("index.html")
+            });
+            let Some(data) = data else {
+                return json_error(
+                    StatusCode::NOT_FOUND,
+                    "not found (is the frontend built into TANWORDS_WEB_DIST?)",
+                );
+            };
+            let served_path = if is_index { "index.html" } else { relative };
+            let content_type = content_type_for(std::path::Path::new(served_path));
+            let cache = if is_index {
+                "no-store"
+            } else if is_hashed_asset {
+                "public, max-age=31536000, immutable"
+            } else {
+                "public, max-age=3600"
+            };
+            (data.data.into_owned(), content_type, cache)
+        };
+
+    (
+        [
+            (header::CONTENT_TYPE, content_type),
+            (header::CACHE_CONTROL, cache),
+        ],
+        bytes,
+    )
+        .into_response()
 }
 
 // ── bring-up ──────────────────────────────────────────────────────────────
@@ -950,7 +986,10 @@ pub async fn serve(config: Config, users: Arc<UsersDb>, pool: Arc<RuntimePool>) 
 
     eprintln!("[tanwords-web] listening on http://{addr}");
     eprintln!("[tanwords-web] data dir: {}", config.data_dir.display());
-    eprintln!("[tanwords-web] serving SPA from: {}", config.web_dist.display());
+    match &config.web_dist {
+        Some(dist) => eprintln!("[tanwords-web] serving SPA from: {}", dist.display()),
+        None => eprintln!("[tanwords-web] serving embedded SPA (app/out/renderer)"),
+    }
     if config.host == "0.0.0.0" {
         eprintln!("[tanwords-web] warning: bound to all interfaces — put an HTTPS reverse proxy in front before exposing beyond a trusted LAN.");
     }

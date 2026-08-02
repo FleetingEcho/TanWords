@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
-import { Library, PenLine } from "lucide-react";
+import { Library, PenLine, Rss } from "lucide-react";
 import { useT } from "@/hooks/useT";
+import { useNavStore } from "@/store/navStore";
 import { ReaderView } from "@/components/Reader/ReaderView";
 import { ReadingLibrary } from "@/components/Reader/ReadingLibrary";
 import { useReaderNotesStore } from "@/store/readerNotesStore";
@@ -19,6 +20,7 @@ import { Button } from "@/components/ui/button";
  */
 export function ReadingPage() {
   const t = useT();
+  const navigate = useNavStore((s) => s.navigate);
   // In a store, not useState: App.tsx unmounts this page whenever you navigate
   // elsewhere, so anything local is gone by the time you come back.
   const view = useReadingPageStore((s) => s.view);
@@ -83,6 +85,18 @@ export function ReadingPage() {
               {id === "paste" ? t("scratch.newRead") : t("library.title")}
             </button>
           ))}
+        </div>
+        <div className="ml-auto lg:hidden">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate("feeds")}
+            title={t("nav.feeds")}
+            aria-label={t("nav.feeds")}
+            className="h-8 w-8 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <Rss className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 

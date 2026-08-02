@@ -25,12 +25,15 @@ import {
 } from "@/lib/localDocs";
 import { SaveStatus } from "./useDocumentEditor";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { Button } from "@/components/ui/button";
 import { blocksToStorage, markdownToBlocks } from "@/lib/docFormat";
 import { liftMermaid } from "./mermaidTransforms";
 import { ExportMarkdownDialog } from "./ExportMarkdownDialog";
 import { LocalDocsSidebar } from "./LocalDocsSidebar";
 import { LocalDocsEditorPane } from "./LocalDocsEditorPane";
 import { exportMarkdownAsHtml, exportMarkdownAsPdf } from "@/lib/documentExport";
+import { useIsNarrow } from "@/components/Vocabulary/hooks/useMediaQuery";
+import { ChevronLeft } from "lucide-react";
 
 const LAST_LOCAL_PATH_KEY = "tanwords_doc_last_local_path";
 
@@ -69,10 +72,15 @@ export function LocalDocsView({
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [pendingImport, setPendingImport] = useState<{ relPath: string; markdown: string; duplicate: boolean } | null>(null);
   const [sidebarOpen, setSidebarOpenState] = useState(() => localStorage.getItem("tanwords_doc_local_sidebar_collapsed") !== "1");
+  const [showMobileEditor, setShowMobileEditor] = useState(false);
+  const isNarrow = useIsNarrow();
   const setSidebarOpen = (open: boolean) => {
     localStorage.setItem("tanwords_doc_local_sidebar_collapsed", open ? "0" : "1");
     setSidebarOpenState(open);
   };
+  useEffect(() => {
+    if (isNarrow) setSidebarOpenState(true);
+  }, [isNarrow]);
   const [zenMode, setZenMode] = useState(false);
   const [exportPickerOpen, setExportPickerOpen] = useState(false);
   // Bumped only when a file is opened — NOT on rename, which changes
@@ -168,6 +176,7 @@ export function LocalDocsView({
     setActiveContent(null);
     setActiveRawContent(null);
     setRoot(picked);
+    setShowMobileEditor(false);
     await db.setSetting(LOCAL_DOCS_ROOT_KEY, picked);
   };
 
@@ -179,6 +188,7 @@ export function LocalDocsView({
       setActivePath(relPath);
       setActiveContent(mdToDisplay(content, root, relPath));
       setActiveRawContent(content);
+      setShowMobileEditor(true);
       setSaveStatus("idle");
       setEditorKey((k) => k + 1);
     } catch (e) {
@@ -348,6 +358,7 @@ export function LocalDocsView({
         setActivePath(null);
         setActiveContent(null);
         setActiveRawContent(null);
+        setShowMobileEditor(false);
       }
       refresh();
     } catch (e) {
@@ -366,7 +377,7 @@ export function LocalDocsView({
         : "bg-transparent"
     }`}>
       {/* Sidebar */}
-      {!zenMode && (
+      {!zenMode && (!isNarrow || !showMobileEditor) && (
         <LocalDocsSidebar
           sidebarOpen={sidebarOpen}
           onSidebarOpenChange={setSidebarOpen}
@@ -393,23 +404,38 @@ export function LocalDocsView({
       )}
 
       {/* Editor pane */}
-      <LocalDocsEditorPane
-        editorKey={editorKey}
-        loading={fileLoading}
-        activePath={activePath}
-        activeContent={activeContent}
-        activeRawContent={activeRawContent}
-        modifiedMs={activeMeta?.modified_ms ?? 0}
-        saveStatus={saveStatus}
-        onSave={handleSave}
-        onDirty={markDirty}
-        onUploadImage={handleUploadImage}
-        toRawMarkdown={toRawMarkdown}
-        toDisplayMarkdown={toDisplayMarkdown}
-        onRename={handleRename}
-        zenMode={zenMode}
-        onZenModeChange={setZenMode}
-      />
+      <div className={`flex-1 min-w-0 flex flex-col ${isNarrow && !showMobileEditor ? "max-lg:hidden" : ""}`}>
+        {isNarrow && showMobileEditor && (
+          <div className="flex h-10 shrink-0 items-center border-b border-border/60 px-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowMobileEditor(false)}
+              className="h-9 gap-1 rounded-lg px-2 text-xs text-muted-foreground hover:text-foreground"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              {t("doc.collapseFiles")}
+            </Button>
+          </div>
+        )}
+        <LocalDocsEditorPane
+          editorKey={editorKey}
+          loading={fileLoading}
+          activePath={activePath}
+          activeContent={activeContent}
+          activeRawContent={activeRawContent}
+          modifiedMs={activeMeta?.modified_ms ?? 0}
+          saveStatus={saveStatus}
+          onSave={handleSave}
+          onDirty={markDirty}
+          onUploadImage={handleUploadImage}
+          toRawMarkdown={toRawMarkdown}
+          toDisplayMarkdown={toDisplayMarkdown}
+          onRename={handleRename}
+          zenMode={zenMode}
+          onZenModeChange={setZenMode}
+        />
+      </div>
 
       <ConfirmModal
         open={pendingDelete !== null}

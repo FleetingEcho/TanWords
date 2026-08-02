@@ -3,6 +3,7 @@ import { BookmarkPlus, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import { renderInline } from "./Markdown";
 import { SpeakButton } from "@/components/ui/SpeakButton";
+import { hostCapabilities } from "@/platform";
 import { Button } from "@/components/ui/button";
 import { useDB } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
@@ -63,7 +64,7 @@ export function SpeakingBlockquote({
               {renderInline(trimmed, `speaking-${index}`, lookupWord)}
             </div>
             <span className="mt-1 inline-flex h-6 w-6 shrink-0 items-center justify-center">
-              <SpeakButton text={trimmed} className="h-4 w-4" />
+              {hostCapabilities.nativeTts && <SpeakButton text={trimmed} className="h-4 w-4" />}
             </span>
             {isSaved ? (
               <span className="mt-1 inline-flex h-6 w-6 shrink-0 items-center justify-center text-emerald-600 dark:text-emerald-400">

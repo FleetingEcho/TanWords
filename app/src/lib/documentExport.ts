@@ -1,6 +1,7 @@
-import { saveDialog } from "@/ipc/dialog";
+import { saveDialog, downloadBlob } from "@/ipc/dialog";
 import { callMain } from "@/ipc/host";
 import { invoke } from "@/ipc/backend";
+import { isDesktopHost } from "@/platform";
 import { codeBlockOptions } from "@blocknote/code-block";
 import { markdownToBlocksOffThread, blocksToHtmlOffThread } from "./documentWorkerClient";
 
@@ -54,6 +55,23 @@ function wrapHtml(title: string, body: string): string {
 </head>
 <body>${body}</body>
 </html>`;
+}
+
+function writeHtmlExport(title: string, html: string): void {
+  downloadBlob(safeFileName(title, "html"), new Blob([wrapHtml(title, html)], { type: "text/html;charset=utf-8" }));
+}
+
+function printHtmlExport(title: string, html: string): void {
+  const blob = new Blob([wrapHtml(title, html)], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, "_blank");
+  if (!win) {
+    downloadBlob(safeFileName(title, "html"), blob);
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    return;
+  }
+  win.addEventListener("load", () => { win.focus(); win.print(); });
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 function isLocalAssetUrl(url: string): boolean {
@@ -198,6 +216,10 @@ export async function exportMarkdownAsHtml(title: string, markdown: string): Pro
     let html = await inlineDocumentAssets(undefined, normalizeMermaidFences(body));
     html = await renderMermaidBlocks(html);
     html = await highlightCodeBlocks(html);
+    if (!isDesktopHost) {
+      writeHtmlExport(title, html);
+      return;
+    }
     const destination = await saveDialog({
       defaultPath: safeFileName(title, "html"),
       filters: [{ name: "HTML", extensions: ["html"] }],
@@ -214,6 +236,10 @@ export async function exportMarkdownAsPdf(title: string, markdown: string): Prom
     let html = await inlineDocumentAssets(undefined, normalizeMermaidFences(body));
     html = await renderMermaidBlocks(html);
     html = await highlightCodeBlocks(html);
+    if (!isDesktopHost) {
+      printHtmlExport(title, html);
+      return;
+    }
     const destination = await saveDialog({
       defaultPath: safeFileName(title, "pdf"),
       filters: [{ name: "PDF", extensions: ["pdf"] }],
@@ -229,6 +255,10 @@ export async function exportEditorHtml(editor: any, title: string): Promise<void
     html = await resolveAssetUrls(editor, html);
     html = await renderMermaidBlocks(html);
     html = await highlightCodeBlocks(html);
+    if (!isDesktopHost) {
+      writeHtmlExport(title, html);
+      return;
+    }
     const destination = await saveDialog({
       defaultPath: safeFileName(title, "html"),
       filters: [{ name: "HTML", extensions: ["html"] }],
@@ -244,6 +274,10 @@ export async function exportEditorPdf(editor: any, title: string): Promise<void>
     html = await resolveAssetUrls(editor, html);
     html = await renderMermaidBlocks(html);
     html = await highlightCodeBlocks(html);
+    if (!isDesktopHost) {
+      printHtmlExport(title, html);
+      return;
+    }
     const destination = await saveDialog({
       defaultPath: safeFileName(title, "pdf"),
       filters: [{ name: "PDF", extensions: ["pdf"] }],
