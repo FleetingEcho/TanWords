@@ -56,16 +56,28 @@ export function useOutlineItems(editor: any, tick: number): OutlineItem[] {
   }, [editor, tick]);
 }
 
-export function DocumentOutline({ editor, tick }: { editor: any; tick: number }) {
+/** @param onNavigate fired after jumping to a heading, so a container that
+ *  covers the document (the phone's outline modal) can dismiss itself and let
+ *  the reader actually land on the heading they picked. */
+export function DocumentOutline({ editor, tick, className, onNavigate, showHeader = true }: {
+  editor: any;
+  tick: number;
+  className?: string;
+  onNavigate?: () => void;
+  /** Off when the container already titles itself (the phone modal's header). */
+  showHeader?: boolean;
+}) {
   const t = useT();
   const items = useOutlineItems(editor, tick);
 
   return (
-    <aside className="w-full shrink-0 overflow-y-auto border-l border-border/60 bg-background/40 p-3">
-      <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
-        <ListTree className="h-3.5 w-3.5" />
-        {t("doc.outline")}
-      </div>
+    <aside className={className ?? "h-full w-full shrink-0 overflow-y-auto border-l border-border/60 bg-background/40 p-3"}>
+      {showHeader && (
+        <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
+          <ListTree className="h-3.5 w-3.5" />
+          {t("doc.outline")}
+        </div>
+      )}
       {items.length === 0 ? (
         <p className="px-1 py-4 text-[11px] text-muted-foreground">{t("doc.outlineEmpty")}</p>
       ) : (
@@ -81,6 +93,7 @@ export function DocumentOutline({ editor, tick }: { editor: any; tick: number })
                   behavior: "smooth",
                   block: "start",
                 });
+                onNavigate?.();
               }}
               style={{ paddingLeft: `${8 + (item.level - 1) * 12}px` }}
               className={`block w-full truncate rounded-md px-2 py-1 text-left text-xs transition-colors hover:bg-muted hover:text-foreground ${

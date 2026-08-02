@@ -11,7 +11,7 @@ import { AiChatComposer } from "./AiChatComposer";
 import { useAiChatSession, PRESET_IDS } from "./useAiChatSession";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowDown, Bot, ChevronDown, ChevronLeft, Eraser, FilePlus2, PlugZap, Unplug } from "lucide-react";
+import { ArrowDown, Bot, ChevronDown, ChevronLeft, ChevronUp, Eraser, FilePlus2, PlugZap, Unplug } from "lucide-react";
 import { useNavStore } from "@/store/navStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useWordModalStore } from "@/store/wordModalStore";
@@ -32,6 +32,10 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
   // <lg the sidebar isn't a column — it's a drawer over the conversation.
   const [mobileSidebarOpen, setMobileSidebarOpen] = React.useState(false);
   const [confirmClear, setConfirmClear] = React.useState(false);
+  // Phone-only: the role/prompt strip plus a 64px session bar ate the top
+  // ~40% of the screen, leaving the conversation itself a slot. Folded away by
+  // default below `lg`, where it renders unconditionally.
+  const [headerOpen, setHeaderOpen] = React.useState(false);
   const [promptExpanded, setPromptExpanded] = React.useState(
     () => localStorage.getItem("aichat-prompt-expanded") === "1"
   );
@@ -141,7 +145,7 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
 
       <main className="min-w-0 flex-1 flex flex-col overflow-hidden">
         {/* Compact icon-led session toolbar */}
-        <div className="flex items-center gap-2 px-3 lg:px-5 h-16 border-b border-border/60 bg-background/65 backdrop-blur-xl shrink-0">
+        <div className="flex items-center gap-2 px-3 lg:px-5 h-12 lg:h-16 border-b border-border/60 bg-background/65 backdrop-blur-xl shrink-0">
           <Button
             variant="ghost"
             onClick={() => setMobileSidebarOpen(true)}
@@ -150,7 +154,6 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
             className="h-9 gap-1 rounded-xl px-2 text-muted-foreground hover:bg-muted hover:text-foreground shrink-0 lg:hidden"
           >
             <ChevronLeft className="h-4 w-4" />
-            <span className="text-xs font-medium">{t("aichat.sessions")}</span>
           </Button>
           <div className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold tracking-tight text-foreground">{s.isNewSession ? t("aichat.newChat") : s.activeTitle}</span><span className="mt-0.5 block text-[10px] text-muted-foreground">{messages.length ? t("aichat.messageCount", { count: messages.length }) : t("aichat.ready")}</span></div>
           {/* The selector is the connection indicator: it already names the
@@ -186,6 +189,17 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
               </Button>
             </div>
           )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setHeaderOpen((v) => !v)}
+            title={headerOpen ? t("aichat.headerHide") : t("aichat.headerShow")}
+            aria-label={headerOpen ? t("aichat.headerHide") : t("aichat.headerShow")}
+            aria-expanded={headerOpen}
+            className="h-9 w-9 shrink-0 rounded-xl text-muted-foreground lg:hidden"
+          >
+            {headerOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </Button>
           {s.displayItems.length > 0 && (
             <>
               <Button
@@ -208,7 +222,7 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
         {/* Tutor and its effective system prompt live together, directly above
           * the conversation. The role stays switchable while collapsed; expanding
           * reveals the exact prompt that will be sent and makes it editable. */}
-        <section className="border-b border-border/60 bg-background/40 backdrop-blur-md shrink-0">
+        <section className={`${headerOpen ? "block" : "hidden"} border-b border-border/60 bg-background/40 backdrop-blur-md shrink-0 lg:block`}>
           <div className="flex min-h-12 items-center gap-2 px-3 lg:px-5">
             <Bot className="h-4 w-4 shrink-0 text-primary" />
             <Select value={s.selectedPreset} onValueChange={(v) => s.setSelectedPreset(v)}>
@@ -233,7 +247,7 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
               title={t("aichat.promptView")}
               className="ml-auto flex h-8 items-center gap-2 rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground"
             >
-              <span>{t("aichat.promptTitle")}</span>
+              <span className="whitespace-nowrap">{t("aichat.promptTitle")}</span>
               <ChevronDown className={`h-4 w-4 transition-transform ${promptExpanded ? "rotate-180" : ""}`} />
             </button>
           </div>

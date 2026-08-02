@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { SpeakerIcon, SparkIcon, TranslateIcon, ReplyIcon, CheckIcon, PlayIcon, PauseIcon, BookmarkIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -31,6 +31,25 @@ export function ReaderToolbar({
     handleListen, podcastActive, podcastStatus, playerActive, showTranslation, setShowTranslation, setRightView,
     articleId, showComments, setShowComments, comments, handleListenComments, hnComments, commentsPlayerActive,
   } = state;
+
+  const [listenMenuOpen, setListenMenuOpen] = useState(false);
+
+  // A story with comments has two things worth listening to, so the speaker
+  // opens a choice instead of claiming a second toolbar slot. A podcast
+  // episode keeps the plain button: play/pause has to stay a single tap.
+  const canListen = hostCapabilities.nativeTts || !!audio;
+  const canListenComments =
+    hostCapabilities.nativeTts && hnItemId != null && !!hnComments && hnComments.length > 0;
+  const listenIsMenu = !audio && canListenComments;
+  const listenActive = playerActive || commentsPlayerActive;
+  const listenClass = `w-7 h-7 p-0 rounded-md flex items-center justify-center transition-colors shrink-0 ${
+    listenActive
+      ? "bg-primary/10 text-primary hover:bg-primary/10"
+      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+  }`;
+  const listenIcon = audio
+    ? (podcastActive && podcastStatus === "playing" ? <PauseIcon className="w-4 h-4" /> : <PlayIcon className="w-4 h-4" />)
+    : <SpeakerIcon className="w-4 h-4" />;
 
   useEffect(() => {
     if (!bookmarksLoaded) void useFeedBookmarksStore.getState().refresh();
@@ -150,29 +169,48 @@ export function ReaderToolbar({
           </Button>
         </PopoverContent>
       </Popover>
-      {(hostCapabilities.nativeTts || audio) && (
+      {canListen && (listenIsMenu ? (
+        <Popover open={listenMenuOpen} onOpenChange={setListenMenuOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              title={t("tts.listenMenu")}
+              aria-label={t("tts.listenMenu")}
+              className={listenClass}
+            >
+              {listenIcon}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent side="bottom" align="center" className="w-48 p-1.5">
+            <Button
+              variant="ghost"
+              onClick={() => { setListenMenuOpen(false); handleListen(); }}
+              className={`h-8 w-full justify-start gap-2 rounded-md px-2.5 text-xs font-medium ${playerActive ? "text-primary" : ""}`}
+            >
+              <SpeakerIcon className="w-3.5 h-3.5" />
+              {t("tts.listenToArticle")}
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => { setListenMenuOpen(false); handleListenComments(); }}
+              className={`h-8 w-full justify-start gap-2 rounded-md px-2.5 text-xs font-medium ${commentsPlayerActive ? "text-primary" : ""}`}
+            >
+              <ReplyIcon className="w-3.5 h-3.5" />
+              {t("hn.comments.listen")}
+            </Button>
+          </PopoverContent>
+        </Popover>
+      ) : (
         <Button
           variant="ghost"
           onClick={handleListen}
           title={audio ? t("podcast.listenEpisode") : t("tts.listenToArticle")}
           aria-label={audio ? t("podcast.listenEpisode") : t("tts.listenToArticle")}
-          className={`w-7 h-7 p-0 rounded-md flex items-center justify-center transition-colors shrink-0 ${
-            playerActive
-              ? "bg-primary/10 text-primary hover:bg-primary/10"
-              : "text-muted-foreground hover:text-foreground hover:bg-muted"
-          }`}
+          className={listenClass}
         >
-          {audio ? (
-            podcastActive && podcastStatus === "playing" ? (
-              <PauseIcon className="w-4 h-4" />
-            ) : (
-              <PlayIcon className="w-4 h-4" />
-            )
-          ) : (
-            <SpeakerIcon className="w-4 h-4" />
-          )}
+          {listenIcon}
         </Button>
-      )}
+      ))}
       <Button
         variant="ghost"
         onClick={() => {
@@ -204,22 +242,6 @@ export function ReaderToolbar({
         >
           <MessageSquareText className="w-4 h-4" />
           {comments.length > 0 && <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-primary" />}
-        </Button>
-      )}
-      {hostCapabilities.nativeTts && hnItemId != null && (
-        <Button
-          variant="ghost"
-          onClick={handleListenComments}
-          disabled={!hnComments || hnComments.length === 0}
-          title={t("hn.comments.listen")}
-          aria-label={t("hn.comments.listen")}
-          className={`w-7 h-7 p-0 rounded-md flex items-center justify-center transition-colors shrink-0 disabled:opacity-40 ${
-            commentsPlayerActive
-              ? "bg-primary/10 text-primary hover:bg-primary/10"
-              : "text-muted-foreground hover:text-foreground hover:bg-muted"
-          }`}
-        >
-          <ReplyIcon className="w-4 h-4" />
         </Button>
       )}
     </>

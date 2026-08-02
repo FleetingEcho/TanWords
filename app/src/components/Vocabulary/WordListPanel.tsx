@@ -6,7 +6,7 @@ import { SpeakButton } from "@/components/ui/SpeakButton";
 import { SparkIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ListPaginator } from "@/components/shared/ListPaginator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { LevelDateFilter, LevelValue } from "@/components/shared/LevelDateFilter";
 import { LIST_PANEL_WIDTH, LIST_PANEL_COLLAPSED_WIDTH, LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
@@ -79,7 +79,6 @@ export function WordListPanel({
   fullWidth, inlineDetail = true, onToggleLayout, renderDetail,
 }: Props) {
   const t = useT();
-  const totalPages = Math.ceil(words.length / pageSize);
   const paged = words.slice(page * pageSize, (page + 1) * pageSize);
   const measure = fullWidth ? "mx-auto w-full max-w-4xl" : "";
   const [jumpHighlightId, setJumpHighlightId] = React.useState<number | null>(highlightId ?? null);
@@ -107,8 +106,11 @@ export function WordListPanel({
 
   return (
     <div className={fullWidth ? "flex-1 min-h-0 flex flex-col" : `${LIST_PANEL_WIDTH} shrink-0 border-r border-border bg-card flex flex-col h-full`}>
-      <div className={`${measure} ${fullWidth ? "px-6" : "px-4"} pt-5 pb-3 space-y-2.5`}>
-        <div className="flex items-baseline gap-2">
+      <div className={`${measure} ${fullWidth ? "px-4 lg:px-6" : "px-4"} pt-5 pb-3 space-y-2.5`}>
+        {/* Wraps rather than overflowing: the action group is four fixed 40px
+          * touch targets, which stop fitting beside the title well before the
+          * narrowest phone. */}
+        <div className="flex flex-wrap items-baseline gap-2">
           {!fullWidth && (
             <Button
               variant="ghost"
@@ -119,7 +121,7 @@ export function WordListPanel({
               <ChevronsLeft className="w-3.5 h-3.5" />
             </Button>
           )}
-          <h2 className="text-lg font-bold">{t("vocab.title")}</h2>
+          <h2 className="min-w-0 truncate text-lg font-bold">{t("vocab.title")}</h2>
           <span className="text-sm text-muted-foreground">{words.length}</span>
           <div className="ml-auto flex items-center gap-1">
             {bulkRunning ? (
@@ -187,7 +189,7 @@ export function WordListPanel({
         </div>
 
         {selectMode && (
-          <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-2 py-1.5">
+          <div className="flex flex-wrap items-center gap-2 rounded-lg bg-muted/50 px-2 py-1.5">
             <Checkbox
               checked={selectedIds.size === words.length && words.length > 0}
               onCheckedChange={() => (selectedIds.size === words.length ? onClearSelection() : onSelectAll())}
@@ -226,7 +228,7 @@ export function WordListPanel({
         )}
 
         {/* Dictionary search — hits the vocabulary first, AI lookup as fallback */}
-        <div className={`relative ${fullWidth ? "-mx-6" : ""}`}>
+        <div className={`relative ${fullWidth ? "-mx-4 lg:-mx-6" : ""}`}>
           <input
             type="text"
             value={search}
@@ -262,7 +264,7 @@ export function WordListPanel({
             <Button
               variant="ghost"
               onClick={() => onAiLookup(search.trim())}
-              className={`h-auto w-full ${fullWidth ? "px-6" : "px-4"} py-3 text-left justify-start block rounded-none transition-colors ${
+              className={`h-auto w-full px-4 ${fullWidth ? "lg:px-6" : ""} py-3 text-left justify-start block rounded-none transition-colors ${
                 lookupActive ? "bg-accent/50 hover:bg-accent/50" : "hover:bg-muted/50"
               }`}
             >
@@ -296,7 +298,7 @@ export function WordListPanel({
           <div
             onDoubleClick={() => onDoubleClick(w)}
             onClick={() => (selectMode ? onToggleSelect(w.id) : onSelect(w))}
-            className={`${fullWidth ? "px-6 py-2.5" : "px-4 py-3"} cursor-pointer transition-colors ${
+            className={`${fullWidth ? "px-4 py-2.5 lg:px-6" : "px-4 py-3"} cursor-pointer transition-colors ${
               expanded ? "sticky top-0 z-10 bg-background" : ""
             } ${
               selectedIds.has(w.id) || (selectedId === w.id && !lookupActive)
@@ -313,7 +315,7 @@ export function WordListPanel({
                   className="shrink-0"
                 />
               )}
-              <span className="font-semibold text-sm truncate shrink-0">{w.word}</span>
+              <span className="font-semibold text-sm truncate">{w.word}</span>
               <LevelBadge level={w.level} />
               {hostCapabilities.nativeTts && <SpeakButton text={w.word} className="w-3.5 h-3.5" />}
               {/* Full-width rows are single-line: the gloss rides inline instead of a second line */}
@@ -351,46 +353,14 @@ export function WordListPanel({
 
       {words.length > 0 && (
         <div className="shrink-0 border-t border-border">
-        <div className={`${measure} px-3 py-2 flex items-center justify-between gap-2`}>
-          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <span>{t("vocab.perPage")}</span>
-            <Select value={String(pageSize)} onValueChange={(value) => onPageSizeChange(Number(value))}>
-              <SelectTrigger className="h-10 w-16 lg:h-7 rounded-md px-2 text-xs" aria-label={t("vocab.perPage")}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {[10, 20, 50, 100].map((size) => (
-                  <SelectItem key={size} value={String(size)}>{size}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            onClick={() => onPageChange(Math.max(0, page - 1))}
-            disabled={page === 0}
-            className="w-10 h-10 lg:w-7 lg:h-7 p-0 flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted disabled:opacity-30 transition-colors"
-          >
-            <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-              <path fillRule="evenodd" d="M9.78 12.78a.75.75 0 01-1.06 0L4.47 8.53a.75.75 0 010-1.06l4.25-4.25a.75.75 0 011.06 1.06L6.06 8l3.72 3.72a.75.75 0 010 1.06z" clipRule="evenodd" />
-            </svg>
-          </Button>
-          <span className="text-[11px] text-muted-foreground">
-            {page * pageSize + 1}–{Math.min((page + 1) * pageSize, words.length)} / {words.length}
-          </span>
-          <Button
-            variant="ghost"
-            onClick={() => onPageChange(Math.min(totalPages - 1, page + 1))}
-            disabled={(page + 1) * pageSize >= words.length}
-            className="w-10 h-10 lg:w-7 lg:h-7 p-0 flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted disabled:opacity-30 transition-colors"
-          >
-            <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-              <path fillRule="evenodd" d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z" clipRule="evenodd" />
-            </svg>
-          </Button>
-          </div>
-        </div>
+          <ListPaginator
+            className={measure}
+            page={page}
+            pageSize={pageSize}
+            total={words.length}
+            onPageChange={onPageChange}
+            onPageSizeChange={onPageSizeChange}
+          />
         </div>
       )}
     </div>

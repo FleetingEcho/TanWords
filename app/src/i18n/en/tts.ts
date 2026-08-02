@@ -64,6 +64,7 @@ export const tts: Dict = {
     "tts.close": "Close",
     "tts.backToSource": "Back to where this is playing",
     "tts.listenToArticle": "Listen to article",
+    "tts.listenMenu": "Listen…",
     "tts.synthesizing": "Synthesizing…",
     "tts.sentenceProgress": "{current} / {total}",
 };

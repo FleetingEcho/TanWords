@@ -189,7 +189,13 @@ export function MainLayout({
         className={`flex min-w-0 flex-1 flex-col overflow-hidden box-border transition-[padding-bottom] duration-200 pb-[calc(4rem+env(safe-area-inset-bottom))] ${podcastActive ? "lg:pb-16" : "lg:pb-0"}`}
       >
         <CommandBar activePage={activeNav as NavPage} />
-        <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+        {/* `overflow-x-hidden` is load-bearing, not defensive: `overflow-y: auto`
+          * alone computes the *other* axis to `auto` too, so any page whose
+          * content overran the viewport by a few pixels gave the whole shell a
+          * horizontal scrollbar and slid the header and tab bar sideways with
+          * it. Content that genuinely needs to scroll sideways (code blocks,
+          * wide tables) scrolls inside its own box. */}
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">{children}</div>
       </main>
 
       {mobile && (

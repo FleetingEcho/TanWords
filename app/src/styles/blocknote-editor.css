@@ -97,6 +97,13 @@
   font-size: calc(var(--document-font-size, 16px) * 1.875);
   line-height: 1.2;
 }
+/* Below `lg` the display-size title is pure cost: it clips after ~14 characters
+ * anyway (it's a single-line input) while eating a row of a short screen. */
+@media (max-width: 1023px) {
+  .document-editor-title {
+    font-size: calc(var(--document-font-size, 16px) * 1.25);
+  }
+}
 /* Compact variant — embedded editors (e.g. word notes) with little chrome around them */
 .tanwords-editor.tanwords-editor-compact .bn-editor {
   margin-top: 0;

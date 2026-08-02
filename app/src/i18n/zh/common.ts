@@ -4,6 +4,8 @@ export const common: Dict = {
     "common.cancel": "取消",
     "common.delete": "删除",
     "common.loading": "加载中...",
+    "common.prevPage": "上一页",
+    "common.nextPage": "下一页",
     "sel.lookup": "查词",
     "sel.savePattern": "存为句式",
     "sel.saving": "分析中…",

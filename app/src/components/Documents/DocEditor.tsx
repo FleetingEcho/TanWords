@@ -11,9 +11,9 @@ import { DocumentDetail } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { useIsDark } from "@/hooks/useIsDark";
 import { parseDbTimestamp } from "@/lib/dbTime";
-import { PinIcon } from "@/components/ui/icons";
+import { CloseIcon, PinIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
-import { Check, Link2, Maximize2, Minimize2, Search } from "lucide-react";
+import { Check, Link2, ListTree, Maximize2, Minimize2, Search } from "lucide-react";
 import { RawMarkdownEditor } from "./RawMarkdownEditor";
 import type { SaveStatus } from "./useDocumentEditor";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
@@ -31,6 +31,8 @@ import { exportEditorHtml, exportEditorPdf } from "@/lib/documentExport";
 import { DocumentHistoryModal } from "./DocumentHistoryModal";
 import type { DocumentRevision } from "@/lib/documentRevisions";
 import { DocumentToolbarActions } from "./DocumentToolbarActions";
+import { DocumentChromeToggle } from "./DocumentChromeToggle";
+import { useIsNarrow } from "@/components/Vocabulary/hooks/useMediaQuery";
 import { contentToBlocksOffThread } from "@/lib/documentWorkerClient";
 import { withTrailingEditorParagraph } from "./trailingEditorParagraph";
 import { liftMermaid } from "./mermaidTransforms";
@@ -50,6 +52,7 @@ interface Props {
 export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, onPinToggle, saveStatus, zenMode, onZenModeChange }: Props) {
   const t = useT();
   const isDark = useIsDark();
+  const narrow = useIsNarrow();
   const documentFontSize = useSettingsStore((state) => state.documentFontSize);
   const setDocumentFontSize = useSettingsStore((state) => state.setDocumentFontSize);
   const [title, setTitle] = useState(doc.title);
@@ -61,6 +64,10 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
   const searchRootRef = useRef<HTMLDivElement>(null);
   const [toolbarPortalElement, setToolbarPortalElement] = useState<HTMLDivElement | null>(null);
   const [outlineOpen, setOutlineOpen] = useState(false);
+  // Phone-only: the tags/search/toolbar stack is ~half the readable area on
+  // a narrow screen, so it starts folded away. Ignored at `lg` (see
+  // DocumentChromeToggle), where the chrome always renders.
+  const [chromeOpen, setChromeOpen] = useState(false);
   const [outlineTick, setOutlineTick] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
 
@@ -90,8 +97,8 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
       data-color-scheme={isDark ? "dark" : "light"}
     >
       {/* Title + metadata */}
-      <div className="px-4 lg:px-12 pt-8 pb-2 shrink-0">
-        <div className="flex flex-wrap items-start gap-3">
+      <div className="px-4 lg:px-12 pt-3 pb-1 lg:pt-8 lg:pb-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-3">
           <input
             ref={titleRef}
             type="text"
@@ -102,12 +109,13 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
             placeholder={t("doc.untitled")}
             className="document-editor-title min-w-0 flex-1 font-bold tracking-tight bg-transparent border-none outline-hidden placeholder:text-muted-foreground/30 text-foreground"
           />
-          <div className="flex items-center h-8">
+          <div className="flex h-8 shrink-0 items-center">
+            <DocumentChromeToggle open={chromeOpen} onToggle={() => setChromeOpen((v) => !v)} />
             <Button
             variant="ghost"
             onClick={onPinToggle}
             title={doc.pinned ? t("doc.unpin") : t("doc.pin")}
-            className={`mt-2 w-8 h-8 p-0 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
+            className={`w-8 h-8 p-0 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
               doc.pinned
                 ? "text-amber-500 bg-amber-500/10 hover:bg-amber-500/10"
                 : "text-muted-foreground/50 hover:text-foreground hover:bg-muted"
@@ -122,13 +130,13 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
             onClick={() => onZenModeChange(!zenMode)}
             title={zenMode ? t("doc.exitZenMode") : t("doc.zenMode")}
             aria-label={zenMode ? t("doc.exitZenMode") : t("doc.zenMode")}
-            className="mt-2 h-8 w-8 shrink-0 text-muted-foreground"
+            className="h-8 w-8 shrink-0 text-muted-foreground"
           >
             {zenMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           </Button>
           </div>
         </div>
-        <div className="mt-2 space-y-2">
+        <div className={`${chromeOpen ? "block" : "hidden"} mt-1 space-y-1.5 lg:mt-2 lg:block lg:space-y-2`}>
           <div className="flex flex-wrap items-center gap-2">
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3.5 h-3.5 text-muted-foreground/50 shrink-0">
               <path d="M3.5 10.5v-6a1 1 0 011-1h6l6 6-7 7-6-6z" strokeLinejoin="round" />
@@ -169,7 +177,7 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
             onFontSizeChange={setDocumentFontSize}
           />
         </div>
-        <div className="mt-3 border-b border-border/60" />
+        <div className="mt-1.5 border-b border-border/60 lg:mt-3" />
         <input ref={attachmentInputRef} type="file" className="hidden"
           onChange={(event) => { void attachments.insertAttachment(event.target.files?.[0]); event.target.value = ""; }} />
       </div>
@@ -199,11 +207,48 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
                 />
               </BlockNoteView>
             </DocumentPreviewScrollArea>
-            {outlineOpen && <DocumentOutline editor={editor} tick={outlineTick} />}
+            {outlineOpen && !narrow && (
+              <div className="w-56 shrink-0">
+                <DocumentOutline editor={editor} tick={outlineTick} />
+              </div>
+            )}
           </div>
         </div>
       ) : (
         <RawMarkdownEditor value={rawMarkdown} onChange={handleRawChange} label={t("doc.rawMode")} />
+      )}
+
+      {/* Phones get the outline as a modal instead of a column: at that width a
+        * persistent column either buries the document or squeezes it to a
+        * sliver, and the outline is a jump-and-dismiss tool, not a companion
+        * pane. Desktop keeps the side column above. */}
+      {narrow && (
+        <Dialog open={outlineOpen} onClose={() => setOutlineOpen(false)} maxWidth="max-w-sm">
+          <div className="relative border-b border-border px-5 py-4">
+            <DialogTitle className="flex items-center gap-2 text-base font-semibold">
+              <ListTree className="h-4 w-4 text-muted-foreground" />
+              {t("doc.outline")}
+            </DialogTitle>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => setOutlineOpen(false)}
+              className="absolute right-3 top-3 h-7 w-7 rounded-full text-muted-foreground hover:text-foreground"
+              title={t("common.close")}
+              aria-label={t("common.close")}
+            >
+              <CloseIcon className="h-4 w-4" />
+            </Button>
+          </div>
+          <DocumentOutline
+            editor={editor}
+            tick={outlineTick}
+            className="max-h-[60vh] overflow-y-auto p-3"
+            showHeader={false}
+            onNavigate={() => setOutlineOpen(false)}
+          />
+        </Dialog>
       )}
 
       {(links.linkContext.outgoing.length > 0 || links.linkContext.backlinks.length > 0) && (

@@ -39,7 +39,20 @@ export async function netFetch(
   const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
   const id = nextId++;
   const bridge = host();
+  const signal = init.signal;
 
+  if (signal?.aborted) throw abortError();
+
+  // Wired up BEFORE the request, and covering the wait for headers — not just
+  // the body stream. An AI completion spends most of its life between "sent"
+  // and "first byte", and an abort during that window used to do nothing at
+  // all: no `http:abort` reached main, and the headers promise below never
+  // settled, so the caller's `finally` never ran and its progress UI stayed up
+  // forever with a cancel button that did nothing.
+  const abortRequest = () => void bridge.call("http:abort", { id });
+  signal?.addEventListener("abort", abortRequest);
+
+  let abortHead: (() => void) | null = null;
   const head = await new Promise<{ status: number; statusText: string; headers: Record<string, string> }>(
     (resolve, reject) => {
       const offHead = bridge.on(`http:head:${id}`, resolve);
@@ -48,6 +61,12 @@ export async function netFetch(
         offEnd();
         if (error) reject(new Error(error));
       });
+      abortHead = () => {
+        offHead();
+        offEnd();
+        reject(abortError());
+      };
+      signal?.addEventListener("abort", abortHead, { once: true });
       bridge
         .call("http:fetch", {
           id,
@@ -60,7 +79,9 @@ export async function netFetch(
         })
         .catch(reject);
     },
-  );
+  ).finally(() => {
+    if (abortHead) signal?.removeEventListener("abort", abortHead);
+  });
 
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -99,13 +120,17 @@ export async function netFetch(
     },
   });
 
-  init.signal?.addEventListener("abort", () => void bridge.call("http:abort", { id }));
-
   return new Response(body, {
     status: head.status,
     statusText: head.statusText,
     headers: head.headers,
   });
+}
+
+/** DOMException so callers can keep checking `e.name === "AbortError"`, the
+ *  same shape the platform `fetch` rejects with. */
+function abortError(): Error {
+  return new DOMException("The operation was aborted.", "AbortError");
 }
 
 function normalizeHeaders(headers: HeadersInit | undefined): Record<string, string> {

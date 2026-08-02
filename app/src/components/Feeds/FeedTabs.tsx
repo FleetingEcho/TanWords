@@ -161,7 +161,11 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
         </div>
       </div>
 
-      <div className="rss-tabs-scroll -mb-1 flex h-8 max-w-[min(70vw,480px)] shrink-0 items-center gap-2 overflow-x-auto pb-1">
+      {/* No fixed height: `pb-1` (scrollbar gutter, cancelled by `-mb-1`) sits
+        * *inside* the box, so pinning it to h-8 while its buttons are h-8 left
+        * 4px of overflow — and `overflow-x-auto` clips the other axis too, so
+        * More / + Add feed rendered with their tops and bottoms shaved off. */}
+      <div className="rss-tabs-scroll -mb-1 flex max-w-[min(70vw,480px)] shrink-0 items-center gap-2 overflow-x-auto pb-1">
         {feeds.length > 0 && (
           <Popover open={moreOpen} onOpenChange={setMoreOpen}>
             <PopoverTrigger asChild>
@@ -206,7 +210,6 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
             </PopoverContent>
           </Popover>
         )}
-        {syncing && <span className="text-[11px] text-muted-foreground">{t("feeds.refreshing")}</span>}
         <Popover open={bookmarkOpen} onOpenChange={setBookmarkOpen}>
           <PopoverTrigger asChild>
             <Button

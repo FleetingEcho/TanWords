@@ -11,7 +11,8 @@ import { blocksToMarkdownOffThread, blocksToMarkdownWithStatsOffThread, markdown
 import { liftMermaid, lowerMermaid } from "./mermaidTransforms";
 import { SaveStatus } from "./useDocumentEditor";
 import { Button } from "@/components/ui/button";
-import { Check, Maximize2, Minimize2 } from "lucide-react";
+import { Check, ListTree, Maximize2, Minimize2 } from "lucide-react";
+import { CloseIcon } from "@/components/ui/icons";
 import { RawMarkdownEditor } from "./RawMarkdownEditor";
 import { blocksToText } from "@/lib/docFormat";
 import { toast } from "sonner";
@@ -36,6 +37,9 @@ import {
   type DocumentRevision,
 } from "@/lib/documentRevisions";
 import { DocumentToolbarActions } from "./DocumentToolbarActions";
+import { DocumentChromeToggle } from "./DocumentChromeToggle";
+import { Dialog, DialogTitle } from "@/components/ui/dialog";
+import { useIsNarrow } from "@/components/Vocabulary/hooks/useMediaQuery";
 
 type EditorMode = "rich" | "raw";
 
@@ -78,6 +82,7 @@ async function readNativeClipboardImage(): Promise<File | null> {
 export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, modifiedMs, saveStatus, onSave, onDirty, onUploadImage, toRawMarkdown, toDisplayMarkdown, onRename, zenMode, onZenModeChange }: Props) {
   const t = useT();
   const isDark = useIsDark();
+  const narrow = useIsNarrow();
   const documentFontSize = useSettingsStore((state) => state.documentFontSize);
   const setDocumentFontSize = useSettingsStore((state) => state.setDocumentFontSize);
   const [title, setTitle] = useState(fileStem(relPath));
@@ -91,6 +96,8 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
   // body looks empty rather than loading, for however long the parse takes.
   const [richLoading, setRichLoading] = useState(true);
   const [outlineOpen, setOutlineOpen] = useState(false);
+  // See DocEditor: the metadata/toolbar stack starts folded on phones.
+  const [chromeOpen, setChromeOpen] = useState(false);
   const [outlineTick, setOutlineTick] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -345,8 +352,8 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
   return (
     <div className="flex flex-col h-full">
       {/* Filename as title */}
-      <div className="px-4 lg:px-12 pt-8 pb-2 shrink-0">
-        <div className="flex flex-wrap items-start gap-3">
+      <div className="px-4 lg:px-12 pt-3 pb-1 lg:pt-8 lg:pb-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-3">
           <Button
             type="button"
             variant="ghost"
@@ -368,8 +375,9 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
             placeholder={t("doc.untitled")}
             className="document-editor-title min-w-0 flex-1 font-bold tracking-tight bg-transparent border-none outline-hidden placeholder:text-muted-foreground/30 text-foreground"
           />
+          <DocumentChromeToggle open={chromeOpen} onToggle={() => setChromeOpen((v) => !v)} />
         </div>
-        <div className="mt-2 space-y-2">
+        <div className={`${chromeOpen ? "block" : "hidden"} mt-1 space-y-1.5 lg:mt-2 lg:block lg:space-y-2`}>
           <p className="truncate text-xs font-mono text-muted-foreground/60">{relPath}</p>
           <div className="flex items-center gap-2">
             {mode === "rich" && <DocumentContentSearch rootRef={searchRootRef} className="w-full lg:w-[30%]" />}
@@ -389,7 +397,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
             />
           </div>
         </div>
-        <div className="mt-3 border-b border-border/60" />
+        <div className="mt-1.5 border-b border-border/60 lg:mt-3" />
         <input ref={attachmentInputRef} type="file" className="hidden"
           onChange={(event) => { void insertAttachment(event.target.files?.[0]); event.target.value = ""; }} />
       </div>
@@ -417,11 +425,46 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
                 />
               </BlockNoteView>
             </DocumentPreviewScrollArea>
-            {outlineOpen && <DocumentOutline editor={editor} tick={outlineTick} />}
+            {outlineOpen && !narrow && (
+              <div className="w-56 shrink-0">
+                <DocumentOutline editor={editor} tick={outlineTick} />
+              </div>
+            )}
           </div>
         </div>
       ) : (
         <RawMarkdownEditor value={rawMarkdown} onChange={handleRawChange} label={t("doc.rawMode")} />
+      )}
+
+      {/* See DocEditor: on phones the outline is a jump-and-dismiss modal
+        * rather than a column that competes with the document for width. */}
+      {narrow && (
+        <Dialog open={outlineOpen} onClose={() => setOutlineOpen(false)} maxWidth="max-w-sm">
+          <div className="relative border-b border-border px-5 py-4">
+            <DialogTitle className="flex items-center gap-2 text-base font-semibold">
+              <ListTree className="h-4 w-4 text-muted-foreground" />
+              {t("doc.outline")}
+            </DialogTitle>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => setOutlineOpen(false)}
+              className="absolute right-3 top-3 h-7 w-7 rounded-full text-muted-foreground hover:text-foreground"
+              title={t("common.close")}
+              aria-label={t("common.close")}
+            >
+              <CloseIcon className="h-4 w-4" />
+            </Button>
+          </div>
+          <DocumentOutline
+            editor={editor}
+            tick={outlineTick}
+            className="max-h-[60vh] overflow-y-auto p-3"
+            showHeader={false}
+            onNavigate={() => setOutlineOpen(false)}
+          />
+        </Dialog>
       )}
 
       {/* Footer: save status */}
