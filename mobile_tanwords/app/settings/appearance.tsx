@@ -8,7 +8,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useT } from "@/hooks/useT";
 import { SegmentedTabs } from "@/components/ui";
 import { useSettingsStore, type ThemeMode } from "@/store/settingsStore";
-import { SettingsHeader } from "./_header";
+import { SettingsHeader } from "@/components/settings/SettingsHeader";
 
 export default function AppearanceScreen() {
   const t = useT();

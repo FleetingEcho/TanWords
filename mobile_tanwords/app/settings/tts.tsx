@@ -10,7 +10,7 @@ import { useT } from "@/hooks/useT";
 import { usePalette } from "@/lib/theme";
 import { Card, Divider, ListRow } from "@/components/ui";
 import { useSettingsStore } from "@/store/settingsStore";
-import { SettingsHeader } from "./_header";
+import { SettingsHeader } from "@/components/settings/SettingsHeader";
 
 const SPEEDS = [0.75, 1, 1.25, 1.5];
 

@@ -10,6 +10,7 @@
  * `hn_item_id` column, so the sync layer would otherwise have nothing to store.
  */
 import { XMLParser } from "fast-xml-parser";
+import { viaCorsProxy } from "@/lib/corsProxy";
 
 export interface ParsedEntry {
   title: string;
@@ -484,7 +485,9 @@ async function getWithTimeout(url: string, headers: Record<string, string>): Pro
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    return await fetch(url, { headers, redirect: "follow", signal: controller.signal });
+    // Web fetches via the dev server's /__cors-proxy (same-origin; the proxy
+    // injects the UA server-side since browsers forbid setting it).
+    return await fetch(viaCorsProxy(url), { headers, redirect: "follow", signal: controller.signal });
   } catch (e) {
     const reason = controller.signal.aborted ? `timed out after ${REQUEST_TIMEOUT_MS / 1000}s` : errorMessage(e);
     throw new Error(`Request to ${url} failed: ${reason}`);

@@ -4,6 +4,7 @@
  * with FTS5 search (reading_articles_fts) and the same upsert-by-fingerprint
  * semantics for re-saved articles.
  */
+import { Platform } from "react-native";
 import { getDb } from "./connection";
 
 /** Rows in the reading library list. `content` is deliberately absent — a
@@ -144,18 +145,27 @@ export async function db_list_reading_articles(args?: {
   // Rust: search.map(fts_match_query).filter(|terms| !terms.is_empty())
   const searchTermsOpt = args?.search != null ? ftsMatchQuery(args.search) : null;
   const searching = searchTermsOpt != null && searchTermsOpt.length > 0;
+  // Web's wa-sqlite build has no FTS5 — the join/bm25/snippet path is native-only.
+  const useFts = searching && Platform.OS !== "web";
+  // Fallback mirrors ftsMatchQuery's AND-of-terms semantics over the indexed cols.
 
   let from = "FROM reading_articles a";
-  if (searching) {
+  if (useFts) {
     from += " JOIN reading_articles_fts f ON f.rowid = a.id";
   }
 
   let whereSql = " WHERE 1=1";
   const values: (string | number)[] = [];
 
-  if (searching) {
+  if (useFts) {
     whereSql += " AND reading_articles_fts MATCH ?";
-    values.push(searchTermsOpt);
+    values.push(searchTermsOpt!);
+  } else if (searching) {
+    for (const t of (args?.search ?? "").trim().replace(/["*]/g, " ").split(/\s+/).filter(Boolean)) {
+      whereSql += " AND (a.title LIKE ? OR a.content LIKE ?)";
+      const p = `%${t}%`;
+      values.push(p, p);
+    }
   }
   const source = args?.source && args.source.length > 0 ? args.source : null;
   if (source !== null) {
@@ -187,9 +197,9 @@ export async function db_list_reading_articles(args?: {
   let order: string;
   if (args?.sort === "added") order = "a.created_at DESC";
   else if (args?.sort === "longest") order = "a.word_count DESC";
-  else if (searching) order = "bm25(reading_articles_fts)";
+  else if (useFts) order = "bm25(reading_articles_fts)";
   else order = "a.last_read_at DESC";
-  const snippet = searching ? "snippet(reading_articles_fts, 1, '', '', '…', 22)" : "''";
+  const snippet = useFts ? "snippet(reading_articles_fts, 1, '', '', '…', 22)" : "''";
 
   const sql =
     "SELECT a.id, a.title, a.word_count, a.source, a.source_url, a.tags, a.created_at, a.last_read_at, " +

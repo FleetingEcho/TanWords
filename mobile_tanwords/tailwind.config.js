@@ -8,6 +8,13 @@ const v = (name) => `hsl(var(--${name}))`;
 module.exports = {
   content: ["./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}"],
   presets: [require("nativewind/preset")],
+  // "class" instead of the "media" default: react-native-css-interop's web
+  // runtime unconditionally calls colorScheme.set() when it observes the
+  // compiled CSS arriving in <head>, which throws when darkMode is "media"
+  // ("Cannot manually set color scheme..."). This app themes via CSS vars
+  // injected at the root (vars(themeVars())) and has zero dark: variants,
+  // so "class" is purely the crash-avoiding, manual-control mode here.
+  darkMode: "class",
   theme: {
     extend: {
       colors: {

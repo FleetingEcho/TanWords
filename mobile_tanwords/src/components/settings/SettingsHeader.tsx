@@ -1,5 +1,5 @@
 /** Shared back-header for the settings screens group (tabs hide headers).
- *  Underscore-prefixed file: expo-router ignores it as a route. */
+ *  Lives outside app/ — expo-router registers every file under app/ as a route. */
 import { type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
