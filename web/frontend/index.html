@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <script>
+      // Apply the last-known theme synchronously, before first paint — avoids
+      // a flash of the wrong theme while the real setting loads from the DB
+      // asynchronously (see settingsStore.loadFromDB / applyTheme).
+      (function () {
+        try {
+          var theme = localStorage.getItem("tanwords_theme_cache") || "system";
+          var isDark =
+            theme === "dark" || theme === "catppuccin-mocha" || theme === "dracula" ||
+            theme === "tokyo-night" || theme === "tokyo-night-storm" || theme === "dim" ||
+            (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          if (isDark) document.documentElement.classList.add("dark");
+          if (theme === "catppuccin-latte") document.documentElement.classList.add("theme-catppuccin-latte");
+          if (theme === "catppuccin-mocha") document.documentElement.classList.add("theme-catppuccin-mocha");
+          if (theme === "dracula") document.documentElement.classList.add("theme-dracula");
+          if (theme === "tokyo-night") document.documentElement.classList.add("theme-tokyo-night");
+          if (theme === "tokyo-night-day") document.documentElement.classList.add("theme-tokyo-night-day");
+          if (theme === "tokyo-night-storm") document.documentElement.classList.add("theme-tokyo-night-storm");
+          if (theme === "dim") document.documentElement.classList.add("theme-dim");
+        } catch (e) {}
+      })();
+    </script>
+    <meta charset="UTF-8" />
+    <!-- PWA-lite: installable to a phone home screen with its own icon, but
+         intentionally no service worker — the app is always server-backed. -->
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <!-- Matches styles/theme-vars.css light --background (220 25% 97%). The
+         pre-paint script above may flip the page dark, but the browser chrome
+         colour is read once at parse time; light is the honest default. -->
+    <meta name="theme-color" content="#f5f7f9" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="TanWords" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>TanWords Web</title>
+  </head>
+  <body class="antialiased">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

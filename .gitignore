@@ -1,6 +1,3 @@
-./*/**/node_modules
-./*/**/target
-
 .codegraph/
 
 # local release build outputs (deb/rpm/dmg/app) — not source, regenerate via build
@@ -9,8 +6,12 @@ dist-releases/
 
 app/docs/
 .claude/
-./**/*/.claude/
+**/*/.claude/
 
 app/out/
 
 app/core/sherpa-libs/
+
+web/frontend/dist/
+**/*/node_modules/
+**/*/target/
