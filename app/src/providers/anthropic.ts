@@ -54,13 +54,11 @@ export class AnthropicProvider implements AIProvider {
     signal?: AbortSignal,
     maxTokens?: number,
   ): AsyncGenerator<string> {
+    const headers: Record<string, string> = { "Content-Type": "application/json", "anthropic-version": "2023-06-01" };
+    if (this.apiKey) headers["x-api-key"] = this.apiKey;
     const response = await netFetch(`${this.apiBase}/v1/messages`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": this.apiKey,
-        "anthropic-version": "2023-06-01",
-      },
+      headers,
       body: JSON.stringify({ model: this.modelId, system, messages, max_tokens: maxTokens || 4096, stream: true }),
       signal,
     });
@@ -99,13 +97,11 @@ export class AnthropicProvider implements AIProvider {
     signal?: AbortSignal,
     onText?: (chunk: string) => void,
   ): Promise<ToolCallResponse> {
+    const headers: Record<string, string> = { "Content-Type": "application/json", "anthropic-version": "2023-06-01" };
+    if (this.apiKey) headers["x-api-key"] = this.apiKey;
     const response = await netFetch(`${this.apiBase}/v1/messages`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": this.apiKey,
-        "anthropic-version": "2023-06-01",
-      },
+      headers,
       body: JSON.stringify({
         model: this.modelId,
         system: systemPrompt,
@@ -192,13 +188,11 @@ export class AnthropicProvider implements AIProvider {
     };
     body.max_tokens = maxTokens || 4096;
 
+    const headers: Record<string, string> = { "Content-Type": "application/json", "anthropic-version": "2023-06-01" };
+    if (this.apiKey) headers["x-api-key"] = this.apiKey;
     const response = await netFetch(`${this.apiBase}/v1/messages`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": this.apiKey,
-        "anthropic-version": "2023-06-01",
-      },
+      headers,
       body: JSON.stringify(body),
       signal,
     });

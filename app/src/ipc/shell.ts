@@ -4,7 +4,12 @@
  *  unvalidated openExternal is a remote-code-execution vector on Windows. */
 
 import { callMain } from "./host";
+import { isDesktopHost } from "@/platform";
 
 export async function openExternal(url: string): Promise<void> {
-  await callMain("shell:open", { url });
+  if (isDesktopHost) {
+    await callMain("shell:open", { url });
+    return;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
 }

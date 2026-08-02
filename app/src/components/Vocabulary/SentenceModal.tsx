@@ -10,6 +10,7 @@ import { LevelBadge } from "@/components/shared/LevelBadge";
 import { SpeakButton } from "@/components/ui/SpeakButton";
 import { SparkIcon, CloseIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
+import { hostCapabilities } from "@/platform";
 
 interface Props {
   open: boolean;
@@ -189,7 +190,7 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
         <Button
           variant="ghost"
           onClick={handleClose}
-          className="w-7 h-7 p-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          className="w-10 h-10 lg:w-7 lg:h-7 p-0 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
         >
           <CloseIcon className="w-3.5 h-3.5" />
         </Button>
@@ -309,7 +310,10 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
                           />
                         )}
                         <div className="min-w-0 flex-1">
-                          <strong className="min-w-0 wrap-break-word font-serif text-[15px] block">{candidate.sentence}</strong>
+                          <div className="flex items-start gap-1.5">
+                            <strong className="min-w-0 wrap-break-word font-serif text-[15px] block">{candidate.sentence}</strong>
+                            {hostCapabilities.nativeTts && <SpeakButton text={candidate.sentence} className="mt-1.5 h-4 w-4 shrink-0" />}
+                          </div>
                           <span className="mt-0.5 block text-sm text-muted-foreground">{candidate.zh}</span>
                           {(candidate.skeleton || candidate.note) && (
                             <span className="mt-0.5 block truncate text-xs text-muted-foreground/80">
@@ -321,7 +325,6 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
                         {/* Row click toggles selection, so anything interactive
                           * inside it has to keep its click to itself. */}
                         <span onClick={(e) => e.stopPropagation()} className="contents">
-                          <SpeakButton text={candidate.sentence} className="mt-1.5 h-4 w-4 shrink-0" />
                           {saved && (
                             <button
                               onClick={() => void removeCandidate(candidate)}

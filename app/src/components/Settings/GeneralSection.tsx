@@ -13,6 +13,8 @@ import type { RssFeed } from "@/hooks/useDB.types";
 import { SettingRow, ToggleGroup } from "./SettingsShared";
 import { ImageSetting } from "./ImageSetting";
 import { BannerPositionModal } from "./BannerPositionModal";
+import { hostCapabilities } from "@/platform";
+import { me as fetchMe, logout } from "@/platform/auth";
 
 const MAX_AVATAR_UPLOAD_BYTES = 5 * 1024 * 1024;
 const MAX_BANNER_UPLOAD_BYTES = 8 * 1024 * 1024;
@@ -297,6 +299,13 @@ function DefaultRssTabSetting() {
 }
 
 export function GeneralSection() {
+  const [accountEmail, setAccountEmail] = useState<string | null>(null);
+  useEffect(() => {
+    if (!hostCapabilities.auth) return;
+    let mounted = true;
+    void fetchMe().then((record) => { if (mounted) setAccountEmail(record?.email ?? null); });
+    return () => { mounted = false; };
+  }, []);
   const settings = useSettingsStore();
   const t = useT();
 
@@ -311,6 +320,16 @@ export function GeneralSection() {
           options={[{ id: "en", label: "English" }, { id: "zh", label: "中文" }]}
           value={settings.uiLanguage}
           onChange={(v) => settings.setUiLanguage(v)}
+        />
+      </SettingRow>
+      <SettingRow label={t("settings.layoutMode")} sub={t("settings.layoutModeSub")}>
+        <ToggleGroup
+          options={[
+            { id: "on", label: t("settings.on") },
+            { id: "off", label: t("settings.off") },
+          ]}
+          value={settings.layoutMode === "flexible" ? "on" : "off"}
+          onChange={(v) => settings.setLayoutMode(v === "on" ? "flexible" : "fixed")}
         />
       </SettingRow>
       <SettingRow label={t("settings.theme")} sub={t("settings.themeSub")}>
@@ -352,7 +371,11 @@ export function GeneralSection() {
           <p className="mt-0.5 text-xs text-muted-foreground">{t("settings.topBarItemsSub")}</p>
         </div>
         <div className="flex max-w-4xl flex-wrap gap-2">
-          {DEFAULT_TOPBAR_ITEMS.map((item) => {
+          {DEFAULT_TOPBAR_ITEMS.filter((item) => {
+            if (item === "mcp") return hostCapabilities.mcp;
+            if (item === "updates") return hostCapabilities.updater;
+            return true;
+          }).map((item) => {
             const visible = settings.visibleTopBarItems.includes(item);
             return (
               <label key={item} className={`flex h-8 w-32 cursor-pointer items-center gap-2 rounded-full border px-3 text-xs font-medium transition-colors ${visible ? "border-primary/30 bg-primary/[0.07] text-foreground" : "border-transparent bg-muted/50 text-muted-foreground hover:bg-muted"}`}>
@@ -374,7 +397,11 @@ export function GeneralSection() {
           <p className="mt-0.5 text-xs text-muted-foreground">{t("settings.sidebarTabsSub")}</p>
         </div>
         <div className="flex max-w-3xl flex-wrap gap-2">
-          {DEFAULT_SIDEBAR_TABS.map((tab) => {
+          {DEFAULT_SIDEBAR_TABS.filter((tab) => {
+            if (tab === "music") return hostCapabilities.music;
+            if (tab === "browser") return hostCapabilities.browser;
+            return true;
+          }).map((tab) => {
             const visible = settings.visibleSidebarTabs.includes(tab);
             return (
               <label
@@ -392,6 +419,18 @@ export function GeneralSection() {
           })}
         </div>
       </div>
+
+      {hostCapabilities.auth && (
+        <div className="mt-4 border-t border-border/60 py-4">
+          <div className="mb-3">
+            <p className="text-sm font-medium">{t("auth.account")}</p>
+            {accountEmail && <p className="mt-0.5 text-xs text-muted-foreground">{accountEmail}</p>}
+          </div>
+          <Button variant="outline" className="h-8 text-xs" onClick={() => void logout()}>
+            {t("auth.logout")}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

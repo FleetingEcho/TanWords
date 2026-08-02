@@ -25,6 +25,10 @@ vi.mock("@/ipc/backend", () => ({
   invoke: invokeMock,
 }));
 
+vi.mock("@/platform", () => ({
+  isDesktopHost: true,
+}));
+
 vi.mock("./documentWorkerClient", () => ({
   markdownToBlocksOffThread: markdownToBlocksOffThreadMock,
   blocksToHtmlOffThread: blocksToHtmlOffThreadMock,

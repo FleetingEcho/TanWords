@@ -1,5 +1,5 @@
 import type {
-  Theme, SidebarTabId, TopBarItemId, RssTabSelection, BannerPosition,
+  Theme, SidebarTabId, TopBarItemId, RssTabSelection, BannerPosition, LayoutMode,
 } from "./types";
 
 export interface SettingsState {
@@ -27,6 +27,9 @@ export interface SettingsState {
   visibleSidebarTabs: SidebarTabId[];
   /** User-selected controls visible in the global command bar. */
   visibleTopBarItems: TopBarItemId[];
+  /** Responsive layout mode. Flexible adapts the shell and pages to narrow
+   * viewports; fixed keeps the classic desktop chrome on wide screens. */
+  layoutMode: LayoutMode;
   /** RSS feed tab selected by default when opening Feeds — "all" or a specific feed's id.
    *  Lets a user who mainly reads one source (e.g. Hacker News) skip loading every channel. */
   defaultRssTab: RssTabSelection;
@@ -77,6 +80,7 @@ export interface SettingsState {
   setSelectionActions: (v: boolean) => void;
   setSidebarTabVisible: (tab: SidebarTabId, visible: boolean) => void;
   setTopBarItemVisible: (item: TopBarItemId, visible: boolean) => void;
+  setLayoutMode: (mode: LayoutMode) => void;
   setDefaultRssTab: (tab: RssTabSelection) => void;
   setFeedsViewMode: (mode: "card" | "list") => void;
   setUserAvatar: (dataUrl: string) => void;

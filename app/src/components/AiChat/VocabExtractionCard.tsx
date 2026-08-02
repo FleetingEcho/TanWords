@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { useDB } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { SpeakButton } from "@/components/ui/SpeakButton";
+import { hostCapabilities } from "@/platform";
 import { SparkIcon } from "@/components/ui/icons";
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -163,7 +164,7 @@ export function VocabExtractionCard({ items }: { items: ExtractedVocabItem[] }) 
                   />
                 )}
                 <span className="text-sm font-semibold text-foreground">{item.word}</span>
-                <SpeakButton text={item.word} className="w-3 h-3" />
+                {hostCapabilities.nativeTts && <SpeakButton text={item.word} className="w-3 h-3" />}
                 <LevelDot level={item.level} />
                 <span className="text-xs text-muted-foreground truncate flex-1">{item.zh}</span>
               </div>

@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Markdown, renderInline } from "@/components/AiChat/Markdown";
 import { SpeakButton } from "@/components/ui/SpeakButton";
 import { EnrichOutline, parseEnrichOutline } from "@/lib/enrichSections";
+import { hostCapabilities } from "@/platform";
 
 /** A blockquote line counts as an example sentence to speak if it looks
  * predominantly English (more Latin letters than CJK characters). This lets
@@ -30,7 +31,7 @@ function ExampleBlockquote({ lines, quoteKey }: { lines: string[]; quoteKey: str
 
   return (
     <figure className="group my-3.5 flex gap-2.5 rounded-lg border border-border/60 bg-card/60 px-4 py-3 transition-colors hover:border-primary/30">
-      {englishText && (
+      {hostCapabilities.nativeTts && englishText && (
         <SpeakButton
           text={englishText}
           className="mt-[0.35em] h-3.5 w-3.5 shrink-0 opacity-50 transition-opacity group-hover:opacity-100"

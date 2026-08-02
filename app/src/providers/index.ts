@@ -2,6 +2,7 @@ import { AIProvider } from "./base";
 import { OpenAIProvider } from "./openai";
 import { AnthropicProvider } from "./anthropic";
 import { CustomProvider } from "./custom";
+import { isDesktopHost } from "@/platform";
 
 const providers = new Map<string, AIProvider>();
 
@@ -44,13 +45,17 @@ export function areProvidersReady(): boolean {
 
 // Register built-in providers
 export function registerBuiltInProviders(openaiKey: string, anthropicKey: string, models?: { openai?: string; claude?: string }) {
+  const openaiBase = isDesktopHost ? "https://api.openai.com/v1" : "/api/ai-proxy/openai";
+  const claudeBase = isDesktopHost ? "https://api.anthropic.com" : "/api/ai-proxy/claude";
+  const openaiKeyToUse = isDesktopHost ? openaiKey : "";
+  const claudeKeyToUse = isDesktopHost ? anthropicKey : "";
   providers.set(
     "openai",
-    new OpenAIProvider("https://api.openai.com/v1", openaiKey, models?.openai || "gpt-4o-mini")
+    new OpenAIProvider(openaiBase, openaiKeyToUse, models?.openai || "gpt-4o-mini")
   );
   providers.set(
     "claude",
-    new AnthropicProvider("https://api.anthropic.com", anthropicKey, models?.claude || "claude-haiku-4-5")
+    new AnthropicProvider(claudeBase, claudeKeyToUse, models?.claude || "claude-haiku-4-5")
   );
   notify();
 }
@@ -62,7 +67,13 @@ export function registerCustomProvider(
   apiKey: string,
   modelId: string
 ) {
-  providers.set(id, new CustomProvider(id, name, apiBase, apiKey, modelId));
+  if (isDesktopHost) {
+    providers.set(id, new CustomProvider(id, name, apiBase, apiKey, modelId));
+  } else {
+    // Web keys never enter the browser: the server resolves the stored
+    // credential for this provider id at /api/ai-proxy/:id.
+    providers.set(id, new CustomProvider(id, name, `/api/ai-proxy/${encodeURIComponent(id)}`, "", modelId));
+  }
   notify();
 }
 

@@ -8,6 +8,7 @@
 
 mod auth;
 mod config;
+mod embedded;
 mod runtime;
 mod server;
 mod users;

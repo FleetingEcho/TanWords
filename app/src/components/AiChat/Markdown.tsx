@@ -341,5 +341,5 @@ export function Markdown({
     );
   }
 
-  return <div className="markdown-body">{out}</div>;
+  return <div className="markdown-body wrap-break-word">{out}</div>;
 }

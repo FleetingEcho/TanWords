@@ -9,11 +9,17 @@ import { LearningSection } from "./LearningSection";
 import { McpSection } from "./McpSection";
 import { DocumentsSection } from "./DocumentsSection";
 import { DataSection } from "./DataSection";
+import { hostCapabilities } from "@/platform";
 
 export { SettingRow } from "./SettingsShared";
 
-const SECTIONS = ["general", "providers", "learning", "tts", "mcp", "documents", "data"] as const;
-type SectionId = (typeof SECTIONS)[number];
+const ALL_SECTIONS = ["general", "providers", "learning", "tts", "mcp", "documents", "data"] as const;
+type SectionId = (typeof ALL_SECTIONS)[number];
+const SECTIONS = ALL_SECTIONS.filter((id) => {
+  if (id === "tts") return hostCapabilities.nativeTts;
+  if (id === "mcp") return hostCapabilities.mcp;
+  return true;
+});
 
 export function SettingsPage() {
   const t = useT();
@@ -93,7 +99,7 @@ export function SettingsPage() {
       {/* Section nav: stays put while the content below scrolls, highlights
         * whichever section is in view, and jumps straight to a section on
         * click instead of leaving the user to scroll from the top. */}
-      <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-border px-8 py-2">
+      <div className="hidden sm:flex shrink-0 gap-1 overflow-x-auto border-b border-border px-8 py-2">
         {SECTIONS.map((id) => (
           <button
             key={id}
@@ -115,7 +121,7 @@ export function SettingsPage() {
         {/* data-no-selection opts the whole settings page out of the global SelectionAsk
             toolbar (Add word / Translate / Look up) — labels, model names and example text
             here aren't reading material to look words up from. */}
-        <div className="max-w-full px-8 py-6 space-y-10" data-no-selection>
+        <div className="max-w-full px-3 sm:px-8 py-4 sm:py-6 space-y-6 sm:space-y-10" data-no-selection>
           <section ref={(el) => { sectionRefs.current.general = el; }} data-section="general" className="scroll-mt-6">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">{t("settings.general")}</p>
             <GeneralSection />

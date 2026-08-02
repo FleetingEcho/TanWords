@@ -8,6 +8,87 @@ TanWords 是一款基于 Electron 和 Rust sidecar 的桌面英语学习应用�
 
 界面语言以中文为主，代码库语言以英文为主。
 
+## Web 版本（浏览器版）
+
+Web 版支持桌面和手机浏览器，带邮箱+密码账号、邀请码注册和每人独立的
+Turso/本地数据库。它直接使用 `app/src` 构建出的同一套前端，不再维护
+第二套前端目录。
+
+### 启动 Web 版
+
+需要先安装 Bun 和 Rust。
+
+1. 构建共享前端（只需要构建一次）：
+
+   ```bash
+   cd app
+   bun install
+   bun run build
+   ```
+
+2. 启动 Web 后端：
+
+   ```bash
+   cd ../web/server
+   TANWORDS_MASTER_KEY=$(openssl rand -hex 32) \
+   TANWORDS_INVITE_KEY=choose-a-key \
+   cargo run --release
+   ```
+
+3. 打开 `http://127.0.0.1:8740`，用邀请码注册。
+
+如果要在手机/局域网访问：
+
+```bash
+cd web/server
+TANWORDS_HOST=0.0.0.0 \
+TANWORDS_MASTER_KEY=$(openssl rand -hex 32) \
+TANWORDS_INVITE_KEY=choose-a-key \
+cargo run --release
+```
+
+然后打开 `http://<电脑局域网IP>:8740`。
+
+所有人注册完成后，重启服务并去掉 `TANWORDS_INVITE_KEY`，即可关闭注册
+和密码重置入口。更多环境变量和部署说明见
+[`web/server/README.md`](web/server/README.md)。
+
+### 单二进制部署
+
+前端已经嵌入 Rust 服务端二进制，部署时只需要一个可执行文件。已验证：
+
+- `cargo build --release` 构建成功。
+- 不设置 `TANWORDS_WEB_DIST` 启动时，日志显示 `serving embedded SPA`。
+- 访问 `http://127.0.0.1:8741/` 返回 `200 OK`。
+
+构建单文件：
+
+```bash
+cd app
+bun run build
+
+cd ../web/server
+cargo build --release
+```
+
+产物：
+
+```text
+web/server/target/release/tanwords-web-server
+```
+
+部署时只需要复制这个二进制，然后运行：
+
+```bash
+TANWORDS_MASTER_KEY=... \
+TANWORDS_INVITE_KEY=... \
+TANWORDS_HOST=0.0.0.0 \
+TANWORDS_PORT=8740 \
+./tanwords-web-server
+```
+
+`TANWORDS_WEB_DIST` 变为可选；只有想用外部前端目录替换嵌入版本时才需要设置。
+
 ## 核心特点
 
 - **从真实内容开始学习。** 粘贴文章、打开 RSS 订阅，或在应用内浏览 Hacker News，AI 直接从真实文本里提取词汇和句型，而不是给一份泛泛的单词表。

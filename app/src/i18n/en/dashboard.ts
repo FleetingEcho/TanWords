@@ -16,6 +16,7 @@ export const dashboard: Dict = {
     "dash.viewAll": "View all",
     "dash.quick.chat": "AI tutor",
     "dash.quick.music": "Music",
+    "dash.quick.reading": "Reading",
     "dash.patterns.title": "Sentence patterns",
     "dash.empty.patterns": "No patterns yet — save one from a sentence while reading",
     "dash.listenNext.title": "Listen next",

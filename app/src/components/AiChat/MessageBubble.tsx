@@ -64,12 +64,12 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, compact = 
   };
 
   const textSize = compact ? "text-xs" : "text-sm";
-  const avatarSize = compact ? "w-8 h-8 text-xs" : "w-10 h-10 text-sm";
+  const avatarSize = compact ? "w-8 h-8 text-xs" : "w-8 h-8 text-xs lg:w-10 lg:h-10 lg:text-sm";
 
   const isLongUserMsg = msg.role === "user" && msg.content.length > COLLAPSE_THRESHOLD;
 
   return (
-    <div className={`flex gap-3 group ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+    <div className={`flex gap-2.5 lg:gap-3 group ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
       {msg.role === "assistant" && (
         <div
           className={`${avatarSize} rounded-xl bg-linear-to-br from-primary to-primary/80 ring-1 ring-primary/30 flex items-center justify-center font-semibold text-primary-foreground shrink-0 mt-1 shadow-md`}
@@ -80,7 +80,7 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, compact = 
 
       <div
         {...(msg.role === "assistant" ? { [AI_MESSAGE_ATTR]: "" } : {})}
-        className={`relative max-w-[min(82%,48rem)] ${fillCardWidth ? "w-full" : ""} rounded-[20px] px-4 py-3 ${textSize} leading-7 shadow-xs ${
+        className={`relative max-w-[min(82%,48rem)] max-lg:max-w-[88%] ${fillCardWidth ? "w-full" : ""} rounded-[20px] px-4 py-3 ${textSize} leading-7 shadow-xs ${
           msg.role === "user"
             ? "bg-linear-to-br from-primary to-primary/90 text-primary-foreground rounded-br-md shadow-primary/10"
             : "border border-border/55 bg-card/80 text-foreground rounded-bl-md backdrop-blur-xs"
@@ -125,7 +125,7 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, compact = 
         )}
 
         {!isTyping && msg.content && (
-          <div className={`absolute -top-2 ${msg.role === "user" ? "-left-2" : "-right-2"} flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity`}>
+          <div className={`absolute -top-2 ${msg.role === "user" ? "-left-2" : "-right-2"} flex items-center gap-1 max-lg:opacity-90 opacity-0 group-hover:opacity-100 transition-opacity`}>
           {onEdit && (
             <Button
               variant="ghost"

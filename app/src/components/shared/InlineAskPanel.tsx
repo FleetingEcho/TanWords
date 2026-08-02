@@ -10,6 +10,7 @@ import { fetchSentencePattern } from "@/lib/patternFromSentence";
 import { fetchBasicInfo, BasicInfo } from "@/lib/basicInfo";
 import { parseEnrichmentStream } from "@/lib/enrichMeta";
 import { SpeakButton } from "@/components/ui/SpeakButton";
+import { hostCapabilities } from "@/platform";
 import { Markdown } from "@/components/AiChat/Markdown";
 import { Button } from "@/components/ui/button";
 import { AskMode, AskTarget, cleanWord, isWordish } from "./selectionAskHelpers";
@@ -179,7 +180,7 @@ export function InlineAskPanel({ anchor, mode: initialMode, onClose, layout = "f
         : "overflow-hidden rounded-2xl border border-border bg-popover shadow-2xl ring-1 ring-black/5"}>
         <div className="flex items-start gap-2 border-b border-border bg-muted/60 px-3 py-2">
           <p className="min-w-0 flex-1 truncate text-[11px] font-semibold text-foreground">{anchor.text}</p>
-          <SpeakButton text={anchor.text} className="w-3 h-3 mt-0.5" />
+          {hostCapabilities.nativeTts && <SpeakButton text={anchor.text} className="w-3 h-3 mt-0.5" />}
           <Button variant="ghost" onClick={onClose} className="h-4 w-4 shrink-0 p-0 text-muted-foreground hover:text-foreground">
             <X className="h-3 w-3" />
           </Button>

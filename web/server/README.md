@@ -6,14 +6,43 @@ email+password accounts, invite-key-gated registration, and per-user data
 isolation — each active user gets their own core runtime around their own
 database (a per-user local SQLite file, or their own Turso embedded replica).
 
+The built renderer is embedded into the release binary by default, so
+deployment only needs the `tanwords-web-server` executable.
+
 ## Run
 
 ```bash
-cd web/frontend && bun install && bun run build   # build the SPA once
-cd ../server
+cd ../app && bun install && bun run build          # build the shared renderer once
+cd ../web/server
 TANWORDS_MASTER_KEY=$(openssl rand -hex 32) \
 TANWORDS_INVITE_KEY=only-you-know-this \
 cargo run --release
+```
+
+The resulting binary is `target/release/tanwords-web-server`. It serves the
+embedded `app/out/renderer`; no `TANWORDS_WEB_DIST` directory is required at
+runtime.
+
+## Single-binary verification
+
+- `cargo build --release` succeeds.
+- Without `TANWORDS_WEB_DIST`, startup logs `serving embedded SPA`.
+- `http://127.0.0.1:8741/` returns `200 OK`.
+
+Deploy by copying only the binary:
+
+```text
+web/server/target/release/tanwords-web-server
+```
+
+Run it:
+
+```bash
+TANWORDS_MASTER_KEY=... \
+TANWORDS_INVITE_KEY=... \
+TANWORDS_HOST=0.0.0.0 \
+TANWORDS_PORT=8740 \
+./tanwords-web-server
 ```
 
 ### Environment
@@ -25,7 +54,7 @@ cargo run --release
 | `TANWORDS_HOST` | no | `127.0.0.1` | Bind address. Use `0.0.0.0` for LAN/behind a proxy. |
 | `TANWORDS_PORT` | no | `8740` | Port. |
 | `TANWORDS_DATA_DIR` | no | platform data dir | Root for `users.db` and `users/<id>/` data. |
-| `TANWORDS_WEB_DIST` | no | `../frontend/dist` | Built SPA directory. |
+| `TANWORDS_WEB_DIST` | no | embedded SPA | Optional external built SPA directory, for development or swapping builds without recompiling. Unset = serve from the binary. |
 
 ## API surface (auth)
 

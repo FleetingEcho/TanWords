@@ -72,6 +72,8 @@ export const aichat: Dict = {
     "aichat.copyFailed": "复制失败",
     "aichat.sidebarExpand": "展开会话栏",
     "aichat.sidebarCollapse": "折叠会话栏",
+    "aichat.sessions": "会话列表",
+    "aichat.closeSessions": "关闭会话列表",
     "aichat.messageCount": "{count} 条消息",
     "aichat.ready": "准备好开始一段新的探索",
     "aichat.toolbarMode": "切换 AI 角色",

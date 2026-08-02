@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { History } from "lucide-react";
+import { History, Plus } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { CloseIcon, RefreshIcon, GridIcon, ListIcon, TranslateIcon, BookmarkIcon } from "@/components/ui/icons";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
@@ -161,7 +161,7 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
         </div>
       </div>
 
-      <div className="flex h-8 shrink-0 items-center gap-2">
+      <div className="rss-tabs-scroll -mb-1 flex h-8 max-w-[min(70vw,480px)] shrink-0 items-center gap-2 overflow-x-auto pb-1">
         {feeds.length > 0 && (
           <Popover open={moreOpen} onOpenChange={setMoreOpen}>
             <PopoverTrigger asChild>
@@ -367,8 +367,9 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
             <ListIcon className="h-3.5 w-3.5" />
           </Button>
         </div>
-        <button onClick={onAdd} className="flex h-8 items-center rounded-full border border-dashed border-border px-3 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary">
-          + {t("feeds.addFeed")}
+        <button onClick={onAdd} className="flex h-8 w-8 lg:w-auto items-center justify-center lg:justify-start rounded-full border border-dashed border-border px-0 lg:px-3 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary">
+          <span className="lg:hidden"><Plus className="h-4 w-4" /></span>
+          <span className="hidden lg:inline">+ {t("feeds.addFeed")}</span>
         </button>
         <Button
           variant="ghost"

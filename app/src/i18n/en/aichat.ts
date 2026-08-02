@@ -72,6 +72,8 @@ export const aichat: Dict = {
     "aichat.copyFailed": "Copy failed",
     "aichat.sidebarExpand": "Expand conversations",
     "aichat.sidebarCollapse": "Collapse conversations",
+    "aichat.sessions": "Sessions",
+    "aichat.closeSessions": "Close chats",
     "aichat.messageCount": "{count} messages",
     "aichat.ready": "Ready for a new exploration",
     "aichat.toolbarMode": "Switch AI role",

@@ -4,7 +4,7 @@ import { openExternal as openUrl } from "@/ipc/shell";
 import {
   BrainCircuit, Check, ChevronsLeft, ChevronsRight, ClipboardPaste, Cloud, CloudOff, Database,
   FilePlus2, Languages, MessageSquarePlus, Monitor, Moon, Palette, Quote, Search, Server, Settings, Sun,
-  Grid2x2Plus, Type, Unplug, User, X,
+  Grid2x2Plus, Rss, Type, Unplug, User, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,10 +27,12 @@ import { useAnalysisStore } from "@/store/analysisStore";
 import { useVocabEnrichStore } from "@/store/vocabEnrichStore";
 import { GitHubIcon } from "@/components/ui/icons";
 import { useToolsBallStore } from "@/store/toolsBallStore";
+import { hostCapabilities, isDesktopHost } from "@/platform";
 
 type McpState = { status: { running: boolean; error: string | null } };
 
-const PAGE_IDS: NavPage[] = ["feeds", "vocabulary", "documents", "chat", "dashboard", "music", "settings"];
+const PAGE_IDS: NavPage[] = (["feeds", "vocabulary", "documents", "chat", "dashboard", "music", "settings"] as NavPage[])
+  .filter((id) => id !== "music" || hostCapabilities.music);
 
 export function CommandBar({ activePage }: { activePage: NavPage }) {
   const t = useT();
@@ -44,7 +46,12 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   const visibleItems = useSettingsStore((state) => state.visibleTopBarItems);
   const toggleToolsModal = useToolsBallStore((state) => state.toggleModal);
   const userAvatar = useSettingsStore((state) => state.userAvatar);
-  const visible = (item: import("@/store/settingsStore").TopBarItemId) => visibleItems.includes(item);
+  const visible = (item: import("@/store/settingsStore").TopBarItemId) => {
+    if (!visibleItems.includes(item)) return false;
+    if (item === "mcp") return hostCapabilities.mcp;
+    if (item === "updates") return hostCapabilities.updater;
+    return true;
+  };
   const analysisJobs = useAnalysisStore((state) => state.jobs);
   const cancelAnalyzing = useAnalysisStore((state) => state.cancel);
   const vocabBulk = useVocabEnrichStore((state) => state.bulk);
@@ -104,6 +111,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   }, []);
 
   React.useEffect(() => {
+    if (!hostCapabilities.mcp) return;
     refreshMcp();
     const timer = window.setInterval(refreshMcp, 5000);
     window.addEventListener("tanwords:mcp-status-changed", refreshMcp);
@@ -163,9 +171,9 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
           both `auto`, so the page paints later and its toolbars (the Browser
           address bar, FeedTabs at z-20, sticky list headers at z-10) come out
           on top of the dropdown. This has to stay above all of those. */}
-      <header className="app-drag-region relative z-30 flex h-12 shrink-0 select-none items-center gap-1.5 border-b border-border/80 bg-background/90 px-3 backdrop-blur-xl">
+      <header className="app-drag-region relative z-30 flex min-h-12 shrink-0 select-none flex-col lg:flex-row lg:items-center gap-x-1.5 gap-y-2 border-b border-border/80 bg-background/90 px-3 py-2 backdrop-blur-xl">
         {visible("search") && (
-          <div className="flex min-w-0 max-w-80 flex-1 items-center gap-1">
+          <div className="flex min-w-0 order-2 w-full lg:order-none lg:w-auto lg:max-w-2xl lg:flex-1 items-center gap-1">
             <div className="min-w-0 flex-1">
               {searchMode === "word" ? <WordSearchBox variant="inline" /> : <SentenceSearchBox variant="inline" />}
             </div>
@@ -181,6 +189,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
           </div>
         )}
 
+        <div className="rss-tabs-scroll flex min-w-0 w-full items-center gap-1.5 overflow-x-auto lg:w-auto lg:flex-none">
         {visible("context") && context && <><div className="mx-1 hidden h-5 w-px bg-border sm:block" /><Button variant="ghost" onClick={context.run} className="h-8 gap-2 rounded-lg px-2.5 text-xs font-medium text-foreground"><context.icon className="h-4 w-4 text-primary" /><span className="hidden lg:inline">{context.label}</span></Button></>}
 
         {/* Any speech in the app — the reader's article playback and the
@@ -188,7 +197,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
           * up here and can be paused, skipped or cancelled from here. Renders
           * nothing while idle. Unrelated to the podcast/music player, which
           * keeps its own bar. */}
-        <TtsControl />
+        {hostCapabilities.nativeTts && <TtsControl />}
 
         {/* Learn/analyze keeps running in the background if you navigate away from
           * Reading (or if it was queued straight from the Feeds list or the reader's
@@ -236,12 +245,6 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
           </>
         )}
 
-        {/* One flexible spacer, so everything after it sits at the right edge.
-          * Auto margins can't do this job here: two of them (on the button and
-          * on the icon cluster) split the free space between themselves, which
-          * left the button drifting toward the middle as the window widened. */}
-        <div className="flex-1" />
-
         {/* Paste-in reader: read and mine any text that isn't in a feed.
           * Hideable like any other top-bar control; the command palette entry
           * stays either way. */}
@@ -249,13 +252,13 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
           variant="ghost"
           onClick={openScratch}
           title={t("scratch.open")}
-          className="h-8 shrink-0 gap-2 rounded-lg px-2.5 text-xs font-medium text-foreground"
+          className="hidden lg:inline-flex h-8 shrink-0 gap-2 rounded-lg px-2.5 text-xs font-medium text-foreground"
         >
           <ClipboardPaste className="h-4 w-4 text-primary" />
           <span className="hidden lg:inline">{t("scratch.open")}</span>
         </Button>}
 
-        <div className="flex shrink-0 items-center gap-0.5 border-l border-border pl-2">
+        <div className="hidden lg:flex shrink-0 items-center gap-0.5 border-l border-border pl-2">
           <Button
             variant="ghost"
             size="icon"
@@ -297,7 +300,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
               {connection?.kind === "turso" && connection.offline && <p className="mt-1 text-amber-500">{t("settings.remoteDBOffline")}</p>}
             </TooltipContent>
           </Tooltip>}
-          {visible("mcp") && <Button variant="ghost" size="icon" onClick={() => navigate("settings", undefined, "mcp")} title={mcp.error || (mcp.running ? t("command.mcpRunning") : t("command.mcpStopped"))} className={`relative h-8 w-8 rounded-lg ${mcp.error ? "text-amber-500" : mcp.running ? "text-foreground" : "text-muted-foreground"}`}><Server className="h-4 w-4" />{mcp.running && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />}</Button>}
+          {hostCapabilities.mcp && visible("mcp") && <Button variant="ghost" size="icon" onClick={() => navigate("settings", undefined, "mcp")} title={mcp.error || (mcp.running ? t("command.mcpRunning") : t("command.mcpStopped"))} className={`relative h-8 w-8 rounded-lg ${mcp.error ? "text-amber-500" : mcp.running ? "text-foreground" : "text-muted-foreground"}`}><Server className="h-4 w-4" />{mcp.running && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />}</Button>}
           {visible("ai") && <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" title={aiTitle} className={`relative h-8 w-8 rounded-lg ${aiTone}`}>
@@ -342,14 +345,53 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
               <DropdownMenuItem onClick={() => setTheme("system")}><Monitor className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.system")}</span>{theme === "system" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>}
-          {visible("updates") && <UpdateButton placement="toolbar" />}
+          {hostCapabilities.updater && visible("updates") && <UpdateButton placement="toolbar" />}
           {visible("github") && <Button variant="ghost" size="icon" onClick={() => void openGitHub()} title="GitHub" className="h-8 w-8 rounded-lg text-muted-foreground"><GitHubIcon className="h-4 w-4" /></Button>}
           </>}
           <Button variant="ghost" size="icon" onClick={() => navigate("settings")} title={t("command.profile")} className="h-8 w-8 rounded-full p-0 overflow-hidden ring-1 ring-border/60 text-muted-foreground">
             {userAvatar ? <img src={userAvatar} alt="" className="h-full w-full object-cover" /> : <User className="h-4 w-4" />}
           </Button>
         </div>
-        <WindowControls />
+        {visible("theme") && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                title={t("settings.theme")}
+                aria-label={t("settings.theme")}
+                className="lg:hidden h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                {theme === "light" || theme === "catppuccin-latte" || theme === "tokyo-night-day"
+                  ? <Sun className="h-4 w-4" />
+                  : theme === "dark"
+                    ? <Moon className="h-4 w-4" />
+                    : <Monitor className="h-4 w-4" />}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuItem onClick={() => setTheme("light")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.light")}</span>{theme === "light" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme("dark")}><Moon className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.dark")}</span>{theme === "dark" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme("catppuccin-latte")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.catppuccinLatte")}</span>{theme === "catppuccin-latte" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme("catppuccin-mocha")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.catppuccinMocha")}</span>{theme === "catppuccin-mocha" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme("dracula")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.dracula")}</span>{theme === "dracula" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme("tokyo-night")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.tokyoNight")}</span>{theme === "tokyo-night" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme("tokyo-night-day")}><Sun className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.tokyoNightDay")}</span>{theme === "tokyo-night-day" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme("tokyo-night-storm")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.tokyoNightStorm")}</span>{theme === "tokyo-night-storm" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme("dim")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.dim")}</span>{theme === "dim" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setTheme("system")}><Monitor className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.system")}</span>{theme === "system" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        <Button variant="ghost" size="icon" onClick={() => navigate("feeds")} title={t("nav.feeds")} aria-label={t("nav.feeds")} className="lg:hidden h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground">
+          <Rss className="h-4 w-4" />
+        </Button>
+        <Button variant="ghost" size="icon" onClick={() => navigate("settings")} title={t("command.profile")} className="lg:hidden order-first h-8 w-8 shrink-0 rounded-full p-0 overflow-hidden ring-1 ring-border/60 text-muted-foreground">
+          {userAvatar ? <img src={userAvatar} alt="" className="h-full w-full object-cover" /> : <User className="h-4 w-4" />}
+        </Button>
+        <div className="flex-1" />
+        {isDesktopHost && <WindowControls />}
+        </div>
       </header>
 
       {paletteOpen && <div className="fixed inset-0 z-100 flex justify-center bg-black/45 px-4 pt-[14vh] backdrop-blur-xs" onMouseDown={() => setPaletteOpen(false)}><div className="h-fit w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-popover shadow-2xl" onMouseDown={(event) => event.stopPropagation()}><div className="flex h-12 items-center gap-3 border-b border-border px-4"><Search className="h-4 w-4 text-muted-foreground" /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.key === "Escape" && setPaletteOpen(false)} placeholder={t("command.searchPlaceholder")} className="min-w-0 flex-1 bg-transparent text-sm outline-hidden" /><button onClick={() => setPaletteOpen(false)}><X className="h-4 w-4 text-muted-foreground" /></button></div><div className="max-h-80 overflow-y-auto p-2">{commands.map((command, index) => <button key={`${command.label}-${index}`} onClick={() => { command.run(); setPaletteOpen(false); setQuery(""); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm hover:bg-muted"><command.icon className="h-4 w-4 text-muted-foreground" /><span>{command.label}</span></button>)}</div></div></div>}

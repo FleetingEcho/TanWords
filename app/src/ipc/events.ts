@@ -11,6 +11,8 @@
 
 import { backendOrigin, backendToken, refreshBackendInfo } from "./backend";
 import { host } from "./host";
+import { isDesktopHost } from "@/platform";
+import { webBackendOrigin, webBackendToken } from "@/platform/webClient";
 
 export type Unsubscribe = () => void;
 
@@ -30,6 +32,11 @@ function deliver(name: string, payload: unknown) {
 async function startStream() {
   if (streamStarted) return;
   streamStarted = true;
+
+  if (!isDesktopHost) {
+    await startWebStream();
+    return;
+  }
 
   mainUnsubscribe = host().on("event", ({ name, payload }) => deliver(name, payload));
 
@@ -52,6 +59,44 @@ async function startStream() {
       // fall through to the backoff below
     }
     await refreshBackendInfo().catch(() => {});
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+}
+
+/** Web-only stream: no main-process event channel, and the stream parks on the
+ * login screen until `tanwords:authorized` fires. */
+async function startWebStream() {
+  const waitForLogin = () => new Promise<void>((resolve) => {
+    const onLogin = () => {
+      window.removeEventListener("tanwords:authorized", onLogin);
+      resolve();
+    };
+    window.addEventListener("tanwords:authorized", onLogin);
+  });
+
+  for (;;) {
+    try {
+      const token = await webBackendToken();
+      const origin = await webBackendOrigin();
+      const source = new EventSource(`${origin}/events?token=${encodeURIComponent(token)}`);
+      await new Promise<void>((resolve) => {
+        source.onmessage = (message) => {
+          const { name, payload } = JSON.parse(message.data);
+          deliver(name, payload);
+        };
+        source.onerror = () => {
+          source.close();
+          resolve();
+        };
+      });
+    } catch {
+      try {
+        await webBackendToken();
+      } catch {
+        await waitForLogin();
+        continue;
+      }
+    }
     await new Promise((r) => setTimeout(r, 1000));
   }
 }
@@ -82,7 +127,7 @@ export function subscribeAll(entries: Record<string, (payload: any) => void>): U
  *  renderer reaches the same subscribers a sidecar-raised one would. */
 export function emit(name: string, payload?: unknown): void {
   deliver(name, payload);
-  void host().call("event:emit", { name, payload }).catch(() => {});
+  if (isDesktopHost) void host().call("event:emit", { name, payload }).catch(() => {});
 }
 
 /** Test/no-Electron escape hatch — `src/test/setup.ts` calls this between

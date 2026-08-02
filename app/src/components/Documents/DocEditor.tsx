@@ -90,8 +90,8 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
       data-color-scheme={isDark ? "dark" : "light"}
     >
       {/* Title + metadata */}
-      <div className="px-12 pt-8 pb-2 shrink-0">
-        <div className="flex items-start gap-3">
+      <div className="px-4 lg:px-12 pt-8 pb-2 shrink-0">
+        <div className="flex flex-wrap items-start gap-3">
           <input
             ref={titleRef}
             type="text"
@@ -100,9 +100,10 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
             onBlur={handleTitleBlur}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); titleRef.current?.blur(); } }}
             placeholder={t("doc.untitled")}
-            className="document-editor-title flex-1 font-bold tracking-tight bg-transparent border-none outline-hidden placeholder:text-muted-foreground/30 text-foreground"
+            className="document-editor-title min-w-0 flex-1 font-bold tracking-tight bg-transparent border-none outline-hidden placeholder:text-muted-foreground/30 text-foreground"
           />
-          <Button
+          <div className="flex items-center h-8">
+            <Button
             variant="ghost"
             onClick={onPinToggle}
             title={doc.pinned ? t("doc.unpin") : t("doc.pin")}
@@ -125,9 +126,10 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
           >
             {zenMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           </Button>
+          </div>
         </div>
         <div className="mt-2 space-y-2">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3.5 h-3.5 text-muted-foreground/50 shrink-0">
               <path d="M3.5 10.5v-6a1 1 0 011-1h6l6 6-7 7-6-6z" strokeLinejoin="round" />
               <circle cx="7.5" cy="7.5" r="1" fill="currentColor" stroke="none" />
@@ -149,7 +151,7 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
                 ))}
               </div>
             )}
-            {mode === "rich" && <DocumentContentSearch rootRef={searchRootRef} />}
+            {mode === "rich" && <DocumentContentSearch rootRef={searchRootRef} className="w-full lg:w-[30%]" />}
           </div>
           <DocumentToolbarActions
             mode={mode}
@@ -228,7 +230,7 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
       )}
 
       {/* Footer: save status + word count */}
-      <div className="px-12 py-2.5 border-t border-border flex items-center gap-3 text-[10px] font-mono tabular-nums text-muted-foreground shrink-0">
+      <div className="px-4 lg:px-12 py-2.5 border-t border-border flex flex-wrap items-center gap-3 text-[10px] font-mono tabular-nums text-muted-foreground shrink-0">
         <span>
           {saveStatus === "saving" ? (
             <span className="flex items-center gap-1.5">

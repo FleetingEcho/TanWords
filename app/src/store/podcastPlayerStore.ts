@@ -4,6 +4,7 @@ import { toPlayableSrc } from "@/lib/localAudioSrc";
 import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
 import { PlayMode, nextIndexOnEnded, nextIndexOnSkip } from "@/features/music/queue";
 import { invoke } from "@/ipc/backend";
+import { isDesktopHost } from "@/platform";
 
 export type PodcastStatus = "idle" | "loading" | "playing" | "paused" | "error";
 
@@ -258,7 +259,7 @@ async function playAtInner(index: number) {
     }
     return;
   }
-  void invoke("native_audio_stop").catch(() => {});
+  if (isDesktopHost) void invoke("native_audio_stop").catch(() => {});
   stopNativePoll();
   usePodcastPlayerStore.setState({ track, playlistIndex: index, status: "loading", position: 0, duration: 0 });
   try {
@@ -290,7 +291,7 @@ export const usePodcastPlayerStore = create<PodcastPlayerState>((set, get) => ({
     const el = getAudio();
     if (!track.localPath) {
       stopNativePoll();
-      void invoke("native_audio_stop").catch(() => {});
+      if (isDesktopHost) void invoke("native_audio_stop").catch(() => {});
     }
     // The TTS player and podcast player share the bottom bar slot — starting
     // one fully stops the other (audioChannel alone would only pause it).
@@ -383,7 +384,7 @@ export const usePodcastPlayerStore = create<PodcastPlayerState>((set, get) => ({
     el.pause();
     el.removeAttribute("src");
     stopNativePoll();
-    void invoke("native_audio_stop").catch(() => {});
+    if (isDesktopHost) void invoke("native_audio_stop").catch(() => {});
     if (currentBlobUrl) {
       URL.revokeObjectURL(currentBlobUrl);
       currentBlobUrl = null;

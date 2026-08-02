@@ -6,6 +6,7 @@ import { MessageSquareText, Copy } from "lucide-react";
 import type { PodcastTrack } from "@/store/podcastPlayerStore";
 import { useFeedBookmarksStore } from "@/store/feedBookmarksStore";
 import type { ArticleReaderState } from "./hooks/useArticleReaderState";
+import { hostCapabilities } from "@/platform";
 
 /** The learn/listen/translate/comments buttons that portal into the reader
  * bar (see ReaderView) once the article is ready. Split out of ArticleReader
@@ -149,27 +150,29 @@ export function ReaderToolbar({
           </Button>
         </PopoverContent>
       </Popover>
-      <Button
-        variant="ghost"
-        onClick={handleListen}
-        title={audio ? t("podcast.listenEpisode") : t("tts.listenToArticle")}
-        aria-label={audio ? t("podcast.listenEpisode") : t("tts.listenToArticle")}
-        className={`w-7 h-7 p-0 rounded-md flex items-center justify-center transition-colors shrink-0 ${
-          playerActive
-            ? "bg-primary/10 text-primary hover:bg-primary/10"
-            : "text-muted-foreground hover:text-foreground hover:bg-muted"
-        }`}
-      >
-        {audio ? (
-          podcastActive && podcastStatus === "playing" ? (
-            <PauseIcon className="w-4 h-4" />
+      {(hostCapabilities.nativeTts || audio) && (
+        <Button
+          variant="ghost"
+          onClick={handleListen}
+          title={audio ? t("podcast.listenEpisode") : t("tts.listenToArticle")}
+          aria-label={audio ? t("podcast.listenEpisode") : t("tts.listenToArticle")}
+          className={`w-7 h-7 p-0 rounded-md flex items-center justify-center transition-colors shrink-0 ${
+            playerActive
+              ? "bg-primary/10 text-primary hover:bg-primary/10"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted"
+          }`}
+        >
+          {audio ? (
+            podcastActive && podcastStatus === "playing" ? (
+              <PauseIcon className="w-4 h-4" />
+            ) : (
+              <PlayIcon className="w-4 h-4" />
+            )
           ) : (
-            <PlayIcon className="w-4 h-4" />
-          )
-        ) : (
-          <SpeakerIcon className="w-4 h-4" />
-        )}
-      </Button>
+            <SpeakerIcon className="w-4 h-4" />
+          )}
+        </Button>
+      )}
       <Button
         variant="ghost"
         onClick={() => {
@@ -203,7 +206,7 @@ export function ReaderToolbar({
           {comments.length > 0 && <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-primary" />}
         </Button>
       )}
-      {hnItemId != null && (
+      {hostCapabilities.nativeTts && hnItemId != null && (
         <Button
           variant="ghost"
           onClick={handleListenComments}

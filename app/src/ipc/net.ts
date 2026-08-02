@@ -21,6 +21,8 @@
  *  channel-per-id shape above is simpler and is fine for token streams. */
 
 import { host } from "./host";
+import { isDesktopHost } from "@/platform";
+import { webAuthFetch } from "@/platform/webClient";
 
 let nextId = 1;
 
@@ -29,6 +31,11 @@ export async function netFetch(
   input: string | URL | Request,
   init: RequestInit = {},
 ): Promise<Response> {
+  if (!isDesktopHost) {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    return webAuthFetch(url, init);
+  }
+
   const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
   const id = nextId++;
   const bridge = host();

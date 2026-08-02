@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@/ipc/backend";
-import { openDialog, saveDialog } from "@/ipc/dialog";
+import { invoke, assetUrlById } from "@/ipc/backend";
+import { openDialog, saveDialog, downloadBlob } from "@/ipc/dialog";
+import { webAuthFetch } from "@/platform/webClient";
+import { isDesktopHost } from "@/platform";
 import { toast } from "sonner";
 import { useT } from "@/hooks/useT";
 import {
@@ -144,11 +146,28 @@ export function useDocumentAssetManager() {
     }
   };
 
+  const downloadAssets = async (list: DocumentAssetSummary[], nameFor: (a: DocumentAssetSummary) => string) => {
+    for (const asset of list) {
+      const response = await webAuthFetch(assetUrlById(asset.id));
+      if (!response.ok) throw new Error(`download failed: HTTP ${response.status}`);
+      downloadBlob(nameFor(asset), await response.blob());
+    }
+  };
+
   const exportOne = async (asset: DocumentAssetSummary) => {
     if (!await authorizeAssets("download", [asset])) return;
     const extension = asset.file_name.split(".").pop()?.replace(/[^a-z0-9]/gi, "")
       || (asset.mime_type === "image/svg+xml" ? "svg" : asset.mime_type.split("/")[1]?.replace("jpeg", "jpg"))
       || "png";
+    if (!isDesktopHost) {
+      try {
+        await downloadAssets([asset], (a) => a.file_name || `image-${a.id}.${extension}`);
+        toast.success(t("settings.documentImageExported"));
+      } catch (error) {
+        toast.error(String(error));
+      }
+      return;
+    }
     const destination = await saveDialog({
       defaultPath: asset.file_name || `image-${asset.id}`,
       filters: [{ name: t("settings.documentImages"), extensions: [extension] }],
@@ -196,6 +215,15 @@ export function useDocumentAssetManager() {
   const exportSelectedToFolder = async () => {
     const selected = assets.filter((asset) => selectedIds.has(asset.id));
     if (!await authorizeAssets("download", selected)) return;
+    if (!isDesktopHost) {
+      setBulkBusy(true);
+      try {
+        await downloadAssets(selected, (a) => a.file_name || `image-${a.id}`);
+        toast.success(t("settings.documentImagesBulkExported", { n: selected.length }));
+      } catch (error) { toast.error(String(error)); }
+      finally { setBulkBusy(false); }
+      return;
+    }
     const destination = await openDialog({ directory: true, multiple: false });
     if (typeof destination !== "string") return;
     setBulkBusy(true);
@@ -209,6 +237,15 @@ export function useDocumentAssetManager() {
   const exportSelectedZip = async () => {
     const selected = assets.filter((asset) => selectedIds.has(asset.id));
     if (!await authorizeAssets("download", selected)) return;
+    if (!isDesktopHost) {
+      setBulkBusy(true);
+      try {
+        await downloadAssets(selected, (a) => a.file_name || `image-${a.id}`);
+        toast.success(t("settings.documentImagesBulkExported", { n: selected.length }));
+      } catch (error) { toast.error(String(error)); }
+      finally { setBulkBusy(false); }
+      return;
+    }
     const destination = await saveDialog({
       defaultPath: "tanwords-images.zip",
       filters: [{ name: "ZIP", extensions: ["zip"] }],

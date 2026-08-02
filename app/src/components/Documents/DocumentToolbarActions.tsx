@@ -42,7 +42,7 @@ export function DocumentToolbarActions({
   useEffect(() => subscribeToExportBusy(setExportBusy), []);
 
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+    <div className="flex w-full shrink-0 flex-wrap items-center gap-1.5">
       <Button
         type="button"
         variant="ghost"

@@ -79,7 +79,7 @@ export function DashboardPage() {
   });
 
   return (
-    <div className="p-6 space-y-5 animate-fade-in w-full">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 animate-fade-in w-full">
       {dashboardBanner && (
         <div className="w-full h-[200px] rounded-2xl overflow-hidden border border-border">
           {/* The banner is far wider than most photos, so `cover` always discards

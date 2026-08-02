@@ -11,7 +11,7 @@ import { AiChatComposer } from "./AiChatComposer";
 import { useAiChatSession, PRESET_IDS } from "./useAiChatSession";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowDown, Bot, ChevronDown, Eraser, FilePlus2, PlugZap, Unplug } from "lucide-react";
+import { ArrowDown, Bot, ChevronDown, ChevronLeft, Eraser, FilePlus2, PlugZap, Unplug } from "lucide-react";
 import { useNavStore } from "@/store/navStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useWordModalStore } from "@/store/wordModalStore";
@@ -29,6 +29,8 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
   React.useEffect(() => { onActiveIdChange?.(s.activeId); }, [s.activeId, onActiveIdChange]);
   const navigate = useNavStore((state) => state.navigate);
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(() => localStorage.getItem("aichat-sidebar-collapsed") === "1");
+  // <lg the sidebar isn't a column — it's a drawer over the conversation.
+  const [mobileSidebarOpen, setMobileSidebarOpen] = React.useState(false);
   const [confirmClear, setConfirmClear] = React.useState(false);
   const [promptExpanded, setPromptExpanded] = React.useState(
     () => localStorage.getItem("aichat-prompt-expanded") === "1"
@@ -87,30 +89,69 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
     };
   }, [s.startNew, s.startWithArticle, s.switchSession]);
 
+  const closeMobileSidebar = () => setMobileSidebarOpen(false);
+
+  // Shared by the desktop column and the mobile drawer; drawer callables wrap
+  // these so picking a session also closes the overlay.
+  const sidebarProps = {
+    displaySessions: s.displaySessions,
+    archivedSessions: s.archivedSessions,
+    searchQuery: s.searchQuery,
+    onSearchChange: s.setSearchQuery,
+    dateFrom: s.dateFrom,
+    dateTo: s.dateTo,
+    onDateRangeChange: s.setDateRange,
+    activeId: s.activeId,
+    onSwitchSession: s.switchSession,
+    onDeleteSession: s.deleteSession,
+    onToggleArchived: s.toggleArchived,
+    onTogglePinned: s.togglePinned,
+    onRenameSession: s.renameSession,
+  } as const;
+
   return (
-    <div className={`flex h-full overflow-hidden ${hasCustomAppBackground ? "" : "bg-background"}`}>
-      <AiChatSidebar
-        displaySessions={s.displaySessions}
-        archivedSessions={s.archivedSessions}
-        searchQuery={s.searchQuery}
-        onSearchChange={s.setSearchQuery}
-        dateFrom={s.dateFrom}
-        dateTo={s.dateTo}
-        onDateRangeChange={s.setDateRange}
-        activeId={s.activeId}
-        onSwitchSession={s.switchSession}
-        onDeleteSession={s.deleteSession}
-        onToggleArchived={s.toggleArchived}
-        onTogglePinned={s.togglePinned}
-        onRenameSession={s.renameSession}
-        onNewChat={s.startNew}
-        collapsed={sidebarCollapsed}
-        onToggleCollapsed={toggleSidebar}
-      />
+    <div className={`flex h-full overflow-hidden overscroll-none ${hasCustomAppBackground ? "" : "bg-background"}`}>
+      {/* Desktop column */}
+      <div className="hidden lg:flex h-full shrink-0">
+        <AiChatSidebar
+          {...sidebarProps}
+          onNewChat={s.startNew}
+          collapsed={sidebarCollapsed}
+          onToggleCollapsed={toggleSidebar}
+        />
+      </div>
+
+      {/* Mobile drawer */}
+      {mobileSidebarOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label={t("aichat.sessions")}>
+          <div className="absolute inset-0 bg-black/45" onClick={closeMobileSidebar} />
+          <div className="absolute inset-y-0 left-0 w-[min(85vw,320px)] max-w-full shadow-2xl">
+            <AiChatSidebar
+              {...sidebarProps}
+              variant="drawer"
+              onRequestClose={closeMobileSidebar}
+              onSwitchSession={(id) => { closeMobileSidebar(); s.switchSession(id); }}
+              onNewChat={() => { closeMobileSidebar(); s.startNew(); }}
+              collapsed={false}
+              onToggleCollapsed={toggleSidebar}
+            />
+          </div>
+        </div>
+      )}
 
       <main className="min-w-0 flex-1 flex flex-col overflow-hidden">
         {/* Compact icon-led session toolbar */}
-        <div className="flex items-center gap-2 px-5 h-16 border-b border-border/60 bg-background/65 backdrop-blur-xl shrink-0">
+        <div className="flex items-center gap-2 px-3 lg:px-5 h-16 border-b border-border/60 bg-background/65 backdrop-blur-xl shrink-0">
+          <Button
+            variant="ghost"
+            onClick={() => setMobileSidebarOpen(true)}
+            title={t("aichat.sessions")}
+            aria-label={t("aichat.sessions")}
+            className="h-9 gap-1 rounded-xl px-2 text-muted-foreground hover:bg-muted hover:text-foreground shrink-0 lg:hidden"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            <span className="text-xs font-medium">{t("aichat.sessions")}</span>
+          </Button>
           <div className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold tracking-tight text-foreground">{s.isNewSession ? t("aichat.newChat") : s.activeTitle}</span><span className="mt-0.5 block text-[10px] text-muted-foreground">{messages.length ? t("aichat.messageCount", { count: messages.length }) : t("aichat.ready")}</span></div>
           {/* The selector is the connection indicator: it already names the
             * provider in use, so a separate "connected" light beside it said
@@ -118,28 +159,32 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
             * ellipsis. The plug lives in the trigger instead, and the label
             * shows the model id — that's what you're actually choosing. */}
           {s.providers.length > 0 ? (
-            <Select value={s.selectedProviderId} onValueChange={s.setSelectedProviderId}>
-              <SelectTrigger
-                title={activeProvider ? `${activeProvider.name} · ${activeProvider.modelId}` : t("aichat.toolbarModel")}
-                aria-label={t("aichat.toolbarModel")}
-                className="h-9 w-auto max-w-[240px] gap-2 rounded-xl border-border/70 bg-card/70 px-2.5 text-xs shadow-none focus:ring-1 focus:ring-primary/20 shrink-0"
-              >
-                <PlugZap className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
-                <SelectValue>{activeProvider?.modelId || activeProvider?.name}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {s.providers.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    <span className="flex items-baseline gap-2"><span>{p.name}</span><span className="text-[10px] text-muted-foreground">{p.modelId}</span></span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="hidden lg:block">
+              <Select value={s.selectedProviderId} onValueChange={s.setSelectedProviderId}>
+                <SelectTrigger
+                  title={activeProvider ? `${activeProvider.name} · ${activeProvider.modelId}` : t("aichat.toolbarModel")}
+                  aria-label={t("aichat.toolbarModel")}
+                  className="h-9 w-auto max-w-[240px] gap-2 rounded-xl border-border/70 bg-card/70 px-2.5 text-xs shadow-none focus:ring-1 focus:ring-primary/20 shrink-0"
+                >
+                  <PlugZap className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                  <SelectValue>{activeProvider?.modelId || activeProvider?.name}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {s.providers.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      <span className="flex items-baseline gap-2"><span>{p.name}</span><span className="text-[10px] text-muted-foreground">{p.modelId}</span></span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           ) : (
-            <Button variant="ghost" onClick={() => navigate("settings")} title={t("aichat.providerDisconnected")} aria-label={t("aichat.providerDisconnected")} className="h-9 gap-2 rounded-xl px-2.5 text-xs font-medium text-amber-500 hover:bg-amber-500/10 hover:text-amber-500 shrink-0">
-              <Unplug className="h-3.5 w-3.5" />
-              {t("aichat.providerDisconnected")}
-            </Button>
+            <div className="hidden lg:block">
+              <Button variant="ghost" onClick={() => navigate("settings")} title={t("aichat.providerDisconnected")} aria-label={t("aichat.providerDisconnected")} className="h-9 gap-2 rounded-xl px-2.5 text-xs font-medium text-amber-500 hover:bg-amber-500/10 hover:text-amber-500 shrink-0">
+                <Unplug className="h-3.5 w-3.5" />
+                {t("aichat.providerDisconnected")}
+              </Button>
+            </div>
           )}
           {s.displayItems.length > 0 && (
             <>
@@ -164,7 +209,7 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
           * the conversation. The role stays switchable while collapsed; expanding
           * reveals the exact prompt that will be sent and makes it editable. */}
         <section className="border-b border-border/60 bg-background/40 backdrop-blur-md shrink-0">
-          <div className="flex min-h-12 items-center gap-2 px-5">
+          <div className="flex min-h-12 items-center gap-2 px-3 lg:px-5">
             <Bot className="h-4 w-4 shrink-0 text-primary" />
             <Select value={s.selectedPreset} onValueChange={(v) => s.setSelectedPreset(v)}>
               <SelectTrigger
@@ -223,7 +268,7 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
 
         {/* Messages */}
         <div className="relative flex-1 min-h-0">
-          <div ref={s.scrollHostRef} className="h-full overflow-y-auto px-5 py-7">
+          <div ref={s.scrollHostRef} className="h-full overflow-y-auto px-3 py-4 sm:px-5 lg:py-7">
             <div className="mx-auto max-w-full space-y-5">
           {s.displayItems.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center">

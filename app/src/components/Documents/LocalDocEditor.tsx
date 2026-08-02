@@ -345,18 +345,8 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
   return (
     <div className="flex flex-col h-full">
       {/* Filename as title */}
-      <div className="px-12 pt-8 pb-2 shrink-0">
-        <div className="flex items-start gap-3">
-          <input
-            ref={titleRef}
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onBlur={handleTitleBlur}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); titleRef.current?.blur(); } }}
-            placeholder={t("doc.untitled")}
-            className="document-editor-title flex-1 font-bold tracking-tight bg-transparent border-none outline-hidden placeholder:text-muted-foreground/30 text-foreground"
-          />
+      <div className="px-4 lg:px-12 pt-8 pb-2 shrink-0">
+        <div className="flex flex-wrap items-start gap-3">
           <Button
             type="button"
             variant="ghost"
@@ -368,11 +358,21 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
           >
             {zenMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           </Button>
+          <input
+            ref={titleRef}
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={handleTitleBlur}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); titleRef.current?.blur(); } }}
+            placeholder={t("doc.untitled")}
+            className="document-editor-title min-w-0 flex-1 font-bold tracking-tight bg-transparent border-none outline-hidden placeholder:text-muted-foreground/30 text-foreground"
+          />
         </div>
         <div className="mt-2 space-y-2">
           <p className="truncate text-xs font-mono text-muted-foreground/60">{relPath}</p>
           <div className="flex items-center gap-2">
-            {mode === "rich" && <DocumentContentSearch rootRef={searchRootRef} />}
+            {mode === "rich" && <DocumentContentSearch rootRef={searchRootRef} className="w-full lg:w-[30%]" />}
             <DocumentToolbarActions
               mode={mode}
               switching={switchingMode}
@@ -425,7 +425,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
       )}
 
       {/* Footer: save status */}
-      <div className="h-9 px-12 border-t border-border flex items-center gap-3 text-[10px] font-mono tabular-nums text-muted-foreground shrink-0">
+      <div className="h-auto min-h-9 px-4 lg:px-12 border-t border-border flex flex-wrap items-center gap-3 py-2 text-[10px] font-mono tabular-nums text-muted-foreground shrink-0">
         <span>
           {saveStatus === "saving" ? (
             <span className="flex items-center gap-1.5">

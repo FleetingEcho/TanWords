@@ -4,6 +4,8 @@
 
 import { useCallback, useMemo } from "react";
 import { invoke } from "@/ipc/backend";
+import { webAuthFetch } from "@/platform/webClient";
+import { isDesktopHost } from "@/platform";
 import { logError, reportWriteError } from "./useDB.errors";
 import {
   ChatSessionItem, ChatSessionDetail,
@@ -21,6 +23,26 @@ function serializeChatSession(s: {
     systemPrompt: s.systemPrompt, presetId: s.presetId,
     providerId: s.providerId, messageCount: s.messageCount,
   };
+}
+
+async function dbRoute<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+  const response = await webAuthFetch(path, {
+    method,
+    headers: body !== undefined ? { "content-type": "application/json" } : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    let message = text;
+    try {
+      message = JSON.parse(text).error ?? text;
+    } catch {
+      // raw text is the message
+    }
+    throw message;
+  }
+  if (response.status === 204) return undefined as T;
+  return response.json() as Promise<T>;
 }
 
 export function useDBExtra() {
@@ -358,6 +380,7 @@ export function useDBExtra() {
   // ── Data management (Settings › Data) ─────────────────────────────────
 
   const getDbPath = useCallback(async (): Promise<string> => {
+    if (!isDesktopHost) return "";
     try {
       return await invoke<string>("db_get_db_path");
     } catch (e) {
@@ -376,6 +399,7 @@ export function useDBExtra() {
   }, []);
 
   const exportBackup = useCallback(async (dest: string, password: string | null = null): Promise<void> => {
+    if (!isDesktopHost) return;
     try {
       await invoke("db_export_backup", { dest, password });
     } catch (e) {
@@ -400,6 +424,9 @@ export function useDBExtra() {
    *  must reload the app afterwards — every already-fetched page is stale. */
   const connectTurso = useCallback(async (url: string, token: string): Promise<DbConnection> => {
     try {
+      if (!isDesktopHost) {
+        return await dbRoute<DbConnection>("/api/db/turso/connect", "POST", { url, token });
+      }
       return await invoke<DbConnection>("db_connect_turso", { url, token });
     } catch (e) {
       reportWriteError("connectTurso", e, "连接 Turso 失败");
@@ -410,6 +437,9 @@ export function useDBExtra() {
   /** Back to the default local database, forgetting the stored credentials. */
   const disconnectRemote = useCallback(async (): Promise<DbConnection> => {
     try {
+      if (!isDesktopHost) {
+        return await dbRoute<DbConnection>("/api/db/turso/disconnect", "POST");
+      }
       return await invoke<DbConnection>("db_disconnect_remote");
     } catch (e) {
       reportWriteError("disconnectRemote", e, "断开在线数据库失败");
@@ -434,6 +464,10 @@ export function useDBExtra() {
    *  Turso — gates the "forget saved connection" button. */
   const isSavedProfileTurso = useCallback(async (): Promise<boolean> => {
     try {
+      if (!isDesktopHost) {
+        const remembered = await dbRoute<RememberedTursoConnection>("/api/db/turso/remembered");
+        return remembered.url !== null && remembered.tokenPresent;
+      }
       return await invoke<boolean>("db_saved_profile_is_turso");
     } catch (e) {
       logError("isSavedProfileTurso", e);
@@ -445,6 +479,9 @@ export function useDBExtra() {
    *  the Settings form can prefill a reconnect without exposing the token. */
   const getRememberedTurso = useCallback(async (): Promise<RememberedTursoConnection | null> => {
     try {
+      if (!isDesktopHost) {
+        return await dbRoute<RememberedTursoConnection>("/api/db/turso/remembered");
+      }
       return await invoke<RememberedTursoConnection>("db_get_remembered_turso");
     } catch (e) {
       logError("getRememberedTurso", e);
@@ -456,6 +493,10 @@ export function useDBExtra() {
    *  token, wiped keychain, …), without needing a live connection to it. */
   const forgetSavedProfile = useCallback(async (): Promise<void> => {
     try {
+      if (!isDesktopHost) {
+        await dbRoute("/api/db/turso/forget", "POST");
+        return;
+      }
       await invoke("db_forget_saved_profile");
     } catch (e) {
       reportWriteError("forgetSavedProfile", e, "Failed to clear saved connection");
@@ -478,6 +519,9 @@ export function useDBExtra() {
    *  already exists. Writes nothing — the source is opened read-only. */
   const importAnalyze = useCallback(async (sourcePath: string, password: string | null = null): Promise<ImportPlan> => {
     try {
+      if (!isDesktopHost) {
+        return await dbRoute<ImportPlan>("/api/import/analyze", "POST", { path: sourcePath, password });
+      }
       return await invoke<ImportPlan>("db_import_analyze", { sourcePath, password });
     } catch (e) {
       reportWriteError("importAnalyze", e, "读取数据库文件失败");
@@ -489,6 +533,9 @@ export function useDBExtra() {
   const importApply = useCallback(
     async (sourcePath: string, decisions: ImportDecisions, password: string | null = null): Promise<ImportResult> => {
       try {
+        if (!isDesktopHost) {
+          return await dbRoute<ImportResult>("/api/import/apply", "POST", { path: sourcePath, decisions, password });
+        }
         return await invoke<ImportResult>("db_import_apply", { sourcePath, decisions, password });
       } catch (e) {
         reportWriteError("importApply", e, "导入失败");
@@ -500,6 +547,7 @@ export function useDBExtra() {
 
   /** Mounts a different SQLite file as the active DB (creating it if new). Caller must reload the app after this succeeds — every already-fetched page is stale. */
   const switchDbPath = useCallback(async (newPath: string): Promise<string> => {
+    if (!isDesktopHost) return "";
     try {
       return await invoke<string>("db_switch_path", { newPath });
     } catch (e) {

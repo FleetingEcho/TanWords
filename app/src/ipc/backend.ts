@@ -5,6 +5,10 @@
  *  sidecar directly; the Electron main process is not in the path. */
 
 import { host, callMain } from "./host";
+import { isDesktopHost } from "@/platform";
+import {
+  webInvoke, webBackendOrigin, webBackendToken, webAssetUrlById,
+} from "@/platform/webClient";
 
 /** Commands the Electron main process owns rather than the sidecar. Keep this
  *  in sync with SKIP_MODULES in core/build.rs (generate_dispatch_table()) —
@@ -27,6 +31,7 @@ async function handshake() {
  *  sidecar handshake. This is how calls recover after the sidecar crashes and
  *  is restarted on a new port. */
 export async function refreshBackendInfo() {
+  if (!isDesktopHost) return { port: 0, token: "" };
   cached = null;
   cachedPromise = host().refreshBackend().then((info) => {
     cached = info;
@@ -38,11 +43,13 @@ export async function refreshBackendInfo() {
 /** Base URL of the sidecar. Exported because the SSE stream in ./events.ts
  *  needs it too. */
 export async function backendOrigin(): Promise<string> {
+  if (!isDesktopHost) return webBackendOrigin();
   const { port } = await handshake();
   return `http://127.0.0.1:${port}`;
 }
 
 export async function backendToken(): Promise<string> {
+  if (!isDesktopHost) return webBackendToken();
   return (await handshake()).token;
 }
 
@@ -51,6 +58,8 @@ export async function backendToken(): Promise<string> {
  *  on it (e.g. `isModelNotLoaded`, and DOCUMENT_LOCKED in document_privacy).
  *  Do not wrap it in an Error with a prefix. */
 export async function invoke<T = unknown>(command: string, args: Record<string, unknown> = {}): Promise<T> {
+  if (!isDesktopHost) return webInvoke<T>(command, args);
+
   if (MAIN_PROCESS_COMMANDS.test(command)) {
     return callMain<T>(command, args);
   }
@@ -88,6 +97,9 @@ export async function invoke<T = unknown>(command: string, args: Record<string, 
 /** A real HTTP URL for a local file, served by the sidecar. Being real HTTP is
  *  what gives `<audio>`/`<video>` Range requests, so seeking works. */
 export function assetUrl(path: string): string {
+  if (!isDesktopHost) {
+    throw new Error("assetUrl is desktop-only; use assetUrlById on web");
+  }
   if (!cached) {
     // Callers are synchronous (they feed `src=` attributes), so the sidecar
     // must already be up. App boot gates rendering on the handshake.
@@ -100,9 +112,19 @@ export function assetUrl(path: string): string {
 /** True when `assetUrl` produced this URL. `lib/localDocs.ts` needs it to map
  *  a URL back to a path. */
 export function isAssetUrl(url: string): boolean {
+  if (!isDesktopHost) return false;
   return /^http:\/\/127\.0\.0\.1:\d+\/asset\?/.test(url);
 }
 
 export function assetUrlToPath(url: string): string {
+  if (!isDesktopHost) return "";
   return new URL(url).searchParams.get("path") ?? "";
+}
+
+/** Web server asset URL for DB-backed document assets. On desktop the
+ *  document editor resolves `tanwords-asset://` through the sidecar command
+ *  instead, so callers keep using the shared scheme for both hosts. */
+export function assetUrlById(id: number | string): string {
+  if (!isDesktopHost) return webAssetUrlById(id);
+  return `tanwords-asset://${id}`;
 }

@@ -10,6 +10,7 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { SparkIcon, RefreshIcon, NotesIcon, ChevronDownIcon } from "@/components/ui/icons";
 import { TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { hostCapabilities } from "@/platform";
 
 /** Shared by the header and the scrolling body so the word, its jump nav and the
  * prose it points at all sit on the same measure — a centred column of text under
@@ -134,8 +135,8 @@ export function WordDetailPanel({
                   {selected.word}
                 </h1>
                 {selected.ipa && <span className="font-mono text-sm text-muted-foreground">/{selected.ipa}/</span>}
-                <SpeakButton text={selected.word} className={condensed ? "h-4 w-4" : "h-[1.15rem] w-[1.15rem]"} />
                 <LevelBadge level={selected.level} />
+                {hostCapabilities.nativeTts && <SpeakButton text={selected.word} className={condensed ? "h-4 w-4" : "h-[1.15rem] w-[1.15rem]"} />}
                 {/* Condensed, the gloss rides the title row — it is the one piece of
                  * meaning worth keeping on screen while reading the analysis. */}
                 {condensed && gloss && (

@@ -29,8 +29,9 @@ function highlightApi(): { registry: HighlightRegistry; Highlight: new (...range
     : null;
 }
 
-export function DocumentContentSearch({ rootRef }: {
+export function DocumentContentSearch({ rootRef, className }: {
   rootRef: React.RefObject<HTMLElement | null>;
+  className?: string;
 }) {
   const t = useT();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -139,7 +140,7 @@ export function DocumentContentSearch({ rootRef }: {
   const move = (delta: number) => applyHighlights(query, activeIndex + delta);
 
   return (
-    <div className="relative flex h-6 w-[30%] min-w-40 shrink-0 items-center rounded-md bg-background/75 shadow-xs ring-1 ring-border/70">
+    <div className={`relative flex h-6 w-[30%] min-w-40 shrink-0 items-center rounded-md bg-background/75 shadow-xs ring-1 ring-border/70 ${className ?? ""}`}>
       <Search className="ml-1.5 h-3 w-3 shrink-0 text-muted-foreground" />
       <input
         ref={inputRef}

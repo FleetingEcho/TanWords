@@ -169,8 +169,8 @@ export function HackerNewsSection({ viewMode, onOpen, onTranslate, translatingId
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-transparent backdrop-blur-xl px-4 py-2.5">
-        <div className="flex items-center gap-1.5">
+      <div className="flex shrink-0 flex-col gap-2 border-b border-border bg-transparent backdrop-blur-xl px-4 py-2.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           {SECTIONS.map((s) => (
             <button
               key={s}
@@ -186,7 +186,7 @@ export function HackerNewsSection({ viewMode, onOpen, onTranslate, translatingId
           ))}
         </div>
 
-        <div className="relative w-56 shrink-0">
+        <div className="relative w-full">
           <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <input
             value={query}

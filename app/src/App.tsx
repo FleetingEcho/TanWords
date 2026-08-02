@@ -3,6 +3,7 @@ import { Toaster, toast } from "sonner";
 import { MainLayout } from "@/components/Layout/Sidebar";
 import { SelectionAsk } from "@/components/shared/SelectionAsk";
 import { AppBackground } from "@/components/Layout/AppBackground";
+import { AuthGate } from "@/components/Layout/AuthGate";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useUpdaterStore } from "@/store/updaterStore";
 import { useNavStore } from "@/store/navStore";
@@ -17,6 +18,8 @@ import { initProviders } from "@/lib/initProviders";
 import { invoke } from "@/ipc/backend";
 import { ENRICHED_SEED_WORDS, BASIC_SEED_WORDS } from "@/data/seedWords";
 import { LOCAL_DOCS_ROOT_KEY, localDocsRootExists } from "@/lib/localDocs";
+import { isDesktopHost, isWebHost, hostCapabilities } from "@/platform";
+import * as auth from "@/platform/auth";
 
 /** Every page is code-split.
  *
@@ -56,6 +59,8 @@ const PageFallback = () => (
   </div>
 );
 
+type AuthState = "checking" | "ready" | "login";
+
 function App() {
   const { loadFromDB } = useSettingsStore();
   const db = useDB();
@@ -67,16 +72,35 @@ function App() {
   const toolsModalOpen = useToolsBallStore((s) => s.isOpen);
   const podcastVisible = usePodcastPlayerStore((s) => s.status !== "idle" && !!s.track);
 
+  const [authState, setAuthState] = React.useState<AuthState>(isWebHost ? "checking" : "ready");
   const [wordCount, setWordCount] = React.useState(0);
 
-  useMcpSync();
-  useTraySync();
+  if (hostCapabilities.mcp) useMcpSync();
+  if (hostCapabilities.tray) useTraySync();
+
+  // Session gate for the web host. api/client-style auth events land here
+  // regardless of which component started the transition.
+  React.useEffect(() => {
+    if (!isWebHost) return;
+    let cancelled = false;
+    void auth.me().then((ok) => { if (!cancelled) setAuthState(ok ? "ready" : "login"); });
+    const onUnauthorized = () => setAuthState("login");
+    const onAuthorized = () => setAuthState("ready");
+    window.addEventListener("tanwords:unauthorized", onUnauthorized);
+    window.addEventListener("tanwords:authorized", onAuthorized);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("tanwords:unauthorized", onUnauthorized);
+      window.removeEventListener("tanwords:authorized", onAuthorized);
+    };
+  }, []);
 
   // Initialize providers from keychain (with localStorage fallback/migration) on startup.
   // Deferred past first paint so the OS keychain prompt (macOS asks the first
   // time an unauthorized app reads/writes an entry) doesn't fire before the
   // user has even seen the app window.
   useEffect(() => {
+    if (authState !== "ready") return;
     const idle = window.requestIdleCallback?.(() => initProviders())
       ?? window.setTimeout(() => initProviders(), 500);
     loadFromDB();
@@ -84,13 +108,14 @@ function App() {
       if (window.cancelIdleCallback && typeof idle !== "number") window.cancelIdleCallback(idle);
       else window.clearTimeout(idle as number);
     };
-  }, []);
+  }, [authState, loadFromDB]);
 
   // The local Documents folder is a device path, while settings may live in a
   // database shared by Linux, macOS, and other machines. Silently discard a
   // binding that is invalid on this device before the Documents view can try
   // to scan or reopen files from it.
   useEffect(() => {
+    if (!isDesktopHost || authState !== "ready") return;
     void (async () => {
       try {
         const root = await db.getSetting(LOCAL_DOCS_ROOT_KEY);
@@ -101,19 +126,20 @@ function App() {
         // Startup validation is best-effort; it must never block app launch.
       }
     })();
-  }, []);
+  }, [authState]);
 
   // If a previously-saved custom DB path failed to open this launch (drive
   // unplugged, file moved), the backend silently fell back to the default
   // DB rather than deleting anything — surface that instead of leaving the
   // user staring at a mysteriously empty vocabulary.
   useEffect(() => {
+    if (authState !== "ready") return;
     invoke<string | null>("db_get_startup_warning")
       .then((path) => {
         if (path) toast.warning(t("settings.dbFallbackWarning", { path }), { duration: 15000 });
       })
       .catch(() => {});
-  }, []);
+  }, [authState, t]);
 
   // A saved Turso profile can open successfully but read-only — the primary
   // was unreachable and the app fell back to serving the local replica as-is
@@ -121,21 +147,23 @@ function App() {
   // normal otherwise, so without this the first sign of trouble is a
   // mysterious "failed to save" on the next write. Warn up front instead.
   useEffect(() => {
+    if (authState !== "ready") return;
     db.getConnection()
       .then((connection) => {
         if (connection?.offline) toast.warning(t("settings.remoteDBOfflineNote"), { duration: 15000 });
       })
       .catch(() => {});
-  }, []);
+  }, [authState, db, t]);
 
   // Silent update check, delayed past the startup rush (DB load, TTS
   // preload). Failures stay invisible; a hit only lights the sidebar dot.
   useEffect(() => {
+    if (!isDesktopHost || !hostCapabilities.updater || authState !== "ready") return;
     const timer = setTimeout(() => {
       useUpdaterStore.getState().checkForUpdate({ silent: true });
     }, 5000);
     return () => clearTimeout(timer);
-  }, []);
+  }, [authState]);
 
   // NOTE: the on-device TTS model is deliberately NOT preloaded here.
   // A loaded sherpa-onnx session is 60-120MB resident for the whole session,
@@ -149,6 +177,7 @@ function App() {
 
   // Seed vocabulary once per install (localStorage flag prevents re-seeding)
   useEffect(() => {
+    if (authState !== "ready") return;
     if (localStorage.getItem("tanwords_seeded_v1")) return;
     (async () => {
       try {
@@ -165,20 +194,40 @@ function App() {
         localStorage.setItem("tanwords_seeded_v1", "1");
       }
     })();
-  }, []);
+  }, [authState, db]);
 
   useEffect(() => {
+    if (authState !== "ready") return;
     db.getWordCount().then(setWordCount).catch(() => {});
-  }, [currentPage()]);
+  }, [authState, currentPage()]);
 
   // Refresh sidebar stats when vocabulary changes
   useEffect(() => {
+    if (authState !== "ready") return;
     const handler = () => {
       db.getWordCount().then(setWordCount).catch(() => {});
     };
     window.addEventListener("vocab-updated", handler);
     return () => window.removeEventListener("vocab-updated", handler);
-  }, []);
+  }, [authState, db]);
+
+  if (authState === "checking") {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+      </div>
+    );
+  }
+
+  if (authState === "login") {
+    return (
+      <>
+        <AppBackground />
+        <AuthGate />
+        <Toaster position="bottom-right" richColors closeButton />
+      </>
+    );
+  }
 
   const page = currentPage();
   const wordId = currentWordId();
@@ -190,9 +239,9 @@ function App() {
       case "reading":
         return <ReadingPage />;
       case "music":
-        return <MusicPage />;
+        return isDesktopHost ? <MusicPage /> : <DashboardPage />;
       case "browser":
-        return <BrowserPage />;
+        return isDesktopHost ? <BrowserPage /> : <DashboardPage />;
       case "vocabulary":
         return <VocabularyPage initialWordId={wordId} initialSentenceId={sentenceId} />;
       case "documents":

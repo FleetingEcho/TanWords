@@ -11,8 +11,9 @@ pub struct Config {
     /// Propagated into the core via the `TANWORDS_DATA_DIR` env var before
     /// any core code touches the filesystem.
     pub data_dir: PathBuf,
-    /// Built frontend to serve at `/`.
-    pub web_dist: PathBuf,
+    /// Optional external built frontend to serve at `/`. When unset the
+    /// renderer is served from the embedded copy compiled into the binary.
+    pub web_dist: Option<PathBuf>,
     /// Owner-only key gating register + password reset. Unset = those doors
     /// are closed (login still works for existing accounts).
     pub invite_key: Option<String>,
@@ -71,9 +72,7 @@ impl Config {
             data_dir: env("TANWORDS_DATA_DIR")
                 .map(PathBuf::from)
                 .unwrap_or_else(default_data_dir),
-            web_dist: env("TANWORDS_WEB_DIST")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from("../frontend/dist")),
+            web_dist: env("TANWORDS_WEB_DIST").map(PathBuf::from),
             invite_key: env("TANWORDS_INVITE_KEY"),
             master_key,
         })

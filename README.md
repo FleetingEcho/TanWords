@@ -10,12 +10,88 @@ The UI is Chinese-first; the codebase is written in English.
 
 ## Web version
 
-A browser-based edition (desktop + mobile, multi-user with invite-key registration and per-user Turso) lives in [`web/`](web/README.md): one Rust backend + Vite/React SPA. Quickstart in 3 lines:
+A browser-based edition (desktop + mobile, multi-user with invite-key
+registration and per-user Turso) lives in [`web/`](web/README.md). It uses
+the same renderer built from `app/src`; there is no separate web frontend.
+
+### Start the web version
+
+Prerequisites: Bun and Rust.
+
+1. Build the shared renderer once:
+
+   ```bash
+   cd app
+   bun install
+   bun run build
+   ```
+
+2. Start the web server:
+
+   ```bash
+   cd ../web/server
+   TANWORDS_MASTER_KEY=$(openssl rand -hex 32) \
+   TANWORDS_INVITE_KEY=choose-a-key \
+   cargo run --release
+   ```
+
+3. Open `http://127.0.0.1:8740` and register with the invite key.
+
+To reach it from a phone on the same LAN:
 
 ```bash
-cd web/frontend && bun install && bun run build
-cd ../server && TANWORDS_MASTER_KEY=$(openssl rand -hex 32) TANWORDS_INVITE_KEY=choose-a-key cargo run --release
+cd web/server
+TANWORDS_HOST=0.0.0.0 \
+TANWORDS_MASTER_KEY=$(openssl rand -hex 32) \
+TANWORDS_INVITE_KEY=choose-a-key \
+cargo run --release
 ```
+
+Then open `http://<your-computer-ip>:8740`.
+
+After everyone has registered, restart the server without
+`TANWORDS_INVITE_KEY` to close registration and password reset.
+
+See [`web/server/README.md`](web/server/README.md) for environment variables
+and deployment notes.
+
+### Single-binary deployment
+
+The renderer is embedded into the Rust server binary, so deployment only needs
+one executable. Verified steps:
+
+- `cargo build --release` succeeds.
+- Without `TANWORDS_WEB_DIST`, startup logs `serving embedded SPA`.
+- `http://127.0.0.1:8741/` returns `200 OK`.
+
+Build the single file:
+
+```bash
+cd app
+bun run build
+
+cd ../web/server
+cargo build --release
+```
+
+Artifact:
+
+```text
+web/server/target/release/tanwords-web-server
+```
+
+Deploy by copying only that binary and running it:
+
+```bash
+TANWORDS_MASTER_KEY=... \
+TANWORDS_INVITE_KEY=... \
+TANWORDS_HOST=0.0.0.0 \
+TANWORDS_PORT=8740 \
+./tanwords-web-server
+```
+
+`TANWORDS_WEB_DIST` is optional; set it only when you want to serve an external
+frontend directory instead of the embedded copy.
 
 ## Highlights
 

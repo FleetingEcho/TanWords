@@ -1,6 +1,6 @@
 import {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS,
-  type SidebarTabId, type TopBarItemId, type RssTabSelection,
+  DEFAULT_LAYOUT_MODE, type SidebarTabId, type TopBarItemId, type RssTabSelection, type LayoutMode,
 } from "./types";
 
 /** localStorage mirrors of a handful of settings that several pages read
@@ -59,6 +59,20 @@ export function cachedTopBarItems(): TopBarItemId[] {
 
 export function cacheTopBarItems(items: TopBarItemId[]) {
   try { localStorage.setItem(TOPBAR_ITEMS_CACHE_KEY, JSON.stringify(items)); } catch {}
+}
+
+const LAYOUT_MODE_CACHE_KEY = "tanwords_layout_mode_cache";
+
+export function cachedLayoutMode(): LayoutMode {
+  try {
+    return localStorage.getItem(LAYOUT_MODE_CACHE_KEY) === "fixed" ? "fixed" : DEFAULT_LAYOUT_MODE;
+  } catch {
+    return DEFAULT_LAYOUT_MODE;
+  }
+}
+
+export function cacheLayoutMode(mode: LayoutMode) {
+  try { localStorage.setItem(LAYOUT_MODE_CACHE_KEY, mode); } catch {}
 }
 
 const DEFAULT_RSS_TAB_CACHE_KEY = "tanwords_default_rss_tab_cache";

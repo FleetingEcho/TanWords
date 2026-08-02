@@ -61,7 +61,7 @@ export function DocumentOutline({ editor, tick }: { editor: any; tick: number })
   const items = useOutlineItems(editor, tick);
 
   return (
-    <aside className="w-56 shrink-0 overflow-y-auto border-l border-border/60 bg-background/40 p-3">
+    <aside className="w-full shrink-0 overflow-y-auto border-l border-border/60 bg-background/40 p-3">
       <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
         <ListTree className="h-3.5 w-3.5" />
         {t("doc.outline")}

@@ -1,14 +1,16 @@
 import { create } from "zustand";
 import {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR, DEFAULT_BANNER_POSITION,
+  DEFAULT_LAYOUT_MODE,
   DOCUMENT_TEXT_COLOR_RE,
-  type Theme, type SidebarTabId, type TopBarItemId, type RssTabSelection,
+  type Theme, type SidebarTabId, type TopBarItemId, type RssTabSelection, type LayoutMode,
   type BannerPosition,
 } from "./settings/types";
 import {
   cachedUiLanguage, cacheUiLanguage, cachedSidebarTabs, cacheSidebarTabs,
   cachedTopBarItems, cacheTopBarItems,
   cachedDefaultRssTab, cacheDefaultRssTab, cachedFeedsViewMode, cacheFeedsViewMode, saveSetting, saveSettingDebounced,
+  cachedLayoutMode, cacheLayoutMode,
 } from "./settings/cache";
 import { applyTheme, applyDocumentFontSize, applyDocumentLineHeight, applyDocumentTextColor, applyHighlightColor } from "./settings/domEffects";
 import { loadSettingsFromDB } from "./settings/loadFromDB";
@@ -19,7 +21,7 @@ export type {
 } from "./settings/types";
 export {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS,
-  DEFAULT_HIGHLIGHT_COLOR, HIGHLIGHT_PRESETS, DEFAULT_BANNER_POSITION,
+  DEFAULT_HIGHLIGHT_COLOR, HIGHLIGHT_PRESETS, DEFAULT_BANNER_POSITION, DEFAULT_LAYOUT_MODE,
 } from "./settings/types";
 export type { SettingsState } from "./settings/state";
 
@@ -39,6 +41,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   selectionActions: true,
   visibleSidebarTabs: cachedSidebarTabs(),
   visibleTopBarItems: cachedTopBarItems(),
+  layoutMode: cachedLayoutMode(),
   defaultRssTab: cachedDefaultRssTab(),
   feedsViewMode: cachedFeedsViewMode(),
   userAvatar: "",
@@ -99,6 +102,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ visibleTopBarItems: next });
     cacheTopBarItems(next);
     saveSetting("visible_topbar_items", JSON.stringify(next));
+  },
+
+  setLayoutMode: (mode) => {
+    set({ layoutMode: mode });
+    cacheLayoutMode(mode);
+    saveSetting("layout_mode", JSON.stringify(mode));
   },
 
   setDefaultRssTab: (tab) => {

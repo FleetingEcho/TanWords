@@ -16,8 +16,8 @@ import { DashboardCard, DashboardRow, DashboardEmpty, DashboardSkeleton, Dashboa
 export function PatternsWidget({ maxRows = DASHBOARD_BODY_ROWS }: { maxRows?: number }) {
   const t = useT();
   const db = useDB();
-  const navigate = useNavStore((s) => s.navigate);
   const openSentence = useNavStore((s) => s.openVocabularySentence);
+  const openPatterns = useNavStore((s) => s.openVocabularyPatterns);
   const [items, setItems] = useState<PatternItem[] | null>(null);
 
   useEffect(() => {
@@ -34,7 +34,7 @@ export function PatternsWidget({ maxRows = DASHBOARD_BODY_ROWS }: { maxRows?: nu
     <DashboardCard
       title={t("dash.patterns.title")}
       icon={<BookmarkIcon className="w-3.5 h-3.5 text-muted-foreground" />}
-      onViewAll={() => navigate("vocabulary")}
+      onViewAll={openPatterns}
     >
       {items === null ? (
         <DashboardSkeleton rows={maxRows} />

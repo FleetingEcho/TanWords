@@ -13,6 +13,8 @@ import { useVocabBulkEnrich } from "./hooks/useVocabBulkEnrich";
 import { useVocabEnrichSelected } from "./hooks/useVocabEnrichSelected";
 import { useVocabLookup } from "./hooks/useVocabLookup";
 import { SentenceModal } from "./SentenceModal";
+import { useIsNarrow } from "./hooks/useMediaQuery";
+import { ChevronLeft } from "lucide-react";
 
 export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWordId?: number; initialSentenceId?: number }) {
   const db = useDB();
@@ -37,7 +39,11 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
     loadWords: list.loadWords, loadAllWordsSet: list.loadAllWordsSet,
   });
 
-  const [view, setView] = useState<"words" | "patterns">("words");
+  type View = "words" | "patterns" | "review";
+  const [view, setView] = useState<View>("words");
+  // Below lg the list+detail split collapses into list-with-overlay; the same
+  // flag gates the desktop-only auto-select below.
+  const narrow = useIsNarrow();
   // The generate-sentences modal lives here rather than inside PatternLibrary
   // so asking a word on the Words tab for examples doesn't have to switch tabs
   // to reach it — the modal opens over whichever tab you were already on.
@@ -55,7 +61,7 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
     return () => { cancelled = true; };
   }, [genWord, db]);
   useEffect(() => {
-    if (initialSentenceId) setView("patterns");
+    if (initialSentenceId !== undefined) setView("patterns");
     else if (initialWordId) setView("words");
   }, [initialWordId, initialSentenceId]);
 
@@ -96,9 +102,10 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
         list.setPage(Math.floor(list.words.findIndex((x) => x.id === initialWordId) / list.pageSize));
         detail.selectWord(w);
       }
-    } else if (wordsLayout === "split" && list.words.length > 0 && !detail.selected) {
-      // Only the split layout auto-selects — in the full-width list an
-      // auto-expanded first row would just be noise.
+    } else if (!narrow && wordsLayout === "split" && list.words.length > 0 && !detail.selected) {
+      // Desktop split layout auto-selects the first word. On mobile the
+      // selection opens the full-screen detail overlay instead, which would
+      // cover the list before the user has even seen it — don't.
       detail.selectWord(list.words[0]);
     }
   }, [list.words.length, initialWordId, list.pageSize]);
@@ -155,14 +162,16 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
             <button
               key={tab}
               onClick={() => setView(tab)}
-              className={`h-7 rounded-lg px-3 text-xs font-semibold transition-colors ${view === tab ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+              className={`h-9 lg:h-7 rounded-lg px-3 text-xs font-semibold transition-colors ${view === tab ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
             >
               {t(tab === "words" ? "vocab.tabWords" : "vocab.tabPatterns")}
             </button>
           ))}
         </div>
       </div>
-      {view === "patterns" ? <PatternLibrary initialSentenceId={initialSentenceId} /> : (
+      {view === "patterns" ? (
+        <PatternLibrary initialSentenceId={initialSentenceId} />
+      ) : (<>
       <div className="flex min-h-0 flex-1">
       <WordListPanel
         words={list.visibleWords}
@@ -208,14 +217,35 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
         onToggleStar={list.toggleWordStar}
         selectMode={list.selectMode}
         onToggleSelectMode={list.toggleWordSelectMode}
-        fullWidth={wordsLayout === "full"}
+        fullWidth={wordsLayout === "full" || narrow}
+        inlineDetail={!narrow}
         onToggleLayout={toggleWordsLayout}
         renderDetail={() => wordDetail}
       />
 
-      {wordsLayout === "split" && wordDetail}
+      {/* Desktop split pane keeps the detail beside the list; on mobile the
+        * same selection opens the overlay below instead. */}
+      {!narrow && wordsLayout === "split" && wordDetail}
       </div>
+
+      {/* Mobile (<lg): selection pushes a full-screen detail overlay with a
+        * back affordance, hiding the bottom tab bar beneath it for space. */}
+      {narrow && (selected || lookup) && (
+        <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-background lg:hidden">
+          <div className="flex h-12 shrink-0 items-center border-b border-border px-2">
+            <button
+              type="button"
+              onClick={() => (lookup ? detail.setLookup(null) : detail.setSelected(null))}
+              className="flex h-10 items-center gap-1 rounded-lg px-2 pr-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              {t("vocab.detailBack")}
+            </button>
+          </div>
+          <div className="flex min-h-0 flex-1">{wordDetail}</div>
+        </div>
       )}
+      </>)}
 
       <ConfirmModal
         open={bulkEnrich.reanalyzeConfirmOpen}

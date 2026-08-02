@@ -13,6 +13,7 @@
 import { invoke } from "@/ipc/backend";
 import { getSecret, secretDelete } from "@/lib/secrets";
 import { BUILT_IN_API_BASE, PRESET_PROVIDERS } from "@/components/Settings/providerConstants";
+import { isDesktopHost } from "@/platform";
 
 export type ProviderKind = "builtin" | "preset" | "custom";
 
@@ -37,6 +38,7 @@ export async function listProviders(): Promise<StoredProvider[]> {
 }
 
 export async function providerKey(id: string): Promise<string> {
+  if (!isDesktopHost) return "";
   return invoke<string>("ai_provider_key", { id });
 }
 
@@ -66,6 +68,13 @@ export async function deleteProvider(id: string): Promise<void> {
  *  one round-trip each, so they overlap rather than run in sequence. */
 export async function loadProviderConfigs(): Promise<Record<string, ProviderConfig>> {
   const rows = await listProviders();
+  if (!isDesktopHost) {
+    const out: Record<string, ProviderConfig> = {};
+    for (const row of rows) {
+      out[row.id] = { ...row, apiKey: "" };
+    }
+    return out;
+  }
   const keys = await Promise.all(rows.map((row) => (row.hasKey ? providerKey(row.id) : "")));
   const out: Record<string, ProviderConfig> = {};
   rows.forEach((row, i) => {
@@ -107,6 +116,7 @@ function legacyModels(): Record<string, string> {
  *  Deliberately not destructive on failure: `secretDelete` runs per provider
  *  only after that provider's row is written. */
 export async function importLegacyProviderConfig(): Promise<void> {
+  if (!isDesktopHost) return;
   if (localStorage.getItem(IMPORT_FLAG)) return;
 
   const models = legacyModels();

@@ -105,7 +105,7 @@ export function ReaderView({ url, title, domain, onBack, onOpenExternal, audio, 
   return (
     <div className={`flex flex-col animate-fade-in ${zenMode ? "fixed inset-0 z-50 bg-background" : "h-full"}`}>
       {/* Reader bar */}
-      {!hideBar && <div className="flex items-center gap-3 px-4 h-12 border-b border-border shrink-0">
+      {!hideBar && <div className="flex flex-wrap items-center gap-2 px-3 py-2 min-h-12 border-b border-border shrink-0">
         <Button
           variant="ghost"
           onClick={onBack}
@@ -130,44 +130,46 @@ export function ReaderView({ url, title, domain, onBack, onOpenExternal, audio, 
         <span className="text-[10px] font-mono text-muted-foreground bg-muted rounded px-1.5 py-0.5 shrink-0">
           {domain}
         </span>
-        {onOpenExternal && (
+        <div className="flex w-full items-center justify-evenly gap-1 lg:w-auto lg:justify-start">
+          {onOpenExternal && (
+            <Button
+              variant="ghost"
+              onClick={onOpenExternal}
+              title={t("hn.reader.external")}
+              className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+            >
+              <ExternalIcon className="w-4 h-4" />
+            </Button>
+          )}
+          <div ref={setToolbarSlot} className="flex items-center justify-evenly gap-1 shrink-0 empty:hidden lg:justify-start" />
+          {readerArticle && (
+            <Button
+              variant="ghost"
+              onClick={analyzeCurrentArticle}
+              disabled={readerAnalyzing}
+              aria-pressed={readerShowNotes}
+              title={t("reader.analyzeNotes")}
+              className={`w-7 h-7 p-0 rounded-md flex items-center justify-center transition-colors shrink-0 ${
+                readerShowNotes ? "bg-primary/10 text-primary hover:bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              {readerAnalyzing ? (
+                <span className="w-3.5 h-3.5 rounded-full border-2 border-muted-foreground/30 border-t-foreground animate-spin" />
+              ) : (
+                <NotesIcon className="w-4 h-4" />
+              )}
+            </Button>
+          )}
           <Button
             variant="ghost"
-            onClick={onOpenExternal}
-            title={t("hn.reader.external")}
+            onClick={fullscreen ? onBack : () => setZenMode((v) => !v)}
+            title={fullscreen ? t("common.close") : zenMode ? t("doc.exitZenMode") : t("doc.zenMode")}
+            aria-label={fullscreen ? t("common.close") : zenMode ? t("doc.exitZenMode") : t("doc.zenMode")}
             className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
           >
-            <ExternalIcon className="w-4 h-4" />
+            {fullscreen ? <X className="w-4 h-4" /> : zenMode ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </Button>
-        )}
-        <div ref={setToolbarSlot} className="flex items-center gap-1 shrink-0 empty:hidden" />
-        {readerArticle && (
-          <Button
-            variant="ghost"
-            onClick={analyzeCurrentArticle}
-            disabled={readerAnalyzing}
-            aria-pressed={readerShowNotes}
-            title={t("reader.analyzeNotes")}
-            className={`w-7 h-7 p-0 rounded-md flex items-center justify-center transition-colors shrink-0 ${
-              readerShowNotes ? "bg-primary/10 text-primary hover:bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-muted"
-            }`}
-          >
-            {readerAnalyzing ? (
-              <span className="w-3.5 h-3.5 rounded-full border-2 border-muted-foreground/30 border-t-foreground animate-spin" />
-            ) : (
-              <NotesIcon className="w-4 h-4" />
-            )}
-          </Button>
-        )}
-        <Button
-          variant="ghost"
-          onClick={fullscreen ? onBack : () => setZenMode((v) => !v)}
-          title={fullscreen ? t("common.close") : zenMode ? t("doc.exitZenMode") : t("doc.zenMode")}
-          aria-label={fullscreen ? t("common.close") : zenMode ? t("doc.exitZenMode") : t("doc.zenMode")}
-          className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
-        >
-          {fullscreen ? <X className="w-4 h-4" /> : zenMode ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-        </Button>
+        </div>
       </div>}
 
       <ArticleReader url={url} domain={domain} onOpenExternal={onOpenExternal ?? (() => {})} audio={audio} hnItemId={hnItemId} toolbarSlot={toolbarSlot} />

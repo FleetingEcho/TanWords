@@ -60,7 +60,7 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, manualRe
   };
 
   return (
-    <div className={`flex flex-col h-full border-r border-border ${LIST_PANEL_WIDTH} shrink-0 bg-transparent`}>
+    <div className={`flex flex-col h-full border-r border-border ${LIST_PANEL_WIDTH} shrink-0 max-lg:w-full max-lg:shrink bg-transparent`}>
       <DocSelectorHeader
         list={list}
         onCollapse={onCollapse}
