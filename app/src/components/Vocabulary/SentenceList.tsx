@@ -5,7 +5,7 @@ import { LevelBadge } from "@/components/shared/LevelBadge";
 import { SpeakButton } from "@/components/ui/SpeakButton";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ListPaginator } from "@/components/shared/ListPaginator";
 import { LevelDateFilter, LevelFilter } from "@/components/shared/LevelDateFilter";
 import { Plus, Sparkles, ListChecks, Trash2, X, RefreshCw, Star } from "lucide-react";
 import { hostCapabilities } from "@/platform";
@@ -114,7 +114,6 @@ export function SentenceList({
   selectMode, onToggleSelectMode, selectedIds, onToggleSelect, onSelectAll, onClearSelection, onDeleteSelected, onReanalyzeSelected,
 }: Props) {
   const t = useT();
-  const totalPages = Math.ceil(items.length / pageSize);
   const paged = items.slice(page * pageSize, (page + 1) * pageSize);
   const [jumpHighlightId, setJumpHighlightId] = React.useState<number | null>(highlightId ?? null);
   React.useEffect(() => {
@@ -126,9 +125,9 @@ export function SentenceList({
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
-      <div className="mx-auto w-full max-w-4xl px-6 pt-5 pb-3 space-y-2.5">
-        <div className="flex items-baseline gap-2">
-          <h2 className="text-lg font-bold">{t("vocab.patterns.title")}</h2>
+      <div className="mx-auto w-full max-w-4xl px-4 pt-5 pb-3 space-y-2.5 lg:px-6">
+        <div className="flex flex-wrap items-baseline gap-2">
+          <h2 className="min-w-0 truncate text-lg font-bold">{t("vocab.patterns.title")}</h2>
           <span className="text-sm text-muted-foreground">{items.length}</span>
           <div className="ml-auto flex items-center gap-1">
             <Button
@@ -161,7 +160,7 @@ export function SentenceList({
         </div>
 
         {selectMode && (
-          <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-2 py-1.5">
+          <div className="flex flex-wrap items-center gap-2 rounded-lg bg-muted/50 px-2 py-1.5">
             <Checkbox
               checked={selectedIds.size === items.length && items.length > 0}
               onCheckedChange={() => (selectedIds.size === items.length ? onClearSelection() : onSelectAll())}
@@ -199,7 +198,7 @@ export function SentenceList({
           </div>
         )}
 
-        <div className="relative -mx-6">
+        <div className="relative -mx-4 lg:-mx-6">
           <input
             type="text"
             value={search}
@@ -257,7 +256,7 @@ export function SentenceList({
                 <div
                   onClick={() => (selectMode ? onToggleSelect(item.id) : onToggleExpand(item))}
                   onDoubleClick={() => onDoubleClick(item)}
-                  className={`flex items-center gap-2 px-5 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors ${
+                  className={`flex items-center gap-2 px-4 py-2.5 lg:px-5 cursor-pointer hover:bg-muted/50 transition-colors ${
                     expanded ? "sticky top-0 z-10 bg-background" : ""
                   } ${
                     selectedIds.has(item.id) ? "bg-accent/50" : ""
@@ -294,7 +293,7 @@ export function SentenceList({
                 </div>
 
                 {expanded && (
-                  <div className="px-5 pb-4 space-y-3 animate-fade-in">
+                  <div className="px-4 pb-4 space-y-3 animate-fade-in lg:px-5">
                     {item.zh && (
                       <p className="text-sm text-muted-foreground">
                         <Highlight text={item.zh} tokens={searchTokens} />
@@ -363,46 +362,14 @@ export function SentenceList({
 
       {items.length > 0 && (
         <div className="shrink-0 border-t border-border">
-          <div className="mx-auto w-full max-w-4xl px-5 py-2 flex items-center justify-between gap-2">
-            <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-              <span>{t("vocab.perPage")}</span>
-              <Select value={String(pageSize)} onValueChange={(value) => onPageSizeChange(Number(value))}>
-                <SelectTrigger className="h-7 w-16 rounded-md px-1.5 text-xs" aria-label={t("vocab.perPage")}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[10, 20, 50, 100].map((size) => (
-                    <SelectItem key={size} value={String(size)}>{size}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
-            <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              onClick={() => onPageChange(Math.max(0, page - 1))}
-              disabled={page === 0}
-              className="w-10 h-10 lg:w-7 lg:h-7 p-0 flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted disabled:opacity-30 transition-colors"
-            >
-              <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                <path fillRule="evenodd" d="M9.78 12.78a.75.75 0 01-1.06 0L4.47 8.53a.75.75 0 010-1.06l4.25-4.25a.75.75 0 011.06 1.06L6.06 8l3.72 3.72a.75.75 0 010 1.06z" clipRule="evenodd" />
-              </svg>
-            </Button>
-            <span className="text-[11px] text-muted-foreground">
-              {page * pageSize + 1}–{Math.min((page + 1) * pageSize, items.length)} / {items.length}
-            </span>
-            <Button
-              variant="ghost"
-              onClick={() => onPageChange(Math.min(totalPages - 1, page + 1))}
-              disabled={(page + 1) * pageSize >= items.length}
-              className="w-10 h-10 lg:w-7 lg:h-7 p-0 flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted disabled:opacity-30 transition-colors"
-            >
-              <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                <path fillRule="evenodd" d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z" clipRule="evenodd" />
-              </svg>
-            </Button>
-            </div>
-          </div>
+          <ListPaginator
+            className="mx-auto w-full max-w-4xl"
+            page={page}
+            pageSize={pageSize}
+            total={items.length}
+            onPageChange={onPageChange}
+            onPageSizeChange={onPageSizeChange}
+          />
         </div>
       )}
     </div>

@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/mantine";
 import { BlockNoteEditor } from "@blocknote/core";
 import "@blocknote/mantine/style.css";
 import { ListTree } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { CloseIcon } from "@/components/ui/icons";
+import { Dialog, DialogTitle } from "@/components/ui/dialog";
+import { useIsNarrow } from "@/components/Vocabulary/hooks/useMediaQuery";
 import { editorSchema } from "@/components/Documents/editorSchema";
 import { useIsDark } from "@/hooks/useIsDark";
 import { useT } from "@/hooks/useT";
@@ -19,10 +24,15 @@ export function ReadOnlyBlockNote({
   fontSize = 17.5,
   fallbackText = "",
   header,
+  toolbarSlot,
 }: {
   html: string;
   fontSize?: number;
   fallbackText?: string;
+  /** Reader-bar node to portal the outline button into (see ReaderView). The
+   *  button can't live beside the article on a phone — there is no room for a
+   *  column, and an absolutely placed one scrolls away from the reader. */
+  toolbarSlot?: HTMLElement | null;
   /** Rendered at the top of the article column with the same geometry as the
    *  BlockNote body below (see .reader-article-header in reader-content.css),
    *  so the article title lines up with the parsed content. */
@@ -38,9 +48,13 @@ export function ReadOnlyBlockNote({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [outlineTick, setOutlineTick] = useState(0);
   const [outlineOpen, setOutlineOpen] = useState(true);
+  // Separate from `outlineOpen`: that one defaults open (the desktop column
+  // is meant to be there), and sharing it would pop the modal on load.
+  const [outlineModalOpen, setOutlineModalOpen] = useState(false);
   const [parsing, setParsing] = useState(true);
   const [plainText, setPlainText] = useState<string | null>(null);
   const isDark = useIsDark();
+  const narrow = useIsNarrow();
   const t = useT();
   // The reader can't add headings, so an empty outline has nothing to say —
   // hide it when the article has no headings. It also drops below xl
@@ -203,9 +217,54 @@ export function ReadOnlyBlockNote({
           </button>
         )}
         {outlineOpen && outlineItems.length > 0 && (
-          <div className="sticky top-4 max-h-[calc(100vh-8rem)] w-56 shrink-0 self-start overflow-y-auto">
+          // Hidden below `lg` along with its toggle button: with no way to
+          // close it, a 224px column on a phone left the article a sliver wide.
+          <div className="sticky top-4 hidden max-h-[calc(100vh-8rem)] w-56 shrink-0 self-start overflow-y-auto lg:block">
             <DocumentOutline editor={editor} tick={outlineTick} />
           </div>
+        )}
+        {/* Phone outline entry point: portaled into the reader bar so it stays
+          * reachable while scrolling, and opens the headings as a modal rather
+          * than a column that would leave the article a sliver wide. */}
+        {toolbarSlot && narrow && outlineItems.length > 0 && createPortal(
+          <Button
+            variant="ghost"
+            onClick={() => setOutlineModalOpen(true)}
+            title={t("doc.outline")}
+            aria-label={t("doc.outline")}
+            className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+          >
+            <ListTree className="w-4 h-4" />
+          </Button>,
+          toolbarSlot,
+        )}
+        {narrow && (
+          <Dialog open={outlineModalOpen} onClose={() => setOutlineModalOpen(false)} maxWidth="max-w-sm">
+            <div className="relative border-b border-border px-5 py-4">
+              <DialogTitle className="flex items-center gap-2 text-base font-semibold">
+                <ListTree className="h-4 w-4 text-muted-foreground" />
+                {t("doc.outline")}
+              </DialogTitle>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setOutlineModalOpen(false)}
+                className="absolute right-3 top-3 h-7 w-7 rounded-full text-muted-foreground hover:text-foreground"
+                title={t("common.close")}
+                aria-label={t("common.close")}
+              >
+                <CloseIcon className="h-4 w-4" />
+              </Button>
+            </div>
+            <DocumentOutline
+              editor={editor}
+              tick={outlineTick}
+              className="max-h-[60vh] overflow-y-auto p-3"
+              showHeader={false}
+              onNavigate={() => setOutlineModalOpen(false)}
+            />
+          </Dialog>
         )}
         {parsing && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60">

@@ -64,6 +64,7 @@ export const tts: Dict = {
     "tts.close": "关闭",
     "tts.backToSource": "返回播放来源",
     "tts.listenToArticle": "听全文",
+    "tts.listenMenu": "朗读…",
     "tts.synthesizing": "合成中…",
     "tts.sentenceProgress": "第 {current} / {total} 句",
 };

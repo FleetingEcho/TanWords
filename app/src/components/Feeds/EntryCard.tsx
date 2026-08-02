@@ -385,42 +385,51 @@ export function EntryListRow({ entry, feedTitle, onOpen, onPlay, onTranslate, tr
       tabIndex={0}
       onClick={onOpen}
       onKeyDown={(e) => e.key === "Enter" && onOpen()}
-      className="group flex items-start gap-2.5 rounded-lg px-2.5 py-2 cursor-pointer hover:bg-muted/50 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60"
+      className="group flex flex-col gap-1 rounded-lg px-2.5 py-2 cursor-pointer hover:bg-muted/50 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary/60 xl:flex-row xl:items-start xl:gap-2.5"
     >
-      {trackRead && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${unread ? "bg-primary" : "bg-transparent"}`} aria-hidden="true" />}
+      {/* Phones give the headline the full row and push everything else below
+        * it. Beside a fixed ~130px of time + action buttons the title column
+        * was down to a couple of words per line, so a normal HN headline
+        * wrapped into a seven-line paragraph. */}
+      <div className="flex min-w-0 flex-1 items-start gap-2.5 xl:basis-1/2">
+        {trackRead && <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${unread ? "bg-primary" : "bg-transparent"}`} aria-hidden="true" />}
       <div className="min-w-0 flex-1">
-        <h3 className={`wrap-break-word whitespace-normal text-[13.5px] leading-snug ${unread || !trackRead ? "font-medium text-foreground" : "text-muted-foreground"}`}>
+        <h3 className={`wrap-break-word whitespace-normal line-clamp-2 text-[13.5px] leading-snug ${unread || !trackRead ? "font-medium text-foreground" : "text-muted-foreground"}`}>
           {entry.title}
         </h3>
         {chineseTitle && <p className="line-clamp-2 text-[11.5px] leading-snug text-muted-foreground/80">{chineseTitle}</p>}
-        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground lg:hidden">
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground xl:hidden">
           <span className="max-w-[140px] truncate">{feedTitle || domainOf(entry.url)}</span>
           {(entry.points != null || entry.commentCount != null) && <EngagementBadges entry={entry} />}
           {entry.author && <span className="max-w-[110px] truncate">{entry.author}</span>}
         </div>
       </div>
+      </div>
+      {/* `sm:contents` dissolves this wrapper above the breakpoint, so on
+        * desktop these stay direct children of the row exactly as before. */}
+      <div className="flex items-center gap-2 xl:contents">
       {(entry.points != null || entry.commentCount != null) && (
-        <span className="hidden md:flex shrink-0 items-center gap-1">
+        <span className="hidden xl:flex shrink-0 items-center gap-1">
           <EngagementBadges entry={entry} />
         </span>
       )}
-      <span className="hidden sm:block shrink-0 max-w-[140px] truncate text-[11px] text-muted-foreground">
+      <span className="hidden xl:block min-w-0 max-w-[140px] truncate text-[11px] text-muted-foreground">
         {feedTitle || domainOf(entry.url)}
       </span>
       <button
         onClick={(e) => openSource(e, entry.url)}
         title={t("feeds.openSource")}
         aria-label={t("feeds.openSource")}
-        className="hidden sm:flex shrink-0 items-center text-muted-foreground opacity-70 hover:opacity-100 hover:text-foreground transition-colors"
+        className="hidden xl:flex shrink-0 items-center text-muted-foreground opacity-70 hover:opacity-100 hover:text-foreground transition-colors"
       >
         <ExternalIcon className="w-3 h-3" />
       </button>
       {entry.author && (
-        <span className="hidden md:block shrink-0 max-w-[110px] truncate text-[11px] text-muted-foreground/80">
+        <span className="hidden xl:block min-w-0 max-w-[110px] truncate text-[11px] text-muted-foreground/80">
           {entry.author}
         </span>
       )}
-      <span className="shrink-0 w-9 text-right text-[11px] font-mono tabular-nums text-muted-foreground">
+      <span className="ml-auto shrink-0 w-9 text-right text-[11px] font-mono tabular-nums text-muted-foreground xl:ml-0">
         {relativeTime(entry.published)}
       </span>
       {onAnalyzeBackground && backgroundDone && (
@@ -434,8 +443,10 @@ export function EntryListRow({ entry, feedTitle, onOpen, onPlay, onTranslate, tr
           <CheckIcon className="w-3 h-3" />
         </Button>
       )}
+      {/* Hover-to-reveal has no equivalent on a touch screen — below `sm` the
+        * actions are simply always visible. */}
       <div className={`flex items-center gap-0.5 shrink-0 transition-opacity ${
-        bookmarked ? "opacity-100" : "opacity-0"
+        bookmarked ? "opacity-100" : "opacity-100 xl:opacity-0"
       } group-hover:opacity-100 focus-within:opacity-100`}>
         {onToggleBookmark && (
           <Button
@@ -501,6 +512,7 @@ export function EntryListRow({ entry, feedTitle, onOpen, onPlay, onTranslate, tr
             )}
           </Button>
         )}
+      </div>
       </div>
     </div>
   );

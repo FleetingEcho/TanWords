@@ -6,6 +6,10 @@ import { HnComments } from "@/components/Reader/HnComments";
 import { ScratchPasteScreen } from "@/components/Reader/ScratchPasteScreen";
 import { ArticleComments } from "@/components/Reader/ArticleComments";
 import { TranslationPane } from "@/components/shared/TranslationPane";
+import { Dialog, DialogTitle } from "@/components/ui/dialog";
+import { CloseIcon } from "@/components/ui/icons";
+import { useIsNarrow } from "@/components/Vocabulary/hooks/useMediaQuery";
+import { useReaderNotesStore } from "@/store/readerNotesStore";
 import { Markdown } from "@/components/AiChat/Markdown";
 import { renderStudyBlockquote } from "@/components/AiChat/SpeakingPhrase";
 import { AiChatModal } from "@/components/AiChat/AiChatModal";
@@ -39,14 +43,23 @@ interface Props {
 
 export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, toolbarSlot }: Props) {
   const db = useDB();
+  const narrow = useIsNarrow();
   const state = useArticleReaderState({ url, domain, audio, hnItemId });
   const {
     t, status, article, errorMsg, fontStep, setFontStep, hnComments, pastedText, setPastedText,
     articleId, comments, showComments, showTranslation, chatModalSessionId, setChatModalSessionId,
     analyzingNotes, notesMarkdown, rightView, setRightView,
     hasSidePanes, openPanes, activeView,
-    handlePasteSubmit, handleHnCommentsLoaded,
+    handlePasteSubmit, handleHnCommentsLoaded, setShowComments, setShowTranslation,
   } = state;
+
+  /** Phones show the side panes as a modal, so dismissing it has to actually
+   *  close the panes — otherwise the reader reopens them on the next render. */
+  const closeSidePanes = () => {
+    setShowComments(false);
+    setShowTranslation(false);
+    useReaderNotesStore.getState().setShowNotes(false);
+  };
 
   if (status === "loading") {
     return (
@@ -107,74 +120,9 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
     );
   }
 
-  return (
-    // Two independent columns: the article scrolls on the left, and the side
-    // panel (notes / translation / comments) fills the reader's real height on
-    // the right with its own scroll — sizing it off 100vh instead would
-    // overshoot, since the feeds tab bar above and the player bar below both
-    // eat into the viewport, leaving the panel's bottom unreachable.
-    <div className="flex-1 min-h-0 flex">
-      <div className="min-w-0 flex-1 overflow-y-auto">
-      <div className="px-6 py-10">
-
-        {toolbarSlot && createPortal(
-          <ReaderToolbar state={state} url={url} domain={domain} audio={audio} hnItemId={hnItemId} />,
-          toolbarSlot
-        )}
-
-        {/* data-reader-selectable tells the global selection toolbar that
-          * anything picked in here (article body or HN comments) came from
-          * the reader, so saved sentences are attributed to it. */}
-        <div data-reader-selectable className="min-w-0 w-full">
-          <LazyReadOnlyBlockNote
-            html={article.content_html}
-            fallbackText={article.text_content}
-            fontSize={FONT_STEPS[fontStep]}
-            header={
-              <>
-                {/* Font size control */}
-                <div className="flex items-center justify-end gap-1 mb-6 -mt-2">
-                  <Button
-                    variant="ghost"
-                    onClick={() => setFontStep((s) => Math.max(0, s - 1))}
-                    disabled={fontStep === 0}
-                    className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 transition-colors text-xs font-bold"
-                    title={t("reader.fontSmaller")}
-                  >
-                    A-
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    onClick={() => setFontStep((s) => Math.min(FONT_STEPS.length - 1, s + 1))}
-                    disabled={fontStep === FONT_STEPS.length - 1}
-                    className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 transition-colors text-sm font-bold"
-                    title={t("reader.fontLarger")}
-                  >
-                    A+
-                  </Button>
-                </div>
-
-                <h1 className="text-[1.9rem] font-bold leading-tight text-foreground">{article.title}</h1>
-                {(article.byline || article.site_name) && (
-                  <p className="text-xs text-muted-foreground mt-3">
-                    {[article.byline, article.site_name].filter(Boolean).join(" · ")}
-                  </p>
-                )}
-              </>
-            }
-          />
-          {hnItemId != null && <HnComments storyId={hnItemId} onLoaded={handleHnCommentsLoaded} />}
-        </div>
-      </div>
-      </div>
-
-      {/* The side panel appears once notes or a translation is requested, and
-        * shows exactly one of them at a time — a small toggle only shows up
-        * once there's actually a second thing to switch to. Notes is populated
-        * from the reader bar's analyze button (see ReaderView); it just renders
-        * whatever markdown comes back. */}
-      {hasSidePanes && (
-        <div className="min-w-0 flex-1 flex flex-col overflow-hidden border-l border-border/40 pl-4">
+  /** One definition, two containers: a column on desktop, a modal on phones. */
+  const sidePanes = (
+    <>
           {openPanes.length > 1 && (
             <div className="flex items-center gap-1 border-b border-border p-1.5 shrink-0">
               {openPanes.map((pane) => (
@@ -221,9 +169,108 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
           ) : (
             <TranslationPane articleText={article.text_content} hnItemId={hnItemId ?? null} />
           )}
+    </>
+  );
+
+  return (
+    // Two independent columns: the article scrolls on the left, and the side
+    // panel (notes / translation / comments) fills the reader's real height on
+    // the right with its own scroll — sizing it off 100vh instead would
+    // overshoot, since the feeds tab bar above and the player bar below both
+    // eat into the viewport, leaving the panel's bottom unreachable.
+    <div className="flex-1 min-h-0 flex">
+      <div className="min-w-0 flex-1 overflow-y-auto">
+      <div className="px-6 py-10">
+
+        {toolbarSlot && createPortal(
+          <ReaderToolbar state={state} url={url} domain={domain} audio={audio} hnItemId={hnItemId} />,
+          toolbarSlot
+        )}
+
+        {/* data-reader-selectable tells the global selection toolbar that
+          * anything picked in here (article body or HN comments) came from
+          * the reader, so saved sentences are attributed to it. */}
+        <div data-reader-selectable className="min-w-0 w-full">
+          <LazyReadOnlyBlockNote
+            toolbarSlot={toolbarSlot}
+            html={article.content_html}
+            fallbackText={article.text_content}
+            fontSize={FONT_STEPS[fontStep]}
+            header={
+              <>
+                {/* Font size control */}
+                <div className="flex items-center justify-end gap-1 mb-6 -mt-2">
+                  <Button
+                    variant="ghost"
+                    onClick={() => setFontStep((s) => Math.max(0, s - 1))}
+                    disabled={fontStep === 0}
+                    className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 transition-colors text-xs font-bold"
+                    title={t("reader.fontSmaller")}
+                  >
+                    A-
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => setFontStep((s) => Math.min(FONT_STEPS.length - 1, s + 1))}
+                    disabled={fontStep === FONT_STEPS.length - 1}
+                    className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 transition-colors text-sm font-bold"
+                    title={t("reader.fontLarger")}
+                  >
+                    A+
+                  </Button>
+                </div>
+
+                <h1 className="text-[1.9rem] font-bold leading-tight text-foreground">{article.title}</h1>
+                {(article.byline || article.site_name) && (
+                  <p className="text-xs text-muted-foreground mt-3">
+                    {[article.byline, article.site_name].filter(Boolean).join(" · ")}
+                  </p>
+                )}
+              </>
+            }
+          />
+          {hnItemId != null && <HnComments storyId={hnItemId} onLoaded={handleHnCommentsLoaded} />}
+        </div>
+      </div>
+      </div>
+
+      {/* The side panel appears once notes or a translation is requested, and
+        * shows exactly one of them at a time — a small toggle only shows up
+        * once there's actually a second thing to switch to. Notes is populated
+        * from the reader bar's analyze button (see ReaderView); it just renders
+        * whatever markdown comes back. */}
+      {hasSidePanes && !narrow && (
+        <div className="min-w-0 flex-1 flex flex-col overflow-hidden border-l border-border/40 pl-4">
+          {sidePanes}
         </div>
       )}
 
+      {/* Phones can't afford a second column: the panel and the article each
+        * got half the width and both collapsed to one word per line. Same
+        * content, shown over the article instead of beside it. */}
+      {hasSidePanes && narrow && (
+        <Dialog open onClose={closeSidePanes} maxWidth="max-w-lg" className="flex h-[85vh] flex-col">
+          <div className="relative flex shrink-0 items-center border-b border-border px-5 py-3.5">
+            <DialogTitle className="min-w-0 flex-1 truncate pr-8 text-sm font-semibold">
+              {article.title}
+            </DialogTitle>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={closeSidePanes}
+              className="absolute right-3 top-3 h-7 w-7 rounded-full text-muted-foreground hover:text-foreground"
+              title={t("common.close")}
+              aria-label={t("common.close")}
+            >
+              <CloseIcon className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            {sidePanes}
+          </div>
+        </Dialog>
+      )}
       <AiChatModal
         open={chatModalSessionId !== null}
         onClose={() => setChatModalSessionId(null)}

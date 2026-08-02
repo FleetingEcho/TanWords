@@ -141,7 +141,11 @@ export function ReaderView({ url, title, domain, onBack, onOpenExternal, audio, 
               <ExternalIcon className="w-4 h-4" />
             </Button>
           )}
-          <div ref={setToolbarSlot} className="flex items-center justify-evenly gap-1 shrink-0 empty:hidden lg:justify-start" />
+          {/* `contents` below `lg`: the portaled buttons must be direct flex
+            * items of the row, or the row's `justify-evenly` spaces out three
+            * children — external link, this whole group, fullscreen — and the
+            * group's own buttons stay bunched in the middle. */}
+          <div ref={setToolbarSlot} className="contents empty:hidden lg:flex lg:shrink-0 lg:items-center lg:justify-start lg:gap-1" />
           {readerArticle && (
             <Button
               variant="ghost"

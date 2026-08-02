@@ -4,6 +4,8 @@ export const common: Dict = {
     "common.cancel": "Cancel",
     "common.delete": "Delete",
     "common.loading": "Loading...",
+    "common.prevPage": "Previous page",
+    "common.nextPage": "Next page",
     "sel.lookup": "Look up",
     "sel.savePattern": "Save sentence",
     "sel.saving": "Analyzing…",
