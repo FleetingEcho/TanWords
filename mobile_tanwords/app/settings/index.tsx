@@ -10,7 +10,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useT } from "@/hooks/useT";
 import { usePalette } from "@/lib/theme";
 import { Card, Divider, ListRow } from "@/components/ui";
-import { SettingsHeader } from "./_header";
+import { SettingsHeader } from "@/components/settings/SettingsHeader";
 
 export default function SettingsScreen() {
   const t = useT();

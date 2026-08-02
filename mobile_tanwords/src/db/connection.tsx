@@ -7,7 +7,7 @@
  * profile persistence, fallback warning) extends this file — same exports.
  */
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { ActivityIndicator, Platform, View } from "react-native";
 import * as SQLite from "expo-sqlite";
 
 export const EXPECTED_SCHEMA_VERSION = 27;
@@ -30,12 +30,30 @@ async function openLocal(): Promise<SQLite.SQLiteDatabase> {
   await db.execAsync("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
   // Brand-new local DBs get the frozen desktop schema. Shared/Turso DBs never
   // migrate on mobile — the desktop app owns the schema, see PLAN.md D2.
+  //
+  // Sentinel check: `feed_bookmarks` is the LAST table in the script. A
+  // bootstrap that died mid-way (e.g. web runs before the FTS5 filter above)
+  // leaves `schema_migrations` behind while later tables never get created;
+  // requiring the tail table makes such partial DBs re-run the — idempotent,
+  // all IF NOT EXISTS — bootstrap and converge.
   const row = await db.getFirstAsync<{ n: number }>(
-    "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
+    "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name IN ('schema_migrations','feed_bookmarks')"
   );
-  if (!row || row.n === 0) {
-    const schema = require("./schema_sql").default as string;
-    await db.execAsync(schema);
+  if (!row || row.n < 2) {
+    // Web uses the FTS5-less variant: expo-sqlite's web wa-sqlite build ships
+    // without FTS5 ("no such module: fts5"); native gets FTS via enableFTS in
+    // app.json. Executed statement-by-statement — a multi-statement exec
+    // string silently swallows CREATE VIRTUAL TABLE on some builds, and
+    // per-statement errors name the exact failing DDL.
+    const mod = require("./schema_sql");
+    const statements = (Platform.OS === "web" ? mod.schemaWebStatements : mod.schemaStatements) as string[];
+    for (const stmt of statements) {
+      await db.execAsync(stmt + ";").catch((e) => {
+        throw new Error(
+          `Schema bootstrap failed on: ${stmt.slice(0, 120).replace(/\s+/g, " ")}… — ${e}`
+        );
+      });
+    }
   }
   return db;
 }

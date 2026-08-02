@@ -5,8 +5,10 @@
  * strip footnote back-reference arrows, sanitize the extracted HTML to the
  * desktop's allowlist, normalize textContent whitespace.
  */
+import { Platform } from "react-native";
 import { parseHTML } from "linkedom";
 import { Readability } from "@mozilla/readability";
+import { viaCorsProxy, fetchedFinalUrl } from "@/lib/corsProxy";
 
 export interface ExtractedArticle {
   /** Final URL after redirects (or the original when fetch didn't report one). */
@@ -110,12 +112,18 @@ async function fetchHtml(url: string): Promise<{ html: string; finalUrl: string 
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   let resp: Response;
   try {
-    resp = await fetch(url, {
-      headers: {
-        "User-Agent": USER_AGENT,
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
+    // Web: fetch via the dev server's same-origin CORS proxy (browsers can't
+    // fetch 3rd-party article URLs cross-origin). User-Agent is a forbidden
+    // header in browsers — the proxy sets an equivalent UA server-side.
+    resp = await fetch(viaCorsProxy(url), {
+      headers:
+        Platform.OS === "web"
+          ? { Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" }
+          : {
+              "User-Agent": USER_AGENT,
+              Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+              "Accept-Language": "en-US,en;q=0.9",
+            },
       redirect: "follow",
       signal: controller.signal,
     });
@@ -167,7 +175,7 @@ async function fetchHtml(url: string): Promise<{ html: string; finalUrl: string 
     }
   }
 
-  return { html, finalUrl: resp.url || url };
+  return { html, finalUrl: fetchedFinalUrl(resp, url) };
 }
 
 /**

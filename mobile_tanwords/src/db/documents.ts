@@ -13,6 +13,7 @@
  *  - document_privacy (lock/wrap) is not ported on mobile v1; updates to
  *    protected rows never happen because the editor refuses to open them.
  */
+import { Platform } from "react-native";
 import { getDb } from "./connection";
 import { ftsMatchQuery } from "./reading";
 
@@ -96,16 +97,25 @@ export async function db_get_documents(args?: {
 
   const match = args?.search != null ? ftsMatchQuery(args.search) : "";
   const searching = match.length > 0;
+  // Web's wa-sqlite build has no FTS5 — the join/bm25/snippet path is native-only;
+  // fall back to AND-of-terms LIKE over the same indexed columns.
+  const useFts = searching && Platform.OS !== "web";
 
   let whereSql = " WHERE 1=1";
   const values: (string | number)[] = [];
 
-  const from = searching
+  const from = useFts
     ? "FROM documents d JOIN documents_fts f ON f.rowid = d.id"
     : "FROM documents d";
-  if (searching) {
+  if (useFts) {
     whereSql += " AND documents_fts MATCH ?";
     values.push(match);
+  } else if (searching) {
+    for (const t of (args?.search ?? "").trim().replace(/["*]/g, " ").split(/\s+/).filter(Boolean)) {
+      whereSql += " AND (d.title LIKE ? OR d.content_text LIKE ?)";
+      const p = `%${t}%`;
+      values.push(p, p);
+    }
   }
   const tag = args?.tag && args.tag.length > 0 ? args.tag : null;
   if (tag !== null) {
@@ -125,10 +135,10 @@ export async function db_get_documents(args?: {
       : args?.sort === "title"
         ? "d.title ASC"
         : "d.updated_at DESC";
-  const order = searching ? `d.protected ASC, bm25(documents_fts)` : `d.protected ASC, d.pinned DESC, ${sortCol}`;
+  const order = useFts ? `d.protected ASC, bm25(documents_fts)` : `d.protected ASC, d.pinned DESC, ${sortCol}`;
   // Never leak protected bodies into snippets (encrypted text is meaningless
   // and leaks ciphertext length).
-  const snippet = searching
+  const snippet = useFts
     ? "CASE WHEN d.protected=1 THEN '' ELSE snippet(documents_fts, 1, '«', '»', '…', 18) END"
     : "''";
 

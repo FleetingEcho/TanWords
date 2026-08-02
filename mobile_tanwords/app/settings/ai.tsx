@@ -28,7 +28,7 @@ import {
   aiProviderUpsert,
   type AiProviderRow,
 } from "@/db/providers";
-import { SettingsHeader } from "./_header";
+import { SettingsHeader } from "@/components/settings/SettingsHeader";
 
 type Kind = "anthropic" | "openai" | "custom";
 const KIND_DEFAULTS: Record<Kind, { apiBase: string; modelId: string }> = {
