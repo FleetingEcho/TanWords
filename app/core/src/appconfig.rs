@@ -36,11 +36,10 @@ struct AppConfig {
 }
 
 fn config_file_path() -> PathBuf {
-    let dir = dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("tanwords");
-    std::fs::create_dir_all(&dir).ok();
-    dir.join("app_config.json")
+    // `app_data_dir` honours TANWORDS_DATA_DIR so the web server keeps config
+    // under its own data root; on the desktop it resolves to the same
+    // platform data dir as before.
+    crate::app_data_dir().join("app_config.json")
 }
 
 fn load() -> AppConfig {

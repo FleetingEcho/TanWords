@@ -8,6 +8,15 @@ TanWords is a desktop app for content-driven English learning, built with Electr
 
 The UI is Chinese-first; the codebase is written in English.
 
+## Web version
+
+A browser-based edition (desktop + mobile, multi-user with invite-key registration and per-user Turso) lives in [`web/`](web/README.md): one Rust backend + Vite/React SPA. Quickstart in 3 lines:
+
+```bash
+cd web/frontend && bun install && bun run build
+cd ../server && TANWORDS_MASTER_KEY=$(openssl rand -hex 32) TANWORDS_INVITE_KEY=choose-a-key cargo run --release
+```
+
 ## Highlights
 
 - **Learn from real content.** Paste an article, open an RSS feed, or read Hacker News inside the app. AI extraction works against the real text instead of a generic word list.

@@ -18,6 +18,20 @@ path = "src/main.rs"
 # `#[crate::shim::command]`-annotated functions and generate dispatch.rs.
 regex = "1"
 
+[features]
+# Desktop is the Electron sidecar, with on-device TTS and local audio
+# playback. Server builds (web/server) compile with --no-default-features
+# (+ "web"): they never link sherpa-onnx or the audio stack, which keeps the
+# build light and portable. These features only gate *modules*; the dispatch
+# table in build.rs drops the corresponding commands in step.
+default = ["desktop"]
+desktop = ["tts", "audio"]
+tts = ["dep:sherpa-onnx", "dep:tar", "dep:bzip2"]
+audio = ["dep:rodio", "dep:symphonia", "dep:libloading", "dep:lofty"]
+# Marker feature for the web/server build (no code of its own yet — exists so
+# the path-dependency there has something explicit to opt into).
+web = []
+
 [dependencies]
 tanwords-macros = { path = "macros" }
 serde = { version = "1", features = ["derive"] }
@@ -42,22 +56,22 @@ chrono = "0.4"
 # exposed vits/matcha/kokoro/kitten, so pocket/supertonic/zipvoice were
 # unreachable. This one tracks upstream and links statically, which is why
 # build.rs no longer has to stage any dylibs.
-sherpa-onnx = "1.13.4"
-tar = "0.4"
-bzip2 = "0.4"
+sherpa-onnx = { version = "1.13.4", optional = true }
+tar = { version = "0.4", optional = true }
+bzip2 = { version = "0.4", optional = true }
 futures-util = "0.3"
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
-libloading = "0.8"
+libloading = { version = "0.8", optional = true }
 feed-rs = "2"
 url = "2"
-lofty = "0.22"
-rodio = { version = "0.22.2", default-features = false, features = ["playback", "mp3", "flac", "vorbis", "wav", "mp4"] }
+lofty = { version = "0.22", optional = true }
+rodio = { version = "0.22.2", default-features = false, features = ["playback", "mp3", "flac", "vorbis", "wav", "mp4"], optional = true }
 # Used directly (not through rodio) by native_audio::robust, which needs
 # packet-level control rodio's Decoder does not expose: pinning the audio track
 # in a container that also has video, and recovering from mid-file demuxer
 # errors instead of ending the stream. Same crate versions rodio already
 # resolves to, so this adds no extra compilation.
-symphonia = { version = "0.5.5", default-features = false, features = ["mp3", "aac", "isomp4", "flac", "vorbis", "ogg", "wav", "pcm", "adpcm", "alac", "mkv", "aiff", "caf"] }
+symphonia = { version = "0.5.5", default-features = false, features = ["mp3", "aac", "isomp4", "flac", "vorbis", "ogg", "wav", "pcm", "adpcm", "alac", "mkv", "aiff", "caf"], optional = true }
 walkdir = "2"
 encoding_rs = "0.8"
 ignore = "0.4.30"

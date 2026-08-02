@@ -1,0 +1,205 @@
+import React, { useCallback, useState } from "react";
+import { useT } from "@/hooks/useT";
+import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
+import { usePlayerOriginStore } from "@/store/playerOriginStore";
+import { useLayoutStore } from "@/store/layoutStore";
+import {
+  PlayIcon, PauseIcon, CloseIcon, RefreshIcon, SkipPrevIcon, SkipNextIcon, ChevronIcon, MusicIcon,
+} from "@/components/ui/icons";
+import { Button } from "@/components/ui/button";
+import { PLAY_MODES } from "@/lib/playQueue";
+import { MODE_ICONS } from "@/components/ui/playModeIcons";
+import { NowPlayingOverlay } from "@/components/ui/NowPlayingOverlay";
+import { PlaybackSpeedSelector } from "@/components/ui/PlaybackSpeedSelector";
+import { AudioSeekSlider } from "@/components/ui/AudioSeekSlider";
+
+function formatTime(sec: number): string {
+  if (!isFinite(sec) || sec <= 0) return "0:00";
+  const s = Math.floor(sec % 60);
+  const m = Math.floor((sec / 60) % 60);
+  const h = Math.floor(sec / 3600);
+  const mm = h ? String(m).padStart(2, "0") : String(m);
+  return `${h ? h + ":" : ""}${mm}:${String(s).padStart(2, "0")}`;
+}
+
+/** Bottom bar for podcast episode playback. Mount exactly once (in App.tsx).
+ * When sentence TTS starts, audioChannel pauses the episode; the bar stays
+ * visible so the page doesn't suddenly lose its bottom edge. */
+export function PodcastPlayerBar() {
+  const t = useT();
+  const status = usePodcastPlayerStore((s) => s.status);
+  const track = usePodcastPlayerStore((s) => s.track);
+  const position = usePodcastPlayerStore((s) => s.position);
+  const duration = usePodcastPlayerStore((s) => s.duration);
+  const speed = usePodcastPlayerStore((s) => s.speed);
+  const toggle = usePodcastPlayerStore((s) => s.toggle);
+  const seekTo = usePodcastPlayerStore((s) => s.seekTo);
+  const seekBy = usePodcastPlayerStore((s) => s.seekBy);
+  const setSpeed = usePodcastPlayerStore((s) => s.setSpeed);
+  const stop = usePodcastPlayerStore((s) => s.stop);
+  const playlist = usePodcastPlayerStore((s) => s.playlist);
+  const playMode = usePodcastPlayerStore((s) => s.playMode);
+  const skip = usePodcastPlayerStore((s) => s.skip);
+  const setPlayMode = usePodcastPlayerStore((s) => s.setPlayMode);
+  const goToOrigin = usePlayerOriginStore((s) => s.goToOrigin);
+  const sidebarCollapsed = useLayoutStore((s) => s.sidebarCollapsed);
+  const [expanded, setExpanded] = useState(false);
+  const closeOverlay = useCallback(() => setExpanded(false), []);
+  const openOverlay = useCallback(() => setExpanded(true), []);
+
+  if (status === "idle" || !track) return null;
+
+  if (expanded) return <NowPlayingOverlay onClose={closeOverlay} />;
+
+  const isPlaying = status === "playing";
+  const isError = status === "error";
+  const isLoading = status === "loading";
+
+  return (
+    <div
+      className={`fixed right-0 z-40 border-t border-border bg-card/95 backdrop-blur-xs px-4 py-2.5 flex items-center gap-3 animate-fade-in transition-[left] duration-200 cursor-pointer bottom-[calc(3.5rem+env(safe-area-inset-bottom))] left-0 lg:bottom-0 ${
+        sidebarCollapsed ? "lg:left-[60px]" : "lg:left-[210px]"
+      }`}
+      onClick={(e) => {
+        // Only blank bar area expands — buttons and the slider keep their own clicks.
+        if (e.target === e.currentTarget) openOverlay();
+      }}
+      title={t("music.expandPlayer")}
+    >
+      {playlist && (
+        <Button
+          variant="ghost"
+          onClick={() => skip(-1)}
+          className="w-8 h-8 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+          title={t("music.prev")}
+        >
+          <SkipPrevIcon className="w-4 h-4" />
+        </Button>
+      )}
+
+      <Button
+        variant="ghost"
+        onClick={() => seekBy(-15)}
+        className="h-8 px-2 rounded-md flex items-center justify-center text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+        title={t("podcast.back15")}
+      >
+        -15s
+      </Button>
+
+      {isError ? (
+        <Button
+          variant="ghost"
+          onClick={toggle}
+          className="w-9 h-9 p-0 rounded-full flex items-center justify-center bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors shrink-0"
+          title={t("podcast.retry")}
+        >
+          <RefreshIcon className="w-4 h-4" />
+        </Button>
+      ) : isLoading ? (
+        <div
+          className="w-9 h-9 rounded-full flex items-center justify-center bg-primary/10 shrink-0"
+          title={t("podcast.loading")}
+        >
+          <div className="w-4 h-4 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+        </div>
+      ) : (
+        <Button
+          variant="ghost"
+          onClick={toggle}
+          className="group w-9 h-9 p-0 rounded-full flex items-center justify-center bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shrink-0"
+          title={isPlaying ? t("podcast.pause") : t("podcast.play")}
+        >
+          {isPlaying ? (
+            <>
+              {/* A static pause icon is a little dull for "this is actively playing" — spin a
+                * music note instead, swapping to the actual pause icon on hover so the click
+                * target stays obvious. */}
+              <MusicIcon className="w-4 h-4 animate-[spin_12s_linear_infinite] group-hover:hidden" />
+              <PauseIcon className="w-4 h-4 hidden group-hover:block" />
+            </>
+          ) : (
+            <PlayIcon className="w-4 h-4" />
+          )}
+        </Button>
+      )}
+
+      <Button
+        variant="ghost"
+        onClick={() => seekBy(15)}
+        className="h-8 px-2 rounded-md flex items-center justify-center text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+        title={t("podcast.forward15")}
+      >
+        +15s
+      </Button>
+
+      {playlist && (
+        <Button
+          variant="ghost"
+          onClick={() => skip(1)}
+          className="w-8 h-8 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+          title={t("music.next")}
+        >
+          <SkipNextIcon className="w-4 h-4" />
+        </Button>
+      )}
+
+      <span className="text-xs font-mono tabular-nums text-muted-foreground shrink-0">
+        {formatTime(position)} / {formatTime(duration)}
+      </span>
+
+      {/* input[type=range] keeps its intrinsic width under flex in WebKit —
+          grow a wrapper instead and let the input fill it. */}
+      <div className="flex-1 min-w-0">
+        <AudioSeekSlider position={position} duration={duration} onSeek={seekTo} ariaLabel={t("podcast.seek")} />
+      </div>
+
+      <Button
+        variant="ghost"
+        onClick={goToOrigin}
+        title={t("tts.backToSource")}
+        className="h-auto max-w-56 min-w-0 hidden md:flex flex-col items-start shrink-0 overflow-hidden text-left hover:opacity-80 hover:bg-transparent transition-opacity"
+      >
+        <span className="w-full truncate text-xs font-medium text-foreground">{track.title}</span>
+        <span className="w-full truncate text-[10px] text-muted-foreground">
+          {isError ? t("podcast.error") : track.feedTitle}
+        </span>
+      </Button>
+
+      {playlist && (() => {
+        const ModeIcon = MODE_ICONS[playMode];
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => setPlayMode(PLAY_MODES[(PLAY_MODES.indexOf(playMode) + 1) % PLAY_MODES.length])}
+            className={`w-8 h-8 p-0 rounded-md flex items-center justify-center hover:bg-muted transition-colors shrink-0 ${
+              playMode === "order" ? "text-muted-foreground hover:text-foreground" : "text-primary"
+            }`}
+            title={t(`music.mode.${playMode}`)}
+          >
+            <ModeIcon className="w-4 h-4" />
+          </Button>
+        );
+      })()}
+
+      <PlaybackSpeedSelector value={speed} onChange={setSpeed} />
+
+      <Button
+        variant="ghost"
+        onClick={openOverlay}
+        className="w-8 h-8 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0 rotate-90"
+        title={t("music.expandPlayer")}
+      >
+        <ChevronIcon direction="left" className="w-4 h-4" />
+      </Button>
+
+      <Button
+        variant="ghost"
+        onClick={stop}
+        className="w-8 h-8 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+        title={t("podcast.close")}
+      >
+        <CloseIcon className="w-4 h-4" />
+      </Button>
+    </div>
+  );
+}

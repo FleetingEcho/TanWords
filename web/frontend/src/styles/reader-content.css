@@ -1,0 +1,131 @@
+/* Reader mode — sanitized article HTML from fetch_article */
+.tanwords-editor-readonly {
+  min-height: 60vh;
+}
+.tanwords-editor-readonly .bn-editor {
+  margin-top: 0;
+  padding-inline: 1rem;
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Reading measure: cap the reader column (and the matching header column
+   below) at a comfortable ~68 characters instead of the document editor's
+   960px, so articles rest in the middle of wide windows with real side
+   padding. ch tracks the body font size, so the A-/A+ controls keep the
+   same number of characters per line. Specificity must beat the base
+   .tanwords-editor:not(.tanwords-editor-compact) .bn-editor max-width. */
+.tanwords-editor.tanwords-editor-readonly .bn-editor {
+  max-width: 68ch;
+}
+
+/* Article header (title / byline / font controls) column inside the reader —
+   identical geometry to the body column so the title's left edge lines up
+   with the first character of the text. */
+.tanwords-editor-readonly .reader-article-header {
+  font-size: var(--document-font-size, 17.5px);
+  width: 100%;
+  max-width: 68ch;
+  margin-inline: auto;
+  padding-inline: 1rem;
+  padding-bottom: 1.5rem;
+}
+.tanwords-editor-readonly .bn-block-content {
+  padding-block: 0.25em;
+}
+.tanwords-editor-readonly a {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.tanwords-editor-readonly img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.75rem;
+}
+.tanwords-editor-readonly blockquote {
+  border-left: 3px solid hsl(var(--border));
+  padding-left: 1.1em;
+  color: hsl(var(--muted-foreground));
+}
+.tanwords-editor-readonly table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.tanwords-editor-readonly th,
+.tanwords-editor-readonly td {
+  border: 1px solid hsl(var(--border));
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+.reader-article-content,
+.reader-article-content * {
+  font-family: var(--app-font);
+}
+.reader-article-content > * + * {
+  margin-top: 1.3em;
+}
+.reader-article-content h1,
+.reader-article-content h2,
+.reader-article-content h3,
+.reader-article-content h4 {
+  font-weight: 700;
+  line-height: 1.3;
+  margin-top: 2em;
+}
+.reader-article-content h1 { font-size: 1.4em; }
+.reader-article-content h2 { font-size: 1.25em; }
+.reader-article-content h3 { font-size: 1.1em; }
+.reader-article-content a {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.reader-article-content img,
+.reader-article-content figure {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.75rem;
+}
+.reader-article-content blockquote {
+  border-left: 3px solid hsl(var(--border));
+  padding-left: 1.1em;
+  color: hsl(var(--muted-foreground));
+  font-style: italic;
+}
+.reader-article-content pre {
+  background: hsl(var(--muted));
+  border-radius: 0.75rem;
+  padding: 1em;
+  overflow-x: auto;
+  font-size: 0.85em;
+  line-height: 1.6;
+}
+.reader-article-content code {
+  font-family: var(--code-font);
+  background: hsl(var(--muted));
+  border-radius: 0.3em;
+  padding: 0.15em 0.4em;
+  font-size: 0.85em;
+}
+.reader-article-content pre code {
+  background: transparent;
+  padding: 0;
+}
+.reader-article-content ul,
+.reader-article-content ol {
+  padding-left: 1.4em;
+}
+.reader-article-content li + li {
+  margin-top: 0.4em;
+}
+.reader-article-content table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+.reader-article-content th,
+.reader-article-content td {
+  border: 1px solid hsl(var(--border));
+  padding: 0.5em 0.75em;
+  text-align: left;
+}

@@ -1,0 +1,88 @@
+/* Typora-style raw Markdown source view: the textarea stays transparent and
+ * this highlighted layer sits directly behind it, sharing font metrics. */
+.raw-markdown-editor textarea,
+.raw-markdown-editor pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.raw-markdown-editor .rm-sync-overlay {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.raw-markdown-editor .rm-sync-overlay::-webkit-scrollbar {
+  display: none;
+}
+.raw-markdown-editor .rm-line-numbers {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.raw-markdown-editor .rm-line-numbers::-webkit-scrollbar {
+  display: none;
+}
+.raw-markdown-editor .rm-scroll-surface {
+  height: 100%;
+  max-height: 100%;
+}
+.raw-markdown-editor .rm-editor-input {
+  height: 100%;
+  max-height: 100%;
+  border: 0;
+  outline: none;
+}
+.raw-markdown-editor textarea[wrap="soft"],
+.raw-markdown-editor pre.rm-wrap {
+  white-space: pre-wrap !important;
+  overflow-wrap: break-word !important;
+}
+.raw-markdown-editor textarea[wrap="off"],
+.raw-markdown-editor pre.rm-nowrap {
+  white-space: pre !important;
+}
+.rm-heading {
+  color: hsl(var(--primary));
+  font-weight: 700;
+}
+.rm-heading-text {
+  color: hsl(var(--foreground));
+  font-weight: 700;
+}
+.rm-block {
+  color: hsl(var(--muted-foreground) / 0.72);
+}
+.rm-hr {
+  color: hsl(var(--muted-foreground) / 0.55);
+}
+.rm-code {
+  color: hsl(var(--primary));
+  background-color: hsl(var(--muted) / 0.65);
+  border-radius: 4px;
+  padding-inline: 3px;
+}
+.rm-code-line {
+  background-color: hsl(var(--muted) / 0.28);
+}
+.rm-fence {
+  color: hsl(var(--muted-foreground) / 0.62);
+  background-color: hsl(var(--muted) / 0.28);
+  display: inline-block;
+  width: 100%;
+}
+.rm-strong {
+  color: hsl(var(--foreground));
+  font-weight: 700;
+}
+.rm-em {
+  color: hsl(var(--foreground));
+  font-style: italic;
+}
+.rm-strike {
+  color: hsl(var(--muted-foreground));
+  text-decoration: line-through;
+}
+.rm-link-label {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.rm-link {
+  color: hsl(var(--muted-foreground) / 0.75);
+}

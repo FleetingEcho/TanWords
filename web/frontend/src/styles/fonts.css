@@ -1,0 +1,64 @@
+/* Fonts are declared here rather than pulled from @blocknote/core's
+ * fonts/inter.css, which ships 9 weights x 2 formats (woff2 + a woff fallback).
+ * We render in Chromium only, which has supported woff2 since v36 — the woff
+ * half was ~200KB of files that can never be requested. Of the 9 weights the
+ * app uses 4 (400/500/600/700; see the font-{medium,semibold,bold} classes).
+ *
+ * Those 4 are vendored into ../static/inter/ rather than referenced inside the
+ * package: @blocknote/core's "exports" map doesn't expose its src/fonts path,
+ * so a url() into it fails to resolve at build time. Inter is SIL OFL, and the
+ * bundle already redistributed it. Re-copy from
+ * node_modules/@blocknote/core/src/fonts/inter-v12-latin/ on upgrade. */
+
+/* --- Inter: --app-font (see theme-vars.css) --- */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../static/inter/inter-v12-latin-regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../static/inter/inter-v12-latin-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("../static/inter/inter-v12-latin-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("../static/inter/inter-v12-latin-700.woff2") format("woff2");
+}
+
+/* --- Monaspace Neon: --code-font ---
+ * Subset from the upstream Nerd Font build (MonaspaceNeonNF-Regular.woff,
+ * 1487KB) with pyftsubset. The NF build carries 9,390 private-use-area icon
+ * glyphs (powerline, devicons) that nothing in this app renders — dropping
+ * those and converting woff -> woff2 took it to 101KB, a 93% cut, with coding
+ * ligatures (liga/calt) kept. To regenerate after a font upgrade:
+ *
+ *   pyftsubset MonaspaceNeonNF-Regular.woff \
+ *     --output-file=MonaspaceNeon-Regular.subset.woff2 --flavor=woff2 \
+ *     --layout-features='kern,liga,calt,ccmp,locl,rlig' \
+ *     --unicodes="U+0000-00FF,U+0100-017F,U+0180-024F,U+0250-02AF,U+02B0-02FF,\
+ * U+0300-036F,U+0370-03FF,U+0400-04FF,U+2000-206F,U+2070-209F,U+20A0-20BF,\
+ * U+2100-214F,U+2150-218F,U+2190-21FF,U+2200-22FF,U+2300-23FF,U+2500-257F,\
+ * U+2580-259F,U+25A0-25FF,U+2600-26FF,U+FE00-FE0F"
+ */
+@font-face {
+  font-family: "Monaspace Neon NF";
+  src: url("../static/MonaspaceNeon-Regular.subset.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}

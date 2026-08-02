@@ -1,0 +1,158 @@
+import type { PartialBlock } from "@blocknote/core";
+import { blocksToMarkdown, blocksToStorage, blocksToText, contentToBlocks, markdownToBlocks } from "./docFormat";
+
+type Operation = "markdownToBlocks" | "contentToBlocks" | "blocksToMarkdown" | "blocksToMarkdownWithStats" | "blocksToStorage" | "htmlToMarkdown";
+export type MarkdownWithStats = { markdown: string; wordCount: number };
+type Pending = {
+  resolve: (value: any) => void;
+  reject: (error: Error) => void;
+  timeout: ReturnType<typeof setTimeout>;
+};
+
+let worker: Worker | null = null;
+let workerUnavailable = false;
+let nextId = 1;
+const pending = new Map<number, Pending>();
+
+/** The worker holds a live BlockNoteEditor (a full ProseMirror schema, ~1.4MB
+ *  of module code plus its instance state) for as long as it exists. Documents
+ *  are edited in bursts, so past this much idle time that memory is worth more
+ *  than the ~100ms of respawn on the next parse. */
+const WORKER_IDLE_TIMEOUT_MS = 30_000;
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+function stopWorker() {
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = null;
+  worker?.terminate();
+  worker = null;
+}
+
+/** Arm the idle shutdown, but only once nothing is in flight. */
+function scheduleIdleShutdown() {
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => {
+    idleTimer = null;
+    if (pending.size === 0) stopWorker();
+  }, WORKER_IDLE_TIMEOUT_MS);
+}
+
+function getWorker(): Worker | null {
+  if (worker) return worker;
+  if (workerUnavailable || typeof Worker === "undefined") return null;
+  try {
+    worker = new Worker(new URL("../workers/documentWorker.ts", import.meta.url), { type: "module" });
+    worker.onmessage = ({ data }: MessageEvent<{ id: number; result?: unknown; error?: string }>) => {
+      const request = pending.get(data.id);
+      if (!request) return;
+      pending.delete(data.id);
+      clearTimeout(request.timeout);
+      data.error ? request.reject(new Error(data.error)) : request.resolve(data.result);
+      if (pending.size === 0) scheduleIdleShutdown();
+    };
+    worker.onerror = () => {
+      for (const request of pending.values()) {
+        clearTimeout(request.timeout);
+        request.reject(new Error("document worker failed"));
+      }
+      pending.clear();
+      stopWorker();
+      workerUnavailable = true;
+    };
+    return worker;
+  } catch {
+    workerUnavailable = true;
+    return null;
+  }
+}
+
+function run<T>(operation: Operation, payload: string | readonly unknown[]): Promise<T> | null {
+  const target = getWorker();
+  if (!target) return null;
+  // Work is starting — don't let a shutdown armed by the previous batch fire
+  // underneath it.
+  if (idleTimer) {
+    clearTimeout(idleTimer);
+    idleTimer = null;
+  }
+  const id = nextId++;
+  return new Promise<T>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      const request = pending.get(id);
+      if (!request) return;
+      pending.delete(id);
+      request.reject(new Error("document worker timed out"));
+      for (const other of pending.values()) {
+        clearTimeout(other.timeout);
+        other.reject(new Error("document worker restarted after a timeout"));
+      }
+      pending.clear();
+      stopWorker();
+    // Large Markdown documents can legitimately take several seconds to parse
+    // or serialize. A short timeout is counterproductive here: the catch path
+    // repeats the same expensive work on the UI thread. Keep the work isolated
+    // in the worker and reserve restart/fallback for a genuinely stuck worker.
+    }, 60_000);
+    pending.set(id, { resolve, reject, timeout });
+    target.postMessage({ id, operation, payload });
+  });
+}
+
+export async function markdownToBlocksOffThread(markdown: string): Promise<PartialBlock[]> {
+  try { return await (run<PartialBlock[]>("markdownToBlocks", markdown) ?? markdownToBlocks(markdown)); }
+  catch { return markdownToBlocks(markdown); }
+}
+
+export async function contentToBlocksOffThread(content: string): Promise<PartialBlock[]> {
+  if (!content || content === "{}" || content === "[]") return [];
+  try { return await (run<PartialBlock[]>("contentToBlocks", content) ?? contentToBlocks(content)); }
+  catch { return contentToBlocks(content); }
+}
+
+export async function blocksToMarkdownOffThread(blocks: readonly unknown[]): Promise<string> {
+  try { return await (run<string>("blocksToMarkdown", blocks) ?? blocksToMarkdown(blocks)); }
+  catch { return blocksToMarkdown(blocks); }
+}
+
+export async function blocksToMarkdownWithStatsOffThread(
+  blocks: readonly unknown[],
+): Promise<MarkdownWithStats> {
+  try {
+    return await (run<MarkdownWithStats>("blocksToMarkdownWithStats", blocks)
+      ?? Promise.all([blocksToMarkdown(blocks), Promise.resolve(blocksToText(blocks))]).then(
+        ([markdown, text]) => ({
+          markdown,
+          wordCount: text.trim() ? text.trim().split(/\s+/).length : 0,
+        }),
+      ));
+  } catch {
+    const [markdown, text] = await Promise.all([
+      blocksToMarkdown(blocks),
+      Promise.resolve(blocksToText(blocks)),
+    ]);
+    return {
+      markdown,
+      wordCount: text.trim() ? text.trim().split(/\s+/).length : 0,
+    };
+  }
+}
+
+export async function blocksToStorageOffThread(blocks: readonly unknown[]) {
+  try { return await (run<ReturnType<typeof blocksToStorage>>("blocksToStorage", blocks) ?? Promise.resolve(blocksToStorage(blocks))); }
+  catch { return blocksToStorage(blocks); }
+}
+
+export async function htmlToMarkdownOffThread(html: string): Promise<string> {
+  const result = await run<string>("htmlToMarkdown", html);
+  if (!result) throw new Error("document worker unavailable");
+  return result;
+}
+
+export async function blocksToHtmlOffThread(blocks: readonly unknown[]): Promise<string> {
+  // Worker cannot serialize HTML without a DOM, so this runs on the renderer.
+  // Kept behind a named function so export can move off the main thread later
+  // without changing callers.
+  const { BlockNoteEditor } = await import("@blocknote/core");
+  const editor = BlockNoteEditor.create();
+  return editor.blocksToHTMLLossy(blocks as any);
+}

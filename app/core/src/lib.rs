@@ -5,19 +5,26 @@ use db::connection::{Db, DbDescriptor, DbProfile};
 pub mod appconfig;
 pub mod db;
 pub mod document_privacy;
+#[cfg(feature = "tts")]
 pub mod tts;
 pub mod reader;
 pub mod secrets;
 pub mod http_util;
 pub mod rss;
 pub mod hn;
+#[cfg(feature = "audio")]
 pub mod music;
+#[cfg(feature = "audio")]
 pub mod native_audio;
 pub mod localdocs;
 pub mod mcp;
 pub mod rpc;
-pub mod server;
 pub mod shim;
+// The desktop sidecar's own axum surface (loopback, per-process token,
+// stdout handshake, `/asset?path=` file serving). The web/server crate builds
+// its own router instead, so this module only exists in desktop builds.
+#[cfg(feature = "desktop")]
+pub mod server;
 
 pub struct AppState {
     /// Swapped wholesale by `db_switch_path` / `db_connect_turso`, so a
@@ -32,6 +39,7 @@ pub struct AppState {
     /// `Arc`-wrapped so `tts_synthesize` can clone a `'static` handle into
     /// `spawn_blocking`, keeping the CPU-bound ONNX inference off the tokio
     /// worker threads that also service other IPC commands.
+    #[cfg(feature = "tts")]
     pub tts: Arc<Mutex<Option<tts::LoadedEngine>>>,
     /// Set once at startup if a previously-saved custom DB path (via
     /// `db_switch_path`) failed to open and the app silently fell back to
@@ -60,27 +68,39 @@ impl AppState {
     }
 }
 
-/// Starts the sidecar: opens the database, builds the managed-state
-/// registry, binds an ephemeral localhost port, prints the
-/// `{"port":..,"token":".."}` handshake line Electron's supervisor parses,
-/// then serves until the process exits.
-pub async fn run() {
+/// Everything `run()` does except serving HTTP: opens the startup database,
+/// then delegates to `build_state_for`. Desktop entry point.
+pub async fn build_state() -> (Arc<shim::Registry>, shim::AppHandle) {
     let (database, db_fallback_warning) =
         open_startup_db().await.expect("Failed to open database");
+    build_state_for(database, db_fallback_warning).await
+}
+
+/// Builds the managed-state registry and app handle around an already-open
+/// database, and starts the MCP controller when enabled. The web backend
+/// (`web/server`) calls this once per active user — each user gets their own
+/// registry around their own DB (per-user local file or Turso replica), so
+/// the ~15k lines of command code keep reading one `State<AppState>` while
+/// sessions stay fully isolated, including the events broadcast channel.
+pub async fn build_state_for(
+    database: Db,
+    db_fallback_warning: Option<String>,
+) -> (Arc<shim::Registry>, shim::AppHandle) {
     let mcp_config = mcp::load_config(&database.conn()).await;
     let mcp_controller = mcp::McpController::default();
     let startup_mcp_controller = mcp_controller.clone();
 
     let mut registry = shim::Registry::default();
-    registry
-        .manage(AppState {
-            db: Mutex::new(database),
-            tts: Arc::new(Mutex::new(None)),
-            db_fallback_warning,
-            document_privacy: document_privacy::DocumentPrivacyState::default(),
-        })
-        .manage(mcp_controller)
-        .manage(native_audio::NativeAudioState::default());
+    registry.manage(AppState {
+        db: Mutex::new(database),
+        #[cfg(feature = "tts")]
+        tts: Arc::new(Mutex::new(None)),
+        db_fallback_warning,
+        document_privacy: document_privacy::DocumentPrivacyState::default(),
+    });
+    registry.manage(mcp_controller);
+    #[cfg(feature = "audio")]
+    registry.manage(native_audio::NativeAudioState::default());
     let registry = Arc::new(registry);
 
     let (events_tx, _events_rx) = tokio::sync::broadcast::channel(256);
@@ -94,15 +114,68 @@ pub async fn run() {
         });
     }
 
+    (registry, app_handle)
+}
+
+/// Starts the sidecar: opens the database, builds the managed-state
+/// registry, binds an ephemeral localhost port, prints the
+/// `{"port":..,"token":".."}` handshake line Electron's supervisor parses,
+/// then serves until the process exits.
+#[cfg(feature = "desktop")]
+pub async fn run() {
+    let (registry, app_handle) = build_state().await;
     server::serve(registry, app_handle).await;
 }
 
-pub fn default_db_path() -> String {
-    let app_dir = dirs::data_dir()
+/// Opens a web user's startup profile in one call: their saved Turso replica
+/// when the server has url+token on file (the web server stores them per-user,
+/// not in the keychain/global appconfig), otherwise a per-user local file.
+/// The replica path is user-scoped, unlike `replica_db_path()` — see the
+/// stale-lineage comment in `db_connect_turso` for why replica files must
+/// never be shared across connection targets.
+pub async fn open_user_db(
+    user_dir: &std::path::Path,
+    turso: Option<(String /*url*/, String /*token*/)>,
+) -> Result<Db, String> {
+    std::fs::create_dir_all(user_dir).map_err(|e| e.to_string())?;
+    let profile = match turso {
+        Some((url, token)) => {
+            let path = user_dir
+                .join("turso-replica.db")
+                .to_string_lossy()
+                .to_string();
+            // A fresh connect always starts from an empty replica (same
+            // reasoning as db_connect_turso); a *stored* profile keeps it.
+            return db::connection::open(&DbProfile::Turso { path, url }, Some(&token)).await;
+        }
+        None => DbProfile::Local {
+            path: user_dir.join("tanwords.db").to_string_lossy().to_string(),
+        },
+    };
+    db::connection::open(&profile, None).await
+}
+
+/// The on-disk root for everything process-owned: the database, the app
+/// config, Turso replicas, secret files. `TANWORDS_DATA_DIR` overrides the
+/// platform default — set by the web server (headless boxes, containers);
+/// the desktop app never sets it and gets the platform data dir as before.
+pub fn app_data_dir() -> std::path::PathBuf {
+    if let Ok(dir) = std::env::var("TANWORDS_DATA_DIR") {
+        if !dir.trim().is_empty() {
+            let dir = std::path::PathBuf::from(dir);
+            std::fs::create_dir_all(&dir).ok();
+            return dir;
+        }
+    }
+    let dir = dirs::data_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("tanwords");
-    std::fs::create_dir_all(&app_dir).ok();
-    app_dir
+    std::fs::create_dir_all(&dir).ok();
+    dir
+}
+
+pub fn default_db_path() -> String {
+    app_data_dir()
         .join("tanwords.db")
         .to_string_lossy()
         .to_string()
@@ -112,9 +185,7 @@ pub fn default_db_path() -> String {
 /// configurable: it is a cache of the primary, not the user's own file, and
 /// keeping it out of the default DB path avoids ever confusing the two.
 pub fn replica_db_path() -> String {
-    dirs::data_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("tanwords")
+    app_data_dir()
         .join("turso-replica.db")
         .to_string_lossy()
         .to_string()
