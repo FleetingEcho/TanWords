@@ -43,14 +43,30 @@ if (!existsSync(KEY_PATH)) {
 const { version } = JSON.parse(readFileSync(path.join(APP_DIR, "package.json"), "utf8"));
 const privateKey = createPrivateKey(readFileSync(KEY_PATH));
 
+/** What electron-builder may have called this arch's zip.
+ *
+ *  x64 is listed twice on purpose. electron-builder omits the arch suffix for
+ *  whichever arch it treats as the default, so the Intel zip has shipped as
+ *  both `TanWords-<v>-x64-mac.zip` (1.1.1) and `TanWords-<v>-mac.zip` (1.5.0).
+ *  This script only knew the first spelling, so v1.5.0's update.json went out
+ *  with a `darwin-arm64` entry and nothing else — every Intel install has been
+ *  silently unable to update since. Checking both names is the fix; the
+ *  emptiness check below is what would have caught it.
+ */
+function candidates(arch) {
+  return arch === "x64"
+    ? [`TanWords-${version}-x64-mac.zip`, `TanWords-${version}-mac.zip`]
+    : [`TanWords-${version}-${arch}-mac.zip`];
+}
+
 // One entry per arch actually built, so a partial build (arm64 only) produces a
 // feed that simply has nothing to offer an Intel client rather than a broken
 // URL it would fail to download.
 const platforms = {};
 for (const arch of ["arm64", "x64"]) {
-  const name = `TanWords-${version}-${arch}-mac.zip`;
+  const name = candidates(arch).find((n) => existsSync(path.join(DIST, n)));
+  if (!name) continue;
   const file = path.join(DIST, name);
-  if (!existsSync(file)) continue;
 
   const bytes = readFileSync(file);
   platforms[`darwin-${arch}`] = {
@@ -68,6 +84,18 @@ for (const arch of ["arm64", "x64"]) {
 if (Object.keys(platforms).length === 0) {
   const built = readdirSync(DIST).filter((f) => f.endsWith(".zip")).join(", ") || "(none)";
   die(`no TanWords-${version}-<arch>-mac.zip in ${DIST}. Found: ${built}`);
+}
+
+// Loud, not fatal: an arm64-only release is a legitimate thing to publish
+// deliberately, but doing it by accident is how v1.5.0 stranded every Intel
+// user. Naming it at the point of signing is the last moment anyone looks.
+for (const arch of ["arm64", "x64"]) {
+  if (!platforms[`darwin-${arch}`]) {
+    console.warn(
+      `WARNING: no ${arch} build found — clients on that architecture will be ` +
+        `offered no update by this feed. Expected one of: ${candidates(arch).join(", ")}`,
+    );
+  }
 }
 
 const manifest = {
