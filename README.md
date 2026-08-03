@@ -11,8 +11,10 @@ The UI is Chinese-first; the codebase is written in English.
 ## Web version
 
 A browser-based edition (desktop + mobile, multi-user with invite-key
-registration and per-user Turso) lives in [`web/`](web/README.md). It uses
-the same renderer built from `app/src`; there is no separate web frontend.
+registration and per-user Turso) lives in [`web/`](web/README.md). It is not a
+port: it links the same Rust crate and serves the same renderer as the desktop
+app, so a feature written once ships to both. See
+[One codebase, two products](#one-codebase-two-products).
 
 ### Start the web version
 
@@ -100,7 +102,7 @@ frontend directory instead of the embedded copy.
 - **Sentence patterns as first-class items.** The Sentences/Patterns library stores reusable skeletons with slots, anchored to the real sentences they came from.
 - **Reading, feeds, podcasts, and Hacker News in one place.** The built-in reader removes distractions, extracts vocabulary, reads articles aloud, and can open an episode in the persistent podcast player.
 - **FSRS spaced repetition.** Vocabulary review is built in, so saved words can become a daily review queue.
-- **Private by default.** Data lives in a local SQLite file. Optionally connect your own Turso database to sync across machines.
+- **Private by default.** Data lives in a local SQLite file. Optionally connect your own Turso database to sync across machines, and your own Cloudflare R2 bucket for the videos and audio a database has no business holding.
 - **On-device TTS.** Kokoro/Piper voices run locally with no network call at speak time, including sentence-by-sentence article playback.
 - **Documents and AI chat.** The sidebar includes a BlockNote document editor and a multi-session AI chat with tool use.
 
@@ -241,6 +243,37 @@ You can disconnect at any time. The current vocabulary is saved to a standalone 
 
 The database belongs to your own Turso account; this project hosts nothing.
 
+## Large Files (Optional)
+
+A database is the wrong place for an 85 MB video. Turso proves it bluntly: the
+write travels to the primary in a single message and comes back
+`SQLITE_NOMEM`. So attachments split by size — small ones stay in the database
+where they need no network and work offline, large ones go to object storage.
+
+Connect a **Cloudflare R2** bucket in Settings > Data. R2's free tier is 10 GB
+with **no egress charges**, which matters for video you re-watch:
+
+1. In the Cloudflare dashboard, create an R2 bucket.
+2. R2 > Manage R2 API tokens > Create API token, with **object read & write**.
+3. Copy three values into Settings: account ID (32 hex), access key ID (32 hex),
+   and secret access key (64 hex — *not* the ~40-character token value).
+4. "Save and test" performs a real upload and delete before storing anything, so
+   a wrong key fails there rather than on your first real upload.
+
+From then on, files of **10 MB or more** go to the bucket and the database keeps
+only the row; a toggle sends *everything* there instead. Playback streams
+straight from R2 through a presigned URL, so a video seeks properly instead of
+downloading in full first. Settings shows real bucket usage (a live listing, not
+a local tally) and blocks uploads past 9 GB, short of the free allowance.
+
+The configuration lives in the database you are connected to, sealed as a whole
+with AES-256-GCM under a key held in the OS keychain. Two consequences worth
+knowing: switching databases switches bucket, and on the web build every user
+configures their own bucket — a synced copy of the row carries no usable
+credential to another machine.
+
+The bucket belongs to your own Cloudflare account; this project hosts nothing.
+
 ## AI Providers
 
 Bring your own API key. TanWords includes OpenAI and Claude presets, a DeepSeek preset, and custom OpenAI-compatible endpoints such as Ollama or LM Studio.
@@ -249,6 +282,82 @@ Provider configuration lives in the database:
 
 - **Keys are encrypted at rest** with AES-256-GCM under a master key held in the OS keychain. The renderer never reads the plaintext key directly.
 - **Providers are scoped to the device that added them.** The device id is part of the primary key, so synced databases do not share provider credentials between machines.
+
+## One codebase, two products
+
+TanWords ships as a desktop app and as a self-hosted web app. They are not two
+implementations that happen to agree — they are the same code, compiled twice.
+
+`app/core` is built as both a binary and a library:
+
+```toml
+# app/core/Cargo.toml
+[lib]
+name = "tanwords_lib"
+
+# web/server/Cargo.toml
+tanwords_lib = { package = "tanwords", path = "../../app/core",
+                 default-features = false, features = ["web"] }
+```
+
+So every command — vocabulary, documents, AI enrichment, RSS, sentence
+patterns, FSRS scheduling, R2 uploads — exists once, in `app/core`. The desktop
+build runs it as a sidecar binary that Electron supervises; the web build links
+the same crate and mounts the same command table per signed-in user. The
+renderer in `app/src` is likewise built once and used by both: Electron loads it
+from a custom `app://` scheme, and the server embeds the same output into its
+binary with `rust-embed`.
+
+The scale of what that saves is visible in the line counts:
+
+| | lines | what lives there |
+| --- | --- | --- |
+| `app/core/src` | ~18,000 | everything the product does |
+| `web/server/src` | ~1,800 | accounts, sessions, routing, per-user databases, serving the SPA |
+
+`web/server` implements no product logic at all. It answers one question the
+desktop never has to ask — *whose data is this?* — and hands the rest to
+`tanwords_lib`. A user's database is opened at `users/<id>/`, and the command
+table is built against that connection, which is what makes the web build
+multi-user without any command knowing that multi-user exists.
+
+**Why it is worth the indirection.** A feature added to `app/core` appears in
+both products the next time each is compiled; there is no second implementation
+to keep in step and no class of bug where the two disagree. The only code that
+should ever be written twice is code about *who is asking*: authentication,
+per-user isolation, and the few capabilities that genuinely differ — the web
+build has no local music library, no OS keychain, and no app lock (accounts
+already gate it). Those differences are declared once, in
+`src/platform/types.ts` and Cargo features, rather than discovered as drift.
+
+### How `web/server` is put together
+
+Seven files, each with one job:
+
+| file | job |
+| --- | --- |
+| `main.rs` | Start-up: read the environment, open `users.db`, bind the port. |
+| `config.rs` | Every knob, entirely environment-driven (`TANWORDS_MASTER_KEY`, `TANWORDS_INVITE_KEY`, `TANWORDS_DATA_DIR`, `TANWORDS_PORT`, …). |
+| `auth.rs` | Bearer-token plumbing and a per-(bucket, IP) failure limiter. |
+| `users.rs` | `users.db` — emails, argon2id password hashes, session tokens (sha256'd at rest), and each user's Turso credentials sealed with AES-256-GCM. Deliberately a *separate* database from any user's vocabulary. |
+| `runtime.rs` | The per-user runtime pool. |
+| `server.rs` | The axum surface: routes, session middleware, `/invoke` dispatch, assets, import/export, the AI proxy. |
+| `embedded.rs` | Seven lines of `rust-embed` that compile the built renderer into the binary. |
+
+`runtime.rs` is where multi-user actually happens, and it is worth reading if
+you want to understand the design. Each signed-in user gets their own core
+runtime — a `Registry` + `AppHandle` built around *their* database. Command
+code keeps reading `State<AppState>` exactly as it does on the desktop; the
+isolation comes from the runtimes being separate objects. Data, document-privacy
+unlocks and SSE event streams are all per-runtime, so there is no place where a
+command could accidentally reach across users, because a command has no way to
+name another user's runtime.
+
+The pool has a small ceiling and evicts idle entries. Dropping an entry drops
+the last `Arc`, which drops the `Registry`, which closes the `Db` — closing a
+local file costs nothing, and a Turso replica merely stops its background sync
+and re-syncs from the primary next time. This is a self-hosted app for invited
+users, not a public service, so a large pool would buy nothing.
 
 ## Architecture
 
