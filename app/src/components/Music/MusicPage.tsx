@@ -4,7 +4,8 @@ import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
 import { coverGradient } from "@/features/music/cover";
 import { Button } from "@/components/ui/button";
-import { MusicIcon, RefreshIcon, GridIcon, ListIcon, FolderIcon, SearchIcon } from "@/components/ui/icons";
+import { RefreshIcon, GridIcon, ListIcon, FolderIcon, SearchIcon } from "@/components/ui/icons";
+import { EmptyCanvas } from "@/components/shared/EmptyCanvas";
 import { MusicCollection, ViewMode } from "./types";
 import { fillMissingDurations, pickMusicFolder } from "./musicLib";
 import { TrackRows } from "./TrackRows";
@@ -55,21 +56,14 @@ export default function MusicPage() {
 
   if (!musicFolderPath) {
     return (
-      <div className="h-full flex items-center justify-center animate-fade-in">
-        <div className="text-center max-w-sm px-6">
-          <div className="w-20 h-20 mx-auto mb-6 rounded-3xl bg-primary/10 flex items-center justify-center">
-            <MusicIcon className="w-10 h-10 text-primary" />
-          </div>
-          <h2 className="text-lg font-semibold mb-2">{t("music.emptyTitle")}</h2>
-          <p className="text-sm text-muted-foreground leading-relaxed mb-6">{t("music.emptyBody")}</p>
-          <Button
-            onClick={pickMusicFolder}
-            className="h-9 px-5 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-          >
-            {t("music.setFolder")}
-          </Button>
-        </div>
-      </div>
+      <EmptyCanvas title={t("music.emptyTitle")} body={t("music.emptyBody")}>
+        <Button
+          onClick={pickMusicFolder}
+          className="h-9 px-5 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+        >
+          {t("music.setFolder")}
+        </Button>
+      </EmptyCanvas>
     );
   }
 

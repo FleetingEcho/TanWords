@@ -22,9 +22,11 @@ interface Props {
   manualRefreshKey?: number;
   onRefreshingChange?: (refreshing: boolean) => void;
   onCollapse?: () => void;
+  /** Passed straight to the header — see DocSourceTabs. */
+  sourceTabs?: React.ReactNode;
 }
 
-export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, manualRefreshKey = 0, onRefreshingChange, onCollapse }: Props) {
+export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, manualRefreshKey = 0, onRefreshingChange, onCollapse, sourceTabs }: Props) {
   const t = useT();
   const list = useDocList(`${refreshKey}:${manualRefreshKey}`);
   const { db, page, load, total, totalPages, loading: listLoading } = list;
@@ -63,6 +65,7 @@ export function DocSelector({ activeId, onSelect, onNewDoc, refreshKey, manualRe
     <div className={`flex flex-col h-full border-r border-border ${LIST_PANEL_WIDTH} shrink-0 max-lg:w-full max-lg:shrink bg-transparent`}>
       <DocSelectorHeader
         list={list}
+        sourceTabs={sourceTabs}
         onCollapse={onCollapse}
         onNewDoc={onNewDoc}
         onOpenImages={() => setImagesOpen(true)}

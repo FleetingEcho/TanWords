@@ -34,6 +34,12 @@ export const DOCUMENT_TEXT_COLOR_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 /** Mid-tone hues that stay legible as a translucent wash in both themes. */
 export const HIGHLIGHT_PRESETS = ["#d97706", "#eab308", "#22c55e", "#0ea5e9", "#8b5cf6", "#ec4899"] as const;
 
+/** Idle minutes before the app locks itself, `0` meaning never. Offered as a
+ *  short list rather than a free number: the useful answers are "when I go for
+ *  coffee" and "when I leave for the day", and both are coarse. */
+export const AUTO_LOCK_CHOICES = [0, 10, 20, 30, 60] as const;
+export const DEFAULT_AUTO_LOCK_MINUTES = 0;
+
 /** Which part of the dashboard banner survives the crop into its letterbox frame,
  *  as CSS `object-position` percentages. The image itself is stored whole, so this
  *  is the user's answer to "the banner is wider than my photo — show me *this* band". */

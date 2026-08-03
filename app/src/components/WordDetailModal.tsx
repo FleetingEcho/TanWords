@@ -149,7 +149,10 @@ export function WordDetailModal() {
           {parsed && !loading && !legacy && (
             <div className="space-y-4">
               <div className="flex items-center gap-3">
-                <DialogTitle className="text-2xl font-bold">{word}</DialogTitle>
+                {/* Same headword face as the entry in Vocabulary and the
+                  * screens in Layout/authVisuals — a word looks like a word
+                  * everywhere it is the subject. */}
+                <DialogTitle className="font-serif text-2xl font-bold tracking-tight">{word}</DialogTitle>
                 <LevelBadge level={basicInfo.level || parsed.level} />
               </div>
               <EnrichmentText text={parsed.text} />

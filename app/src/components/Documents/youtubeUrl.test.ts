@@ -32,7 +32,10 @@ describe("YouTube round trip through markdown", () => {
     expect(lowered[0].type).toBe("paragraph");
     expect(lowered[0].content[0].href).toBe(url);
 
-    expect(liftYouTube(lowered)).toEqual([{ type: "youtube", props: { url } }]);
+    // An uncaptioned player lowers to a link labelled with its own URL, and
+    // that has to read back as "no caption" — otherwise every save would give
+    // an untitled video a title consisting of its URL.
+    expect(liftYouTube(lowered)).toEqual([{ type: "youtube", props: { url, caption: "" } }]);
   });
 
   it("leaves a link that sits inside a sentence alone", () => {

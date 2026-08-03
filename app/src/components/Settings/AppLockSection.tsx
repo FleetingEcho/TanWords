@@ -4,7 +4,7 @@ import { Lock, Unlock } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 import { disableAppLock, setAppLockPassword, useAppLockStore } from "@/store/appLockStore";
-import { useSettingsStore } from "@/store/settingsStore";
+import { AUTO_LOCK_CHOICES, useSettingsStore } from "@/store/settingsStore";
 import { WallpaperSetting } from "./WallpaperSetting";
 import { APP_BG_MAX_DIMENSION, MAX_APP_BG_UPLOAD_BYTES, fileToDownscaledDataUrl } from "./GeneralSection";
 
@@ -21,6 +21,8 @@ export function AppLockSection() {
   const t = useT();
   const enabled = useAppLockStore((s) => s.enabled);
   const refresh = useAppLockStore((s) => s.refresh);
+  const autoLockMinutes = useSettingsStore((s) => s.autoLockMinutes);
+  const setAutoLockMinutes = useSettingsStore((s) => s.setAutoLockMinutes);
 
   const [open, setOpen] = useState(false);
   const [current, setCurrent] = useState("");
@@ -128,6 +130,33 @@ export function AppLockSection() {
               {busy ? t("lock.saving") : t("lock.save")}
             </Button>
           </div>
+        </div>
+      )}
+
+      {/* Only offered once there is a password to lock behind: an interval on
+        * its own would have nothing to do. Sits above the wallpaper because it
+        * governs when the lock screen appears, not what it looks like. */}
+      {enabled && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+          <div className="min-w-0">
+            <p className="text-xs font-medium">{t("lock.autoLock")}</p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">{t("lock.autoLockSub")}</p>
+          </div>
+          <select
+            value={autoLockMinutes}
+            onChange={(e) => setAutoLockMinutes(Number(e.target.value))}
+            className="h-8 shrink-0 rounded-lg border border-input bg-background px-2 text-xs outline-hidden focus:ring-2 focus:ring-primary/30"
+          >
+            {AUTO_LOCK_CHOICES.map((value) => (
+              <option key={value} value={value}>
+                {value === 0
+                  ? t("lock.autoLockNever")
+                  : value === 60
+                  ? t("lock.autoLockAfterHour")
+                  : t("lock.autoLockAfter", { minutes: value })}
+              </option>
+            ))}
+          </select>
         </div>
       )}
 

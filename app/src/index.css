@@ -128,3 +128,18 @@
 .animate-shake {
   animation: tanwords-shake 0.35s ease-in-out;
 }
+
+/* The rule under the wordmark on the splash screen, drawn left to right
+   across the hold — the same gesture as a focused field's underline. */
+@keyframes tanwords-splash-rule {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* Takes over once the rule is fully drawn but the backend still hasn't
+   answered. Opacity only — the sweep above owns the transform, and the two
+   run together. */
+@keyframes tanwords-splash-rule-wait {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}

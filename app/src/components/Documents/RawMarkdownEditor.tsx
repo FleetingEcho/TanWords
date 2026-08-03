@@ -1,101 +1,52 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ListOrdered, WrapText } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { EditorState, Compartment, Annotation } from "@codemirror/state";
+import {
+  EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter,
+  drawSelection, rectangularSelection, crosshairCursor,
+} from "@codemirror/view";
+import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { searchKeymap, highlightSelectionMatches, search } from "@codemirror/search";
+import { indentUnit, bracketMatching } from "@codemirror/language";
+import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { languages } from "@codemirror/language-data";
+import { ListOrdered, Search, WandSparkles, WrapText } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useIsDark } from "@/hooks/useIsDark";
+import { formatMarkdown } from "@/lib/formatMarkdown";
+import { markdownEditorTheme } from "./markdownEditorTheme";
+import { MarkdownSearchBar } from "./MarkdownSearchBar";
 
-const BLOCK_PREFIX_RE = /^(#{1,6}\s+)?((?:>\s*)+|(?:[-*+]\s+)?(?:\d+\.\s+)?(?:\[[ xX]\]\s+)?|-{3,}|\*{3,}|_{3,})/;
-const INLINE_TOKEN_RE = /(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*)|(~~[^~\n]+~~)|(\[[^\]\n]+\]\([^)\s]+\))/g;
+/** Marks a change this component made itself — loading a new document,
+ *  formatting — so the update listener can tell it apart from typing. Without
+ *  it every programmatic edit is reported back to the parent as user input,
+ *  which marks the document dirty and schedules a save for something the user
+ *  never did. */
+const Programmatic = Annotation.define<boolean>();
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
+/** Two spaces, matching `formatMarkdown`, so hand-indented and formatted text
+ *  agree about what one level looks like. */
+const INDENT = "  ";
 
-function renderInline(text: string): string {
-  let out = "";
-  let last = 0;
-  for (const match of text.matchAll(INLINE_TOKEN_RE)) {
-    const index = match.index ?? 0;
-    if (index > last) out += escapeHtml(text.slice(last, index));
-    const token = match[0];
-    if (token.startsWith("`")) {
-      out += `<span class="rm-code">${escapeHtml(token)}</span>`;
-    } else if (token.startsWith("**")) {
-      out += `<span class="rm-strong">${escapeHtml(token.slice(2, -2))}</span>`;
-    } else if (token.startsWith("~~")) {
-      out += `<span class="rm-strike">${escapeHtml(token.slice(2, -2))}</span>`;
-    } else if (token.startsWith("*")) {
-      out += `<span class="rm-em">${escapeHtml(token.slice(1, -1))}</span>`;
-    } else {
-      const link = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
-      if (link) {
-        out += `<span class="rm-link-label">${escapeHtml(link[1])}</span><span class="rm-link">${escapeHtml(`(${link[2]})`)}</span>`;
-      } else {
-        out += escapeHtml(token);
-      }
-    }
-    last = index + token.length;
-  }
-  return out + escapeHtml(text.slice(last));
-}
-
-function highlightMarkdown(markdown: string): string {
-  const lines = markdown.split("\n");
-  const html: string[] = [];
-  let fence: string | null = null;
-
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i];
-    if (fence) {
-      const trimmed = line.trim();
-      if (trimmed.startsWith(fence) && /^`{3,}\s*$/.test(trimmed)) {
-        html.push(`<span class="rm-fence">${escapeHtml(line)}</span>`);
-        fence = null;
-      } else {
-        html.push(`<span class="rm-code-line">${escapeHtml(line)}</span>`);
-      }
-      continue;
-    }
-
-    const trimmed = line.trim();
-    const fenceMatch = trimmed.match(/^(`{3,}|~{3,})/);
-    if (fenceMatch) {
-      fence = fenceMatch[1][0] === "~" ? "~~~" : "```";
-      html.push(`<span class="rm-fence">${escapeHtml(line)}</span>`);
-      continue;
-    }
-
-    if (trimmed === "---" || trimmed === "***" || trimmed === "___") {
-      html.push(`<span class="rm-hr">${escapeHtml(line)}</span>`);
-      continue;
-    }
-
-    if (/^(#{1,6})\s/.test(line)) {
-      const match = line.match(/^(#{1,6})\s+(.*)$/);
-      if (match) {
-        html.push(`<span class="rm-heading">${escapeHtml(match[1])}</span> <span class="rm-heading-text">${renderInline(match[2])}</span>`);
-        continue;
-      }
-    }
-
-    const prefix = line.match(BLOCK_PREFIX_RE)?.[0] ?? "";
-    if (prefix) {
-      const rest = line.slice(prefix.length);
-      const trimmedPrefix = prefix.trimEnd();
-      html.push(`<span class="rm-block">${escapeHtml(trimmedPrefix)}</span>${rest ? `<span>${renderInline(rest)}</span>` : ""}`);
-      continue;
-    }
-
-    html.push(renderInline(line));
-  }
-
-  if (fence) {
-    html.push(`<span class="rm-fence">${escapeHtml("```")}</span>`);
-  }
-  return html.join("<br/>");
-}
-
+/** Raw Markdown source, edited in CodeMirror.
+ *
+ *  A `<textarea>` was the obvious thing and carried this screen a long way, but
+ *  it cannot hold more than one selection — `selectionStart`/`selectionEnd` is
+ *  a single range, so Ctrl+D multi-select is not a hard feature there, it is an
+ *  impossible one. The same swap retires a pile of machinery that existed only
+ *  to make a textarea behave like an editor: a highlighted layer painted behind
+ *  transparent glyphs, its scroll-sync, hand-computed line numbers, and
+ *  hand-rolled Tab indentation.
+ *
+ *  What comes with it, all standard bindings:
+ *    Mod-d          select the next occurrence — repeat for more cursors
+ *    Mod-Shift-l    select every occurrence at once
+ *    Mod-f / Mod-g  find, find next; the panel carries replace
+ *    Tab            indent, Shift-Tab outdent, across every selected line
+ *
+ *  Fenced blocks are parsed in their own language (see `codeLanguages`), and
+ *  incrementally — a keystroke re-parses the region it touched rather than the
+ *  whole document, which is what the previous highlighter had to do.
+ */
 export function RawMarkdownEditor({
   value,
   onChange,
@@ -105,54 +56,147 @@ export function RawMarkdownEditor({
   onChange: (value: string) => void;
   label: string;
 }) {
-  const lineNumberRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const preScrollRef = useRef<HTMLDivElement>(null);
-  const [wrap, setWrap] = useState(
-    () => localStorage.getItem("tanwords_raw_markdown_wrap") !== "0",
-  );
+  const hostRef = useRef<HTMLDivElement>(null);
+  const viewRef = useRef<EditorView | null>(null);
+  const isDark = useIsDark();
+
+  const [searchOpen, setSearchOpen] = useState(false);
+  // Mounting the bar needs a live view; a ref alone would not re-render.
+  const [view, setView] = useState<EditorView | null>(null);
+  const [wrap, setWrap] = useState(() => localStorage.getItem("tanwords_raw_markdown_wrap") !== "0");
   const [showLineNumbers, setShowLineNumbers] = useState(
     () => localStorage.getItem("tanwords_raw_markdown_lines") !== "0",
   );
-  const [editorColumns, setEditorColumns] = useState(80);
 
-  const lineNumbers = useMemo(() => value.split("\n").map((line, index) => {
-    const expandedLength = line.replace(/\t/g, "  ").length;
-    return {
-      number: index + 1,
-      visualRows: wrap ? Math.max(1, Math.ceil((expandedLength || 1) / editorColumns)) : 1,
-    };
-  }), [editorColumns, value, wrap]);
-
-  const highlighted = useMemo(() => highlightMarkdown(value), [value]);
-
-  useLayoutEffect(() => {
-    const textarea = textareaRef.current;
-    if (textarea && preScrollRef.current) {
-      preScrollRef.current.scrollTop = textarea.scrollTop;
-      preScrollRef.current.scrollLeft = textarea.scrollLeft;
-    }
+  // Compartments let one setting be swapped in place. Rebuilding the editor
+  // instead would drop the selection, the undo history and the scroll position
+  // every time someone toggled word wrap.
+  const compartments = useRef({
+    theme: new Compartment(),
+    wrapping: new Compartment(),
+    gutter: new Compartment(),
   });
 
+  // `onChange` gets a new identity on every parent render; the editor is built
+  // once, so it has to reach the current one rather than close over the first.
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
   useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    const updateColumns = () => {
-      setEditorColumns(Math.max(12, Math.floor((textarea.clientWidth - 48) / 8.4)));
+    const host = hostRef.current;
+    if (!host) return;
+    const { theme, wrapping, gutter } = compartments.current;
+
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({
+        doc: value,
+        extensions: [
+          gutter.of(showLineNumbers ? [lineNumbers(), highlightActiveLineGutter()] : []),
+          wrapping.of(wrap ? EditorView.lineWrapping : []),
+          theme.of(markdownEditorTheme(isDark)),
+          // Without this the state collapses every selection down to one range
+          // and Ctrl+D silently does nothing but move the cursor — the whole
+          // reason for this editor.
+          EditorState.allowMultipleSelections.of(true),
+          history(),
+          // Multiple carets are drawn by CodeMirror, not the browser: native
+          // selection rendering can only show one.
+          drawSelection(),
+          rectangularSelection(),
+          crosshairCursor(),
+          highlightActiveLine(),
+          highlightSelectionMatches(),
+          bracketMatching(),
+          // The library's own panel is never opened — its markup is not ours to
+          // style (see MarkdownSearchBar). The extension still has to be here:
+          // it owns the query state and the match highlighting the bar drives.
+          search(),
+          indentUnit.of(INDENT),
+          markdown({ base: markdownLanguage, codeLanguages: languages }),
+          EditorView.contentAttributes.of({ "aria-label": label, spellcheck: "false" }),
+          // searchKeymap first: it and defaultKeymap both want Mod-d, and the
+          // multi-cursor one is the point.
+          // Mod-f and Mod-h open our bar. The rest of searchKeymap — Mod-d,
+          // Mod-Shift-l, Mod-g — is taken as-is, and must come before
+          // defaultKeymap, which also wants Mod-d.
+          keymap.of([
+            { key: "Mod-f", run: () => { setSearchOpen(true); return true; }, scope: "editor" },
+            { key: "Mod-h", run: () => { setSearchOpen(true); return true; }, scope: "editor" },
+            ...searchKeymap.filter((binding) => binding.key !== "Mod-f"),
+            ...defaultKeymap,
+            ...historyKeymap,
+            indentWithTab,
+          ]),
+          EditorView.updateListener.of((update) => {
+            if (!update.docChanged) return;
+            if (update.transactions.some((tr) => tr.annotation(Programmatic))) return;
+            onChangeRef.current(update.state.doc.toString());
+          }),
+        ],
+      }),
+    });
+    viewRef.current = view;
+    setView(view);
+    view.focus();
+    return () => {
+      view.destroy();
+      viewRef.current = null;
+      setView(null);
     };
-    updateColumns();
-    const observer = new ResizeObserver(updateColumns);
-    observer.observe(textarea);
-    return () => observer.disconnect();
+    // Built once. Everything that can change is reconfigured through a
+    // compartment below, and `value` is reconciled by its own effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const syncScroll = () => {
-    const textarea = textareaRef.current;
-    if (lineNumberRef.current) lineNumberRef.current.scrollTop = textarea?.scrollTop ?? 0;
-    if (preScrollRef.current && textarea) {
-      preScrollRef.current.scrollTop = textarea.scrollTop;
-      preScrollRef.current.scrollLeft = textarea.scrollLeft;
-    }
+  // Edits from outside — switching in from rich mode, formatting, an undo
+  // upstream. Guarded on the document actually differing, or every keystroke
+  // would echo back through the parent and reset the cursor.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || view.state.doc.toString() === value) return;
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: value },
+      // Clamp the caret into the new document rather than letting it fall back
+      // to the top of the file.
+      selection: { anchor: Math.min(view.state.selection.main.anchor, value.length) },
+      annotations: Programmatic.of(true),
+    });
+  }, [value]);
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: compartments.current.theme.reconfigure(markdownEditorTheme(isDark)),
+    });
+  }, [isDark]);
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: compartments.current.wrapping.reconfigure(wrap ? EditorView.lineWrapping : []),
+    });
+  }, [wrap]);
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: compartments.current.gutter.reconfigure(
+        showLineNumbers ? [lineNumbers(), highlightActiveLineGutter()] : [],
+      ),
+    });
+  }, [showLineNumbers]);
+
+  // Computed rather than run on click, so the button can go quiet on a document
+  // that is already tidy — pressing it and seeing nothing happen is
+  // indistinguishable from a broken button.
+  const formatted = useMemo(() => formatMarkdown(value), [value]);
+
+  const format = () => {
+    const view = viewRef.current;
+    if (!view || formatted === value) return;
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: formatted },
+      selection: { anchor: Math.min(view.state.selection.main.anchor, formatted.length) },
+    });
+    view.focus();
   };
 
   const toggleWrap = () => {
@@ -171,92 +215,64 @@ export function RawMarkdownEditor({
     });
   };
 
-  const editorBaseClass = "border-0 bg-transparent px-6 py-5 font-mono text-[14px] leading-7 outline-hidden placeholder:text-muted-foreground/30 tab-size-2";
-  const editorTextareaClass = `${editorBaseClass} block w-full min-h-0 resize-none overflow-y-scroll ${
-    wrap ? "overflow-x-hidden whitespace-pre-wrap break-words" : "overflow-x-auto whitespace-pre"
-  }`;
-  const editorPreClass = `${editorBaseClass} w-full min-w-full ${
-    wrap ? "whitespace-pre-wrap break-words" : "whitespace-pre w-max min-w-full"
-  }`;
-
   return (
     <div className="raw-markdown-editor flex min-h-0 flex-1 flex-col px-6 pb-4 pt-2">
       <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col overflow-hidden rounded-xl bg-background">
-        <div className="flex min-h-0 flex-1 overflow-hidden">
-          <div className="mx-auto flex min-h-0 w-full max-w-[960px] flex-1">
-          {showLineNumbers && (
-            <div
-              ref={lineNumberRef}
-              aria-hidden="true"
-              className="rm-line-numbers w-11 shrink-0 overflow-hidden bg-muted/15 py-5 text-right font-mono text-[11px] leading-7 text-muted-foreground/30 select-none"
+        <div className="relative mx-auto flex min-h-0 w-full max-w-[960px] flex-1 overflow-hidden">
+          <div className="absolute right-2 top-2 z-20 flex items-center gap-1 rounded-lg bg-muted/70 p-0.5 backdrop-blur-sm">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={format}
+              disabled={formatted === value}
+              title="Format Markdown"
+              className="h-6 w-6 rounded-md text-muted-foreground hover:text-foreground disabled:opacity-30"
             >
-              {lineNumbers.map((line) => (
-                <div
-                  key={line.number}
-                  style={{ height: `${line.visualRows * 28}px` }}
-                  className="pr-3"
-                >
-                  {line.number}
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="rm-scroll-surface relative min-h-0 flex-1 overflow-hidden">
-            <div className="absolute right-2 top-2 z-20 flex items-center gap-1 rounded-lg bg-muted/70 p-0.5 backdrop-blur-sm">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={toggleLines}
-                title="Toggle line numbers"
-                className={`h-6 w-6 rounded-md ${showLineNumbers ? "bg-background text-foreground shadow-xs" : "text-muted-foreground"}`}
-              >
-                <ListOrdered className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={toggleWrap}
-                title="Toggle word wrap"
-                className={`h-6 w-6 rounded-md ${wrap ? "bg-background text-foreground shadow-xs" : "text-muted-foreground"}`}
-              >
-                <WrapText className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-            <div
-              ref={preScrollRef}
-              aria-hidden="true"
-              className={`rm-sync-overlay pointer-events-none absolute inset-0 overflow-y-scroll ${wrap ? "overflow-x-hidden" : "overflow-x-auto"}`}
+              <WandSparkles className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => setSearchOpen(true)}
+              title="Find and replace (⌘F)"
+              className="h-6 w-6 rounded-md text-muted-foreground hover:text-foreground"
             >
-              <pre
-                className={`${editorPreClass} overflow-visible ${wrap ? "rm-wrap" : "rm-nowrap"}`}
-                dangerouslySetInnerHTML={{ __html: highlighted }}
-              />
-            </div>
-            <textarea
-              ref={textareaRef}
-              autoFocus
-              value={value}
-              onChange={(event) => {
-                onChange(event.target.value);
-              }}
-              onScroll={syncScroll}
-              spellCheck={false}
-              aria-label={label}
-              wrap={wrap ? "soft" : "off"}
-              style={{
-                tabSize: 2,
-                color: "transparent",
-                caretColor: "var(--document-text-color, hsl(var(--foreground)))",
-              }}
-              className={`${editorTextareaClass} rm-editor-input relative z-10`}
+              <Search className="h-3.5 w-3.5" />
+            </Button>
+            {/* Hairline, not a gap: the two on the left act on the document,
+              * the two on the right only change how it is displayed. */}
+            <span aria-hidden="true" className="mx-0.5 h-4 w-px bg-border" />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={toggleLines}
+              title="Toggle line numbers"
+              className={`h-6 w-6 rounded-md ${showLineNumbers ? "bg-background text-foreground shadow-xs" : "text-muted-foreground"}`}
+            >
+              <ListOrdered className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={toggleWrap}
+              title="Toggle word wrap"
+              className={`h-6 w-6 rounded-md ${wrap ? "bg-background text-foreground shadow-xs" : "text-muted-foreground"}`}
+            >
+              <WrapText className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          {searchOpen && view && (
+            <MarkdownSearchBar
+              view={view}
+              onClose={() => { setSearchOpen(false); view.focus(); }}
             />
-          </div>
-          </div>
+          )}
+          <div ref={hostRef} className="min-h-0 w-full flex-1 overflow-hidden" />
         </div>
-
       </div>
     </div>
   );

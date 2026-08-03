@@ -1,5 +1,12 @@
-/* BlockNote editor — blend into the app theme */
-.tanwords-editor {
+/* BlockNote editor — blend into the app theme.
+ *
+ * Two selectors for one variable block: the formatting toolbar is portaled out
+ * of the editor into DocEditor's outer container (`.tanwords-editor-chrome`),
+ * which is not inside `.tanwords-editor`. Declared on the editor alone, these
+ * would not reach it and the toolbar would render in BlockNote's stock menu
+ * colours next to an app-themed document. */
+.tanwords-editor,
+.tanwords-editor-chrome {
   --bn-colors-editor-background: transparent;
   --bn-colors-editor-text: var(--document-text-color, hsl(var(--foreground)));
   --bn-colors-menu-background: hsl(var(--card));
@@ -13,6 +20,9 @@
   --bn-colors-side-menu: hsl(var(--muted-foreground) / 0.5);
   --bn-colors-border: hsl(var(--border));
   --bn-font-family: inherit;
+}
+/* Layout, unlike the variables above, belongs to the editor only. */
+.tanwords-editor {
   font-family: inherit;
   min-height: 100%;
 }

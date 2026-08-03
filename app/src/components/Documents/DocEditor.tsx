@@ -93,7 +93,15 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
   return (
     <div
       ref={setToolbarPortalElement}
-      className="bn-root relative flex h-full flex-col"
+      // `bn-mantine` as well as `bn-root`, because the formatting toolbar is
+      // portaled *here* (see FormattingToolbarController below) and BlockNote
+      // scopes the toolbar's own card — background, border, padding, the gap
+      // between its buttons — to `.bn-mantine .bn-toolbar`. The button rules
+      // are not scoped that way, so without this the buttons keep their
+      // styling while the thing holding them disappears: icons collapsed
+      // together on top of the document text, which reads as a broken toolbar
+      // rather than a missing container.
+      className="bn-root bn-mantine tanwords-editor-chrome relative flex h-full flex-col"
       data-color-scheme={isDark ? "dark" : "light"}
     >
       {/* Title + metadata */}

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR, DEFAULT_BANNER_POSITION,
-  DEFAULT_LAYOUT_MODE,
+  DEFAULT_LAYOUT_MODE, DEFAULT_AUTO_LOCK_MINUTES,
   DOCUMENT_TEXT_COLOR_RE,
   type Theme, type SidebarTabId, type TopBarItemId, type RssTabSelection, type LayoutMode,
   type BannerPosition,
@@ -22,6 +22,7 @@ export type {
 export {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS,
   DEFAULT_HIGHLIGHT_COLOR, HIGHLIGHT_PRESETS, DEFAULT_BANNER_POSITION, DEFAULT_LAYOUT_MODE,
+  AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES,
 } from "./settings/types";
 export type { SettingsState } from "./settings/state";
 
@@ -52,6 +53,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   lockScreenImage: "",
   lockScreenBlur: 0,
   lockScreenVisible: true,
+  autoLockMinutes: DEFAULT_AUTO_LOCK_MINUTES,
   appBackgroundBlur: 20,
   appBackgroundVisible: true,
   documentFontSize: 16,
@@ -160,6 +162,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setLockScreenVisible: (value) => {
     set({ lockScreenVisible: value });
     saveSetting("lock_screen_visible", JSON.stringify(value));
+  },
+
+  setAutoLockMinutes: (minutes) => {
+    set({ autoLockMinutes: minutes });
+    saveSetting("auto_lock_minutes", JSON.stringify(minutes));
   },
 
   setAppBackgroundBlur: (px) => {

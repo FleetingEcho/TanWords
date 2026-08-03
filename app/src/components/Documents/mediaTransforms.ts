@@ -72,9 +72,14 @@ export function lowerYouTube(blocks: any[]): any[] {
   return blocks.map((block) => {
     if (block?.type === "youtube") {
       const url = block.props?.url ?? "";
+      // The label round-trips as the link text, which is the only place
+      // markdown has to put it. Uncaptioned players write the URL as their own
+      // label — `liftYouTube` reads that back as "no caption", so an untitled
+      // player stays untitled instead of acquiring its own URL as a title.
+      const label = block.props?.caption || url;
       return {
         type: "paragraph",
-        content: [{ type: "link", href: url, content: [{ type: "text", text: url, styles: {} }] }],
+        content: [{ type: "link", href: url, content: [{ type: "text", text: label, styles: {} }] }],
       };
     }
     if (block?.children?.length) return { ...block, children: lowerYouTube(block.children) };
@@ -96,11 +101,42 @@ export function lowerYouTube(blocks: any[]): any[] {
  */
 export function liftYouTube(blocks: any[]): any[] {
   return blocks.map((block: any) => {
-    const url = youTubeUrlOf(block);
-    if (url) return { type: "youtube", props: { url } };
+    const embed = youTubeEmbedOf(block);
+    if (embed) return { type: "youtube", props: { url: embed.url, caption: embed.caption } };
     if (block?.children?.length) return { ...block, children: liftYouTube(block.children) };
     return block;
   });
+}
+
+export type YouTubeEmbed = { url: string; caption: string };
+
+/** Whether a whole block is one YouTube link, and if so what the player should
+ *  be built from — the URL, plus whatever the author called it.
+ *
+ *  The caption is not decoration: `[tttt](…)` is a title someone typed, and
+ *  a player that only stores a URL silently deletes it on the next save. It is
+ *  dropped only when it *is* the URL, which is what a bare link parses to and
+ *  what `lowerYouTube` writes back for an uncaptioned player.
+ *
+ *  Exported because the live editor applies the same test to the block being
+ *  edited — see useDocEditorContent — and the two must agree on what counts,
+ *  or a link would embed on load but not on paste. */
+export function youTubeEmbedOf(block: any): YouTubeEmbed | null {
+  const url = youTubeUrlOf(block);
+  if (!url) return null;
+  const raw = captionOf(block);
+  return { url, caption: raw.trim() === url.trim() ? "" : raw };
+}
+
+function captionOf(block: any): string {
+  if (["image", "video", "audio", "file"].includes(block?.type)) {
+    return block.props?.caption || block.props?.name || "";
+  }
+  const only = (block?.content ?? []).find((part: any) => !(part?.type === "text" && !part.text?.trim()));
+  if (only?.type === "link") {
+    return (only.content ?? []).map((part: any) => part?.text ?? "").join("");
+  }
+  return "";
 }
 
 function youTubeUrlOf(block: any): string | null {

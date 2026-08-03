@@ -43,9 +43,12 @@ const LAST_LOCAL_PATH_KEY = "tanwords_doc_last_local_path";
 export function LocalDocsView({
   refreshTick = 0,
   onRefreshingChange,
+  sourceTabs,
 }: {
   refreshTick?: number;
   onRefreshingChange?: (refreshing: boolean) => void;
+  /** Rendered in the file list's header — see DocSourceTabs. */
+  sourceTabs?: React.ReactNode;
 }) {
   const db = useDB();
   const t = useT();
@@ -380,6 +383,7 @@ export function LocalDocsView({
       {/* Sidebar */}
       {!zenMode && (!isNarrow || !showMobileEditor) && (
         <LocalDocsSidebar
+          sourceTabs={sourceTabs}
           sidebarOpen={sidebarOpen}
           onSidebarOpenChange={setSidebarOpen}
           root={root}
