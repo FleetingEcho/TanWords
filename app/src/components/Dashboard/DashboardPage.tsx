@@ -4,6 +4,7 @@ import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
 import { DashboardWidgetGrid } from "./DashboardWidgetGrid";
 import { QuickActionsBar } from "./QuickActionsBar";
+import { UploadsCard } from "./UploadsCard";
 
 // ── Small pieces ────────────────────────────────────────────────────────────
 
@@ -110,6 +111,10 @@ export function DashboardPage() {
 
       {/* Navigation, not a "recent" anything — hence outside the grid below */}
       <QuickActionsBar />
+
+      {/* Files land in the same standalone store the asset manager lists, so
+        * dropping something here and opening Docs › assets shows the same file. */}
+      <UploadsCard />
 
       {/* Recents — six cards, every one the same height (see DashboardCard) */}
       <DashboardWidgetGrid stats={stats} statsFailed={statsSettled && !stats} />

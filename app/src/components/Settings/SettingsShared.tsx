@@ -8,7 +8,9 @@ export function SettingRow({ label, sub, children }: { label: string; sub?: stri
         <p className="text-sm font-medium">{label}</p>
         {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
       </div>
-      <div className="shrink-0 w-full sm:w-auto">{children}</div>
+      {/* `min-w-0`, not `shrink-0`: a fixed-width control (a 192px image
+        thumbnail) otherwise runs straight out of the card on a narrow window. */}
+      <div className="min-w-0 w-full sm:w-auto sm:shrink-0">{children}</div>
     </div>
   );
 }

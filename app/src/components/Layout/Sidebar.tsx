@@ -186,7 +186,14 @@ export function MainLayout({
         * in the top bar, so reserving space for it would just shove the page
         * up by 80px the moment anything started reading. */}
       <main
-        className={`flex min-w-0 flex-1 flex-col overflow-hidden box-border transition-[padding-bottom] duration-200 pb-[calc(4rem+env(safe-area-inset-bottom))] ${podcastActive ? "lg:pb-16" : "lg:pb-0"}`}
+        // Phones stack the player bar on top of the tab bar, so an active
+        // player needs its 3.25rem reserved as well or the last row of any
+        // list sits underneath it.
+        className={`flex min-w-0 flex-1 flex-col overflow-hidden box-border transition-[padding-bottom] duration-200 ${
+          podcastActive
+            ? "pb-[calc(8.25rem+env(safe-area-inset-bottom))] lg:pb-16"
+            : "pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pb-0"
+        }`}
       >
         <CommandBar activePage={activeNav as NavPage} />
         {/* `overflow-x-hidden` is load-bearing, not defensive: `overflow-y: auto`

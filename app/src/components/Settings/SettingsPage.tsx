@@ -5,6 +5,7 @@ import { useNavStore } from "@/store/navStore";
 import { ProviderSection } from "./ProviderSection";
 import { TtsSection } from "./TtsSection";
 import { GeneralSection } from "./GeneralSection";
+import { AppLockSection } from "./AppLockSection";
 import { LearningSection } from "./LearningSection";
 import { McpSection } from "./McpSection";
 import { DocumentsSection } from "./DocumentsSection";
@@ -13,7 +14,7 @@ import { hostCapabilities } from "@/platform";
 
 export { SettingRow } from "./SettingsShared";
 
-const ALL_SECTIONS = ["general", "providers", "learning", "tts", "mcp", "documents", "data"] as const;
+const ALL_SECTIONS = ["general", "lock", "providers", "learning", "tts", "mcp", "documents", "data"] as const;
 type SectionId = (typeof ALL_SECTIONS)[number];
 const SECTIONS = ALL_SECTIONS.filter((id) => {
   if (id === "tts") return hostCapabilities.nativeTts;
@@ -26,7 +27,7 @@ export function SettingsPage() {
   const db = useDB();
 
   const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
-    general: null, providers: null, learning: null, tts: null, mcp: null, documents: null, data: null,
+    general: null, lock: null, providers: null, learning: null, tts: null, mcp: null, documents: null, data: null,
   });
   const scrollRef = useRef<HTMLDivElement>(null);
   const [activeSection, setActiveSection] = useState<SectionId>("general");
@@ -117,7 +118,11 @@ export function SettingsPage() {
         * is measured from the scroll container itself — not from an ancestor
         * that also includes the nav bar's height, which made every
         * programmatic jump overshoot by that amount. */}
-      <div ref={scrollRef} className="relative flex-1 overflow-y-auto">
+      {/* `overflow-x-hidden` is load-bearing: `overflow-y-auto` alone computes
+        the *other* axis to `auto` too, so a few pixels of overflow anywhere in
+        the page grows a horizontal scrollbar across the bottom. Settings is a
+        column of cards — it should never scroll sideways. */}
+      <div ref={scrollRef} className="relative flex-1 overflow-y-auto overflow-x-hidden">
         {/* data-no-selection opts the whole settings page out of the global SelectionAsk
             toolbar (Add word / Translate / Look up) — labels, model names and example text
             here aren't reading material to look words up from. */}
@@ -125,6 +130,13 @@ export function SettingsPage() {
           <section ref={(el) => { sectionRefs.current.general = el; }} data-section="general" className="scroll-mt-6">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">{t("settings.general")}</p>
             <GeneralSection />
+          </section>
+
+          {/* Sits in General rather than Data: it gates the whole app, not a
+            * database. */}
+          <section ref={(el) => { sectionRefs.current.lock = el; }} data-section="lock" className="scroll-mt-6">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">{t("settings.section.lock")}</p>
+            <AppLockSection />
           </section>
 
           <section ref={(el) => { sectionRefs.current.providers = el; }} data-section="providers" className="scroll-mt-6">

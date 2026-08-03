@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use axum::{
     body::Bytes,
-    extract::{Path, Request, State as AxumState},
+    extract::{DefaultBodyLimit, Path, Request, State as AxumState},
     http::{header, StatusCode},
     middleware::{self, Next},
     response::sse::{Event as SseEvent, Sse},
@@ -157,6 +157,10 @@ async fn asset_handler(req: Request) -> Response {
 
 /// Opens the port, prints the handshake line, then serves until the process
 /// exits. Electron's supervisor reads exactly one line of stdout — the
+/// Request-body ceiling for `/invoke`. 100 MB of file becomes ~134 MB of
+/// base64 plus JSON framing; the headroom covers that with room to spare.
+const INVOKE_BODY_LIMIT: usize = 192 * 1024 * 1024;
+
 /// `{"port":N,"token":".."}` JSON — before treating the sidecar as ready, so
 /// nothing else may reach stdout before it.
 pub async fn serve(registry: Arc<Registry>, app_handle: AppHandle) {
@@ -166,6 +170,11 @@ pub async fn serve(registry: Arc<Registry>, app_handle: AppHandle) {
 
     let invoke_routes = Router::new()
         .route("/invoke/{command}", post(invoke_handler))
+        // Attachments travel as base64 inside the JSON body, so a 100 MB file
+        // (the document-asset ceiling) arrives as ~134 MB of request. Axum's
+        // 2 MB default rejected it long before the handler saw it, with
+        // "Failed to buffer the request body: length limit exceeded".
+        .layer(DefaultBodyLimit::max(INVOKE_BODY_LIMIT))
         .layer(middleware::from_fn_with_state(token.clone(), require_bearer_token));
 
     let query_token_routes = Router::new()

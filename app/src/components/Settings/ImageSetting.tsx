@@ -83,9 +83,9 @@ export function ImageSetting({
 
   return (
     <SettingRow label={label} sub={sub}>
-      <div className="flex flex-col items-end gap-2">
-        <div className="flex items-start gap-1.5">
-          <div className={`group relative shrink-0 overflow-hidden bg-muted/80 ring-1 ring-border/60 ${thumbClassName}`}>
+      <div className="flex min-w-0 max-w-full flex-col items-end gap-2">
+        <div className="flex min-w-0 max-w-full items-start gap-1.5">
+          <div className={`group relative shrink-0 max-w-full overflow-hidden bg-muted/80 ring-1 ring-border/60 ${thumbClassName}`}>
             {value ? (
               <>
                 <img src={value} alt="" className="h-full w-full object-cover transition-[filter,opacity] duration-200" style={{ objectPosition, ...thumbImgStyle }} />

@@ -33,6 +33,35 @@ struct AppConfig {
     /// token stays in the OS keychain.
     #[serde(skip_serializing_if = "Option::is_none")]
     last_turso_url: Option<String>,
+    /// Connected R2 bucket, minus the secret access key — that one lives in
+    /// the keychain, keeping this file safe to read or hand over.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    r2: Option<crate::r2::R2Settings>,
+    /// App lock verifier — a salt and an Argon2 key, never the password. Here
+    /// rather than in the database so a synced profile cannot carry one
+    /// machine's lock to another.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    app_lock: Option<crate::app_lock::AppLock>,
+}
+
+pub fn load_app_lock() -> Option<crate::app_lock::AppLock> {
+    load().app_lock
+}
+
+pub fn save_app_lock(lock: Option<&crate::app_lock::AppLock>) {
+    let mut cfg = load();
+    cfg.app_lock = lock.cloned();
+    let _ = save(&cfg);
+}
+
+pub fn load_r2_settings() -> Option<crate::r2::R2Settings> {
+    load().r2
+}
+
+pub fn save_r2_settings(settings: Option<&crate::r2::R2Settings>) {
+    let mut cfg = load();
+    cfg.r2 = settings.cloned();
+    let _ = save(&cfg);
 }
 
 fn config_file_path() -> PathBuf {

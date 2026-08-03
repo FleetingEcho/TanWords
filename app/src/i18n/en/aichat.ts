@@ -64,7 +64,6 @@ export const aichat: Dict = {
     "aichat.stop": "Stop",
     "aichat.scrollToBottom": "Jump to latest message",
     "aichat.send": "Send",
-    "aichat.inputHint": "↵ Send · ⇧↵ Newline",
     "aichat.noProvider": "No AI provider configured — add one in Settings",
     "aichat.requestFailed": "AI request failed",
     "aichat.invalidKey": "Invalid API key",

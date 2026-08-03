@@ -12,6 +12,7 @@ import { CloseIcon } from "@/components/ui/icons";
 import type { RssFeed } from "@/hooks/useDB.types";
 import { SettingRow, ToggleGroup } from "./SettingsShared";
 import { ImageSetting } from "./ImageSetting";
+import { WallpaperSetting } from "./WallpaperSetting";
 import { BannerPositionModal } from "./BannerPositionModal";
 import { hostCapabilities } from "@/platform";
 import { me as fetchMe, logout } from "@/platform/auth";
@@ -97,79 +98,25 @@ function fileToDownscaledDataUrl(file: File, maxDimension: number, quality: numb
 
 function AppBackgroundSetting() {
   const t = useT();
-  const image = useSettingsStore((s) => s.appBackgroundImage);
-  const setImage = useSettingsStore((s) => s.setAppBackgroundImage);
-  const blur = useSettingsStore((s) => s.appBackgroundBlur);
-  const setBlur = useSettingsStore((s) => s.setAppBackgroundBlur);
-  const visible = useSettingsStore((s) => s.appBackgroundVisible);
-  const setVisible = useSettingsStore((s) => s.setAppBackgroundVisible);
-
-  // The real background renders full-window; the thumb is roughly an eighth of
-  // that, so scale the blur down for an honest miniature of the final look.
-  const thumbBlur = blur / 6;
-
   return (
-    <ImageSetting
+    <WallpaperSetting
       label={t("settings.appBackground")}
       sub={t("settings.appBackgroundSub")}
-      value={image}
-      onChange={setImage}
-      processFile={(file) => fileToDownscaledDataUrl(file, APP_BG_MAX_DIMENSION, 0.85)}
+      emptyLabel={t("settings.appBackgroundNone")}
+      maxDimension={APP_BG_MAX_DIMENSION}
       maxBytes={MAX_APP_BG_UPLOAD_BYTES}
-      thumbClassName="w-48 h-16 rounded-lg"
-      thumbImgStyle={{
-        filter: `blur(${thumbBlur}px)`,
-        // Mirrors AppBackground's overscan so blurred edges don't reveal gaps.
-        transform: thumbBlur > 0 ? "scale(1.08)" : undefined,
-      }}
-      // Same legibility scrim the real background draws over the image.
-      thumbOverlay={visible ? <div className="pointer-events-none absolute inset-0 bg-black/20 dark:bg-black/45" /> : undefined}
-      empty={t("settings.appBackgroundNone")}
-      previewClassName="w-[70vw] h-fit top-1/2 -translate-y-1/2"
-      previewImgClassName="w-full h-auto rounded-2xl object-cover shadow-lg"
-    >
-      <div className="w-full space-y-2.5 rounded-xl border border-border/60 bg-muted/30 p-2.5">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-foreground/80">{t("settings.appBackgroundVisible")}</span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={visible}
-            disabled={!image}
-            onClick={() => setVisible(!visible)}
-            className={`relative h-[18px] w-8 shrink-0 rounded-full transition-colors disabled:opacity-40 ${
-              visible ? "bg-primary" : "bg-muted-foreground/30"
-            }`}
-          >
-            <span
-              className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white shadow-xs transition-all ${
-                visible ? "left-[calc(100%-1rem)]" : "left-0.5"
-              }`}
-            />
-          </button>
-        </div>
-        <div className={`space-y-1.5 ${visible && image ? "" : "pointer-events-none"}`}>
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">{t("settings.appBackgroundBlur")}</span>
-            <span className="rounded-md bg-primary/10 px-1.5 py-px text-[10px] font-semibold tabular-nums text-primary">
-              {blur}px
-            </span>
-          </div>
-          <input
-            type="range"
-            min={0}
-            max={40}
-            step={1}
-            value={blur}
-            disabled={!image || !visible}
-            onChange={(e) => setBlur(Number(e.target.value))}
-            className="w-full accent-primary disabled:opacity-100"
-          />
-        </div>
-      </div>
-    </ImageSetting>
+      processFile={fileToDownscaledDataUrl}
+      image={useSettingsStore((s) => s.appBackgroundImage)}
+      setImage={useSettingsStore((s) => s.setAppBackgroundImage)}
+      blur={useSettingsStore((s) => s.appBackgroundBlur)}
+      setBlur={useSettingsStore((s) => s.setAppBackgroundBlur)}
+      visible={useSettingsStore((s) => s.appBackgroundVisible)}
+      setVisible={useSettingsStore((s) => s.setAppBackgroundVisible)}
+    />
   );
 }
+
+export { fileToDownscaledDataUrl, APP_BG_MAX_DIMENSION, MAX_APP_BG_UPLOAD_BYTES };
 
 function NicknameSetting() {
   const t = useT();

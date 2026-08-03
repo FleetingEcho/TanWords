@@ -49,6 +49,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   dashboardBannerPosition: DEFAULT_BANNER_POSITION,
   nickname: "",
   appBackgroundImage: "",
+  lockScreenImage: "",
+  lockScreenBlur: 0,
+  lockScreenVisible: true,
   appBackgroundBlur: 20,
   appBackgroundVisible: true,
   documentFontSize: 16,
@@ -142,6 +145,21 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setAppBackgroundImage: (dataUrl) => {
     set({ appBackgroundImage: dataUrl });
     saveSetting("app_background_image", JSON.stringify(dataUrl));
+  },
+
+  setLockScreenImage: (dataUrl) => {
+    set({ lockScreenImage: dataUrl });
+    saveSetting("lock_screen_image", JSON.stringify(dataUrl));
+  },
+
+  setLockScreenBlur: (value) => {
+    set({ lockScreenBlur: value });
+    saveSettingDebounced("lock_screen_blur", JSON.stringify(value));
+  },
+
+  setLockScreenVisible: (value) => {
+    set({ lockScreenVisible: value });
+    saveSetting("lock_screen_visible", JSON.stringify(value));
   },
 
   setAppBackgroundBlur: (px) => {

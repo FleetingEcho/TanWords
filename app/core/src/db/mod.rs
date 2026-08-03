@@ -146,6 +146,38 @@ pub async fn init_db(conn: &Connection) -> SqlResult<()> {
         CREATE INDEX IF NOT EXISTS idx_document_assets_document
             ON document_assets(document_id);"
     ).await;
+
+    // Files uploaded from the asset manager rather than from inside a document.
+    // A separate table on purpose: `document_assets.document_id` is NOT NULL
+    // with a cascading foreign key, and — more importantly — anything in that
+    // table that a document body stops referencing is deleted on the next save
+    // (db_prune_document_assets) or by "clean orphans". Uploads are the user's
+    // to keep, so they live where neither of those can reach them.
+    let _ = conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS standalone_assets (
+            id          TEXT PRIMARY KEY,
+            file_name   TEXT NOT NULL DEFAULT 'file',
+            mime_type   TEXT NOT NULL,
+            data        BLOB NOT NULL,
+            size        INTEGER NOT NULL,
+            created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        -- One id space for reads: fetching, exporting and zipping an asset can
+        -- stay a single query against all_document_assets instead of probing
+        -- two tables. document_id = 0 matches no document, so require_key()
+        -- correctly reports an unprotected, keyless asset for uploads.
+        -- Objects that live in R2 instead of this table: `data` is empty and
+        -- `remote_key` points at the bucket. See src/r2/mod.rs.
+        CREATE VIEW IF NOT EXISTS all_document_assets AS
+            SELECT id, document_id, file_name, mime_type, data, size, created_at, 0 AS standalone
+              FROM document_assets
+            UNION ALL
+            SELECT id, 0 AS document_id, file_name, mime_type, data, size, created_at, 1 AS standalone
+              FROM standalone_assets;"
+    ).await;
+    let _ = conn
+        .execute("ALTER TABLE standalone_assets ADD COLUMN remote_key TEXT", ())
+        .await;
     let _ = conn.execute(
         "ALTER TABLE documents ADD COLUMN protected INTEGER NOT NULL DEFAULT 0",
         (),

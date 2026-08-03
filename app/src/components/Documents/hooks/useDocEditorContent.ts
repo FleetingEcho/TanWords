@@ -4,6 +4,7 @@ import { editorSchema } from "../editorSchema";
 import { DocumentDetail } from "@/hooks/useDB";
 import { blocksToStorageOffThread, contentToBlocksOffThread, markdownToBlocksOffThread } from "@/lib/documentWorkerClient";
 import { liftMermaid, lowerMermaid } from "../mermaidTransforms";
+import { liftMedia, liftYouTube, lowerMedia, lowerYouTube } from "../mediaTransforms";
 import { resolveDocumentAssetUrl, uploadDocumentAsset } from "@/lib/documentAssets";
 import { isEmptyParagraph, withTrailingEditorParagraph, withoutTrailingEditorParagraph } from "../trailingEditorParagraph";
 
@@ -55,7 +56,7 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
       try {
         const parsed = await contentToBlocksOffThread(doc.content);
         if (cancelled) return;
-        const blocks = withTrailingEditorParagraph(liftMermaid(parsed));
+        const blocks = withTrailingEditorParagraph(liftYouTube(liftMedia(liftMermaid(parsed))));
         editor.replaceBlocks(editor.document, blocks as any);
       } finally {
         if (!cancelled) requestAnimationFrame(() => { loaded.current = true; setRichLoading(false); });
@@ -84,10 +85,10 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
     maxSaveTimer.current = null;
     try {
       const blocks = mode === "raw"
-        ? liftMermaid(await markdownToBlocksOffThread(rawMarkdown))
+        ? liftYouTube(liftMedia(liftMermaid(await markdownToBlocksOffThread(rawMarkdown))))
         : withoutTrailingEditorParagraph(editor.document);
       const { content, contentText, wordCount } = await blocksToStorageOffThread(
-        mode === "raw" ? blocks : lowerMermaid(blocks) as any
+        mode === "raw" ? blocks : lowerYouTube(lowerMedia(lowerMermaid(blocks))) as any
       );
       rawDirty.current = false;
       await onSave(content, contentText, wordCount);
@@ -119,7 +120,7 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
     maxSaveTimer.current = null;
     try {
       if (next === "raw") {
-        const lowered = lowerMermaid(withoutTrailingEditorParagraph(editor.document) as any);
+        const lowered = lowerYouTube(lowerMedia(lowerMermaid(withoutTrailingEditorParagraph(editor.document) as any)));
         setRawMarkdown(await editor.blocksToMarkdownLossy(lowered));
         // Mirror the raw→rich branch: pending edits must not be left unsaved
         // with no timer armed (they'd wait for the next blur/visibility
@@ -133,7 +134,7 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
       } else {
         loaded.current = false;
         setRichLoading(true);
-        const blocks = liftMermaid(await markdownToBlocksOffThread(rawMarkdown));
+        const blocks = liftYouTube(liftMedia(liftMermaid(await markdownToBlocksOffThread(rawMarkdown))));
         editor.replaceBlocks(editor.document, withTrailingEditorParagraph(blocks) as any);
         if (rawDirty.current) {
           const { content, contentText, wordCount } = await blocksToStorageOffThread(blocks);

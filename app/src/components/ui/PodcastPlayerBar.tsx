@@ -12,6 +12,7 @@ import { MODE_ICONS } from "@/components/ui/playModeIcons";
 import { NowPlayingOverlay } from "@/components/ui/NowPlayingOverlay";
 import { PlaybackSpeedSelector } from "@/components/ui/PlaybackSpeedSelector";
 import { AudioSeekSlider } from "@/components/ui/AudioSeekSlider";
+import { useIsNarrow } from "@/components/Vocabulary/hooks/useMediaQuery";
 
 function formatTime(sec: number): string {
   if (!isFinite(sec) || sec <= 0) return "0:00";
@@ -43,6 +44,7 @@ export function PodcastPlayerBar() {
   const setPlayMode = usePodcastPlayerStore((s) => s.setPlayMode);
   const goToOrigin = usePlayerOriginStore((s) => s.goToOrigin);
   const sidebarCollapsed = useLayoutStore((s) => s.sidebarCollapsed);
+  const narrow = useIsNarrow();
   const [expanded, setExpanded] = useState(false);
   const closeOverlay = useCallback(() => setExpanded(false), []);
   const openOverlay = useCallback(() => setExpanded(true), []);
@@ -57,14 +59,53 @@ export function PodcastPlayerBar() {
 
   return (
     <div
-      className="fixed bottom-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-xs px-4 py-2.5 flex items-center gap-3 animate-fade-in transition-[left] duration-200 cursor-pointer"
-      style={{ left: sidebarCollapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH }}
+      // Phones have no sidebar to clear and do have a tab bar to sit above.
+      // Docking at `left: SIDEBAR_WIDTH` / `bottom: 0` there covered the tab
+      // bar and left 210px of the bar hanging past the left edge.
+      className={`fixed right-0 z-40 flex animate-fade-in cursor-pointer flex-col items-stretch gap-0.5 border-t border-border bg-card/95 px-2 pb-1.5 pt-1 backdrop-blur-xs transition-[left] duration-200 lg:flex-row lg:items-center lg:px-4 lg:py-2.5 ${
+        narrow ? "left-0" : "bottom-0"
+      }`}
+      style={
+        narrow
+          ? { bottom: "calc(3.5rem + env(safe-area-inset-bottom))" }
+          : { left: sidebarCollapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH }
+      }
       onClick={(e) => {
         // Only blank bar area expands — buttons and the slider keep their own clicks.
         if (e.target === e.currentTarget) openOverlay();
       }}
       title={t("music.expandPlayer")}
     >
+      {/* Perched on the bar's top edge, outside it, at every width: a handle
+        * sitting proud of the bar reads as "pull this up" far better than one
+        * more chevron among the controls. */}
+      <Button
+        variant="ghost"
+        onClick={openOverlay}
+        title={t("music.expandPlayer")}
+        aria-label={t("music.expandPlayer")}
+        // Sits flush on the bar's top edge as a protruding tab: -top-6 puts
+        // its bottom exactly on the border, `border-b-0` keeps that shared
+        // edge a single line instead of two.
+        className="absolute -top-6 left-0 z-10 flex h-6 w-9 items-center justify-center rounded-t-md rounded-b-none border border-b-0 border-border bg-card p-0 text-muted-foreground shadow-sm hover:text-foreground"
+      >
+        <ChevronIcon direction="left" className="h-3.5 w-3.5 rotate-90" />
+      </Button>
+
+      {/* Its own row only where the single row can't hold it. Wide windows keep
+        * everything inline — see the `lg:` slider further down. */}
+      {narrow && (
+      <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <AudioSeekSlider position={position} duration={duration} onSeek={seekTo} ariaLabel={t("podcast.seek")} />
+          </div>
+        <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
+          {formatTime(position)} / {formatTime(duration)}
+        </span>
+      </div>
+      )}
+
+      <div className="flex min-w-0 flex-1 items-center gap-1 lg:gap-3">
       {playlist && (
         <Button
           variant="ghost"
@@ -79,7 +120,7 @@ export function PodcastPlayerBar() {
       <Button
         variant="ghost"
         onClick={() => seekBy(-15)}
-        className="h-8 px-2 rounded-md flex items-center justify-center text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+        className="hidden lg:flex h-8 px-2 rounded-md items-center justify-center text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
         title={t("podcast.back15")}
       >
         -15s
@@ -125,7 +166,7 @@ export function PodcastPlayerBar() {
       <Button
         variant="ghost"
         onClick={() => seekBy(15)}
-        className="h-8 px-2 rounded-md flex items-center justify-center text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+        className="hidden lg:flex h-8 px-2 rounded-md items-center justify-center text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
         title={t("podcast.forward15")}
       >
         +15s
@@ -142,21 +183,26 @@ export function PodcastPlayerBar() {
         </Button>
       )}
 
-      <span className="text-xs font-mono tabular-nums text-muted-foreground shrink-0">
+      <span className="hidden shrink-0 font-mono text-xs tabular-nums text-muted-foreground lg:inline">
         {formatTime(position)} / {formatTime(duration)}
       </span>
 
-      {/* input[type=range] keeps its intrinsic width under flex in WebKit —
-          grow a wrapper instead and let the input fill it. */}
-      <div className="flex-1 min-w-0">
+      {/* `min-w`, not `min-w-0`: it is the only flexible item in the row, so
+        * without a floor every added control ate into it until the slider was
+        * a lone thumb sitting on top of the timestamp. Now the title (which
+        * truncates) gives way first. */}
+      <div className="hidden min-w-48 flex-1 lg:block">
         <AudioSeekSlider position={position} duration={duration} onSeek={seekTo} ariaLabel={t("podcast.seek")} />
       </div>
 
       <Button
         variant="ghost"
-        onClick={goToOrigin}
-        title={t("tts.backToSource")}
-        className="h-auto max-w-56 min-w-0 hidden md:flex flex-col items-start shrink-0 overflow-hidden text-left hover:opacity-80 hover:bg-transparent transition-opacity"
+        // The chevron that opens the full player is desktop-only, so on a phone
+        // the title itself is the way in — "back to source" stays a desktop
+        // affordance rather than the one tap a phone user is most likely to make.
+        onClick={narrow ? openOverlay : goToOrigin}
+        title={narrow ? t("music.expandPlayer") : t("tts.backToSource")}
+        className="h-auto min-w-0 flex flex-1 shrink flex-col items-start overflow-hidden text-left hover:opacity-80 hover:bg-transparent transition-opacity lg:max-w-56"
       >
         <span className="w-full truncate text-xs font-medium text-foreground">{track.title}</span>
         <span className="w-full truncate text-[10px] text-muted-foreground">
@@ -170,7 +216,7 @@ export function PodcastPlayerBar() {
           <Button
             variant="ghost"
             onClick={() => setPlayMode(PLAY_MODES[(PLAY_MODES.indexOf(playMode) + 1) % PLAY_MODES.length])}
-            className={`w-8 h-8 p-0 rounded-md flex items-center justify-center hover:bg-muted transition-colors shrink-0 ${
+            className={`hidden lg:flex w-8 h-8 p-0 rounded-md items-center justify-center hover:bg-muted transition-colors shrink-0 ${
               playMode === "order" ? "text-muted-foreground hover:text-foreground" : "text-primary"
             }`}
             title={t(`music.mode.${playMode}`)}
@@ -180,16 +226,9 @@ export function PodcastPlayerBar() {
         );
       })()}
 
-      <PlaybackSpeedSelector value={speed} onChange={setSpeed} />
-
-      <Button
-        variant="ghost"
-        onClick={openOverlay}
-        className="w-8 h-8 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0 rotate-90"
-        title={t("music.expandPlayer")}
-      >
-        <ChevronIcon direction="left" className="w-4 h-4" />
-      </Button>
+      <span className="hidden lg:block">
+        <PlaybackSpeedSelector value={speed} onChange={setSpeed} />
+      </span>
 
       <Button
         variant="ghost"
@@ -199,6 +238,7 @@ export function PodcastPlayerBar() {
       >
         <CloseIcon className="w-4 h-4" />
       </Button>
+      </div>
     </div>
   );
 }

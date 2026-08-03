@@ -49,6 +49,11 @@ export interface SettingsState {
   appBackgroundImage: string;
   /** Blur radius in px applied to appBackgroundImage. */
   appBackgroundBlur: number;
+  /** The lock screen's own wallpaper — a separate picture from the app
+   *  canvas, configured with the same controls. */
+  lockScreenImage: string;
+  lockScreenBlur: number;
+  lockScreenVisible: boolean;
   /** Whether appBackgroundImage is currently shown. False hides it without
    *  discarding the stored image, so it can be turned back on unchanged. */
   appBackgroundVisible: boolean;
@@ -89,6 +94,9 @@ export interface SettingsState {
   setDashboardBanner: (dataUrl: string, position?: BannerPosition) => void;
   setNickname: (name: string) => void;
   setAppBackgroundImage: (dataUrl: string) => void;
+  setLockScreenImage: (dataUrl: string) => void;
+  setLockScreenBlur: (value: number) => void;
+  setLockScreenVisible: (value: boolean) => void;
   setAppBackgroundBlur: (px: number) => void;
   setAppBackgroundVisible: (visible: boolean) => void;
   setDocumentFontSize: (px: number) => void;

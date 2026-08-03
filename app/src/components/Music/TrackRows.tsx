@@ -1,7 +1,12 @@
 import { assetUrl } from "@/ipc/backend";
 import { useT } from "@/hooks/useT";
 import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
+import { useState } from "react";
+import { Film } from "lucide-react";
 import { PlayIcon, PauseIcon } from "@/components/ui/icons";
+import { Button } from "@/components/ui/button";
+import { isVideoFile } from "./mediaKind";
+import { VideoPlayerModal } from "./VideoPlayerModal";
 import { MusicCollection } from "./types";
 import { formatDuration, startQueue } from "./musicLib";
 
@@ -26,13 +31,22 @@ export function TrackRows({
   const shown = indices ? indices.map((i) => ({ tr: collection.tracks[i], i })) : collection.tracks.map((tr, i) => ({ tr, i }));
   const isPlaying = status === "playing" || status === "loading";
 
+  const [video, setVideo] = useState<{ path: string; title: string } | null>(null);
+
   return (
     <>
       {shown.map(({ tr, i }) => {
         const isCurrent = currentUrl === assetUrl(tr.path) && status !== "idle";
         return (
-          <button
+          <div
             key={tr.path}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              if (isCurrent) toggle(); else startQueue(collection, displayName, i);
+            }}
             // The current row toggles pause/resume; restarting from 0:00 on a
             // click here is never what anyone wants.
             onClick={() => (isCurrent ? toggle() : startQueue(collection, displayName, i))}
@@ -77,9 +91,29 @@ export function TrackRows({
             <span className="text-xs font-mono tabular-nums text-muted-foreground shrink-0">
               {formatDuration(tr.durationSec)}
             </span>
-          </button>
+            {/* A video file plays as audio-only through the music pipeline —
+              * this opens it where you can actually see it. */}
+            {isVideoFile(tr.path) && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  // Otherwise the track keeps playing under the video.
+                  usePodcastPlayerStore.getState().stop();
+                  setVideo({ path: tr.path, title: tr.title });
+                }}
+                title={t("music.watchVideo")}
+                aria-label={t("music.watchVideo")}
+                className="h-7 w-7 shrink-0 rounded-md text-muted-foreground hover:bg-muted hover:text-primary"
+              >
+                <Film className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
         );
       })}
+      <VideoPlayerModal track={video} onClose={() => setVideo(null)} />
     </>
   );
 }

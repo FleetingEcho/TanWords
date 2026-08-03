@@ -28,6 +28,7 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Button } from "@/components/ui/button";
 import { blocksToStorage, markdownToBlocks } from "@/lib/docFormat";
 import { liftMermaid } from "./mermaidTransforms";
+import { liftMedia, liftYouTube } from "./mediaTransforms";
 import { ExportMarkdownDialog } from "./ExportMarkdownDialog";
 import { LocalDocsSidebar } from "./LocalDocsSidebar";
 import { LocalDocsEditorPane } from "./LocalDocsEditorPane";
@@ -324,7 +325,7 @@ export function LocalDocsView({
     const { relPath, markdown } = pendingImport;
     const title = relPath.split("/").pop()?.replace(/\.(md|markdown)$/i, "") || t("doc.untitled");
     try {
-      const blocks = liftMermaid(await markdownToBlocks(markdown));
+      const blocks = liftYouTube(liftMedia(liftMermaid(await markdownToBlocks(markdown))));
       const { content, contentText, wordCount } = blocksToStorage(blocks);
       const id = await db.createDocument();
       const created = await db.getDocument(id);

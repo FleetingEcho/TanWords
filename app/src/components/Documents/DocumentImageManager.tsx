@@ -1,4 +1,6 @@
+import React, { useState } from "react";
 import { Archive, FolderDown, Grid2X2, Image as ImageIcon, List, RefreshCw, Trash2, X } from "lucide-react";
+import { AssetDropzone } from "@/components/shared/AssetDropzone";
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -18,21 +20,40 @@ export function DocumentImageManager({ writable }: { writable: boolean }) {
     passwordRequest, finishPasswordRequest,
     totalSize, filteredAssets, orphanCount, totalPages,
     refresh, exportSelectedToFolder, exportSelectedZip, confirmDelete, cleanOrphans, deleteSelected,
+    uploading, uploadProgress, uploadFiles,
   } = state;
+  // Counter, not a boolean: dragging over a child fires dragleave on the
+  // parent, so a boolean flickers the overlay off mid-drag.
+  const [dragDepth, setDragDepth] = useState(0);
+  const dragging = dragDepth > 0;
+
+  const acceptDrop = (event: React.DragEvent) => {
+    event.preventDefault();
+    setDragDepth(0);
+    if (!writable) return;
+    const files = Array.from(event.dataTransfer?.files ?? []);
+    if (files.length) void uploadFiles(files);
+  };
 
   return (
-    <div className="flex h-full flex-col bg-background">
-      <div className="flex items-center justify-between gap-3 border-b border-border py-4 pl-6 pr-14">
-        <div>
+    <div
+      className="relative flex h-full flex-col bg-background"
+      onDragEnter={(event) => { event.preventDefault(); setDragDepth((depth) => depth + 1); }}
+      onDragOver={(event) => event.preventDefault()}
+      onDragLeave={() => setDragDepth((depth) => Math.max(0, depth - 1))}
+      onDrop={acceptDrop}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border py-4 pl-4 pr-12 lg:pl-6 lg:pr-14">
+        <div className="min-w-0 flex-1">
           <p className="text-sm font-medium">{t("settings.documentImages")}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {t("settings.documentImagesSummary", { n: assets.length, size: formatBytes(totalSize) })}
           </p>
-          <p className="mt-1 text-[11px] text-muted-foreground/75">
+          <p className="mt-1 hidden text-[11px] text-muted-foreground/75 lg:block">
             {t("settings.documentImagesDatabaseOnly")}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {orphanCount > 0 && (
             <Button
               variant="outline"
@@ -61,6 +82,12 @@ export function DocumentImageManager({ writable }: { writable: boolean }) {
           </div>
         </div>
       </div>
+
+      {writable && (
+        <div className="shrink-0 px-4 pb-3 pt-3 lg:px-6">
+          <AssetDropzone onFiles={uploadFiles} busy={uploading} progress={uploadProgress} dragActive={dragging} />
+        </div>
+      )}
 
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-6 py-2.5">
         <input

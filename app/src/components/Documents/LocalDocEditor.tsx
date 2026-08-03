@@ -9,6 +9,7 @@ import { useT } from "@/hooks/useT";
 import { useIsDark } from "@/hooks/useIsDark";
 import { blocksToMarkdownOffThread, blocksToMarkdownWithStatsOffThread, markdownToBlocksOffThread } from "@/lib/documentWorkerClient";
 import { liftMermaid, lowerMermaid } from "./mermaidTransforms";
+import { liftMedia, liftYouTube, lowerMedia, lowerYouTube } from "./mediaTransforms";
 import { SaveStatus } from "./useDocumentEditor";
 import { Button } from "@/components/ui/button";
 import { Check, ListTree, Maximize2, Minimize2 } from "lucide-react";
@@ -158,7 +159,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
         nextWordCount = countWords(markdown);
       } else if (hasChanges) {
         const result = await blocksToMarkdownWithStatsOffThread(
-          lowerMermaid(withoutTrailingEditorParagraph(editor.document)) as any,
+          lowerYouTube(lowerMedia(lowerMermaid(withoutTrailingEditorParagraph(editor.document)))) as any,
         );
         markdown = toRawMarkdown(result.markdown);
         nextWordCount = result.wordCount;
@@ -187,7 +188,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
       try {
         const parsed = await markdownToBlocksOffThread(initialMarkdown);
         if (cancelled) return;
-        const blocks = withTrailingEditorParagraph(promoteLocalFileLinks(liftMermaid(parsed)));
+        const blocks = withTrailingEditorParagraph(promoteLocalFileLinks(liftYouTube(liftMedia(liftMermaid(parsed)))));
         editor.replaceBlocks(editor.document, blocks as any);
         setWordCount(countWords(blocksToText(blocks)));
       } catch {
@@ -221,7 +222,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
       if (nextMode === "raw") {
         const raw = dirty.current
           ? toRawMarkdown(await blocksToMarkdownOffThread(
-            lowerMermaid(withoutTrailingEditorParagraph(editor.document)) as any,
+            lowerYouTube(lowerMedia(lowerMermaid(withoutTrailingEditorParagraph(editor.document)))) as any,
           ))
           : lastSavedRaw.current;
         setRawMarkdown(raw);
@@ -237,7 +238,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
         loaded.current = false;
         setRichLoading(true);
         const parsed = promoteLocalFileLinks(
-          liftMermaid(await markdownToBlocksOffThread(toDisplayMarkdown(rawMarkdown)))
+          liftYouTube(liftMedia(liftMermaid(await markdownToBlocksOffThread(toDisplayMarkdown(rawMarkdown)))))
         );
         editor.replaceBlocks(editor.document, withTrailingEditorParagraph(parsed) as any);
         setWordCount(countWords(blocksToText(parsed)));
@@ -493,7 +494,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
             const blocks = await markdownToBlocksOffThread(revision.content);
             editor.replaceBlocks(
               editor.document,
-              withTrailingEditorParagraph(promoteLocalFileLinks(liftMermaid(blocks))) as any,
+              withTrailingEditorParagraph(promoteLocalFileLinks(liftYouTube(liftMedia(liftMermaid(blocks))))) as any,
             );
             dirty.current = true;
             scheduleSave();

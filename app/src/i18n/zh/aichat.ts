@@ -64,7 +64,6 @@ export const aichat: Dict = {
     "aichat.stop": "停止",
     "aichat.scrollToBottom": "跳到最新消息",
     "aichat.send": "发送",
-    "aichat.inputHint": "↵ 发送 · ⇧↵ 换行",
     "aichat.noProvider": "未配置 AI 提供商，请在设置中添加",
     "aichat.requestFailed": "AI 请求失败",
     "aichat.invalidKey": "API Key 无效",
