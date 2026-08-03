@@ -30,15 +30,14 @@ pub const R2_FREE_LIMIT_BYTES: u64 = 10 * 1024 * 1024 * 1024;
 /// rejected-at-the-edge upload is much nicer than a surprise bill.
 pub const R2_BLOCK_AT_BYTES: u64 = 9 * 1024 * 1024 * 1024;
 
-/// Keychain entry for the secret access key. Outside `secrets::ALLOWED_PREFIX`
-/// on purpose: the renderer sets it but must never read it back.
-const SECRET_KEY_NAME: &str = "r2_secret_access_key";
-
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct R2Settings {
     pub account_id: String,
     pub bucket: String,
     pub access_key_id: String,
+    /// Plaintext only in memory and inside the sealed record.
+    #[serde(default)]
+    pub secret_access_key: String,
     /// Optional public bucket / custom domain. When set, stored objects are
     /// addressed through it instead of a presigned URL — cheaper for a bucket
     /// the user has deliberately made public.
@@ -88,16 +87,68 @@ fn amz_date() -> String {
     chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string()
 }
 
-fn credentials(settings: &R2Settings) -> Result<(String, Credentials<'_>), String> {
-    let secret = crate::secrets::r2_secret_get()
-        .ok_or_else(|| "R2 secret access key is missing — reconnect in Settings".to_string())?;
-    Ok((
-        secret,
-        Credentials {
-            access_key_id: &settings.access_key_id,
-            secret_access_key: "",
-        },
-    ))
+fn credentials(settings: &R2Settings) -> Result<Credentials<'_>, String> {
+    if settings.secret_access_key.is_empty() {
+        return Err("R2 secret access key is missing — reconnect in Settings".into());
+    }
+    Ok(Credentials {
+        access_key_id: &settings.access_key_id,
+        secret_access_key: &settings.secret_access_key,
+    })
+}
+
+// ── Storage ────────────────────────────────────────────────────────────────
+
+/// Seals the whole record, so a field added later is covered automatically.
+fn seal(plaintext: &str) -> Result<String, String> {
+    let key = crate::secrets::device_key()
+        .ok_or("Cannot store the R2 key: this device has no usable keychain")?;
+    crate::document_privacy::encrypt_text(&key, plaintext)
+}
+
+/// Moves a pre-existing desktop configuration out of `app_config.json` (and
+/// the keychain) into the database, once. Without it, upgrading would look
+/// like the bucket had silently disconnected.
+pub async fn migrate_from_app_config(conn: &libsql::Connection) {
+    if load_settings(conn).await.is_some() {
+        return;
+    }
+    let Some(old) = crate::appconfig::load_r2_settings() else { return };
+    let Some(secret) = crate::secrets::r2_secret_get() else { return };
+    let settings = R2Settings { secret_access_key: secret, ..old };
+    if save_settings(conn, &settings).await.is_ok() {
+        crate::appconfig::save_r2_settings(None);
+        crate::secrets::r2_secret_clear();
+    }
+}
+
+pub async fn load_settings(conn: &libsql::Connection) -> Option<R2Settings> {
+    let sealed = crate::db::fetch_one(
+        conn,
+        "SELECT COALESCE(config_enc, '') FROM r2_config WHERE id = 1",
+        (),
+        |row| row.get::<String>(0),
+    )
+    .await
+    .ok()?;
+    if sealed.is_empty() {
+        return None;
+    }
+    let key = crate::secrets::device_key()?;
+    let json = crate::document_privacy::decrypt_text(&key, &sealed).ok()?;
+    serde_json::from_str(&json).ok()
+}
+
+async fn save_settings(conn: &libsql::Connection, settings: &R2Settings) -> Result<(), String> {
+    let json = serde_json::to_string(settings).map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO r2_config (id, config_enc) VALUES (1, ?1)
+         ON CONFLICT(id) DO UPDATE SET config_enc = excluded.config_enc",
+        libsql::params![seal(&json)?],
+    )
+    .await
+    .map(|_| ())
+    .map_err(|e| e.to_string())
 }
 
 /// Uploads one object. Returns the key it was stored under.
@@ -124,8 +175,7 @@ pub async fn put_object_with_progress(
     app: Option<&AppHandle>,
     file_name: &str,
 ) -> Result<(), String> {
-    let (secret, mut creds) = credentials(settings)?;
-    creds.secret_access_key = &secret;
+    let creds = credentials(settings)?;
 
     let host = host(settings);
     let uri = canonical_uri(settings, key);
@@ -197,8 +247,7 @@ fn s3_error_message(body: &str) -> String {
 }
 
 pub async fn delete_object(settings: &R2Settings, key: &str) -> Result<(), String> {
-    let (secret, mut creds) = credentials(settings)?;
-    creds.secret_access_key = &secret;
+    let creds = credentials(settings)?;
 
     let host = host(settings);
     let uri = canonical_uri(settings, key);
@@ -232,8 +281,7 @@ pub async fn delete_object(settings: &R2Settings, key: &str) -> Result<(), Strin
 /// Walks the bucket with ListObjectsV2 and totals object sizes. Paginated:
 /// one page is capped at 1000 keys regardless of `max-keys`.
 pub async fn bucket_usage(settings: &R2Settings) -> Result<(u64, u64), String> {
-    let (secret, mut creds) = credentials(settings)?;
-    creds.secret_access_key = &secret;
+    let creds = credentials(settings)?;
 
     let host = host(settings);
     let uri = format!("/{}", sigv4::uri_encode(&settings.bucket, true));
@@ -317,8 +365,7 @@ pub fn object_url(settings: &R2Settings, key: &str) -> Result<String, String> {
     if let Some(base) = settings.public_base_url.as_deref().filter(|b| !b.trim().is_empty()) {
         return Ok(format!("{}/{}", base.trim_end_matches('/'), sigv4::uri_encode(key, false)));
     }
-    let (secret, mut creds) = credentials(settings)?;
-    creds.secret_access_key = &secret;
+    let creds = credentials(settings)?;
     Ok(sigv4::presign_get(
         &creds,
         &host(settings),
@@ -346,12 +393,11 @@ pub fn object_key(file_name: &str) -> String {
 // ── Commands ───────────────────────────────────────────────────────────────
 
 #[crate::shim::command]
-pub fn r2_get_status() -> Result<R2Status, String> {
-    let settings = crate::appconfig::load_r2_settings();
-    let has_secret = crate::secrets::r2_secret_get().is_some();
-    Ok(match settings {
+pub async fn r2_get_status(state: State<'_, AppState>) -> Result<R2Status, String> {
+    let db = crate::db::conn(&state)?;
+    Ok(match load_settings(&db).await {
         Some(settings) => R2Status {
-            configured: has_secret
+            configured: !settings.secret_access_key.is_empty()
                 && !settings.account_id.is_empty()
                 && !settings.bucket.is_empty(),
             account_id: settings.account_id,
@@ -382,61 +428,63 @@ pub async fn r2_connect(
     access_key_id: String,
     secret_access_key: String,
     public_base_url: Option<String>,
+    state: State<'_, AppState>,
 ) -> Result<(), String> {
+    let db = crate::db::conn(&state)?;
     let settings = R2Settings {
         account_id: account_id.trim().to_string(),
         bucket: bucket.trim().to_string(),
         access_key_id: access_key_id.trim().to_string(),
+        secret_access_key: secret_access_key.trim().to_string(),
         public_base_url: public_base_url.filter(|url| !url.trim().is_empty()),
         // Preserved across a reconnect — it is a routing preference, not a
         // credential.
-        always_upload: crate::appconfig::load_r2_settings().is_some_and(|s| s.always_upload),
+        always_upload: load_settings(&db).await.is_some_and(|s| s.always_upload),
     };
     if settings.account_id.is_empty() || settings.bucket.is_empty() || settings.access_key_id.is_empty() {
         return Err("Account ID, bucket and access key ID are all required".into());
     }
-    let secret = secret_access_key.trim().to_string();
-    if secret.is_empty() {
+    if settings.secret_access_key.is_empty() {
         return Err("Secret access key is required".into());
     }
-    crate::secrets::r2_secret_set(&secret)?;
 
+    // Verified before it is stored, so a typo fails here rather than on the
+    // user's first real upload.
     let key = object_key("tanwords-connection-test.txt");
-    put_object(&settings, &key, "text/plain", b"tanwords".to_vec())
-        .await
-        .map_err(|e| {
-            crate::secrets::r2_secret_clear();
-            e
-        })?;
+    put_object(&settings, &key, "text/plain", b"tanwords".to_vec()).await?;
     let _ = delete_object(&settings, &key).await;
 
-    crate::appconfig::save_r2_settings(Some(&settings));
-    Ok(())
+    save_settings(&db, &settings).await
 }
 
 /// Toggles "everything goes to the bucket". Separate from `r2_connect` so
 /// flipping it does not require re-entering the secret key.
 #[crate::shim::command]
-pub fn r2_set_always_upload(enabled: bool) -> Result<(), String> {
-    let mut settings = crate::appconfig::load_r2_settings()
+pub async fn r2_set_always_upload(enabled: bool, state: State<'_, AppState>) -> Result<(), String> {
+    let db = crate::db::conn(&state)?;
+    let mut settings = load_settings(&db)
+        .await
         .ok_or_else(|| "No R2 bucket is connected".to_string())?;
     settings.always_upload = enabled;
-    crate::appconfig::save_r2_settings(Some(&settings));
-    Ok(())
+    save_settings(&db, &settings).await
 }
 
 #[crate::shim::command]
-pub fn r2_disconnect() -> Result<(), String> {
-    crate::appconfig::save_r2_settings(None);
-    crate::secrets::r2_secret_clear();
-    Ok(())
+pub async fn r2_disconnect(state: State<'_, AppState>) -> Result<(), String> {
+    let db = crate::db::conn(&state)?;
+    db.execute("DELETE FROM r2_config", ())
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 /// Uploads a file that the renderer already holds. Kept for parity with the
 /// database path; the size ceiling is enforced by the caller.
 #[crate::shim::command(async)]
 pub async fn r2_get_usage(state: State<'_, AppState>) -> Result<R2Usage, String> {
-    let settings = crate::appconfig::load_r2_settings()
+    let db = crate::db::conn(&state)?;
+    let settings = load_settings(&db)
+        .await
         .ok_or_else(|| "No R2 bucket is connected".to_string())?;
     let (used_bytes, object_count) = match bucket_usage(&settings).await {
         Ok(value) => value,
@@ -474,7 +522,9 @@ pub async fn r2_put_asset(
     data_base64: String,
     _state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let settings = crate::appconfig::load_r2_settings()
+    let db = crate::db::conn(&_state)?;
+    let settings = load_settings(&db)
+        .await
         .ok_or_else(|| "No R2 bucket is connected".to_string())?;
     let data = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, data_base64)
         .map_err(|_| "Invalid attachment data")?;

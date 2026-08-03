@@ -95,6 +95,7 @@ export const settings: Dict = {
     "settings.r2UsageHint": "Uploads are blocked past {limit}, short of the free allowance.",
     "settings.r2UsageBlocked": "Over {limit} — uploads are blocked until you delete something.",
     "settings.r2Sub": "Connect a bucket to store big uploads — videos and audio — outside the database.",
+    "settings.r2ScopeNote": "Saved in the database you are connected to — switching databases switches bucket too.",
     "settings.r2ConnectedTo": "Connected to {bucket}. Uploads of {size} or more go to the bucket.",
     "settings.r2AlwaysTitle": "Send every file to the bucket",
     "settings.r2AlwaysOn": "On — uploads of any size go to R2, nothing is stored in the database.",

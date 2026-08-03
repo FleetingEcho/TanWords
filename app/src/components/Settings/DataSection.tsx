@@ -592,10 +592,11 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
         )}
       </div>
 
-      {/* Object storage for the files a database row cannot hold. Not tied to
-        * the local/cloud tab: which database you use and where big files go
-        * are independent choices, and hiding this behind a tab meant the usage
-        * figure was invisible unless you happened to be on the right one. */}
+      {/* Directly under the database card, outside the local/cloud tabs: the R2
+        * configuration lives *in the current database* (the `r2_config`
+        * table), so it belongs to whichever database is open rather than to
+        * one of the two ways of opening one. Behind a tab it would also be
+        * unreachable for local-database users, who can use a bucket too. */}
       <R2Section />
 
       <div className="bg-card border border-border rounded-xl px-5 divide-y divide-border">

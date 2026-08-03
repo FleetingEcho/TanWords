@@ -113,7 +113,8 @@ pub async fn db_get_document_asset(
     )
     .await
     {
-        let settings = crate::appconfig::load_r2_settings()
+        let settings = crate::r2::load_settings(&db)
+            .await
             .ok_or_else(|| "This file is stored in R2, but no bucket is connected".to_string())?;
         return Ok(DocumentAsset {
             id,
@@ -271,7 +272,7 @@ pub async fn db_delete_document_asset(id: String, conn: State<'_, AppState>) -> 
         .await
         .unwrap_or_default();
         if !remote_key.is_empty() {
-            if let Some(settings) = crate::appconfig::load_r2_settings() {
+            if let Some(settings) = crate::r2::load_settings(&db).await {
                 crate::r2::delete_object(&settings, &remote_key).await?;
             }
         }

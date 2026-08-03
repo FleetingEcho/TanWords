@@ -6,6 +6,8 @@
   "homepage": "https://github.com/FleetingEcho/TanWords",
   "scripts": {
     "dev": "bun run core:build:dev && vite",
+    "dev:web": "bash scripts/dev-web.sh",
+    "dev:web:front": "TANWORDS_WEB_DEV=1 vite",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
     "build": "bun run typecheck && vite build",
     "core:build": "cd core && cargo build --release",

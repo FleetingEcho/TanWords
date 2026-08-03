@@ -178,6 +178,25 @@ pub async fn init_db(conn: &Connection) -> SqlResult<()> {
     let _ = conn
         .execute("ALTER TABLE standalone_assets ADD COLUMN remote_key TEXT", ())
         .await;
+
+    // R2 bucket the uploads go to. In the database rather than app_config.json
+    // because the web server gives every user their own database — that is
+    // what makes this per-user for free, instead of one bucket shared by
+    // everyone who can log in.
+    //
+    // The whole configuration is sealed into one column, not just the secret:
+    // an account id and access key id are half of a working credential and
+    // have no business sitting in plaintext in a file that a Turso profile
+    // replicates to the cloud. Sealing the record as a unit also means a field
+    // added later cannot be forgotten.
+    let _ = conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS r2_config (
+            id         INTEGER PRIMARY KEY CHECK (id = 1),
+            config_enc TEXT NOT NULL
+        );"
+    ).await;
+    // Upgrade path for the short-lived column-per-field shape.
+    let _ = conn.execute("ALTER TABLE r2_config ADD COLUMN config_enc TEXT", ()).await;
     let _ = conn.execute(
         "ALTER TABLE documents ADD COLUMN protected INTEGER NOT NULL DEFAULT 0",
         (),
@@ -260,6 +279,10 @@ pub async fn init_db(conn: &Connection) -> SqlResult<()> {
     }
 
     migrations::run(conn).await?;
+
+    // One-time: adopt a desktop R2 configuration that predates the per-database
+    // table, so upgrading does not look like the bucket disconnected itself.
+    crate::r2::migrate_from_app_config(conn).await;
 
     Ok(())
 }

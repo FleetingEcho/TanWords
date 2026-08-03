@@ -1,15 +1,20 @@
 import { useState } from "react";
-import { Lock } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 import { useAppLockStore } from "@/store/appLockStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { WindowControls } from "@/components/Layout/WindowControls";
 import { isDesktopHost } from "@/platform";
+import { SpecimenBackdrop, UnderlineField, WordmarkEntry } from "./authVisuals";
 
 /** Full-screen password gate. Rendered instead of the app — not on top of it —
  *  so nothing behind it is ever painted, and no page keeps polling while
- *  locked. */
+ *  locked.
+ *
+ *  Same dictionary-entry language as the web sign-in screen (see
+ *  authVisuals), so locking and signing in are recognisably the same door.
+ *  The specimen backdrop only shows when there is no wallpaper: over a photo
+ *  it would be noise, and the photo is already doing that job. */
 export function LockScreen() {
   const t = useT();
   const verify = useAppLockStore((s) => s.verify);
@@ -54,26 +59,28 @@ export function LockScreen() {
   return (
     <div
       onAnimationEnd={() => { if (leaving) setLocked(false); }}
-      className={`app-drag-region fixed inset-0 z-200 flex items-center justify-center overflow-hidden bg-background ${
+      className={`app-drag-region fixed inset-0 z-200 overflow-hidden bg-background ${
         leaving ? "animate-out fade-out duration-300" : "animate-in fade-in duration-300"
       }`}
     >
-      {showWallpaper && (
-        <img
-          src={wallpaper}
-          alt=""
-          aria-hidden="true"
-          className={`absolute inset-0 h-full w-full object-cover ${leaving ? "" : "animate-in fade-in zoom-in-105 duration-700"}`}
-          // Scaled up so a blurred edge never reveals empty space.
-          style={{
-            filter: `blur(${blur}px)`,
-            transform: blur > 0 ? "scale(1.08)" : undefined,
-          }}
-        />
+      {showWallpaper ? (
+        <>
+          <img
+            src={wallpaper}
+            alt=""
+            aria-hidden="true"
+            className={`absolute inset-0 h-full w-full object-cover ${leaving ? "" : "animate-in fade-in zoom-in-105 duration-700"}`}
+            // Scaled up so a blurred edge never reveals empty space.
+            style={{ filter: `blur(${blur}px)`, transform: blur > 0 ? "scale(1.08)" : undefined }}
+          />
+          {/* Only over a photo: the wordmark and card have to stay readable
+            * whatever the user picked. Without a photo the background is the
+            * app's own canvas and needs no scrim. */}
+          <div className="absolute inset-0 bg-black/55" />
+        </>
+      ) : (
+        <SpecimenBackdrop />
       )}
-      {/* Always darkened, wallpaper or not: the card has to stay readable over
-        * whatever photo the user picked. */}
-      <div className="absolute inset-0 bg-black/45 backdrop-blur-sm" />
 
       {/* The lock screen replaces the whole shell, CommandBar included, so it
         * has to carry these itself — otherwise a locked window cannot be
@@ -84,45 +91,58 @@ export function LockScreen() {
         </div>
       )}
 
-      <form
-        onSubmit={submit}
-        onAnimationEnd={(event) => event.stopPropagation()}
-        className={`app-region-no-drag relative w-[min(92vw,22rem)] rounded-2xl border border-white/15 bg-background/85 p-6 shadow-2xl backdrop-blur-xl ${
-          leaving
-            ? "animate-out fade-out zoom-out-95 duration-200"
-            : shake
-            ? "animate-shake"
-            : "animate-in fade-in slide-in-from-bottom-4 duration-500"
-        }`}
-      >
-        <div className="flex flex-col items-center text-center">
-          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-primary/10 text-primary">
-            <Lock className="h-5 w-5" />
-          </span>
-          <h1 className="mt-3 text-sm font-semibold">{t("lock.title")}</h1>
-          <p className="mt-1 text-xs text-muted-foreground">{t("lock.subtitle")}</p>
-        </div>
-
-        <input
-          type="password"
-          autoFocus
-          value={password}
-          onChange={(event) => { setPassword(event.target.value); setError(false); }}
-          placeholder={t("lock.placeholder")}
-          className={`mt-5 h-10 w-full rounded-xl border bg-background px-3 text-sm outline-hidden focus:ring-2 ${
-            error ? "border-destructive focus:ring-destructive/30" : "border-input focus:ring-primary/30"
+      <div className="relative mx-auto grid h-full w-full max-w-5xl items-center gap-8 px-6 py-12 sm:px-10 lg:grid-cols-[1fr_minmax(0,21rem)] lg:gap-20">
+        <header
+          className={`animate-in fade-in slide-in-from-bottom-3 duration-700 motion-reduce:animate-none ${
+            showWallpaper ? "[&_h1]:text-white [&_p]:text-white/85" : ""
           }`}
-        />
-        {error && <p className="mt-1.5 text-xs text-destructive">{t("lock.wrong")}</p>}
-
-        <Button
-          type="submit"
-          disabled={!password || busy}
-          className="mt-3 h-10 w-full rounded-xl bg-primary text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
-          {busy ? t("lock.checking") : t("lock.unlock")}
-        </Button>
-      </form>
+          <WordmarkEntry gloss={t("lock.gloss")} compact />
+        </header>
+
+        <form
+          onSubmit={submit}
+          onAnimationEnd={(event) => event.stopPropagation()}
+          className={`app-region-no-drag w-full ${
+            leaving
+              ? "animate-out fade-out zoom-out-95 duration-200"
+              : shake
+              ? "animate-shake"
+              : "animate-in fade-in slide-in-from-bottom-4 duration-700 [animation-delay:120ms] [animation-fill-mode:backwards] motion-reduce:animate-none"
+          }`}
+        >
+          <div className="rounded-2xl border border-border/70 bg-card/70 p-6 shadow-[0_24px_60px_-40px_rgba(0,0,0,.9)] backdrop-blur-xl sm:p-8">
+            <p className="font-serif text-lg font-semibold text-foreground">{t("lock.title")}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">{t("lock.subtitle")}</p>
+
+            <div className="mt-6">
+              <UnderlineField
+                label={t("lock.placeholder")}
+                type="password"
+                autoComplete="current-password"
+                autoFocus
+                value={password}
+                onChange={(value) => { setPassword(value); setError(false); }}
+                invalid={error}
+              />
+            </div>
+
+            {error && (
+              <p role="alert" className="mt-4 border-l-2 border-destructive pl-3 text-xs text-destructive">
+                {t("lock.wrong")}
+              </p>
+            )}
+
+            <Button
+              type="submit"
+              disabled={!password || busy}
+              className="mt-6 h-11 w-full rounded-xl bg-primary text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40"
+            >
+              {busy ? t("lock.checking") : t("lock.unlock")}
+            </Button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
