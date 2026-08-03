@@ -6,6 +6,7 @@ import { useSelectedWordStore } from "@/store/selectedWordStore";
 import { WordListPanel } from "./WordListPanel";
 import { WordDetailPanel } from "./WordDetailPanel";
 import { PatternLibrary } from "./PatternLibrary";
+import { VocabViewTabs, type VocabView } from "./VocabViewTabs";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useVocabWordList } from "./hooks/useVocabWordList";
 import { useVocabWordDetail } from "./hooks/useVocabWordDetail";
@@ -39,8 +40,10 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
     loadWords: list.loadWords, loadAllWordsSet: list.loadAllWordsSet,
   });
 
-  type View = "words" | "patterns" | "review";
-  const [view, setView] = useState<View>("words");
+  // Was `| "review"` as well, but nothing ever set it and nothing rendered it
+  // — ReviewPanel is not imported anywhere. A third state the switcher would
+  // have had to account for, that could not occur.
+  const [view, setView] = useState<VocabView>("words");
   // Below lg the list+detail split collapses into list-with-overlay; the same
   // flag gates the desktop-only auto-select below.
   const narrow = useIsNarrow();
@@ -154,26 +157,21 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
       />
   );
 
+  const viewTabs = <VocabViewTabs view={view} onSelect={setView} />;
+
   return (
     <div className="flex h-full flex-col">
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2.5 bg-transparent">
-        <div className="flex items-center gap-1">
-          {(["words", "patterns"] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setView(tab)}
-              className={`h-9 lg:h-7 rounded-lg px-3 text-xs font-semibold transition-colors ${view === tab ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
-            >
-              {t(tab === "words" ? "vocab.tabWords" : "vocab.tabPatterns")}
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* No bar of its own: the switcher is handed to whichever list is
+        * showing and rendered as that list's heading — see VocabViewTabs. A
+        * full-width bordered strip for two words, sitting directly above a
+        * heading that repeated the selected one, was a row of chrome the page
+        * paid for twice. */}
       {view === "patterns" ? (
-        <PatternLibrary initialSentenceId={initialSentenceId} />
+        <PatternLibrary initialSentenceId={initialSentenceId} viewTabs={viewTabs} />
       ) : (<>
       <div className="flex min-h-0 flex-1">
       <WordListPanel
+        viewTabs={viewTabs}
         words={list.visibleWords}
         selectedId={selected?.word.id ?? null}
         highlightId={initialWordId}

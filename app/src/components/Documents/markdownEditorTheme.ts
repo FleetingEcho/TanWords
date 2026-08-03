@@ -73,8 +73,12 @@ function highlightStyle(dark: boolean) {
 
 /** Chrome — everything that is not a token. All of it reads from the app's
  *  theme variables so the editor stays part of the app rather than a widget
- *  dropped into it. */
-const chrome = EditorView.theme({
+ *  dropped into it.
+ *
+ *  Because every colour here is a variable that already flips with the app's
+ *  theme, the light and dark chromes are the *same* rules — see `chromeLight` /
+ *  `chromeDark` below for why they still have to be two extensions. */
+const chromeSpec = {
   "&": {
     height: "100%",
     fontSize: "14px",
@@ -86,7 +90,13 @@ const chrome = EditorView.theme({
     lineHeight: "1.75",
     padding: "1.25rem 0",
   },
-  ".cm-content": { padding: "0 1.5rem", caretColor: "hsl(var(--foreground))" },
+  ".cm-content": {
+    padding: "0 1.5rem",
+    caretColor: "hsl(var(--foreground))",
+    // Scroll past the end. Without it the last line sits welded to the bottom
+    // edge of the window, which is where you spend most of your time writing.
+    paddingBottom: "35vh",
+  },
   "&.cm-focused": { outline: "none" },
   ".cm-gutters": {
     backgroundColor: "hsl(var(--muted) / 0.15)",
@@ -117,8 +127,46 @@ const chrome = EditorView.theme({
     border: "1px solid hsl(var(--border))",
     color: "hsl(var(--foreground))",
   },
-});
+  // The bracket under the caret, and an unmatched one. Left to the base theme
+  // these are a hairline underline that is invisible on a dark background.
+  ".cm-matchingBracket, &.cm-focused .cm-matchingBracket": {
+    backgroundColor: "hsl(var(--primary) / 0.2)",
+    outline: "1px solid hsl(var(--primary) / 0.4)",
+  },
+  ".cm-nonmatchingBracket, &.cm-focused .cm-nonmatchingBracket": {
+    backgroundColor: "hsl(var(--destructive) / 0.25)",
+  },
+  // Fold markers in the gutter, and the placeholder left behind by a fold.
+  ".cm-foldGutter span": { color: "hsl(var(--muted-foreground) / 0.5)" },
+  ".cm-foldGutter span:hover": { color: "hsl(var(--foreground))" },
+  ".cm-foldPlaceholder": {
+    backgroundColor: "hsl(var(--muted))",
+    border: "1px solid hsl(var(--border))",
+    color: "hsl(var(--muted-foreground))",
+    borderRadius: "0.25rem",
+    padding: "0 0.375rem",
+    margin: "0 0.125rem",
+  },
+  // `highlightSpecialChars` renders a zero-width space, a non-breaking space or
+  // a stray control character as a visible glyph. Worth shouting about: text
+  // pasted out of a web article carries them, and they are invisible reasons
+  // for a Markdown construct not to parse.
+  ".cm-specialChar": {
+    color: "hsl(var(--destructive))",
+    backgroundColor: "hsl(var(--destructive) / 0.12)",
+    borderRadius: "0.125rem",
+  },
+  ".cm-placeholder": { color: "hsl(var(--muted-foreground) / 0.5)" },
+} as const;
+
+/** Two extensions from one spec. CodeMirror does not read the rules to decide
+ *  whether a theme is dark — it goes by this flag, and its own base theme
+ *  branches on it for everything the app has not overridden. Handing it a
+ *  single unflagged theme leaves the editor drawing light-mode defaults on a
+ *  dark background. */
+const chromeLight = EditorView.theme(chromeSpec);
+const chromeDark = EditorView.theme(chromeSpec, { dark: true });
 
 export function markdownEditorTheme(dark: boolean): Extension {
-  return [chrome, syntaxHighlighting(highlightStyle(dark))];
+  return [dark ? chromeDark : chromeLight, syntaxHighlighting(highlightStyle(dark))];
 }

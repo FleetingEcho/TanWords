@@ -1,3 +1,5 @@
 /target
 .dev-data/
 .dev-secrets/
+.env
+.env.*

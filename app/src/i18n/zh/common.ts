@@ -128,6 +128,8 @@ export const common: Dict = {
     "auth.register": "注册",
     "auth.confirmPassword": "确认密码",
     "auth.inviteKey": "邀请码",
+    "auth.adminKey": "管理员密钥",
+    "auth.adminKeyHint": "服务器所有者的密钥，不是邀请码",
     "auth.switchToRegister": "还没有账号？使用邀请码注册",
     "auth.switchToForgot": "忘记密码",
     "auth.backToLogin": "返回登录",

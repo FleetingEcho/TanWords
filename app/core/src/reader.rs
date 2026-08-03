@@ -44,19 +44,20 @@ fn strip_footnote_backrefs(text: &str) -> String {
 
 #[crate::shim::command]
 pub async fn fetch_article(url: String) -> Result<FetchedArticle, String> {
-    let client = reqwest::Client::builder()
-        .user_agent(USER_AGENT)
-        .timeout(Duration::from_secs(15))
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let resp = client
-        .get(&url)
-        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-        .header("Accept-Language", "en-US,en;q=0.9")
-        .send()
-        .await
-        .map_err(|e| format!("Request failed: {e}"))?;
+    // Guarded, not a plain client: `url` is whatever the caller asked for, and
+    // in the server build that caller is a logged-in stranger rather than the
+    // person sitting at the machine. See http_util::fetch_guarded.
+    let resp = crate::http_util::fetch_guarded(
+        &url,
+        USER_AGENT,
+        Duration::from_secs(15),
+        |request| {
+            request
+                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                .header("Accept-Language", "en-US,en;q=0.9")
+        },
+    )
+    .await?;
 
     if !resp.status().is_success() {
         return Err(format!("Server returned {}", resp.status()));

@@ -223,7 +223,13 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
           </div>
         </div>
       ) : (
-        <RawMarkdownEditor value={rawMarkdown} onChange={handleRawChange} label={t("doc.rawMode")} />
+        <RawMarkdownEditor
+          value={rawMarkdown}
+          onChange={handleRawChange}
+          label={t("doc.rawMode")}
+          placeholderText={t("doc.rawPlaceholder")}
+          onUploadFile={attachments.uploadFile}
+        />
       )}
 
       {/* Phones get the outline as a modal instead of a column: at that width a

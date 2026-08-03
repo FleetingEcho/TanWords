@@ -43,6 +43,10 @@ export function useDocEditorAttachments(params: {
     refreshCodeBlockTheme(editor);
   }, [editor, isDark]);
 
+  /** Stores a file and hands back its URL, without touching the rich editor.
+   *  Raw Markdown mode writes its own link and needs only this half. */
+  const uploadFile = useCallback((file: File) => uploadDocumentAsset(doc.id, file), [doc.id]);
+
   const insertAttachment = async (file: File | undefined) => {
     if (!file) return;
     try {
@@ -142,6 +146,6 @@ export function useDocEditorAttachments(params: {
 
   return {
     passwordRequest, finishPasswordRequest,
-    insertAttachment, handleRichEditorKeyDown, formattingToolbar,
+    insertAttachment, uploadFile, handleRichEditorKeyDown, formattingToolbar,
   };
 }
