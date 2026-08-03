@@ -123,12 +123,68 @@ describe("RawMarkdownEditor", () => {
     await waitFor(() => expect(onChange).toHaveBeenCalledWith("# Title\n\n- a\n- b\n"));
 
     rerender(<RawMarkdownEditor value={"# Title\n\n- a\n- b\n"} onChange={onChange} label="Raw Markdown" />);
-    expect(screen.getByTitle("Format Markdown")).toBeDisabled();
+    // Not synchronous: deciding this walks every line, so it runs once typing
+    // settles rather than on the keystroke. The button holds its last answer in
+    // between, which is why this waits rather than asserting straight away.
+    await waitFor(() => expect(screen.getByTitle("Format Markdown")).toBeDisabled());
   });
 
   it("still offers line numbers and wrapping", () => {
     renderEditor("one\ntwo");
     expect(screen.getByTitle("Toggle line numbers")).toBeInTheDocument();
     expect(screen.getByTitle("Toggle word wrap")).toBeInTheDocument();
+  });
+
+  it("opens the find bar on what was selected", async () => {
+    const { view } = renderEditor("alpha beta gamma");
+    view.dispatch({ selection: { anchor: 6, head: 10 } });
+    screen.getByTitle("Find and replace (⌘F)").click();
+
+    // Searching for what you highlighted is what every other editor does;
+    // retyping it into an empty box is the thing being fixed here.
+    expect(await screen.findByLabelText<HTMLInputElement>("Find")).toHaveValue("beta");
+  });
+
+  it("does not seed the find bar from a whole paragraph", async () => {
+    const { view } = renderEditor("first line\nsecond line");
+    view.dispatch({ selection: { anchor: 0, head: 22 } });
+    screen.getByTitle("Find and replace (⌘F)").click();
+
+    // A multi-line selection is not a search term, it is text that happened to
+    // be highlighted.
+    expect(await screen.findByLabelText<HTMLInputElement>("Find")).toHaveValue("");
+  });
+
+  it("closes the find bar on Escape from the editor, not just from the bar", async () => {
+    const { view } = renderEditor("needle");
+    screen.getByTitle("Find and replace (⌘F)").click();
+    await screen.findByLabelText("Find");
+
+    fireEvent.keyDown(view.contentDOM, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByLabelText("Find")).toBeNull());
+  });
+
+  it("replaces immediately after typing, before the query has settled", async () => {
+    const { view } = renderEditor("foo bar foo");
+    screen.getByTitle("Find and replace (⌘F)").click();
+
+    fireEvent.change(await screen.findByLabelText("Find"), { target: { value: "foo" } });
+    screen.getByTitle("Show replace").click();
+    fireEvent.change(await screen.findByLabelText("Replace"), { target: { value: "qux" } });
+    // No pause between the last keystroke and the click: the command has to run
+    // against the query as typed, not against whatever last reached the editor.
+    screen.getByTitle("Replace all").click();
+
+    await waitFor(() => expect(view.state.doc.toString()).toBe("qux bar qux"));
+  });
+
+  it("continues a list on Enter", () => {
+    const { view } = renderEditor("- item");
+    view.dispatch({ selection: { anchor: 6 } });
+
+    // Driven through the key, not by calling the command: `defaultKeymap` binds
+    // Enter as well, and which of the two wins is the whole point.
+    fireEvent.keyDown(view.contentDOM, { key: "Enter" });
+    expect(view.state.doc.toString()).toBe("- item\n- ");
   });
 });

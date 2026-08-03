@@ -25,12 +25,12 @@ export function DocSourceTabs({
   const t = useT();
 
   return (
-    // Its own row inside the list header, not squeezed in beside the actions:
-    // two pills, a chevron and a "New Doc" button on one panel-width line read
-    // as clutter. Refresh sits at the far end of this row so the pair reads as
-    // "this list, and reload it".
+    // Shares the header's first row with the collapse chevron and the
+    // library-wide actions (see DocPanelHeader). `justify-between` is what puts
+    // refresh at the far end of that row, next to those actions, so the icons
+    // read as one cluster instead of one stranded glyph.
     <div className="flex w-full min-w-0 items-center justify-between gap-1">
-      <div className="flex min-w-0 items-center gap-0.5">
+      <div className="flex min-w-0 items-center gap-2">
         {(["db", "local"] as const).map((value) => (
           <Button
             key={value}
@@ -38,10 +38,14 @@ export function DocSourceTabs({
             variant="ghost"
             onClick={() => onSelect(value)}
             aria-pressed={source === value}
-            className={`h-6 shrink-0 rounded-md px-2 text-[11px] font-semibold transition-colors ${
+            // Underlined rather than a filled pill. Two filled pills sat at the
+            // same weight as the primary action below them and read as three
+            // competing buttons; a rule under the live one says "you are here"
+            // without adding a third filled shape to a 320px column.
+            className={`relative h-6 shrink-0 rounded-none px-0.5 text-[11px] font-semibold transition-colors after:absolute after:inset-x-0 after:-bottom-0.5 after:h-0.5 after:rounded-full after:transition-colors hover:bg-transparent ${
               source === value
-                ? "bg-primary/10 text-primary hover:bg-primary/10 hover:text-primary"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                ? "text-foreground after:bg-primary hover:text-foreground"
+                : "text-muted-foreground after:bg-transparent hover:text-foreground"
             }`}
           >
             {value === "db" ? t("doc.tabDatabase") : t("doc.tabLocal")}

@@ -112,5 +112,6 @@ export const aichat: Dict = {
     "aichat.pin": "置顶对话",
     "aichat.unpin": "取消置顶",
     "aichat.sessionMenu": "对话选项",
-    "aichat.archived": "已归档 {n}",
+    "aichat.chats": "对话",
+    "aichat.archivedTab": "已归档",
 };

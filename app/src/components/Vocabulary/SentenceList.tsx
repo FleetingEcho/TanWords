@@ -46,6 +46,9 @@ interface Props {
   onClearSelection: () => void;
   onDeleteSelected: () => void;
   onReanalyzeSelected: () => void;
+  /** The Words/Sentences switcher, rendered as this list's heading instead of
+   *  in a bar above it — see VocabViewTabs. */
+  viewTabs?: React.ReactNode;
 }
 
 /** Wraps every search-token occurrence in `text` with a <mark>, earliest
@@ -112,6 +115,7 @@ export function SentenceList({
   onSearchChange, onLevelFilterChange, onStarredOnlyChange, onDateFromChange, onDateToChange,
   onToggleExpand, onDoubleClick, onPageChange, onPageSizeChange, onOpenAdd, onOpenGenerate, onRequestDelete, onReanalyze, reanalyzingId, onToggleStar,
   selectMode, onToggleSelectMode, selectedIds, onToggleSelect, onSelectAll, onClearSelection, onDeleteSelected, onReanalyzeSelected,
+  viewTabs,
 }: Props) {
   const t = useT();
   const paged = items.slice(page * pageSize, (page + 1) * pageSize);
@@ -126,8 +130,10 @@ export function SentenceList({
   return (
     <div className="flex-1 min-h-0 flex flex-col">
       <div className="mx-auto w-full max-w-4xl px-4 pt-5 pb-3 space-y-2.5 lg:px-6">
-        <div className="flex flex-wrap items-baseline gap-2">
-          <h2 className="min-w-0 truncate text-lg font-bold">{t("vocab.patterns.title")}</h2>
+        {/* `items-center`, not baseline — see WordListPanel: the heading is a
+          * pair of tab buttons now, and buttons have no baseline to align to. */}
+        <div className="flex flex-wrap items-center gap-2">
+          {viewTabs ?? <h2 className="min-w-0 truncate text-lg font-bold">{t("vocab.patterns.title")}</h2>}
           <span className="text-sm text-muted-foreground">{items.length}</span>
           <div className="ml-auto flex items-center gap-1">
             <Button
@@ -198,7 +204,10 @@ export function SentenceList({
           </div>
         )}
 
-        <div className="relative -mx-4 lg:-mx-6">
+        {/* See WordListPanel: no negative margin, so the field lines up with
+          * the heading above it and the filters below rather than bleeding to
+          * the container's edges on its own. */}
+        <div className="relative">
           <input
             type="text"
             value={search}
@@ -271,10 +280,19 @@ export function SentenceList({
                     />
                   )}
                   <div className="min-w-0 flex-1">
+                    {/* The speaker is inline content of the sentence, not a
+                      * sibling of it. As a sibling it followed a block-level
+                      * <p> that had already claimed the full row width, so it
+                      * was pushed onto a line of its own and every row in the
+                      * list cost two. Trailing the last word, it also wraps
+                      * with the text on a narrow screen instead of anchoring
+                      * itself under the first one. */}
                     <p className="text-sm font-medium wrap-break-word">
                       <Highlight text={sentence} tokens={searchTokens} />
+                      {hostCapabilities.nativeTts && (
+                        <SpeakButton text={sentence} className="ml-1.5 h-3.5 w-3.5 align-middle" />
+                      )}
                     </p>
-                    {hostCapabilities.nativeTts && <SpeakButton text={sentence} className="w-3.5 h-3.5" />}
                     {hiddenMatch && (
                       <p className="text-xs text-muted-foreground truncate mt-0.5">
                         <Highlight text={hiddenMatch} tokens={searchTokens} />

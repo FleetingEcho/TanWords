@@ -112,5 +112,6 @@ export const aichat: Dict = {
     "aichat.pin": "Pin chat",
     "aichat.unpin": "Unpin chat",
     "aichat.sessionMenu": "Conversation options",
-    "aichat.archived": "Archived {n}",
+    "aichat.chats": "Chats",
+    "aichat.archivedTab": "Archived",
 };

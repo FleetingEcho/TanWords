@@ -5,12 +5,41 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Button } from "@/components/ui/button";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { Archive, ArchiveRestore, ChevronDown, ChevronsLeft, ChevronsRight, MessageSquare, MessageSquarePlus, MoreHorizontal, Pencil, Pin, PinOff, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, CalendarRange, ChevronsLeft, ChevronsRight, MessageSquare, MessageSquarePlus, MoreHorizontal, Pencil, Pin, PinOff, Search, Trash2, X } from "lucide-react";
 import { LIST_PANEL_WIDTH, LIST_PANEL_COLLAPSED_WIDTH, LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
 
-/** Same compact pill as Documents' "+ New Doc" button (DocSelector) — kept in
- *  one row with the collapse toggle instead of stacking a full-width button below it. */
-const NEW_BUTTON_CLASS = "h-6 px-2.5 rounded-lg bg-primary text-white text-[11px] font-semibold hover:bg-primary/90";
+/** Outlined and tinted, the same shape Documents' "new" button wears. Filled,
+ *  this was the loudest thing on a screen whose job is to be quiet: a sidebar
+ *  exists so the conversation beside it can be read. */
+const NEW_BUTTON_CLASS =
+  "h-6 w-6 shrink-0 rounded-lg border border-primary/40 bg-primary/10 p-0 text-primary shadow-none hover:bg-primary/20 hover:text-primary";
+
+/** Heading, and — when there is anything archived — a switch between the two
+ *  lists. Underlined rather than filled, matching the Words/Sentences and
+ *  Library/Local switchers elsewhere in the app. */
+function ListTab({
+  label, active, onSelect,
+}: {
+  label: string;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      onClick={onSelect}
+      aria-pressed={active}
+      className={`relative h-auto shrink-0 rounded-none px-0 py-0.5 text-sm font-bold transition-colors after:absolute after:inset-x-0 after:-bottom-0.5 after:h-0.5 after:rounded-full after:transition-colors hover:bg-transparent ${
+        active
+          ? "text-foreground after:bg-primary hover:text-foreground"
+          : "text-muted-foreground after:bg-transparent hover:text-foreground"
+      }`}
+    >
+      {label}
+    </Button>
+  );
+}
 
 /** `updated_at` sliced to its date, said the short way.
  *
@@ -68,8 +97,33 @@ export function AiChatSidebar({
 }: Props) {
   const t = useT();
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  /** Which of the two lists is showing, not whether a footer section is open. */
   const [showArchive, setShowArchive] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [findOpen, setFindOpen] = useState(false);
+  const [dateOpen, setDateOpen] = useState(false);
+
+  /** Derived, not stored: the last archived conversation can be restored or
+   *  deleted while its list is showing, and a stored flag would leave the panel
+   *  on an empty view whose tab has just disappeared — with no way back. */
+  const archiveView = showArchive && archivedSessions.length > 0;
+  const shownSessions = archiveView ? archivedSessions : displaySessions;
+
+  /** Closing the finder clears it. A filter that is still narrowing the list
+   *  from behind a collapsed control is a list that is lying about what it
+   *  holds — and the reason the row would have to grow a "filters active" dot
+   *  in the first place. */
+  const toggleFind = () => {
+    setFindOpen((open) => {
+      if (open) {
+        if (searchQuery) onSearchChange("");
+        if (dateFrom || dateTo) onDateRangeChange("", "");
+        setDateOpen(false);
+      }
+      return !open;
+    });
+  };
+
 
   const commitRename = (id: string, value: string) => {
     setRenamingId(null);
@@ -84,17 +138,16 @@ export function AiChatSidebar({
     <div
       onClick={() => onSwitchSession(session.id)}
       title={session.title}
-      className={`group relative flex h-10 lg:h-9 items-center gap-2 px-2.5 mx-1 rounded-lg cursor-pointer transition-colors ${
+      // The active row is marked by the bar drawn below, not by a leading icon.
+      // Every row carried the same chat glyph, which is the definition of
+      // decoration: identical on every row, it distinguished nothing and cost
+      // the title 22px of the panel's width on all of them.
+      className={`group relative flex h-10 lg:h-9 items-center gap-2 pl-3 pr-2.5 mx-1 rounded-lg cursor-pointer transition-colors ${
         session.id === activeId
-          ? "bg-[hsl(var(--sidebar-active-bg))] text-[hsl(var(--sidebar-active-fg))]"
+          ? "bg-[hsl(var(--sidebar-active-bg))] text-[hsl(var(--sidebar-active-fg))] before:absolute before:left-0 before:top-1/2 before:h-4 before:w-0.5 before:-translate-y-1/2 before:rounded-full before:bg-primary"
           : "text-[hsl(var(--sidebar-foreground))] hover:bg-muted"
       }`}
     >
-      {/* Same glyph the collapsed rail uses, so a conversation looks like the
-        * same object whichever width the panel is at. */}
-      <MessageSquare
-        className={`h-3.5 w-3.5 shrink-0 ${session.id === activeId ? "text-primary" : "text-muted-foreground/50"}`}
-      />
       <span className="min-w-0 flex-1">
         {renamingId === session.id ? (
           // Uncontrolled on purpose: SessionRow is redefined every parent
@@ -178,73 +231,109 @@ export function AiChatSidebar({
           <Button variant="ghost" onClick={onToggleCollapsed} className={`h-7 w-7 p-0 ${LIST_PANEL_TOGGLE_CLASS}`} title={t("aichat.sidebarExpand")}>
             <ChevronsRight className="h-3.5 w-3.5" />
           </Button>
-          <Button onClick={onNewChat} className="h-7 w-7 p-0 rounded-lg bg-primary text-white hover:bg-primary/90" title={t("aichat.newChat")}>
+          {/* Same outlined treatment as the expanded panel's — the rail is the
+            * same button at a different width, not a different button. */}
+          <Button onClick={onNewChat} className={`${NEW_BUTTON_CLASS} h-7 w-7`} title={t("aichat.newChat")} aria-label={t("aichat.newChat")}>
             <MessageSquarePlus className="w-3.5 h-3.5" />
           </Button>
         </div>
       ) : (
-        <div className="px-3 pt-4 pb-2 border-b border-border">
-          <div className="flex items-center justify-between">
+        // One block, one border. This was three stacked bands — a header, a
+        // filter box, then the list — each with its own rule, which sliced a
+        // 320px panel into strips before a single conversation appeared.
+        <div className="border-b border-border">
+          <div className="flex items-center gap-2 px-3 pt-3 pb-2">
             {variant === "drawer" ? (
-              <Button variant="ghost" size="icon" onClick={onRequestClose} className="h-6 w-6" title={t("aichat.closeSessions")} aria-label={t("aichat.closeSessions")}>
+              <Button variant="ghost" size="icon" onClick={onRequestClose} className="-ml-1 h-6 w-6 shrink-0" title={t("aichat.closeSessions")} aria-label={t("aichat.closeSessions")}>
                 <X className="h-3.5 w-3.5" />
               </Button>
             ) : (
-            <Button variant="ghost" size="icon" onClick={onToggleCollapsed} className={`h-6 w-6 ${LIST_PANEL_TOGGLE_CLASS}`} title={t("aichat.sidebarCollapse")}>
+            <Button variant="ghost" size="icon" onClick={onToggleCollapsed} className={`-ml-1 h-6 w-6 shrink-0 ${LIST_PANEL_TOGGLE_CLASS}`} title={t("aichat.sidebarCollapse")}>
               <ChevronsLeft className="h-3.5 w-3.5" />
             </Button>
             )}
-            <Button onClick={onNewChat} className={NEW_BUTTON_CLASS}>+ {t("aichat.newChat")}</Button>
+
+            {/* The heading. Archived used to be a disclosure stapled to the
+              * bottom of the list; as the second tab it gets a real home, and
+              * the rule under the live one is then telling the truth rather
+              * than decorating a label that switches nothing. */}
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <ListTab label={t("aichat.chats")} active={!archiveView} onSelect={() => setShowArchive(false)} />
+              {archivedSessions.length > 0 && (
+                <ListTab label={t("aichat.archivedTab")} active={archiveView} onSelect={() => setShowArchive(true)} />
+              )}
+              <span className="text-xs tabular-nums text-muted-foreground">{shownSessions.length}</span>
+            </div>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleFind}
+              title={t("aichat.searchPlaceholder")}
+              aria-label={t("aichat.searchPlaceholder")}
+              aria-expanded={findOpen}
+              className={`relative h-6 w-6 shrink-0 ${findOpen ? "text-primary hover:text-primary" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              <Search className="h-3.5 w-3.5" />
+            </Button>
+            <Button onClick={onNewChat} className={NEW_BUTTON_CLASS} title={t("aichat.newChat")} aria-label={t("aichat.newChat")}>
+              <MessageSquarePlus className="h-3.5 w-3.5" />
+            </Button>
           </div>
+
+          {/* Only while you are actually filtering. A date range you never use
+            * had a permanent full-width row at the same weight as search. */}
+          {findOpen && (
+            <div className="space-y-2 px-3 pb-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground/50" />
+                <input
+                  autoFocus
+                  value={searchQuery}
+                  onChange={(e) => onSearchChange(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Escape") toggleFind(); }}
+                  placeholder={t("aichat.searchPlaceholder")}
+                  // 16px below lg: iOS would otherwise zoom the page on focus.
+                  className="h-7 w-full rounded-md border border-input bg-background pl-7 pr-8 text-[16px] lg:text-xs placeholder:text-muted-foreground/40 focus:outline-hidden focus:ring-1 focus:ring-primary/30"
+                />
+                <button
+                  type="button"
+                  onClick={() => setDateOpen((open) => !open)}
+                  title={t("aichat.dateRange")}
+                  aria-label={t("aichat.dateRange")}
+                  aria-expanded={dateOpen}
+                  className={`absolute right-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-md transition-colors ${
+                    dateOpen || dateFrom || dateTo
+                      ? "text-primary hover:bg-primary/10"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                >
+                  <CalendarRange className="h-3 w-3" />
+                </button>
+              </div>
+              {(dateOpen || dateFrom || dateTo) && (
+                <DateRangePicker
+                  from={dateFrom}
+                  to={dateTo}
+                  onChange={(from, to) => onDateRangeChange(from, to)}
+                  placeholder={t("aichat.dateRange")}
+                  className="w-full"
+                />
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      {!collapsed && <div className="space-y-2 px-3 py-2 border-b border-border">
-        <div className="relative">
-          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/50">
-            <circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5l3 3" strokeLinecap="round" />
-          </svg>
-          <input
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder={t("aichat.searchPlaceholder")}
-            // 16px below lg: iOS would otherwise zoom the page on focus.
-            className="w-full h-7 pl-7 pr-2 text-[16px] lg:text-xs rounded-md border border-input bg-background placeholder:text-muted-foreground/40 focus:outline-hidden focus:ring-1 focus:ring-primary/30"
-          />
-        </div>
-        <DateRangePicker
-          from={dateFrom}
-          to={dateTo}
-          onChange={(from, to) => onDateRangeChange(from, to)}
-          placeholder={t("aichat.dateRange")}
-          className="w-full"
-        />
-      </div>}
-
       {!collapsed && <div className="flex-1 overflow-y-auto py-1">
-        {displaySessions.length === 0 && (
+        {shownSessions.length === 0 && (
           <p className="px-4 py-6 text-xs text-muted-foreground text-center">
             {searchQuery || dateFrom || dateTo ? t("aichat.noResults") : t("aichat.noSessions")}
           </p>
         )}
-        {displaySessions.map((session) => (
-          <SessionRow key={session.id} session={session} archived={false} />
+        {shownSessions.map((session) => (
+          <SessionRow key={session.id} session={session} archived={archiveView} />
         ))}
-
-        {archivedSessions.length > 0 && (
-          <div className="mt-2 border-t border-border/60 pt-1">
-            <button
-              onClick={() => setShowArchive((v) => !v)}
-              className="flex w-full items-center gap-1.5 px-4 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60 transition-colors hover:text-foreground"
-            >
-              <ChevronDown className={`h-3 w-3 transition-transform ${showArchive ? "" : "-rotate-90"}`} />
-              {t("aichat.archived", { n: archivedSessions.length })}
-            </button>
-            {showArchive && archivedSessions.map((session) => (
-              <SessionRow key={session.id} session={session} archived />
-            ))}
-          </div>
-        )}
       </div>}
 
       {/* A chat glyph per session, not the title's first letter. Initials only

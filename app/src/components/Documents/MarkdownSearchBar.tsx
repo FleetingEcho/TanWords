@@ -17,16 +17,46 @@ import { Button } from "@/components/ui/button";
  *  Only the *commands* are worth taking from the library; the surface is ours,
  *  and then it simply matches everything else in the app.
  */
-export function MarkdownSearchBar({ view, onClose }: { view: EditorView; onClose: () => void }) {
-  const [find, setFind] = useState("");
+/** How long typing has to pause before the match count is recounted, and before
+ *  a document still being edited is counted against. Every command below
+ *  flushes the live query first, so the delay never makes a button act on a
+ *  stale search — it only keeps a keystroke from scanning the whole file. */
+const SETTLE = 150;
+
+export function MarkdownSearchBar({
+  view,
+  seed,
+  openReplace,
+  focusNonce,
+  onClose,
+}: {
+  view: EditorView;
+  /** Text to search for, taken from the selection when the bar was opened. */
+  seed: string;
+  /** Opened with ⌘H rather than ⌘F: show the replace row straight away. */
+  openReplace: boolean;
+  /** Bumped every time the bar is asked for again, including while it is
+   *  already open — that is a request to refocus the field, not a no-op. */
+  focusNonce: number;
+  onClose: () => void;
+}) {
+  const [find, setFind] = useState(seed);
   const [replace, setReplace] = useState("");
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [regexp, setRegexp] = useState(false);
   const [wholeWord, setWholeWord] = useState(false);
-  const [showReplace, setShowReplace] = useState(false);
+  const [showReplace, setShowReplace] = useState(openReplace);
   const findRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { findRef.current?.focus(); findRef.current?.select(); }, []);
+  useEffect(() => {
+    if (seed) setFind(seed);
+    if (openReplace) setShowReplace(true);
+    findRef.current?.focus();
+    findRef.current?.select();
+    // Keyed on the nonce alone: a second ⌘F with the same selection still has
+    // to bring the caret back to the field.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusNonce]);
 
   const query = useMemo(
     () => new SearchQuery({ search: find, replace, caseSensitive, regexp, wholeWord }),
@@ -40,18 +70,38 @@ export function MarkdownSearchBar({ view, onClose }: { view: EditorView; onClose
     view.dispatch({ effects: setSearchQuery.of(query) });
   }, [view, query]);
 
+  /** Runs a search command against the query as it stands *now*. The effect
+   *  above lands in its own transaction, and React may not have flushed it by
+   *  the time a button is clicked — typing "foo" and hitting replace-all
+   *  immediately would otherwise run against the previous query. Dispatching it
+   *  again first is idempotent and removes the ordering question. */
+  const run = (command: (target: EditorView) => boolean) => {
+    view.dispatch({ effects: setSearchQuery.of(query) });
+    command(view);
+  };
+
+  // The counting below walks the document, so it runs against a snapshot that
+  // settles rather than against every keystroke. `Text` is immutable — holding
+  // last moment's is safe, it just means the number lags typing by `SETTLE`.
+  const doc = view.state.doc;
+  const [countedDoc, setCountedDoc] = useState(doc);
+  const [countedQuery, setCountedQuery] = useState(query);
+  useEffect(() => {
+    const timer = setTimeout(() => { setCountedDoc(doc); setCountedQuery(query); }, SETTLE);
+    return () => clearTimeout(timer);
+  }, [doc, query]);
+
   /** How many matches there are. `@codemirror/search` highlights them but never
    *  says how many, and "no results" versus "many" is the first thing anyone
-   *  looks for. Counting is cheap next to the tokenising the editor already
-   *  does, and capped so a single-character query in a long document cannot
-   *  turn every keystroke into a full scan. */
+   *  looks for. Capped, so a single-character query in a long document cannot
+   *  turn one keystroke into a full scan. */
   const matches = useMemo(() => {
-    if (!query.valid) return 0;
-    const text = view.state.doc;
+    if (!countedQuery.valid) return 0;
+    const text = countedDoc;
     try {
-      const cursor = query.regexp
-        ? new RegExpCursor(text, query.search, { ignoreCase: !query.caseSensitive })
-        : new SearchCursor(text, query.search, 0, text.length, query.caseSensitive ? undefined : (s) => s.toLowerCase());
+      const cursor = countedQuery.regexp
+        ? new RegExpCursor(text, countedQuery.search, { ignoreCase: !countedQuery.caseSensitive })
+        : new SearchCursor(text, countedQuery.search, 0, text.length, countedQuery.caseSensitive ? undefined : (s) => s.toLowerCase());
       let count = 0;
       while (!cursor.next().done && count < 1000) count += 1;
       return count;
@@ -59,12 +109,25 @@ export function MarkdownSearchBar({ view, onClose }: { view: EditorView; onClose
       // An unfinished regular expression is a normal thing to have typed.
       return 0;
     }
-    // Recount when the document changes under a stable query, too.
-  }, [query, view.state.doc]);
+  }, [countedQuery, countedDoc]);
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    findNext(view);
+    run(findNext);
+  };
+
+  const onKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      onClose();
+      return;
+    }
+    // Shift+Enter is the universal "the other way" on a find field. It has to
+    // be caught here: the submit event a form fires carries no modifier keys.
+    if (event.key === "Enter" && event.shiftKey) {
+      event.preventDefault();
+      run(findPrevious);
+    }
   };
 
   const FIELD =
@@ -105,7 +168,7 @@ export function MarkdownSearchBar({ view, onClose }: { view: EditorView; onClose
   return (
     <form
       onSubmit={submit}
-      onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}
+      onKeyDown={onKeyDown}
       className="absolute right-2 top-2 z-30 w-[min(30rem,calc(100%-1rem))] rounded-lg border border-border bg-card/95 p-1.5 shadow-lg backdrop-blur"
     >
       <div className="flex items-start gap-1.5">
@@ -141,9 +204,9 @@ export function MarkdownSearchBar({ view, onClose }: { view: EditorView; onClose
             {toggle(caseSensitive, () => setCaseSensitive((v) => !v), "Match case", CaseSensitive)}
             {toggle(wholeWord, () => setWholeWord((v) => !v), "Match whole word", WholeWord)}
             {toggle(regexp, () => setRegexp((v) => !v), "Use regular expression", Regex)}
-            {action(() => findPrevious(view), "Previous match", ArrowUp, !find)}
-            {action(() => findNext(view), "Next match", ArrowDown, !find)}
-            {action(() => selectMatches(view), "Put a cursor on every match", ListChecks, !find || matches === 0)}
+            {action(() => run(findPrevious), "Previous match", ArrowUp, !find)}
+            {action(() => run(findNext), "Next match", ArrowDown, !find)}
+            {action(() => run(selectMatches), "Put a cursor on every match", ListChecks, !find)}
           </div>
 
           {showReplace && (
@@ -155,8 +218,8 @@ export function MarkdownSearchBar({ view, onClose }: { view: EditorView; onClose
                 aria-label="Replace"
                 className={`${FIELD} min-w-0 flex-1`}
               />
-              {action(() => replaceNext(view), "Replace next", Replace, !find)}
-              {action(() => replaceAll(view), "Replace all", ReplaceAll, !find)}
+              {action(() => run(replaceNext), "Replace next", Replace, !find)}
+              {action(() => run(replaceAll), "Replace all", ReplaceAll, !find)}
             </div>
           )}
         </div>

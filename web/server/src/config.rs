@@ -14,9 +14,22 @@ pub struct Config {
     /// Optional external built frontend to serve at `/`. When unset the
     /// renderer is served from the embedded copy compiled into the binary.
     pub web_dist: Option<PathBuf>,
-    /// Owner-only key gating register + password reset. Unset = those doors
-    /// are closed (login still works for existing accounts).
+    /// Handed to the people you invite, and gating registration only. Unset =
+    /// registration is closed (login still works for existing accounts).
     pub invite_key: Option<String>,
+    /// Gates password reset — deliberately NOT the invite key.
+    ///
+    /// The invite key has to be given to every person you invite, or they
+    /// cannot sign up. When the same key also authorised "set any account's
+    /// password by email", every invited user held the ability to take over
+    /// every other account, including yours: reset the owner's password, log
+    /// in as them, read their database. Splitting them makes the invite key
+    /// what it says it is — permission to create *an* account, not power over
+    /// existing ones. Unset = password reset is closed.
+    pub admin_key: Option<String>,
+    /// True when this process sits behind a reverse proxy whose
+    /// `X-Forwarded-For` can be believed. Off by default — see `from_env`.
+    pub trust_proxy: bool,
     /// AES-256-GCM key sealing each user's stored Turso token, and the core's
     /// provider/device key on headless servers. 32 bytes, hex or base64.
     pub master_key: [u8; 32],
@@ -74,6 +87,15 @@ impl Config {
                 .unwrap_or_else(default_data_dir),
             web_dist: env("TANWORDS_WEB_DIST").map(PathBuf::from),
             invite_key: env("TANWORDS_INVITE_KEY"),
+            admin_key: env("TANWORDS_ADMIN_KEY"),
+            // Reverse proxies replace the peer address with their own, so the
+            // per-IP limiter needs to be told when to read X-Forwarded-For —
+            // and told explicitly, because a server that trusts that header
+            // unconditionally lets any caller forge their way around the
+            // limiter by sending one.
+            trust_proxy: env("TANWORDS_TRUST_PROXY")
+                .map(|v| matches!(v.trim(), "1" | "true" | "yes"))
+                .unwrap_or(false),
             master_key,
         })
     }

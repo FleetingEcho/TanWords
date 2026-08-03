@@ -140,13 +140,17 @@ export function AuthGate() {
                     value={confirm}
                     onChange={setConfirm}
                   />
+                  {/* Two different secrets behind one field: registering
+                    * takes the invite key, resetting a password takes the
+                    * admin key. Labelled per mode so nobody types one
+                    * expecting it to work as the other. */}
                   <UnderlineField
-                    label={t("auth.inviteKey")}
-                    type="text"
+                    label={t(mode === "forgot" ? "auth.adminKey" : "auth.inviteKey")}
+                    type="password"
                     autoComplete="off"
                     value={inviteKey}
                     onChange={setInviteKey}
-                    hint={t("auth.inviteKeyHint")}
+                    hint={t(mode === "forgot" ? "auth.adminKeyHint" : "auth.inviteKeyHint")}
                   />
                 </>
               )}

@@ -130,7 +130,7 @@ impl UsersDb {
         let email = email.trim().to_lowercase();
         let hash = Self::hash_password(password)?;
         let conn = self.conn.lock().await;
-        let mut rows = conn
+        let rows = conn
             .execute(
                 "INSERT INTO users(email, password_hash) VALUES (?, ?)",
                 libsql::params![email, hash],

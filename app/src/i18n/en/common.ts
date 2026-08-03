@@ -128,6 +128,8 @@ export const common: Dict = {
     "auth.register": "Register",
     "auth.confirmPassword": "Confirm password",
     "auth.inviteKey": "Invite key",
+    "auth.adminKey": "Admin key",
+    "auth.adminKeyHint": "the server owner's key — not the invite key",
     "auth.switchToRegister": "New here? Register with invite key",
     "auth.switchToForgot": "Forgot password",
     "auth.backToLogin": "Back to sign in",

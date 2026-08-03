@@ -146,12 +146,4 @@ impl RuntimePool {
         Ok(runtime)
     }
 
-    /// A Turso connect/reconnect must open a fresh replica (see the
-    /// stale-lineage comment in core `db_connect_turso`), so callers wipe +
-    /// respawn rather than swap in place.
-    pub fn drop_runtime(&self, user_id: i64) {
-        if let Ok(mut entries) = self.entries.lock() {
-            entries.remove(&user_id);
-        }
-    }
 }

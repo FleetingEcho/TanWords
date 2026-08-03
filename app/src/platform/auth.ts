@@ -34,12 +34,17 @@ export async function register(email: string, password: string, inviteKey: strin
   if (!response.ok) await throwServerError(response);
 }
 
+/** Takes the ADMIN key, not the invite key. They are different secrets on
+ *  purpose: the invite key is in the hands of everyone who was invited, and
+ *  this route sets an arbitrary account's password given only its email — so
+ *  sharing one secret between the two doors meant every invited user could
+ *  take over every other account. */
 export async function resetPassword(
   email: string,
   newPassword: string,
-  inviteKey: string,
+  adminKey: string,
 ): Promise<void> {
-  const response = await postJson("/api/auth/reset-password", { email, newPassword, inviteKey });
+  const response = await postJson("/api/auth/reset-password", { email, newPassword, adminKey });
   if (!response.ok) await throwServerError(response);
 }
 

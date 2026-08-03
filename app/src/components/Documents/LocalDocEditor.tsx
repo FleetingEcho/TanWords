@@ -434,7 +434,14 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
           </div>
         </div>
       ) : (
-        <RawMarkdownEditor value={rawMarkdown} onChange={handleRawChange} label={t("doc.rawMode")} />
+        <RawMarkdownEditor
+          value={rawMarkdown}
+          onChange={handleRawChange}
+          label={t("doc.rawMode")}
+          placeholderText={t("doc.rawPlaceholder")}
+          onUploadFile={onUploadImage}
+          readNativeImage={readNativeClipboardImage}
+        />
       )}
 
       {/* See DocEditor: on phones the outline is a jump-and-dismiss modal

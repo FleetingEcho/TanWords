@@ -221,17 +221,10 @@ fn normalize_itunes_durations(body: &[u8]) -> Vec<u8> {
 /// Fetch and parse an RSS/Atom feed from a URL. Shared by the `fetch_rss` preview
 /// command and `db_sync_rss_feed`.
 pub(super) async fn fetch_feed_meta(url: &str) -> Result<RssFeedMeta, String> {
-    let client = reqwest::Client::builder()
-        .user_agent(USER_AGENT)
-        .timeout(Duration::from_secs(15))
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let resp = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| format!("Request failed: {e}"))?;
+    // Guarded: feed URLs are user-supplied and are re-fetched on every sync,
+    // so this is the SSRF surface with the longest reach. See
+    // http_util::fetch_guarded.
+    let resp = crate::http_util::fetch_guarded(url, USER_AGENT, Duration::from_secs(15), |r| r).await?;
 
     if !resp.status().is_success() {
         return Err(format!("Server returned {}", resp.status()));

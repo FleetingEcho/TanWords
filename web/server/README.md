@@ -11,13 +11,32 @@ deployment only needs the `tanwords-web-server` executable.
 
 ## Run
 
+There is a Makefile one directory up; it knows the build order, which is the
+one thing that is easy to get wrong (the renderer is compiled *into* the
+server binary, so it has to exist first).
+
+```bash
+cd web
+make doctor     # is bun/cargo present, is there an .env
+make keys       # generate server/.env with fresh secrets — once per host
+make build      # renderer, then the single release binary
+make run        # start it
+```
+
+`make` on its own lists every target. The long way, if you prefer it explicit:
+
 ```bash
 cd ../app && bun install && bun run build          # build the shared renderer once
 cd ../web/server
 TANWORDS_MASTER_KEY=$(openssl rand -hex 32) \
-TANWORDS_INVITE_KEY=only-you-know-this \
+TANWORDS_INVITE_KEY=give-this-to-people-you-invite \
+TANWORDS_ADMIN_KEY=keep-this-one-to-yourself \
 cargo run --release
 ```
+
+`make run` refuses to start when `TANWORDS_ADMIN_KEY` equals
+`TANWORDS_INVITE_KEY` — see the environment table below for why that
+combination hands every invited user control of every account.
 
 The resulting binary is `target/release/tanwords-web-server`. It serves the
 embedded `app/out/renderer`; no `TANWORDS_WEB_DIST` directory is required at
@@ -50,7 +69,9 @@ TANWORDS_PORT=8740 \
 | Var | Required | Default | Meaning |
 |---|---|---|---|
 | `TANWORDS_MASTER_KEY` | **yes** | — | 32 bytes, hex or base64. Seals each user's Turso token + AI provider keys on disk. Generate: `openssl rand -hex 32`. |
-| `TANWORDS_INVITE_KEY` | no | unset | Gates **register** and **reset-password**. Unset = those doors are closed (existing logins still work). Rotate by restarting with a new value. |
+| `TANWORDS_INVITE_KEY` | no | unset | Gates **register** only. This is the one you hand to people you invite. Unset = registration closed (existing logins still work). |
+| `TANWORDS_ADMIN_KEY` | no | unset | Gates **reset-password**. Keep it to yourself — it can set any account's password from its email address alone. **Must not equal the invite key**: sharing one secret between the two doors gives every invited user the ability to take over every other account, including yours. Unset = password reset closed. |
+| `TANWORDS_TRUST_PROXY` | no | `false` | Set to `1` only when nothing can reach this port except your reverse proxy. Makes the rate limiter read the last hop of `X-Forwarded-For` instead of the peer address. Leaving it off behind a proxy means every user shares one rate-limit bucket, so ten failed logins from anyone lock out everyone. Turning it on while the port is directly reachable lets any caller forge a fresh identity per request and skip the limiter entirely. |
 | `TANWORDS_HOST` | no | `127.0.0.1` | Bind address. Use `0.0.0.0` for LAN/behind a proxy. |
 | `TANWORDS_PORT` | no | `8740` | Port. |
 | `TANWORDS_DATA_DIR` | no | platform data dir | Root for `users.db` and `users/<id>/` data. |
@@ -103,8 +124,41 @@ by name from `/invoke`** on purpose; the routes above replace them per-user.
   on a box you control. `users.db` holds argon2id hashes and sha256'd session
   tokens; sessions slide-expire after 30 days idle.
 - HTTPS: put Caddy/nginx in front (`reverse_proxy 127.0.0.1:8740`). The SSE
-  and AI-proxy streams are flushed unbuffered and proxy-safe; send
-  `X-Forwarded-For` if you want the rate limiter to see real client IPs
-  (it uses the direct peer address).
+  and AI-proxy streams are flushed unbuffered and proxy-safe. Have the proxy
+  set `X-Forwarded-For` **and** run the server with `TANWORDS_TRUST_PROXY=1`,
+  or the rate limiter counts every request against the proxy's own address —
+  one attacker's failed logins then lock out every user at once. Keep the
+  server bound to `127.0.0.1` so the port is genuinely unreachable except
+  through the proxy; that is the precondition the header trust rests on.
+- Add HSTS at the proxy. The server itself speaks plain HTTP by design.
+- File permissions: `users.db` 0600 and `users/` 0700. They hold password
+  hashes, session tokens and sealed third-party credentials.
 - Backup `TANWORDS_MASTER_KEY` — losing it orphans every sealed Turso token
   and AI provider key (users re-enter them; no data loss otherwise).
+
+## What the server will not do
+
+The command API is an **allowlist** (`src/commands.rs`), not a filter over the
+desktop command set. The core's dispatch table is written for an app where the
+caller owns the machine; here the caller is whoever holds a session on a box
+reachable from the internet, and those are different trust models. A command
+added to the core is *not* published here until somebody classifies it — the
+test in that file fails until they do.
+
+Refused for structural reasons, with the per-user replacements noted in the
+file: anything that reads or writes an arbitrary server path (`db_import_*`,
+`db_export_*` — re-exposed as validated `/api/import/*` and
+`/api/export/backup`), anything backed by process-wide state rather than the
+caller's own database (`secret_*`, `app_lock_*`, the `db_connect_turso`
+family — re-exposed per user under `/api/db/*`), anything that would have the
+server bind a listener (`mcp_*`), and `ai_provider_key`, which would hand a
+decrypted provider key to the browser that `/api/ai-proxy` exists to keep it
+away from.
+
+Outbound fetches of user-supplied URLs (`fetch_article`, `fetch_rss`, the RSS
+sync, the AI proxy's configurable `api_base`, Turso connect) are allowed but
+guarded: the host is resolved first, refused if any answer lands in private,
+loopback, link-local or carrier-grade-NAT space — 169.254.169.254 above all —
+and the connection is pinned to the address that was checked so the name
+cannot resolve elsewhere in between. Redirects are followed by hand so every
+hop gets the same treatment. See `app/core/src/http_util.rs`.

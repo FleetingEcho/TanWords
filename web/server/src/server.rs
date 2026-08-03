@@ -9,7 +9,7 @@
 //!
 //!   POST /api/auth/register          {"email","password","inviteKey"} -> {"token"} (invite-gated, rate-limited)
 //!   POST /api/auth/login             {"email","password"} -> {"token"}        (rate-limited)
-//!   POST /api/auth/reset-password    {"email","newPassword","inviteKey"} -> 204 (invite-gated)
+//!   POST /api/auth/reset-password    {"email","newPassword","adminKey"} -> 204 (ADMIN-gated, not invite)
 //!   POST /api/auth/logout            Bearer                                     204
 //!   GET  /api/auth/me                Bearer -> {"email"}
 //!   POST /invoke/{command}           session, JSON args -> bare JSON | {"error"}
@@ -33,7 +33,7 @@ use axum::body::{Body, Bytes};
 use axum::extract::multipart::MultipartError;
 use axum::extract::{ConnectInfo, DefaultBodyLimit, Multipart, Path, Request, State};
 use axum::response::Redirect;
-use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
+use axum::http::{header, HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
@@ -56,6 +56,11 @@ use crate::config::Config;
 use crate::runtime::{RuntimePool, UserRuntime};
 use crate::users::UsersDb;
 
+/// Hard ceiling on a single import upload. The route disables axum's body
+/// limit (a genuine backup can be hundreds of MB), so this is the only thing
+/// standing between a logged-in user and the disk.
+const MAX_UPLOAD_BYTES: u64 = 512 * 1024 * 1024;
+
 #[derive(Clone)]
 struct WebState {
     users: Arc<UsersDb>,
@@ -67,11 +72,14 @@ struct WebState {
 }
 
 /// What `require_session` leaves in request extensions for handlers.
+///
+/// Deliberately not the session token: no handler needs it (logout reads the
+/// header itself), and a credential carried around in request extensions is a
+/// credential that can end up somewhere it was never meant to go.
 #[derive(Clone)]
 struct UserSession {
     user_id: i64,
     email: String,
-    token: String,
 }
 
 impl WebState {
@@ -101,12 +109,27 @@ fn query_token(request: &Request) -> Option<String> {
     None
 }
 
-/// The one gate for everything past the auth routes: Bearer header, or
-/// `?token=` for URLs embedded in markup (`EventSource` cannot set headers,
-/// and this server deliberately accepts query auth on every gated route for
-/// that reason). Valid sessions land in request extensions as `UserSession`.
+/// Routes reached by URL rather than by fetch, where the caller has no way to
+/// set a header: `EventSource` cannot, and neither can `<img src>`. Only these
+/// accept `?token=`.
+///
+/// It used to be every gated route. A token in a URL is a token in the reverse
+/// proxy's access log, in browser history, and in the Referer of anything the
+/// page links onward to — so the exception stays as narrow as the two places
+/// that actually need it.
+fn accepts_query_token(path: &str) -> bool {
+    path == "/events" || path.starts_with("/api/assets/")
+}
+
+/// The one gate for everything past the auth routes: `Authorization: Bearer`,
+/// or `?token=` on the two routes above. Valid sessions land in request
+/// extensions as `UserSession`.
 async fn require_session(State(state): State<WebState>, mut request: Request, next: Next) -> Response {
-    let token = bearer_token(&request).or_else(|| query_token(&request));
+    let token = bearer_token(&request).or_else(|| {
+        accepts_query_token(request.uri().path())
+            .then(|| query_token(&request))
+            .flatten()
+    });
     let Some(token) = token else {
         return json_error(StatusCode::UNAUTHORIZED, "missing token");
     };
@@ -115,7 +138,6 @@ async fn require_session(State(state): State<WebState>, mut request: Request, ne
             request.extensions_mut().insert(UserSession {
                 user_id: user.id,
                 email: user.email,
-                token,
             });
             next.run(request).await
         }
@@ -145,8 +167,9 @@ struct ResetBody {
     email: String,
     #[serde(rename = "newPassword")]
     new_password: String,
-    #[serde(rename = "inviteKey")]
-    invite_key: String,
+    /// Deliberately not the invite key — see Config::admin_key.
+    #[serde(rename = "adminKey")]
+    admin_key: String,
 }
 
 fn valid_email(email: &str) -> bool {
@@ -154,20 +177,52 @@ fn valid_email(email: &str) -> bool {
     email.len() >= 3 && email.len() <= 254 && email.contains('@') && !email.contains(char::is_whitespace)
 }
 
-/// Invite-key gate shared by register + reset-password. Returns Some(response)
-/// when the request must be rejected.
-fn check_invite(state: &WebState, peer_ip: IpAddr, provided: &str) -> Option<Response> {
-    // Tight budget on invite guessing: 5 tries per 10 minutes.
-    if state.limiter.limited("invite", peer_ip, 5, std::time::Duration::from_secs(600)) {
+/// The address the rate limiter should count against.
+///
+/// `ConnectInfo` is the peer that opened the TCP connection, which behind a
+/// reverse proxy is the proxy — every user then shares one bucket, and one
+/// attacker burning the login budget locks out everybody. So when the operator
+/// has declared a proxy (TANWORDS_TRUST_PROXY), take the last hop in
+/// `X-Forwarded-For`: entries to its left are supplied by the client and can
+/// say anything, the rightmost is the one our own proxy appended.
+///
+/// Off by default. A server that believes this header without being told to
+/// lets any caller forge a fresh identity per request and skip the limiter.
+fn client_ip(state: &WebState, headers: &HeaderMap, peer: SocketAddr) -> IpAddr {
+    if !state.config.trust_proxy {
+        return peer.ip();
+    }
+    headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.rsplit(',').next())
+        .and_then(|v| v.trim().parse::<IpAddr>().ok())
+        .unwrap_or_else(|| peer.ip())
+}
+
+/// Checks one of the two keys; Some(response) means reject.
+///
+/// `bucket` names the door and separates the budgets — guessing at the admin
+/// key must not be funded by the registration allowance, and vice versa.
+fn check_key(
+    state: &WebState,
+    peer_ip: IpAddr,
+    bucket: &str,
+    expected: Option<&str>,
+    provided: &str,
+    closed_message: &str,
+) -> Option<Response> {
+    // Tight budget on key guessing: 5 tries per 10 minutes.
+    if state.limiter.limited(bucket, peer_ip, 5, std::time::Duration::from_secs(600)) {
         return Some(json_error(StatusCode::TOO_MANY_REQUESTS, "too many attempts — try again later"));
     }
-    let Some(expected) = state.config.invite_key.as_deref() else {
-        return Some(json_error(StatusCode::FORBIDDEN, "registration disabled"));
+    let Some(expected) = expected else {
+        return Some(json_error(StatusCode::FORBIDDEN, closed_message.to_string()));
     };
     if provided.is_empty() || !constant_time_eq(provided, expected) {
-        state.limiter.record_failure("invite", peer_ip);
-        eprintln!("[tanwords-web] failed invite-key attempt from {peer_ip}");
-        return Some(json_error(StatusCode::FORBIDDEN, "invalid invite key"));
+        state.limiter.record_failure(bucket, peer_ip);
+        eprintln!("[tanwords-web] failed {bucket}-key attempt from {peer_ip}");
+        return Some(json_error(StatusCode::FORBIDDEN, "invalid key"));
     }
     None
 }
@@ -175,20 +230,25 @@ fn check_invite(state: &WebState, peer_ip: IpAddr, provided: &str) -> Option<Res
 async fn login(
     State(state): State<WebState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(body): Json<LoginBody>,
 ) -> Response {
-    if state.limiter.limited("login", peer.ip(), 10, std::time::Duration::from_secs(600)) {
+    let peer_ip = client_ip(&state, &headers, peer);
+    if state.limiter.limited("login", peer_ip, 10, std::time::Duration::from_secs(600)) {
         return json_error(StatusCode::TOO_MANY_REQUESTS, "too many failed logins — try again later");
     }
     match state.users.login(&body.email, &body.password).await {
         Ok(Some((user_id, token))) => {
-            state.limiter.clear("login", peer.ip());
-            eprintln!("[tanwords-web] login: user {user_id} from {}", peer.ip());
+            state.limiter.clear("login", peer_ip);
+            eprintln!("[tanwords-web] login: user {user_id} from {peer_ip}");
             Json(json!({ "token": token })).into_response()
         }
         Ok(None) => {
-            state.limiter.record_failure("login", peer.ip());
-            eprintln!("[tanwords-web] failed login for `{}` from {}", body.email, peer.ip());
+            state.limiter.record_failure("login", peer_ip);
+            // The address, not the address *and* the address they typed: a
+            // failed-login log that echoes attacker-supplied strings is a log
+            // an attacker can write to.
+            eprintln!("[tanwords-web] failed login from {peer_ip}");
             json_error(StatusCode::UNAUTHORIZED, "invalid credentials")
         }
         Err(e) => json_error(StatusCode::INTERNAL_SERVER_ERROR, e),
@@ -198,9 +258,15 @@ async fn login(
 async fn register(
     State(state): State<WebState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(body): Json<RegisterBody>,
 ) -> Response {
-    if let Some(reject) = check_invite(&state, peer.ip(), &body.invite_key) {
+    let peer_ip = client_ip(&state, &headers, peer);
+    if let Some(reject) = check_key(
+        &state, peer_ip, "invite",
+        state.config.invite_key.as_deref(), &body.invite_key,
+        "registration disabled",
+    ) {
         return reject;
     }
     if !valid_email(&body.email) {
@@ -211,8 +277,8 @@ async fn register(
     }
     match state.users.register(&body.email, &body.password).await {
         Ok(user_id) => {
-            state.limiter.clear("invite", peer.ip());
-            eprintln!("[tanwords-web] registered user {user_id} ({}) from {}", body.email, peer.ip());
+            state.limiter.clear("invite", peer_ip);
+            eprintln!("[tanwords-web] registered user {user_id} from {peer_ip}");
             // Registration logs you straight in.
             match state.users.login(&body.email, &body.password).await {
                 Ok(Some((_, token))) => Json(json!({ "token": token })).into_response(),
@@ -227,9 +293,18 @@ async fn register(
 async fn reset_password(
     State(state): State<WebState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(body): Json<ResetBody>,
 ) -> Response {
-    if let Some(reject) = check_invite(&state, peer.ip(), &body.invite_key) {
+    // The ADMIN key, not the invite key. See Config::admin_key: the invite key
+    // is in the hands of everyone you invited, and this route sets an
+    // arbitrary account's password by email address alone.
+    let peer_ip = client_ip(&state, &headers, peer);
+    if let Some(reject) = check_key(
+        &state, peer_ip, "admin",
+        state.config.admin_key.as_deref(), &body.admin_key,
+        "password reset disabled",
+    ) {
         return reject;
     }
     if body.new_password.len() < 8 {
@@ -237,7 +312,7 @@ async fn reset_password(
     }
     match state.users.reset_password(&body.email, &body.new_password).await {
         Ok(true) => {
-            eprintln!("[tanwords-web] password reset for `{}` from {}", body.email, peer.ip());
+            eprintln!("[tanwords-web] password reset completed from {peer_ip}");
             StatusCode::NO_CONTENT.into_response()
         }
         Ok(false) => json_error(StatusCode::NOT_FOUND, "no such account"),
@@ -246,7 +321,7 @@ async fn reset_password(
 }
 
 async fn logout(State(state): State<WebState>, request: Request) -> Response {
-    if let Some(token) = bearer_token(&request).or_else(|| query_token(&request)) {
+    if let Some(token) = bearer_token(&request) {
         let _ = state.users.logout(&token).await;
     }
     StatusCode::NO_CONTENT.into_response()
@@ -268,36 +343,19 @@ async fn me(request: Request) -> Response {
 
 // ── core RPC (same shapes as the desktop sidecar) ─────────────────────────
 
-/// Commands the web build must not expose by name even though the dispatch
-/// table contains them. Reasons, per entry: global desktop state (the
-/// db_connect/disconnect family is reimplemented per-user below), cross-user
-/// shared secret files, or arbitrary server-side filesystem paths.
-const BLOCKED_COMMANDS: &[&str] = &[
-    "db_switch_path",
-    "db_connect_turso",
-    "db_disconnect_remote",
-    "db_forget_saved_profile",
-    "db_get_remembered_turso",
-    "db_saved_profile_is_turso",
-    "secret_get",
-    "secret_set",
-    "secret_delete",
-    "db_get_db_path",
-    "db_export_backup",
-    "db_import_analyze",
-    "db_import_apply",
-    "db_export_document_asset",
-    "db_export_document_assets_to_folder",
-    "db_export_document_assets_zip",
-];
-
 async fn invoke_handler(
     State(state): State<WebState>,
     Path(command): Path<String>,
     axum::Extension(session): axum::Extension<UserSession>,
     body: Bytes,
 ) -> Response {
-    if BLOCKED_COMMANDS.contains(&command.as_str()) {
+    // Allowlist — see commands.rs for why this is not a denylist. Unknown
+    // names fall through to the same refusal as blocked ones: the caller
+    // learns nothing about which commands exist.
+    if !crate::commands::is_allowed(&command) {
+        if let Some(reason) = crate::commands::block_reason(&command) {
+            eprintln!("[tanwords-web] user {} attempted blocked command `{command}` ({reason})", session.user_id);
+        }
         return json_error(StatusCode::FORBIDDEN, format!("`{command}` is not available on the web build"));
     }
     let runtime = match state.runtime_for(&session).await {
@@ -364,15 +422,27 @@ async fn asset_handler(
     // privacy (encrypted assets of locked documents stay sealed) for free.
     match dispatch(&runtime.ctx, "db_get_document_asset", Args::new(json!({ "id": id }))).await {
         Ok(value) => {
+            // The stored mime is whatever was attached at upload time. Served
+            // back verbatim on this origin, `text/html` would be a script the
+            // browser runs with the app's own privileges — same origin as the
+            // session token in sessionStorage. Anything that isn't a plain
+            // media type is downgraded to an opaque download.
             let mime = value
                 .get("mime_type")
                 .and_then(Value::as_str)
+                .filter(|m| is_inline_safe_mime(m))
                 .unwrap_or("application/octet-stream");
             // Bucket-backed assets carry a URL instead of bytes. Without this
             // the base64 field is an empty string, which decodes happily to
             // zero bytes — the browser would get a 200 with an empty file and
             // no hint that anything went wrong.
             if let Some(remote) = value.get("remote_url").and_then(Value::as_str) {
+                // Only ever to a real web address: this value comes from the
+                // R2 settings the user supplied, and an open redirect to
+                // `javascript:` or `data:` would run on this origin.
+                if !remote.starts_with("https://") && !remote.starts_with("http://") {
+                    return json_error(StatusCode::INTERNAL_SERVER_ERROR, "asset has an unusable remote URL");
+                }
                 return Redirect::temporary(remote).into_response();
             }
             let Some(data_b64) = value.get("data_base64").and_then(Value::as_str) else {
@@ -380,7 +450,16 @@ async fn asset_handler(
             };
             match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, data_b64) {
                 Ok(bytes) => (
-                    [(header::CONTENT_TYPE, mime), (header::CACHE_CONTROL, "private, max-age=31536000, immutable")],
+                    [
+                        (header::CONTENT_TYPE, mime),
+                        (header::CACHE_CONTROL, "private, max-age=31536000, immutable"),
+                        // Belt and braces with the filter above: no sniffing
+                        // an octet-stream back into something executable.
+                        (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+                        // A sandboxed CSP so even an image/svg+xml — which can
+                        // carry script — has nothing it is allowed to do.
+                        (header::CONTENT_SECURITY_POLICY, "default-src 'none'; sandbox"),
+                    ],
                     bytes,
                 )
                     .into_response(),
@@ -388,6 +467,25 @@ async fn asset_handler(
             }
         }
         Err(error) => json_error(StatusCode::NOT_FOUND, error),
+    }
+}
+
+/// Media types safe to hand back with their own Content-Type. Everything else
+/// — `text/html`, `application/xhtml+xml`, anything unrecognised — is served
+/// as an opaque download instead of being rendered on this origin.
+fn is_inline_safe_mime(mime: &str) -> bool {
+    let mime = mime.split(';').next().unwrap_or_default().trim().to_ascii_lowercase();
+    match mime.as_str() {
+        // SVG is deliberately absent: it is a document format that can carry
+        // script, not a picture format.
+        "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/avif" | "image/bmp"
+        | "image/x-icon" | "image/tiff" => true,
+        "audio/mpeg" | "audio/mp4" | "audio/ogg" | "audio/wav" | "audio/webm" | "audio/aac"
+        | "audio/flac" => true,
+        "video/mp4" | "video/webm" | "video/ogg" | "video/quicktime" => true,
+        "application/pdf" => true,
+        "text/plain" => true,
+        _ => false,
     }
 }
 
@@ -399,7 +497,7 @@ async fn asset_handler(
 /// call the very same commands with it.
 async fn import_upload(
     State(state): State<WebState>,
-    axum::Extension(_session): axum::Extension<UserSession>,
+    axum::Extension(session): axum::Extension<UserSession>,
     mut multipart: Multipart,
 ) -> Response {
     fn sanitize(name: &str) -> String {
@@ -411,7 +509,11 @@ async fn import_upload(
         if cleaned.is_empty() { "import.bin".to_string() } else { cleaned }
     }
 
-    let uploads = state.config.data_dir.join("uploads");
+    // Per user, not one shared folder. `import_step` can then prove a path
+    // belongs to *this* caller instead of merely proving it is somewhere under
+    // uploads/ — which made cross-user access a matter of learning a uuid
+    // rather than a matter of authorization.
+    let uploads = uploads_dir(&state, session.user_id);
     if let Err(e) = tokio::fs::create_dir_all(&uploads).await {
         return json_error(StatusCode::INTERNAL_SERVER_ERROR, format!("cannot create uploads dir: {e}"));
     }
@@ -432,9 +534,22 @@ async fn import_upload(
             Err(e) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, format!("cannot write upload: {e}")),
         };
         let mut field = field;
+        let mut written: u64 = 0;
         loop {
             match field.chunk().await {
                 Ok(Some(chunk)) => {
+                    // The route disables axum's body limit because a real
+                    // import can be hundreds of MB; that is not the same as
+                    // agreeing to write an unbounded stream to disk. Without
+                    // this, any logged-in user can fill the volume.
+                    written += chunk.len() as u64;
+                    if written > MAX_UPLOAD_BYTES {
+                        let _ = tokio::fs::remove_file(&path).await;
+                        return json_error(
+                            StatusCode::PAYLOAD_TOO_LARGE,
+                            format!("upload exceeds the {} MB limit", MAX_UPLOAD_BYTES / 1024 / 1024),
+                        );
+                    }
                     if let Err(e) = file.write_all(&chunk).await {
                         let _ = tokio::fs::remove_file(&path).await;
                         return json_error(StatusCode::INTERNAL_SERVER_ERROR, format!("upload write failed: {e}"));
@@ -450,6 +565,12 @@ async fn import_upload(
         return Json(json!({ "path": path.to_string_lossy() })).into_response();
     }
     json_error(StatusCode::BAD_REQUEST, "multipart field `file` missing")
+}
+
+/// Where this user's uploads live. Per-user so that "is this path an upload?"
+/// and "is this path *your* upload?" are the same question.
+fn uploads_dir(state: &WebState, user_id: i64) -> PathBuf {
+    state.config.data_dir.join("users").join(user_id.to_string()).join("uploads")
 }
 
 fn multipart_error(e: MultipartError) -> Response {
@@ -472,7 +593,9 @@ async fn import_step(
     let Some(path) = args.get("path").and_then(Value::as_str) else {
         return json_error(StatusCode::BAD_REQUEST, "missing path");
     };
-    let uploads = state.config.data_dir.join("uploads").canonicalize();
+    // This caller's upload directory, not the shared one: proving a path sits
+    // under uploads/ proved nothing about whose upload it was.
+    let uploads = uploads_dir(&state, session.user_id).canonicalize();
     let candidate = std::path::Path::new(path).canonicalize();
     let (Ok(uploads), Ok(candidate)) = (uploads, candidate) else {
         return json_error(StatusCode::BAD_REQUEST, "unknown upload path");
@@ -582,6 +705,15 @@ struct TursoConnectBody {
     token: String,
 }
 
+/// Turso URLs are spelled `libsql://host`; the guard speaks http(s), and the
+/// host is what actually gets checked.
+fn turso_probe_url(url: &str) -> String {
+    match url.strip_prefix("libsql://") {
+        Some(rest) => format!("https://{rest}"),
+        None => url.to_string(),
+    }
+}
+
 /// Per-user db_connect_turso. Differences from the desktop command: the
 /// replica path is scoped to this user's directory, and the profile persists
 /// to users.db (AES-sealed token), never to the global appconfig/keychain.
@@ -597,6 +729,11 @@ async fn turso_connect(
     }
     if token.is_empty() {
         return json_error(StatusCode::BAD_REQUEST, "Please fill in the Turso auth token");
+    }
+    // Another URL the caller picks and the server dials. libsql speaks to it
+    // over HTTP, so the same private-range refusal applies.
+    if let Err(e) = tanwords_lib::http_util::guard::resolve_public(&turso_probe_url(&url)).await {
+        return json_error(StatusCode::BAD_REQUEST, e);
     }
 
     // Save first, respawn second: if the open fails below we restore the old
@@ -755,6 +892,16 @@ async fn ai_proxy(
         return json_error(StatusCode::BAD_REQUEST, "invalid upstream path");
     }
 
+    // `api_base` is set by the user through ai_provider_upsert, so this is a
+    // URL of their choosing that the *server* dials — the same SSRF the core's
+    // fetch guard exists for. Without this, pointing a "provider" at
+    // 169.254.169.254 turns the proxy into a reader for the cloud metadata
+    // service, credentials included, and streams the answer back.
+    let target = format!("{base}/{rest}");
+    if let Err(e) = tanwords_lib::http_util::guard::resolve_public(&target).await {
+        return json_error(StatusCode::BAD_REQUEST, e);
+    }
+
     // Build a fresh header set: forward content intent, inject credentials —
     // never forward the caller's own Authorization/Cookie/Host headers, so a
     // web client cannot talk to the provider with anything but the stored key.
@@ -791,7 +938,7 @@ async fn ai_proxy(
 
     let upstream = match state
         .http
-        .post(format!("{base}/{rest}"))
+        .post(&target)
         .headers(up_headers)
         .body(body)
         .send()
@@ -937,6 +1084,47 @@ async fn spa_handler(State(state): State<WebState>, request: Request) -> Respons
         .into_response()
 }
 
+/// Headers every response carries.
+///
+/// Applied as a layer rather than per-handler so a route added later cannot
+/// forget them. Values are deliberately conservative — this origin holds the
+/// session token in sessionStorage, so an XSS here is a full account takeover
+/// and the cheapest defences are worth having on by default.
+async fn security_headers(request: Request, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    let headers = response.headers_mut();
+    // Never let a declared Content-Type be second-guessed into something
+    // executable.
+    headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
+    // Nothing here is meaningful inside someone else's frame, and framing it
+    // is how a clickjack starts.
+    headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+    // Referrer would otherwise carry the path — and on the two routes that
+    // still accept ?token=, the token — to whatever the page links to.
+    headers.insert(header::REFERRER_POLICY, HeaderValue::from_static("no-referrer"));
+    // The app has no business asking for any of these.
+    headers.insert(
+        HeaderName::from_static("permissions-policy"),
+        HeaderValue::from_static("geolocation=(), camera=(), microphone=(), payment=(), usb=()"),
+    );
+    // Only set where it isn't already: the asset route ships its own, much
+    // stricter, sandboxed policy.
+    if !headers.contains_key(header::CONTENT_SECURITY_POLICY) {
+        headers.insert(
+            header::CONTENT_SECURITY_POLICY,
+            // 'unsafe-inline'/'unsafe-eval' for styles and scripts because the
+            // bundled SPA and its markdown/mermaid rendering need them; the
+            // clauses that matter here are the ones nailing down where content
+            // may be *loaded from* and, above all, `frame-ancestors 'none'`
+            // and `object-src 'none'`.
+            HeaderValue::from_static(
+                "default-src 'self';                  script-src 'self' 'unsafe-inline' 'unsafe-eval';                  style-src 'self' 'unsafe-inline';                  img-src 'self' data: blob: https:;                  media-src 'self' data: blob: https:;                  font-src 'self' data:;                  connect-src 'self' blob:;                  worker-src 'self' blob:;                  object-src 'none';                  base-uri 'none';                  form-action 'none';                  frame-ancestors 'none'",
+            ),
+        );
+    }
+    response
+}
+
 // ── bring-up ──────────────────────────────────────────────────────────────
 
 pub async fn serve(config: Config, users: Arc<UsersDb>, pool: Arc<RuntimePool>) -> Result<(), String> {
@@ -983,6 +1171,7 @@ pub async fn serve(config: Config, users: Arc<UsersDb>, pool: Arc<RuntimePool>) 
         .merge(auth_routes)
         .merge(protected)
         .fallback(spa_handler)
+        .layer(middleware::from_fn(security_headers))
         .with_state(state);
 
     let ip: IpAddr = config
@@ -1002,6 +1191,18 @@ pub async fn serve(config: Config, users: Arc<UsersDb>, pool: Arc<RuntimePool>) 
     }
     if config.host == "0.0.0.0" {
         eprintln!("[tanwords-web] warning: bound to all interfaces — put an HTTPS reverse proxy in front before exposing beyond a trusted LAN.");
+        if !config.trust_proxy {
+            // Worth shouting about: behind a proxy without this, every caller
+            // shares one rate-limit bucket, so ten failed logins from anyone
+            // lock out everyone.
+            eprintln!("[tanwords-web] warning: TANWORDS_TRUST_PROXY is not set. If a reverse proxy sits in front, rate limits count the proxy's address and apply to all users at once.");
+        }
+    }
+    if config.trust_proxy {
+        eprintln!("[tanwords-web] X-Forwarded-For is trusted — only correct if nothing can reach this port except your proxy.");
+    }
+    if config.admin_key.is_none() {
+        eprintln!("[tanwords-web] note: TANWORDS_ADMIN_KEY is not set — password reset is closed.");
     }
 
     axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())

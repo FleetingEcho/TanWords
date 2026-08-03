@@ -60,6 +60,9 @@ interface Props {
   /** Full-width feed layout (like the Sentences tab): rows span the page and
    *  the detail renders inline below the selected word instead of beside the list. */
   fullWidth: boolean;
+  /** The Words/Sentences switcher, rendered as this list's heading instead of
+   *  in a bar above it — see VocabViewTabs. */
+  viewTabs?: React.ReactNode;
   /** When false, tapping a row never expands the detail inline (mobile uses
    *  a full-screen overlay instead). Defaults to true for existing callers. */
   inlineDetail?: boolean;
@@ -76,7 +79,7 @@ export function WordListPanel({
   bulkRunning, bulkProgress, onEnrichUnanalyzed, onReanalyzeAll, onStopBulkEnrich,
   collapsed, onToggleCollapsed, selectedIds, onToggleSelect, onSelectAll, onClearSelection,
   onReanalyzeSelected, onDeleteSelected, onToggleStar, selectMode, onToggleSelectMode,
-  fullWidth, inlineDetail = true, onToggleLayout, renderDetail,
+  fullWidth, inlineDetail = true, onToggleLayout, renderDetail, viewTabs,
 }: Props) {
   const t = useT();
   const paged = words.slice(page * pageSize, (page + 1) * pageSize);
@@ -110,7 +113,10 @@ export function WordListPanel({
         {/* Wraps rather than overflowing: the action group is four fixed 40px
           * touch targets, which stop fitting beside the title well before the
           * narrowest phone. */}
-        <div className="flex flex-wrap items-baseline gap-2">
+        {/* `items-center`, not baseline: the heading is a pair of tab buttons
+          * now (see VocabViewTabs), and a button has no text baseline for the
+          * count and the icon group to hang from. */}
+        <div className="flex flex-wrap items-center gap-2">
           {!fullWidth && (
             <Button
               variant="ghost"
@@ -121,7 +127,7 @@ export function WordListPanel({
               <ChevronsLeft className="w-3.5 h-3.5" />
             </Button>
           )}
-          <h2 className="min-w-0 truncate text-lg font-bold">{t("vocab.title")}</h2>
+          {viewTabs ?? <h2 className="min-w-0 truncate text-lg font-bold">{t("vocab.title")}</h2>}
           <span className="text-sm text-muted-foreground">{words.length}</span>
           <div className="ml-auto flex items-center gap-1">
             {bulkRunning ? (
@@ -227,8 +233,12 @@ export function WordListPanel({
           </div>
         )}
 
-        {/* Dictionary search — hits the vocabulary first, AI lookup as fallback */}
-        <div className={`relative ${fullWidth ? "-mx-4 lg:-mx-6" : ""}`}>
+        {/* Dictionary search — hits the vocabulary first, AI lookup as fallback.
+          * No negative margin: it used to cancel this container's padding in
+          * the full-width layout, which left the field flush against the edges
+          * while the heading above it and the filters below it stayed inset —
+          * the one element in the column that lined up with nothing. */}
+        <div className="relative">
           <input
             type="text"
             value={search}

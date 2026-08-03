@@ -169,8 +169,12 @@ export function HackerNewsSection({ viewMode, onOpen, onTranslate, translatingId
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 flex-col gap-2 border-b border-border bg-transparent backdrop-blur-xl px-4 py-2.5">
-        <div className="flex flex-wrap items-center gap-1.5">
+      {/* Stacked only while there is no room to do otherwise. Three short pills
+        * and one field were taking two rows of a bar that is 1000px wide, so
+        * the header cost twice the height it needed and the search box was
+        * stretched across the whole window to fill a line of its own. */}
+      <div className="flex shrink-0 flex-col gap-2 border-b border-border bg-transparent backdrop-blur-xl px-4 py-2.5 lg:flex-row lg:items-center">
+        <div className="flex flex-wrap items-center gap-1.5 lg:shrink-0">
           {SECTIONS.map((s) => (
             <button
               key={s}
@@ -186,7 +190,10 @@ export function HackerNewsSection({ viewMode, onOpen, onTranslate, translatingId
           ))}
         </div>
 
-        <div className="relative w-full">
+        {/* Capped and pushed right on a wide bar: a search field that grows to
+          * fill 800px is not more useful than one at 260px, it just reads as
+          * the loudest thing in the header. */}
+        <div className="relative w-full lg:ml-auto lg:w-64 xl:w-72">
           <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <input
             value={query}

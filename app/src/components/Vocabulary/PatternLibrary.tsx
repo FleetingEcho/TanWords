@@ -22,7 +22,12 @@ const SENTENCE_PAGE_SIZE_KEY = "vocab-sentences-page-size";
  *  "pattern" row already is a phrase/translation/note/level bundle with one
  *  saved example sentence, which is exactly what a flat sentence library
  *  needs). */
-export function PatternLibrary({ initialSentenceId }: { initialSentenceId?: number }) {
+export function PatternLibrary({ initialSentenceId, viewTabs }: {
+  initialSentenceId?: number;
+  /** The Words/Sentences switcher, handed down to the list to render as its
+   *  heading — see VocabViewTabs. */
+  viewTabs?: React.ReactNode;
+}) {
   const db = useDB();
   const t = useT();
 
@@ -258,6 +263,7 @@ export function PatternLibrary({ initialSentenceId }: { initialSentenceId?: numb
   return (
     <div className="flex min-h-0 flex-1">
       <SentenceList
+        viewTabs={viewTabs}
         items={visible}
         expandedId={expandedId}
         highlightId={initialSentenceId}

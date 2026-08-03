@@ -127,6 +127,8 @@ fn generate_dispatch_table() {
         .collect();
 
     let mut arms: Vec<String> = Vec::new();
+
+    let mut names: Vec<String> = Vec::new();
     let mut unparsed: Vec<String> = Vec::new();
     let mut skipped: Vec<String> = Vec::new();
 
@@ -198,6 +200,7 @@ fn generate_dispatch_table() {
         // value directly.
         let trailing = if info.is_result { "?" } else { "" };
         let body = binds.join("\n");
+        names.push(name.to_string());
         arms.push(format!(
             "    \"{name}\" => {{\n{body}\n        let out = {call}{trailing};\n        Ok(serde_json::to_value(out).map_err(|e| e.to_string())?)\n    }}"
         ));
@@ -228,9 +231,18 @@ use crate::mcp::McpController;\n",
     );
     let footer = "\n    other => Err(format!(\"unknown command `{other}`\")),\n    }\n}\n";
 
+    // Emitted alongside the dispatcher so a *caller* can enumerate what this
+    // build exposes. The web server's allowlist test walks it and fails on any
+    // command it has not explicitly classified — which is what stops a new
+    // core command from reaching the public internet by default.
+    let names_const = format!(
+        "\n/// Every command name in this build's dispatch table.\npub const COMMAND_NAMES: &[&str] = &[\n{}\n];\n",
+        names.iter().map(|n| format!("    \"{n}\",")).collect::<Vec<_>>().join("\n")
+    );
+
     let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR not set");
     let out_path = PathBuf::from(&out_dir).join("dispatch.rs");
-    let contents = format!("{header}{}{footer}", arms.join(",\n"));
+    let contents = format!("{header}{}{footer}{names_const}", arms.join(",\n"));
     std::fs::write(&out_path, contents).expect("failed to write dispatch.rs");
 
     println!("cargo:warning=dispatch: generated {} commands -> {}", arms.len(), out_path.display());

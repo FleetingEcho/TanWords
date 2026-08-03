@@ -7,6 +7,7 @@
 //! and the built SPA.
 
 mod auth;
+mod commands;
 mod config;
 mod embedded;
 mod runtime;

@@ -3,11 +3,12 @@ import { LocalDocItem, LocalDocSearchResult } from "@/lib/localDocs";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronsLeft, ChevronsRight, Copy, Download, FileInput, FileText, FolderOpen, Loader2, MoreHorizontal } from "lucide-react";
+import { ChevronsRight, Copy, Download, FileInput, FileText, FolderOpen, Loader2, MoreHorizontal } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { LocalDocTree } from "./LocalDocTree";
 import { LocalDocSearchResults } from "./LocalDocSearchResults";
 import { LIST_PANEL_WIDTH, LIST_PANEL_COLLAPSED_WIDTH, LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
+import { DocPanelHeader } from "./DocPanelHeader";
 import { toast } from "sonner";
 
 interface Props {
@@ -78,73 +79,68 @@ export function LocalDocsSidebar({
         )}
         <CollapsibleContent className="h-full">
         <div className="flex flex-col h-full">
-        <div className="px-3 pt-4 pb-2 space-y-2 shrink-0">
-          {sourceTabs}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1">
-              <CollapsibleTrigger asChild>
-                <Button variant="ghost" size="icon" className={`h-6 w-6 ${LIST_PANEL_TOGGLE_CLASS}`} title={t("doc.collapseFiles")} aria-label={t("doc.collapseFiles")}>
-                  <ChevronsLeft className="h-3.5 w-3.5" />
+        {/* Same two-row header the database panel wears — see DocPanelHeader.
+          * The mounted folder's path is the one thing this panel has that the
+          * other does not, and it sits below both rows because it describes
+          * where the list comes from rather than what you can do to it. */}
+        <DocPanelHeader
+          sourceTabs={sourceTabs}
+          onCollapse={() => onSidebarOpenChange(false)}
+          collapseLabel={t("doc.collapseFiles")}
+          search={search}
+          onSearchChange={onSearchChange}
+          searchPlaceholder={t("doc.searchFilesAndContent")}
+          searchAriaLabel={t("doc.searchFilesAndContent")}
+          showFind={!!root}
+          onNew={root ? () => onNewFile() : undefined}
+          newLabel={t("doc.newFile")}
+          actions={root ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground" title={t("doc.more")} aria-label={t("doc.more")}>
+                  <MoreHorizontal className="h-3.5 w-3.5" />
                 </Button>
-              </CollapsibleTrigger>
-            </div>
-            {root && (
-              <div className="flex items-center gap-1">
-                <Button onClick={() => onNewFile()} className="h-6 px-2.5 rounded-lg bg-primary text-white text-[11px] font-semibold hover:bg-primary/90">+ {t("doc.newFile")}</Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-6 w-6"><MoreHorizontal className="h-3.5 w-3.5" /></Button></DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onSelect={() => onNewFile("")}><FileText className="h-3.5 w-3.5" /> {t("doc.newFileHere")}</DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => onImportFiles()}><FileInput className="h-3.5 w-3.5" /> {t("doc.importMarkdown")}</DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => onOpenExportPicker()}><Download className="h-3.5 w-3.5" /> {t("doc.exportAllMarkdown")}</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            )}
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => onNewFile("")}><FileText className="h-3.5 w-3.5" /> {t("doc.newFileHere")}</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => onImportFiles()}><FileInput className="h-3.5 w-3.5" /> {t("doc.importMarkdown")}</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => onOpenExportPicker()}><Download className="h-3.5 w-3.5" /> {t("doc.exportAllMarkdown")}</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : undefined}
+        />
+
+        {root && (
+          <div className="flex min-w-0 shrink-0 items-center px-3 pb-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onMount}
+              title={root}
+              className="h-6 min-w-0 flex-1 justify-start gap-1.5 px-1 text-[11px] text-muted-foreground hover:text-foreground"
+            >
+              <FolderOpen className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate font-mono">{root}</span>
+              <span className="ml-auto shrink-0 underline decoration-dotted">{t("doc.changeFolder")}</span>
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              title={t("doc.copyFolderPath")}
+              aria-label={t("doc.copyFolderPath")}
+              className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                void navigator.clipboard.writeText(root).then(
+                  () => toast.success(t("doc.folderPathCopied")),
+                  () => toast.error(t("doc.copyFolderPathFailed")),
+                );
+              }}
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </Button>
           </div>
-
-          {root && (
-            <>
-              <div className="flex min-w-0 items-center">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={onMount}
-                  title={root}
-                  className="h-7 min-w-0 flex-1 justify-start gap-1.5 px-1 text-[11px] text-muted-foreground hover:text-foreground"
-                >
-                  <FolderOpen className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate font-mono">{root}</span>
-                  <span className="ml-auto shrink-0 underline decoration-dotted">{t("doc.changeFolder")}</span>
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  title={t("doc.copyFolderPath")}
-                  aria-label={t("doc.copyFolderPath")}
-                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
-                  onClick={() => {
-                    void navigator.clipboard.writeText(root).then(
-                      () => toast.success(t("doc.folderPathCopied")),
-                      () => toast.error(t("doc.copyFolderPathFailed")),
-                    );
-                  }}
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => onSearchChange(e.target.value)}
-                placeholder={t("doc.searchFilesAndContent")}
-                className="w-full h-7 px-2.5 text-xs rounded-lg border border-border bg-card text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-1 focus:ring-primary/40"
-              />
-            </>
-          )}
-        </div>
+        )}
 
         {/* File list / empty states */}
         <div className="flex-1 overflow-y-auto px-2 py-1 space-y-0.5 min-h-0">
