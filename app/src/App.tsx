@@ -30,6 +30,9 @@ import * as auth from "@/platform/auth";
  *
  *  They load on first navigation; there is no idle prefetch, so unused routes
  *  do not keep their parser/runtime costs resident for the whole session. */
+import { LockScreen } from "@/components/Layout/LockScreen";
+import { useAppLockStore } from "@/store/appLockStore";
+
 const DashboardPage = React.lazy(() =>
   import("@/components/Dashboard/DashboardPage").then((m) => ({ default: m.DashboardPage })));
 const VocabularyPage = React.lazy(() =>
@@ -210,6 +213,29 @@ function App() {
     window.addEventListener("vocab-updated", handler);
     return () => window.removeEventListener("vocab-updated", handler);
   }, [authState, db]);
+
+  // Checked once at startup. `enabled === null` means the answer has not come
+  // back yet — render nothing rather than a frame of unlocked content.
+  const lockEnabled = useAppLockStore((s) => s.enabled);
+  const locked = useAppLockStore((s) => s.locked);
+  React.useEffect(() => { void useAppLockStore.getState().refresh(); }, []);
+
+  if (lockEnabled === null) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-background">
+        <div className="w-8 h-8 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+      </div>
+    );
+  }
+
+  if (locked) {
+    return (
+      <>
+        <LockScreen />
+        <Toaster position="bottom-right" richColors closeButton />
+      </>
+    );
+  }
 
   if (authState === "checking") {
     return (

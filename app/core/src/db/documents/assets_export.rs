@@ -19,7 +19,7 @@ pub async fn db_export_document_asset(
     let db = db::conn(&conn)?;
     let (document_id, data) = db::fetch_one(
         &db,
-        "SELECT document_id,data FROM document_assets WHERE id = ?1",
+        "SELECT document_id,data FROM all_document_assets WHERE id = ?1",
         params![id],
         |row| Ok((row.get::<i64>(0)?, row.get::<Vec<u8>>(1)?)),
     )
@@ -59,7 +59,7 @@ async fn export_asset_rows(
     for id in ids {
         let row = db::fetch_one(
             database,
-            "SELECT document_id,file_name,data FROM document_assets WHERE id = ?1",
+            "SELECT document_id,file_name,data FROM all_document_assets WHERE id = ?1",
             params![id.clone()],
             |row| {
                 Ok((

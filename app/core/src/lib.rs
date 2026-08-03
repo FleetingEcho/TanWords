@@ -9,6 +9,8 @@ pub mod document_privacy;
 pub mod tts;
 pub mod reader;
 pub mod secrets;
+pub mod r2;
+pub mod app_lock;
 pub mod http_util;
 pub mod rss;
 pub mod hn;

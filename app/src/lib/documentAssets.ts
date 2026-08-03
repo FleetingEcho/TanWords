@@ -8,6 +8,56 @@ const MAX_RASTER_DIMENSION = 2400;
 const BLOB_URL_CACHE_CAPACITY = 100;
 const blobUrlCache = new Map<string, string>();
 
+export interface R2Status {
+  configured: boolean;
+  account_id: string;
+  bucket: string;
+  access_key_id: string;
+  public_base_url: string | null;
+  threshold_bytes: number;
+  always_upload: boolean;
+}
+
+export function getR2Status(): Promise<R2Status> {
+  return invoke("r2_get_status");
+}
+
+export interface R2Usage {
+  used_bytes: number;
+  object_count: number;
+  limit_bytes: number;
+  block_at_bytes: number;
+}
+
+/** Lists the bucket, so call it when a page opens — not per upload. */
+export function getR2Usage(): Promise<R2Usage> {
+  return invoke("r2_get_usage");
+}
+
+export function connectR2(input: {
+  accountId: string;
+  bucket: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  publicBaseUrl?: string;
+}): Promise<void> {
+  return invoke("r2_connect", {
+    accountId: input.accountId,
+    bucket: input.bucket,
+    accessKeyId: input.accessKeyId,
+    secretAccessKey: input.secretAccessKey,
+    publicBaseUrl: input.publicBaseUrl || null,
+  });
+}
+
+export function disconnectR2(): Promise<void> {
+  return invoke("r2_disconnect");
+}
+
+export function setR2AlwaysUpload(enabled: boolean): Promise<void> {
+  return invoke("r2_set_always_upload", { enabled });
+}
+
 export interface DocumentAsset {
   id: string;
   document_id: number;
@@ -15,6 +65,9 @@ export interface DocumentAsset {
   mime_type: string;
   size: number;
   data_base64: string;
+  /** Present when the bytes live in R2 — stream from here instead of decoding
+   *  `data_base64`, which is empty in that case. */
+  remote_url?: string;
 }
 
 export interface DocumentAssetSummary {
@@ -28,6 +81,9 @@ export interface DocumentAssetSummary {
   referenced: boolean;
   protected: boolean;
   unlocked: boolean;
+  /** Uploaded from the asset manager rather than from inside a document.
+   *  Never auto-pruned — the user manages these. */
+  standalone: boolean;
 }
 
 function blobToDataBase64(blob: Blob): Promise<string> {
@@ -88,6 +144,18 @@ export async function prepareAssetUpload(file: File): Promise<{ fileName: string
 }
 
 export async function uploadDocumentAsset(documentId: number, file: File): Promise<string> {
+  // A video dropped into a document takes the same route as one uploaded from
+  // the asset manager. The block still references `tanwords-asset://<id>`, and
+  // the editor's `resolveFileUrl` turns that into the bucket URL at render
+  // time, so <video> streams from R2 instead of decoding a base64 blob.
+  //
+  // These rows are standalone, so deleting the document does not take the
+  // object with it — consistent with the rule that uploaded files are the
+  // user's to manage, and it also means `db_prune_document_assets` can never
+  // quietly delete a 100 MB video the moment it stops being referenced.
+  const routed = await uploadViaR2(file);
+  if (routed) return `${DOCUMENT_ASSET_SCHEME}${routed}`;
+
   const prepared = await prepareAssetUpload(file);
   const id = await invoke<string>("db_create_document_asset", {
     documentId,
@@ -96,13 +164,59 @@ export async function uploadDocumentAsset(documentId: number, file: File): Promi
   return `${DOCUMENT_ASSET_SCHEME}${id}`;
 }
 
+/** A file uploaded from the asset manager. Unlike document attachments it is
+ *  stored verbatim — no image compression, no 10 MB image ceiling — because
+ *  the point is to keep the file the user picked, not to inline it in a note. */
+/** Sends the file to R2 when a bucket is connected and the file is big enough
+ *  to be worth it, and returns the new asset id. `null` means "not routed —
+ *  use the database path", which is the case for small files and for an
+ *  unconfigured bucket.
+ *
+ *  Small files stay in the database deliberately: no network round trip, and
+ *  they keep working offline. Big ones cannot stay — a Turso primary rejects a
+ *  blob that size outright (SQLITE_NOMEM). The size rule is skipped entirely
+ *  when the bucket is set to take everything. */
+async function uploadViaR2(file: File): Promise<string | null> {
+  const r2 = await getR2Status().catch(() => null);
+  if (!r2?.configured) return null;
+  if (!r2.always_upload && file.size < r2.threshold_bytes) return null;
+  const fileName = file.name || "file.bin";
+  const mimeType = file.type || "application/octet-stream";
+  const remoteKey = await invoke<string>("r2_put_asset", {
+    fileName,
+    mimeType,
+    dataBase64: await blobToDataBase64(file),
+  });
+  return invoke<string>("db_create_remote_asset", {
+    fileName,
+    mimeType,
+    size: file.size,
+    remoteKey,
+  });
+}
+
+export async function uploadStandaloneAsset(file: File): Promise<string> {
+  if (!file.size) throw new Error("File is empty");
+  const routed = await uploadViaR2(file);
+  if (routed) return routed;
+
+  if (file.size > MAX_ASSET_BYTES) throw new Error("File is larger than 100 MB");
+  return invoke<string>("db_create_standalone_asset", {
+    fileName: file.name || "file.bin",
+    mimeType: file.type || "application/octet-stream",
+    dataBase64: await blobToDataBase64(file),
+  });
+}
+
 export async function uploadDocumentImage(documentId: number, file: File): Promise<string> {
   return uploadDocumentAsset(documentId, file);
 }
 
 export async function resolveDocumentAssetUrl(url: string): Promise<string> {
   if (!url.startsWith(DOCUMENT_ASSET_SCHEME)) return url;
-  const id = url.slice(DOCUMENT_ASSET_SCHEME.length);
+  // Tolerates the `?tanwords-type=` marker that survives a markdown round trip
+  // (see mediaTransforms) — the id is everything before the query.
+  const id = url.slice(DOCUMENT_ASSET_SCHEME.length).split("?", 1)[0];
   if (!isDesktopHost) return assetUrlById(id);
   const cached = blobUrlCache.get(id);
   if (cached) {
@@ -111,6 +225,10 @@ export async function resolveDocumentAssetUrl(url: string): Promise<string> {
     return cached;
   }
   const asset = await invoke<DocumentAsset>("db_get_document_asset", { id });
+  // Bucket-backed: hand back the presigned URL untouched. Wrapping it in a
+  // blob would defeat the point — it would download the whole video before
+  // playback and lose Range-based seeking.
+  if (asset.remote_url) return asset.remote_url;
   const binary = atob(asset.data_base64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
@@ -123,6 +241,27 @@ export async function resolveDocumentAssetUrl(url: string): Promise<string> {
     if (oldestUrl) URL.revokeObjectURL(oldestUrl);
   }
   return blobUrl;
+}
+
+/** Markdown for pasting an asset into a document.
+ *
+ *  Images use image syntax; everything else uses a link carrying the
+ *  `tanwords-type` marker, which is what turns it back into a real video /
+ *  audio / file block when the editor leaves source mode (see
+ *  mediaTransforms). Pasting a bare `tanwords-asset://` link would come back
+ *  as a plain link instead of a player. */
+export function assetMarkdown(asset: {
+  id: string;
+  file_name: string;
+  mime_type: string;
+}): string {
+  const url = `${DOCUMENT_ASSET_SCHEME}${asset.id}`;
+  const name = asset.file_name || "attachment";
+  if (asset.mime_type.startsWith("image/")) return `![${name}](${url})`;
+  const type = asset.mime_type.startsWith("video/") ? "video"
+    : asset.mime_type.startsWith("audio/") ? "audio"
+    : "file";
+  return `[${name}](${url}?tanwords-type=${type})`;
 }
 
 export function documentAssetIdsFromContent(content: string): string[] {

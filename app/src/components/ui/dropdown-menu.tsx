@@ -8,7 +8,7 @@ const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 function DropdownMenuContent({ className, sideOffset = 6, children, ...props }: DropdownMenuPrimitive.DropdownMenuContentProps) {
   return (
     <DropdownMenuPrimitive.Portal>
-      <DropdownMenuPrimitive.Content sideOffset={sideOffset} className={cn("z-110 min-w-44 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg outline-hidden", className)} {...props}>
+      <DropdownMenuPrimitive.Content sideOffset={sideOffset} className={cn("z-130 min-w-44 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg outline-hidden", className)} {...props}>
         <BrowserPanelBlocker />
         {children}
       </DropdownMenuPrimitive.Content>

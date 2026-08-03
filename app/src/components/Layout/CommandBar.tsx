@@ -2,7 +2,7 @@ import React from "react";
 import { invoke } from "@/ipc/backend";
 import { openExternal as openUrl } from "@/ipc/shell";
 import {
-  BrainCircuit, Check, ChevronsLeft, ChevronsRight, ClipboardPaste, Cloud, CloudOff, Database,
+  BrainCircuit, Check, ChevronsLeft, ChevronsRight, ClipboardPaste, Cloud, CloudOff, Database, Lock,
   FilePlus2, Languages, MessageSquarePlus, Monitor, Moon, Palette, Quote, Search, Server, Settings, Sun,
   Grid2x2Plus, Rss, Type, Unplug, User, X,
 } from "lucide-react";
@@ -16,6 +16,7 @@ import { WordSearchBox } from "@/components/shared/WordSearchBox";
 import { TtsControl } from "@/components/ui/TtsControl";
 import { SentenceSearchBox } from "@/components/shared/SentenceSearchBox";
 import { WindowControls } from "@/components/Layout/WindowControls";
+import { useAppLockStore } from "@/store/appLockStore";
 import { useT } from "@/hooks/useT";
 import { useDB } from "@/hooks/useDB";
 import type { DbConnection } from "@/hooks/useDB.types";
@@ -33,6 +34,20 @@ type McpState = { status: { running: boolean; error: string | null } };
 
 const PAGE_IDS: NavPage[] = (["feeds", "vocabulary", "documents", "chat", "dashboard", "music", "settings"] as NavPage[])
   .filter((id) => id !== "music" || hostCapabilities.music);
+
+/** The icon standing in for the active theme. One definition: the top bar
+ *  renders a wide and a narrow copy of this menu, and keeping two `theme ===`
+ *  ladders in sync failed exactly the way you would expect — the narrow one
+ *  had no branch for the custom palettes, so Catppuccin showed the
+ *  follow-the-system monitor. */
+function ThemeIcon({ theme }: { theme: string }) {
+  if (theme === "light" || theme === "catppuccin-latte" || theme === "tokyo-night-day") {
+    return <Sun className="h-4 w-4" />;
+  }
+  if (theme === "dark") return <Moon className="h-4 w-4" />;
+  if (theme === "system") return <Monitor className="h-4 w-4" />;
+  return <Palette className="h-4 w-4" />;
+}
 
 export function CommandBar({ activePage }: { activePage: NavPage }) {
   const t = useT();
@@ -99,6 +114,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   const { ready: providersReady, connected: providerConnected, available: availableProviders } = useProviderStatus();
   const db = useDB();
   const [connection, setConnection] = React.useState<DbConnection | null>(null);
+  const lockEnabled = useAppLockStore((s) => s.enabled);
 
   // Fetched once: every path that changes the active profile (connect,
   // disconnect, switch) reloads the whole app, so there's nothing to poll.
@@ -173,7 +189,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
           on top of the dropdown. This has to stay above all of those. */}
       <header className="app-drag-region relative z-30 flex min-h-12 shrink-0 select-none flex-col lg:flex-row lg:items-center gap-x-1.5 gap-y-2 border-b border-border/80 bg-background/90 px-3 py-2 backdrop-blur-xl">
         {visible("search") && (
-          <div className="flex min-w-0 order-2 w-full lg:order-none lg:w-auto lg:max-w-2xl lg:flex-1 items-center gap-1">
+          <div className="flex min-w-0 order-2 w-full lg:order-none lg:w-auto lg:max-w-2xl lg:flex-1 lg:shrink items-center gap-1">
             <div className="min-w-0 flex-1">
               {searchMode === "word" ? <WordSearchBox variant="inline" /> : <SentenceSearchBox variant="inline" />}
             </div>
@@ -189,7 +205,16 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
           </div>
         )}
 
-        <div className="rss-tabs-scroll flex min-w-0 w-full items-center gap-1.5 overflow-x-auto lg:w-auto lg:flex-none">
+        {/* `lg:flex-1`, not `flex-none`: the trailing `flex-1` spacer inside can
+          only push the window controls to the right edge if this row actually
+          spans the header. With `flex-none` it was only as wide as its content,
+          so hiding the search box (which used to be the thing stretching the
+          header) left the controls floating mid-bar. */}
+        {/* Below `lg` the header stacks, so this wrapper keeps the icon row and
+          * the window controls on one line instead of giving the controls a
+          * row of their own. `lg:contents` dissolves it above that. */}
+        <div className="flex w-full min-w-0 items-center gap-1.5 lg:contents">
+        <div className="rss-tabs-scroll flex min-w-0 w-full items-center gap-1.5 overflow-x-auto lg:w-auto lg:flex-1">
         {visible("context") && context && <><div className="mx-1 hidden h-5 w-px bg-border sm:block" /><Button variant="ghost" onClick={context.run} className="h-8 gap-2 rounded-lg px-2.5 text-xs font-medium text-foreground"><context.icon className="h-4 w-4 text-primary" /><span className="hidden lg:inline">{context.label}</span></Button></>}
 
         {/* Any speech in the app — the reader's article playback and the
@@ -257,6 +282,11 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
           <ClipboardPaste className="h-4 w-4 text-primary" />
           <span className="hidden lg:inline">{t("scratch.open")}</span>
         </Button>}
+
+        {/* Everything after this point is trailing chrome, so the spacer sits
+          * here rather than just before the window controls — otherwise the
+          * icon group and avatar stay stranded on the left. */}
+        <div className="flex-1" />
 
         <div className="hidden lg:flex shrink-0 items-center gap-0.5 border-l border-border pl-2">
           <Button
@@ -331,7 +361,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
             </DropdownMenuContent>
           </DropdownMenu>}
           {visible("theme") && <DropdownMenu>
-            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" title={t("settings.theme")} className="h-8 w-8 rounded-lg text-muted-foreground">{theme === "light" || theme === "catppuccin-latte" || theme === "tokyo-night-day" ? <Sun className="h-4 w-4" /> : theme === "dark" ? <Moon className="h-4 w-4" /> : theme === "system" ? <Monitor className="h-4 w-4" /> : <Palette className="h-4 w-4" />}</Button></DropdownMenuTrigger>
+            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" title={t("settings.theme")} className="h-8 w-8 rounded-lg text-muted-foreground"><ThemeIcon theme={theme} /></Button></DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-64">
               <DropdownMenuItem onClick={() => setTheme("light")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.light")}</span>{theme === "light" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setTheme("dark")}><Moon className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.dark")}</span>{theme === "dark" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
@@ -362,11 +392,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
                 aria-label={t("settings.theme")}
                 className="lg:hidden h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
               >
-                {theme === "light" || theme === "catppuccin-latte" || theme === "tokyo-night-day"
-                  ? <Sun className="h-4 w-4" />
-                  : theme === "dark"
-                    ? <Moon className="h-4 w-4" />
-                    : <Monitor className="h-4 w-4" />}
+                <ThemeIcon theme={theme} />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-64">
@@ -389,8 +415,28 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
         <Button variant="ghost" size="icon" onClick={() => navigate("settings")} title={t("command.profile")} className="lg:hidden order-first h-8 w-8 shrink-0 rounded-full p-0 overflow-hidden ring-1 ring-border/60 text-muted-foreground">
           {userAvatar ? <img src={userAvatar} alt="" className="h-full w-full object-cover" /> : <User className="h-4 w-4" />}
         </Button>
-        <div className="flex-1" />
-        {isDesktopHost && <WindowControls />}
+        </div>
+
+        {/* Outside the scrolling row above, and shrink-0: window controls must
+          * survive any width. Inside it they were scrolled out of reach the
+          * moment the toolbar overflowed — a window you cannot close. */}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {/* Only when a password exists — a lock button that cannot lock is
+            * worse than no button. */}
+          {lockEnabled && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => useAppLockStore.getState().lock()}
+              title={t("lock.lockNow")}
+              aria-label={t("lock.lockNow")}
+              className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <Lock className="h-4 w-4" />
+            </Button>
+          )}
+          {isDesktopHost && <WindowControls />}
+        </div>
         </div>
       </header>
 

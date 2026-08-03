@@ -6,6 +6,7 @@ import { isDesktopHost } from "@/platform";
 import { useT } from "@/hooks/useT";
 import { useDB } from "@/hooks/useDB";
 import { DbConnection, ImportDecisions, ImportPlan, RememberedTursoConnection } from "@/hooks/useDB.types";
+import { R2Section } from "./R2Section";
 import { ImportPreviewModal } from "./ImportPreviewModal";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
@@ -428,13 +429,13 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0 flex items-center gap-2">
             {isRemote && (
-              <span className="shrink-0 truncate font-mono text-[11px] text-primary" title={connection?.remoteUrl ?? ""}>
+              <span className="min-w-0 truncate font-mono text-[11px] text-primary" title={connection?.remoteUrl ?? ""}>
                 {connection?.remoteUrl}
               </span>
             )}
             {isDesktopHost ? (
               <span
-                className="max-w-[320px] truncate font-mono text-[11px] text-muted-foreground"
+                className="min-w-0 max-w-[320px] truncate font-mono text-[11px] text-muted-foreground"
                 title={isRemote ? `${t("settings.remoteDBReplicaNote")}: ${dbPath}` : dbPath}
               >
                 {isRemote ? `(${t("settings.remoteDBReplicaNote")}) ` : ""}{dbPath || "…"}
@@ -590,6 +591,12 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
           </div>
         )}
       </div>
+
+      {/* Object storage for the files a database row cannot hold. Not tied to
+        * the local/cloud tab: which database you use and where big files go
+        * are independent choices, and hiding this behind a tab meant the usage
+        * figure was invisible unless you happened to be on the right one. */}
+      <R2Section />
 
       <div className="bg-card border border-border rounded-xl px-5 divide-y divide-border">
         <SettingRow

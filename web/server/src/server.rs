@@ -951,7 +951,9 @@ pub async fn serve(config: Config, users: Arc<UsersDb>, pool: Arc<RuntimePool>) 
     let protected = Router::new()
         .route("/api/auth/logout", post(logout))
         .route("/api/auth/me", get(me))
-        .route("/invoke/{command}", post(invoke_handler))
+        // Same reason as the import route below: attachments ride along as
+        // base64 in the JSON body, well past axum's 2 MB default.
+        .route("/invoke/{command}", post(invoke_handler).layer(DefaultBodyLimit::max(192 * 1024 * 1024)))
         // Import files can be hundreds of MB; axum's default 2MB body limit
         // would reject them before the handler runs.
         .route("/api/import/upload", post(import_upload).layer(DefaultBodyLimit::disable()))

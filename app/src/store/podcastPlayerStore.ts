@@ -4,6 +4,7 @@ import { toPlayableSrc } from "@/lib/localAudioSrc";
 import { useTtsPlayerStore } from "@/store/ttsPlayerStore";
 import { PlayMode, nextIndexOnEnded, nextIndexOnSkip } from "@/features/music/queue";
 import { invoke } from "@/ipc/backend";
+import { toast } from "sonner";
 import { isDesktopHost } from "@/platform";
 
 export type PodcastStatus = "idle" | "loading" | "playing" | "paused" | "error";
@@ -254,7 +255,13 @@ async function playAtInner(index: number) {
       usePodcastPlayerStore.setState({ status: "playing", duration: loaded.durationSec, position: 0 });
       startNativePoll(track);
     } catch (error) {
+      // Surfaced, not just logged: the bar shows a generic error glyph, so a
+      // file that cannot be decoded ("no supported audio track in this file"
+      // — an mp4 whose audio codec Symphonia does not handle) otherwise looks
+      // like the app silently ignoring the click.
       console.error("[nativeAudio] load failed", error);
+      const detail = error instanceof Error ? error.message : String(error);
+      toast.error(`${track.title}: ${detail}`);
       usePodcastPlayerStore.setState({ status: "error" });
     }
     return;

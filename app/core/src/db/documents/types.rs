@@ -42,6 +42,11 @@ pub struct DocumentAsset {
     pub mime_type: String,
     pub size: i64,
     pub data_base64: String,
+    /// Set when the bytes live in R2 rather than in the row: a URL the
+    /// renderer can use directly, which also gets Range support (seeking in a
+    /// video) for free. `data_base64` is empty in that case.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote_url: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -56,6 +61,9 @@ pub struct DocumentAssetSummary {
     pub referenced: bool,
     pub protected: bool,
     pub unlocked: bool,
+    /// Uploaded from the asset manager, not from inside a document. Never
+    /// auto-deleted — see the `standalone_assets` comment in db/mod.rs.
+    pub standalone: bool,
 }
 
 #[derive(Serialize)]

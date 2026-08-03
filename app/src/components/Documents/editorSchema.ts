@@ -7,6 +7,7 @@
 import { BlockNoteSchema, createCodeBlockSpec, defaultBlockSpecs } from "@blocknote/core";
 import { codeBlockOptions } from "@blocknote/code-block";
 import { MermaidBlock } from "./MermaidBlock";
+import { YouTubeBlock } from "./YouTubeBlock";
 
 /**
  * @blocknote/code-block's shiki highlighter loads both "github-dark" and
@@ -45,5 +46,6 @@ export const editorSchema = BlockNoteSchema.create({
     ...defaultBlockSpecs,
     codeBlock: createCodeBlockSpec(themeAwareCodeBlockOptions),
     mermaid: MermaidBlock(),
+    youtube: YouTubeBlock(),
   },
 });

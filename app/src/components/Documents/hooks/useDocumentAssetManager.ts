@@ -5,6 +5,7 @@ import { webAuthFetch } from "@/platform/webClient";
 import { isDesktopHost } from "@/platform";
 import { toast } from "sonner";
 import { useT } from "@/hooks/useT";
+import { subscribe } from "@/ipc/events";
 import {
   deleteDocumentAsset,
   deleteOrphanDocumentAssets,
@@ -12,6 +13,7 @@ import {
   exportDocumentAssetsToFolder,
   exportDocumentAssetsZip,
   listDocumentAssets,
+  uploadStandaloneAsset,
   type DocumentAssetSummary,
 } from "@/lib/documentAssets";
 import type { DocumentPasswordRequest } from "../DocumentPasswordDialog";
@@ -29,6 +31,8 @@ export function useDocumentAssetManager() {
   const [deleting, setDeleting] = useState(false);
   const [cleaning, setCleaning] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ index: number; total: number; fileName: string; sent: number; bytes: number } | null>(null);
   const [previewTarget, setPreviewTarget] = useState<DocumentAssetSummary | null>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -115,6 +119,37 @@ export function useDocumentAssetManager() {
   const refresh = async () => {
     setRefreshing(true);
     try { await load(); } finally { setRefreshing(false); }
+  };
+
+  /** One file at a time so a single rejection (too large, unreadable) reports
+   *  itself and the rest still land. */
+  const uploadFiles = async (files: File[]) => {
+    if (!files.length || uploading) return;
+    setUploading(true);
+    let uploaded = 0;
+    const stop = subscribe<{ fileName: string; sent: number; total: number }>(
+      "r2:upload-progress",
+      ({ sent, total }) => setUploadProgress((current) => (current ? { ...current, sent, bytes: total } : current)),
+    );
+    try {
+      for (const [index, file] of files.entries()) {
+        setUploadProgress({ index: index + 1, total: files.length, fileName: file.name, sent: 0, bytes: file.size });
+        try {
+          await uploadStandaloneAsset(file);
+          uploaded += 1;
+        } catch (error) {
+          toast.error(`${file.name}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+      if (uploaded > 0) {
+        toast.success(t("settings.documentAssetsUploaded", { n: uploaded }));
+        await load();
+      }
+    } finally {
+      stop();
+      setUploadProgress(null);
+      setUploading(false);
+    }
   };
 
   const toggleSelected = (id: string) => {
@@ -279,6 +314,7 @@ export function useDocumentAssetManager() {
 
   return {
     t, assets, loading, deleteTarget, setDeleteTarget, deleting, cleaning, refreshing,
+    uploading, uploadProgress, uploadFiles,
     previewTarget, setPreviewTarget, selectMode, setSelectMode, selectedIds, setSelectedIds,
     confirmBulkDelete, setConfirmBulkDelete, bulkBusy, page, setPage, view, changeView,
     pageSize, setPageSize, kindFilter, setKindFilter, query, setQuery,

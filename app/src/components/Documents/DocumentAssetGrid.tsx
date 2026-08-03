@@ -1,7 +1,8 @@
-import { Download, Eye, LockKeyhole, Trash2 } from "lucide-react";
+import { Copy, Download, Eye, LockKeyhole, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import type { DocumentAssetSummary } from "@/lib/documentAssets";
+import { assetMarkdown, type DocumentAssetSummary } from "@/lib/documentAssets";
 import { AssetThumbnail, formatBytes } from "./documentImageManagerHelpers";
 import type { DocumentAssetManagerState } from "./hooks/useDocumentAssetManager";
 
@@ -18,6 +19,15 @@ export function DocumentAssetGrid({
     handleAssetClick, handleAssetDoubleClick, exportOne, setDeleteTarget,
   } = state;
 
+  const copyMarkdown = async (asset: DocumentAssetSummary) => {
+    try {
+      await navigator.clipboard.writeText(assetMarkdown(asset));
+      toast.success(t("settings.documentAssetsCopied"));
+    } catch {
+      toast.error(t("settings.documentAssetsCopyFailed"));
+    }
+  };
+
   return (
     <div className={view === "grid"
       ? "grid flex-1 grid-cols-2 content-start gap-4 overflow-y-auto p-6 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
@@ -30,12 +40,12 @@ export function DocumentAssetGrid({
           onDoubleClick={() => handleAssetDoubleClick(asset)}
           title={selectMode ? t("settings.documentImagesDoubleClickExit") : t("settings.documentImageReview")}
           className={`${view === "grid"
-            ? "group overflow-hidden rounded-xl border bg-card"
+            ? "group rounded-xl border bg-card"
             : "group flex min-h-16 items-center gap-3 rounded-lg border px-3 py-2 hover:bg-card"
           } cursor-pointer transition-colors ${selectedIds.has(asset.id) ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border"}`}
         >
           <div className={view === "grid"
-            ? "relative aspect-4/3 overflow-hidden bg-muted"
+            ? "relative aspect-4/3 overflow-hidden rounded-t-xl bg-muted"
             : "relative h-12 w-16 shrink-0 overflow-hidden rounded-md bg-muted"
           }>
             <AssetThumbnail asset={asset} />
@@ -49,26 +59,32 @@ export function DocumentAssetGrid({
                 onClick={(event) => event.stopPropagation()} className="absolute left-2 top-2 border-white bg-background/90" />
             )}
           </div>
-          <div className={view === "grid" ? "space-y-1.5 p-2.5" : "flex min-w-0 flex-1 items-center gap-4"}>
+          <div className={view === "grid" ? "space-y-1.5 p-2.5" : "flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-1"}>
             <div className="min-w-0 flex-1">
               <p className="flex items-center gap-1 truncate text-xs font-medium" title={asset.file_name}>
                 {asset.protected && <LockKeyhole className="h-3 w-3 shrink-0 text-muted-foreground" />}
                 <span className="truncate">{asset.file_name}</span>
               </p>
-              <p className="mt-0.5 truncate text-[10px] text-muted-foreground" title={asset.document_title}>{asset.document_title}</p>
+              <p className="mt-0.5 truncate text-[10px] text-muted-foreground" title={asset.standalone ? t("settings.documentAssetsStandalone") : asset.document_title}>{asset.standalone ? t("settings.documentAssetsStandalone") : asset.document_title}</p>
             </div>
-            <div className="flex shrink-0 items-center gap-1">
+            <div className={`flex items-center gap-1 ${view === "grid" ? "flex-wrap" : "shrink-0"}`}>
               <span className="text-[10px] text-muted-foreground">{formatBytes(asset.size)}</span>
               {!asset.protected && !asset.referenced && (
                 <span className="rounded bg-amber-500/10 px-1 py-px text-[9px] font-semibold text-amber-600">
                   {t("settings.documentImageOrphan")}
                 </span>
               )}
-              <div className="ml-1 flex items-center gap-0.5">
-                <Button variant="ghost" size="icon" onClick={(event) => { event.stopPropagation(); void exportOne(asset); }} className="h-6 w-6" title={t("settings.documentImageExport")}>
+              {/* Always rendered, at every width: these are the only way to
+                * copy, download or delete a file, and a narrow card used to
+                * push them out of the card's `overflow-hidden` box. */}
+              <div className="ml-auto flex shrink-0 items-center gap-0.5">
+                <Button variant="ghost" size="icon" onClick={(event) => { event.stopPropagation(); void copyMarkdown(asset); }} className="h-7 w-7 lg:h-6 lg:w-6" title={t("settings.documentAssetsCopyMarkdown")} aria-label={t("settings.documentAssetsCopyMarkdown")}>
+                  <Copy className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant="ghost" size="icon" onClick={(event) => { event.stopPropagation(); void exportOne(asset); }} className="h-7 w-7 lg:h-6 lg:w-6" title={t("settings.documentImageExport")} aria-label={t("settings.documentImageExport")}>
                   <Download className="h-3.5 w-3.5" />
                 </Button>
-                <Button variant="ghost" size="icon" disabled={!writable} onClick={(event) => { event.stopPropagation(); setDeleteTarget(asset); }} className="h-6 w-6 text-destructive" title={t("common.delete")}>
+                <Button variant="ghost" size="icon" disabled={!writable} onClick={(event) => { event.stopPropagation(); setDeleteTarget(asset); }} className="h-7 w-7 text-destructive lg:h-6 lg:w-6" title={t("common.delete")} aria-label={t("common.delete")}>
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               </div>

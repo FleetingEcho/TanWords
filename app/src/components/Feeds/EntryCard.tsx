@@ -398,16 +398,19 @@ export function EntryListRow({ entry, feedTitle, onOpen, onPlay, onTranslate, tr
           {entry.title}
         </h3>
         {chineseTitle && <p className="line-clamp-2 text-[11.5px] leading-snug text-muted-foreground/80">{chineseTitle}</p>}
-        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground xl:hidden">
-          <span className="max-w-[140px] truncate">{feedTitle || domainOf(entry.url)}</span>
-          {(entry.points != null || entry.commentCount != null) && <EngagementBadges entry={entry} />}
-          {entry.author && <span className="max-w-[110px] truncate">{entry.author}</span>}
-        </div>
       </div>
       </div>
-      {/* `sm:contents` dissolves this wrapper above the breakpoint, so on
-        * desktop these stay direct children of the row exactly as before. */}
+      {/* `xl:contents` dissolves this wrapper above the breakpoint, so on
+        * desktop these stay direct children of the row exactly as before.
+        * Below it, this is the row's *second and last* line: the source/score
+        * metadata shares it with the timestamp and actions rather than
+        * claiming a third line of its own. */}
       <div className="flex items-center gap-2 xl:contents">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground xl:hidden">
+        <span className="max-w-[140px] truncate">{feedTitle || domainOf(entry.url)}</span>
+        {(entry.points != null || entry.commentCount != null) && <EngagementBadges entry={entry} />}
+        {entry.author && <span className="max-w-[110px] truncate">{entry.author}</span>}
+      </div>
       {(entry.points != null || entry.commentCount != null) && (
         <span className="hidden xl:flex shrink-0 items-center gap-1">
           <EngagementBadges entry={entry} />

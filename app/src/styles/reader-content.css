@@ -80,6 +80,26 @@
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+/* A bare URL is one unbreakable "word". Left alone it pushes the whole
+   column wider than its container — which, because the scroll container sets
+   overflow on one axis, grows a horizontal scrollbar across the reader. HN
+   comments are full of them. `anywhere` rather than `break-word` so it also
+   applies when the line has room for the rest of the text. */
+.reader-article-content,
+.reader-article-content a,
+.reader-article-content p,
+.reader-article-content li,
+.reader-article-content code {
+  overflow-wrap: anywhere;
+}
+/* Code blocks keep their own horizontal scroll: breaking a line of code
+   mid-token changes what it says. */
+.reader-article-content pre {
+  overflow-x: auto;
+}
+.reader-article-content pre code {
+  overflow-wrap: normal;
+}
 .reader-article-content img,
 .reader-article-content figure {
   max-width: 100%;

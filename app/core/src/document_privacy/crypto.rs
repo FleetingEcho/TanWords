@@ -14,6 +14,13 @@ pub fn random<const N: usize>() -> [u8; N] {
     bytes
 }
 
+/// The app-lock verifier. Same primitive as document keys, separate entry
+/// point so it is obvious this one is only ever compared, never used to
+/// encrypt anything.
+pub fn derive_app_lock_key(password: &str, salt: &[u8]) -> Result<[u8; 32], String> {
+    derive_password_key(password, salt)
+}
+
 pub(super) fn derive_password_key(password: &str, salt: &[u8]) -> Result<[u8; 32], String> {
     let mut key = [0_u8; 32];
     Argon2::default()

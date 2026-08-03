@@ -65,7 +65,7 @@ export function NowPlayingOverlay({ onClose }: { onClose: () => void }) {
       {/* Darken toward the bottom so white text always reads */}
       <div className="absolute inset-0 bg-linear-to-b from-black/30 via-black/45 to-black/75" />
 
-      <div className="relative h-full flex flex-col items-center px-8 py-6">
+      <div className="relative h-full flex flex-col items-center px-4 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] lg:px-8 lg:py-6">
         <Button
           type="button"
           variant="ghost"
@@ -73,7 +73,7 @@ export function NowPlayingOverlay({ onClose }: { onClose: () => void }) {
           onClick={onClose}
           title={t("music.collapsePlayer")}
           aria-label={t("music.collapsePlayer")}
-          className="app-region-no-drag absolute left-5 top-5 z-50 w-12 h-12 p-0 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+          className="app-region-no-drag absolute left-2 top-2 z-50 h-10 w-10 p-0 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-white/10 transition-colors lg:left-5 lg:top-5 lg:h-12 lg:w-12"
         >
           <ChevronIcon direction="left" className="w-5 h-5 -rotate-90" />
         </Button>
@@ -102,7 +102,7 @@ export function NowPlayingOverlay({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="w-full max-w-xl text-center mb-2">
-          <h2 className="text-2xl font-bold text-white drop-shadow-xs truncate">{track.title}</h2>
+          <h2 className="text-xl lg:text-2xl font-bold text-white drop-shadow-xs truncate">{track.title}</h2>
           <p className="text-sm text-white/70 mt-1 truncate">{track.feedTitle}</p>
         </div>
 
@@ -121,20 +121,10 @@ export function NowPlayingOverlay({ onClose }: { onClose: () => void }) {
           <span className="text-xs font-mono tabular-nums text-white/70 shrink-0">{formatTime(duration)}</span>
         </div>
 
-        {/* Transport */}
-        <div className="grid grid-cols-[2.5rem_2.75rem_4rem_2.75rem_2.5rem] items-center gap-5 mb-5">
-          <Button
-            variant="ghost"
-            onClick={() => setPlayMode(PLAY_MODES[(PLAY_MODES.indexOf(playMode) + 1) % PLAY_MODES.length])}
-            title={t(`music.mode.${playMode}`)}
-            disabled={!playlist}
-            className={`w-10 h-10 p-0 rounded-full flex items-center justify-center transition-colors disabled:opacity-30 ${
-              playMode === "order" ? "text-white/60 hover:text-white hover:bg-white/10" : "text-white bg-white/15 hover:bg-white/25"
-            }`}
-          >
-            <ModeIcon className="w-5 h-5" />
-          </Button>
-
+        {/* Transport. Two centred rows rather than one five-column grid: the
+          * speed selector is a pill several times wider than the icon buttons,
+          * so any fixed column layout pulls the play button off centre. */}
+        <div className="mb-2 flex items-center justify-center gap-3 lg:gap-5">
           <Button
             variant="ghost"
             onClick={() => skip(-1)}
@@ -177,6 +167,21 @@ export function NowPlayingOverlay({ onClose }: { onClose: () => void }) {
             className="w-11 h-11 p-0 rounded-full flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-30"
           >
             <SkipNextIcon className="w-6 h-6" />
+          </Button>
+
+        </div>
+
+        <div className="mb-4 flex items-center justify-center gap-3 lg:mb-5 lg:gap-5">
+          <Button
+            variant="ghost"
+            onClick={() => setPlayMode(PLAY_MODES[(PLAY_MODES.indexOf(playMode) + 1) % PLAY_MODES.length])}
+            title={t(`music.mode.${playMode}`)}
+            disabled={!playlist}
+            className={`w-10 h-10 p-0 rounded-full flex items-center justify-center transition-colors disabled:opacity-30 ${
+              playMode === "order" ? "text-white/60 hover:text-white hover:bg-white/10" : "text-white bg-white/15 hover:bg-white/25"
+            }`}
+          >
+            <ModeIcon className="w-5 h-5" />
           </Button>
 
           <PlaybackSpeedSelector value={speed} onChange={setSpeed} variant="glass" />

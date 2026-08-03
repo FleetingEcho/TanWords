@@ -21,7 +21,10 @@ export function AppBackground() {
         aria-hidden="true"
         className="w-full h-full object-cover"
         // Scaled up so a blurred edge never reveals empty space at the image boundary.
-        style={{ filter: `blur(${blur}px)`, transform: blur > 0 ? "scale(1.08)" : undefined }}
+        style={{
+          filter: `blur(${blur}px)`,
+          transform: blur > 0 ? "scale(1.08)" : undefined,
+        }}
       />
       <div className="absolute inset-0 bg-black/20 dark:bg-black/45" />
     </div>

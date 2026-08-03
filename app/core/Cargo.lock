@@ -3941,6 +3941,7 @@ dependencies = [
  "futures-util",
  "grep-regex",
  "grep-searcher",
+ "hmac",
  "ignore",
  "keyring",
  "libloading",

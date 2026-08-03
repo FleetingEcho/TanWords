@@ -151,9 +151,9 @@ export default function MusicPage() {
   return (
     <div className="h-full overflow-y-auto animate-fade-in">
       {/* pb clears the fixed bottom player bar so the last row's labels stay visible */}
-      <div className="max-w-5xl mx-auto px-8 pt-10 pb-28">
-        <div className="flex items-end justify-between gap-4 mb-8">
-          <div className="min-w-0">
+      <div className="max-w-5xl mx-auto px-4 pt-6 pb-28 lg:px-8 lg:pt-10">
+        <div className="flex flex-wrap items-end justify-between gap-3 mb-8 lg:gap-4">
+          <div className="min-w-0 flex-1">
             <h1 className="text-2xl font-bold tracking-tight">{t("music.title")}</h1>
             <p className="text-sm text-muted-foreground mt-1">
               {t("music.stats", { tracks: String(totalTracks), collections: String(collections.length) })}
@@ -184,19 +184,21 @@ export default function MusicPage() {
               variant="ghost"
               onClick={pickMusicFolder}
               title={musicFolderPath}
-              className="h-8 px-3 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex items-center gap-1.5"
+              className="h-8 px-2 sm:px-3 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex items-center gap-1.5"
             >
               <FolderIcon className="w-3.5 h-3.5" />
-              {t("music.changeFolder")}
+              <span className="hidden sm:inline">{t("music.changeFolder")}</span>
             </Button>
             <Button
               variant="ghost"
               onClick={scan}
               disabled={loading}
-              className="h-8 px-3 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex items-center gap-1.5"
+              title={t("music.refresh")}
+              aria-label={t("music.refresh")}
+              className="h-8 px-2 sm:px-3 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors flex items-center gap-1.5"
             >
               <RefreshIcon className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-              {t("music.refresh")}
+              <span className="hidden sm:inline">{t("music.refresh")}</span>
             </Button>
           </div>
         </div>

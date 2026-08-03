@@ -69,13 +69,11 @@ export function AiChatComposer({
         </div>
       )}
 
-      {/* Phones get one row — input, tools, send — because a resting composer
-        * that is three lines of chrome is mostly wasted screen. It grows only
-        * as the message does (the autosize effect in useChatComposer). Desktop
-        * keeps the roomy two-row block. */}
-      <div className={`rounded-[22px] border border-border/70 bg-card/95 shadow-[0_14px_45px_-28px_rgba(0,0,0,.55)] transition-colors focus-within:border-primary/30 ${
-        narrow ? "flex items-end gap-1 p-1.5" : "p-2"
-      }`}>
+      {/* One row at every width — input, tools, send. A composer that rests
+        * three lines tall is wasted screen on a phone and dead space on a
+        * desktop; it grows only as the message does (the autosize effect in
+        * useChatComposer). Only the labels differ by width. */}
+      <div className="flex items-end gap-1 rounded-[22px] border border-border/70 bg-card/95 p-1.5 shadow-[0_14px_45px_-28px_rgba(0,0,0,.55)] transition-colors focus-within:border-primary/30 lg:gap-2 lg:p-2">
         <textarea
           ref={textareaRef}
           value={input}
@@ -93,12 +91,10 @@ export function AiChatComposer({
               : t("aichat.placeholder")
           }
           rows={1}
-          className={`block max-h-[240px] w-full resize-none bg-transparent text-[16px] leading-6 placeholder:text-muted-foreground/35 focus:outline-hidden ${
-            narrow ? "min-h-8 min-w-0 flex-1 px-2 py-1" : "min-h-[92px] px-3 pb-2 pt-2 lg:text-sm"
-          }`}
+          className="block max-h-[240px] min-h-8 w-full min-w-0 flex-1 resize-none bg-transparent px-2 py-1 text-[16px] leading-6 placeholder:text-muted-foreground/35 focus:outline-hidden lg:text-sm"
         />
 
-        <div className={narrow ? "flex shrink-0 items-center gap-1" : "flex items-center gap-2 px-1"}>
+        <div className="flex shrink-0 items-center gap-1 lg:gap-2">
         <Popover open={showTools} onOpenChange={() => onToggleTools()}>
           <PopoverTrigger asChild>
             <Button
@@ -159,7 +155,6 @@ export function AiChatComposer({
             <div className="border-t border-border/60 bg-muted/20 px-4 py-2.5"><p className="text-[9px] leading-4 text-muted-foreground">{enabledGroups.size === 0 ? t("aichat.accessNone") : t("aichat.accessHint")}</p></div>
           </PopoverContent>
         </Popover>
-        {!narrow && <span className="ml-auto hidden text-[10px] text-muted-foreground/45 sm:block">{t("aichat.inputHint")}</span>}
 
         {streaming ? (
           <Button
