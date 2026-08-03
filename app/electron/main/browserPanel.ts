@@ -54,6 +54,11 @@ type TabRecord = {
  *  candidate. */
 const MAX_LIVE_TABS = 2;
 
+/** Floor on how often an embedded page's input is reported to the shell. The
+ *  only consumer is the auto-lock idle timer, whose shortest interval is ten
+ *  minutes. */
+const INPUT_EMIT_INTERVAL_MS = 30_000;
+
 function toIntBounds(b: PanelBounds) {
   return {
     x: Math.round(b.x),
@@ -72,6 +77,7 @@ export class BrowserPanelManager {
   private nextId = 1;
   private useSeq = 1;
   private onEvent: ((name: string, payload: unknown) => void) | null = null;
+  private lastInputEmit = 0;
 
   setWindow(win: BrowserWindow) {
     this.win = win;
@@ -128,6 +134,17 @@ export class BrowserPanelManager {
     wc.on("page-title-updated", (_e, title) => {
       rec.title = title;
       this.emit(id, "browser://title-changed", title);
+    });
+    // An embedded page is a native child view, so anything typed or clicked in
+    // it never reaches the app shell's own DOM listeners — without this, an
+    // hour of reading in the browser panel looks like an hour of idleness to
+    // the auto-lock timer. Throttled hard: `input-event` fires on every mouse
+    // move, and the idle timer only needs to know the minute is not empty.
+    wc.on("input-event", () => {
+      const now = Date.now();
+      if (now - this.lastInputEmit < INPUT_EMIT_INTERVAL_MS) return;
+      this.lastInputEmit = now;
+      this.onEvent?.("user-input", null);
     });
     wc.on("did-start-loading", () => this.emit(id, "browser://loading", true));
     wc.on("did-stop-loading", () => this.emit(id, "browser://loading", false));

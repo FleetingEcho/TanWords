@@ -54,6 +54,9 @@ export interface SettingsState {
   lockScreenImage: string;
   lockScreenBlur: number;
   lockScreenVisible: boolean;
+  /** Minutes of no input before the app locks itself; `0` disables it. Only
+   *  has any effect while a lock password is set. */
+  autoLockMinutes: number;
   /** Whether appBackgroundImage is currently shown. False hides it without
    *  discarding the stored image, so it can be turned back on unchanged. */
   appBackgroundVisible: boolean;
@@ -97,6 +100,7 @@ export interface SettingsState {
   setLockScreenImage: (dataUrl: string) => void;
   setLockScreenBlur: (value: number) => void;
   setLockScreenVisible: (value: boolean) => void;
+  setAutoLockMinutes: (minutes: number) => void;
   setAppBackgroundBlur: (px: number) => void;
   setAppBackgroundVisible: (visible: boolean) => void;
   setDocumentFontSize: (px: number) => void;

@@ -34,6 +34,8 @@ interface Props {
   onExportHtml: (relPath: string) => void;
   onExportPdf: (relPath: string) => void;
   onMove: (relPath: string, targetDir: string) => void;
+  /** The database/local-folder switcher — see DocSourceTabs. */
+  sourceTabs?: React.ReactNode;
 }
 
 export function LocalDocsSidebar({
@@ -58,6 +60,7 @@ export function LocalDocsSidebar({
   onExportHtml,
   onExportPdf,
   onMove,
+  sourceTabs,
 }: Props) {
   const t = useT();
 
@@ -76,6 +79,7 @@ export function LocalDocsSidebar({
         <CollapsibleContent className="h-full">
         <div className="flex flex-col h-full">
         <div className="px-3 pt-4 pb-2 space-y-2 shrink-0">
+          {sourceTabs}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1">
               <CollapsibleTrigger asChild>
@@ -83,7 +87,6 @@ export function LocalDocsSidebar({
                   <ChevronsLeft className="h-3.5 w-3.5" />
                 </Button>
               </CollapsibleTrigger>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t("doc.tabLocal")}</p>
             </div>
             {root && (
               <div className="flex items-center gap-1">

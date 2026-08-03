@@ -11,6 +11,7 @@
 // module that wanted only `blocksToText`/`blocksToStorage` — neither of which
 // touches an editor.
 import type { BlockNoteEditor, PartialBlock } from "@blocknote/core";
+import { repairMarkdown } from "./markdownPreparse";
 
 // ── Legacy Lexical → Markdown ───────────────────────────────────────────────
 
@@ -91,7 +92,7 @@ function getParser(): Promise<BlockNoteEditor> {
 }
 
 export async function markdownToBlocks(md: string): Promise<PartialBlock[]> {
-  return await (await getParser()).tryParseMarkdownToBlocks(md);
+  return await (await getParser()).tryParseMarkdownToBlocks(repairMarkdown(md));
 }
 
 export async function blocksToMarkdown(blocks: readonly unknown[]): Promise<string> {

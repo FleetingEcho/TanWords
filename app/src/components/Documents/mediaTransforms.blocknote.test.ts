@@ -8,24 +8,35 @@
 import { describe, it, expect } from "vitest";
 import { BlockNoteEditor } from "@blocknote/core";
 import { liftMedia, liftYouTube, lowerMedia, lowerYouTube } from "./mediaTransforms";
+import { repairMarkdown } from "@/lib/markdownPreparse";
 
 const VIDEO = "https://youtu.be/aR97E7aKEgg?si=q3_UL6G7f7oMpE-e";
+/** The shape you get from the browser's address bar, which is what anyone
+ *  actually pastes. Every case below runs against both — the suite used to
+ *  test only the share-sheet form. */
+const WATCH = "https://www.youtube.com/watch?v=iQyg-KypKAA";
 
 async function parse(markdown: string) {
   const editor = BlockNoteEditor.create();
-  return editor.tryParseMarkdownToBlocks(markdown);
+  return editor.tryParseMarkdownToBlocks(repairMarkdown(markdown));
 }
 
 describe("YouTube links written in markdown", () => {
   it.each([
-    ["a titled link", `[123](${VIDEO})`],
-    ["a bare url", VIDEO],
-    ["image syntax", `![123](${VIDEO})`],
-  ])("turns %s into a player", async (_label, markdown) => {
+    ["a titled link", `[123](${VIDEO})`, "aR97E7aKEgg"],
+    ["a bare url", VIDEO, "aR97E7aKEgg"],
+    ["image syntax", `![123](${VIDEO})`, "aR97E7aKEgg"],
+    ["a titled watch link", `[123](${WATCH})`, "iQyg-KypKAA"],
+    ["a bare watch url", WATCH, "iQyg-KypKAA"],
+    ["watch image syntax", `![123](${WATCH})`, "iQyg-KypKAA"],
+    // BlockNote drops a link with no label entirely, URL and all, so this only
+    // survives because the markdown is repaired before it is parsed.
+    ["an empty-label link", `[](${WATCH})`, "iQyg-KypKAA"],
+  ])("turns %s into a player", async (_label, markdown, id) => {
     const lifted = liftYouTube(await parse(markdown));
     expect(lifted).toHaveLength(1);
     expect(lifted[0].type).toBe("youtube");
-    expect(lifted[0].props.url).toContain("aR97E7aKEgg");
+    expect(lifted[0].props.url).toContain(id);
   });
 
   it("rescues a built-in media block pointed at YouTube", () => {
@@ -43,6 +54,30 @@ describe("YouTube links written in markdown", () => {
     const markdown = await editor.blocksToMarkdownLossy(lowerYouTube(lowerMedia(start)) as any);
     const parsed = await editor.tryParseMarkdownToBlocks(markdown);
     expect(liftYouTube(liftMedia(parsed))[0].type).toBe("youtube");
+  });
+
+  it("keeps the author's title through a full raw -> rich -> raw trip", async () => {
+    const editor = BlockNoteEditor.create();
+    const lifted = liftYouTube(await parse(`[tttt](${WATCH})`));
+    expect(lifted[0].props.caption).toBe("tttt");
+
+    const markdown = await editor.blocksToMarkdownLossy(lowerYouTube(lifted) as any);
+    expect(markdown).toContain("[tttt]");
+
+    const again = liftYouTube(await parse(markdown));
+    expect(again[0].type).toBe("youtube");
+    expect(again[0].props.caption).toBe("tttt");
+    expect(again[0].props.url).toContain("iQyg-KypKAA");
+  });
+
+  it("does not invent a title for an untitled player", async () => {
+    const editor = BlockNoteEditor.create();
+    const lifted = liftYouTube(await parse(WATCH));
+    expect(lifted[0].props.caption).toBe("");
+    // Lowering writes the URL as its own label, which must read back as
+    // "no caption" rather than as a title that happens to be a URL.
+    const markdown = await editor.blocksToMarkdownLossy(lowerYouTube(lifted) as any);
+    expect(liftYouTube(await parse(markdown))[0].props.caption).toBe("");
   });
 
   it("leaves a link inside a sentence as prose", async () => {

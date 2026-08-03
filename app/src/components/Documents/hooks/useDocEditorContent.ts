@@ -4,7 +4,7 @@ import { editorSchema } from "../editorSchema";
 import { DocumentDetail } from "@/hooks/useDB";
 import { blocksToStorageOffThread, contentToBlocksOffThread, markdownToBlocksOffThread } from "@/lib/documentWorkerClient";
 import { liftMermaid, lowerMermaid } from "../mermaidTransforms";
-import { liftMedia, liftYouTube, lowerMedia, lowerYouTube } from "../mediaTransforms";
+import { liftMedia, liftYouTube, lowerMedia, lowerYouTube, youTubeEmbedOf } from "../mediaTransforms";
 import { resolveDocumentAssetUrl, uploadDocumentAsset } from "@/lib/documentAssets";
 import { isEmptyParagraph, withTrailingEditorParagraph, withoutTrailingEditorParagraph } from "../trailingEditorParagraph";
 
@@ -105,6 +105,30 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
   const handleChange = useCallback(() => {
     if (!loaded.current) return;
     const cursor = editor.getTextCursorPosition();
+
+    // A YouTube link pasted into the rich editor is just a link until the
+    // document is next loaded from storage, which is where `liftYouTube`
+    // otherwise runs — so it would sit there as a URL for the whole session
+    // and become a player only after a reopen. Promote it here instead, on
+    // the block being edited, so it happens where the paste happened.
+    //
+    // Same test as the markdown path: the block has to be *only* the link,
+    // never one inside a sentence.
+    const embed = youTubeEmbedOf(cursor.block);
+    if (embed) {
+      const wasLast = !cursor.nextBlock;
+      editor.replaceBlocks([cursor.block], [{ type: "youtube", props: embed }] as any);
+      // A player is not a text block, so pasting a link at the end of the
+      // document would otherwise leave nowhere to put the cursor and no way to
+      // keep writing — the same reason the loader appends one.
+      if (wasLast) {
+        const last = editor.document[editor.document.length - 1];
+        if (last) editor.insertBlocks([{ type: "paragraph" }], last, "after");
+      }
+      scheduleSave();
+      return;
+    }
+
     if (!cursor.nextBlock && !isEmptyParagraph(cursor.block)) {
       editor.insertBlocks([{ type: "paragraph" }], cursor.block, "after");
     }

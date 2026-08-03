@@ -80,9 +80,21 @@ function NavButton({
       className={`group relative h-auto w-full flex items-center rounded-lg text-sm font-medium transition-colors duration-100 ${
         collapsed ? "justify-center px-0 py-[9px]" : "gap-2.5 px-3 py-[7px]"
       } ${
+        // Both states name their own hover fill *and* hover colour, because the
+        // ghost variant otherwise supplies `hover:bg-accent
+        // hover:text-accent-foreground` — a matched pair meant for a solid
+        // accent fill (bright pink in `dim`, bright purple in tokyo-night, with
+        // dark text on top). Override one and not the other and the item
+        // vanishes when you point at it: dark text on the `--muted` fill, or
+        // the active item's light hue on the bright accent fill.
+        //
+        // Every item hovers to the same quiet `--muted` fill. The active one
+        // keeps its hue through it; the others just come up to full contrast,
+        // since hue here means "this is the page you are on" and the rule at
+        // the left edge is what previews that.
         active
-          ? "text-[hsl(var(--sidebar-active-fg))]"
-          : "text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--muted))]"
+          ? "text-[hsl(var(--sidebar-active-fg))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--sidebar-active-fg))]"
+          : "text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]"
       }`}
     >
       <span

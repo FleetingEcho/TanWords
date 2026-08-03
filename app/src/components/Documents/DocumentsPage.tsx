@@ -6,8 +6,10 @@ import { useDocumentEditor } from "./useDocumentEditor";
 import { LocalDocsView } from "./LocalDocsView";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
-import { ChevronsLeft, ChevronsRight, RefreshCw } from "lucide-react";
+import { ChevronsLeft, ChevronsRight } from "lucide-react";
 import { LIST_PANEL_WIDTH, LIST_PANEL_COLLAPSED_WIDTH, LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
+import { EmptyCanvas } from "@/components/shared/EmptyCanvas";
+import { DocSourceTabs } from "./DocSourceTabs";
 import { LockedDocumentPanel } from "./LockedDocumentPanel";
 import { useIsNarrow } from "@/components/Vocabulary/hooks/useMediaQuery";
 
@@ -142,57 +144,39 @@ export function DocumentsPage() {
     };
   }, [handleNewDoc, loadDoc]);
 
+  // One instance, rendered into whichever list header is on screen.
+  const sourceTabs = (
+    <DocSourceTabs
+      source={source}
+      onSelect={(next) => {
+        if (next === "local") setLocalMounted(true);
+        setSource(next);
+      }}
+      refreshing={source === "db" ? dbRefreshing : localRefreshing}
+      onRefresh={refreshActiveTab}
+    />
+  );
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Source tabs: database docs vs mounted local folder */}
-      {!dbZenMode && (
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-2.5 bg-transparent">
-        <div className="flex items-center gap-1">
-          {showMobileEditor && isNarrow && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={() => setShowMobileEditor(false)}
-              title={t("doc.collapseFiles")}
-              aria-label={t("doc.collapseFiles")}
-              className="h-7 w-7 shrink-0 lg:hidden text-muted-foreground hover:text-foreground"
-            >
-              <ChevronsLeft className="h-4 w-4" />
-            </Button>
-          )}
-          {(["db", "local"] as const).map((s) => (
-            <Button
-              key={s}
-              type="button"
-              variant="ghost"
-              onClick={() => {
-                if (s === "local") setLocalMounted(true);
-                setSource(s);
-              }}
-              className={`h-7 px-3 rounded-lg text-xs font-semibold transition-colors ${
-                source === s
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              }`}
-            >
-              {s === "db" ? t("doc.tabDatabase") : t("doc.tabLocal")}
-            </Button>
-          ))}
+      {/* The database/local switcher used to be a full-width bar of its own
+        * here. Two short pills and one icon do not need a row across the whole
+        * window, and the list header below already had an empty half — so the
+        * switcher moved in there, next to the list it switches. */}
+      {showMobileEditor && isNarrow && (
+        <div className="flex shrink-0 items-center border-b border-border px-4 py-2 lg:hidden">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => setShowMobileEditor(false)}
+            title={t("doc.collapseFiles")}
+            aria-label={t("doc.collapseFiles")}
+            className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+          >
+            <ChevronsLeft className="h-4 w-4" />
+          </Button>
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={refreshActiveTab}
-          disabled={source === "db" ? dbRefreshing : localRefreshing}
-          title={t("doc.refreshDocuments")}
-          aria-label={t("doc.refreshDocuments")}
-          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${(source === "db" ? dbRefreshing : localRefreshing) ? "animate-spin" : ""}`} />
-        </Button>
-      </div>
       )}
 
       <div className="relative flex-1 overflow-hidden">
@@ -207,6 +191,7 @@ export function DocumentsPage() {
                 </div>}
                 <CollapsibleContent className="h-full">
                   <DocSelector
+                    sourceTabs={sourceTabs}
                     activeId={activeId}
                     onSelect={loadDoc}
                     onNewDoc={handleNewDoc}
@@ -244,15 +229,7 @@ export function DocumentsPage() {
                   <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2">
-                  <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-14 h-14 opacity-20">
-                    <path d="M12 6h18l9 9v27a3 3 0 01-3 3H12a3 3 0 01-3-3V9a3 3 0 013-3z" />
-                    <path d="M30 6v9h9" />
-                    <path d="M18 22h12M18 28h12M18 34h8" strokeLinecap="round" />
-                  </svg>
-                  <p className="text-sm">{t("doc.noDocSelected")}</p>
-                  <p className="text-xs opacity-60">{t("doc.noDocHint")}</p>
-                </div>
+                <EmptyCanvas title={t("doc.noDocSelected")} body={t("doc.noDocHint")} />
               )}
             </div>
         </div>
@@ -260,6 +237,7 @@ export function DocumentsPage() {
         {localMounted && (
           <div className={`absolute inset-0 ${source === "local" ? "block" : "hidden"}`}>
             <LocalDocsView
+              sourceTabs={sourceTabs}
               refreshTick={localRefreshTick}
               onRefreshingChange={setLocalRefreshing}
             />

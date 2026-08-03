@@ -121,6 +121,8 @@ export function WordDetailPanel({
 
   const notesPreview = notes.split("\n").map((l) => l.trim()).find(Boolean) ?? "";
 
+  // Condensed only: one line, so the part of speech and the sense run together.
+  // Expanded, the header sets them as an entry does — separately.
   const gloss = [selected.wordType && `${selected.wordType}.`, selected.zh].filter(Boolean).join(" ");
 
   return (
@@ -130,11 +132,33 @@ export function WordDetailPanel({
         <div className={`${MEASURE} transition-[padding] duration-200 ${condensed ? "py-2.5" : "pb-4 pt-6"}`}>
           <div className="flex items-center gap-3">
             <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
-                <h1 className={`font-bold tracking-tight transition-[font-size] duration-200 ${condensed ? "text-xl" : "text-[2rem] leading-none"}`}>
+              {/* Set as a dictionary entry — serif headword, mono IPA, the part
+                * of speech in italics, the sense in serif beneath. The sign-in
+                * and lock screens (see Layout/authVisuals) were built in this
+                * shape because it is what this product saves; this is the
+                * thing they were imitating, so it has the better claim to it.
+                *
+                * Same form, not the same size: those screens can spend 9vw on a
+                * wordmark because nothing else is on them. Here the entry is
+                * content among content, so it stays at reading scale — and
+                * condensed, while the analysis is being read, it drops the
+                * treatment entirely and gets out of the way. */}
+              <div className="flex min-w-0 flex-wrap items-baseline gap-x-2.5 gap-y-1">
+                <h1
+                  className={`font-bold tracking-tight transition-[font-size] duration-200 ${
+                    condensed ? "text-xl" : "font-serif text-[2rem] leading-none"
+                  }`}
+                >
                   {selected.word}
                 </h1>
-                {selected.ipa && <span className="font-mono text-sm text-muted-foreground">/{selected.ipa}/</span>}
+                {selected.ipa && (
+                  <span className={`font-mono text-sm text-muted-foreground ${condensed ? "" : "tracking-[0.08em]"}`}>
+                    /{selected.ipa}/
+                  </span>
+                )}
+                {!condensed && selected.wordType && (
+                  <span className="font-serif text-sm italic text-primary">{selected.wordType}.</span>
+                )}
                 <LevelBadge level={selected.level} />
                 {hostCapabilities.nativeTts && <SpeakButton text={selected.word} className={condensed ? "h-4 w-4" : "h-[1.15rem] w-[1.15rem]"} />}
                 {/* Condensed, the gloss rides the title row — it is the one piece of
@@ -143,8 +167,8 @@ export function WordDetailPanel({
                   <span className="min-w-0 truncate text-xs text-muted-foreground">{gloss}</span>
                 )}
               </div>
-              {!condensed && gloss && (
-                <p className="truncate text-[0.95rem] text-muted-foreground">{gloss}</p>
+              {!condensed && selected.zh && (
+                <p className="truncate font-serif text-[1.05rem] leading-relaxed text-foreground/80">{selected.zh}</p>
               )}
             </div>
 

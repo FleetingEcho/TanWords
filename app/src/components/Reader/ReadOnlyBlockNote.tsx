@@ -10,6 +10,8 @@ import { CloseIcon } from "@/components/ui/icons";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
 import { useIsNarrow } from "@/components/Vocabulary/hooks/useMediaQuery";
 import { editorSchema } from "@/components/Documents/editorSchema";
+import { liftYouTube } from "@/components/Documents/mediaTransforms";
+import { repairMarkdown } from "@/lib/markdownPreparse";
 import { useIsDark } from "@/hooks/useIsDark";
 import { useT } from "@/hooks/useT";
 import { DocumentOutline, useOutlineItems } from "@/components/Documents/DocumentOutline";
@@ -63,9 +65,14 @@ export function ReadOnlyBlockNote({
   // outline's left, so there is no "balancing" spacer on the other side.
   const outlineItems = useOutlineItems(editor, outlineTick);
 
+  /** Markdown alone cannot express a video, so a YouTube link arrives as a
+   *  link or a bare paragraph and would render as one. The schema has a player
+   *  block; `liftYouTube` is what promotes a paragraph that is *only* a
+   *  YouTube URL into it (a link inside a sentence stays prose). Feeds and HN
+   *  posts that are mostly a video were otherwise a URL to copy elsewhere. */
   const parseMarkdown = (markdown: string) => {
     const headless = BlockNoteEditor.create({ schema: editorSchema });
-    return headless.tryParseMarkdownToBlocks(markdown);
+    return liftYouTube(headless.tryParseMarkdownToBlocks(repairMarkdown(markdown)));
   };
 
   useEffect(() => {

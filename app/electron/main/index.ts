@@ -144,11 +144,6 @@ function broadcastEvent(name: string, payload: unknown) {
   }
 }
 
-// Upper bound on how long createWindow() will hold the window hidden waiting
-// for the sidecar handshake. Past this, show anyway — a stuck/missing sidecar
-// binary should surface as an error inside the app, not an invisible window.
-const STARTUP_SHOW_TIMEOUT_MS = 15000;
-
 function createWindow() {
   // A plain BrowserWindow is fine as the browser panel's host — its
   // `contentView` has taken child WebContentsViews since Electron 30,
@@ -184,18 +179,32 @@ function createWindow() {
     },
   });
 
-  // Hold the window hidden past Chromium's first paint (an empty root div)
-  // until the sidecar handshake resolves too, so the window never shows the
-  // blank/unstyled shell React renders while still awaiting the backend.
-  const readyToShow = new Promise<void>((resolve) => win.once("ready-to-show", resolve));
-  const backendReady = sidecar.backendReady().then(
-    () => {},
-    () => {},
-  );
-  const timeout = new Promise<void>((resolve) => setTimeout(resolve, STARTUP_SHOW_TIMEOUT_MS));
-  void Promise.all([readyToShow, Promise.race([backendReady, timeout])]).then(() => {
-    if (!win.isDestroyed()) win.show();
+  // Show as soon as Chromium has something painted — the renderer's splash
+  // screen is the first thing it paints, so the user gets the product's own
+  // launch screen in tens of milliseconds instead of staring at nothing.
+  //
+  // This deliberately no longer waits for the sidecar. The window used to be
+  // held hidden until the handshake landed so it could never show the blank
+  // shell React renders while awaiting the backend; the splash *is* that
+  // shell's finished state now, so it covers exactly the same gap while being
+  // visible the whole time. What used to be dead air is now the launch screen.
+  win.once("ready-to-show", () => {
+    if (win.isDestroyed()) return;
+    win.show();
+    // The renderer cannot work out this moment for itself: a `show: false`
+    // window still reports `document.visibilityState === "visible"` and runs
+    // its timers unthrottled, so anything the splash screen timed from its own
+    // mount would have played out behind a window nobody could see yet.
+    broadcastEvent("window-shown", null);
   });
+
+  // The splash holds until the backend answers, so the app underneath is never
+  // uncovered before it can serve a query. The renderer waits on that by
+  // *asking* — `tanwords:backend`, which it already invokes for the port and
+  // token — rather than on an event from here: with a local database the
+  // handshake lands in under 20ms, well before the renderer could subscribe,
+  // and a broadcast that early would be missed by the one listener that needs
+  // it.
 
   // Deny popups from the main UI (the browser panel's own WebContentsViews
   // have their own, separate setWindowOpenHandler — see browserPanel.ts).

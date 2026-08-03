@@ -17,6 +17,15 @@ const SOURCE_ICONS: Record<string, React.FC<{ className?: string }>> = {
   reader: Rss,
 };
 
+/** How tall the body is before anything is in it — about ten lines. Small
+ *  enough that an empty screen is a finished composition rather than a hole. */
+const EMPTY_BODY_REM = 11;
+
+/** ...and how tall it is allowed to grow. Past this the body scrolls inside
+ *  itself: a long article that pushed the footer off the bottom of the page
+ *  would put "Start reading" somewhere you have to go looking for it. */
+const MAX_BODY_VH = 0.55;
+
 /**
  * The empty state of the paste-in reader.
  *
@@ -26,6 +35,19 @@ const SOURCE_ICONS: Record<string, React.FC<{ className?: string }>> = {
  * become, and there's no visual seam between pasting and reading. No border,
  * no filled input: chrome here would announce "field to fill in" when the
  * thing on screen is a page.
+ *
+ * The rule is the spine of the whole composition, title included — they are
+ * one page, and a rule that started below the title would be drawing a seam
+ * exactly where the design says there is none.
+ *
+ * No specimen backdrop here, though this screen is empty and the rule in
+ * Layout/authVisuals would seem to invite one. It was tried and it was wrong:
+ * the specimen needs something solid in front of it to read as ground rather
+ * than as content — a card, a wordmark — and everything on this page is
+ * hairlines and translucent text at the same visual weight. Worse, the
+ * specimen's own underline marks are brighter than this page's rules, so they
+ * land as stray horizontal strokes across the layout. Empty space is the
+ * better answer here; the composition just has to stop being a hole.
  */
 export function ScratchPasteScreen({
   value,
@@ -73,6 +95,20 @@ export function ScratchPasteScreen({
 
   const words = value.trim() ? value.trim().split(/\s+/).length : 0;
   const minutes = Math.max(1, Math.round(words / WPM));
+  const empty = !value.trim();
+
+  // Grows with what you paste, between the two bounds above. Measured rather
+  // than guessed at, because the body is set at the reader's leading and a
+  // line-count estimate would drift from it.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const min = EMPTY_BODY_REM * parseFloat(getComputedStyle(document.documentElement).fontSize);
+    const max = window.innerHeight * MAX_BODY_VH;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, min), max)}px`;
+    el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
+  }, [value]);
 
   /** Cleans on the way in rather than on submit, so what you see in the box is
    *  exactly what the reader will show — PDF line wraps, hyphenation and page
@@ -152,15 +188,18 @@ export function ScratchPasteScreen({
         </div>
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{t("scratch.prompt")}</p>
 
-        <input
-          value={title}
-          onChange={(e) => { setTitle(e.target.value); setTitleEdited(true); }}
-          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); textareaRef.current?.focus(); } }}
-          placeholder={t("scratch.titlePlaceholder")}
-          className="mt-8 w-full bg-transparent text-xl font-semibold tracking-tight text-foreground outline-hidden placeholder:font-normal placeholder:text-muted-foreground/35"
-        />
+        {/* One ruled block: the title and the body sit inside the same margin,
+          * because they are the same page. The rule lights up whichever of the
+          * two you are in — it belongs to the page, not to a field. */}
+        <div className="mt-8 border-l-2 border-border/70 pl-6 transition-colors focus-within:border-primary/50">
+          <input
+            value={title}
+            onChange={(e) => { setTitle(e.target.value); setTitleEdited(true); }}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); textareaRef.current?.focus(); } }}
+            placeholder={t("scratch.titlePlaceholder")}
+            className="w-full bg-transparent font-serif text-2xl font-semibold tracking-tight text-foreground outline-hidden placeholder:font-normal placeholder:text-muted-foreground/35"
+          />
 
-        <div className="group relative mt-4 flex-1 border-l-2 border-border/70 pl-6 transition-colors focus-within:border-primary/50">
           <textarea
             ref={textareaRef}
             value={value}
@@ -171,7 +210,7 @@ export function ScratchPasteScreen({
             autoFocus
             spellCheck={false}
             style={{ fontSize: 17.5, lineHeight: 1.85 }}
-            className="h-full min-h-[calc(100vh-400px)] w-full resize-none bg-transparent text-foreground outline-hidden placeholder:text-muted-foreground/35"
+            className="mt-4 w-full resize-none bg-transparent text-foreground outline-hidden placeholder:text-muted-foreground/35"
           />
         </div>
 
@@ -193,7 +232,7 @@ export function ScratchPasteScreen({
           </div>
         </div>
 
-        {!value.trim() && recent.length > 0 && (
+        {empty && recent.length > 0 && (
           <div className="mt-10">
             <div className="flex items-baseline gap-3">
               <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/70">

@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 import { BlockNoteEditor } from "@blocknote/core";
 import { htmlToMarkdown } from "../lib/htmlToMarkdown";
+import { repairMarkdown } from "../lib/markdownPreparse";
 
 type Request = {
   id: number;
@@ -37,7 +38,7 @@ async function handle(data: Request) {
   try {
     let result: unknown;
     if (data.operation === "markdownToBlocks") {
-      result = await getParser().tryParseMarkdownToBlocks(data.payload as string);
+      result = await getParser().tryParseMarkdownToBlocks(repairMarkdown(data.payload as string));
     } else if (data.operation === "htmlToMarkdown") {
       result = htmlToMarkdown(data.payload as string);
     } else if (data.operation === "contentToBlocks") {
@@ -48,7 +49,7 @@ async function handle(data: Request) {
         else throw new Error("legacy-content");
       } catch (error) {
         if (error instanceof Error && error.message === "legacy-content") throw error;
-        result = await getParser().tryParseMarkdownToBlocks(content);
+        result = await getParser().tryParseMarkdownToBlocks(repairMarkdown(content));
       }
     } else if (data.operation === "blocksToMarkdown") {
       result = await getParser().blocksToMarkdownLossy(data.payload as any);

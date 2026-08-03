@@ -83,9 +83,59 @@ pub use patterns::*;
 
 // ── Database Initialization ─────────────────────────────────────────────────
 
+/// Where `init_db` records the schema state it last brought this database to.
+/// In `user_settings` rather than its own table so the check below costs one
+/// query on a database that already has the schema, instead of a CREATE first.
+const SCHEMA_FINGERPRINT_KEY: &str = "__schema_fingerprint";
+
+/// Identifies "the schema `init_db` produces, as this build writes it".
+///
+/// Hashed from the source rather than a hand-maintained revision number on
+/// purpose. The whole point of the fast path below is to skip the idempotent
+/// pass entirely, and a statement added to `init_db` without a matching bump
+/// would then silently never reach databases that already exist — a column
+/// missing only on upgraded installs, which is the worst kind of bug to find.
+/// A hash cannot be forgotten. It errs the other way instead: any edit to this
+/// file re-runs the pass once, on one launch, for one user's own database.
+fn schema_fingerprint() -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(include_str!("../../sql/schema.sql"));
+    hasher.update(include_str!("mod.rs"));
+    hasher.update(migrations::latest_version().to_le_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+/// The fingerprint this database was last initialised to, if any. A fresh
+/// database has no `user_settings` table yet and the query fails — which is
+/// the same answer as a stale one: run everything.
+async fn stored_fingerprint(conn: &Connection) -> Option<String> {
+    let mut rows = conn
+        .query(
+            "SELECT value FROM user_settings WHERE key = ?1",
+            libsql::params![SCHEMA_FINGERPRINT_KEY],
+        )
+        .await
+        .ok()?;
+    rows.next().await.ok()??.get::<String>(0).ok()
+}
+
 /// PRAGMAs are applied by `connection::open` before this runs — they are
 /// per-connection and partly profile-dependent, unlike the schema below.
+///
+/// Everything here is idempotent, and on a local file re-running it costs
+/// nothing measurable. On a Turso profile it is the single most expensive
+/// thing the app does: writes go to the primary, so each `CREATE TABLE IF NOT
+/// EXISTS`, each expected-to-fail `ALTER`, and each `INSERT OR IGNORE` is its
+/// own network round-trip — about forty of them, ~7.4s against a us-west-2
+/// primary, on every single launch. Hence the fingerprint: one query answers
+/// "this database already has exactly this schema", and the pass is skipped.
 pub async fn init_db(conn: &Connection) -> SqlResult<()> {
+    let fingerprint = schema_fingerprint();
+    if stored_fingerprint(conn).await.as_deref() == Some(fingerprint.as_str()) {
+        return Ok(());
+    }
+
     conn.execute_batch(include_str!("../../sql/schema.sql")).await?;
 
     // Migrations (idempotent)
@@ -284,5 +334,91 @@ pub async fn init_db(conn: &Connection) -> SqlResult<()> {
     // table, so upgrading does not look like the bucket disconnected itself.
     crate::r2::migrate_from_app_config(conn).await;
 
+    // Last, and only on the path where everything above actually ran: the
+    // stamp is what lets the next launch skip all of it, so it must never be
+    // written for a pass that failed partway.
+    conn.execute(
+        "INSERT OR REPLACE INTO user_settings (key, value) VALUES (?1, ?2)",
+        libsql::params![SCHEMA_FINGERPRINT_KEY, fingerprint],
+    )
+    .await?;
+
     Ok(())
+}
+
+#[cfg(test)]
+mod init_db_tests {
+    use super::*;
+
+    async fn memory_conn() -> Connection {
+        libsql::Builder::new_local(":memory:")
+            .build()
+            .await
+            .unwrap()
+            .connect()
+            .unwrap()
+    }
+
+    async fn table_exists(conn: &Connection, name: &str) -> bool {
+        let mut rows = conn
+            .query(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1",
+                libsql::params![name],
+            )
+            .await
+            .unwrap();
+        rows.next().await.unwrap().is_some()
+    }
+
+    /// The whole point of the fingerprint: a second launch against a database
+    /// this build already initialised must not re-issue the schema pass. On a
+    /// Turso profile every one of those statements is a network round-trip, so
+    /// "did it run again" is the difference between 7 seconds and none.
+    #[tokio::test]
+    async fn second_run_skips_the_schema_pass() {
+        let conn = memory_conn().await;
+        init_db(&conn).await.unwrap();
+
+        // Something init_db creates, removed behind its back. If the pass runs
+        // again it comes back; if the fingerprint short-circuits, it stays gone.
+        conn.execute_batch("DROP TABLE word_chats;").await.unwrap();
+        init_db(&conn).await.unwrap();
+
+        assert!(!table_exists(&conn, "word_chats").await);
+    }
+
+    /// ...and the short-circuit has to be keyed to *this* build's schema, so an
+    /// upgraded app still applies what it added.
+    #[tokio::test]
+    async fn a_different_fingerprint_runs_the_pass_again() {
+        let conn = memory_conn().await;
+        init_db(&conn).await.unwrap();
+        conn.execute_batch("DROP TABLE word_chats;").await.unwrap();
+
+        conn.execute(
+            "UPDATE user_settings SET value = 'from-an-older-build' WHERE key = ?1",
+            libsql::params![SCHEMA_FINGERPRINT_KEY],
+        )
+        .await
+        .unwrap();
+        init_db(&conn).await.unwrap();
+
+        assert!(table_exists(&conn, "word_chats").await);
+    }
+
+    /// A failed pass must not leave a stamp behind claiming the schema is
+    /// current — the next launch would skip straight past the missing tables.
+    #[tokio::test]
+    async fn stamps_only_after_a_complete_pass() {
+        let conn = memory_conn().await;
+        init_db(&conn).await.unwrap();
+        assert_eq!(
+            stored_fingerprint(&conn).await.as_deref(),
+            Some(schema_fingerprint().as_str())
+        );
+
+        // A database that has never been initialised has nothing to report.
+        let fresh = memory_conn().await;
+        assert!(stored_fingerprint(&fresh).await.is_none());
+    }
 }

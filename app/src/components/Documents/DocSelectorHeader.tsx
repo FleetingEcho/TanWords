@@ -1,3 +1,4 @@
+import type React from "react";
 import { ChevronsLeft, Download, FileInput, Filter, MoreHorizontal, Paperclip } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
@@ -11,10 +12,13 @@ import type { DocListState } from "./hooks/useDocList";
  * attachments manager, import/export menu). Split out of DocSelector purely
  * for size — it's a single self-contained block reading from useDocList. */
 export function DocSelectorHeader({
-  list, onCollapse, onNewDoc, onOpenImages, onImport, onExportAll,
+  list, onCollapse, onNewDoc, onOpenImages, onImport, onExportAll, sourceTabs,
 }: {
   list: DocListState;
   onCollapse?: () => void;
+  /** The database/local-folder switcher, which lives in this row rather than
+   *  in a bar of its own — see DocSourceTabs. */
+  sourceTabs?: React.ReactNode;
   onNewDoc: () => void;
   onOpenImages: () => void;
   onImport: () => void;
@@ -28,6 +32,7 @@ export function DocSelectorHeader({
 
   return (
     <div className="px-3 pt-4 pb-2 space-y-2 shrink-0">
+      {sourceTabs}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1">
           {onCollapse && (

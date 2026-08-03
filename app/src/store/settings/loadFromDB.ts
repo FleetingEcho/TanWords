@@ -2,7 +2,7 @@ import type { StoreApi } from "zustand";
 import type { SettingsState } from "./state";
 import {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR,
-  DEFAULT_LAYOUT_MODE,
+  DEFAULT_LAYOUT_MODE, AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES,
   DOCUMENT_TEXT_COLOR_RE, type Theme, type RssTabSelection,
   type LayoutMode,
 } from "./types";
@@ -45,6 +45,7 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       "lock_screen_image",
       "lock_screen_blur",
       "lock_screen_visible",
+      "auto_lock_minutes",
       "app_background_blur",
       "app_background_visible",
       "document_font_size",
@@ -126,6 +127,11 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       lockScreenImage: values.lock_screen_image || "",
       lockScreenBlur: Number(values.lock_screen_blur ?? 0),
       lockScreenVisible: (values.lock_screen_visible as unknown) !== false && values.lock_screen_visible !== "false",
+      // Anything not on the offered list (a hand-edited DB, a value from a
+      // future build) falls back to off rather than to a surprise interval.
+      autoLockMinutes: (AUTO_LOCK_CHOICES as readonly number[]).includes(Number(values.auto_lock_minutes))
+        ? Number(values.auto_lock_minutes)
+        : DEFAULT_AUTO_LOCK_MINUTES,
       appBackgroundBlur: values.app_background_blur !== undefined ? Number(values.app_background_blur) : 20,
       appBackgroundVisible: (values.app_background_visible as unknown) !== false && values.app_background_visible !== "false",
       documentFontSize: Math.min(24, Math.max(12, Number(values.document_font_size) || 16)),
