@@ -95,6 +95,7 @@ export const settings: Dict = {
     "settings.r2UsageHint": "超过 {limit} 后将禁止上传，留出余量以免超出免费额度。",
     "settings.r2UsageBlocked": "已超过 {limit}——请先删除一些文件才能继续上传。",
     "settings.r2Sub": "连接一个存储桶，把视频、音频这类大文件放到数据库之外。",
+    "settings.r2ScopeNote": "配置保存在当前连接的数据库里——切换数据库就会切换到那个库的存储桶设置。",
     "settings.r2ConnectedTo": "已连接到 {bucket}。{size} 及以上的上传会存入该桶。",
     "settings.r2AlwaysTitle": "所有文件都存到 R2",
     "settings.r2AlwaysOn": "已开启——无论多大都上传到 R2，不再存入数据库。",

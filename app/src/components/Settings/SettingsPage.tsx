@@ -17,6 +17,7 @@ export { SettingRow } from "./SettingsShared";
 const ALL_SECTIONS = ["general", "lock", "providers", "learning", "tts", "mcp", "documents", "data"] as const;
 type SectionId = (typeof ALL_SECTIONS)[number];
 const SECTIONS = ALL_SECTIONS.filter((id) => {
+  if (id === "lock") return hostCapabilities.appLock;
   if (id === "tts") return hostCapabilities.nativeTts;
   if (id === "mcp") return hostCapabilities.mcp;
   return true;
@@ -134,10 +135,10 @@ export function SettingsPage() {
 
           {/* Sits in General rather than Data: it gates the whole app, not a
             * database. */}
-          <section ref={(el) => { sectionRefs.current.lock = el; }} data-section="lock" className="scroll-mt-6">
+          {hostCapabilities.appLock && <section ref={(el) => { sectionRefs.current.lock = el; }} data-section="lock" className="scroll-mt-6">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">{t("settings.section.lock")}</p>
             <AppLockSection />
-          </section>
+          </section>}
 
           <section ref={(el) => { sectionRefs.current.providers = el; }} data-section="providers" className="scroll-mt-6">
             <ProviderSection />

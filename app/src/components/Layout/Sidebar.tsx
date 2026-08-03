@@ -71,14 +71,26 @@ function NavButton({
       variant="ghost"
       onClick={onClick}
       title={collapsed ? label : undefined}
-      className={`h-auto w-full flex items-center rounded-lg text-sm font-medium transition-colors duration-100 ${
+      aria-current={active ? "page" : undefined}
+      // The active item is marked, not filled. A dictionary marks the sense
+      // you are reading with a rule in the margin rather than by shading the
+      // whole line — and a rule leaves the label at full contrast, which a
+      // tinted block does not. The rule slides up from nothing on hover, so
+      // pointing at an item already shows where it would take you.
+      className={`group relative h-auto w-full flex items-center rounded-lg text-sm font-medium transition-colors duration-100 ${
         collapsed ? "justify-center px-0 py-[9px]" : "gap-2.5 px-3 py-[7px]"
       } ${
         active
-          ? "bg-[hsl(var(--sidebar-active-bg))] text-[hsl(var(--sidebar-active-fg))] hover:bg-[hsl(var(--sidebar-active-bg))]"
-          : "text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--sidebar-foreground))]"
+          ? "text-[hsl(var(--sidebar-active-fg))]"
+          : "text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--muted))]"
       }`}
     >
+      <span
+        aria-hidden="true"
+        className={`absolute left-0 w-[2px] rounded-full bg-primary transition-all duration-200 motion-reduce:transition-none ${
+          active ? "inset-y-1 opacity-100" : "inset-y-1/2 opacity-0 group-hover:inset-y-2 group-hover:opacity-40"
+        }`}
+      />
       <span className="relative shrink-0">
         <Icon className="w-[18px] h-[18px]" />
         {collapsed && badge && <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-emerald-500" />}
@@ -136,10 +148,18 @@ export function MainLayout({
           collapsed ? "w-[60px]" : "w-[210px]"
         }`}
       >
-        <div className={`app-drag-region flex items-center pt-5 pb-2 ${collapsed ? "px-2 justify-center" : "px-4 justify-between"}`}>
+        <div className={`app-drag-region flex items-center pt-5 pb-3 ${collapsed ? "px-2 justify-center" : "px-4 justify-between"}`}>
+          {/* The product's name, set the way the app sets a headword — rather
+            * than the word "NAVIGATION", which labels something already
+            * obvious from the list underneath it. Quiet enough to stay a
+            * corner mark: the sign-in and lock screens are where this
+            * treatment is allowed to be loud. */}
           {!collapsed && (
-            <p className="text-[10px] font-semibold tracking-widest uppercase text-[hsl(var(--sidebar-muted))]">
-              {t("nav.workspace")}
+            <p className="flex items-baseline gap-1.5 leading-none">
+              <span className="font-serif text-[15px] font-bold tracking-tight text-[hsl(var(--sidebar-foreground))]">
+                TanWords
+              </span>
+              <span className="font-serif text-[11px] italic text-primary/70">n.</span>
             </p>
           )}
           <Button

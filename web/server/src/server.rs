@@ -32,6 +32,7 @@ use std::sync::Arc;
 use axum::body::{Body, Bytes};
 use axum::extract::multipart::MultipartError;
 use axum::extract::{ConnectInfo, DefaultBodyLimit, Multipart, Path, Request, State};
+use axum::response::Redirect;
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
@@ -367,6 +368,13 @@ async fn asset_handler(
                 .get("mime_type")
                 .and_then(Value::as_str)
                 .unwrap_or("application/octet-stream");
+            // Bucket-backed assets carry a URL instead of bytes. Without this
+            // the base64 field is an empty string, which decodes happily to
+            // zero bytes — the browser would get a 200 with an empty file and
+            // no hint that anything went wrong.
+            if let Some(remote) = value.get("remote_url").and_then(Value::as_str) {
+                return Redirect::temporary(remote).into_response();
+            }
             let Some(data_b64) = value.get("data_base64").and_then(Value::as_str) else {
                 return json_error(StatusCode::INTERNAL_SERVER_ERROR, "malformed asset row");
             };

@@ -24,11 +24,14 @@ export async function login(email: string, password: string): Promise<void> {
   setWebToken(token);
 }
 
+/** Creates the account and stops there. The server hands back a session token,
+ *  but signing straight in on the strength of a form the user just filled in
+ *  skips the one moment that proves they can actually get back in — they type
+ *  the password once and are inside, so a typo in it only surfaces on the next
+ *  launch. Registration returns them to the sign-in form instead. */
 export async function register(email: string, password: string, inviteKey: string): Promise<void> {
   const response = await postJson("/api/auth/register", { email, password, inviteKey });
   if (!response.ok) await throwServerError(response);
-  const { token } = (await response.json()) as { token: string };
-  setWebToken(token);
 }
 
 export async function resetPassword(

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { invoke } from "@/ipc/backend";
+import { hostCapabilities } from "@/platform";
 
 /** Screen-lock state for the whole app.
  *
@@ -24,6 +25,10 @@ export const useAppLockStore = create<AppLockState>((set, get) => ({
   locked: false,
 
   refresh: async () => {
+    if (!hostCapabilities.appLock) {
+      set({ enabled: false, locked: false });
+      return;
+    }
     try {
       const status = await invoke<{ enabled: boolean }>("app_lock_status");
       set({

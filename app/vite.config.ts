@@ -12,6 +12,13 @@ import electron from "vite-plugin-electron";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
 
+/** Web-only dev run: `bun run dev:web` sets this so the config skips Electron
+ *  entirely and proxies the API to a locally running tanwords-web-server.
+ *  Without it, editing the renderer for the web build meant a full
+ *  `bun run build` plus a server restart for every change. */
+const WEB_DEV = process.env.TANWORDS_WEB_DEV === "1";
+const WEB_SERVER = process.env.TANWORDS_WEB_SERVER || "http://127.0.0.1:8740";
+
 export default defineConfig({
   root: ".",
   // Electron loads the renderer from a custom app:// scheme (plan §9.1), so
@@ -20,7 +27,7 @@ export default defineConfig({
   base: "./",
   plugins: [
     react(),
-    electron([
+    ...(WEB_DEV ? [] : [electron([
       {
         entry: path.resolve(import.meta.dirname, "electron/main/index.ts"),
         // Default argv is ['.', '--no-sandbox']; drop the flag so a dev run
@@ -65,7 +72,7 @@ export default defineConfig({
           },
         },
       },
-    ]),
+    ])]),
   ],
   resolve: {
     alias: { "@": path.resolve(import.meta.dirname, "./src") },
@@ -81,5 +88,16 @@ export default defineConfig({
   server: {
     port: 5420,
     strictPort: true,
+    // The web renderer talks to its server over same-origin relative paths
+    // (`/invoke`, `/api/…`, `/events`), so proxying those is all it takes for
+    // a Vite dev server to stand in for the built-and-embedded SPA.
+    proxy: WEB_DEV
+      ? {
+          "/invoke": { target: WEB_SERVER, changeOrigin: true },
+          "/api": { target: WEB_SERVER, changeOrigin: true },
+          // SSE: must not be buffered, and the connection stays open.
+          "/events": { target: WEB_SERVER, changeOrigin: true, ws: false },
+        }
+      : undefined,
   },
 });

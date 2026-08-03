@@ -104,6 +104,7 @@ export function R2Section() {
             {configured ? <Cloud className="h-4 w-4 text-primary" /> : <CloudOff className="h-4 w-4 text-muted-foreground" />}
             {t("settings.r2Title")}
           </p>
+          <p className="mt-1 text-[11px] text-muted-foreground/75">{t("settings.r2ScopeNote")}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {configured
               ? status?.always_upload
