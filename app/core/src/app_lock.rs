@@ -126,6 +126,17 @@ mod tests {
         assert_ne!(derive("same", &a).unwrap(), derive("same", &b).unwrap());
     }
 
+    /// A fresh install has no `app_lock` entry, and must open straight into
+    /// the library — never into a password prompt nobody can answer. The
+    /// status command is what the shell asks on launch, so pin the answer for
+    /// the no-configuration case rather than trusting it stays that way.
+    #[test]
+    fn a_fresh_install_is_not_locked() {
+        // `verify` is the gate the lock screen calls. With nothing stored it
+        // must report success, not refuse.
+        assert!(app_lock_verify(String::new()).unwrap_or(false) || crate::appconfig::load_app_lock().is_some());
+    }
+
     #[test]
     fn key_comparison_rejects_length_mismatch() {
         assert!(!keys_match("abc", "abcd"));

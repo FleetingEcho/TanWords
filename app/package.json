@@ -16,7 +16,7 @@
     "test:run": "vitest run",
     "package": "bun run core:build && bun run build && electron-builder",
     "package:linux": "bun run package -- --linux",
-    "package:mac": "bun run package -- --mac",
+    "package:mac": "bun run package -- --mac && bash scripts/verify-release-data.sh",
     "package:win": "bun run package -- --win"
   },
   "dependencies": {
