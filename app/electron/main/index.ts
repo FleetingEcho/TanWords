@@ -26,6 +26,14 @@ import { abortAllFor } from "./http";
 // shipped yet, so nothing is orphaned by fixing it here.
 app.setName("tanwords");
 
+// On affected Windows GPU/driver combinations Chromium can lose its shared
+// image mailbox while the renderer itself keeps running. The result is a live
+// app (backend calls and accessibility tree included) whose window presents
+// only its dark background. TanWords is predominantly text UI, so reliable
+// software compositing is preferable to a faster but intermittently black
+// launch. Electron requires this call before app readiness/window creation.
+if (process.platform === "win32") app.disableHardwareAcceleration();
+
 // Linux dev only: GNOME-style docks resolve a running window's icon through a
 // .desktop file whose StartupWMClass matches the window class — an unpackaged
 // Electron run has no desktop file, so `bun run dev` shows the generic gear no
@@ -191,11 +199,6 @@ function createWindow() {
   win.once("ready-to-show", () => {
     if (win.isDestroyed()) return;
     win.show();
-    // The renderer cannot work out this moment for itself: a `show: false`
-    // window still reports `document.visibilityState === "visible"` and runs
-    // its timers unthrottled, so anything the splash screen timed from its own
-    // mount would have played out behind a window nobody could see yet.
-    broadcastEvent("window-shown", null);
   });
 
   // The splash holds until the backend answers, so the app underneath is never
