@@ -12,7 +12,8 @@ export type ProviderStatus = {
   ready: boolean;
   /** An AI call made right now would find a provider with a key. */
   connected: boolean;
-  /** Every registered provider that has a key, for model pickers. */
+  /** Every registered provider that can attempt calls (keyed, or a keyless
+   * self-hosted server), for model pickers. */
   available: AIProvider[];
 };
 
@@ -30,6 +31,6 @@ export function useProviderStatus(): ProviderStatus {
   return useMemo(() => ({
     ready: areProvidersReady(),
     connected: Boolean(findBestProvider()),
-    available: getAllProviders().filter((provider) => provider.apiKey),
+    available: getAllProviders().filter((provider) => provider.hasCredentials),
   }), [version, defaultProvider]);
 }

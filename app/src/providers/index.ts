@@ -65,14 +65,18 @@ export function registerCustomProvider(
   name: string,
   apiBase: string,
   apiKey: string,
-  modelId: string
+  modelId: string,
+  requiresKey = true,
 ) {
   if (isDesktopHost) {
-    providers.set(id, new CustomProvider(id, name, apiBase, apiKey, modelId));
+    providers.set(id, new CustomProvider(id, name, apiBase, apiKey, modelId, requiresKey));
   } else {
     // Web keys never enter the browser: the server resolves the stored
-    // credential for this provider id at /api/ai-proxy/:id.
-    providers.set(id, new CustomProvider(id, name, `/api/ai-proxy/${encodeURIComponent(id)}`, "", modelId));
+    // credential for this provider id at /api/ai-proxy/:id, so a browser-side
+    // key is never required. (Until `requiresKey` existed this silently made
+    // every custom provider unusable on web — the registry dropped nothing,
+    // but every `.apiKey`-gated picker saw an empty key and hid them all.)
+    providers.set(id, new CustomProvider(id, name, `/api/ai-proxy/${encodeURIComponent(id)}`, "", modelId, false));
   }
   notify();
 }

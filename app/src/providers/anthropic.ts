@@ -13,6 +13,10 @@ export class AnthropicProvider implements AIProvider {
     public modelId: string = "claude-haiku-4-5"
   ) {}
 
+  get hasCredentials(): boolean {
+    return Boolean(this.apiKey);
+  }
+
   async *translate(params: TranslateParams): AsyncGenerator<string> {
     const systemPrompt = buildSystemPrompt(params.mode, { preserveMarkers: params.preserveMarkers });
     const userPrompt = params.sourceLang

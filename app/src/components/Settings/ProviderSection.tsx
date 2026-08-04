@@ -127,10 +127,17 @@ export function ProviderSection() {
       // Repair a default that points at a provider with no key — otherwise
       // every AI call silently falls back to whichever one happens to work.
       const currentDefault = useSettingsStore.getState().defaultAiProvider;
-      const hasConfiguredKey = (config: ProviderConfig) => isDesktopHost ? Boolean(config.apiKey) : config.hasKey;
-      if (!hasConfiguredKey(loadedConfigs[currentDefault])) {
-        const firstWithKey = Object.values(loadedConfigs).find(hasConfiguredKey)?.id;
-        if (firstWithKey) useSettingsStore.getState().setDefaultAiProvider(firstWithKey);
+      // A custom provider counts as configured even keyless: it's typically a
+      // self-hosted server that takes keyless requests. Treating it as empty
+      // here would "repair" a freshly added Ollama away from the default slot.
+      const isConfigured = (config: ProviderConfig | undefined): boolean => {
+        if (!config) return false;
+        if (config.kind === "custom") return true;
+        return isDesktopHost ? Boolean(config.apiKey) : config.hasKey;
+      };
+      if (!isConfigured(loadedConfigs[currentDefault])) {
+        const firstConfigured = Object.values(loadedConfigs).find(isConfigured)?.id;
+        if (firstConfigured) useSettingsStore.getState().setDefaultAiProvider(firstConfigured);
       }
 
       setLoaded(true);
@@ -157,8 +164,13 @@ export function ProviderSection() {
       if (config.kind === "builtin") continue;
       if (!isDesktopHost) {
         registerCustomProvider(config.id, config.name, config.apiBase, "", config.modelId);
-      } else if (config.apiKey) {
-        registerCustomProvider(config.id, config.name, config.apiBase, config.apiKey, config.modelId);
+      } else if (config.kind === "custom" || config.apiKey) {
+        // Customs register keyless (self-hosted servers typically need no
+        // key) — without this, adding an Ollama instance changed nothing
+        // anywhere in the app, and even a restart couldn't help because
+        // initProviders applied the same key requirement. Presets remain
+        // key-gated: they're hosted APIs with nothing to call keyless.
+        registerCustomProvider(config.id, config.name, config.apiBase, config.apiKey, config.modelId, config.kind === "preset");
       } else {
         removeProvider(config.id);
       }
@@ -299,8 +311,9 @@ export function ProviderSection() {
     setShowAddCustom(false);
     setExpandedId(id);
     // A provider you just took the trouble to add is almost certainly the one
-    // you want used — but only if it can actually answer.
-    if (newProvider.apiKey) useSettingsStore.getState().setDefaultAiProvider(id);
+    // you want used. Keyed or keyless — a self-hosted server needs no key —
+    // so the default no longer waits for a key to be present.
+    useSettingsStore.getState().setDefaultAiProvider(id);
   };
 
   const removeCustom = async (id: string) => {

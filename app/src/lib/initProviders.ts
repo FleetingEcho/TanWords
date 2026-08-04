@@ -42,8 +42,14 @@ export async function initProviders(): Promise<void> {
     });
 
     for (const config of Object.values(configs)) {
-      if (config.kind === "builtin" || !config.apiKey) continue;
-      registerCustomProvider(config.id, config.name, config.apiBase, config.apiKey, config.modelId);
+      // Presets are hosted APIs — nothing to call until a key is saved, so
+      // they stay out of the registry. Customs are usually self-hosted
+      // (Ollama, LM Studio) and take keyless requests: register them whether
+      // or not they carry a key, or they'd stay invisible everywhere despite
+      // being fully configured.
+      if (config.kind === "builtin") continue;
+      if (config.kind === "preset" && !config.apiKey) continue;
+      registerCustomProvider(config.id, config.name, config.apiBase, config.apiKey, config.modelId, config.kind === "preset");
     }
   } catch (error) {
     // Startup must not hang on a provider problem — surface it and carry on
