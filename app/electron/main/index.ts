@@ -297,6 +297,16 @@ function createWindow() {
 
   mainWindow = win;
   tray.setWindow(win);
+  // Parity with the Tauri-era tray (core's CloseRequested handler): clicking
+  // the title-bar X hides the app into the tray, it does not quit — playback
+  // and the tray menu keep working behind it. Only the tray's Quit (or an
+  // updater install), which both come through with `quitting` already set,
+  // lets a close actually destroy the window.
+  win.on("close", (event) => {
+    if (quitting) return;
+    event.preventDefault();
+    win.hide();
+  });
   win.on("closed", () => {
     abortAllFor(contentsId);
     mainWindow = null;
@@ -316,10 +326,10 @@ if (gotLock) {
       win.focus();
       return;
     }
-    // No window to focus. Either the second launch landed while the first was
-    // still starting up (createWindow hasn't run yet), or this is macOS, where
-    // the app deliberately outlives its last window. Only build one once the
-    // app is ready — before that, whenReady()'s own createWindow() will.
+    // No window to focus: the second launch landed while the first was still
+    // starting up (createWindow hasn't run yet), or the window was torn down
+    // mid-quit. Only build one once the app is ready — before that,
+    // whenReady()'s own createWindow() will.
     if (app.isReady()) createWindow();
   };
 
@@ -372,12 +382,20 @@ if (gotLock) {
     createWindow();
 
     app.on("activate", () => {
+      // Close-means-hide leaves the window alive but hidden, so a macOS dock
+      // click has an existing window to resurface — not zero windows to
+      // recreate. The recreate branch stays for a genuinely destroyed window.
+      const win = mainWindow;
+      if (win && !win.isDestroyed()) {
+        win.show();
+        return;
+      }
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
   });
 
-  // Standard Electron boilerplate. This only fires once the user actually
-  // lets the window close.
+  // This only fires during a real quit now: close-means-hide keeps the
+  // window alive, so every window being gone implies `quitting` was set.
   app.on("window-all-closed", () => {
     if (process.platform !== "darwin") app.quit();
   });
