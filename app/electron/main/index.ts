@@ -206,6 +206,17 @@ function createWindow() {
     win.show();
   });
 
+  // A renderer that exits after ready-to-show leaves the native window alive
+  // and indistinguishable from a slow startup: only backgroundColor remains.
+  // Keep the Chromium reason in release logs so this cannot fail silently.
+  win.webContents.on("render-process-gone", (_event, details) => {
+    console.error("[renderer] process gone", details);
+  });
+  win.webContents.on("did-fail-load", (_event, code, description, url, isMainFrame) => {
+    if (!isMainFrame) return;
+    console.error("[renderer] main frame failed to load", { code, description, url });
+  });
+
   // The splash holds until the backend answers, so the app underneath is never
   // uncovered before it can serve a query. The renderer waits on that by
   // *asking* — `tanwords:backend`, which it already invokes for the port and
