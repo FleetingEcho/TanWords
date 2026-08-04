@@ -15,8 +15,11 @@ productName: TanWords
 # UI; removing every language except English and Simplified Chinese is the
 # largest single installer-size lever left after node_modules exclusion.
 electronLanguages:
-  - en
-  - zh_CN
+  # These must match Electron's locale filenames (without .pak). Short names
+  # such as "en" do not match electron-builder's filter and leave the packaged
+  # locales directory empty, which makes Chromium's renderer crash on Windows.
+  - en-US
+  - zh-CN
 
 # ---------------------------------------------------------------------------
 # Update feed. Without this block electron-builder emits no `app-update.yml`
