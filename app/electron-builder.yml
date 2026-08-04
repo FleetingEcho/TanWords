@@ -185,8 +185,33 @@ win:
     - target: nsis
       arch: [x64]
   icon: core/icons/icon.ico
+  # Windows needs its own copy of the extraResources list: cargo emits
+  # `tanwords-core.exe` here, and sidecar.ts's resolveBinaryPath() looks the
+  # binary up by that same name on win32 — the extension-less root entry
+  # neither exists as a source nor lands where the app would find it. A
+  # platform block's `extraResources` replaces the root list outright rather
+  # than adding to it, so the icons have to be repeated verbatim.
+  extraResources:
+    - from: core/target/release/tanwords-core.exe
+      to: core/tanwords-core.exe
+    - from: core/icons/icon.png
+      to: icon.png
+    - from: core/icons/tray-template.png
+      to: tray-template.png
+    - from: core/icons/tray-template@2x.png
+      to: tray-template@2x.png
+    - from: core/icons/tray-template-white.png
+      to: tray-template-white.png
+    - from: core/icons/tray-template-white@2x.png
+      to: tray-template-white@2x.png
 
 nsis:
+  # Default is "${productName} Setup ${version}.${ext}", i.e. a name with
+  # spaces — but the latest.yml electron-updater reads points at
+  # `TanWords-Setup-<version>.exe`, and GitHub rewrites spaces in uploaded
+  # asset names too. Emitting the dashed name directly keeps the built file,
+  # the feed and the published asset spelled the same way.
+  artifactName: ${productName}-Setup-${version}.${ext}
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true

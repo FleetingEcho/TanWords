@@ -10,6 +10,8 @@ node_modules/
 # Build output
 dist/
 core/target/
+# Electron runtime unpacked by scripts/build-windows.ps1 (see the comment there)
+.electron-dist/
 
 # IDE
 .vscode/
