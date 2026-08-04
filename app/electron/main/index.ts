@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, shell } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, session, shell } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -11,6 +11,7 @@ import { TrayManager, trayIconPath } from "./tray";
 import { wireWindowDevTools } from "./devtools";
 import { rememberedWindowBackground } from "./windowBackground";
 import { abortAllFor } from "./http";
+import { registerYouTubeEmbedIdentity } from "./youtubeEmbed";
 
 // Pin the app name before anything reads a path from it. `requestSingleInstance
 // Lock()` is keyed on `userData`, which Electron derives from `app.getName()` —
@@ -340,6 +341,7 @@ if (gotLock) {
     }
 
     registerAppProtocolHandler();
+    registerYouTubeEmbedIdentity(session.defaultSession);
 
     sidecar.setEventSink(broadcastEvent);
     sidecar.start();
