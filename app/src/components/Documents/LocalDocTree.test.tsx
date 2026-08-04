@@ -37,6 +37,15 @@ describe("LocalDocTree", () => {
         onExportPdf={noop}
         onMove={noop}
         onCreateInFolder={noop}
+        onCreateFolder={noop}
+        onRenameFolder={noop}
+        onDeleteFolder={noop}
+        selected={new Set()}
+        selectionMode={false}
+        onToggleSelect={noop}
+        onToggleSelectionMode={noop}
+        onSelectFolder={noop}
+        onImportFolder={noop}
       />,
     );
 

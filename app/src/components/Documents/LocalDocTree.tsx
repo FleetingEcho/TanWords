@@ -3,7 +3,7 @@ import { LocalDocItem } from "@/lib/localDocs";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Copy, Download, FilePlus2, FileText, MoreHorizontal, Trash2, FileType2, FileOutput, Loader2 } from "lucide-react";
+import { Copy, Download, FilePlus2, FileText, MoreHorizontal, Trash2, FileType2, FileOutput, Loader2, Check, CheckSquare, FolderInput, FolderPlus, Pencil } from "lucide-react";
 import { subscribeToExportBusy } from "@/lib/documentExport";
 
 interface Props {
@@ -19,6 +19,24 @@ interface Props {
   onExportPdf: (relPath: string) => void;
   onMove: (relPath: string, targetDir: string) => void;
   onCreateInFolder: (directory: string) => void;
+  /** True while the list is in multi-select mode: only then do rows show a
+   *  checkbox, and only then does a plain click tick instead of opening. */
+  selectionMode: boolean;
+  /** Double-click on a row: enters multi-select mode (selecting that row), or
+   *  leaves it if already in. */
+  onToggleSelectionMode: (relPath: string) => void;
+  /** Relative paths currently ticked for a batch action. */
+  selected: ReadonlySet<string>;
+  /** Toggles one path; `range` is a shift-click asking for everything between
+   *  the previous anchor and this row. */
+  onToggleSelect: (relPath: string, range: boolean) => void;
+  /** Ticks (or unticks) every file under a folder in one go. */
+  onSelectFolder: (relPaths: string[], select: boolean) => void;
+  /** Imports a whole folder subtree into the library. */
+  onImportFolder: (directory: string) => void;
+  onCreateFolder: (parent: string) => void;
+  onRenameFolder: (path: string) => void;
+  onDeleteFolder: (path: string) => void;
 }
 
 interface DirNode {
@@ -44,11 +62,29 @@ function buildTree(files: LocalDocItem[]): DirNode {
   return rootNode;
 }
 
-function FileRow({ file, active, depth, rowRef, onOpen, onDelete, onImport, onExport, onExportHtml, onExportPdf }: {
+/** The order rows actually appear in: folders first (alphabetical, depth
+ *  first), then the files sitting directly in that folder. Exported because
+ *  shift-click ranges are resolved by the selection owner (LocalDocsView),
+ *  which would otherwise have to guess at the layout this file decides. */
+export function localDocRowOrder(files: LocalDocItem[]): string[] {
+  const walk = (node: DirNode): string[] => [
+    ...[...node.dirs.keys()]
+      .sort((a, b) => a.localeCompare(b))
+      .flatMap((name) => walk(node.dirs.get(name)!)),
+    ...node.files.map((f) => f.rel_path),
+  ];
+  return walk(buildTree(files));
+}
+
+function FileRow({ file, active, depth, rowRef, selected, selectionMode, onToggleSelect, onToggleSelectionMode, onOpen, onDelete, onImport, onExport, onExportHtml, onExportPdf }: {
   file: LocalDocItem;
   active: boolean;
   depth: number;
   rowRef?: React.Ref<HTMLDivElement>;
+  selected: boolean;
+  selectionMode: boolean;
+  onToggleSelect: (relPath: string, range: boolean) => void;
+  onToggleSelectionMode: (relPath: string) => void;
   onOpen: (relPath: string) => void;
   onDelete: (relPath: string) => void;
   onImport: (relPath: string) => void;
@@ -64,7 +100,27 @@ function FileRow({ file, active, depth, rowRef, onOpen, onDelete, onImport, onEx
     <div
       ref={rowRef}
       draggable
-      onClick={() => onOpen(file.rel_path)}
+      onClick={(event) => {
+        // Cmd/Ctrl or shift turns a click into a selection gesture rather than
+        // opening the file — the same bargain Finder and VS Code strike. Once
+        // in multi-select mode a plain click does the same, which is what makes
+        // it a mode rather than a row of checkboxes.
+        if (event.metaKey || event.ctrlKey || event.shiftKey || selectionMode) {
+          event.preventDefault();
+          onToggleSelect(file.rel_path, event.shiftKey);
+          return;
+        }
+        onOpen(file.rel_path);
+      }}
+      // Deliberately no click-delay to tell single from double: opening a file
+      // is the dominant action and must stay instant, so a double-click opens
+      // it *and* enters multi-select. Entering the mode from a file you just
+      // opened is coherent; a 200ms lag on every open would not be.
+      onDoubleClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onToggleSelectionMode(file.rel_path);
+      }}
       onDragStart={(event) => {
         event.dataTransfer.effectAllowed = "move";
         event.dataTransfer.setData("application/x-tanwords-localdoc", file.rel_path);
@@ -72,33 +128,51 @@ function FileRow({ file, active, depth, rowRef, onOpen, onDelete, onImport, onEx
       }}
       title={file.rel_path}
       style={{ paddingLeft: `${8 + depth * 10}px` }}
-      className={`group flex items-center rounded-lg border pr-2 cursor-pointer active:cursor-grabbing transition-colors ${
-        depth === 0 ? "min-h-[52px] gap-2 py-1.5" : "min-h-10 gap-1.5 py-1"
-      } ${
-        active
+      // One density at every depth: a file is a file, and a root-level row twice
+      // the height of the same file one folder down made the tree look like two
+      // different lists stacked.
+      className={`group flex min-h-10 items-center gap-1.5 rounded-lg border py-1 pr-2 cursor-pointer active:cursor-grabbing transition-colors ${
+        selected
+          ? "border-primary/40 bg-primary/[0.07] text-foreground"
+          : active
           ? "border-primary/25 bg-primary/10 text-foreground shadow-xs shadow-primary/5"
           : "border-transparent text-foreground/90 hover:bg-muted/60"
       }`}
     >
-      <span className={`flex shrink-0 items-center justify-center rounded-md ${
-        depth === 0 ? "h-8 w-8" : "h-7 w-7"
-      } ${
+      {selectionMode && (
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={selected}
+          aria-label={t("doc.select")}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleSelect(file.rel_path, event.shiftKey);
+          }}
+          className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
+            selected
+              ? "border-primary bg-primary text-primary-foreground"
+              : "border-border/80 bg-transparent hover:border-primary/60"
+          }`}
+        >
+          {selected && <Check className="h-3 w-3" strokeWidth={3} />}
+        </button>
+      )}
+      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
         active ? "bg-primary/15 text-primary" : "bg-muted/70 text-muted-foreground"
       }`}>
-        <FileText className={depth === 0 ? "h-4 w-4" : "h-3.5 w-3.5"} strokeWidth={1.8} />
+        <FileText className="h-3.5 w-3.5" strokeWidth={1.8} />
       </span>
       <div className="min-w-0 flex-1">
-        <p className={`truncate font-semibold ${depth === 0 ? "text-[13px] leading-5" : "text-xs leading-4"}`}>
+        <p className="truncate text-xs font-semibold leading-4">
           {file.name.replace(/\.(md|markdown)$/i, "")}
         </p>
       </div>
       {/* Fixed-height slot so swapping date ↔ actions never changes row height */}
       <div className="relative shrink-0 h-5 flex items-center">
-        {depth <= 1 && (
-          <span className="text-[10px] tabular-nums text-muted-foreground/50 group-hover:hidden">
-            {new Date(file.modified_ms).toLocaleDateString()}
-          </span>
-        )}
+        <span className="text-[10px] tabular-nums text-muted-foreground/50 group-hover:hidden">
+          {new Date(file.modified_ms).toLocaleDateString()}
+        </span>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" onClick={(event) => event.stopPropagation()} className="absolute right-0 top-0 hidden group-hover:flex data-[state=open]:flex h-5 w-5 rounded bg-muted text-muted-foreground" aria-label={t("doc.more")}>
@@ -128,10 +202,13 @@ function FileRow({ file, active, depth, rowRef, onOpen, onDelete, onImport, onEx
   );
 }
 
-export function LocalDocTree({ files, activePath, flat, onOpen, onDelete, onImport, onExport, onExportHtml, onExportPdf, onMove, onCreateInFolder }: Props) {
+export function LocalDocTree({ files, activePath, flat, onOpen, onDelete, onImport, onExport, onExportHtml, onExportPdf, onMove, onCreateInFolder, selected, selectionMode, onToggleSelect, onToggleSelectionMode, onSelectFolder, onImportFolder, onCreateFolder, onRenameFolder, onDeleteFolder }: Props) {
   const t = useT();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  /** Which folder's menu is open. Held here so a right-click anywhere on the
+   *  row can raise the same menu the "..." button does. */
+  const [menuFor, setMenuFor] = useState<string | null>(null);
   const activeRowRef = useRef<HTMLDivElement>(null);
   const tree = useMemo(() => buildTree(files), [files]);
   const activeParentPath = activePath?.includes("/")
@@ -145,14 +222,21 @@ export function LocalDocTree({ files, activePath, flat, onOpen, onDelete, onImpo
     activeRowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, []);
 
+  const rowProps = (f: LocalDocItem, depth: number) => ({
+    key: f.rel_path,
+    file: f,
+    active: activePath === f.rel_path,
+    depth,
+    rowRef: activePath === f.rel_path ? activeRowRef : undefined,
+    selected: selected.has(f.rel_path),
+    selectionMode,
+    onToggleSelect,
+    onToggleSelectionMode,
+    onOpen, onDelete, onImport, onExport, onExportHtml, onExportPdf,
+  });
+
   if (flat) {
-    return (
-      <>
-        {files.map((f) => (
-          <FileRow key={f.rel_path} file={f} active={activePath === f.rel_path} depth={0} rowRef={activePath === f.rel_path ? activeRowRef : undefined} onOpen={onOpen} onDelete={onDelete} onImport={onImport} onExport={onExport} onExportHtml={onExportHtml} onExportPdf={onExportPdf} />
-        ))}
-      </>
-    );
+    return <>{files.map((f) => <FileRow {...rowProps(f, 0)} />)}</>;
   }
 
   const toggle = (path: string) => {
@@ -176,6 +260,10 @@ export function LocalDocTree({ files, activePath, flat, onOpen, onDelete, onImpo
     onMove(relPath, targetDir);
   };
 
+  /** Every file at or below `directory`, in vault order. */
+  const filesUnder = (directory: string) =>
+    files.filter((f) => f.rel_path.startsWith(`${directory}/`)).map((f) => f.rel_path);
+
   const renderDir = (node: DirNode, path: string, depth: number): React.ReactNode => {
     const dirNames = [...node.dirs.keys()].sort((a, b) => a.localeCompare(b));
     return (
@@ -196,6 +284,11 @@ export function LocalDocTree({ files, activePath, flat, onOpen, onDelete, onImpo
             <React.Fragment key={childPath}>
               <div
                 onClick={() => toggle(childPath)}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setMenuFor(childPath);
+                }}
                 onDragOver={(event) => {
                   if (!event.dataTransfer.types.includes("application/x-tanwords-localdoc")) return;
                   event.preventDefault();
@@ -228,7 +321,7 @@ export function LocalDocTree({ files, activePath, flat, onOpen, onDelete, onImpo
                     </React.Fragment>
                   ))}
                 </span>
-                <DropdownMenu>
+                <DropdownMenu open={menuFor === childPath} onOpenChange={(open) => setMenuFor(open ? childPath : null)}>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" onClick={(event) => event.stopPropagation()} className="ml-auto h-5 w-5 opacity-0 group-hover/folder:opacity-100 data-[state=open]:opacity-100" aria-label={t("doc.more")}>
                       <MoreHorizontal className="h-3.5 w-3.5" />
@@ -237,6 +330,27 @@ export function LocalDocTree({ files, activePath, flat, onOpen, onDelete, onImpo
                   <DropdownMenuContent align="end" onClick={(event) => event.stopPropagation()}>
                     <DropdownMenuItem onSelect={() => onCreateInFolder(childPath)}>
                       <FilePlus2 className="h-3.5 w-3.5" /> {t("doc.newFileHere")}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => onCreateFolder(childPath)}>
+                      <FolderPlus className="h-3.5 w-3.5" /> {t("doc.newSubfolder")}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => onRenameFolder(childPath)}>
+                      <Pencil className="h-3.5 w-3.5" /> {t("doc.renameFolder")}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => onImportFolder(childPath)}>
+                      <FolderInput className="h-3.5 w-3.5" /> {t("doc.importFolderToLibrary")}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => {
+                      const paths = filesUnder(childPath);
+                      onSelectFolder(paths, !paths.every((p) => selected.has(p)));
+                    }}>
+                      <CheckSquare className="h-3.5 w-3.5" /> {t("doc.selectFolderFiles")}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={() => onDeleteFolder(childPath)}
+                      className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> {t("doc.deleteFolder")}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -256,9 +370,7 @@ export function LocalDocTree({ files, activePath, flat, onOpen, onDelete, onImpo
             </React.Fragment>
           );
         })}
-        {node.files.map((f) => (
-          <FileRow key={f.rel_path} file={f} active={activePath === f.rel_path} depth={depth} rowRef={activePath === f.rel_path ? activeRowRef : undefined} onOpen={onOpen} onDelete={onDelete} onImport={onImport} onExport={onExport} onExportHtml={onExportHtml} onExportPdf={onExportPdf} />
-        ))}
+        {node.files.map((f) => <FileRow {...rowProps(f, depth)} />)}
       </React.Fragment>
     );
   };

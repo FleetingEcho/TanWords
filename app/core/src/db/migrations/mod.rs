@@ -22,7 +22,7 @@ use v006_010::{MIGRATION_06, MIGRATION_07, MIGRATION_08, MIGRATION_09, MIGRATION
 use v011_015::{MIGRATION_11, MIGRATION_12, MIGRATION_13, MIGRATION_14, MIGRATION_15};
 use v016_021::{MIGRATION_16, MIGRATION_17, MIGRATION_18, MIGRATION_19, MIGRATION_20, MIGRATION_21};
 use v022_026::{MIGRATION_22, MIGRATION_23, MIGRATION_24, MIGRATION_25, MIGRATION_26};
-use v027_030::MIGRATION_27;
+use v027_030::{MIGRATION_27, MIGRATION_28, MIGRATION_29};
 
 const MIGRATIONS: &[Migration] = &[
     MIGRATION_01,
@@ -52,6 +52,8 @@ const MIGRATIONS: &[Migration] = &[
     MIGRATION_25,
     MIGRATION_26,
     MIGRATION_27,
+    MIGRATION_28,
+    MIGRATION_29,
 ];
 
 /// The version a fully-migrated database lands on. Exposed so tests can assert
@@ -148,6 +150,10 @@ mod tests {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 article_id INTEGER NOT NULL,
                 kind TEXT NOT NULL DEFAULT 'word'
+             );
+             CREATE TABLE IF NOT EXISTS documents (
+                id    INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL DEFAULT 'Untitled'
              );
              CREATE TABLE IF NOT EXISTS patterns (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

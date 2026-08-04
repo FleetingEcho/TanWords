@@ -5,11 +5,19 @@ import { PinIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { parseDbTimestamp } from "@/lib/dbTime";
-import { Copy, FileText, FileType2, FileOutput, LockKeyhole, LockOpen, MapPin, MoreHorizontal, Pencil, ShieldCheck, Trash2 } from "lucide-react";
+import { Check, Copy, FileText, FileType2, FileOutput, LockKeyhole, LockOpen, MapPin, MoreHorizontal, Pencil, ShieldCheck, Trash2 } from "lucide-react";
+import { LIBRARY_DOC_MIME } from "./DocFolderTree";
 
 interface Props {
   doc: DocumentListItem;
   active: boolean;
+  /** Set for rows drawn inside the folder tree — see the note in the component. */
+  compact?: boolean;
+  selected?: boolean;
+  /** True while the list is in multi-select mode; only then is there a tick box. */
+  selectionMode?: boolean;
+  onToggleSelect?: (id: number, range: boolean) => void;
+  onToggleSelectionMode?: (id: number) => void;
   onSelect: (id: number) => void;
   onRename: (id: number, title: string) => void;
   onPin: (id: number) => void;
@@ -71,8 +79,14 @@ function contentExcerpt(content: string, query: string): string | null {
  * the shelf arrays, and without this each save reconciles every row. Identity
  * stability holds up because the list patches items in place (useDocList's
  * docs-item-updated listener) and all handlers are useCallback'd above. */
-export const DocItem = React.memo(function DocItem({ doc, active, onSelect, onRename, onPin, onDuplicate, onDelete, onExport, onExportHtml, onExportPdf, onPrivacyAction, onRemoveProtection, searchQuery = "" }: Props) {
+export const DocItem = React.memo(function DocItem({ doc, active, compact = false, selected = false, selectionMode = false, onToggleSelect, onToggleSelectionMode, onSelect, onRename, onPin, onDuplicate, onDelete, onExport, onExportHtml, onExportPdf, onPrivacyAction, onRemoveProtection, searchQuery = "" }: Props) {
   const t = useT();
+  // `compact` is set for every row inside the folder tree and for none of the
+  // flat search results. A roomy two-line card is right when documents are the
+  // only thing on screen; beside 32px folder rows it makes the folders look
+  // like labels on the files rather than containers of them. Keying it on the
+  // *list* rather than on depth is what keeps a file the same size whichever
+  // folder it happens to sit in.
   const [renaming, setRenaming] = useState(false);
   const [renameVal, setRenameVal] = useState(doc.title);
   const renameRef = useRef<HTMLInputElement>(null);
@@ -94,15 +108,62 @@ export const DocItem = React.memo(function DocItem({ doc, active, onSelect, onRe
   return (
     <>
       <div
-        onClick={() => onSelect(doc.id)}
-        className={`group min-h-[58px] cursor-pointer rounded-xl border px-2.5 py-2 transition-colors ${
-          active
+        onClick={(event) => {
+          // Same bargain as LocalDocTree's rows: modifier-click, or any click
+          // once multi-select is on, ticks instead of opening.
+          if (event.metaKey || event.ctrlKey || event.shiftKey || selectionMode) {
+            event.preventDefault();
+            onToggleSelect?.(doc.id, event.shiftKey);
+            return;
+          }
+          onSelect(doc.id);
+        }}
+        onDoubleClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onToggleSelectionMode?.(doc.id);
+        }}
+        // Renaming puts a text input in this row; a draggable ancestor makes
+        // the browser start a drag instead of letting the caret select text.
+        draggable={!renaming}
+        onDragStart={(event) => {
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData(LIBRARY_DOC_MIME, String(doc.id));
+          event.dataTransfer.setData("text/plain", doc.title);
+        }}
+        className={`group cursor-pointer rounded-xl border transition-colors active:cursor-grabbing ${
+          compact ? "min-h-10 px-2 py-1" : "min-h-[58px] px-2.5 py-2"
+        } ${
+          selected
+            ? "border-primary/40 bg-primary/[0.07] text-foreground"
+            : active
             ? "border-primary/25 bg-primary/10 text-foreground shadow-xs shadow-primary/5"
             : "border-transparent text-foreground/90 hover:bg-muted/60"
         }`}
       >
-        <div className="flex items-center gap-2.5">
-          <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+        <div className={`flex items-center ${compact ? "gap-1.5" : "gap-2.5"}`}>
+          {selectionMode && (
+            <button
+              type="button"
+              role="checkbox"
+              aria-checked={selected}
+              aria-label={t("doc.select")}
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggleSelect?.(doc.id, event.shiftKey);
+              }}
+              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
+                selected
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border/80 bg-transparent hover:border-primary/60"
+              }`}
+            >
+              {selected && <Check className="h-3 w-3" strokeWidth={3} />}
+            </button>
+          )}
+          <span className={`flex shrink-0 items-center justify-center rounded-lg ${
+            compact ? "h-7 w-7" : "h-8 w-8"
+          } ${
             active
               ? "bg-primary/15 text-primary"
               : doc.protected
@@ -110,10 +171,10 @@ export const DocItem = React.memo(function DocItem({ doc, active, onSelect, onRe
                 : "bg-muted/70 text-muted-foreground"
           }`}>
             {doc.protected
-              ? <LockKeyhole className={`h-4 w-4 ${doc.unlocked ? "text-primary" : ""}`} strokeWidth={1.8} />
+              ? <LockKeyhole className={`${compact ? "h-3.5 w-3.5" : "h-4 w-4"} ${doc.unlocked ? "text-primary" : ""}`} strokeWidth={1.8} />
               : doc.pinned
-              ? <PinIcon filled className="h-4 w-4 text-primary" />
-              : <FileText className="h-4 w-4" strokeWidth={1.8} />}
+              ? <PinIcon filled className={`${compact ? "h-3.5 w-3.5" : "h-4 w-4"} text-primary`} />
+              : <FileText className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} strokeWidth={1.8} />}
           </span>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1">
@@ -131,7 +192,15 @@ export const DocItem = React.memo(function DocItem({ doc, active, onSelect, onRe
                   className="flex-1 min-w-0 text-sm font-medium bg-card border border-primary/40 rounded px-1 outline-hidden"
                 />
               ) : (
-                <p className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-5"><HighlightFuzzy text={doc.title || t("doc.untitled")} query={searchQuery} /></p>
+                <p className={`min-w-0 flex-1 truncate font-semibold ${compact ? "text-xs leading-4" : "text-[13px] leading-5"}`}><HighlightFuzzy text={doc.title || t("doc.untitled")} query={searchQuery} /></p>
+              )}
+              {/* Fixed-height slot so swapping date <-> actions never changes
+                * row height — the same arrangement LocalDocTree's FileRow uses. */}
+              <div className={compact ? "relative ml-auto h-5 shrink-0 flex items-center" : "contents"}>
+              {compact && (
+                <span className="text-[10px] tabular-nums text-muted-foreground/50 group-hover:hidden">
+                  {formatDate(doc.updated_at)}
+                </span>
               )}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -139,7 +208,11 @@ export const DocItem = React.memo(function DocItem({ doc, active, onSelect, onRe
                     variant="ghost"
                     onClick={(e) => e.stopPropagation()}
                     title={t("doc.moreActions")}
-                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded p-0 text-muted-foreground/60 opacity-70 transition-all hover:bg-muted hover:text-foreground group-hover:opacity-100 data-[state=open]:opacity-100"
+                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded p-0 text-muted-foreground/60 transition-all hover:bg-muted hover:text-foreground data-[state=open]:opacity-100 ${
+                      compact
+                        ? "absolute right-0 top-0 hidden bg-muted group-hover:flex data-[state=open]:flex"
+                        : "opacity-70 group-hover:opacity-100"
+                    }`}
                   >
                     <MoreHorizontal className="h-3.5 w-3.5" />
                   </Button>
@@ -208,13 +281,14 @@ export const DocItem = React.memo(function DocItem({ doc, active, onSelect, onRe
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+              </div>
             </div>
             {excerpt && (
               <p className="mt-1.5 line-clamp-2 text-[10px] font-normal leading-4 text-muted-foreground">
                 <HighlightFuzzy text={excerpt} query={searchQuery} />
               </p>
             )}
-            <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
+            {!compact && <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
               <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/70">{formatDate(doc.updated_at)}</span>
               {!doc.protected && doc.word_count > 0 && (
                 <span className="shrink-0 text-[10px] text-muted-foreground/70">
@@ -226,7 +300,7 @@ export const DocItem = React.memo(function DocItem({ doc, active, onSelect, onRe
                   {tag}
                 </span>
               ))}
-            </div>
+            </div>}
           </div>
         </div>
       </div>

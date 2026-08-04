@@ -28,9 +28,8 @@ export function useDocActions(params: {
   onSelect: (id: number) => void;
   load: (page?: number) => Promise<void>;
   page: number;
-  setPrivateOpen: (open: boolean) => void;
 }) {
-  const { db, activeId, onSelect, load, page, setPrivateOpen } = params;
+  const { db, activeId, onSelect, load, page } = params;
   const t = useT();
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [passwordRequest, setPasswordRequest] = useState<DocumentPasswordRequest | null>(null);
@@ -119,23 +118,66 @@ export function useDocActions(params: {
     }
   }, [db, load, page, requestPassword, activeId, onSelect, t]);
 
-  const handleNewPrivateDoc = useCallback(async () => {
-    const password = await passwordForPrivateDocument();
-    if (password === null) return;
-    let id = 0;
+  // ── Folders ───────────────────────────────────────────────────────────────
+  // The tree these drive is derived from `doc.folder` plus the folder list, so
+  // every one of them ends with a `load` — there is no in-place patch that
+  // would keep the tree honest after a move.
+
+  const handleMoveToFolder = useCallback(async (ids: number[], folder: string) => {
+    if (ids.length === 0) return;
     try {
-      id = await db.createDocument();
-      if (!id) throw new Error(t("doc.privateCreateFailed"));
-      await db.protectDocument(id, password);
-      setPrivateOpen(true);
-      localStorage.setItem("tanwords_docs_private_open", "1");
-      await load(0);
-      onSelect(id);
+      await db.setDocumentsFolder(ids, folder);
+      await load(page);
     } catch (error) {
-      if (id) await db.deleteDocument(id);
       toast.error(String(error));
     }
-  }, [db, passwordForPrivateDocument, load, onSelect, setPrivateOpen, t]);
+  }, [db, load, page]);
+
+  const handleCreateFolder = useCallback(async (path: string) => {
+    try {
+      await db.createDocumentFolder(path);
+      await load(page);
+    } catch (error) {
+      toast.error(String(error));
+    }
+  }, [db, load, page]);
+
+  const handleRenameFolder = useCallback(async (path: string, newPath: string) => {
+    try {
+      await db.renameDocumentFolder(path, newPath);
+      await load(page);
+    } catch (error) {
+      toast.error(String(error));
+    }
+  }, [db, load, page]);
+
+  const handleDeleteFolder = useCallback(async (path: string) => {
+    try {
+      await db.deleteDocumentFolder(path);
+      await load(page);
+      toast.success(t("doc.folderRemoved"));
+    } catch (error) {
+      toast.error(String(error));
+    }
+  }, [db, load, page, t]);
+
+  /** Locks or unlocks a folder, and everything filed under it.
+   *
+   * Locking only needs a password when the vault has never been set up (or the
+   * session is sealed); unlocking always does, because it has to decrypt. */
+  const handleSetFolderLocked = useCallback(async (path: string, locked: boolean) => {
+    const password = locked
+      ? await passwordForPrivateDocument()
+      : await requestPassword({ title: t("doc.unlockFolder"), description: t("doc.passwordPrompt") });
+    if (password === null) return;
+    try {
+      await db.setFolderLocked(path, locked, password ?? undefined);
+      await load(page);
+      toast.success(locked ? t("doc.folderLocked") : t("doc.folderUnlocked"));
+    } catch (error) {
+      toast.error(String(error) === "INVALID_DOCUMENT_PASSWORD" ? t("doc.invalidPassword") : String(error));
+    }
+  }, [db, load, page, passwordForPrivateDocument, requestPassword, t]);
 
   const confirmDelete = useCallback(async () => {
     const id = pendingDeleteId;
@@ -151,7 +193,9 @@ export function useDocActions(params: {
     pendingDeleteId, setPendingDeleteId, confirmDelete,
     passwordRequest, requestPassword, finishPasswordRequest, passwordForPrivateDocument,
     handleRename, handlePin, handleDuplicate, handleDelete,
-    handlePrivacyAction, handleRemoveProtection, handleNewPrivateDoc,
+    handlePrivacyAction, handleRemoveProtection,
+    handleMoveToFolder, handleCreateFolder, handleRenameFolder, handleDeleteFolder,
+    handleSetFolderLocked,
   };
 }
 

@@ -26,7 +26,6 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       "target_level",
       "show_level_badges",
       "custom_enrich_prompt",
-      "music_folder_path",
       "tts_model_path",
       "tts_voice_id",
       "tts_extra_dirs",
@@ -55,6 +54,11 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
     ];
 
     const values: Record<string, string> = {};
+    // Read on its own, unencoded, because it is stored per device — see
+    // db/device_paths.rs.
+    const musicFolderPath = (await invoke<string | null>("db_get_device_path", {
+      key: "music_folder_path",
+    })) || "";
     for (const key of keys) {
       const val = await invoke<string | null>("db_get_setting", { key });
       if (val) {
@@ -106,7 +110,7 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
         : ["C1"],
       showLevelBadges: (values.show_level_badges as unknown) !== false && values.show_level_badges !== "false",
       customEnrichPrompt: values.custom_enrich_prompt || "",
-      musicFolderPath: values.music_folder_path || "",
+      musicFolderPath,
       ttsModelPath: values.tts_model_path || "",
       ttsVoiceId: values.tts_voice_id || "0",
       ttsExtraDirs: Array.isArray(values.tts_extra_dirs) ? values.tts_extra_dirs : [],

@@ -12,6 +12,8 @@ vi.mock("@/hooks/useDB", () => ({
   useDB: () => ({
     getSetting: vi.fn().mockResolvedValue("/vault"),
     setSetting: vi.fn(),
+    getDevicePath: vi.fn().mockResolvedValue("/vault"),
+    setDevicePath: vi.fn(),
   }),
 }));
 

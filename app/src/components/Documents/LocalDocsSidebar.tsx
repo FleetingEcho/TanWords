@@ -35,6 +35,18 @@ interface Props {
   onExportHtml: (relPath: string) => void;
   onExportPdf: (relPath: string) => void;
   onMove: (relPath: string, targetDir: string) => void;
+  /** Batch-selection state, owned by LocalDocsView — see LocalDocTree. */
+  selected: ReadonlySet<string>;
+  selectionMode: boolean;
+  onToggleSelect: (relPath: string, range: boolean) => void;
+  onToggleSelectionMode: (relPath: string) => void;
+  onSelectFolder: (relPaths: string[], select: boolean) => void;
+  onImportFolder: (directory: string) => void;
+  onCreateFolder: (parent: string) => void;
+  onRenameFolder: (path: string) => void;
+  onDeleteFolder: (path: string) => void;
+  /** The selection action bar, rendered above the file list when non-empty. */
+  selectionBar?: React.ReactNode;
   /** The database/local-folder switcher — see DocSourceTabs. */
   sourceTabs?: React.ReactNode;
 }
@@ -61,6 +73,16 @@ export function LocalDocsSidebar({
   onExportHtml,
   onExportPdf,
   onMove,
+  selected,
+  selectionMode,
+  onToggleSelect,
+  onToggleSelectionMode,
+  onSelectFolder,
+  onImportFolder,
+  onCreateFolder,
+  onRenameFolder,
+  onDeleteFolder,
+  selectionBar,
   sourceTabs,
 }: Props) {
   const t = useT();
@@ -142,6 +164,8 @@ export function LocalDocsSidebar({
           </div>
         )}
 
+        {selectionBar}
+
         {/* File list / empty states */}
         <div className="flex-1 overflow-y-auto px-2 py-1 space-y-0.5 min-h-0">
           {!root ? (
@@ -186,6 +210,15 @@ export function LocalDocsSidebar({
               onExportPdf={onExportPdf}
               onMove={onMove}
               onCreateInFolder={onNewFile}
+              selected={selected}
+              selectionMode={selectionMode}
+              onToggleSelect={onToggleSelect}
+              onToggleSelectionMode={onToggleSelectionMode}
+              onSelectFolder={onSelectFolder}
+              onImportFolder={onImportFolder}
+              onCreateFolder={onCreateFolder}
+              onRenameFolder={onRenameFolder}
+              onDeleteFolder={onDeleteFolder}
             />
           )}
         </div>

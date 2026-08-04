@@ -1,4 +1,4 @@
-import { RefreshCw } from "lucide-react";
+import { FolderOpen, Library, RefreshCw } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 
@@ -30,27 +30,35 @@ export function DocSourceTabs({
     // refresh at the far end of that row, next to those actions, so the icons
     // read as one cluster instead of one stranded glyph.
     <div className="flex w-full min-w-0 items-center justify-between gap-1">
-      <div className="flex min-w-0 items-center gap-2">
-        {(["db", "local"] as const).map((value) => (
-          <Button
-            key={value}
-            type="button"
-            variant="ghost"
-            onClick={() => onSelect(value)}
-            aria-pressed={source === value}
-            // Underlined rather than a filled pill. Two filled pills sat at the
-            // same weight as the primary action below them and read as three
-            // competing buttons; a rule under the live one says "you are here"
-            // without adding a third filled shape to a 320px column.
-            className={`relative h-6 shrink-0 rounded-none px-0.5 text-[11px] font-semibold transition-colors after:absolute after:inset-x-0 after:-bottom-0.5 after:h-0.5 after:rounded-full after:transition-colors hover:bg-transparent ${
-              source === value
-                ? "text-foreground after:bg-primary hover:text-foreground"
-                : "text-muted-foreground after:bg-transparent hover:text-foreground"
-            }`}
-          >
-            {value === "db" ? t("doc.tabDatabase") : t("doc.tabLocal")}
-          </Button>
-        ))}
+      <div className="flex min-w-0 items-center gap-1">
+        {(["db", "local"] as const).map((value) => {
+          const Icon = value === "db" ? Library : FolderOpen;
+          return (
+            <Button
+              key={value}
+              type="button"
+              variant="ghost"
+              onClick={() => onSelect(value)}
+              aria-pressed={source === value}
+              // Underlined rather than a filled pill. Two filled pills sat at the
+              // same weight as the primary action below them and read as three
+              // competing buttons; a rule under the live one says "you are here"
+              // without adding a third filled shape to a 320px column.
+              //
+              // There being only ever two of them is why they can afford real
+              // padding and an icon: the row has the space, and a labelled
+              // target is easier to hit than a 40px word.
+              className={`relative h-7 shrink-0 gap-1.5 rounded-none px-2 text-xs font-semibold transition-colors after:absolute after:inset-x-0 after:-bottom-0.5 after:h-0.5 after:rounded-full after:transition-colors hover:bg-transparent ${
+                source === value
+                  ? "text-foreground after:bg-primary hover:text-foreground"
+                  : "text-muted-foreground after:bg-transparent hover:text-foreground"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} />
+              {value === "db" ? t("doc.tabDatabase") : t("doc.tabLocal")}
+            </Button>
+          );
+        })}
       </div>
       <Button
         type="button"

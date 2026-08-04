@@ -12,6 +12,8 @@ pub struct DocumentListItem {
     pub content_text: String,
     pub protected: bool,
     pub unlocked: bool,
+    /// Normalised relative folder path; "" is the library root.
+    pub folder: String,
 }
 
 #[derive(Serialize)]
@@ -26,6 +28,8 @@ pub struct DocumentDetail {
     pub created_at: String,
     pub updated_at: String,
     pub protected: bool,
+    /// Normalised relative folder path; "" is the library root.
+    pub folder: String,
 }
 
 #[derive(Serialize)]

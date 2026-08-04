@@ -77,11 +77,18 @@ export function useDocumentEditor() {
     setRefreshKey((key) => key + 1);
   }, [db, loadDoc, lockedId]);
 
-  const handleNewDoc = useCallback(async () => {
+  /** Files the new document straight into a library folder — the shelf tree's
+   *  "new document here". Kept separate from `handleNewDoc` rather than made an
+   *  optional parameter of it: that one is wired to onClick in the panel
+   *  header, which would hand it a MouseEvent as the folder. */
+  const handleNewDocIn = useCallback(async (folder: string) => {
     const id = await db.createDocument();
+    if (folder) await db.setDocumentsFolder([id], folder);
     setRefreshKey((k) => k + 1);
     await loadDoc(id);
   }, [db, loadDoc]);
+
+  const handleNewDoc = useCallback(() => handleNewDocIn(""), [handleNewDocIn]);
 
   const handleSave = useCallback(async (content: string, contentText: string, wordCount: number) => {
     if (!doc) return;
@@ -178,7 +185,7 @@ export function useDocumentEditor() {
 
   return {
     activeId, doc, lockedId, saveStatus, refreshKey, loading,
-    loadDoc, handleNewDoc, handleSave, markDirty, handleTitleChange, handleTagsChange, handlePinToggle,
+    loadDoc, handleNewDoc, handleNewDocIn, handleSave, markDirty, handleTitleChange, handleTagsChange, handlePinToggle,
     unlockDocument, removeLockedProtection,
     reset,
   };

@@ -2,6 +2,7 @@ import type { Dict } from "../types";
 
 export const common: Dict = {
     "common.cancel": "Cancel",
+    "common.confirm": "Confirm",
     "common.delete": "Delete",
     "common.loading": "Loading...",
     "lock.title": "Locked",

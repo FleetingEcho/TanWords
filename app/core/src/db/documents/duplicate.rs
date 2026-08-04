@@ -32,6 +32,13 @@ pub async fn db_duplicate_document(id: i64, conn: State<'_, AppState>) -> Result
             params![format!("{title} (copy)"), content.clone(), content_text, tags, word_count],
         ).await.map_err(|e| e.to_string())?;
         let new_document_id = db.last_insert_rowid();
+        // The copy belongs beside the original, not at the library root.
+        db.execute(
+            "UPDATE documents SET folder=(SELECT folder FROM documents WHERE id=?1) WHERE id=?2",
+            params![id, new_document_id],
+        )
+        .await
+        .map_err(|e| e.to_string())?;
         let assets = db::fetch_all(
             &db,
             "SELECT id,file_name,mime_type,data,size FROM document_assets WHERE document_id=?1",
@@ -67,8 +74,8 @@ pub async fn db_duplicate_document(id: i64, conn: State<'_, AppState>) -> Result
         return Ok(new_document_id);
     }
     db.execute(
-        "INSERT INTO documents (title, content, content_text, tags, word_count)
-         SELECT title || ' (copy)', content, content_text, tags, word_count
+        "INSERT INTO documents (title, content, content_text, tags, word_count, folder)
+         SELECT title || ' (copy)', content, content_text, tags, word_count, folder
          FROM documents WHERE id = ?1",
         params![id],
     )
