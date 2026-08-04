@@ -80,12 +80,9 @@ export class TrayManager {
     this.onEvent = sink;
   }
 
-  /** `iconPath` is the 32x32 template PNG. macOS reads "template" images as a
-   *  mask and recolours them for the current menu bar, which is why the asset
-   *  is a flat alpha shape rather than a full-colour icon. Linux ignores the
-   *  template flag and shows the raw pixels, so it gets the white variant
-   *  directly (see trayIconPath) — the black template would vanish against a
-   *  dark panel. */
+  /** macOS reads its icon as a template mask and recolours it for the current
+   *  menu bar. Windows and Linux receive the full-colour TanWords icon instead
+   *  (see trayIconPath), so their tray matches the installed application. */
   create(iconPath: string) {
     if (this.tray) return;
     const image = nativeImage.createFromPath(iconPath);
@@ -197,12 +194,11 @@ export class TrayManager {
 /** Packaged builds get the icon from extraResources; a dev run reads it out of
  *  the repo, mirroring how `appIconPath()` resolves the window icon.
  *
- *  Linux takes the white variant: the status-notifier host paints the image
- *  as-is (no template recolouring) and panel themes are overwhelmingly dark,
- *  where the black template shape is invisible. Windows keeps the plain asset —
- *  its tray background adapts to the system theme either way. */
+ *  macOS uses a monochrome template because the menu bar recolours it for the
+ *  current theme. Windows and Linux display pixels as-is, so use the same
+ *  full-colour application icon already shipped for BrowserWindow there. */
 export function trayIconPath(): string {
-  const name = process.platform === "linux" ? "tray-template-white.png" : "tray-template.png";
+  const name = process.platform === "darwin" ? "tray-template.png" : "icon.png";
   return app.isPackaged
     ? path.join(process.resourcesPath, name)
     : path.join(app.getAppPath(), "core", "icons", name);

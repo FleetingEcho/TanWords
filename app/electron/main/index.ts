@@ -26,6 +26,11 @@ import { abortAllFor } from "./http";
 // shipped yet, so nothing is orphaned by fixing it here.
 app.setName("tanwords");
 
+// Match electron-builder.yml's appId. Windows uses this identity to associate
+// the running window with the installed shortcut (including its icon) instead
+// of falling back to Electron's process identity or a stale taskbar grouping.
+if (process.platform === "win32") app.setAppUserModelId("com.tanner.tanwords");
+
 // On affected Windows GPU/driver combinations Chromium can lose its shared
 // image mailbox while the renderer itself keeps running. The result is a live
 // app (backend calls and accessibility tree included) whose window presents

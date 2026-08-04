@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type Item = {
   id?: string;
@@ -40,7 +40,7 @@ vi.mock("electron", () => ({
   nativeImage: { createFromPath: () => ({ setTemplateImage: vi.fn() }) },
 }));
 
-import { TrayManager } from "./tray";
+import { TrayManager, trayIconPath } from "./tray";
 
 /** The template captured from the most recent render. */
 const latest = () => built[built.length - 1];
@@ -56,6 +56,7 @@ function makeTray() {
 }
 
 beforeEach(() => { built.length = 0; });
+afterEach(() => { vi.restoreAllMocks(); });
 
 describe("TrayManager menu", () => {
   it("renders the ported menu in English by default", () => {
@@ -162,5 +163,22 @@ describe("TrayManager menu", () => {
     latest().find((i) => i.label?.includes("Refresh RSS"))!.click?.();
 
     expect(events).toEqual(["tray://toggle-play", "tray://prev", "tray://next", "tray://refresh-rss"]);
+  });
+});
+
+describe("trayIconPath", () => {
+  it("uses the full-colour application icon on Windows", () => {
+    vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+    expect(trayIconPath()).toMatch(/[\\/]icon\.png$/);
+  });
+
+  it("uses the full-colour application icon on Linux", () => {
+    vi.spyOn(process, "platform", "get").mockReturnValue("linux");
+    expect(trayIconPath()).toMatch(/[\\/]icon\.png$/);
+  });
+
+  it("keeps the adaptive menu-bar template on macOS", () => {
+    vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
+    expect(trayIconPath()).toMatch(/[\\/]tray-template\.png$/);
   });
 });
