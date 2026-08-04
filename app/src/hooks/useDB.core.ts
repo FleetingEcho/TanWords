@@ -6,7 +6,7 @@ import { invoke } from "@/ipc/backend";
 import { logError, reportWriteError } from "./useDB.errors";
 import {
   WordListItem, WordDetail, TranslationItem, EnrichmentInput,
-  DocumentDetail, DocumentListResult,
+  DocumentDetail, DocumentListResult, DocumentFolder,
 } from "./useDB.types";
 
 export function useDBCore() {
@@ -251,6 +251,26 @@ export function useDBCore() {
     }
   }, []);
 
+  /** A setting whose value is a folder on *this* machine — see
+   *  db/device_paths.rs. Kept apart from getSetting/setSetting because those
+   *  rows sync, and a synced path points nowhere on the other two machines. */
+  const getDevicePath = useCallback(async (key: string): Promise<string | null> => {
+    try {
+      return await invoke<string | null>("db_get_device_path", { key });
+    } catch (e) {
+      logError("getDevicePath", e);
+      return null;
+    }
+  }, []);
+
+  const setDevicePath = useCallback(async (key: string, value: string) => {
+    try {
+      await invoke("db_set_device_path", { key, value });
+    } catch (e) {
+      reportWriteError("setDevicePath", e, "保存路径失败");
+    }
+  }, []);
+
   const createDocument = useCallback(async (): Promise<number> => {
     try {
       return await invoke<number>("db_create_document");
@@ -328,6 +348,49 @@ export function useDBCore() {
     }
   }, []);
 
+  // ── Library folders ───────────────────────────────────────────────────────
+  // Mirrors the local vault's directory tree; "" is the library root. See
+  // db/documents/folders.rs for the path shape and why empty folders are
+  // tracked in their own table.
+
+  const createDocumentWithContent = useCallback(async (
+    title: string,
+    content: string,
+    contentText: string,
+    tags: string,
+    wordCount: number,
+    folder = "",
+  ): Promise<number> =>
+    invoke<number>("db_create_document_with_content", {
+      title, content, contentText, tags, wordCount, folder,
+    }), []);
+
+  const listDocumentFolders = useCallback(async (): Promise<DocumentFolder[]> => {
+    try {
+      return await invoke<DocumentFolder[]>("db_list_document_folders");
+    } catch (e) {
+      logError("listDocumentFolders", e);
+      return [];
+    }
+  }, []);
+
+  /** Locks or unlocks a folder — see document_privacy/folder_lock.rs. Locking
+   *  encrypts everything already in it and everything filed there later. */
+  const setFolderLocked = useCallback((path: string, locked: boolean, password?: string): Promise<void> =>
+    invoke("db_set_folder_locked", { path, locked, password: password ?? null }), []);
+
+  const createDocumentFolder = useCallback((path: string): Promise<string> =>
+    invoke<string>("db_create_document_folder", { path }), []);
+
+  const renameDocumentFolder = useCallback((path: string, newPath: string): Promise<string> =>
+    invoke<string>("db_rename_document_folder", { path, newPath }), []);
+
+  const deleteDocumentFolder = useCallback((path: string): Promise<void> =>
+    invoke("db_delete_document_folder", { path }), []);
+
+  const setDocumentsFolder = useCallback((ids: number[], folder: string): Promise<void> =>
+    invoke("db_set_documents_folder", { ids, folder }), []);
+
   const getAllTags = useCallback(async (): Promise<string[]> => {
     try {
       return await invoke<string[]>("db_get_all_tags");
@@ -374,9 +437,11 @@ export function useDBCore() {
     saveTranslation, getTranslations,
     addWordEnriched, getWordExtras,
     saveWordNotes, saveWordChat,
-    getSetting, setSetting,
-    createDocument, getDocuments, getDocument,
+    getSetting, setSetting, getDevicePath, setDevicePath,
+    createDocument, createDocumentWithContent, getDocuments, getDocument,
     updateDocument, deleteDocument, duplicateDocument,
+    listDocumentFolders, createDocumentFolder, renameDocumentFolder,
+    deleteDocumentFolder, setDocumentsFolder, setFolderLocked,
     protectDocument, unlockDocument, lockDocument, removeDocumentProtection, changeDocumentPassword,
     getAllTags, addWordsBatch,
   }), [
@@ -386,9 +451,11 @@ export function useDBCore() {
     saveTranslation, getTranslations,
     addWordEnriched, getWordExtras,
     saveWordNotes, saveWordChat,
-    getSetting, setSetting,
-    createDocument, getDocuments, getDocument,
+    getSetting, setSetting, getDevicePath, setDevicePath,
+    createDocument, createDocumentWithContent, getDocuments, getDocument,
     updateDocument, deleteDocument, duplicateDocument,
+    listDocumentFolders, createDocumentFolder, renameDocumentFolder,
+    deleteDocumentFolder, setDocumentsFolder, setFolderLocked,
     protectDocument, unlockDocument, lockDocument, removeDocumentProtection, changeDocumentPassword,
     getAllTags, addWordsBatch,
   ]);

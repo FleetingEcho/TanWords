@@ -15,6 +15,9 @@ import {
   mdFromDisplay,
   mdToDisplay,
   moveLocalDoc,
+  createLocalDocFolder,
+  renameLocalDocFolder,
+  deleteLocalDocFolder,
   readLocalDoc,
   renameLocalDoc,
   searchLocalDocs,
@@ -34,7 +37,12 @@ import { LocalDocsSidebar } from "./LocalDocsSidebar";
 import { LocalDocsEditorPane } from "./LocalDocsEditorPane";
 import { exportMarkdownAsHtml, exportMarkdownAsPdf } from "@/lib/documentExport";
 import { useIsNarrow } from "@/components/Vocabulary/hooks/useMediaQuery";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Download, FolderInput, Loader2 } from "lucide-react";
+import { LibraryFolderPicker } from "./LibraryFolderPicker";
+import { FolderPicker } from "./FolderPicker";
+import { FolderNameDialog, type FolderNameRequest } from "./FolderNameDialog";
+import { localDocRowOrder } from "./LocalDocTree";
+import { commonBase, targetFolder } from "./importPaths";
 
 const LAST_LOCAL_PATH_KEY = "tanwords_doc_last_local_path";
 
@@ -74,7 +82,28 @@ export function LocalDocsView({
   const saveStatusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveQueue = useRef(Promise.resolve());
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
-  const [pendingImport, setPendingImport] = useState<{ relPath: string; markdown: string; duplicate: boolean } | null>(null);
+  /** Files chosen for import, waiting on a destination folder. `base` is the
+   *  path prefix stripped from each before rebuilding the structure. */
+  const [pendingImport, setPendingImport] = useState<{ relPaths: string[]; base: string } | null>(null);
+  /** The destination is settled and some titles already exist in the library. */
+  const [pendingDuplicates, setPendingDuplicates] = useState<{ relPaths: string[]; base: string; folder: string; duplicates: number } | null>(null);
+  const [importing, setImporting] = useState(false);
+  /** Ticked files, for the batch import. Paths, not indices — the list is
+   *  rebuilt from disk on every refresh and indices would drift. */
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+  /** Where a shift-click measures its range from. */
+  const selectionAnchor = useRef<string | null>(null);
+  /** Multi-select is a mode, entered by double-clicking a row. Rows carry no
+   *  checkbox outside it — a permanently visible tick box on every file is
+   *  clutter for the reading-and-editing this list is mostly used for. */
+  const [selectionMode, setSelectionMode] = useState(false);
+  /** The "+" asks where the file goes rather than always dropping it at the
+   *  vault root — filing it afterwards was a second step, usually forgotten. */
+  const [newFileFolderOpen, setNewFileFolderOpen] = useState(false);
+  /** Directories currently in the vault, derived from the files' own paths. */
+  const [vaultDirs, setVaultDirs] = useState<string[]>([]);
+  const [folderPrompt, setFolderPrompt] = useState<FolderNameRequest | null>(null);
+  const [pendingFolderDelete, setPendingFolderDelete] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpenState] = useState(() => localStorage.getItem("tanwords_doc_local_sidebar_collapsed") !== "1");
   const [showMobileEditor, setShowMobileEditor] = useState(false);
   const isNarrow = useIsNarrow();
@@ -95,7 +124,7 @@ export function LocalDocsView({
   const autoOpenedRef = useRef(false);
 
   useEffect(() => {
-    db.getSetting(LOCAL_DOCS_ROOT_KEY).then((v) => {
+    db.getDevicePath(LOCAL_DOCS_ROOT_KEY).then((v) => {
       if (v) setRoot(v);
       setRootLoaded(true);
     });
@@ -181,7 +210,7 @@ export function LocalDocsView({
     setActiveRawContent(null);
     setRoot(picked);
     setShowMobileEditor(false);
-    await db.setSetting(LOCAL_DOCS_ROOT_KEY, picked);
+    await db.setDevicePath(LOCAL_DOCS_ROOT_KEY, picked);
   };
 
   const handleOpen = async (relPath: string, opts?: { silent?: boolean }) => {
@@ -212,6 +241,131 @@ export function LocalDocsView({
       await handleOpen(relPath);
     } catch (e) {
       toast.error(String(e));
+    }
+  };
+
+  /** Double-click: in, selecting that row; or out, dropping the selection. */
+  const toggleSelectionMode = useCallback((relPath: string) => {
+    setSelectionMode((on) => {
+      if (on) {
+        setSelectedPaths(new Set());
+        selectionAnchor.current = null;
+        return false;
+      }
+      setSelectedPaths(new Set([relPath]));
+      selectionAnchor.current = relPath;
+      return true;
+    });
+  }, []);
+
+  const exitSelectionMode = useCallback(() => {
+    setSelectionMode(false);
+    setSelectedPaths(new Set());
+    selectionAnchor.current = null;
+  }, []);
+
+  const toggleSelect = useCallback((relPath: string, range: boolean) => {
+    // A modifier-click is itself a request to start selecting.
+    setSelectionMode(true);
+    setSelectedPaths((current) => {
+      const next = new Set(current);
+      const anchor = selectionAnchor.current;
+      if (range && anchor && anchor !== relPath) {
+        const order = localDocRowOrder(files);
+        const from = order.indexOf(anchor);
+        const to = order.indexOf(relPath);
+        if (from >= 0 && to >= 0) {
+          for (const path of order.slice(Math.min(from, to), Math.max(from, to) + 1)) next.add(path);
+          return next;
+        }
+      }
+      if (next.has(relPath)) next.delete(relPath);
+      else next.add(relPath);
+      return next;
+    });
+    selectionAnchor.current = relPath;
+  }, [files]);
+
+  const selectFolderFiles = useCallback((relPaths: string[], select: boolean) => {
+    if (select) setSelectionMode(true);
+    setSelectedPaths((current) => {
+      const next = new Set(current);
+      for (const path of relPaths) {
+        if (select) next.add(path);
+        else next.delete(path);
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const dirs = new Set<string>();
+    for (const file of files) {
+      const segments = file.rel_path.split("/").slice(0, -1);
+      for (let i = 0; i < segments.length; i++) dirs.add(segments.slice(0, i + 1).join("/"));
+    }
+    // Union rather than replace: a folder just created through the picker holds
+    // no files yet, so listing alone would make it vanish before it is used.
+    setVaultDirs((current) => [...new Set([...current, ...dirs])].sort((a, b) => a.localeCompare(b)));
+  }, [files]);
+
+  // A file that was renamed, moved, or deleted elsewhere must not linger in the
+  // selection as a path that no longer resolves.
+  useEffect(() => {
+    setSelectedPaths((current) => {
+      if (current.size === 0) return current;
+      const live = new Set(files.map((f) => f.rel_path));
+      const next = new Set([...current].filter((path) => live.has(path)));
+      return next.size === current.size ? current : next;
+    });
+  }, [files]);
+
+  // Folder operations, mirroring the library's folder menu. The vault is a real
+  // directory tree, so these are filesystem calls rather than row updates.
+  const promptCreateFolder = (parent: string) => setFolderPrompt({
+    title: t("doc.newFolder"),
+    hint: parent ? t("doc.newFolderIn", { path: parent }) : t("doc.newFolderAtRoot"),
+    confirmLabel: t("doc.createFolder"),
+    onSubmit: (name) => {
+      if (!root) return;
+      void createLocalDocFolder(root, parent ? `${parent}/${name}` : name)
+        .then((created) => {
+          setVaultDirs((current) => [...new Set([...current, created])].sort((a, b) => a.localeCompare(b)));
+        })
+        .catch((error) => toast.error(String(error)));
+    },
+  });
+
+  const promptRenameFolder = (path: string) => setFolderPrompt({
+    title: t("doc.renameFolder"),
+    initialValue: path.slice(path.lastIndexOf("/") + 1),
+    confirmLabel: t("doc.rename"),
+    onSubmit: (name) => {
+      if (!root) return;
+      void renameLocalDocFolder(root, path, name)
+        .then(() => refresh())
+        .catch((error) => toast.error(String(error)));
+    },
+  });
+
+  const confirmDeleteFolder = async () => {
+    const path = pendingFolderDelete;
+    setPendingFolderDelete(null);
+    if (!root || !path) return;
+    try {
+      await deleteLocalDocFolder(root, path);
+      // The open file may have been inside it.
+      if (activePath?.startsWith(`${path}/`)) {
+        setActivePath(null);
+        setActiveContent(null);
+        setActiveRawContent(null);
+        setShowMobileEditor(false);
+      }
+      setVaultDirs((current) => current.filter((dir) => dir !== path && !dir.startsWith(`${path}/`)));
+      await refresh();
+      toast.success(t("doc.folderDeleted"));
+    } catch (error) {
+      toast.error(String(error));
     }
   };
 
@@ -311,34 +465,83 @@ export function LocalDocsView({
     [root, activePath],
   );
 
-  const requestImportToDatabase = useCallback(async (relPath: string, markdown?: string) => {
-    if (!root) return;
-    try {
-      const source = markdown ?? await readLocalDoc(root, relPath);
-      const title = relPath.split("/").pop()?.replace(/\.(md|markdown)$/i, "") || t("doc.untitled");
-      const duplicate = await invoke<boolean>("db_document_title_exists", { title });
-      setPendingImport({ relPath, markdown: source, duplicate });
-    } catch (error) {
-      toast.error(String(error));
-    }
-  }, [root, t]);
+  // ── Import into the library ───────────────────────────────────────────────
+  // One path for one file and for a hundred: pick the destination folder, warn
+  // once about any title collisions, then convert and insert. The single-file
+  // menu item used to import straight to the library root, which became the
+  // odd one out the moment the library grew folders of its own.
 
-  const confirmImportToDatabase = useCallback(async () => {
-    if (!pendingImport) return;
-    const { relPath, markdown } = pendingImport;
-    const title = relPath.split("/").pop()?.replace(/\.(md|markdown)$/i, "") || t("doc.untitled");
-    try {
-      const blocks = liftYouTube(liftMedia(liftMermaid(await markdownToBlocks(markdown))));
-      const { content, contentText, wordCount } = blocksToStorage(blocks);
-      const id = await db.createDocument();
-      const created = await db.getDocument(id);
-      await db.updateDocument(id, title, content, contentText, created?.tags ?? "[]", false, wordCount);
-      setPendingImport(null);
-      toast.success(t("doc.copiedToDatabase"));
-    } catch (error) {
-      toast.error(String(error));
+  const requestImportToLibrary = useCallback((relPaths: string[], base?: string) => {
+    if (!root || relPaths.length === 0) return;
+    setPendingImport({ relPaths, base: base ?? commonBase(relPaths) });
+  }, [root]);
+
+  /** Recreates a whole local folder under the chosen library folder: the base
+   *  is the folder's *parent*, so the folder's own name survives the trip. */
+  const requestImportFolder = useCallback((directory: string) => {
+    const paths = files.filter((f) => f.rel_path.startsWith(`${directory}/`)).map((f) => f.rel_path);
+    if (paths.length === 0) {
+      toast.error(t("doc.folderHasNoFiles"));
+      return;
     }
-  }, [pendingImport, db, t]);
+    const parent = directory.includes("/") ? directory.slice(0, directory.lastIndexOf("/")) : "";
+    requestImportToLibrary(paths, parent);
+  }, [files, requestImportToLibrary, t]);
+
+  const runImport = useCallback(async (relPaths: string[], base: string, destination: string) => {
+    if (!root) return;
+    setImporting(true);
+    let imported = 0;
+    const failures: string[] = [];
+    try {
+      for (const relPath of relPaths) {
+        try {
+          const markdown = await readLocalDoc(root, relPath);
+          const title = relPath.split("/").pop()?.replace(/\.(md|markdown)$/i, "") || t("doc.untitled");
+          const blocks = liftYouTube(liftMedia(liftMermaid(await markdownToBlocks(markdown))));
+          const { content, contentText, wordCount } = blocksToStorage(blocks);
+          const folder = targetFolder(relPath, base, destination);
+          await db.createDocumentWithContent(title, content, contentText, "[]", wordCount, folder);
+          imported++;
+        } catch (error) {
+          failures.push(`${relPath}: ${String(error)}`);
+        }
+      }
+    } finally {
+      setImporting(false);
+    }
+    setSelectedPaths(new Set());
+    setSelectionMode(false);
+    // The library list is a sibling tab holding its own state; this is the
+    // event it already reloads on (see useDocList).
+    window.dispatchEvent(new Event("docs-updated"));
+    if (imported > 0) toast.success(t("doc.importedToLibraryCount", { n: imported }));
+    // Reported as one message: a vault full of unreadable files would otherwise
+    // bury the success toast under a stack of identical errors.
+    if (failures.length > 0) toast.error(t("doc.importFailedCount", { n: failures.length }));
+  }, [root, db, t]);
+
+  const confirmImportToLibrary = useCallback(async (destination: string) => {
+    if (!pendingImport) return;
+    const { relPaths, base } = pendingImport;
+    setPendingImport(null);
+    const titles = relPaths.map((p) => p.split("/").pop()?.replace(/\.(md|markdown)$/i, "") || t("doc.untitled"));
+    let duplicates = 0;
+    try {
+      const existing = await Promise.all(
+        titles.map((title) => invoke<boolean>("db_document_title_exists", { title })),
+      );
+      duplicates = existing.filter(Boolean).length;
+    } catch {
+      // A failed duplicate probe is not a reason to block the import; the
+      // worst case is a second document with the same title.
+    }
+    if (duplicates > 0) {
+      setPendingDuplicates({ relPaths, base, folder: destination, duplicates });
+      return;
+    }
+    await runImport(relPaths, base, destination);
+  }, [pendingImport, runImport, t]);
 
   const handleRename = useCallback(async (newName: string) => {
     if (!root || !activePath) return;
@@ -388,7 +591,10 @@ export function LocalDocsView({
           onSidebarOpenChange={setSidebarOpen}
           root={root}
           onMount={handleMount}
-          onNewFile={(directory) => void handleNewFile(directory)}
+          onNewFile={(directory) => {
+            if (directory === undefined) setNewFileFolderOpen(true);
+            else void handleNewFile(directory);
+          }}
           onImportFiles={() => void handleImportFiles()}
           onOpenExportPicker={() => setExportPickerOpen(true)}
           search={search}
@@ -400,11 +606,58 @@ export function LocalDocsView({
           activePath={activePath}
           onOpen={handleOpen}
           onDelete={setPendingDelete}
-          onImport={(relPath) => void requestImportToDatabase(relPath)}
+          onImport={(relPath) => requestImportToLibrary([relPath])}
           onExport={(relPath) => void handleExportFiles([relPath])}
           onExportHtml={(relPath) => void handleExportHtml(relPath)}
           onExportPdf={(relPath) => void handleExportPdf(relPath)}
           onMove={(relPath, targetDir) => void handleMoveFile(relPath, targetDir)}
+          selected={selectedPaths}
+          selectionMode={selectionMode}
+          onToggleSelect={toggleSelect}
+          onToggleSelectionMode={toggleSelectionMode}
+          onSelectFolder={selectFolderFiles}
+          onImportFolder={requestImportFolder}
+          onCreateFolder={promptCreateFolder}
+          onRenameFolder={promptRenameFolder}
+          onDeleteFolder={setPendingFolderDelete}
+          selectionBar={selectionMode ? (
+            <div className="mx-2 mb-1 flex shrink-0 items-center gap-1 rounded-lg border border-primary/25 bg-primary/[0.06] px-2 py-1.5">
+              <span className="min-w-0 flex-1 truncate text-[11px] font-semibold tabular-nums text-primary">
+                {t("doc.selectedCount", { n: selectedPaths.size })}
+              </span>
+              {/* Icons, not labels: three labelled buttons plus the count
+                * overflowed the panel and pushed "Done" off the edge. */}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => requestImportToLibrary([...selectedPaths])}
+                disabled={importing || selectedPaths.size === 0}
+                title={t("doc.importToLibrary")}
+                aria-label={t("doc.importToLibrary")}
+                className="h-6 w-6 shrink-0 rounded-md text-primary hover:bg-primary/10 disabled:opacity-40"
+              >
+                {importing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FolderInput className="h-3.5 w-3.5" />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => void handleExportFiles([...selectedPaths])}
+                disabled={selectedPaths.size === 0}
+                title={t("doc.exportSelected")}
+                aria-label={t("doc.exportSelected")}
+                className="h-6 w-6 shrink-0 rounded-md text-primary hover:bg-primary/10 disabled:opacity-40"
+              >
+                <Download className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={exitSelectionMode}
+                className="h-6 shrink-0 rounded-md px-2 text-[11px] text-muted-foreground hover:text-foreground"
+              >
+                {t("doc.exitSelection")}
+              </Button>
+            </div>
+          ) : undefined}
         />
       )}
 
@@ -450,14 +703,53 @@ export function LocalDocsView({
         onCancel={() => setPendingDelete(null)}
         onConfirm={confirmDelete}
       />
+      <FolderNameDialog request={folderPrompt} onClose={() => setFolderPrompt(null)} />
       <ConfirmModal
+        open={pendingFolderDelete !== null}
+        title={t("doc.deleteFolderTitle")}
+        message={t("doc.deleteFolderConfirm")}
+        confirmLabel={t("doc.delete")}
+        onCancel={() => setPendingFolderDelete(null)}
+        onConfirm={() => void confirmDeleteFolder()}
+      />
+      <FolderPicker
+        open={newFileFolderOpen}
+        title={t("doc.newFileFolderTitle")}
+        hint={t("doc.newFileFolderHint")}
+        confirmLabel={t("doc.createHere")}
+        rootLabel={t("doc.folderRoot")}
+        folders={vaultDirs}
+        onCreateFolder={async (path) => {
+          if (!root) return;
+          const created = await createLocalDocFolder(root, path);
+          setVaultDirs((current) => [...new Set([...current, created])].sort((a, b) => a.localeCompare(b)));
+        }}
+        onClose={() => setNewFileFolderOpen(false)}
+        onPick={(directory) => {
+          setNewFileFolderOpen(false);
+          void handleNewFile(directory);
+        }}
+      />
+      <LibraryFolderPicker
         open={pendingImport !== null}
-        title={pendingImport?.duplicate ? t("doc.duplicateDatabaseTitle") : t("doc.copyToDatabaseTitle")}
-        message={pendingImport?.duplicate ? t("doc.duplicateDatabaseConfirm") : t("doc.copyToDatabaseConfirm")}
-        confirmLabel={pendingImport?.duplicate ? t("doc.copyAnyway") : t("doc.copyToDatabase")}
+        title={t("doc.importToLibraryTitle")}
+        hint={t("doc.importToLibraryHint", { n: pendingImport?.relPaths.length ?? 0 })}
+        confirmLabel={t("doc.importHere")}
+        onClose={() => setPendingImport(null)}
+        onPick={(folder) => void confirmImportToLibrary(folder)}
+      />
+      <ConfirmModal
+        open={pendingDuplicates !== null}
+        title={t("doc.duplicateDatabaseTitle")}
+        message={t("doc.duplicateDatabaseCountConfirm", { n: pendingDuplicates?.duplicates ?? 0 })}
+        confirmLabel={t("doc.copyAnyway")}
         danger={false}
-        onCancel={() => setPendingImport(null)}
-        onConfirm={() => void confirmImportToDatabase()}
+        onCancel={() => setPendingDuplicates(null)}
+        onConfirm={() => {
+          const pending = pendingDuplicates;
+          setPendingDuplicates(null);
+          if (pending) void runImport(pending.relPaths, pending.base, pending.folder);
+        }}
       />
       <ExportMarkdownDialog
         open={exportPickerOpen}

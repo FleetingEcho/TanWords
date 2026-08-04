@@ -70,6 +70,90 @@ pub fn db_lock_document(_id: i64, state: State<'_, AppState>) -> Result<(), Stri
     state.document_privacy.clear()
 }
 
+/// Encrypts one document (and its assets) under a data key wrapped by `master`.
+///
+/// Split out of `db_protect_document` so folder locking can run it over many
+/// documents against one already-unlocked master, rather than asking for the
+/// password once per file.
+pub(crate) async fn protect_document_with_master(
+    database: &libsql::Connection,
+    privacy: &super::state::DocumentPrivacyState,
+    id: i64,
+    master: &[u8; 32],
+) -> Result<(), String> {
+    if document_is_protected(database, id).await? {
+        return Ok(());
+    }
+    let (content, content_text) = db::fetch_one(
+        database,
+        "SELECT content,content_text FROM documents WHERE id=?1",
+        [id],
+        |row| Ok((row.get::<String>(0)?, row.get::<String>(1)?)),
+    )
+    .await?;
+    let assets = db::fetch_all(
+        database,
+        "SELECT id,data FROM document_assets WHERE document_id=?1",
+        [id],
+        |row| Ok((row.get::<String>(0)?, row.get::<Vec<u8>>(1)?)),
+    )
+    .await?;
+    let data_key = random::<32>();
+    let wrapped = encrypt_bytes(master, &data_key)?;
+    database.execute(
+        "UPDATE documents SET content=?1,content_text=?2,protected=1,protection_salt=NULL,wrapped_key=?3,updated_at=datetime('now') WHERE id=?4",
+        params![encrypt_text(&data_key, &content)?, encrypt_text(&data_key, &content_text)?, wrapped, id],
+    ).await.map_err(|e| e.to_string())?;
+    for (asset_id, data) in assets {
+        database
+            .execute(
+                "UPDATE document_assets SET data=?1 WHERE id=?2",
+                params![encrypt_bytes(&data_key, &data)?, asset_id],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    privacy.unlock(id, data_key)
+}
+
+/// Decrypts one document (and its assets) back to plaintext. The inverse of
+/// `protect_document_with_master`, sharing it with `db_remove_document_protection`.
+pub(crate) async fn unprotect_document_with_key(
+    database: &libsql::Connection,
+    privacy: &super::state::DocumentPrivacyState,
+    id: i64,
+    key: &[u8; 32],
+) -> Result<(), String> {
+    let (content, content_text) = db::fetch_one(
+        database,
+        "SELECT content,content_text FROM documents WHERE id=?1",
+        [id],
+        |row| Ok((row.get::<String>(0)?, row.get::<String>(1)?)),
+    )
+    .await?;
+    let assets = db::fetch_all(
+        database,
+        "SELECT id,data FROM document_assets WHERE document_id=?1",
+        [id],
+        |row| Ok((row.get::<String>(0)?, row.get::<Vec<u8>>(1)?)),
+    )
+    .await?;
+    database.execute(
+        "UPDATE documents SET content=?1,content_text=?2,protected=0,protection_salt=NULL,wrapped_key=NULL,updated_at=datetime('now') WHERE id=?3",
+        params![decrypt_text(key, &content)?, decrypt_text(key, &content_text)?, id],
+    ).await.map_err(|e| e.to_string())?;
+    for (asset_id, data) in assets {
+        database
+            .execute(
+                "UPDATE document_assets SET data=?1 WHERE id=?2",
+                params![decrypt_bytes(key, &data)?, asset_id],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    privacy.lock(id)
+}
+
 #[crate::shim::command]
 pub async fn db_protect_document(
     id: i64,

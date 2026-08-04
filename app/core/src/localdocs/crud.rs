@@ -52,6 +52,79 @@ pub fn localdocs_create(
     Err("Too many files with the same name".into())
 }
 
+/// Creates a directory (and any missing parents) inside the mounted root.
+///
+/// `localdocs_create` deliberately refuses to invent a parent for a file, so
+/// picking "put it in a new folder" needs the folder to exist first — this is
+/// what the destination picker calls before it creates the file.
+#[crate::shim::command]
+pub fn localdocs_create_folder(root: String, path: String) -> Result<String, String> {
+    let rel = path.trim().trim_matches('/').to_string();
+    if rel.is_empty() {
+        return Err("Folder name is empty".into());
+    }
+    // `resolve` is what keeps a `..` from escaping the mounted root.
+    let target = resolve(&root, &rel)?;
+    fs::create_dir_all(&target).map_err(|e| format!("Failed to create folder: {e}"))?;
+    Ok(rel)
+}
+
+/// Renames a directory inside the mounted root, carrying its contents.
+/// `new_name` is a leaf name, not a path, so a rename can never relocate the
+/// folder by accident — moving one is a drag, same as for a file.
+#[crate::shim::command]
+pub fn localdocs_rename_folder(
+    root: String,
+    rel_path: String,
+    new_name: String,
+) -> Result<String, String> {
+    let stem = new_name.trim();
+    if stem.is_empty() || stem.contains(['/', '\\']) {
+        return Err(format!("Invalid folder name: {new_name}"));
+    }
+    let current = rel_path.trim().trim_matches('/').to_string();
+    if current.is_empty() {
+        return Err("Cannot rename the mounted folder itself".into());
+    }
+    let parent = match current.rfind('/') {
+        Some(index) => &current[..index],
+        None => "",
+    };
+    let target_rel = if parent.is_empty() {
+        stem.to_string()
+    } else {
+        format!("{parent}/{stem}")
+    };
+    let from = resolve(&root, &current)?;
+    let to = resolve(&root, &target_rel)?;
+    if !from.is_dir() {
+        return Err("Folder does not exist".into());
+    }
+    if to.exists() {
+        return Err("A folder with that name already exists".into());
+    }
+    fs::rename(&from, &to).map_err(|e| format!("Failed to rename folder: {e}"))?;
+    Ok(target_rel)
+}
+
+/// Deletes a directory inside the mounted root, with everything under it.
+/// Unlike the library\'s folders — where removing one keeps its documents and
+/// moves them up — this is the filesystem, and half-deleting a directory by
+/// scattering its files into the parent would surprise anyone who also opens
+/// this vault in a file manager.
+#[crate::shim::command]
+pub fn localdocs_delete_folder(root: String, rel_path: String) -> Result<(), String> {
+    let rel = rel_path.trim().trim_matches('/').to_string();
+    if rel.is_empty() {
+        return Err("Cannot delete the mounted folder itself".into());
+    }
+    let target = resolve(&root, &rel)?;
+    if !target.is_dir() {
+        return Err("Folder does not exist".into());
+    }
+    fs::remove_dir_all(&target).map_err(|e| format!("Failed to delete folder: {e}"))
+}
+
 /// Move one markdown file into an existing directory inside the mounted root.
 /// Returns the file's new relative path and never overwrites an existing file.
 #[crate::shim::command]

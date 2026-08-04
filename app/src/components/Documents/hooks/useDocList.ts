@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { useDB, DocumentListItem } from "@/hooks/useDB";
+import { useDB, DocumentListItem, DocumentFolder } from "@/hooks/useDB";
 
 export const PAGE_SIZE = 10_000;
 
@@ -15,6 +15,10 @@ const SEARCH_DEBOUNCE_MS = 250;
 export function useDocList(refreshKey: string | number) {
   const db = useDB();
   const [docs, setDocs] = useState<DocumentListItem[]>([]);
+  // Folders that hold no documents — the tree the shelf draws is the union of
+  // these and the distinct `doc.folder` values, so a folder emptied by a drag
+  // does not vanish from under the cursor.
+  const [folders, setFolders] = useState<DocumentFolder[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
@@ -47,16 +51,20 @@ export function useDocList(refreshKey: string | number) {
     setLoading(true);
     const mySeq = ++querySeq.current;
     try {
-      const result = await db.getDocuments({
-        search: effectiveSearch || undefined,
-        dateFrom: dateFrom || undefined,
-        dateTo: dateTo || undefined,
-        tag: tagFilter || undefined,
-        sort,
-        page: p,
-      });
+      const [result, folderPaths] = await Promise.all([
+        db.getDocuments({
+          search: effectiveSearch || undefined,
+          dateFrom: dateFrom || undefined,
+          dateTo: dateTo || undefined,
+          tag: tagFilter || undefined,
+          sort,
+          page: p,
+        }),
+        db.listDocumentFolders(),
+      ]);
       if (mySeq !== querySeq.current) return;
       setDocs(result.items);
+      setFolders(folderPaths);
       setTotal(result.total);
     } finally {
       if (mySeq === querySeq.current) setLoading(false);
@@ -109,7 +117,7 @@ export function useDocList(refreshKey: string | number) {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return {
-    db, docs, total, page, setPage, search, setSearch, sort, setSort,
+    db, docs, folders, total, page, setPage, search, setSearch, sort, setSort,
     dateFrom, setDateFrom, dateTo, setDateTo, allTags, tagFilter, setTagFilter,
     filtersOpen, setFiltersOpen, loading, load, totalPages,
   };

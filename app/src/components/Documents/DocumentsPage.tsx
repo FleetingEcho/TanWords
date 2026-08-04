@@ -58,7 +58,7 @@ export function DocumentsPage() {
   }, [isNarrow]);
   const {
     activeId, doc, lockedId, saveStatus, refreshKey, loading,
-    loadDoc, handleNewDoc, handleSave, markDirty, handleTitleChange, handleTagsChange, handlePinToggle,
+    loadDoc, handleNewDoc, handleNewDocIn, handleSave, markDirty, handleTitleChange, handleTagsChange, handlePinToggle,
     unlockDocument, removeLockedProtection,
   } = useDocumentEditor();
 
@@ -195,6 +195,7 @@ export function DocumentsPage() {
                     activeId={activeId}
                     onSelect={loadDoc}
                     onNewDoc={handleNewDoc}
+                    onNewDocIn={handleNewDocIn}
                     refreshKey={refreshKey}
                     manualRefreshKey={dbRefreshKey}
                     onRefreshingChange={setDbRefreshing}

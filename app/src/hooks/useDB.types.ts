@@ -97,6 +97,8 @@ export interface DocumentListItem {
   unlocked: boolean;
   /** Folded out of the main list into the archive section. */
   archived: boolean;
+  /** Normalised relative folder path; "" is the library root. */
+  folder: string;
 }
 
 export interface DocumentDetail {
@@ -110,6 +112,14 @@ export interface DocumentDetail {
   created_at: string;
   updated_at: string;
   protected: boolean;
+  /** Normalised relative folder path; "" is the library root. */
+  folder: string;
+}
+
+export interface DocumentFolder {
+  path: string;
+  /** Everything filed here is encrypted, including what arrives later. */
+  locked: boolean;
 }
 
 export interface DocumentListResult {

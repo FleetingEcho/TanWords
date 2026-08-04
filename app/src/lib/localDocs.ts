@@ -46,6 +46,21 @@ export function createLocalDoc(root: string, name: string, directory = ""): Prom
   return invoke("localdocs_create", { root, name, directory });
 }
 
+/** Creates a directory (and parents) inside the vault; returns its rel path. */
+export function createLocalDocFolder(root: string, path: string): Promise<string> {
+  return invoke("localdocs_create_folder", { root, path });
+}
+
+/** Renames a folder in place (leaf name only); returns its new rel path. */
+export function renameLocalDocFolder(root: string, relPath: string, newName: string): Promise<string> {
+  return invoke("localdocs_rename_folder", { root, relPath, newName });
+}
+
+/** Deletes a folder and everything under it. */
+export function deleteLocalDocFolder(root: string, relPath: string): Promise<void> {
+  return invoke("localdocs_delete_folder", { root, relPath });
+}
+
 /** Moves a file into a directory and returns its new relative path. */
 export function moveLocalDoc(root: string, relPath: string, targetDir: string): Promise<string> {
   return invoke("localdocs_move", { root, relPath, targetDir });

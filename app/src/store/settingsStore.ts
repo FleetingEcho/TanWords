@@ -227,7 +227,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   setMusicFolderPath: (path) => {
     set({ musicFolderPath: path });
-    saveSetting("music_folder_path", JSON.stringify(path));
+    // Device-scoped, not synced: three machines signed into one Turso account
+    // each have their own music library, and a shared row means whichever one
+    // saved last points the other two at a folder that isn't there.
+    void import("@/ipc/backend").then(({ invoke }) =>
+      invoke("db_set_device_path", { key: "music_folder_path", value: path }));
   },
 
   setTtsModelPath: (path) => {

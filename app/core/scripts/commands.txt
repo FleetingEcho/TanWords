@@ -19,6 +19,14 @@ db::db_save_word_notes
 db::db_save_word_chat
 db::db_create_document
 db::db_create_document_with_content
+db::db_list_document_folders
+db::db_create_document_folder
+db::db_rename_document_folder
+db::db_delete_document_folder
+db::db_set_documents_folder
+document_privacy::db_set_folder_locked
+db::db_get_device_path
+db::db_set_device_path
 db::db_document_title_exists
 db::db_get_documents
 db::db_get_document
@@ -151,6 +159,9 @@ localdocs::localdocs_search
 localdocs::localdocs_read
 localdocs::localdocs_write
 localdocs::localdocs_create
+localdocs::localdocs_create_folder
+localdocs::localdocs_rename_folder
+localdocs::localdocs_delete_folder
 localdocs::localdocs_move
 localdocs::localdocs_rename
 localdocs::localdocs_delete

@@ -1,6 +1,7 @@
 import React from "react";
 import { useT } from "@/hooks/useT";
 import { LazyLocalDocEditor } from "./LazyLocalDocEditor";
+import { EmptyCanvas } from "@/components/shared/EmptyCanvas";
 import { SaveStatus } from "./useDocumentEditor";
 
 interface Props {
@@ -64,14 +65,10 @@ export const LocalDocsEditorPane = React.memo(function LocalDocsEditorPane({
           <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2">
-          <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-14 h-14 opacity-20">
-            <path d="M6 12a3 3 0 013-3h8l4 4h18a3 3 0 013 3v20a3 3 0 01-3 3H9a3 3 0 01-3-3V12z" strokeLinejoin="round" />
-            <path d="M18 24h12M18 30h8" strokeLinecap="round" />
-          </svg>
-          <p className="text-sm">{t("doc.noFileSelected")}</p>
-          <p className="text-xs opacity-60">{t("doc.noFileHint")}</p>
-        </div>
+        // Same surface, same condition as the library tab's empty editor pane
+        // (see DocumentsPage) — so the same backdrop, rather than the tinted
+        // folder icon this half used to carry on its own.
+        <EmptyCanvas title={t("doc.noFileSelected")} body={t("doc.noFileHint")} />
       )}
     </div>
   );

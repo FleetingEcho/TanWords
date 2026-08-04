@@ -77,16 +77,31 @@ pub async fn db_create_document_with_content(
     content_text: String,
     tags: String,
     word_count: i64,
+    folder: Option<String>,
     conn: State<'_, AppState>,
 ) -> Result<i64, String> {
     let db = db::conn(&conn)?;
+    let folder = super::folders::normalize_folder(folder.as_deref().unwrap_or(""))?;
     db.execute(
-        "INSERT INTO documents (title,content,content_text,tags,pinned,word_count) VALUES (?1,?2,?3,?4,0,?5)",
-        params![title, content, content_text, tags, word_count],
+        "INSERT INTO documents (title,content,content_text,tags,pinned,word_count,folder) VALUES (?1,?2,?3,?4,0,?5,?6)",
+        params![title, content, content_text, tags, word_count, folder.clone()],
     )
     .await
     .map_err(|e| e.to_string())?;
-    Ok(db.last_insert_rowid())
+    let id = db.last_insert_rowid();
+    // Importing into a folder is also how that folder comes into existence, so
+    // record it — otherwise deleting the last document would drop the folder.
+    if !folder.is_empty() {
+        super::folders::ensure_folder_chain(&db, &folder).await?;
+        crate::document_privacy::protect_if_folder_locked(
+            &db,
+            &conn.document_privacy,
+            id,
+            &folder,
+        )
+        .await?;
+    }
+    Ok(id)
 }
 
 #[crate::shim::command]
@@ -137,7 +152,7 @@ pub async fn db_get_documents(
 
     let data_sql = format!(
         "SELECT d.id, d.title, d.tags, d.pinned, d.word_count, d.created_at, d.updated_at,
-                CASE WHEN d.protected=1 THEN '' ELSE d.content_text END, d.protected
+                CASE WHEN d.protected=1 THEN '' ELSE d.content_text END, d.protected, d.folder
          FROM documents d WHERE {} ORDER BY d.protected ASC, d.pinned DESC, {} LIMIT {} OFFSET {}",
         where_clause, sort_col, page_size, offset
     );
@@ -155,6 +170,7 @@ pub async fn db_get_documents(
             content_text: row.get(7)?,
             protected,
             unlocked: protected && conn.document_privacy.is_unlocked(id),
+            folder: row.get(9)?,
         })
     })
     .await?;
@@ -167,14 +183,14 @@ pub async fn db_get_document(id: i64, conn: State<'_, AppState>) -> Result<Docum
     let db = db::conn(&conn)?;
     let row = db::fetch_one(
         &db,
-        "SELECT id, title, content, content_text, tags, pinned, word_count, created_at, updated_at, protected
+        "SELECT id, title, content, content_text, tags, pinned, word_count, created_at, updated_at, protected, folder
          FROM documents WHERE id = ?1",
         params![id],
         |row| Ok((
             row.get::<i64>(0)?, row.get::<String>(1)?, row.get::<String>(2)?,
             row.get::<String>(3)?, row.get::<String>(4)?, row.get::<i64>(5)? != 0,
             row.get::<i64>(6)?, row.get::<String>(7)?, row.get::<String>(8)?,
-            row.get::<i64>(9)? != 0,
+            row.get::<i64>(9)? != 0, row.get::<String>(10)?,
         )),
     ).await?;
     let key = document_privacy::require_key(&db, &conn.document_privacy, id).await?;
@@ -193,6 +209,7 @@ pub async fn db_get_document(id: i64, conn: State<'_, AppState>) -> Result<Docum
         created_at: row.7,
         updated_at: row.8,
         protected: row.9,
+        folder: row.10,
     })
 }
 

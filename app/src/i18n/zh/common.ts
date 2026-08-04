@@ -2,6 +2,7 @@ import type { Dict } from "../types";
 
 export const common: Dict = {
     "common.cancel": "取消",
+    "common.confirm": "确定",
     "common.delete": "删除",
     "common.loading": "加载中...",
     "lock.title": "已锁定",
