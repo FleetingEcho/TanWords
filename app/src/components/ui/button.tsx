@@ -14,7 +14,15 @@ const buttonVariants = cva(
           "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
         secondary:
           "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
+        // `muted`, not `accent`. The shipped shadcn default pairs `bg-accent`
+        // with `text-accent-foreground`, which is self-consistent right up until
+        // a caller sets its own hover text colour — and ~70 of them do, almost
+        // always `hover:text-foreground`. tailwind-merge keeps that override and
+        // the accent background, leaving near-white text on a bright accent fill
+        // (vivid pink in Dracula and Dim) that is unreadable. `muted` is the
+        // subtle neutral those callers already assume, and it is what the ~150
+        // buttons that hand-rolled `hover:bg-muted` were working around.
+        ghost: "hover:bg-muted hover:text-foreground",
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
