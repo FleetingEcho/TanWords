@@ -77,7 +77,11 @@ fn generate_dispatch_table() {
         let body = std::fs::read_to_string(path).unwrap_or_default();
 
         let rel = path.strip_prefix(&src_dir).unwrap();
-        let mut module = rel.to_string_lossy().replace(".rs", "");
+        // Windows hands back `localdocs\import_export.rs`; every step below
+        // (and resolve_public_module) assumes `/` as the separator, so a
+        // backslash would survive straight into the generated `localdocs\
+        // import_export::…` paths and fail the compile.
+        let mut module = rel.to_string_lossy().replace('\\', "/").replace(".rs", "");
         if let Some(stripped) = module.strip_suffix("/mod") {
             module = stripped.to_string();
         }

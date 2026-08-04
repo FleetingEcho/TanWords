@@ -25,13 +25,40 @@ if ($llvmPrefix) {
     throw "LLVM is not installed. Run: scoop install llvm (or set LIBCLANG_PATH yourself)"
 }
 
+$appDir = Split-Path -Parent $PSScriptRoot
+
+# electron-builder normally unpacks the Electron runtime into
+# dist-releases\win-unpacked.tmp and renames it into place. That rename fails
+# here with `EPERM: operation not permitted` every single time (not a flaky
+# race — four consecutive clean runs failed identically, while renaming the
+# same directory by hand right afterwards succeeds), which kills the build
+# before it ever reaches the NSIS step. Unpacking the cached zip ourselves and
+# pointing `electronDist` at the result switches electron-builder to a plain
+# directory copy, which has no such problem.
+$electronDist = Join-Path $appDir ".electron-dist"
+if (-not (Test-Path -LiteralPath (Join-Path $electronDist "electron.exe"))) {
+    $version = (Get-Content (Join-Path $appDir "node_modules\electron\package.json") -Raw | ConvertFrom-Json).version
+    $zip = Get-ChildItem -Recurse -Filter "electron-v$version-win32-x64.zip" `
+        (Join-Path $env:LOCALAPPDATA "electron\Cache") -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if (-not $zip) {
+        throw "No cached electron-v$version-win32-x64.zip under $env:LOCALAPPDATA\electron\Cache. " +
+            "Run the build once to let electron-builder download it, then re-run this script."
+    }
+    Write-Host "Unpacking $($zip.Name) -> $electronDist"
+    Remove-Item -Recurse -Force $electronDist -ErrorAction SilentlyContinue
+    Expand-Archive -LiteralPath $zip.FullName -DestinationPath $electronDist -Force
+}
+
 # The real build: Rust sidecar release binary, typecheck + Vite bundle, then
 # electron-builder with this repo's electron-builder.yml (win target: NSIS
 # x64). Artifacts land in ../dist-releases/, including latest.yml for the
 # electron-updater feed published to GitHub Releases.
-Push-Location $PSScriptRoot
+Push-Location $appDir
 try {
-    bun run package:win
+    bun run core:build
+    bun run build
+    bunx electron-builder --win --config.electronDist=.electron-dist
 } finally {
     Pop-Location
 }
