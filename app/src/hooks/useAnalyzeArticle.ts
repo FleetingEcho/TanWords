@@ -109,8 +109,10 @@ export function useAnalyzeArticle() {
       start(jobId, opts.title?.trim() || "Untitled", controller);
       try {
         const provider = findBestProvider();
-        if (!provider) throw new Error("未找到 AI 提供商，请在设置中注册");
-        if (!provider.apiKey) throw new Error("未配置 API Key，请在设置 → AI 提供商 中填写");
+        // findBestProvider only returns a provider that can attempt calls
+        // (a keyless self-hosted server included), so null is the only
+        // thing to guard against here.
+        if (!provider) throw new Error("未找到可用的 AI 提供商，请在设置 → AI 提供商 中添加");
 
         const [knownWords, vocab] = await Promise.all([db.getKnownWords(), db.getWords()]);
         const excludeWords = [

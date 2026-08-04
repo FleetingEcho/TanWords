@@ -29,7 +29,7 @@ export function WordDetailModal() {
 
   const runAiEnrich = useCallback(async (w: string, signal?: AbortSignal) => {
     const provider = findBestProvider();
-    if (!provider || !provider.apiKey) {
+    if (!provider) {
       setError(t("modal.noProvider"));
       setLoading(false);
       return;

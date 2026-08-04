@@ -101,7 +101,7 @@ export function WordChatPanel({ wordId, word, enrichedContext = "" }: PanelProps
     const text = input.trim();
     if (!text || streaming) return;
     const provider = findBestProvider();
-    if (!provider?.apiKey) {
+    if (!provider) {
       setMessages((prev) => [...prev, { role: "assistant", content: t("chat.noApiKey") }]);
       return;
     }

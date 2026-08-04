@@ -53,6 +53,13 @@ export interface AIProvider {
   apiKey: string;
   modelId: string;
   isCustom: boolean;
+  /** Whether the provider can attempt API calls right now. Cloud providers
+   *  need `apiKey`; a self-hosted OpenAI-compatible server (Ollama, LM
+   *  Studio) usually accepts keyless requests, so CustomProvider relaxes
+   *  this. Selection and "available providers" pickers must gate on this,
+   *  never on `apiKey` directly — a keyless local provider is a fully
+   *  configured one. */
+  readonly hasCredentials: boolean;
 
   translate(params: TranslateParams): AsyncGenerator<string>;
   explain(params: ExplainParams): AsyncGenerator<string>;
