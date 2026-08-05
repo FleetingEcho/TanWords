@@ -25,6 +25,10 @@ export function useDBPatterns() {
     try { await invoke("db_delete_pattern", { patternId }); return true; }
     catch (e) { reportWriteError("deletePattern", e, "删除句式失败"); return false; }
   }, []);
+  const deletePatternsBatch = useCallback(async (patternIds: number[]): Promise<boolean> => {
+    try { await invoke("db_delete_patterns_batch", { patternIds }); return true; }
+    catch (e) { reportWriteError("deletePatternsBatch", e, "删除句式失败"); return false; }
+  }, []);
   const saveSentencePattern = useCallback(async (
     sentence: string, zh: string, skeleton: string, note: string, level: string, source: string
   ): Promise<SavePatternResult | null> => {
@@ -42,7 +46,7 @@ export function useDBPatterns() {
     catch (e) { reportWriteError("setPatternStarred", e, "标星失败"); return false; }
   }, []);
   return useMemo(
-    () => ({ listPatterns, deletePattern, saveSentencePattern, updatePatternAnalysis, setPatternStarred }),
-    [listPatterns, deletePattern, saveSentencePattern, updatePatternAnalysis, setPatternStarred]
+    () => ({ listPatterns, deletePattern, deletePatternsBatch, saveSentencePattern, updatePatternAnalysis, setPatternStarred }),
+    [listPatterns, deletePattern, deletePatternsBatch, saveSentencePattern, updatePatternAnalysis, setPatternStarred]
   );
 }

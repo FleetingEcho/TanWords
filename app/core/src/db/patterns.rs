@@ -1,6 +1,8 @@
+use std::collections::HashMap;
+
+use crate::shim::State;
 use libsql::params;
 use serde::Serialize;
-use crate::shim::State;
 
 use crate::{db, AppState};
 
@@ -68,9 +70,14 @@ pub async fn db_list_patterns(conn: State<'_, AppState>) -> Result<Vec<PatternIt
         },
     )
     .await?;
+    let pattern_indexes: HashMap<i64, usize> = patterns
+        .iter()
+        .enumerate()
+        .map(|(index, pattern)| (pattern.id, index))
+        .collect();
     for (pattern_id, example) in examples {
-        if let Some(p) = patterns.iter_mut().find(|p| p.id == pattern_id) {
-            p.examples.push(example);
+        if let Some(index) = pattern_indexes.get(&pattern_id) {
+            patterns[*index].examples.push(example);
         }
     }
     Ok(patterns)
@@ -78,17 +85,43 @@ pub async fn db_list_patterns(conn: State<'_, AppState>) -> Result<Vec<PatternIt
 
 #[crate::shim::command]
 pub async fn db_delete_pattern(pattern_id: i64, conn: State<'_, AppState>) -> Result<(), String> {
+    db_delete_patterns_batch(vec![pattern_id], conn).await
+}
+
+/// Delete a selection in one transaction. The frontend used to start one
+/// request and one competing write transaction per selected sentence, which
+/// could saturate the sidecar and leave its blocking confirmation dialog
+/// waiting forever.
+#[crate::shim::command]
+pub async fn db_delete_patterns_batch(
+    pattern_ids: Vec<i64>,
+    conn: State<'_, AppState>,
+) -> Result<(), String> {
+    if pattern_ids.is_empty() {
+        return Ok(());
+    }
+
+    // The IDs are already parsed as i64 by RPC, so interpolating them is safe
+    // and avoids three database round trips per sentence (important for Turso).
+    let ids = pattern_ids
+        .iter()
+        .map(i64::to_string)
+        .collect::<Vec<_>>()
+        .join(",");
     let db = db::txn_conn(&conn).await?;
     let tx = db.transaction().await.map_err(|e| e.to_string())?;
-    tx.execute("DELETE FROM pattern_practice WHERE pattern_id=?1", [pattern_id])
+    for (table, column) in [
+        ("pattern_practice", "pattern_id"),
+        ("pattern_examples", "pattern_id"),
+        ("patterns", "id"),
+    ] {
+        tx.execute(
+            &format!("DELETE FROM {table} WHERE {column} IN ({ids})"),
+            (),
+        )
         .await
         .map_err(|e| e.to_string())?;
-    tx.execute("DELETE FROM pattern_examples WHERE pattern_id=?1", [pattern_id])
-        .await
-        .map_err(|e| e.to_string())?;
-    tx.execute("DELETE FROM patterns WHERE id=?1", [pattern_id])
-        .await
-        .map_err(|e| e.to_string())?;
+    }
     tx.commit().await.map_err(|e| e.to_string())
 }
 
@@ -164,7 +197,11 @@ pub async fn db_save_sentence_pattern(
         });
     }
     let skeleton = skeleton.trim().to_string();
-    let pattern_text = if skeleton.is_empty() { sentence.clone() } else { skeleton };
+    let pattern_text = if skeleton.is_empty() {
+        sentence.clone()
+    } else {
+        skeleton
+    };
     let level = level.trim().to_string();
     let level_opt = if level.is_empty() { None } else { Some(level) };
     tx.execute(
@@ -185,4 +222,78 @@ pub async fn db_save_sentence_pattern(
         pattern_id,
         created: true,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn batch_delete_removes_selected_patterns_and_keeps_the_rest() {
+        let path = std::env::temp_dir()
+            .join(format!("tanwords-pattern-batch-{}.db", std::process::id()))
+            .to_string_lossy()
+            .into_owned();
+        let database =
+            crate::db::connection::open(&crate::db::DbProfile::Local { path: path.clone() }, None)
+                .await
+                .expect("open test database");
+        let app_state = crate::AppState {
+            db: std::sync::Mutex::new(database),
+            tts: std::sync::Mutex::new(None).into(),
+            db_fallback_warning: None,
+            document_privacy: Default::default(),
+        };
+        let state = crate::shim::State::from_ref(&app_state);
+
+        let first = db_save_sentence_pattern(
+            "First sentence.".into(),
+            "第一句。".into(),
+            "First sentence.".into(),
+            String::new(),
+            "A1".into(),
+            String::new(),
+            state.clone(),
+        )
+        .await
+        .expect("save first pattern");
+        let kept = db_save_sentence_pattern(
+            "Keep this sentence.".into(),
+            "保留这句。".into(),
+            "Keep this sentence.".into(),
+            String::new(),
+            "A1".into(),
+            String::new(),
+            state.clone(),
+        )
+        .await
+        .expect("save kept pattern");
+        let third = db_save_sentence_pattern(
+            "Third sentence.".into(),
+            "第三句。".into(),
+            "Third sentence.".into(),
+            String::new(),
+            "A1".into(),
+            String::new(),
+            state.clone(),
+        )
+        .await
+        .expect("save third pattern");
+
+        db_delete_patterns_batch(vec![first.pattern_id, third.pattern_id], state.clone())
+            .await
+            .expect("batch delete patterns");
+
+        let remaining = db_list_patterns(state)
+            .await
+            .expect("list remaining patterns");
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].id, kept.pattern_id);
+        assert_eq!(remaining[0].examples.len(), 1);
+
+        drop(app_state);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(format!("{path}-wal"));
+        let _ = std::fs::remove_file(format!("{path}-shm"));
+    }
 }
