@@ -13,7 +13,7 @@ vi.hoisted(() => {
   });
 });
 
-import { render, screen, cleanup, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, cleanup, waitFor } from "@testing-library/react";
 import { TiptapDocumentEditor } from "./TiptapDocumentEditor";
 import type { DocEditorApi } from "./DocEditorApi";
 import type { Block } from "./blocks";
@@ -150,5 +150,31 @@ describe("stability", () => {
     await new Promise((resolve) => setTimeout(resolve, 150));
     expect(document.querySelectorAll("[draggable=true]").length).toBe(before);
     expect(api.document).toHaveLength(1);
+  });
+});
+
+describe("code block toolbar", () => {
+  it("copies the block's code to the clipboard from the copy button", async () => {
+    const written: string[] = [];
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async (text: string) => { written.push(text); } },
+    });
+
+    await mount([{
+      type: "codeBlock",
+      props: { language: "javascript" },
+      content: [{ type: "text", text: "const a = 1;\nconsole.log(a);", styles: {} }],
+    }]);
+
+    const button = await waitFor(() => {
+      const found = screen.getByLabelText("Copy code");
+      expect(found).toBeTruthy();
+      return found;
+    });
+    fireEvent.click(button);
+
+    await waitFor(() => expect(written).toEqual(["const a = 1;\nconsole.log(a);"]));
+    await waitFor(() => expect(button.getAttribute("data-copied")).toBe("true"));
   });
 });
