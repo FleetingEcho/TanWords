@@ -46,6 +46,7 @@ const ALLOWED: &[&str] = &[
     "db_set_word_starred",
     // ── sentence patterns ─────────────────────────────────────────────────
     "db_delete_pattern",
+    "db_delete_patterns_batch",
     "db_list_patterns",
     "db_save_sentence_pattern",
     "db_set_pattern_starred",

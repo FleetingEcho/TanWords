@@ -246,18 +246,29 @@ export function PatternLibrary({ initialSentenceId, viewTabs }: {
 
   const deleteSelected = async () => {
     if (deletingSelected) return;
-    setDeletingSelected(true);
-    const results = await Promise.all([...selectedIds].map((id) => db.deletePattern(id)));
-    const deletedCount = results.filter(Boolean).length;
-    if (deletedCount > 0) {
-      toast.success(t("vocab.patterns.selectedDeleted", { n: deletedCount }));
-      if (expandedId !== null && selectedIds.has(expandedId)) setExpandedId(null);
-      exitSelectMode();
-      await load();
-      window.dispatchEvent(new CustomEvent("patterns-updated"));
+    const ids = [...selectedIds];
+    if (ids.length === 0) {
+      setDeleteSelectedOpen(false);
+      return;
     }
-    setDeletingSelected(false);
+
+    // Close the blocking dialog before doing I/O. A slow database or network
+    // must never trap the whole page behind an unresponsive modal.
     setDeleteSelectedOpen(false);
+    setDeletingSelected(true);
+    try {
+      const deleted = await db.deletePatternsBatch(ids);
+      if (!deleted) return;
+
+      const deletedIds = new Set(ids);
+      setPatterns((prev) => prev.filter((pattern) => !deletedIds.has(pattern.id)));
+      if (expandedId !== null && deletedIds.has(expandedId)) setExpandedId(null);
+      exitSelectMode();
+      toast.success(t("vocab.patterns.selectedDeleted", { n: ids.length }));
+      window.dispatchEvent(new CustomEvent("patterns-updated"));
+    } finally {
+      setDeletingSelected(false);
+    }
   };
 
   return (
