@@ -18,15 +18,15 @@ vi.mock("@/lib/documentWorkerClient", () => ({
   htmlToMarkdownOffThread: vi.fn(async (html: string) => htmlToMarkdown(html)),
 }));
 
-import { ReadOnlyBlockNote } from "./ReadOnlyBlockNote";
+import { ReadOnlyArticle } from "./ReadOnlyArticle";
 
-describe("ReadOnlyBlockNote under StrictMode", () => {
+describe("ReadOnlyArticle under StrictMode", () => {
   afterEach(() => vi.clearAllMocks());
 
   it("still renders article content after the double-invoked effect", async () => {
     const { container } = render(
       <StrictMode>
-        <ReadOnlyBlockNote
+        <ReadOnlyArticle
           html="<article><h1>Title</h1><p>Hello article body</p></article>"
           fallbackText="Fallback body text"
         />
@@ -35,7 +35,7 @@ describe("ReadOnlyBlockNote under StrictMode", () => {
 
     await waitFor(
       () => {
-        const bn = container.querySelector(".bn-editor");
+        const bn = container.querySelector(".ProseMirror");
         expect(bn?.textContent ?? "").toContain("Hello article body");
       },
       { timeout: 5000 },

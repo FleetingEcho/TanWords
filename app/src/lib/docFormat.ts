@@ -1,17 +1,14 @@
 /**
  * Document content format helpers.
  *
- * Storage format: JSON array of BlockNote blocks (documents.content).
+ * Storage format: JSON array of blocks (documents.content) — see
+ * components/Documents/tiptap/blocks.ts.
  * Legacy format: Lexical editor-state JSON ({"root":{...}}) — converted to
  * markdown, then parsed into blocks on load (lazy migration: the next save
  * persists the new format).
  */
-// Type-only: the runtime import is dynamic (see getParser). @blocknote/core is
-// ~1.4MB, and a static import here pulled it into the main chunk through every
-// module that wanted only `blocksToText`/`blocksToStorage` — neither of which
-// touches an editor.
-import type { BlockNoteEditor, PartialBlock } from "@blocknote/core";
-import { repairMarkdown } from "./markdownPreparse";
+import type { Block } from "@/components/Documents/tiptap/blocks";
+import { blocksToMarkdown as serializeMarkdown, markdownToBlocks as parseMarkdown } from "./markdown";
 
 // ── Legacy Lexical → Markdown ───────────────────────────────────────────────
 
@@ -80,30 +77,22 @@ function lexicalToMarkdown(json: any): string {
 
 // ── Content loading / saving ────────────────────────────────────────────────
 
-/** Headless editor used only for markdown parsing (no DOM mount needed).
- *  The promise (not the editor) is cached, so concurrent first calls share one
- *  module load and one editor rather than racing to build two. */
-let parserEditor: Promise<BlockNoteEditor> | null = null;
-function getParser(): Promise<BlockNoteEditor> {
-  if (!parserEditor) {
-    parserEditor = import("@blocknote/core").then((m) => m.BlockNoteEditor.create());
-  }
-  return parserEditor;
-}
-
-export async function markdownToBlocks(md: string): Promise<PartialBlock[]> {
-  return await (await getParser()).tryParseMarkdownToBlocks(repairMarkdown(md));
+/** Markdown parsing is a pure remark pipeline — no editor, no DOM, so it works
+ *  unchanged on the main thread and in the document worker. Async only because
+ *  every caller already awaits these. */
+export async function markdownToBlocks(md: string): Promise<Block[]> {
+  return parseMarkdown(md);
 }
 
 export async function blocksToMarkdown(blocks: readonly unknown[]): Promise<string> {
-  return (await getParser()).blocksToMarkdownLossy(blocks as any);
+  return serializeMarkdown(blocks as readonly Block[]);
 }
 
 /**
  * Parse stored document content into BlockNote blocks.
  * Handles: BlockNote JSON array (current), Lexical JSON (legacy), empty.
  */
-export async function contentToBlocks(content: string): Promise<PartialBlock[]> {
+export async function contentToBlocks(content: string): Promise<Block[]> {
   if (!content || content === "{}" || content === "[]") return [];
   let parsed: any;
   try {
@@ -111,7 +100,7 @@ export async function contentToBlocks(content: string): Promise<PartialBlock[]> 
   } catch {
     return await markdownToBlocks(content);
   }
-  if (Array.isArray(parsed)) return parsed as PartialBlock[];
+  if (Array.isArray(parsed)) return parsed as Block[];
   if (parsed?.root) return await markdownToBlocks(lexicalToMarkdown(parsed));
   return [];
 }
@@ -144,7 +133,7 @@ export function blocksToText(blocks: readonly unknown[]): string {
 }
 
 /** Serialize an editor's document for storage. */
-export function editorToStorage(editor: BlockNoteEditor<any, any, any>): {
+export function editorToStorage(editor: { document: readonly unknown[] }): {
   content: string;
   contentText: string;
   wordCount: number;

@@ -2,7 +2,6 @@ import { saveDialog, downloadBlob } from "@/ipc/dialog";
 import { callMain } from "@/ipc/host";
 import { invoke } from "@/ipc/backend";
 import { isDesktopHost } from "@/platform";
-import { codeBlockOptions } from "@blocknote/code-block";
 import { markdownToBlocksOffThread, blocksToHtmlOffThread } from "./documentWorkerClient";
 
 let exportCount = 0;
@@ -186,7 +185,8 @@ async function highlightCodeBlocks(html: string): Promise<string> {
   const codeElements = Array.from(template.content.querySelectorAll<HTMLElement>("pre > code[data-language]"));
   if (codeElements.length === 0) return html;
 
-  const highlighter = await codeBlockOptions.createHighlighter();
+  const { createHighlighter } = await import("@/components/Documents/tiptap/nodes/highlighter");
+  const highlighter = await createHighlighter();
   const theme = document.documentElement.classList.contains("dark") ? "github-dark" : "github-light";
 
   for (const code of codeElements) {

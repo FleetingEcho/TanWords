@@ -66,7 +66,7 @@ export function DocumentsPage() {
     if (activeId != null) setShowMobileEditor(true);
   }, [activeId]);
 
-  // BlockNote is split out of the main bundle, so the first open pays for both
+  // The editor is split out of the main bundle, so the first open pays for both
   // chunk download and editor construction. Preload both editor variants once
   // the user lands on Documents; they can finish during idle time instead of
   // making the first click wait.

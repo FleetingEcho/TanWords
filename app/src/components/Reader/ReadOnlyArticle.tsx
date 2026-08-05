@@ -1,27 +1,26 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { useCreateBlockNote } from "@blocknote/react";
-import { BlockNoteView } from "@blocknote/mantine";
-import { BlockNoteEditor } from "@blocknote/core";
-import "@blocknote/mantine/style.css";
 import { ListTree } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CloseIcon } from "@/components/ui/icons";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
 import { useIsNarrow } from "@/components/Vocabulary/hooks/useMediaQuery";
-import { editorSchema } from "@/components/Documents/editorSchema";
 import { liftYouTube } from "@/components/Documents/mediaTransforms";
-import { repairMarkdown } from "@/lib/markdownPreparse";
+import { markdownToBlocks } from "@/lib/markdown";
+import { blocksToText } from "@/lib/docFormat";
+import { LazyTiptapDocumentEditor } from "@/components/Documents/tiptap/LazyTiptapDocumentEditor";
+import type { DocEditorApi } from "@/components/Documents/tiptap/DocEditorApi";
+import type { Block } from "@/components/Documents/tiptap/blocks";
 import { useIsDark } from "@/hooks/useIsDark";
 import { useT } from "@/hooks/useT";
 import { DocumentOutline, useOutlineItems } from "@/components/Documents/DocumentOutline";
 import { htmlToMarkdownOffThread } from "@/lib/documentWorkerClient";
 import { htmlToMarkdown } from "@/lib/htmlToMarkdown";
 
-/** Read-only BlockNote renderer for article HTML. Uses the same schema as the
+/** Read-only renderer for article HTML. Uses the same schema as the
  *  document editor so headings, code blocks, tables and images keep the same
  *  visual language, but never lets the reader edit the article. */
-export function ReadOnlyBlockNote({
+export function ReadOnlyArticle({
   html,
   fontSize = 17.5,
   fallbackText = "",
@@ -36,17 +35,14 @@ export function ReadOnlyBlockNote({
    *  column, and an absolutely placed one scrolls away from the reader. */
   toolbarSlot?: HTMLElement | null;
   /** Rendered at the top of the article column with the same geometry as the
-   *  BlockNote body below (see .reader-article-header in reader-content.css),
+   *  document body below (see .reader-article-header in reader-content.css),
    *  so the article title lines up with the parsed content. */
   header?: ReactNode;
 }) {
-  const editor = useCreateBlockNote({ schema: editorSchema }, [html]);
-  /** Editors that already hold this article, marked only AFTER the blocks were
-   *  actually inserted — a StrictMode remount (or any effect re-run that follows
-   *  a cancelled parse) must parse again, while a no-op re-run for an already
-   *  loaded editor must not. Keyed on the editor because `useCreateBlockNote`
-   *  hands out a fresh instance when `html` changes. */
-  const [loadedRef] = useState(() => new WeakMap<object, string>());
+  // The editor mounts with its blocks, so parsing produces content rather than
+  // writing into a live instance.
+  const [editor, setEditor] = useState<DocEditorApi | null>(null);
+  const [blocks, setBlocks] = useState<Block[] | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [outlineTick, setOutlineTick] = useState(0);
   const [outlineOpen, setOutlineOpen] = useState(true);
@@ -54,6 +50,10 @@ export function ReadOnlyBlockNote({
   // is meant to be there), and sharing it would pop the modal on load.
   const [outlineModalOpen, setOutlineModalOpen] = useState(false);
   const [parsing, setParsing] = useState(true);
+  /** Mirrors `blocks` for the watchdog below, which would otherwise read the
+   *  value captured when its effect ran — always null — and replace a
+   *  perfectly good article with plain text three seconds after it rendered. */
+  const parsedRef = useRef<Block[] | null>(null);
   const [plainText, setPlainText] = useState<string | null>(null);
   const isDark = useIsDark();
   const narrow = useIsNarrow();
@@ -70,23 +70,31 @@ export function ReadOnlyBlockNote({
    *  block; `liftYouTube` is what promotes a paragraph that is *only* a
    *  YouTube URL into it (a link inside a sentence stays prose). Feeds and HN
    *  posts that are mostly a video were otherwise a URL to copy elsewhere. */
-  const parseMarkdown = (markdown: string) => {
-    const headless = BlockNoteEditor.create({ schema: editorSchema });
-    return liftYouTube(headless.tryParseMarkdownToBlocks(repairMarkdown(markdown)));
+  const parseMarkdown = (markdown: string) => liftYouTube(markdownToBlocks(markdown)) as Block[];
+
+  /**
+   * Shows the parsed article when it actually has text, and the plain-text
+   * fallback when it does not.
+   *
+   * Decided from the parsed blocks rather than by reading the rendered DOM: the
+   * editor mounts lazily, so a DOM check races the import and would show the
+   * fallback for every article. The blocks are the same evidence, available
+   * immediately.
+   */
+  const showParsed = (parsed: Block[], fallback: string) => {
+    parsedRef.current = parsed;
+    setBlocks(parsed);
+    setPlainText(blocksToText(parsed).trim() ? null : fallback);
+    setOutlineTick((tick) => tick + 1);
   };
 
   useEffect(() => {
     let cancelled = false;
+    parsedRef.current = null;
     if (!html.trim()) {
       if (fallbackText.trim()) {
         try {
-          editor.replaceBlocks(editor.document, parseMarkdown(fallbackText) as any);
-          window.setTimeout(() => {
-            if (cancelled) return;
-            const hasText = rootRef.current?.querySelector(".bn-editor")?.textContent?.trim();
-            setPlainText(hasText ? null : fallbackText);
-          }, 0);
-          setOutlineTick((tick) => tick + 1);
+          showParsed(parseMarkdown(fallbackText), fallbackText);
         } catch {
           setPlainText(fallbackText);
         }
@@ -94,14 +102,11 @@ export function ReadOnlyBlockNote({
       setParsing(false);
       return;
     }
-    if (loadedRef.get(editor) === html) {
-      setParsing(false);
-      return;
-    }
     setParsing(true);
     const fallbackTimer = window.setTimeout(() => {
       if (cancelled) return;
-      if (editor.document.length === 0) {
+      const parsed = parsedRef.current;
+      if (!parsed || parsed.length === 0) {
         setPlainText(fallbackText || html);
       }
       setParsing(false);
@@ -115,15 +120,7 @@ export function ReadOnlyBlockNote({
       .then((markdown) => {
         if (cancelled) return;
         try {
-          const blocks = parseMarkdown(markdown);
-          editor.replaceBlocks(editor.document, blocks as any);
-          loadedRef.set(editor, html);
-          window.setTimeout(() => {
-            if (cancelled) return;
-            const hasText = rootRef.current?.querySelector(".bn-editor")?.textContent?.trim();
-            setPlainText(hasText ? null : (fallbackText || markdown));
-          }, 0);
-          setOutlineTick((tick) => tick + 1);
+          showParsed(parseMarkdown(markdown), fallbackText || markdown);
         } catch {
           if (fallbackText.trim()) setPlainText(fallbackText);
           else setPlainText(markdown);
@@ -132,28 +129,12 @@ export function ReadOnlyBlockNote({
       .catch(() => {
         if (cancelled) return;
         try {
-          const blocks = parseMarkdown(htmlToMarkdown(html));
-          editor.replaceBlocks(editor.document, blocks as any);
-          loadedRef.set(editor, html);
-          window.setTimeout(() => {
-            if (cancelled) return;
-            const hasText = rootRef.current?.querySelector(".bn-editor")?.textContent?.trim();
-            setPlainText(hasText ? null : (fallbackText || htmlToMarkdown(html)));
-          }, 0);
+          const markdown = htmlToMarkdown(html);
+          showParsed(parseMarkdown(markdown), fallbackText || markdown);
         } catch {
-          try {
-            editor.replaceBlocks(editor.document, [{
-              type: "paragraph",
-              content: [{ type: "text", text: html, styles: {} }],
-            }] as any);
-            loadedRef.set(editor, html);
-            setPlainText(null);
-          } catch {
-            // Never let a malformed article keep the reader stuck on loading.
-            setPlainText(fallbackText || html);
-          }
+          // Never let a malformed article keep the reader stuck on loading.
+          setPlainText(fallbackText || html);
         }
-        setOutlineTick((tick) => tick + 1);
       })
       .finally(() => {
         if (!cancelled) setParsing(false);
@@ -162,7 +143,7 @@ export function ReadOnlyBlockNote({
       cancelled = true;
       window.clearTimeout(fallbackTimer);
     };
-  }, [editor, fallbackText, html]);
+  }, [fallbackText, html]);
 
   // Some RSS/HN articles reference images that no longer exist. Hide them
   // instead of showing the browser's broken-image glyph inside the article.
@@ -200,16 +181,15 @@ export function ReadOnlyBlockNote({
               {plainText}
             </div>
           ) : (
-            <BlockNoteView
-              editor={editor}
-              theme={isDark ? "dark" : "light"}
-              editable={false}
-              formattingToolbar={false}
-              linkToolbar={false}
-              sideMenu={false}
-              slashMenu={false}
-              className="tanwords-editor"
-            />
+            blocks && (
+              <LazyTiptapDocumentEditor
+                initialBlocks={blocks}
+                isDark={isDark}
+                editable={false}
+                onReady={setEditor}
+                className="tanwords-editor"
+              />
+            )
           )}
         </div>
         {outlineItems.length > 0 && (
@@ -273,7 +253,10 @@ export function ReadOnlyBlockNote({
             />
           </Dialog>
         )}
-        {parsing && (
+        {/* Held until the editor has actually mounted, not merely until parsing
+          * finished: the editor chunk loads lazily, and dropping the overlay
+          * early exposed the empty gap in between. */}
+        {(parsing || (blocks !== null && editor === null)) && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60">
             <span className="h-5 w-5 rounded-full border-2 border-primary/20 border-t-primary animate-spin" />
           </div>

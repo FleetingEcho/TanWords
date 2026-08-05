@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { invoke } from "@/ipc/backend";
-import type { DocEditorInstance } from "./useDocEditorContent";
+import type { DocEditorApi } from "../tiptap/DocEditorApi";
 
 interface DocumentLinkItem { id: number; title: string }
 interface DocumentLinkContext {
@@ -15,7 +15,7 @@ interface DocumentLinkContext {
 export function useDocEditorLinks(params: {
   documentId: number;
   documentContent: string;
-  editor: DocEditorInstance;
+  editor: DocEditorApi | null;
   scheduleSave: () => void;
 }) {
   const { documentId, documentContent, editor, scheduleSave } = params;
@@ -35,10 +35,11 @@ export function useDocEditorLinks(params: {
   }, [documentId, documentContent]);
 
   const insertDocumentLink = (target: DocumentLinkItem) => {
+    if (!editor) return;
     editor.insertInlineContent([{
       type: "link",
       href: `tanwords-doc://${target.id}`,
-      content: target.title,
+      content: [{ type: "text", text: target.title, styles: {} }],
     }]);
     setLinkPickerOpen(false);
     setLinkQuery("");

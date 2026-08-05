@@ -1,0 +1,229 @@
+/**
+ * Styling for the Tiptap document editor.
+ *
+ * The DOM is ours, so rules key off the ProseMirror root and plain element
+ * selectors rather than a library's class names.
+ *
+ * Font size, line height and document text colour all read the CSS custom
+ * properties the settings store writes (see applyDocumentFontSize), which is
+ * what keeps the Documents settings sliders working.
+ */
+
+.tanwords-tiptap .ProseMirror {
+  outline: none;
+  /* The left inset is the gutter the side menu (+ and drag handle) is
+     positioned into. The scroll container is `overflow-hidden`, so anything
+     the handle needs has to fit inside this padding or it is simply clipped. */
+  padding: 1rem 1rem 1rem 2.75rem;
+  font-size: var(--document-font-size, 16px);
+  line-height: var(--document-line-height, 1.9);
+  color: var(--document-text-color, hsl(var(--foreground)));
+}
+
+@media (min-width: 1024px) {
+  .tanwords-tiptap .ProseMirror {
+    padding: 1rem 3rem 1rem 3rem;
+  }
+}
+
+/* Room to scroll the last line clear of the bottom edge. An editing
+   affordance only — keyed on contenteditable so read-only surfaces (the
+   reader, word notes) do not end in a screen of blank space. */
+.tanwords-tiptap .ProseMirror[contenteditable="true"] {
+  padding-bottom: 40vh;
+}
+
+/* A readable measure, centred.
+   Driven by an inherited custom property rather than overridden per surface:
+   the reader needs a narrower column, and competing max-width rules meant the
+   winner depended on selector specificity across two stylesheets — fragile,
+   and it silently regressed to full width. Whoever owns the surface sets
+   `--editor-measure`; `ch` still resolves against this element's own font. */
+.tanwords-tiptap:not(.tanwords-editor-compact) .ProseMirror {
+  width: 100%;
+  max-width: var(--editor-measure, 960px);
+  margin-inline: auto;
+}
+
+.tanwords-tiptap.tanwords-editor-compact .ProseMirror {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.7;
+}
+
+/* The side menu is `position: absolute` inside the editor root, which is why
+   TiptapDocumentEditor's wrapper is `relative`. Centre it on the text row so
+   the buttons line up with the cursor rather than floating above it. */
+.tanwords-tiptap [data-drag-handle-wrapper] {
+  z-index: 20;
+}
+
+/* ── Blocks ─────────────────────────────────────────────────────────────── */
+
+.tanwords-tiptap .ProseMirror > * + * {
+  margin-top: 0.5em;
+}
+
+.tanwords-tiptap .ProseMirror h1 { font-size: 1.875em; font-weight: 700; line-height: 1.25; margin-top: 1.2em; }
+.tanwords-tiptap .ProseMirror h2 { font-size: 1.5em;   font-weight: 700; line-height: 1.3;  margin-top: 1.1em; }
+.tanwords-tiptap .ProseMirror h3 { font-size: 1.25em;  font-weight: 600; line-height: 1.35; margin-top: 1em; }
+.tanwords-tiptap .ProseMirror h4,
+.tanwords-tiptap .ProseMirror h5,
+.tanwords-tiptap .ProseMirror h6 { font-size: 1.1em; font-weight: 600; margin-top: 1em; }
+
+.tanwords-tiptap .ProseMirror ul,
+.tanwords-tiptap .ProseMirror ol {
+  padding-left: 1.5em;
+}
+.tanwords-tiptap .ProseMirror ul { list-style: disc; }
+.tanwords-tiptap .ProseMirror ol { list-style: decimal; }
+.tanwords-tiptap .ProseMirror li > p { margin: 0; }
+
+/* Task list: the checkbox is a real input, so it needs the bullet removed. */
+.tanwords-tiptap .ProseMirror ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0.25em;
+}
+.tanwords-tiptap .ProseMirror ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5em;
+}
+.tanwords-tiptap .ProseMirror ul[data-type="taskList"] li > label {
+  margin-top: 0.25em;
+}
+
+.tanwords-tiptap .ProseMirror blockquote {
+  border-left: 3px solid hsl(var(--border));
+  padding-left: 1em;
+  color: hsl(var(--muted-foreground));
+}
+
+.tanwords-tiptap .ProseMirror hr {
+  border: none;
+  border-top: 1px solid hsl(var(--border));
+  margin: 1.5em 0;
+}
+
+.tanwords-tiptap .ProseMirror a {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.tanwords-tiptap .ProseMirror code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+  background: hsl(var(--muted));
+  border-radius: 4px;
+  padding: 0.1em 0.3em;
+}
+
+/* The shiki decorations carry their own colours; the block only supplies the
+   frame. Background/foreground are pinned to what the highlighter used, which
+   is why the theme override in codeBlockShiki.ts has to be right. */
+.tanwords-tiptap .ProseMirror pre {
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  padding: 0.85em 1em;
+  overflow-x: auto;
+}
+.tanwords-tiptap .ProseMirror pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.875em;
+  line-height: 1.6;
+}
+
+/* ── Tables ─────────────────────────────────────────────────────────────── */
+
+.tanwords-tiptap .ProseMirror table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  overflow: hidden;
+}
+.tanwords-tiptap .ProseMirror th,
+.tanwords-tiptap .ProseMirror td {
+  border: 1px solid hsl(var(--border));
+  padding: 0.4em 0.6em;
+  vertical-align: top;
+  position: relative;
+}
+.tanwords-tiptap .ProseMirror th {
+  background: hsl(var(--muted));
+  font-weight: 600;
+  text-align: left;
+}
+.tanwords-tiptap .ProseMirror .selectedCell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: hsl(var(--primary) / 0.12);
+  pointer-events: none;
+}
+.tanwords-tiptap .ProseMirror .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: hsl(var(--primary));
+  cursor: col-resize;
+}
+
+/* ── Placeholder + selection ────────────────────────────────────────────── */
+
+.tanwords-tiptap .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: hsl(var(--muted-foreground) / 0.4);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* Atoms (image, video, mermaid, youtube) get no text cursor, so selection
+   needs to be visible on the node itself. */
+.tanwords-tiptap .ProseMirror .ProseMirror-selectednode {
+  outline: 2px solid hsl(var(--primary) / 0.5);
+  border-radius: 8px;
+}
+
+.tanwords-tiptap .ProseMirror .tableWrapper {
+  overflow-x: auto;
+}
+
+/* ── Carried over from the BlockNote stylesheet ─────────────────────────────
+ *
+ * These were never BlockNote-specific — they style the document *chrome* and
+ * the in-document search highlight, both of which outlive the editor swap.
+ * (The `--bn-colors-*` variables that sat alongside them went with BlockNote.)
+ */
+
+/* Applied by DocumentContentSearch via the CSS Custom Highlight API, which is
+   editor-agnostic — it walks DOM text nodes, not editor state. */
+::highlight(tanwords-document-search) {
+  color: inherit;
+  background-color: var(--highlight-bg, rgb(250 204 21 / 0.35));
+}
+
+::highlight(tanwords-document-search-active) {
+  color: inherit;
+  background-color: var(--highlight, #facc15);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+}
+
+/* The filename/title input above the editor, scaled with the document font so
+   the two stay in proportion. */
+.document-editor-title {
+  font-size: calc(var(--document-font-size, 16px) * 1.875);
+  line-height: 1.2;
+}
+
+@media (max-width: 1023px) {
+  .document-editor-title {
+    font-size: calc(var(--document-font-size, 16px) * 1.25);
+  }
+}

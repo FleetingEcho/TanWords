@@ -1,4 +1,4 @@
-import type { PartialBlock } from "@blocknote/core";
+import type { Block } from "./tiptap/blocks";
 import { DOCUMENT_ASSET_SCHEME } from "@/lib/documentAssets";
 import { isYouTubeUrl } from "./youtubeUrl";
 
@@ -45,7 +45,7 @@ export function lowerMedia(blocks: any[]): any[] {
 
 /** After markdown parse: put the tagged blocks back to their real type.
  *  Markdown will have turned every one of them into `image`. */
-export function liftMedia(blocks: PartialBlock[]): any[] {
+export function liftMedia(blocks: Block[]): any[] {
   return blocks.map((block: any) => {
     const url = block?.props?.url;
     if (typeof url === "string") {

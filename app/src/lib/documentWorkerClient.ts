@@ -1,4 +1,4 @@
-import type { PartialBlock } from "@blocknote/core";
+import type { Block } from "@/components/Documents/tiptap/blocks";
 import { blocksToMarkdown, blocksToStorage, blocksToText, contentToBlocks, markdownToBlocks } from "./docFormat";
 
 type Operation = "markdownToBlocks" | "contentToBlocks" | "blocksToMarkdown" | "blocksToMarkdownWithStats" | "blocksToStorage" | "htmlToMarkdown";
@@ -14,10 +14,10 @@ let workerUnavailable = false;
 let nextId = 1;
 const pending = new Map<number, Pending>();
 
-/** The worker holds a live BlockNoteEditor (a full ProseMirror schema, ~1.4MB
- *  of module code plus its instance state) for as long as it exists. Documents
- *  are edited in bursts, so past this much idle time that memory is worth more
- *  than the ~100ms of respawn on the next parse. */
+/** The worker is cheap now that parsing is a pure remark pipeline rather than a
+ *  headless editor, but it still holds a module graph and a thread. Documents
+ *  are edited in bursts, so past this much idle time that is worth more than
+ *  the respawn cost on the next parse. */
 const WORKER_IDLE_TIMEOUT_MS = 30_000;
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -98,14 +98,14 @@ function run<T>(operation: Operation, payload: string | readonly unknown[]): Pro
   });
 }
 
-export async function markdownToBlocksOffThread(markdown: string): Promise<PartialBlock[]> {
-  try { return await (run<PartialBlock[]>("markdownToBlocks", markdown) ?? markdownToBlocks(markdown)); }
+export async function markdownToBlocksOffThread(markdown: string): Promise<Block[]> {
+  try { return await (run<Block[]>("markdownToBlocks", markdown) ?? markdownToBlocks(markdown)); }
   catch { return markdownToBlocks(markdown); }
 }
 
-export async function contentToBlocksOffThread(content: string): Promise<PartialBlock[]> {
+export async function contentToBlocksOffThread(content: string): Promise<Block[]> {
   if (!content || content === "{}" || content === "[]") return [];
-  try { return await (run<PartialBlock[]>("contentToBlocks", content) ?? contentToBlocks(content)); }
+  try { return await (run<Block[]>("contentToBlocks", content) ?? contentToBlocks(content)); }
   catch { return contentToBlocks(content); }
 }
 
@@ -149,10 +149,8 @@ export async function htmlToMarkdownOffThread(html: string): Promise<string> {
 }
 
 export async function blocksToHtmlOffThread(blocks: readonly unknown[]): Promise<string> {
-  // Worker cannot serialize HTML without a DOM, so this runs on the renderer.
-  // Kept behind a named function so export can move off the main thread later
-  // without changing callers.
-  const { BlockNoteEditor } = await import("@blocknote/core");
-  const editor = BlockNoteEditor.create();
-  return editor.blocksToHTMLLossy(blocks as any);
+  // HTML serialization needs a DOM, so this runs on the renderer. Kept behind
+  // a named function so callers do not have to care.
+  const { blocksToHtml } = await import("@/components/Documents/tiptap/blocksToHtml");
+  return blocksToHtml(blocks as readonly Block[]);
 }

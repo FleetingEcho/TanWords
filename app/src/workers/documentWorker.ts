@@ -1,16 +1,13 @@
 /// <reference lib="webworker" />
-import { BlockNoteEditor } from "@blocknote/core";
 import { htmlToMarkdown } from "../lib/htmlToMarkdown";
-import { repairMarkdown } from "../lib/markdownPreparse";
+import { blocksToMarkdown, markdownToBlocks } from "../lib/markdown";
+import type { Block } from "../components/Documents/tiptap/blocks";
 
 type Request = {
   id: number;
   operation: "markdownToBlocks" | "contentToBlocks" | "blocksToMarkdown" | "blocksToMarkdownWithStats" | "blocksToStorage" | "htmlToMarkdown";
   payload: string | readonly unknown[];
 };
-
-let parser: BlockNoteEditor | null = null;
-const getParser = () => (parser ??= BlockNoteEditor.create());
 
 function inlineText(content: any): string {
   if (!content) return "";
@@ -38,7 +35,7 @@ async function handle(data: Request) {
   try {
     let result: unknown;
     if (data.operation === "markdownToBlocks") {
-      result = await getParser().tryParseMarkdownToBlocks(repairMarkdown(data.payload as string));
+      result = markdownToBlocks(data.payload as string);
     } else if (data.operation === "htmlToMarkdown") {
       result = htmlToMarkdown(data.payload as string);
     } else if (data.operation === "contentToBlocks") {
@@ -49,15 +46,15 @@ async function handle(data: Request) {
         else throw new Error("legacy-content");
       } catch (error) {
         if (error instanceof Error && error.message === "legacy-content") throw error;
-        result = await getParser().tryParseMarkdownToBlocks(repairMarkdown(content));
+        result = markdownToBlocks(content);
       }
     } else if (data.operation === "blocksToMarkdown") {
-      result = await getParser().blocksToMarkdownLossy(data.payload as any);
+      result = blocksToMarkdown(data.payload as readonly Block[]);
     } else if (data.operation === "blocksToMarkdownWithStats") {
       const blocks = data.payload as readonly unknown[];
       const contentText = blocksToText(blocks);
       result = {
-        markdown: await getParser().blocksToMarkdownLossy(blocks as any),
+        markdown: blocksToMarkdown(blocks as readonly Block[]),
         wordCount: contentText.trim() ? contentText.trim().split(/\s+/).length : 0,
       };
     } else {
@@ -75,8 +72,9 @@ async function handle(data: Request) {
   }
 }
 
-// A single headless editor backs parsing and serialization. Queue work so two
-// rapid saves cannot mutate/use that editor concurrently or finish out of order.
+// Parsing is now pure (remark, no editor state), but the queue stays: callers
+// rely on results arriving in the order they were requested — two rapid saves
+// finishing out of order would write the older document last.
 let queue = Promise.resolve();
 self.onmessage = ({ data }: MessageEvent<Request>) => {
   queue = queue.then(() => handle(data), () => handle(data));

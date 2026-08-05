@@ -1,6 +1,6 @@
 import React, { lazy, Suspense } from "react";
 
-// BlockNote (react + mantine + prosemirror internals) is the single
+// The rich editor (Tiptap + ProseMirror + shiki) is the single
 // heaviest dependency in the app — split into its own chunk so it only
 // loads when a document is actually opened, not on initial app boot.
 const DocEditor = lazy(() =>

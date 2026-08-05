@@ -1,4 +1,4 @@
-import type { PartialBlock } from "@blocknote/core";
+import type { Block } from "./tiptap/blocks";
 
 function inlineToText(content: any): string {
   if (!content) return "";
@@ -10,7 +10,7 @@ function inlineToText(content: any): string {
 }
 
 /** After markdown parse: ```mermaid fences become rendered Mermaid blocks. */
-export function liftMermaid(blocks: PartialBlock[]): any[] {
+export function liftMermaid(blocks: Block[]): any[] {
   return blocks.map((b: any) => {
     if (b.type === "codeBlock" && b.props?.language === "mermaid") {
       return { type: "mermaid", props: { code: inlineToText(b.content) } };

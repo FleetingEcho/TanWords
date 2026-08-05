@@ -8,18 +8,17 @@ vi.hoisted(() => {
 });
 
 import { render } from "@testing-library/react";
-import { BlockNoteView } from "@blocknote/mantine";
-import { useCreateBlockNote } from "@blocknote/react";
-import { editorSchema } from "./editorSchema";
+import { TiptapDocumentEditor } from "./tiptap/TiptapDocumentEditor";
 
 const WATCH = "https://www.youtube.com/watch?v=iQyg-KypKAA";
 
 function Harness({ caption = "" }: { caption?: string }) {
-  const editor = useCreateBlockNote({
-    schema: editorSchema,
-    initialContent: [{ type: "youtube", props: { url: WATCH, caption } }] as any,
-  });
-  return <BlockNoteView editor={editor} />;
+  return (
+    <TiptapDocumentEditor
+      initialBlocks={[{ type: "youtube", props: { url: WATCH, caption } }]}
+      isDark={false}
+    />
+  );
 }
 
 /** jsdom does no layout, so these assert the two *attributes* that carry the

@@ -4,21 +4,29 @@ interface ThemeRefreshTransaction {
   setMeta(key: string, value: unknown): ThemeRefreshTransaction;
 }
 
+/** The ProseMirror-level editor. Under BlockNote this is reached through
+ *  `_tiptapEditor`; under Tiptap the editor *is* this, so callers pass it
+ *  directly and the indirection disappears. */
 interface ThemeRefreshEditor {
-  _tiptapEditor: {
-    isDestroyed?: boolean;
-    state: { tr: ThemeRefreshTransaction };
-    view: { dispatch(transaction: ThemeRefreshTransaction): void };
-  };
+  isDestroyed?: boolean;
+  state: { tr: ThemeRefreshTransaction };
+  view: { dispatch(transaction: ThemeRefreshTransaction): void };
+}
+
+/** Accepts either editor: BlockNote wraps the real one, Tiptap is the real one. */
+type ThemeRefreshTarget = ThemeRefreshEditor | { _tiptapEditor: ThemeRefreshEditor };
+
+function proseMirrorEditor(editor: ThemeRefreshTarget): ThemeRefreshEditor {
+  return "_tiptapEditor" in editor ? editor._tiptapEditor : editor;
 }
 
 /**
  * prosemirror-highlight caches Shiki decorations by code-block node identity.
  * Theme changes do not alter those nodes, so explicitly request its supported
- * decoration-only refresh instead of recreating the BlockNote editor.
+ * decoration-only refresh instead of recreating the editor.
  */
-export function refreshCodeBlockTheme(editor: ThemeRefreshEditor): void {
-  const tiptap = editor._tiptapEditor;
+export function refreshCodeBlockTheme(editor: ThemeRefreshTarget): void {
+  const tiptap = proseMirrorEditor(editor);
   if (tiptap.isDestroyed) return;
 
   // prosemirror-highlight only invalidates decoration cache entries for nodes
