@@ -1,11 +1,12 @@
 /// <reference lib="webworker" />
 import { htmlToMarkdown } from "../lib/htmlToMarkdown";
 import { blocksToMarkdown, markdownToBlocks } from "../lib/markdown";
+import { contentToBlocks } from "../lib/docFormat";
 import type { Block } from "../components/Documents/tiptap/blocks";
 
 type Request = {
   id: number;
-  operation: "markdownToBlocks" | "contentToBlocks" | "blocksToMarkdown" | "blocksToMarkdownWithStats" | "blocksToStorage" | "htmlToMarkdown";
+  operation: "markdownToBlocks" | "contentToBlocks" | "contentToMarkdown" | "blocksToMarkdown" | "blocksToMarkdownWithStats" | "blocksToStorage" | "htmlToMarkdown";
   payload: string | readonly unknown[];
 };
 
@@ -39,15 +40,9 @@ async function handle(data: Request) {
     } else if (data.operation === "htmlToMarkdown") {
       result = htmlToMarkdown(data.payload as string);
     } else if (data.operation === "contentToBlocks") {
-      const content = data.payload as string;
-      try {
-        const parsed = JSON.parse(content);
-        if (Array.isArray(parsed)) result = parsed;
-        else throw new Error("legacy-content");
-      } catch (error) {
-        if (error instanceof Error && error.message === "legacy-content") throw error;
-        result = markdownToBlocks(content);
-      }
+      result = await contentToBlocks(data.payload as string);
+    } else if (data.operation === "contentToMarkdown") {
+      result = blocksToMarkdown(await contentToBlocks(data.payload as string));
     } else if (data.operation === "blocksToMarkdown") {
       result = blocksToMarkdown(data.payload as readonly Block[]);
     } else if (data.operation === "blocksToMarkdownWithStats") {

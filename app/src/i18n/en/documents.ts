@@ -133,6 +133,8 @@ export const documents: Dict = {
     "doc.outline": "Outline",
     "doc.outlineEmpty": "Add headings to build an outline",
     "doc.outlineToggle": "Toggle outline",
+    "doc.undo": "Undo",
+    "doc.redo": "Redo",
     "doc.chromeShow": "Show document tools",
     "doc.chromeHide": "Hide document tools",
     "doc.exportHtml": "Export HTML",

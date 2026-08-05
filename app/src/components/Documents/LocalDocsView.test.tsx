@@ -36,12 +36,17 @@ vi.mock("./LocalDocsSidebar", () => ({
     search,
     onSearchChange,
     searching,
+    files,
+    onOpen,
   }: {
     search: string;
     onSearchChange: (value: string) => void;
     searching: boolean;
+    files: Array<{ rel_path: string }>;
+    onOpen: (path: string) => void;
   }) => (
     <>
+      {files.map((file) => <button key={file.rel_path} onClick={() => onOpen(file.rel_path)}>{file.rel_path}</button>)}
       <input
         aria-label="local-doc-search"
         value={search}
@@ -53,9 +58,9 @@ vi.mock("./LocalDocsSidebar", () => ({
 }));
 
 vi.mock("./LazyLocalDocEditor", () => ({
-  LazyLocalDocEditor: () => {
+  LazyLocalDocEditor: ({ relPath }: { relPath: string }) => {
     editorRender();
-    return <div>large editor</div>;
+    return <div><span>large editor</span><span data-testid="editor-path">{relPath}</span></div>;
   },
 }));
 
@@ -126,5 +131,27 @@ describe("LocalDocsView editor render isolation", () => {
 
     rerender(<LocalDocsView refreshTick={1} />);
     await waitFor(() => expect(listLocalDocs).toHaveBeenCalledTimes(2));
+  });
+
+  it("keeps the latest file click when an earlier large read finishes later", async () => {
+    localStorage.removeItem("tanwords_doc_last_local_path");
+    listLocalDocs.mockResolvedValue([
+      { rel_path: "slow.md", name: "slow.md", modified_ms: 1, size: 1_000_000 },
+      { rel_path: "fast.md", name: "fast.md", modified_ms: 2, size: 10 },
+    ]);
+    let resolveSlow!: (value: string) => void;
+    const slow = new Promise<string>((resolve) => { resolveSlow = resolve; });
+    readLocalDoc.mockImplementation((_: string, path: string) => path === "slow.md" ? slow : Promise.resolve("# fast"));
+    render(<LocalDocsView />);
+
+    fireEvent.click(await screen.findByText("slow.md"));
+    fireEvent.click(screen.getByText("fast.md"));
+    await screen.findByText("large editor", { exact: false });
+    expect(screen.getByTestId("editor-path")).toHaveTextContent("fast.md");
+    expect(readLocalDoc).toHaveBeenCalledWith("/vault", "fast.md");
+
+    await act(async () => { resolveSlow("# stale slow"); await slow; });
+    expect(screen.getByTestId("editor-path")).toHaveTextContent("fast.md");
+    expect(readLocalDoc).toHaveBeenCalledTimes(2);
   });
 });

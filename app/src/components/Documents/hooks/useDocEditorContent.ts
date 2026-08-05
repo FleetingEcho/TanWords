@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DocumentDetail } from "@/hooks/useDB";
-import { blocksToMarkdownOffThread, blocksToStorageOffThread, contentToBlocksOffThread, markdownToBlocksOffThread } from "@/lib/documentWorkerClient";
+import { blocksToMarkdownOffThread, blocksToStorageOffThread, contentToBlocksOffThread, contentToMarkdownOffThread, markdownToBlocksOffThread } from "@/lib/documentWorkerClient";
 import { liftMermaid, lowerMermaid } from "../mermaidTransforms";
 import { liftMedia, liftYouTube, lowerMedia, lowerYouTube, youTubeEmbedOf } from "../mediaTransforms";
 import { uploadDocumentAsset } from "@/lib/documentAssets";
 import type { DocEditorApi } from "../tiptap/DocEditorApi";
 import type { Block } from "../tiptap/blocks";
 import { isEmptyParagraph, withTrailingEditorParagraph, withoutTrailingEditorParagraph } from "../trailingEditorParagraph";
+import { isLargeDocumentBlocks, isLargeDocumentText } from "../largeDocument";
 
 // Online documents are saved by the sidecar DB, so editing is deliberately
 // debounced long enough to keep keystrokes smooth. Leaving the editor, the
@@ -24,7 +25,8 @@ const AUTOSAVE_MAX_INTERVAL_MS = 8_000;
  * link picker and attachment/password handling (useDocEditorLinks,
  * useDocEditorAttachments) both just take the resulting `editor`. */
 export function useDocEditorContent(doc: DocumentDetail, onSave: (content: string, contentText: string, wordCount: number) => Promise<void>, onDirty: () => void) {
-  const [mode, setMode] = useState<"rich" | "raw">("rich");
+  const sourceLooksLarge = isLargeDocumentText(doc.content);
+  const [mode, setMode] = useState<"rich" | "raw">(sourceLooksLarge ? "raw" : "rich");
   // Live raw text in a ref, not state — it changes on every raw-mode
   // keystroke and would otherwise re-render the whole editor chrome per
   // character. The `rawMarkdown` state below only moves on mode transitions,
@@ -56,16 +58,50 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
   // remounted for it (see the `key` in DocEditor).
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     (async () => {
       try {
-        const parsed = await contentToBlocksOffThread(doc.content);
+        if (sourceLooksLarge) {
+          // Keep parsing, legacy conversion and Markdown serialization in one
+          // isolated worker. Returning a giant block tree to the renderer only
+          // to turn it straight back into Markdown would itself be a long
+          // structured-clone/main-thread task.
+          const markdown = await contentToMarkdownOffThread(doc.content, controller.signal);
+          if (cancelled) return;
+          rawMarkdownRef.current = markdown;
+          setRawMarkdown(markdown);
+          setInitialBlocks(null);
+          setMode("raw");
+          return;
+        }
+
+        const parsed = await contentToBlocksOffThread(doc.content, controller.signal);
         if (cancelled) return;
-        setInitialBlocks(withTrailingEditorParagraph(liftYouTube(liftMedia(liftMermaid(parsed)))) as Block[]);
+        const lifted = liftYouTube(liftMedia(liftMermaid(parsed))) as Block[];
+        if (isLargeDocumentBlocks(lifted)) {
+          // ProseMirror renders the whole document DOM. Large sources instead
+          // start in CodeMirror, whose viewport is virtualized, so opening one
+          // can never monopolize the renderer and swallow the next list click.
+          const lowered = lowerYouTube(lowerMedia(lowerMermaid(lifted as any)));
+          const markdown = await blocksToMarkdownOffThread(lowered, controller.signal);
+          if (cancelled) return;
+          rawMarkdownRef.current = markdown;
+          setRawMarkdown(markdown);
+          setInitialBlocks(null);
+          setMode("raw");
+        } else {
+          setInitialBlocks(withTrailingEditorParagraph(lifted) as Block[]);
+        }
+      } catch (error) {
+        if ((error as { name?: string })?.name !== "AbortError") throw error;
       } finally {
         if (!cancelled) requestAnimationFrame(() => { loaded.current = true; setRichLoading(false); });
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- doc.content identity tracks doc.id.
   }, [doc.id]);
 

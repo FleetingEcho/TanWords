@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Code2, Download, Eye, FileText, History, Link2, ListTree, Loader2, MoreHorizontal, Paperclip } from "lucide-react";
+import { Code2, Download, Eye, FileText, History, Link2, Loader2, MoreHorizontal, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useT } from "@/hooks/useT";
@@ -12,8 +12,6 @@ interface Props {
   onAttach: () => void;
   onInsertLink?: () => void;
   templatesMenu: React.ReactNode;
-  outlineActive: boolean;
-  onToggleOutline: () => void;
   onHistory: () => void;
   onExportHtml: () => void;
   onExportPdf: () => void;
@@ -28,8 +26,6 @@ export function DocumentToolbarActions({
   onAttach,
   onInsertLink,
   templatesMenu,
-  outlineActive,
-  onToggleOutline,
   onHistory,
   onExportHtml,
   onExportPdf,
@@ -42,7 +38,7 @@ export function DocumentToolbarActions({
   useEffect(() => subscribeToExportBusy(setExportBusy), []);
 
   return (
-    <div className="flex w-full shrink-0 flex-wrap items-center gap-1.5">
+    <div className="document-toolbar-scroll flex w-full min-w-0 flex-nowrap items-center gap-1.5 overflow-x-auto">
       <Button
         type="button"
         variant="ghost"
@@ -70,18 +66,6 @@ export function DocumentToolbarActions({
       )}
 
       {templatesMenu}
-
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        onClick={onToggleOutline}
-        title={t("doc.outline")}
-        aria-label={t("doc.outline")}
-        className={`h-7 w-7 rounded-lg ${outlineActive ? "text-primary" : "text-muted-foreground"}`}
-      >
-        <ListTree className="h-4 w-4" />
-      </Button>
 
       <div className="flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
         <Button
@@ -140,7 +124,7 @@ export function DocumentToolbarActions({
             size="icon"
             title={t("doc.moreActions")}
             aria-label={t("doc.moreActions")}
-            className={`h-7 w-7 rounded-lg ${outlineActive ? "text-primary" : "text-muted-foreground"}`}
+            className="h-7 w-7 rounded-lg text-muted-foreground"
           >
             <MoreHorizontal className="h-4 w-4" />
           </Button>

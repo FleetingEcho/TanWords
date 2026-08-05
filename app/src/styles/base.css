@@ -65,6 +65,23 @@
   height: 10px;
 }
 
+/* Minimal heading rail in the document viewport. It may scroll when a document
+ * has many headings, but the rail's own scrollbar should stay invisible. */
+.document-scroll-outline {
+  scrollbar-width: none;
+}
+.document-scroll-outline::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* Keep the outline card's visible thumb away from its rounded corners. The
+ * outer card clips it as a final safeguard for Electron/WebKit. */
+.document-outline-card-scroll::-webkit-scrollbar-track {
+  margin-block: 18px;
+}
+
 /* Heatmap cells */
 .heatmap-0 { @apply bg-secondary/60; }
 .heatmap-1 { @apply bg-primary/15; }

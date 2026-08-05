@@ -388,6 +388,32 @@ export function createDocEditorApi(editor: Editor): DocEditorApi {
       editor.commands.focus();
     },
 
+    undo() {
+      editor.commands.focus();
+      return (editor.commands as typeof editor.commands & { undo(): boolean }).undo();
+    },
+
+    redo() {
+      editor.commands.focus();
+      return (editor.commands as typeof editor.commands & { redo(): boolean }).redo();
+    },
+
+    canUndo() {
+      if (editor.isDestroyed) return false;
+      return (editor.can() as ReturnType<Editor["can"]> & { undo(): boolean }).undo();
+    },
+
+    canRedo() {
+      if (editor.isDestroyed) return false;
+      return (editor.can() as ReturnType<Editor["can"]> & { redo(): boolean }).redo();
+    },
+
+    onHistoryChange(listener) {
+      if (editor.isDestroyed) return () => {};
+      editor.on("transaction", listener);
+      return () => editor.off("transaction", listener);
+    },
+
     resolveFileUrl: resolveDocumentAssetUrl,
 
     blocksToHTMLLossy(blocks) {

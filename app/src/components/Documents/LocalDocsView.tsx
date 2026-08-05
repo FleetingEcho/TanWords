@@ -71,6 +71,7 @@ export function LocalDocsView({
   const [searchResults, setSearchResults] = useState<LocalDocSearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const searchSequence = useRef(0);
+  const openSequence = useRef(0);
   const [activePath, setActivePath] = useState<string | null>(null);
   const activePathRef = useRef<string | null>(null);
   const [activeContent, setActiveContent] = useState<string | null>(null);
@@ -215,21 +216,29 @@ export function LocalDocsView({
 
   const handleOpen = async (relPath: string, opts?: { silent?: boolean }) => {
     if (!root) return;
+    const sequence = ++openSequence.current;
+    // Switch selection and tear down the previous editor before filesystem I/O.
+    // Only the latest read may populate the pane; slow earlier files cannot
+    // jump back in front after the user has already selected something else.
+    setActivePath(relPath);
+    activePathRef.current = relPath;
+    setActiveContent(null);
+    setActiveRawContent(null);
+    setShowMobileEditor(true);
+    setSaveStatus("idle");
+    setEditorKey((key) => key + 1);
     setFileLoading(true);
     try {
       const content = await readLocalDoc(root, relPath);
-      setActivePath(relPath);
+      if (sequence !== openSequence.current) return;
       setActiveContent(mdToDisplay(content, root, relPath));
       setActiveRawContent(content);
-      setShowMobileEditor(true);
-      setSaveStatus("idle");
-      setEditorKey((k) => k + 1);
     } catch (e) {
       // Auto-reopen on mount fails silently if the file moved/was deleted since
       // last session — not worth greeting the user with an error toast on launch.
-      if (!opts?.silent) toast.error(String(e));
+      if (sequence === openSequence.current && !opts?.silent) toast.error(String(e));
     } finally {
-      setFileLoading(false);
+      if (sequence === openSequence.current) setFileLoading(false);
     }
   };
 
