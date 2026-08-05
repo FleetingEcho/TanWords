@@ -83,6 +83,12 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
   const [mode, setMode] = useState<EditorMode>("rich");
   const [rawMarkdown, setRawMarkdown] = useState(initialRawMarkdown);
   const [wordCount, setWordCount] = useState(() => countWords(initialMarkdown));
+  // The live raw text in a ref, not state: it changes on every raw-mode
+  // keystroke, and routeing that through `useState` re-rendered this
+  // component (header, toolbar, everything) per character typed. State
+  // (`rawMarkdown`) now moves only on mode transitions, where it seeds the
+  // freshly mounted CodeMirror — reads during a session use this ref.
+  const rawMarkdownRef = useRef(initialRawMarkdown);
   const [switchingMode, setSwitchingMode] = useState(false);
   // The editor starts empty — content only lands once the
   // (off-thread, so genuinely async) parse below resolves. Without this, the editor
@@ -90,6 +96,27 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
   // body looks empty rather than loading, for however long the parse takes.
   const [richLoading, setRichLoading] = useState(true);
   const [outlineOpen, setOutlineOpen] = useState(false);
+  // Outline refresh — see DocEditor: skipped while closed, throttled while
+  // typing, so a keystroke no longer re-renders the whole editor chrome.
+  const outlineOpenRef = useRef(outlineOpen);
+  outlineOpenRef.current = outlineOpen;
+  const outlineTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bumpOutlineTick = useCallback(() => {
+    if (!outlineOpenRef.current || outlineTimer.current) return;
+    outlineTimer.current = setTimeout(() => {
+      outlineTimer.current = null;
+      setOutlineTick((tick) => tick + 1);
+    }, 250);
+  }, []);
+  const toggleOutline = useCallback(() => {
+    setOutlineOpen((open) => {
+      if (!open) setOutlineTick((tick) => tick + 1);
+      return !open;
+    });
+  }, []);
+  useEffect(() => () => {
+    if (outlineTimer.current) clearTimeout(outlineTimer.current);
+  }, []);
   // See DocEditor: the metadata/toolbar stack starts folded on phones.
   const [chromeOpen, setChromeOpen] = useState(false);
   const [outlineTick, setOutlineTick] = useState(0);
@@ -144,7 +171,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
       let markdown = lastSavedRaw.current;
       let nextWordCount: number | null = null;
       if (hasChanges && mode === "raw") {
-        markdown = rawMarkdown;
+        markdown = rawMarkdownRef.current;
         nextWordCount = countWords(markdown);
       } else if (hasChanges && editor) {
         const result = await blocksToMarkdownWithStatsOffThread(
@@ -159,7 +186,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
       dirty.current = hasChanges;
       throw error;
     }
-  }, [editor, flushRaw, mode, rawMarkdown, toRawMarkdown]);
+  }, [editor, flushRaw, mode, toRawMarkdown]);
   flushRef.current = flushSave;
 
   const scheduleSave = useCallback(() => {
@@ -218,6 +245,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
           ))
           : lastSavedRaw.current;
         setRawMarkdown(raw);
+        rawMarkdownRef.current = raw;
         setWordCount(countWords(raw));
         if (dirty.current && raw !== lastSavedRaw.current) {
           await onSave(raw);
@@ -229,14 +257,15 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
       } else {
         loaded.current = false;
         setRichLoading(true);
+        const rawText = rawMarkdownRef.current;
         const parsed = promoteLocalFileLinks(
-          liftYouTube(liftMedia(liftMermaid(await markdownToBlocksOffThread(toDisplayMarkdown(rawMarkdown)))))
+          liftYouTube(liftMedia(liftMermaid(await markdownToBlocksOffThread(toDisplayMarkdown(rawText)))))
         );
         setInitialBlocks(withTrailingEditorParagraph(parsed) as Block[]);
         setWordCount(countWords(blocksToText(parsed)));
-        if (dirty.current && rawMarkdown !== lastSavedRaw.current) {
-          await onSave(rawMarkdown);
-          lastSavedRaw.current = rawMarkdown;
+        if (dirty.current && rawText !== lastSavedRaw.current) {
+          await onSave(rawText);
+          lastSavedRaw.current = rawText;
           dirty.current = false;
         }
         dirty.current = false;
@@ -252,11 +281,11 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
     } finally {
       setSwitchingMode(false);
     }
-  }, [editor, mode, onSave, rawMarkdown, switchingMode, toDisplayMarkdown, toRawMarkdown]);
+  }, [editor, mode, onSave, switchingMode, toDisplayMarkdown, toRawMarkdown]);
 
   const handleRawChange = (markdown: string) => {
     dirty.current = true;
-    setRawMarkdown(markdown);
+    rawMarkdownRef.current = markdown;
     scheduleSave();
   };
 
@@ -374,7 +403,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
               onAttach={() => attachmentInputRef.current?.click()}
               templatesMenu={editor ? <BlockTemplatesMenu editor={editor} /> : null}
               outlineActive={outlineOpen}
-              onToggleOutline={() => setOutlineOpen((v) => !v)}
+              onToggleOutline={toggleOutline}
               onHistory={() => setHistoryOpen(true)}
               onExportHtml={() => editor && void exportEditorHtml(editor, title).catch((error) => toast.error(String(error)))}
               onExportPdf={() => editor && void exportEditorPdf(editor, title).catch((error) => toast.error(String(error)))}
@@ -408,7 +437,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
                   readNativeImage={readNativeClipboardImage}
                   onReady={setEditor}
                   onError={(message) => toast.error(message)}
-                  onChange={() => { setOutlineTick((tick) => tick + 1); handleChange(); }}
+                  onChange={() => { bumpOutlineTick(); handleChange(); }}
                   className="tanwords-editor"
                 />
               )}

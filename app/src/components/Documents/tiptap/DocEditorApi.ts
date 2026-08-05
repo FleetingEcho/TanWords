@@ -34,6 +34,9 @@ export interface DocEditorApi {
    * pasted-YouTube-link promotion both key off "is this the last block?".
    * Getting it wrong is silent — links stop embedding, or the document grows
    * a paragraph per keystroke.
+   *
+   * Runs on every keystroke, so implementations must be O(the cursor's
+   * neighbourhood), never O(the document) — see `createDocEditorApi`.
    */
   getTextCursorPosition(): CursorPosition;
   setTextCursorPosition(blockId: string, placement?: "start" | "end"): void;
@@ -52,6 +55,17 @@ export interface DocEditorApi {
   /** HTML for export. Lossy by design — see `documentExport`, which then
    *  inlines assets, renders mermaid and highlights code. */
   blocksToHTMLLossy(blocks?: readonly Block[]): string;
+
+  /**
+   * Headings only, collected in the editor's own document rather than through
+   * a storage-format round trip — the outline recomputes on document changes,
+   * which for a large file made the old route (full `document` serialization)
+   * a per-keystroke cost.
+   *
+   * Optional: editor implementations that cannot walk their document cheaply
+   * simply omit it and the outline falls back to reading `document`.
+   */
+  getOutlineHeadings?(): { id: string; level: number; text: string }[];
 
   /**
    * The editor's rendered root, for the outline's scroll-into-view. Null

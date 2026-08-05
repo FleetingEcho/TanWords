@@ -291,3 +291,23 @@ export function pmDocToBlocks(doc: PmNode | null | undefined): Block[] {
   if (!doc?.content) return [];
   return ungroupNodes(doc.content as PmNode[]);
 }
+
+/**
+ * One *live* ProseMirror node → its block, without touching anything else in
+ * the document. The O(local) counterpart of `pmDocToBlocks`, used on the
+ * per-keystroke path (`getTextCursorPosition`), where serializing a large
+ * document just to find the block under the cursor would be the whole render
+ * budget on its own.
+ *
+ * `parentType` is the live parent node's type name: it is the only place the
+ * list wrapper → item-block mapping survives (`bulletList` → `bulletListItem`),
+ * exactly as in `ungroupNodes`.
+ */
+export function pmNodeToBlock(
+  node: { toJSON(): unknown; type: { name: string } },
+  parentType: string,
+): Block {
+  const json = node.toJSON() as PmNode;
+  const blockType = WRAPPER_TO_BLOCK[parentType];
+  return blockType ? pmListItemToBlock(json, blockType) : pmToBlock(json);
+}
