@@ -1,12 +1,5 @@
 import React, { useRef, useState } from "react";
 import { toast } from "sonner";
-import {
-  FormattingToolbarController,
-} from "@blocknote/react";
-import { offset, shift } from "@floating-ui/react";
-import { BlockNoteView } from "@blocknote/mantine";
-import "@blocknote/mantine/style.css";
-
 import { DocumentDetail } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { useIsDark } from "@/hooks/useIsDark";
@@ -17,7 +10,6 @@ import { Check, Link2, ListTree, Maximize2, Minimize2, Search } from "lucide-rea
 import { RawMarkdownEditor } from "./RawMarkdownEditor";
 import type { SaveStatus } from "./useDocumentEditor";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
-import { selectRichEditorContents } from "./editorSelection";
 import { useSettingsStore } from "@/store/settingsStore";
 import { DocumentPasswordDialog } from "./DocumentPasswordDialog";
 import { DocumentPreviewScrollArea } from "./DocumentPreviewScrollArea";
@@ -35,6 +27,8 @@ import { DocumentChromeToggle } from "./DocumentChromeToggle";
 import { useIsNarrow } from "@/components/Vocabulary/hooks/useMediaQuery";
 import { contentToBlocksOffThread } from "@/lib/documentWorkerClient";
 import { withTrailingEditorParagraph } from "./trailingEditorParagraph";
+import { LazyTiptapDocumentEditor } from "./tiptap/LazyTiptapDocumentEditor";
+import type { Block } from "./tiptap/blocks";
 import { liftMermaid } from "./mermaidTransforms";
 
 interface Props {
@@ -62,7 +56,6 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
   const titleRef = useRef<HTMLInputElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const searchRootRef = useRef<HTMLDivElement>(null);
-  const [toolbarPortalElement, setToolbarPortalElement] = useState<HTMLDivElement | null>(null);
   const [outlineOpen, setOutlineOpen] = useState(false);
   // Phone-only: the tags/search/toolbar stack is ~half the readable area on
   // a narrow screen, so it starts folded away. Ignored at `lg` (see
@@ -72,10 +65,13 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
   const [historyOpen, setHistoryOpen] = useState(false);
 
   const content = useDocEditorContent(doc, onSave, onDirty);
-  const { editor, mode, rawMarkdown, switchingMode, richLoading, switchMode, handleChange, handleRawChange, scheduleSave } = content;
+  const {
+    editor, setEditor, initialBlocks, uploadFile,
+    mode, rawMarkdown, switchingMode, richLoading, switchMode, handleChange, handleRawChange, scheduleSave,
+  } = content;
 
   const links = useDocEditorLinks({ documentId: doc.id, documentContent: doc.content, editor, scheduleSave });
-  const attachments = useDocEditorAttachments({ doc, editor, isDark, scheduleSave });
+  const attachments = useDocEditorAttachments({ doc, editor, scheduleSave });
 
   const handleTitleBlur = () => {
     const val = title.trim() || t("doc.untitled");
@@ -92,17 +88,7 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
 
   return (
     <div
-      ref={setToolbarPortalElement}
-      // `bn-mantine` as well as `bn-root`, because the formatting toolbar is
-      // portaled *here* (see FormattingToolbarController below) and BlockNote
-      // scopes the toolbar's own card — background, border, padding, the gap
-      // between its buttons — to `.bn-mantine .bn-toolbar`. The button rules
-      // are not scoped that way, so without this the buttons keep their
-      // styling while the thing holding them disappears: icons collapsed
-      // together on top of the document text, which reads as a broken toolbar
-      // rather than a missing container.
-      className="bn-root bn-mantine tanwords-editor-chrome relative flex h-full flex-col"
-      data-color-scheme={isDark ? "dark" : "light"}
+      className="tanwords-editor-chrome relative flex h-full flex-col"
     >
       {/* Title + metadata */}
       <div className="px-4 lg:px-12 pt-3 pb-1 lg:pt-8 lg:pb-2 shrink-0">
@@ -175,12 +161,12 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
             onMode={(nextMode) => void switchMode(nextMode)}
             onAttach={() => attachmentInputRef.current?.click()}
             onInsertLink={() => links.setLinkPickerOpen(true)}
-            templatesMenu={<BlockTemplatesMenu editor={editor} />}
+            templatesMenu={editor ? <BlockTemplatesMenu editor={editor} /> : null}
             outlineActive={outlineOpen}
             onToggleOutline={() => setOutlineOpen((v) => !v)}
             onHistory={() => setHistoryOpen(true)}
-            onExportHtml={() => void exportEditorHtml(editor, doc.title).catch((error) => toast.error(String(error)))}
-            onExportPdf={() => void exportEditorPdf(editor, doc.title).catch((error) => toast.error(String(error)))}
+            onExportHtml={() => editor && void exportEditorHtml(editor, doc.title).catch((error) => toast.error(String(error)))}
+            onExportPdf={() => editor && void exportEditorPdf(editor, doc.title).catch((error) => toast.error(String(error)))}
             documentFontSize={documentFontSize}
             onFontSizeChange={setDocumentFontSize}
           />
@@ -193,29 +179,27 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
       {mode === "rich" ? (
         <div ref={searchRootRef} className="contents">
           <div className="flex min-h-0 flex-1">
-            <DocumentPreviewScrollArea onClickCapture={links.handleEditorClick}
-              onKeyDownCapture={(e) => attachments.handleRichEditorKeyDown(e, selectRichEditorContents)}>
+            <DocumentPreviewScrollArea onClickCapture={links.handleEditorClick}>
               {richLoading && (
                 <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-10">
                   <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
                 </div>
               )}
-              <BlockNoteView editor={editor} theme={isDark ? "dark" : "light"} onChange={() => { setOutlineTick((tick) => tick + 1); handleChange(); }}
-                formattingToolbar={false} className="tanwords-editor">
-                <FormattingToolbarController
-                  formattingToolbar={attachments.formattingToolbar}
-                  portalElement={toolbarPortalElement}
-                  floatingUIOptions={{
-                    useFloatingOptions: {
-                      placement: "bottom-start",
-                      middleware: [offset(10), shift({ padding: 8 })],
-                    },
-                    elementProps: { style: { zIndex: 100 } },
-                  }}
+              {initialBlocks && (
+                <LazyTiptapDocumentEditor
+                  key={`${doc.id}-${mode}`}
+                  initialBlocks={initialBlocks as Block[]}
+                  isDark={isDark}
+                  onUploadFile={uploadFile}
+                  onReady={setEditor}
+                  onError={(message) => toast.error(message)}
+                  onChange={() => { setOutlineTick((tick) => tick + 1); handleChange(); }}
+                  toolbarExtras={attachments.renderToolbarExtras}
+                  className="tanwords-editor"
                 />
-              </BlockNoteView>
+              )}
             </DocumentPreviewScrollArea>
-            {outlineOpen && !narrow && (
+            {outlineOpen && !narrow && editor && (
               <div className="w-56 shrink-0">
                 <DocumentOutline editor={editor} tick={outlineTick} />
               </div>
@@ -236,7 +220,7 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
         * persistent column either buries the document or squeezes it to a
         * sliver, and the outline is a jump-and-dismiss tool, not a companion
         * pane. Desktop keeps the side column above. */}
-      {narrow && (
+      {narrow && editor && (
         <Dialog open={outlineOpen} onClose={() => setOutlineOpen(false)} maxWidth="max-w-sm">
           <div className="relative border-b border-border px-5 py-4">
             <DialogTitle className="flex items-center gap-2 text-base font-semibold">
@@ -342,6 +326,7 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
         onClose={() => setHistoryOpen(false)}
         onRestore={(revision: DocumentRevision) => {
           void (async () => {
+            if (!editor) return;
             const blocks = await contentToBlocksOffThread(revision.content);
             editor.replaceBlocks(
               editor.document,

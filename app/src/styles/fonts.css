@@ -1,14 +1,14 @@
-/* Fonts are declared here rather than pulled from @blocknote/core's
+/* Fonts are declared here rather than pulled from an editor package's
  * fonts/inter.css, which ships 9 weights x 2 formats (woff2 + a woff fallback).
  * We render in Chromium only, which has supported woff2 since v36 — the woff
  * half was ~200KB of files that can never be requested. Of the 9 weights the
  * app uses 4 (400/500/600/700; see the font-{medium,semibold,bold} classes).
  *
  * Those 4 are vendored into ../static/inter/ rather than referenced inside the
- * package: @blocknote/core's "exports" map doesn't expose its src/fonts path,
+ * package: the upstream "exports" map didn't expose its src/fonts path,
  * so a url() into it fails to resolve at build time. Inter is SIL OFL, and the
  * bundle already redistributed it. Re-copy from
- * node_modules/@blocknote/core/src/fonts/inter-v12-latin/ on upgrade. */
+ * the vendored copy in this directory on upgrade. */
 
 /* --- Inter: --app-font (see theme-vars.css) --- */
 @font-face {

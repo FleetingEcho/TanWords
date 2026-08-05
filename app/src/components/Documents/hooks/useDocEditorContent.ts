@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useCreateBlockNote } from "@blocknote/react";
-import { editorSchema } from "../editorSchema";
 import { DocumentDetail } from "@/hooks/useDB";
-import { blocksToStorageOffThread, contentToBlocksOffThread, markdownToBlocksOffThread } from "@/lib/documentWorkerClient";
+import { blocksToMarkdownOffThread, blocksToStorageOffThread, contentToBlocksOffThread, markdownToBlocksOffThread } from "@/lib/documentWorkerClient";
 import { liftMermaid, lowerMermaid } from "../mermaidTransforms";
 import { liftMedia, liftYouTube, lowerMedia, lowerYouTube, youTubeEmbedOf } from "../mediaTransforms";
-import { resolveDocumentAssetUrl, uploadDocumentAsset } from "@/lib/documentAssets";
+import { uploadDocumentAsset } from "@/lib/documentAssets";
+import type { DocEditorApi } from "../tiptap/DocEditorApi";
+import type { Block } from "../tiptap/blocks";
 import { isEmptyParagraph, withTrailingEditorParagraph, withoutTrailingEditorParagraph } from "../trailingEditorParagraph";
 
 // Online documents are saved by the sidecar DB, so editing is deliberately
@@ -39,32 +39,30 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
   const dirty = useRef(false);
   const flushRef = useRef<() => Promise<void>>(async () => {});
 
-  const editor = useCreateBlockNote({
-    schema: editorSchema,
-    uploadFile: (file: File) => uploadDocumentAsset(doc.id, file),
-    resolveFileUrl: resolveDocumentAssetUrl,
-  }, [doc.id]);
+  // The editor mounts *with* its content rather than being written into after
+  // the fact, so there is no window in which an autosave could serialize an
+  // empty document over a real one.
+  const [editor, setEditor] = useState<DocEditorApi | null>(null);
+  const [initialBlocks, setInitialBlocks] = useState<Block[] | null>(null);
+  const uploadFile = useCallback((file: File) => uploadDocumentAsset(doc.id, file), [doc.id]);
 
-  // Load stored content (BlockNote JSON, or legacy Lexical — lazily migrated).
-  // Keyed on the editor instance, not []: useCreateBlockNote re-creates it
-  // when doc.id changes, and a fresh instance starts EMPTY — without this
-  // dep such an editor would silently receive no content (masked today by
-  // the key={doc.id} remount upstream, but that prop is easy to lose).
+  // Load stored content (block JSON, or legacy Lexical — lazily migrated).
+  // Keyed on doc.id: a different document must re-read, and the editor is
+  // remounted for it (see the `key` in DocEditor).
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const parsed = await contentToBlocksOffThread(doc.content);
         if (cancelled) return;
-        const blocks = withTrailingEditorParagraph(liftYouTube(liftMedia(liftMermaid(parsed))));
-        editor.replaceBlocks(editor.document, blocks as any);
+        setInitialBlocks(withTrailingEditorParagraph(liftYouTube(liftMedia(liftMermaid(parsed)))) as Block[]);
       } finally {
         if (!cancelled) requestAnimationFrame(() => { loaded.current = true; setRichLoading(false); });
       }
     })();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- doc.content identity tracks doc.id, which the editor instance itself keys on.
-  }, [editor]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- doc.content identity tracks doc.id.
+  }, [doc.id]);
 
   const scheduleSave = useCallback(() => {
     dirty.current = true;
@@ -86,7 +84,7 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
     try {
       const blocks = mode === "raw"
         ? liftYouTube(liftMedia(liftMermaid(await markdownToBlocksOffThread(rawMarkdown))))
-        : withoutTrailingEditorParagraph(editor.document);
+        : withoutTrailingEditorParagraph(editor?.document ?? []);
       const { content, contentText, wordCount } = await blocksToStorageOffThread(
         mode === "raw" ? blocks : lowerYouTube(lowerMedia(lowerMermaid(blocks))) as any
       );
@@ -103,7 +101,7 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
   flushRef.current = flushSave;
 
   const handleChange = useCallback(() => {
-    if (!loaded.current) return;
+    if (!loaded.current || !editor) return;
     const cursor = editor.getTextCursorPosition();
 
     // A YouTube link pasted into the rich editor is just a link until the
@@ -144,8 +142,8 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
     maxSaveTimer.current = null;
     try {
       if (next === "raw") {
-        const lowered = lowerYouTube(lowerMedia(lowerMermaid(withoutTrailingEditorParagraph(editor.document) as any)));
-        setRawMarkdown(await editor.blocksToMarkdownLossy(lowered));
+        const lowered = lowerYouTube(lowerMedia(lowerMermaid(withoutTrailingEditorParagraph(editor?.document ?? []) as any)));
+        setRawMarkdown(await blocksToMarkdownOffThread(lowered));
         // Mirror the raw→rich branch: pending edits must not be left unsaved
         // with no timer armed (they'd wait for the next blur/visibility
         // flush, which is fire-and-forget and can lose to an app quit).
@@ -159,7 +157,7 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
         loaded.current = false;
         setRichLoading(true);
         const blocks = liftYouTube(liftMedia(liftMermaid(await markdownToBlocksOffThread(rawMarkdown))));
-        editor.replaceBlocks(editor.document, withTrailingEditorParagraph(blocks) as any);
+        setInitialBlocks(withTrailingEditorParagraph(blocks) as Block[]);
         if (rawDirty.current) {
           const { content, contentText, wordCount } = await blocksToStorageOffThread(blocks);
           await onSave(content, contentText, wordCount);
@@ -208,7 +206,8 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
   }, []);
 
   return {
-    editor, mode, rawMarkdown, switchingMode, richLoading,
+    editor, setEditor, initialBlocks, uploadFile,
+    mode, rawMarkdown, switchingMode, richLoading,
     switchMode, handleChange, handleRawChange, scheduleSave,
   };
 }

@@ -1,6 +1,6 @@
 import React, { lazy, Suspense } from "react";
 
-// BlockNote is the heaviest dependency in the app — WordChatPanel is mounted
+// The rich editor is the heaviest dependency in the app — WordChatPanel is mounted
 // as soon as any word detail view opens, so this must stay lazy the same way
 // Documents/LazyDocEditor.tsx does, or it gets pulled into the main bundle.
 const WordNotesEditor = lazy(() =>

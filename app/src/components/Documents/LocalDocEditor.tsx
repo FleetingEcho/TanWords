@@ -1,10 +1,4 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useCreateBlockNote } from "@blocknote/react";
-import { FormattingToolbar, FormattingToolbarController, getFormattingToolbarItems } from "@blocknote/react";
-import { BlockNoteView } from "@blocknote/mantine";
-import { editorSchema } from "./editorSchema";
-import "@blocknote/mantine/style.css";
-
 import { useT } from "@/hooks/useT";
 import { useIsDark } from "@/hooks/useIsDark";
 import { blocksToMarkdownOffThread, blocksToMarkdownWithStatsOffThread, markdownToBlocksOffThread } from "@/lib/documentWorkerClient";
@@ -17,7 +11,6 @@ import { CloseIcon } from "@/components/ui/icons";
 import { RawMarkdownEditor } from "./RawMarkdownEditor";
 import { blocksToText } from "@/lib/docFormat";
 import { toast } from "sonner";
-import { selectRichEditorContents } from "./editorSelection";
 import { clipboardImageFiles, clipboardImageFilesOrNative } from "./clipboardImages";
 import { readClipboardImage } from "@/ipc/clipboard";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -25,9 +18,6 @@ import { promoteLocalFileLinks } from "./localFileBlocks";
 import { isEmptyParagraph, withTrailingEditorParagraph, withoutTrailingEditorParagraph } from "./trailingEditorParagraph";
 import { DocumentPreviewScrollArea } from "./DocumentPreviewScrollArea";
 import { DocumentContentSearch } from "./DocumentContentSearch";
-import { refreshCodeBlockTheme } from "./codeBlockTheme";
-import { ImageOptionsButton } from "./ImageOptionsButton";
-import { EditorAiButton } from "./EditorAiButton";
 import { BlockTemplatesMenu } from "./BlockTemplatesMenu";
 import { DocumentOutline } from "./DocumentOutline";
 import { exportEditorHtml, exportEditorPdf } from "@/lib/documentExport";
@@ -41,6 +31,9 @@ import { DocumentToolbarActions } from "./DocumentToolbarActions";
 import { DocumentChromeToggle } from "./DocumentChromeToggle";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
 import { useIsNarrow } from "@/components/Vocabulary/hooks/useMediaQuery";
+import { LazyTiptapDocumentEditor } from "./tiptap/LazyTiptapDocumentEditor";
+import type { DocEditorApi } from "./tiptap/DocEditorApi";
+import type { Block } from "./tiptap/blocks";
 
 type EditorMode = "rich" | "raw";
 
@@ -91,7 +84,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
   const [rawMarkdown, setRawMarkdown] = useState(initialRawMarkdown);
   const [wordCount, setWordCount] = useState(() => countWords(initialMarkdown));
   const [switchingMode, setSwitchingMode] = useState(false);
-  // useCreateBlockNote starts with an empty document — content only lands once the
+  // The editor starts empty — content only lands once the
   // (off-thread, so genuinely async) parse below resolves. Without this, the editor
   // area renders blank in between: the title/path header is already there, but the
   // body looks empty rather than loading, for however long the parse takes.
@@ -118,14 +111,10 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
   // would then write that empty document over the renamed file. File
   // switches remount via key={editorKey}, and onUploadImage only depends on
   // root (stable for the mounted folder), so nothing needs re-creation.
-  const editor = useCreateBlockNote({
-    schema: editorSchema,
-    uploadFile: onUploadImage,
-  }, []);
-
-  useEffect(() => {
-    refreshCodeBlockTheme(editor);
-  }, [editor, isDark]);
+  // The editor mounts with its content (see the load effect below), so `editor`
+  // is null until then — every consumer here guards for it.
+  const [editor, setEditor] = useState<DocEditorApi | null>(null);
+  const [initialBlocks, setInitialBlocks] = useState<Block[] | null>(null);
 
   const flushRaw = useCallback(async (markdown: string, force = false) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -157,7 +146,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
       if (hasChanges && mode === "raw") {
         markdown = rawMarkdown;
         nextWordCount = countWords(markdown);
-      } else if (hasChanges) {
+      } else if (hasChanges && editor) {
         const result = await blocksToMarkdownWithStatsOffThread(
           lowerYouTube(lowerMedia(lowerMermaid(withoutTrailingEditorParagraph(editor.document)))) as any,
         );
@@ -189,7 +178,10 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
         const parsed = await markdownToBlocksOffThread(initialMarkdown);
         if (cancelled) return;
         const blocks = withTrailingEditorParagraph(promoteLocalFileLinks(liftYouTube(liftMedia(liftMermaid(parsed)))));
-        editor.replaceBlocks(editor.document, blocks as any);
+        // Tiptap mounts *with* its content rather than being written into
+        // after the fact — one less window in which an autosave could fire
+        // against an empty document.
+        setInitialBlocks(blocks as Block[]);
         setWordCount(countWords(blocksToText(blocks)));
       } catch {
         if (!cancelled) setMode("raw");
@@ -204,7 +196,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
   useEffect(() => { setTitle(fileStem(relPath)); }, [relPath]);
 
   const handleChange = useCallback(() => {
-    if (!loaded.current) return;
+    if (!loaded.current || !editor) return;
     const cursor = editor.getTextCursorPosition();
     if (!cursor.nextBlock && !isEmptyParagraph(cursor.block)) {
       editor.insertBlocks([{ type: "paragraph" }], cursor.block, "after");
@@ -220,7 +212,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
     if (maxSaveTimer.current) clearTimeout(maxSaveTimer.current);
     try {
       if (nextMode === "raw") {
-        const raw = dirty.current
+        const raw = dirty.current && editor
           ? toRawMarkdown(await blocksToMarkdownOffThread(
             lowerYouTube(lowerMedia(lowerMermaid(withoutTrailingEditorParagraph(editor.document)))) as any,
           ))
@@ -240,7 +232,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
         const parsed = promoteLocalFileLinks(
           liftYouTube(liftMedia(liftMermaid(await markdownToBlocksOffThread(toDisplayMarkdown(rawMarkdown)))))
         );
-        editor.replaceBlocks(editor.document, withTrailingEditorParagraph(parsed) as any);
+        setInitialBlocks(withTrailingEditorParagraph(parsed) as Block[]);
         setWordCount(countWords(blocksToText(parsed)));
         if (dirty.current && rawMarkdown !== lastSavedRaw.current) {
           await onSave(rawMarkdown);
@@ -269,7 +261,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
   };
 
   const insertAttachment = async (file: File | undefined) => {
-    if (!file) return;
+    if (!file || !editor) return;
     try {
       const url = await onUploadImage(file);
       const type = file.type.startsWith("image/") ? "image"
@@ -306,13 +298,6 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
     })();
   };
 
-  const handleRichEditorKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "a") return;
-    if (!(event.target as Element).closest(".bn-editor")) return;
-    event.preventDefault();
-    event.stopPropagation();
-    selectRichEditorContents(event.currentTarget);
-  };
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -387,12 +372,12 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
               switching={switchingMode}
               onMode={(nextMode) => void switchMode(nextMode)}
               onAttach={() => attachmentInputRef.current?.click()}
-              templatesMenu={<BlockTemplatesMenu editor={editor} />}
+              templatesMenu={editor ? <BlockTemplatesMenu editor={editor} /> : null}
               outlineActive={outlineOpen}
               onToggleOutline={() => setOutlineOpen((v) => !v)}
               onHistory={() => setHistoryOpen(true)}
-              onExportHtml={() => void exportEditorHtml(editor, title).catch((error) => toast.error(String(error)))}
-              onExportPdf={() => void exportEditorPdf(editor, title).catch((error) => toast.error(String(error)))}
+              onExportHtml={() => editor && void exportEditorHtml(editor, title).catch((error) => toast.error(String(error)))}
+              onExportPdf={() => editor && void exportEditorPdf(editor, title).catch((error) => toast.error(String(error)))}
               documentFontSize={documentFontSize}
               onFontSizeChange={setDocumentFontSize}
             />
@@ -406,27 +391,29 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
       {mode === "rich" ? (
         <div ref={searchRootRef} className="contents">
           <div className="flex min-h-0 flex-1">
-            <DocumentPreviewScrollArea onPasteCapture={handleImagePaste}
-              onKeyDownCapture={handleRichEditorKeyDown}>
+            <DocumentPreviewScrollArea>
               {richLoading && (
                 <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-10">
                   <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
                 </div>
               )}
-              <BlockNoteView editor={editor} theme={isDark ? "dark" : "light"} onChange={() => { setOutlineTick((tick) => tick + 1); handleChange(); }}
-                formattingToolbar={false} className="tanwords-editor">
-                <FormattingToolbarController
-                  formattingToolbar={() => (
-                    <FormattingToolbar>
-                      {getFormattingToolbarItems()}
-                      <ImageOptionsButton />
-                      <EditorAiButton />
-                    </FormattingToolbar>
-                  )}
+              {initialBlocks && (
+                <LazyTiptapDocumentEditor
+                  // Remount on a mode switch so the editor mounts with its
+                  // content rather than being written into afterwards.
+                  key={`${relPath}-${mode}`}
+                  initialBlocks={initialBlocks}
+                  isDark={isDark}
+                  onUploadFile={onUploadImage}
+                  readNativeImage={readNativeClipboardImage}
+                  onReady={setEditor}
+                  onError={(message) => toast.error(message)}
+                  onChange={() => { setOutlineTick((tick) => tick + 1); handleChange(); }}
+                  className="tanwords-editor"
                 />
-              </BlockNoteView>
+              )}
             </DocumentPreviewScrollArea>
-            {outlineOpen && !narrow && (
+            {outlineOpen && !narrow && editor && (
               <div className="w-56 shrink-0">
                 <DocumentOutline editor={editor} tick={outlineTick} />
               </div>
@@ -446,7 +433,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
 
       {/* See DocEditor: on phones the outline is a jump-and-dismiss modal
         * rather than a column that competes with the document for width. */}
-      {narrow && (
+      {narrow && editor && (
         <Dialog open={outlineOpen} onClose={() => setOutlineOpen(false)} maxWidth="max-w-sm">
           <div className="relative border-b border-border px-5 py-4">
             <DialogTitle className="flex items-center gap-2 text-base font-semibold">
@@ -498,6 +485,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
         onClose={() => setHistoryOpen(false)}
         onRestore={(revision: DocumentRevision) => {
           void (async () => {
+            if (!editor) return;
             const blocks = await markdownToBlocksOffThread(revision.content);
             editor.replaceBlocks(
               editor.document,

@@ -60,9 +60,9 @@ export interface SettingsState {
   /** Whether appBackgroundImage is currently shown. False hides it without
    *  discarding the stored image, so it can be turned back on unchanged. */
   appBackgroundVisible: boolean;
-  /** Body font size, in pixels, for full-size BlockNote document editors. */
+  /** Body font size, in pixels, for full-size document editors. */
   documentFontSize: number;
-  /** Line-height multiplier for full-size BlockNote document editors. */
+  /** Line-height multiplier for full-size document editors. */
   documentLineHeight: number;
   /** Optional body text colour for full-size document editors. Empty uses the
    * active theme's foreground colour. */

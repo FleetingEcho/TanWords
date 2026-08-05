@@ -175,7 +175,7 @@ export function WordChatPanel({ wordId, word, enrichedContext = "" }: PanelProps
         </div>
       </div>
 
-      {/* Notes tab — same BlockNote editor chrome as Documents, bound to a plain-text column */}
+      {/* Notes tab — same editor chrome as Documents, bound to a plain-text column */}
       {tab === "notes" && (
         <div className="flex flex-col flex-1 gap-1 overflow-hidden">
           {wordId ? (

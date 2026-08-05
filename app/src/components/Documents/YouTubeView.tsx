@@ -1,7 +1,7 @@
 /**
  * YouTube embed block.
  *
- * BlockNote's built-in `video` block renders `<video src>`, which cannot play a
+ * A built-in `video` block renders `<video src>`, which cannot play a
  * YouTube watch page — that needs an iframe. Storage/markdown format stays a
  * plain link (`[title](https://youtu.be/…)`), converted around load/save by
  * liftYouTube / lowerYouTube, so a document opened anywhere else is still a
@@ -9,11 +9,10 @@
  */
 import { useState } from "react";
 import { PlaySquare } from "lucide-react";
-import { createReactBlockSpec } from "@blocknote/react";
 import { useT } from "@/hooks/useT";
 import { isYouTubeUrl, youTubeId } from "./youtubeUrl";
 
-function YouTubeView({ url, caption, onChange }: { url: string; caption: string; onChange: (url: string) => void }) {
+export function YouTubeView({ url, caption, onChange }: { url: string; caption: string; onChange: (url: string) => void }) {
   const t = useT();
   const [draft, setDraft] = useState("");
   const id = url ? youTubeId(url) : null;
@@ -48,16 +47,16 @@ function YouTubeView({ url, caption, onChange }: { url: string; caption: string;
     // contentEditable={false} is load-bearing, not a nicety: a `content: "none"`
     // block still renders inside ProseMirror's contenteditable, and ProseMirror
     // reconciles that DOM against its own document — an iframe it does not know
-    // about gets swept away, leaving an empty block with only BlockNote's
-    // controls floating in it. Every built-in media block in @blocknote/react
+    // about gets swept away, leaving an empty block with only the player
+    // controls floating in it. Every built-in media block
     // sets contentEditable/draggable false for the same reason, as does the
     // mermaid block next door.
-    // `w-full` on this element, not just inside it: BlockNote's .bn-block-content
+    // `w-full` on this element, not just inside it: the block content wrapper
     // is a flex container, so this div is a flex item and defaults to
     // shrink-to-fit. An iframe contributes no intrinsic width, which left the
     // player as wide as its caption text and no wider — a long title made a
     // big video and an empty one made it vanish. Every built-in media block in
-    // @blocknote/core carries the same explicit width for the same reason.
+    // carries the same explicit width for the same reason.
     <div
       contentEditable={false}
       draggable={false}
@@ -86,25 +85,3 @@ function YouTubeView({ url, caption, onChange }: { url: string; caption: string;
     </div>
   );
 }
-
-export const YouTubeBlock = createReactBlockSpec(
-  {
-    type: "youtube" as const,
-    propSchema: { url: { default: "" }, caption: { default: "" } },
-    content: "none" as const,
-  },
-  {
-    render: ({ block, editor }: any) => (
-      <YouTubeView
-        url={block.props.url}
-        caption={block.props.caption ?? ""}
-        onChange={(url) => editor.updateBlock(block, { props: { url } })}
-      />
-    ),
-    toExternalHTML: ({ block }: any) => (
-      <p>
-        <a href={block.props.url ?? ""}>{block.props.caption || block.props.url || ""}</a>
-      </p>
-    ),
-  },
-);

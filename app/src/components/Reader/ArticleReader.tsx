@@ -18,7 +18,7 @@ import type { PodcastTrack } from "@/store/podcastPlayerStore";
 import { useArticleReaderState } from "./hooks/useArticleReaderState";
 import { ReaderToolbar } from "./ReaderToolbar";
 import { FONT_STEPS, SCRATCH_URL_PREFIX, LIBRARY_URL_PREFIX, type FetchedArticle } from "./articleReaderHelpers";
-import { LazyReadOnlyBlockNote } from "./LazyReadOnlyBlockNote";
+import { LazyReadOnlyArticle } from "./LazyReadOnlyArticle";
 
 export type { FetchedArticle } from "./articleReaderHelpers";
 export { SCRATCH_URL_PREFIX, LIBRARY_URL_PREFIX } from "./articleReaderHelpers";
@@ -191,7 +191,7 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
           * anything picked in here (article body or HN comments) came from
           * the reader, so saved sentences are attributed to it. */}
         <div data-reader-selectable className="min-w-0 w-full">
-          <LazyReadOnlyBlockNote
+          <LazyReadOnlyArticle
             toolbarSlot={toolbarSlot}
             html={article.content_html}
             fallbackText={article.text_content}

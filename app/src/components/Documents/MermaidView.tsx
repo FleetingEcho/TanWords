@@ -8,7 +8,6 @@
  */
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Maximize2, Minus, Plus, RotateCcw, X } from "lucide-react";
-import { createReactBlockSpec } from "@blocknote/react";
 import { useT } from "@/hooks/useT";
 import { useIsDark } from "@/hooks/useIsDark";
 import { createMermaidConfig } from "./mermaidConfig";
@@ -63,7 +62,7 @@ function MermaidZoomCanvas({
   );
 }
 
-function MermaidView({ code, onChange }: { code: string; onChange: (code: string) => void }) {
+export function MermaidView({ code, onChange }: { code: string; onChange: (code: string) => void }) {
   const t = useT();
   const isDark = useIsDark();
   const [svg, setSvg] = useState<string>("");
@@ -331,22 +330,3 @@ function MermaidView({ code, onChange }: { code: string; onChange: (code: string
     </div>
   );
 }
-
-export const MermaidBlock = createReactBlockSpec(
-  {
-    type: "mermaid" as const,
-    propSchema: { code: { default: "" } },
-    content: "none" as const,
-  },
-  {
-    render: ({ block, editor }: any) => (
-      <MermaidView
-        code={block.props.code}
-        onChange={(code) => editor.updateBlock(block, { props: { code } })}
-      />
-    ),
-    toExternalHTML: ({ block }: any) => (
-      <pre className="mermaid">{block.props.code ?? ""}</pre>
-    ),
-  }
-);

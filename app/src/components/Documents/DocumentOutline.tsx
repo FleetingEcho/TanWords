@@ -50,7 +50,9 @@ function collect(blocks: any[], out: OutlineItem[]): void {
 export function useOutlineItems(editor: any, tick: number): OutlineItem[] {
   return useMemo(() => {
     const out: OutlineItem[] = [];
-    collect(editor.document, out);
+    // Null until the editor mounts — the outline simply has nothing to show
+    // yet, which is also the honest state for a document still parsing.
+    if (editor) collect(editor.document, out);
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, tick]);
@@ -88,7 +90,7 @@ export function DocumentOutline({ editor, tick, className, onNavigate, showHeade
               type="button"
               onClick={() => {
                 editor.setTextCursorPosition(item.id, "start");
-                const dom = (editor._tiptapEditor as any)?.view?.dom as HTMLElement | undefined;
+                const dom = editor.getViewDom?.() as HTMLElement | undefined;
                 dom?.querySelector(`[data-id="${CSS.escape(item.id)}"]`)?.scrollIntoView({
                   behavior: "smooth",
                   block: "start",

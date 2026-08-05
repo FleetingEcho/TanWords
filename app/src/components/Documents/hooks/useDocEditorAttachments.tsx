@@ -1,28 +1,25 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@/ipc/backend";
 import { toast } from "sonner";
-import { FormattingToolbar, getFormattingToolbarItems } from "@blocknote/react";
 import { Download, Trash2 } from "lucide-react";
 import { DocumentDetail } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { uploadDocumentAsset } from "@/lib/documentAssets";
-import { refreshCodeBlockTheme } from "../codeBlockTheme";
 import { DocumentPasswordRequest } from "../DocumentPasswordDialog";
 import { requiresAttachmentPassword, type PrivateAttachmentAction } from "../privateDocumentPolicy";
-import type { DocEditorInstance } from "./useDocEditorContent";
-import { ImageOptionsButton } from "../ImageOptionsButton";
-import { EditorAiButton } from "../EditorAiButton";
+import type { DocEditorApi } from "../tiptap/DocEditorApi";
+import { TiptapToolbarExtras } from "../tiptap/ui/ToolbarExtras";
+import type { Editor } from "@tiptap/core";
 
 /** Attachments (uploading a file into the document, previewing/deleting one
  * through the formatting toolbar) and the password gate a protected
  * document puts in front of downloading or deleting a private file. */
 export function useDocEditorAttachments(params: {
   doc: DocumentDetail;
-  editor: DocEditorInstance;
-  isDark: boolean;
+  editor: DocEditorApi | null;
   scheduleSave: () => void;
 }) {
-  const { doc, editor, isDark, scheduleSave } = params;
+  const { doc, editor, scheduleSave } = params;
   const t = useT();
   const [passwordRequest, setPasswordRequest] = useState<DocumentPasswordRequest | null>(null);
   const passwordResolver = useRef<((password: string | null) => void) | null>(null);
@@ -39,16 +36,12 @@ export function useDocEditorAttachments(params: {
     resolve?.(password);
   };
 
-  useEffect(() => {
-    refreshCodeBlockTheme(editor);
-  }, [editor, isDark]);
-
   /** Stores a file and hands back its URL, without touching the rich editor.
    *  Raw Markdown mode writes its own link and needs only this half. */
   const uploadFile = useCallback((file: File) => uploadDocumentAsset(doc.id, file), [doc.id]);
 
   const insertAttachment = async (file: File | undefined) => {
-    if (!file) return;
+    if (!file || !editor) return;
     try {
       const url = await uploadDocumentAsset(doc.id, file);
       const type = file.type.startsWith("image/") ? "image"
@@ -64,14 +57,6 @@ export function useDocEditorAttachments(params: {
     } catch (error) {
       toast.error(String(error));
     }
-  };
-
-  const handleRichEditorKeyDown = (event: React.KeyboardEvent<HTMLDivElement>, selectRichEditorContents: (root: HTMLElement) => void) => {
-    if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "a") return;
-    if (!(event.target as Element).closest(".bn-editor")) return;
-    event.preventDefault();
-    event.stopPropagation();
-    selectRichEditorContents(event.currentTarget);
   };
 
   const sensitiveAttachmentAction = useCallback(async (
@@ -91,6 +76,7 @@ export function useDocEditorAttachments(params: {
         return;
       }
     }
+    if (!editor) return;
     if (action === "delete") {
       editor.focus();
       editor.removeBlocks([block.id]);
@@ -103,49 +89,42 @@ export function useDocEditorAttachments(params: {
     window.open(downloadUrl, "_blank", "noopener,noreferrer");
   }, [doc.id, doc.protected, editor, requestPassword, t]);
 
-  const formattingToolbar = useCallback(() => {
-    const defaults = getFormattingToolbarItems();
-    if (!doc.protected) {
-      return (
-        <FormattingToolbar>
-          {defaults}
-          <ImageOptionsButton />
-          <EditorAiButton />
-        </FormattingToolbar>
-      );
-    }
-    const selected = editor.getSelection()?.blocks || [editor.getTextCursorPosition().block];
+  /**
+   * Extra bubble-toolbar items.
+   *
+   * Under BlockNote this had to *filter the built-in items by key* to hide the
+   * unguarded download/delete buttons and splice password-gated ones in their
+   * place. Owning the toolbar turns that into plain conditional rendering.
+   */
+  const renderToolbarExtras = useCallback((tiptapEditor: Editor) => {
+    const selected = editor?.getSelection()?.blocks
+      ?? (editor ? [editor.getTextCursorPosition().block] : []);
     const block: any = selected.length === 1 ? selected[0] : null;
     const isFile = Boolean(block?.props && typeof block.props.url === "string");
-    const items = defaults.filter((item) =>
-      item.key !== "fileDeleteButton" && item.key !== "fileDownloadButton"
-    );
-    if (isFile) {
-      const insertAt = Math.max(0, items.findIndex((item) => item.key === "filePreviewButton"));
-      items.splice(
-        insertAt,
-        0,
-        <button key="protectedFileDelete" type="button" className="bn-button mx-0.5 inline-flex h-7 w-7 items-center justify-center rounded-md" title={t("doc.deletePrivateFile")}
-          onClick={() => void sensitiveAttachmentAction("delete", block)}>
-          <Trash2 className="h-4 w-4" />
-        </button>,
-        <button key="protectedFileDownload" type="button" className="bn-button mx-0.5 inline-flex h-7 w-7 items-center justify-center rounded-md" title={t("doc.downloadPrivateFile")}
-          onClick={() => void sensitiveAttachmentAction("download", block)}>
-          <Download className="h-4 w-4" />
-        </button>,
-      );
-    }
+
     return (
-      <FormattingToolbar>
-        {items}
-        <ImageOptionsButton />
-        <EditorAiButton />
-      </FormattingToolbar>
+      <>
+        {doc.protected && isFile && (
+          <>
+            <button type="button" className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+              title={t("doc.deletePrivateFile")} aria-label={t("doc.deletePrivateFile")}
+              onMouseDown={(event) => { event.preventDefault(); void sensitiveAttachmentAction("delete", block); }}>
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+            <button type="button" className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+              title={t("doc.downloadPrivateFile")} aria-label={t("doc.downloadPrivateFile")}
+              onMouseDown={(event) => { event.preventDefault(); void sensitiveAttachmentAction("download", block); }}>
+              <Download className="h-3.5 w-3.5" />
+            </button>
+          </>
+        )}
+        <TiptapToolbarExtras editor={tiptapEditor} />
+      </>
     );
   }, [doc.protected, editor, sensitiveAttachmentAction, t]);
 
   return {
     passwordRequest, finishPasswordRequest,
-    insertAttachment, uploadFile, handleRichEditorKeyDown, formattingToolbar,
+    insertAttachment, uploadFile, renderToolbarExtras,
   };
 }

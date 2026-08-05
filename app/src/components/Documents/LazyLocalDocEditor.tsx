@@ -1,6 +1,6 @@
 import React, { lazy, Suspense } from "react";
 
-// Same lazy-split treatment as LazyDocEditor.tsx — BlockNote must never be
+// Same lazy-split treatment as LazyDocEditor.tsx — the editor must never be
 // pulled into the main bundle.
 const LocalDocEditor = lazy(() =>
   import("./LocalDocEditor").then((m) => ({ default: m.LocalDocEditor }))

@@ -7,7 +7,7 @@ function inlineText(content: unknown): string {
   return content.map((item: any) => item?.text ?? inlineText(item?.content)).join("");
 }
 
-/** BlockNote parses Markdown attachment links as ordinary inline links. Promote
+/** Markdown has no attachment syntax, so these arrive as ordinary inline links. Promote
  * only a standalone link into a file block; links embedded in prose remain
  * normal links. */
 export function promoteLocalFileLinks(blocks: readonly any[]): any[] {

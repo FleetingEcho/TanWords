@@ -6,7 +6,7 @@ interface PendingChatSelectionState {
   consume: () => string | null;
 }
 
-/** Bridges a selection made inside BlockNote to AI Chat when the Chat page is
+/** Bridges a selection made inside the document editor to AI Chat when the Chat page is
  *  not mounted yet. AiChatPage consumes this on mount and prefills the input. */
 export const usePendingChatSelectionStore = create<PendingChatSelectionState>((set, get) => ({
   text: null,

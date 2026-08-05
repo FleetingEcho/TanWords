@@ -7,10 +7,10 @@
  * and fingerprints normally. */
 @import './styles/theme-vars.css' layer(base);
 @import './styles/base.css' layer(base);
-/* These two override styles that BlockNote and the sanitized article HTML
+/* These two override styles that the editor and the sanitized article HTML
  * bring with them, so they stay outside the cascade layers — unlayered CSS
  * outranks every layer, which is the precedence they had under v3. */
-@import './styles/blocknote-editor.css';
+@import './styles/tiptap-editor.css';
 @import './styles/reader-content.css';
 
 @import 'tailwindcss';

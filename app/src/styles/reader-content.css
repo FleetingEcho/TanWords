@@ -1,10 +1,16 @@
 /* Reader mode — sanitized article HTML from fetch_article */
 .tanwords-editor-readonly {
   min-height: 60vh;
+  /* Reading measure for the article body — see --editor-measure in
+     tiptap-editor.css. Inherits down to the editor, so no selector has to
+     out-specify the document editor's default. */
+  --editor-measure: 68ch;
 }
-.tanwords-editor-readonly .bn-editor {
+.tanwords-editor-readonly .ProseMirror {
   margin-top: 0;
-  padding-inline: 1rem;
+  /* Cancels the editor gutter: the reader has no drag handle to make room
+     for, and no "space to scroll past the end" affordance either. */
+  padding: 0 1rem;
   color: hsl(var(--foreground)) !important;
 }
 
@@ -12,11 +18,7 @@
    below) at a comfortable ~68 characters instead of the document editor's
    960px, so articles rest in the middle of wide windows with real side
    padding. ch tracks the body font size, so the A-/A+ controls keep the
-   same number of characters per line. Specificity must beat the base
-   .tanwords-editor:not(.tanwords-editor-compact) .bn-editor max-width. */
-.tanwords-editor.tanwords-editor-readonly .bn-editor {
-  max-width: 68ch;
-}
+   same number of characters per line. */
 
 /* Article header (title / byline / font controls) column inside the reader —
    identical geometry to the body column so the title's left edge lines up
@@ -29,7 +31,7 @@
   padding-inline: 1rem;
   padding-bottom: 1.5rem;
 }
-.tanwords-editor-readonly .bn-block-content {
+.tanwords-editor-readonly .ProseMirror > * {
   padding-block: 0.25em;
 }
 .tanwords-editor-readonly a {

@@ -18,14 +18,14 @@ vi.mock("@/lib/documentWorkerClient", () => ({
   }),
 }));
 
-import { ReadOnlyBlockNote } from "./ReadOnlyBlockNote";
+import { ReadOnlyArticle } from "./ReadOnlyArticle";
 
-describe("ReadOnlyBlockNote render", () => {
+describe("ReadOnlyArticle render", () => {
   afterEach(() => vi.clearAllMocks());
 
-  it("renders article text through the BlockNote fallback path", async () => {
+  it("renders article text through the fallback path", async () => {
     render(
-      <ReadOnlyBlockNote
+      <ReadOnlyArticle
         html="<article><h1>Title</h1><p>Hello article body</p></article>"
         fallbackText="Fallback body text"
       />,
@@ -36,14 +36,14 @@ describe("ReadOnlyBlockNote render", () => {
 
   it("hides the outline column when the article has no headings", async () => {
     const { container } = render(
-      <ReadOnlyBlockNote
+      <ReadOnlyArticle
         html="<article><p>Just a plain paragraph, no headings at all.</p></article>"
         fallbackText="Fallback body text"
       />,
     );
 
     await waitFor(
-      () => expect(container.querySelector(".bn-editor")?.textContent ?? "").toContain("Just a plain paragraph"),
+      () => expect(container.querySelector(".ProseMirror")?.textContent ?? "").toContain("Just a plain paragraph"),
       { timeout: 5000 },
     );
     expect(container.querySelector("aside")).toBeNull();
@@ -52,7 +52,7 @@ describe("ReadOnlyBlockNote render", () => {
 
   it("renders the header slot inside the article column", async () => {
     const { container } = render(
-      <ReadOnlyBlockNote
+      <ReadOnlyArticle
         html="<article><h2>Section One</h2><p>Hello article body</p></article>"
         fallbackText="Fallback body text"
         header={<h1>How Do I Profile eBPF Code?</h1>}
