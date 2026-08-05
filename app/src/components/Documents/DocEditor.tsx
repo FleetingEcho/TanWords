@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { DocumentDetail } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
@@ -57,6 +57,32 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const searchRootRef = useRef<HTMLDivElement>(null);
   const [outlineOpen, setOutlineOpen] = useState(false);
+  // The outline's refresh signal. Bumping it re-renders this whole component,
+  // so it is (a) skipped entirely while the outline is closed and (b)
+  // throttled to a few times a second while typing — an outline does not need
+  // per-character freshness, and each bump otherwise costs a header/toolbar
+  // re-render on top of the editor's own work, per keystroke.
+  const outlineOpenRef = useRef(outlineOpen);
+  outlineOpenRef.current = outlineOpen;
+  const outlineTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Trailing-edge throttle; fresh ticks only flow while the outline shows. */
+  const bumpOutlineTick = useCallback(() => {
+    if (!outlineOpenRef.current || outlineTimer.current) return;
+    outlineTimer.current = setTimeout(() => {
+      outlineTimer.current = null;
+      setOutlineTick((tick) => tick + 1);
+    }, 250);
+  }, []);
+  /** Opening renders with items current at that moment, not after a pause. */
+  const toggleOutline = useCallback(() => {
+    setOutlineOpen((open) => {
+      if (!open) setOutlineTick((tick) => tick + 1);
+      return !open;
+    });
+  }, []);
+  useEffect(() => () => {
+    if (outlineTimer.current) clearTimeout(outlineTimer.current);
+  }, []);
   // Phone-only: the tags/search/toolbar stack is ~half the readable area on
   // a narrow screen, so it starts folded away. Ignored at `lg` (see
   // DocumentChromeToggle), where the chrome always renders.
@@ -163,7 +189,7 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
             onInsertLink={() => links.setLinkPickerOpen(true)}
             templatesMenu={editor ? <BlockTemplatesMenu editor={editor} /> : null}
             outlineActive={outlineOpen}
-            onToggleOutline={() => setOutlineOpen((v) => !v)}
+            onToggleOutline={toggleOutline}
             onHistory={() => setHistoryOpen(true)}
             onExportHtml={() => editor && void exportEditorHtml(editor, doc.title).catch((error) => toast.error(String(error)))}
             onExportPdf={() => editor && void exportEditorPdf(editor, doc.title).catch((error) => toast.error(String(error)))}
@@ -193,7 +219,7 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
                   onUploadFile={uploadFile}
                   onReady={setEditor}
                   onError={(message) => toast.error(message)}
-                  onChange={() => { setOutlineTick((tick) => tick + 1); handleChange(); }}
+                  onChange={() => { bumpOutlineTick(); handleChange(); }}
                   toolbarExtras={attachments.renderToolbarExtras}
                   className="tanwords-editor"
                 />

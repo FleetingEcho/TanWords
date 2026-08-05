@@ -40,11 +40,19 @@ export function DocumentPreviewScrollArea({
     // Preserve the visible fallback thumb until flex layout has assigned a
     // real viewport height.
     if (!viewport || viewport.clientHeight <= 0) return;
-    setThumb(calculateDocumentScrollbar(
+    const next = calculateDocumentScrollbar(
       viewport.clientHeight,
       viewport.scrollHeight,
       viewport.scrollTop,
-    ));
+    );
+    // Scroll and size events repeat with identical geometry (typing one
+    // character changes neither) — keep the previous state object so those
+    // frames do not re-render.
+    setThumb((current) =>
+      current.top === next.top && current.height === next.height && current.scrollable === next.scrollable
+        ? current
+        : next,
+    );
   }, []);
 
   const scheduleUpdate = useCallback(() => {
@@ -65,8 +73,39 @@ export function DocumentPreviewScrollArea({
       ? null
       : new ResizeObserver(scheduleUpdate);
     resizeObserver?.observe(viewport);
-    const mutationObserver = new MutationObserver(scheduleUpdate);
-    mutationObserver.observe(viewport, { childList: true, subtree: true, characterData: true });
+
+    // Content growth changes the scroll geometry without resizing the
+    // viewport. The old tree-wide MutationObserver saw that, but also saw
+    // every keystroke as a subtree mutation — a forced `scrollHeight` read
+    // (layout) on every frame while typing.
+    //
+    // ResizeObservers on the *content* children report real geometry changes
+    // (a new line wraps, a block is pasted, an image finishes loading) and
+    // nothing else; this observer exists only to re-arm those when the
+    // viewport's direct children swap (spinner → editor, editor → editor).
+    const observed = new Set<Element>();
+    const syncContentObservers = () => {
+      if (!resizeObserver) return;
+      for (const child of Array.from(viewport.children)) {
+        if (!observed.has(child)) {
+          observed.add(child);
+          resizeObserver.observe(child);
+        }
+      }
+      for (const element of Array.from(observed)) {
+        if (!viewport.contains(element)) {
+          resizeObserver.unobserve(element);
+          observed.delete(element);
+        }
+      }
+    };
+    const mutationObserver = new MutationObserver(() => {
+      syncContentObservers();
+      scheduleUpdate();
+    });
+    mutationObserver.observe(viewport, { childList: true });
+    syncContentObservers();
+
     viewport.addEventListener("scroll", scheduleUpdate, { passive: true });
     scheduleUpdate();
     return () => {

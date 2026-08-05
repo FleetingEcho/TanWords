@@ -43,16 +43,22 @@ function collect(blocks: any[], out: OutlineItem[]): void {
   }
 }
 
-/** Heading list for a BlockNote document, recomputed when `tick` changes.
+/** Heading list for the document, recomputed when `tick` changes.
  *  Exported so a surrounding layout (the read-only article reader) can hide
  *  the whole outline column — including its balancing spacer — when the
  *  document has no headings at all. */
 export function useOutlineItems(editor: any, tick: number): OutlineItem[] {
   return useMemo(() => {
-    const out: OutlineItem[] = [];
     // Null until the editor mounts — the outline simply has nothing to show
     // yet, which is also the honest state for a document still parsing.
-    if (editor) collect(editor.document, out);
+    if (!editor) return [];
+    // Cheap path: the editor walks its own tree for headings. The fallback
+    // (serialize the whole document, walk every block) exists for editor
+    // implementations without it — neither is free, only one is affordable
+    // per document change in a large file.
+    if (typeof editor.getOutlineHeadings === "function") return editor.getOutlineHeadings();
+    const out: OutlineItem[] = [];
+    collect(editor.document, out);
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, tick]);
