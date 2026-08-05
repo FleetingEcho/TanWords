@@ -34,10 +34,8 @@ const Programmatic = Annotation.define<boolean>();
  *  agree about what one level looks like. */
 const INDENT = "  ";
 
-/** How long the document has to sit still before the "format" button re-decides
- *  whether it has anything to do. `formatMarkdown` walks every line, and the
- *  answer only drives whether one button is greyed out — running it on the
- *  keystroke is a whole-document pass per character typed. */
+// Whether the document has anything to tidy, recomputed once typing pauses,
+// gated inside `scheduleTidied` on the text actually having changed.
 const TIDY_DELAY = 200;
 
 /** A selection longer than this is not what someone means to search for; it is
@@ -296,6 +294,7 @@ export function RawMarkdownEditor({
             if (update.transactions.some((tr) => tr.annotation(Programmatic))) return;
             const next = update.state.doc.toString();
             lastEmitted.current = next;
+            scheduleTidied(next);
             onChangeRef.current(next);
           }),
         ],
@@ -305,6 +304,7 @@ export function RawMarkdownEditor({
     setView(view);
     view.focus();
     return () => {
+      if (tidiedTimer.current) clearTimeout(tidiedTimer.current);
       view.destroy();
       viewRef.current = null;
       setView(null);
@@ -312,6 +312,25 @@ export function RawMarkdownEditor({
     // Built once. Everything that can change is reconfigured through a
     // compartment below, and `value` is reconciled by its own effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Whether the document has anything to tidy, computed off the keystroke: the
+  // answer only greys out one button, and `formatMarkdown` walks every line to
+  // reach it. Seeded synchronously so the button is right on the first paint,
+  // then re-run once typing pauses — driven by the editor's own update
+  // listener (the parent no longer echoes every keystroke back through
+  // `value`, so a value-keyed effect could go permanently stale). `format`
+  // recomputes from the live document anyway, so a stale "enabled" costs
+  // nothing but a click that does nothing. Declared before the effects that
+  // schedule it.
+  const [tidied, setTidied] = useState(() => ({ source: value, formatted: formatMarkdown(value) }));
+  const tidiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleTidied = useCallback((text: string) => {
+    if (tidiedTimer.current) clearTimeout(tidiedTimer.current);
+    tidiedTimer.current = setTimeout(() => {
+      tidiedTimer.current = null;
+      setTidied((current) => (current.source === text ? current : { source: text, formatted: formatMarkdown(text) }));
+    }, TIDY_DELAY);
   }, []);
 
   // Edits from outside — switching in from rich mode, formatting, an undo
@@ -335,7 +354,11 @@ export function RawMarkdownEditor({
       selection: { anchor: Math.min(view.state.selection.main.anchor, value.length) },
       annotations: Programmatic.of(true),
     });
-  }, [value]);
+    // The tidied state tracks edits reported by the editor itself below; an
+    // outside replacement never passes through that listener, so refresh it
+    // here. Debounced — a fresh document is no reason to re-walk every line.
+    scheduleTidied(value);
+  }, [value, scheduleTidied]);
 
   useEffect(() => {
     viewRef.current?.dispatch({
@@ -365,22 +388,6 @@ export function RawMarkdownEditor({
       })),
     });
   }, [label, spellcheck]);
-
-  // Whether the document has anything to tidy, computed off the keystroke: the
-  // answer only greys out one button, and `formatMarkdown` walks every line to
-  // reach it. Seeded synchronously so the button is right on the first paint,
-  // then re-run once typing pauses. Between those it holds its last answer
-  // rather than flickering, and `format` recomputes from the live document
-  // anyway, so a stale "enabled" costs nothing but a click that does nothing.
-  const [tidied, setTidied] = useState(() => ({ source: value, formatted: formatMarkdown(value) }));
-  useEffect(() => {
-    if (tidied.source === value) return;
-    const timer = setTimeout(
-      () => setTidied({ source: value, formatted: formatMarkdown(value) }),
-      TIDY_DELAY,
-    );
-    return () => clearTimeout(timer);
-  }, [value, tidied.source]);
 
   const format = () => {
     const view = viewRef.current;

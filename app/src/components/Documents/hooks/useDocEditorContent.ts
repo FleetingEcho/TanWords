@@ -25,6 +25,11 @@ const AUTOSAVE_MAX_INTERVAL_MS = 8_000;
  * useDocEditorAttachments) both just take the resulting `editor`. */
 export function useDocEditorContent(doc: DocumentDetail, onSave: (content: string, contentText: string, wordCount: number) => Promise<void>, onDirty: () => void) {
   const [mode, setMode] = useState<"rich" | "raw">("rich");
+  // Live raw text in a ref, not state — it changes on every raw-mode
+  // keystroke and would otherwise re-render the whole editor chrome per
+  // character. The `rawMarkdown` state below only moves on mode transitions,
+  // seeding the freshly mounted CodeMirror; in-session reads use this ref.
+  const rawMarkdownRef = useRef("");
   const [rawMarkdown, setRawMarkdown] = useState("");
   const [switchingMode, setSwitchingMode] = useState(false);
   // useCreateBlockNote starts with an empty document — content only lands once the
@@ -83,7 +88,7 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
     maxSaveTimer.current = null;
     try {
       const blocks = mode === "raw"
-        ? liftYouTube(liftMedia(liftMermaid(await markdownToBlocksOffThread(rawMarkdown))))
+        ? liftYouTube(liftMedia(liftMermaid(await markdownToBlocksOffThread(rawMarkdownRef.current))))
         : withoutTrailingEditorParagraph(editor?.document ?? []);
       const { content, contentText, wordCount } = await blocksToStorageOffThread(
         mode === "raw" ? blocks : lowerYouTube(lowerMedia(lowerMermaid(blocks))) as any
@@ -97,7 +102,7 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
       dirty.current = true;
       throw error;
     }
-  }, [editor, mode, onSave, rawMarkdown, scheduleSave]);
+  }, [editor, mode, onSave, scheduleSave]);
   flushRef.current = flushSave;
 
   const handleChange = useCallback(() => {
@@ -143,7 +148,9 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
     try {
       if (next === "raw") {
         const lowered = lowerYouTube(lowerMedia(lowerMermaid(withoutTrailingEditorParagraph(editor?.document ?? []) as any)));
-        setRawMarkdown(await blocksToMarkdownOffThread(lowered));
+        const markdown = await blocksToMarkdownOffThread(lowered);
+        setRawMarkdown(markdown);
+        rawMarkdownRef.current = markdown;
         // Mirror the raw→rich branch: pending edits must not be left unsaved
         // with no timer armed (they'd wait for the next blur/visibility
         // flush, which is fire-and-forget and can lose to an app quit).
@@ -156,7 +163,7 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
       } else {
         loaded.current = false;
         setRichLoading(true);
-        const blocks = liftYouTube(liftMedia(liftMermaid(await markdownToBlocksOffThread(rawMarkdown))));
+        const blocks = liftYouTube(liftMedia(liftMermaid(await markdownToBlocksOffThread(rawMarkdownRef.current))));
         setInitialBlocks(withTrailingEditorParagraph(blocks) as Block[]);
         if (rawDirty.current) {
           const { content, contentText, wordCount } = await blocksToStorageOffThread(blocks);
@@ -170,11 +177,11 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
     } finally {
       setSwitchingMode(false);
     }
-  }, [editor, mode, onSave, rawMarkdown, switchingMode]);
+  }, [editor, mode, onSave, switchingMode]);
 
   const handleRawChange = (markdown: string) => {
     rawDirty.current = true;
-    setRawMarkdown(markdown);
+    rawMarkdownRef.current = markdown;
     scheduleSave();
   };
 
