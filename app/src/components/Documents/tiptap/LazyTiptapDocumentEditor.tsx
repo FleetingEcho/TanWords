@@ -5,7 +5,7 @@
  * neither of which belongs in the main chunk — the same reason `editorSchema`
  * carries its "import only from lazily-loaded components" warning.
  */
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import type { TiptapDocumentEditorProps } from "./TiptapDocumentEditor";
 
 const TiptapDocumentEditor = lazy(() =>
@@ -25,6 +25,17 @@ function EditorFallback() {
 }
 
 export function LazyTiptapDocumentEditor(props: TiptapDocumentEditorProps) {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    // Give React one painted frame with the new selection/loading shell before
+    // entering ProseMirror's synchronous constructor. A rapid second click can
+    // then unmount this boundary before any editor DOM work begins.
+    const frame = requestAnimationFrame(() => setReady(true));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  if (!ready) return <EditorFallback />;
   return (
     <Suspense fallback={<EditorFallback />}>
       <TiptapDocumentEditor {...props} />

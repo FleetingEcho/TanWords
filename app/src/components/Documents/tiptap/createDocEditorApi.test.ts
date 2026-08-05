@@ -64,6 +64,35 @@ describe("document access", () => {
     api.replaceBlocks(api.document, [paragraph("loaded")]);
     expect(onUpdate).not.toHaveBeenCalled();
   });
+
+});
+
+describe("editing history", () => {
+  it("exposes undo and redo with their current availability", () => {
+    const { api } = makeEditor([paragraph("one")]);
+    expect(api.canUndo()).toBe(false);
+    api.insertBlocks([paragraph("two")], api.document[0], "after");
+    expect(api.canUndo()).toBe(true);
+
+    expect(api.undo()).toBe(true);
+    expect(api.document).toHaveLength(1);
+    expect(api.canRedo()).toBe(true);
+
+    expect(api.redo()).toBe(true);
+    expect(api.document).toHaveLength(2);
+  });
+
+  it("notifies controls when history changes and can unsubscribe", () => {
+    const { api } = makeEditor([paragraph("one")]);
+    const listener = vi.fn();
+    const unsubscribe = api.onHistoryChange(listener);
+    api.insertBlocks([paragraph("two")], api.document[0], "after");
+    expect(listener).toHaveBeenCalled();
+    listener.mockClear();
+    unsubscribe();
+    api.undo();
+    expect(listener).not.toHaveBeenCalled();
+  });
 });
 
 describe("getTextCursorPosition", () => {

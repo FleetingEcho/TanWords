@@ -60,7 +60,7 @@ describe("ReadOnlyArticle render", () => {
     );
 
     await waitFor(() => expect(screen.getByText("How Do I Profile eBPF Code?")).toBeTruthy(), { timeout: 5000 });
-    // The article has a heading, so the outline column shows its entry.
-    await waitFor(() => expect(container.querySelectorAll("aside button").length).toBe(1), { timeout: 5000 });
+    // The article has a heading, so the compact outline rail shows one marker.
+    await waitFor(() => expect(container.querySelectorAll(".document-scroll-outline button").length).toBe(1), { timeout: 5000 });
   });
 });

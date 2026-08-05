@@ -78,10 +78,14 @@ export function TiptapDocumentEditor({
     [],
   );
 
+  // Block → ProseMirror conversion is linear in the whole document. Keep it
+  // out of incidental React re-renders (theme, slash menu, toolbar state).
+  const initialContent = useMemo(() => blocksToPmDoc(initialBlocks), [initialBlocks]);
+
   const editor = useEditor({
     extensions,
     editable,
-    content: blocksToPmDoc(initialBlocks) as never,
+    content: initialContent as never,
     // React 19 + StrictMode double-invokes effects; without this the editor
     // renders its DOM immediately and the second pass finds it already there.
     immediatelyRender: false,

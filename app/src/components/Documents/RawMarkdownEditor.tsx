@@ -22,6 +22,7 @@ import { formatMarkdown } from "@/lib/formatMarkdown";
 import { markdownEditorTheme } from "./markdownEditorTheme";
 import { MarkdownSearchBar } from "./MarkdownSearchBar";
 import { clipboardImageFiles, clipboardImageFilesOrNative } from "./clipboardImages";
+import { isLargeDocumentText } from "./largeDocument";
 
 /** Marks a change this component made itself — loading a new document,
  *  formatting — so the update listener can tell it apart from typing. Without
@@ -95,6 +96,7 @@ export function RawMarkdownEditor({
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const isDark = useIsDark();
+  const lightweight = isLargeDocumentText(value);
 
   const [searchRequest, setSearchRequest] = useState<SearchRequest | null>(null);
   // Mounting the bar needs a live view; a ref alone would not re-render.
@@ -193,7 +195,11 @@ export function RawMarkdownEditor({
       state: EditorState.create({
         doc: value,
         extensions: [
-          gutter.of(showLineNumbers ? [lineNumbers(), highlightActiveLineGutter(), foldGutter()] : []),
+          gutter.of(showLineNumbers ? [
+            lineNumbers(),
+            highlightActiveLineGutter(),
+            ...(lightweight ? [] : [foldGutter()]),
+          ] : []),
           wrapping.of(wrap ? EditorView.lineWrapping : []),
           theme.of(markdownEditorTheme(isDark)),
           attributes.of(EditorView.contentAttributes.of({
@@ -216,7 +222,7 @@ export function RawMarkdownEditor({
           closeBrackets(),
           // Folding itself, always on, so the keymap works whether or not the
           // gutter is showing (`foldGutter` above carries its own copy).
-          codeFolding(),
+          ...(lightweight ? [] : [codeFolding()]),
           // A zero-width space or a non-breaking space pasted out of a web
           // article is an invisible reason for a heading not to render. The
           // default set covers the zero-width and bidi characters; the two
@@ -232,7 +238,7 @@ export function RawMarkdownEditor({
           // Tab renders as wide as the indent it inserts. Left at the default
           // 4, a hand-typed tab and a two-space indent line up differently.
           EditorState.tabSize.of(2),
-          markdown({ base: markdownLanguage, codeLanguages: languages }),
+          markdown({ base: markdownLanguage, codeLanguages: lightweight ? [] : languages }),
           placeholderText ? placeholder(placeholderText) : [],
           // Enter and Backspace, bound here rather than left to the copies
           // `markdown()` installs: `defaultKeymap` below wants both keys too,
@@ -258,7 +264,7 @@ export function RawMarkdownEditor({
             // it is bound above.
             ...searchKeymap.filter((binding) => binding.key !== "Mod-f"),
             ...closeBracketsKeymap,
-            ...foldKeymap,
+            ...(lightweight ? [] : foldKeymap),
             ...defaultKeymap,
             ...historyKeymap,
             indentWithTab,
@@ -375,7 +381,11 @@ export function RawMarkdownEditor({
   useEffect(() => {
     viewRef.current?.dispatch({
       effects: compartments.current.gutter.reconfigure(
-        showLineNumbers ? [lineNumbers(), highlightActiveLineGutter(), foldGutter()] : [],
+        showLineNumbers ? [
+          lineNumbers(),
+          highlightActiveLineGutter(),
+          ...(lightweight ? [] : [foldGutter()]),
+        ] : [],
       ),
     });
   }, [showLineNumbers]);

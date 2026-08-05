@@ -43,6 +43,7 @@ interface Props {
 
 export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, toolbarSlot }: Props) {
   const db = useDB();
+  const articleScrollRef = React.useRef<HTMLDivElement>(null);
   const narrow = useIsNarrow();
   const state = useArticleReaderState({ url, domain, audio, hnItemId });
   const {
@@ -179,7 +180,7 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
     // overshoot, since the feeds tab bar above and the player bar below both
     // eat into the viewport, leaving the panel's bottom unreachable.
     <div className="flex-1 min-h-0 flex">
-      <div className="min-w-0 flex-1 overflow-y-auto">
+      <div ref={articleScrollRef} className="min-w-0 flex-1 overflow-y-auto">
       <div className="px-6 py-10">
 
         {toolbarSlot && createPortal(
@@ -192,7 +193,7 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
           * the reader, so saved sentences are attributed to it. */}
         <div data-reader-selectable className="min-w-0 w-full">
           <LazyReadOnlyArticle
-            toolbarSlot={toolbarSlot}
+            scrollViewportRef={articleScrollRef}
             html={article.content_html}
             fallbackText={article.text_content}
             fontSize={FONT_STEPS[fontStep]}

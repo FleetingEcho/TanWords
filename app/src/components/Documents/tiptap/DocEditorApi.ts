@@ -48,6 +48,15 @@ export interface DocEditorApi {
   getSelectedText(): string;
   focus(): void;
 
+  /** Editing history used by the document chrome. The subscription keeps the
+   *  button disabled states current without re-rendering the whole page on
+   *  every editor transaction. */
+  undo(): boolean;
+  redo(): boolean;
+  canUndo(): boolean;
+  canRedo(): boolean;
+  onHistoryChange(listener: () => void): () => void;
+
   /** Resolves an app asset URL for display. Never write the result back into
    *  a block — see `useResolvedAssetUrl`. */
   resolveFileUrl?(url: string): Promise<string>;

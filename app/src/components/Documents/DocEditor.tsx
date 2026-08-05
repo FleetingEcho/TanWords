@@ -1,12 +1,12 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import { toast } from "sonner";
 import { DocumentDetail } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { useIsDark } from "@/hooks/useIsDark";
 import { parseDbTimestamp } from "@/lib/dbTime";
-import { CloseIcon, PinIcon } from "@/components/ui/icons";
+import { PinIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
-import { Check, Link2, ListTree, Maximize2, Minimize2, Search } from "lucide-react";
+import { Check, Link2, Maximize2, Minimize2, Search } from "lucide-react";
 import { RawMarkdownEditor } from "./RawMarkdownEditor";
 import type { SaveStatus } from "./useDocumentEditor";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
@@ -18,13 +18,13 @@ import { useDocEditorContent } from "./hooks/useDocEditorContent";
 import { useDocEditorLinks } from "./hooks/useDocEditorLinks";
 import { useDocEditorAttachments } from "./hooks/useDocEditorAttachments";
 import { BlockTemplatesMenu } from "./BlockTemplatesMenu";
-import { DocumentOutline } from "./DocumentOutline";
+import { DocumentScrollOutline } from "./DocumentOutline";
 import { exportEditorHtml, exportEditorPdf } from "@/lib/documentExport";
 import { DocumentHistoryModal } from "./DocumentHistoryModal";
 import type { DocumentRevision } from "@/lib/documentRevisions";
 import { DocumentToolbarActions } from "./DocumentToolbarActions";
 import { DocumentChromeToggle } from "./DocumentChromeToggle";
-import { useIsNarrow } from "@/components/Vocabulary/hooks/useMediaQuery";
+import { DocumentUndoRedoControls } from "./DocumentUndoRedoControls";
 import { contentToBlocksOffThread } from "@/lib/documentWorkerClient";
 import { withTrailingEditorParagraph } from "./trailingEditorParagraph";
 import { LazyTiptapDocumentEditor } from "./tiptap/LazyTiptapDocumentEditor";
@@ -36,58 +36,25 @@ interface Props {
   onSave: (content: string, contentText: string, wordCount: number) => Promise<void>;
   onDirty: () => void;
   onTitleChange: (title: string) => void;
-  onTagsChange: (tags: string) => void;
   onPinToggle: () => void;
   saveStatus: SaveStatus;
   zenMode: boolean;
   onZenModeChange: (enabled: boolean) => void;
 }
 
-export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, onPinToggle, saveStatus, zenMode, onZenModeChange }: Props) {
+export function DocEditor({ doc, onSave, onDirty, onTitleChange, onPinToggle, saveStatus, zenMode, onZenModeChange }: Props) {
   const t = useT();
   const isDark = useIsDark();
-  const narrow = useIsNarrow();
   const documentFontSize = useSettingsStore((state) => state.documentFontSize);
   const setDocumentFontSize = useSettingsStore((state) => state.setDocumentFontSize);
   const [title, setTitle] = useState(doc.title);
-  const [tagsInput, setTagsInput] = useState(
-    (() => { try { return (JSON.parse(doc.tags) as string[]).join(", "); } catch { return ""; } })()
-  );
   const titleRef = useRef<HTMLInputElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const searchRootRef = useRef<HTMLDivElement>(null);
-  const [outlineOpen, setOutlineOpen] = useState(false);
-  // The outline's refresh signal. Bumping it re-renders this whole component,
-  // so it is (a) skipped entirely while the outline is closed and (b)
-  // throttled to a few times a second while typing — an outline does not need
-  // per-character freshness, and each bump otherwise costs a header/toolbar
-  // re-render on top of the editor's own work, per keystroke.
-  const outlineOpenRef = useRef(outlineOpen);
-  outlineOpenRef.current = outlineOpen;
-  const outlineTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** Trailing-edge throttle; fresh ticks only flow while the outline shows. */
-  const bumpOutlineTick = useCallback(() => {
-    if (!outlineOpenRef.current || outlineTimer.current) return;
-    outlineTimer.current = setTimeout(() => {
-      outlineTimer.current = null;
-      setOutlineTick((tick) => tick + 1);
-    }, 250);
-  }, []);
-  /** Opening renders with items current at that moment, not after a pause. */
-  const toggleOutline = useCallback(() => {
-    setOutlineOpen((open) => {
-      if (!open) setOutlineTick((tick) => tick + 1);
-      return !open;
-    });
-  }, []);
-  useEffect(() => () => {
-    if (outlineTimer.current) clearTimeout(outlineTimer.current);
-  }, []);
-  // Phone-only: the tags/search/toolbar stack is ~half the readable area on
+  // Phone-only: the search/toolbar stack is ~half the readable area on
   // a narrow screen, so it starts folded away. Ignored at `lg` (see
   // DocumentChromeToggle), where the chrome always renders.
   const [chromeOpen, setChromeOpen] = useState(false);
-  const [outlineTick, setOutlineTick] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
 
   const content = useDocEditorContent(doc, onSave, onDirty);
@@ -105,20 +72,14 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
     onTitleChange(val);
   };
 
-  const handleTagsBlur = () => {
-    const tags = tagsInput.split(",").map((s) => s.trim()).filter(Boolean);
-    onTagsChange(JSON.stringify(tags));
-  };
-
-  const tagChips = tagsInput.split(",").map((s) => s.trim()).filter(Boolean);
-
   return (
     <div
       className="tanwords-editor-chrome relative flex h-full flex-col"
     >
-      {/* Title + metadata */}
-      <div className="px-4 lg:px-12 pt-3 pb-1 lg:pt-8 lg:pb-2 shrink-0">
-        <div className="flex flex-wrap items-center gap-3">
+      {/* Compact two-row document header. On phones the title gets its own
+        * line and controls move below it instead of squeezing it to a sliver. */}
+      <div className="shrink-0 border-b border-border/60 bg-background/85 px-3 py-3 backdrop-blur-xl lg:px-8 lg:py-4">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-2">
           <input
             ref={titleRef}
             type="text"
@@ -127,77 +88,59 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
             onBlur={handleTitleBlur}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); titleRef.current?.blur(); } }}
             placeholder={t("doc.untitled")}
-            className="document-editor-title min-w-0 flex-1 font-bold tracking-tight bg-transparent border-none outline-hidden placeholder:text-muted-foreground/30 text-foreground"
+            className="document-editor-title min-w-0 bg-transparent font-bold tracking-tight text-foreground outline-hidden placeholder:text-muted-foreground/30"
           />
-          <div className="flex h-8 shrink-0 items-center">
-            <DocumentChromeToggle open={chromeOpen} onToggle={() => setChromeOpen((v) => !v)} />
+          <DocumentChromeToggle open={chromeOpen} onToggle={() => setChromeOpen((v) => !v)} />
+          <div className="col-span-2 ml-auto flex h-9 items-center rounded-xl border border-border/60 bg-muted/25 p-0.5 shadow-xs lg:col-span-1 lg:col-start-2 lg:row-start-1">
+            {mode === "rich" && <DocumentUndoRedoControls editor={editor} />}
             <Button
-            variant="ghost"
-            onClick={onPinToggle}
-            title={doc.pinned ? t("doc.unpin") : t("doc.pin")}
-            className={`w-8 h-8 p-0 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
-              doc.pinned
-                ? "text-amber-500 bg-amber-500/10 hover:bg-amber-500/10"
-                : "text-muted-foreground/50 hover:text-foreground hover:bg-muted"
-            }`}
-          >
-            <PinIcon filled={doc.pinned} className="w-4 h-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={() => onZenModeChange(!zenMode)}
-            title={zenMode ? t("doc.exitZenMode") : t("doc.zenMode")}
-            aria-label={zenMode ? t("doc.exitZenMode") : t("doc.zenMode")}
-            className="h-8 w-8 shrink-0 text-muted-foreground"
-          >
-            {zenMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-          </Button>
+              variant="ghost"
+              onClick={onPinToggle}
+              title={doc.pinned ? t("doc.unpin") : t("doc.pin")}
+              aria-label={doc.pinned ? t("doc.unpin") : t("doc.pin")}
+              className={`h-8 w-8 shrink-0 rounded-lg p-0 ${
+                doc.pinned ? "bg-amber-500/10 text-amber-500 hover:bg-amber-500/10" : "text-muted-foreground"
+              }`}
+            >
+              <PinIcon filled={doc.pinned} className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => onZenModeChange(!zenMode)}
+              title={zenMode ? t("doc.exitZenMode") : t("doc.zenMode")}
+              aria-label={zenMode ? t("doc.exitZenMode") : t("doc.zenMode")}
+              className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground"
+            >
+              {zenMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            </Button>
           </div>
         </div>
-        <div className={`${chromeOpen ? "block" : "hidden"} mt-1 space-y-1.5 lg:mt-2 lg:block lg:space-y-2`}>
-          <div className="flex flex-wrap items-center gap-2">
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" className="w-3.5 h-3.5 text-muted-foreground/50 shrink-0">
-              <path d="M3.5 10.5v-6a1 1 0 011-1h6l6 6-7 7-6-6z" strokeLinejoin="round" />
-              <circle cx="7.5" cy="7.5" r="1" fill="currentColor" stroke="none" />
-            </svg>
-            <input
-              type="text"
-              value={tagsInput}
-              onChange={(e) => setTagsInput(e.target.value)}
-              onBlur={handleTagsBlur}
-              placeholder={t("doc.tagsPlaceholder")}
-              className="flex-1 text-xs bg-transparent border-none outline-hidden text-muted-foreground placeholder:text-muted-foreground/40"
+
+        <div className={`${chromeOpen ? "flex" : "hidden"} mt-3 min-w-0 items-center gap-2 rounded-xl border border-border/50 bg-muted/20 px-1.5 py-1 lg:flex`}>
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <DocumentToolbarActions
+              mode={mode}
+              switching={switchingMode}
+              onMode={(nextMode) => void switchMode(nextMode)}
+              onAttach={() => attachmentInputRef.current?.click()}
+              onInsertLink={() => links.setLinkPickerOpen(true)}
+              templatesMenu={editor ? <BlockTemplatesMenu editor={editor} /> : null}
+              onHistory={() => setHistoryOpen(true)}
+              onExportHtml={() => editor && void exportEditorHtml(editor, doc.title).catch((error) => toast.error(String(error)))}
+              onExportPdf={() => editor && void exportEditorPdf(editor, doc.title).catch((error) => toast.error(String(error)))}
+              documentFontSize={documentFontSize}
+              onFontSizeChange={setDocumentFontSize}
             />
-            {tagChips.length > 0 && (
-              <div className="flex gap-1 shrink-0">
-                {tagChips.slice(0, 4).map((tag) => (
-                  <span key={tag} className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            )}
-            {mode === "rich" && <DocumentContentSearch rootRef={searchRootRef} className="w-full lg:w-[30%]" />}
           </div>
-          <DocumentToolbarActions
-            mode={mode}
-            switching={switchingMode}
-            onMode={(nextMode) => void switchMode(nextMode)}
-            onAttach={() => attachmentInputRef.current?.click()}
-            onInsertLink={() => links.setLinkPickerOpen(true)}
-            templatesMenu={editor ? <BlockTemplatesMenu editor={editor} /> : null}
-            outlineActive={outlineOpen}
-            onToggleOutline={toggleOutline}
-            onHistory={() => setHistoryOpen(true)}
-            onExportHtml={() => editor && void exportEditorHtml(editor, doc.title).catch((error) => toast.error(String(error)))}
-            onExportPdf={() => editor && void exportEditorPdf(editor, doc.title).catch((error) => toast.error(String(error)))}
-            documentFontSize={documentFontSize}
-            onFontSizeChange={setDocumentFontSize}
-          />
+          {mode === "rich" && (
+            <DocumentContentSearch
+              rootRef={searchRootRef}
+              className="h-8 w-36 min-w-0 shrink-0 rounded-lg bg-background/75 shadow-none ring-1 ring-border/50 sm:w-56 lg:w-72"
+            />
+          )}
         </div>
-        <div className="mt-1.5 border-b border-border/60 lg:mt-3" />
         <input ref={attachmentInputRef} type="file" className="hidden"
           onChange={(event) => { void attachments.insertAttachment(event.target.files?.[0]); event.target.value = ""; }} />
       </div>
@@ -205,7 +148,12 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
       {mode === "rich" ? (
         <div ref={searchRootRef} className="contents">
           <div className="flex min-h-0 flex-1">
-            <DocumentPreviewScrollArea onClickCapture={links.handleEditorClick}>
+            <DocumentPreviewScrollArea
+              onClickCapture={links.handleEditorClick}
+              renderOverlay={(viewportRef) => editor
+                ? <DocumentScrollOutline editor={editor} viewportRef={viewportRef} />
+                : null}
+            >
               {richLoading && (
                 <div className="absolute inset-0 flex items-center justify-center bg-background/60 z-10">
                   <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
@@ -219,18 +167,17 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
                   onUploadFile={uploadFile}
                   onReady={setEditor}
                   onError={(message) => toast.error(message)}
-                  onChange={() => { bumpOutlineTick(); handleChange(); }}
+                  onChange={handleChange}
                   toolbarExtras={attachments.renderToolbarExtras}
                   className="tanwords-editor"
                 />
               )}
             </DocumentPreviewScrollArea>
-            {outlineOpen && !narrow && editor && (
-              <div className="w-56 shrink-0">
-                <DocumentOutline editor={editor} tick={outlineTick} />
-              </div>
-            )}
           </div>
+        </div>
+      ) : richLoading ? (
+        <div className="flex min-h-0 flex-1 items-center justify-center">
+          <span className="h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
         </div>
       ) : (
         <RawMarkdownEditor
@@ -242,38 +189,6 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
         />
       )}
 
-      {/* Phones get the outline as a modal instead of a column: at that width a
-        * persistent column either buries the document or squeezes it to a
-        * sliver, and the outline is a jump-and-dismiss tool, not a companion
-        * pane. Desktop keeps the side column above. */}
-      {narrow && editor && (
-        <Dialog open={outlineOpen} onClose={() => setOutlineOpen(false)} maxWidth="max-w-sm">
-          <div className="relative border-b border-border px-5 py-4">
-            <DialogTitle className="flex items-center gap-2 text-base font-semibold">
-              <ListTree className="h-4 w-4 text-muted-foreground" />
-              {t("doc.outline")}
-            </DialogTitle>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={() => setOutlineOpen(false)}
-              className="absolute right-3 top-3 h-7 w-7 rounded-full text-muted-foreground hover:text-foreground"
-              title={t("common.close")}
-              aria-label={t("common.close")}
-            >
-              <CloseIcon className="h-4 w-4" />
-            </Button>
-          </div>
-          <DocumentOutline
-            editor={editor}
-            tick={outlineTick}
-            className="max-h-[60vh] overflow-y-auto p-3"
-            showHeader={false}
-            onNavigate={() => setOutlineOpen(false)}
-          />
-        </Dialog>
-      )}
 
       {(links.linkContext.outgoing.length > 0 || links.linkContext.backlinks.length > 0) && (
         <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/60 px-12 py-2 text-[10px]">

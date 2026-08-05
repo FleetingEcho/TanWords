@@ -215,15 +215,25 @@
   text-decoration-thickness: 2px;
 }
 
-/* The filename/title input above the editor, scaled with the document font so
-   the two stay in proportion. */
+/* Compact document chrome: the title should identify the file, not compete
+   with the article body as a second hero heading. */
 .document-editor-title {
-  font-size: calc(var(--document-font-size, 16px) * 1.875);
+  width: 100%;
+  font-size: clamp(1.2rem, calc(var(--document-font-size, 16px) * 1.45), 1.65rem);
   line-height: 1.2;
+}
+
+.document-toolbar-scroll {
+  scrollbar-width: none;
+}
+.document-toolbar-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 @media (max-width: 1023px) {
   .document-editor-title {
-    font-size: calc(var(--document-font-size, 16px) * 1.25);
+    font-size: clamp(1.1rem, calc(var(--document-font-size, 16px) * 1.2), 1.35rem);
   }
 }

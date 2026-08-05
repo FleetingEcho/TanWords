@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 
 const TRACK_INSET = 8;
 const MIN_THUMB_HEIGHT = 32;
@@ -24,8 +24,11 @@ export function calculateDocumentScrollbar(
 export function DocumentPreviewScrollArea({
   children,
   className = "",
+  renderOverlay,
   ...props
-}: React.HTMLAttributes<HTMLDivElement>) {
+}: React.HTMLAttributes<HTMLDivElement> & {
+  renderOverlay?: (viewportRef: RefObject<HTMLDivElement | null>) => React.ReactNode;
+}) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ pointerY: number; scrollTop: number } | null>(null);
   const frameRef = useRef(0);
@@ -126,6 +129,7 @@ export function DocumentPreviewScrollArea({
       >
         {children}
       </div>
+      {renderOverlay?.(viewportRef)}
     </div>
   );
 }

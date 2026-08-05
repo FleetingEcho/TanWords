@@ -19,6 +19,7 @@ export function useDocumentEditor() {
   const [loading, setLoading] = useState(false);
   const [lockedId, setLockedId] = useState<number | null>(null);
   const activeIdRef = useRef<number | null>(null);
+  const loadSequence = useRef(0);
   const lastSavedContent = useRef<string | null>(null);
 
   const pendingSave = useRef<{ content: string; contentText: string; wordCount: number } | null>(null);
@@ -30,6 +31,7 @@ export function useDocumentEditor() {
   }, []);
 
   const loadDoc = useCallback(async (id: number) => {
+    const sequence = ++loadSequence.current;
     if (id < 0) {
       setActiveId(null);
       activeIdRef.current = null;
@@ -38,28 +40,32 @@ export function useDocumentEditor() {
       setLoading(false);
       return;
     }
+
+    // Selection is urgent UI state: unmount the previous Tiptap before any
+    // IPC/parse work. Keeping a huge editor alive until the next fetch returns
+    // lets its synchronous DOM mount swallow every subsequent click.
+    setActiveId(id);
+    activeIdRef.current = id;
+    setDoc(null);
+    setLockedId(null);
+    setSaveStatus("idle");
     setLoading(true);
     try {
       const detail = await db.getDocument(id);
+      if (sequence !== loadSequence.current) return;
       if (detail) {
-        setLockedId(null);
         setDoc(detail);
         lastSavedContent.current = detail.content;
-        setActiveId(id);
-        activeIdRef.current = id;
-        setSaveStatus("idle");
       }
     } catch (error) {
+      if (sequence !== loadSequence.current) return;
       if (String(error).includes("DOCUMENT_LOCKED")) {
-        setDoc(null);
         setLockedId(id);
-        setActiveId(id);
-        activeIdRef.current = id;
       } else {
         throw error;
       }
     } finally {
-      setLoading(false);
+      if (sequence === loadSequence.current) setLoading(false);
     }
   }, [db]);
 
@@ -160,13 +166,6 @@ export function useDocumentEditor() {
     setRefreshKey((k) => k + 1);
   }, [db, doc]);
 
-  const handleTagsChange = useCallback(async (tags: string) => {
-    if (!doc) return;
-    setDoc((prev) => (prev ? { ...prev, tags } : prev));
-    await db.updateDocument(doc.id, doc.title, doc.content, doc.content_text, tags, doc.pinned, doc.word_count);
-    setRefreshKey((k) => k + 1);
-  }, [db, doc]);
-
   const handlePinToggle = useCallback(async () => {
     if (!doc) return;
     const newPinned = !doc.pinned;
@@ -185,7 +184,7 @@ export function useDocumentEditor() {
 
   return {
     activeId, doc, lockedId, saveStatus, refreshKey, loading,
-    loadDoc, handleNewDoc, handleNewDocIn, handleSave, markDirty, handleTitleChange, handleTagsChange, handlePinToggle,
+    loadDoc, handleNewDoc, handleNewDocIn, handleSave, markDirty, handleTitleChange, handlePinToggle,
     unlockDocument, removeLockedProtection,
     reset,
   };

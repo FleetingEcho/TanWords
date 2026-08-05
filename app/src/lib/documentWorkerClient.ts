@@ -1,7 +1,7 @@
 import type { Block } from "@/components/Documents/tiptap/blocks";
 import { blocksToMarkdown, blocksToStorage, blocksToText, contentToBlocks, markdownToBlocks } from "./docFormat";
 
-type Operation = "markdownToBlocks" | "contentToBlocks" | "blocksToMarkdown" | "blocksToMarkdownWithStats" | "blocksToStorage" | "htmlToMarkdown";
+type Operation = "markdownToBlocks" | "contentToBlocks" | "contentToMarkdown" | "blocksToMarkdown" | "blocksToMarkdownWithStats" | "blocksToStorage" | "htmlToMarkdown";
 export type MarkdownWithStats = { markdown: string; wordCount: number };
 type Pending = {
   resolve: (value: any) => void;
@@ -98,20 +98,95 @@ function run<T>(operation: Operation, payload: string | readonly unknown[]): Pro
   });
 }
 
-export async function markdownToBlocksOffThread(markdown: string): Promise<Block[]> {
-  try { return await (run<Block[]>("markdownToBlocks", markdown) ?? markdownToBlocks(markdown)); }
-  catch { return markdownToBlocks(markdown); }
+function abortError(): DOMException {
+  return new DOMException("Document parsing aborted", "AbortError");
 }
 
-export async function contentToBlocksOffThread(content: string): Promise<Block[]> {
+/** Navigation parses get an isolated worker. Superseding a document can then
+ * terminate its expensive parse immediately instead of leaving it at the head
+ * of the shared worker queue, where the next document would wait behind work
+ * whose result nobody can use. */
+function runAbortable<T>(
+  operation: Operation,
+  payload: string | readonly unknown[],
+  signal: AbortSignal,
+): Promise<T> | null {
+  if (signal.aborted) return Promise.reject(abortError());
+  if (typeof Worker === "undefined") return null;
+  let target: Worker;
+  try {
+    target = new Worker(new URL("../workers/documentWorker.ts", import.meta.url), { type: "module" });
+  } catch {
+    return null;
+  }
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      signal.removeEventListener("abort", onAbort);
+      target.terminate();
+      callback();
+    };
+    const onAbort = () => finish(() => reject(abortError()));
+    const timeout = window.setTimeout(
+      () => finish(() => reject(new Error("document worker timed out"))),
+      60_000,
+    );
+    signal.addEventListener("abort", onAbort, { once: true });
+    target.onmessage = ({ data }: MessageEvent<{ result?: unknown; error?: string }>) => {
+      finish(() => data.error ? reject(new Error(data.error)) : resolve(data.result as T));
+    };
+    target.onerror = () => finish(() => reject(new Error("document worker failed")));
+    target.postMessage({ id: 1, operation, payload });
+  });
+}
+
+function isAbort(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+export async function markdownToBlocksOffThread(markdown: string, signal?: AbortSignal): Promise<Block[]> {
+  try {
+    return await ((signal ? runAbortable<Block[]>("markdownToBlocks", markdown, signal) : run<Block[]>("markdownToBlocks", markdown))
+      ?? markdownToBlocks(markdown));
+  } catch (error) {
+    if (isAbort(error)) throw error;
+    return markdownToBlocks(markdown);
+  }
+}
+
+export async function contentToBlocksOffThread(content: string, signal?: AbortSignal): Promise<Block[]> {
   if (!content || content === "{}" || content === "[]") return [];
-  try { return await (run<Block[]>("contentToBlocks", content) ?? contentToBlocks(content)); }
-  catch { return contentToBlocks(content); }
+  try {
+    return await ((signal ? runAbortable<Block[]>("contentToBlocks", content, signal) : run<Block[]>("contentToBlocks", content))
+      ?? contentToBlocks(content));
+  } catch (error) {
+    if (isAbort(error)) throw error;
+    return contentToBlocks(content);
+  }
 }
 
-export async function blocksToMarkdownOffThread(blocks: readonly unknown[]): Promise<string> {
-  try { return await (run<string>("blocksToMarkdown", blocks) ?? blocksToMarkdown(blocks)); }
-  catch { return blocksToMarkdown(blocks); }
+export async function contentToMarkdownOffThread(content: string, signal?: AbortSignal): Promise<string> {
+  if (!content || content === "{}" || content === "[]") return "";
+  try {
+    return await ((signal ? runAbortable<string>("contentToMarkdown", content, signal) : run<string>("contentToMarkdown", content))
+      ?? blocksToMarkdown(await contentToBlocks(content)));
+  } catch (error) {
+    if (isAbort(error)) throw error;
+    return blocksToMarkdown(await contentToBlocks(content));
+  }
+}
+
+export async function blocksToMarkdownOffThread(blocks: readonly unknown[], signal?: AbortSignal): Promise<string> {
+  try {
+    return await ((signal ? runAbortable<string>("blocksToMarkdown", blocks, signal) : run<string>("blocksToMarkdown", blocks))
+      ?? blocksToMarkdown(blocks));
+  } catch (error) {
+    if (isAbort(error)) throw error;
+    return blocksToMarkdown(blocks);
+  }
 }
 
 export async function blocksToMarkdownWithStatsOffThread(

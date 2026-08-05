@@ -133,6 +133,8 @@ export const documents: Dict = {
     "doc.outline": "大纲",
     "doc.outlineEmpty": "添加标题后这里会生成大纲",
     "doc.outlineToggle": "切换大纲",
+    "doc.undo": "撤销",
+    "doc.redo": "重做",
     "doc.chromeShow": "显示文档工具栏",
     "doc.chromeHide": "隐藏文档工具栏",
     "doc.exportHtml": "导出 HTML",
