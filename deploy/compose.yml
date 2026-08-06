@@ -1,0 +1,62 @@
+name: tanwords
+
+services:
+  app:
+    # Built on the developer machine and loaded on the server. This Compose
+    # file intentionally has no `build:` section: production never compiles.
+    image: tanwords-web:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      TANWORDS_HOST: 0.0.0.0
+      TANWORDS_PORT: 8740
+      TANWORDS_DATA_DIR: /data
+      # Safe because port 8740 is not published and only Caddy can reach it.
+      TANWORDS_TRUST_PROXY: 1
+    volumes:
+      - tanwords-data:/data
+    expose:
+      - "8740"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:8740/"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
+
+  caddy:
+    image: caddy:2.11.3-alpine
+    restart: unless-stopped
+    environment:
+      TANWORDS_PUBLIC_HOST: ${TANWORDS_PUBLIC_HOST:?set TANWORDS_PUBLIC_HOST in deploy/.env}
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "caddy", "validate", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  tanwords-data:
+    name: tanwords-data
+  caddy-data:
+    name: tanwords-caddy-data
+  caddy-config:
+    name: tanwords-caddy-config

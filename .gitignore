@@ -15,3 +15,9 @@ app/core/sherpa-libs/
 web/frontend/dist/
 **/*/node_modules/
 **/*/target/
+
+# Container deployment secrets and local bind data
+deploy/.env
+deploy/data/
+deploy/*.tar
+deploy/*.tar.gz

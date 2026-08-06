@@ -1,0 +1,41 @@
+# syntax=docker/dockerfile:1.7
+
+# The renderer must exist before Cargo compiles rust-embed into the server.
+FROM oven/bun:1 AS frontend
+WORKDIR /src/app
+COPY app/ ./
+RUN bun install --frozen-lockfile && bun run build
+
+FROM rust:bookworm AS backend
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       build-essential clang cmake pkg-config libssl-dev libdbus-1-dev \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+COPY app/core/ app/core/
+COPY web/server/ web/server/
+COPY --from=frontend /src/app/out/renderer/ app/out/renderer/
+WORKDIR /src/web/server
+RUN cargo build --release --locked
+
+FROM debian:bookworm-slim AS runtime
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl libssl3 libstdc++6 libdbus-1-3 \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system --gid 10001 tanwords \
+    && useradd --system --uid 10001 --gid tanwords --home-dir /nonexistent --shell /usr/sbin/nologin tanwords \
+    && install -d -o tanwords -g tanwords -m 0700 /data
+
+COPY --from=backend /src/web/server/target/release/tanwords-web-server /usr/local/bin/tanwords-web-server
+
+ENV TANWORDS_HOST=0.0.0.0 \
+    TANWORDS_PORT=8740 \
+    TANWORDS_DATA_DIR=/data \
+    TANWORDS_TRUST_PROXY=1
+
+USER tanwords
+EXPOSE 8740
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
+    CMD curl --fail --silent --show-error http://127.0.0.1:8740/ >/dev/null || exit 1
+
+ENTRYPOINT ["/usr/local/bin/tanwords-web-server"]

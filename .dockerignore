@@ -1,0 +1,16 @@
+.git
+.codegraph
+.claude
+.superpowers
+dist-releases
+**/node_modules
+**/target
+app/out
+app/docs
+app/core/sherpa-libs
+web/server/.env
+deploy/.env
+deploy/*.tar
+deploy/*.tar.gz
+.DS_Store
+**/.DS_Store
