@@ -94,7 +94,7 @@ impl RuntimePool {
         let user_dir = self.user_dir(user_id);
         let turso = self
             .users
-            .turso_for(user_id)
+            .active_turso_for(user_id)
             .await?
             .map(|p| (p.url.clone(), p.token));
         // A saved Turso profile that can't be opened (primary unreachable,

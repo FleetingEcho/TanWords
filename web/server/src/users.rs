@@ -1,7 +1,7 @@
 //! users.db — the web server's own credential store, kept entirely separate
 //! from the app's vocabulary database: emails + argon2id password hashes,
-//! session tokens (sha256'd at rest), and each user's Turso connection (its
-//! token sealed with AES-256-GCM under TANWORDS_MASTER_KEY). Lives at
+//! signed JWT sessions (sha256'd at rest for revocation), and each user's Turso
+//! connection (its token sealed with AES-256-GCM under TANWORDS_MASTER_KEY). Lives at
 //! `<data_dir>/users.db`; the app data itself is per-user under
 //! `<data_dir>/users/<id>/` (see runtime.rs).
 //!
@@ -17,13 +17,10 @@ use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use argon2::Argon2;
 use base64::Engine;
+use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use rand::RngCore;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-
-/// Idle sessions die after this; any valid use extends them (throttled so we
-/// don't rewrite the row on every request).
-const SESSION_TTL_SECS: i64 = 30 * 24 * 3600;
-const SESSION_EXTEND_AFTER_SECS: i64 = 6 * 3600;
 
 fn now_secs() -> i64 {
     SystemTime::now()
@@ -44,15 +41,26 @@ pub struct TursoProfile {
     pub token: String,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+struct JwtClaims {
+    sub: i64,
+    iat: i64,
+    exp: i64,
+    jti: String,
+}
+
 pub struct UsersDb {
     conn: tokio::sync::Mutex<libsql::Connection>,
     cipher: Aes256Gcm,
+    jwt_encoding_key: EncodingKey,
+    jwt_decoding_key: DecodingKey,
+    jwt_ttl_secs: i64,
 }
 
 impl UsersDb {
     /// `master_key` seals each user's Turso token at rest. Required: without
     /// it we'd be writing third-party DB credentials in plaintext.
-    pub async fn open(path: &Path, master_key: [u8; 32]) -> Result<Self, String> {
+    pub async fn open(path: &Path, master_key: [u8; 32], jwt_ttl_secs: i64) -> Result<Self, String> {
         if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
@@ -68,7 +76,8 @@ impl UsersDb {
                 password_hash TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 turso_url TEXT,
-                turso_token_enc TEXT
+                turso_token_enc TEXT,
+                active_db TEXT NOT NULL DEFAULT 'local'
             );
             CREATE TABLE IF NOT EXISTS sessions(
                 token_hash TEXT PRIMARY KEY,
@@ -80,9 +89,27 @@ impl UsersDb {
         )
         .await
         .map_err(|e| format!("users.db migration failed: {e}"))?;
+        // Existing installations predate the independent active-db selector.
+        // Preserve their current behaviour: accounts with saved Turso
+        // credentials remain on Turso; all others start local. The UPDATE only
+        // touches NULL rows, so a user's later explicit local choice survives
+        // every restart.
+        let _ = conn.execute("ALTER TABLE users ADD COLUMN active_db TEXT", ()).await;
+        conn.execute(
+            "UPDATE users SET active_db = CASE
+                 WHEN turso_url IS NOT NULL AND turso_token_enc IS NOT NULL THEN 'turso'
+                 ELSE 'local' END
+             WHERE active_db IS NULL",
+            (),
+        )
+        .await
+        .map_err(|e| format!("users.db active-db migration failed: {e}"))?;
         Ok(Self {
             conn: tokio::sync::Mutex::new(conn),
             cipher: Aes256Gcm::new(&master_key.into()),
+            jwt_encoding_key: EncodingKey::from_secret(&master_key),
+            jwt_decoding_key: DecodingKey::from_secret(&master_key),
+            jwt_ttl_secs,
         })
     }
 
@@ -132,7 +159,7 @@ impl UsersDb {
         let conn = self.conn.lock().await;
         let rows = conn
             .execute(
-                "INSERT INTO users(email, password_hash) VALUES (?, ?)",
+                "INSERT INTO users(email, password_hash, active_db) VALUES (?, ?, 'local')",
                 libsql::params![email, hash],
             )
             .await;
@@ -188,23 +215,33 @@ impl UsersDb {
         if id < 0 || !Self::verify_password(&hash, password) {
             return Ok(None);
         }
-        let token = Self::new_session_token();
-        let token_hash = Self::hash_token(&token);
         let now = now_secs();
+        let token = self.new_session_token(id, now)?;
+        let token_hash = Self::hash_token(&token);
         let conn = self.conn.lock().await;
         conn.execute(
             "INSERT INTO sessions(token_hash, user_id, last_seen_at, expires_at) VALUES (?, ?, ?, ?)",
-            libsql::params![token_hash, id, now, now + SESSION_TTL_SECS],
+            libsql::params![token_hash, id, now, now + self.jwt_ttl_secs],
         )
         .await
         .map_err(|e| e.to_string())?;
         Ok(Some((id, token)))
     }
 
-    pub fn new_session_token() -> String {
-        let mut bytes = [0u8; 32];
-        rand::rngs::OsRng.fill_bytes(&mut bytes);
-        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
+    fn new_session_token(&self, user_id: i64, now: i64) -> Result<String, String> {
+        let mut nonce = [0u8; 16];
+        rand::rngs::OsRng.fill_bytes(&mut nonce);
+        encode(
+            &Header::new(Algorithm::HS256),
+            &JwtClaims {
+                sub: user_id,
+                iat: now,
+                exp: now + self.jwt_ttl_secs,
+                jti: base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(nonce),
+            },
+            &self.jwt_encoding_key,
+        )
+        .map_err(|e| format!("failed to issue JWT: {e}"))
     }
 
     pub fn hash_token(token: &str) -> String {
@@ -212,15 +249,19 @@ impl UsersDb {
         base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(digest)
     }
 
-    /// Sliding expiry: valid sessions extend when they're halfway stale, so an
-    /// active user never logs in again and an abandoned one dies on schedule.
+    /// Validates both the signed JWT and its revocable server-side session row.
     pub async fn validate(&self, token: &str) -> Result<Option<UserRecord>, String> {
+        let validation = Validation::new(Algorithm::HS256);
+        let claims = match decode::<JwtClaims>(token, &self.jwt_decoding_key, &validation) {
+            Ok(data) => data.claims,
+            Err(_) => return Ok(None),
+        };
         let token_hash = Self::hash_token(token);
         let now = now_secs();
         let conn = self.conn.lock().await;
         let mut rows = conn
             .query(
-                "SELECT s.user_id, s.last_seen_at, s.expires_at, u.email
+                "SELECT s.user_id, s.expires_at, u.email
                  FROM sessions s JOIN users u ON u.id = s.user_id
                  WHERE s.token_hash = ?",
                 libsql::params![token_hash.clone()],
@@ -231,22 +272,13 @@ impl UsersDb {
             return Ok(None);
         };
         let user_id = row.get::<i64>(0).map_err(|e| e.to_string())?;
-        let last_seen = row.get::<i64>(1).map_err(|e| e.to_string())?;
-        let expires = row.get::<i64>(2).map_err(|e| e.to_string())?;
-        let email = row.get::<String>(3).map_err(|e| e.to_string())?;
-        if expires < now {
+        let expires = row.get::<i64>(1).map_err(|e| e.to_string())?;
+        let email = row.get::<String>(2).map_err(|e| e.to_string())?;
+        if claims.sub != user_id || expires < now {
             let _ = conn
                 .execute("DELETE FROM sessions WHERE token_hash = ?", libsql::params![token_hash.clone()])
                 .await;
             return Ok(None);
-        }
-        if now - last_seen > SESSION_EXTEND_AFTER_SECS {
-            let _ = conn
-                .execute(
-                    "UPDATE sessions SET last_seen_at = ?, expires_at = ? WHERE token_hash = ?",
-                    libsql::params![now, now + SESSION_TTL_SECS, token_hash],
-                )
-                .await;
         }
         // Opportunistic sweep of expired rows, ~1% of validations.
         if now % 37 == 0 {
@@ -287,8 +319,8 @@ impl UsersDb {
         Ok(true)
     }
 
-    /// The user's Turso profile, decrypted. `None` = this user is on their
-    /// per-user local database.
+    /// The user's remembered Turso profile, independent of which database is
+    /// currently selected.
     pub async fn turso_for(&self, user_id: i64) -> Result<Option<TursoProfile>, String> {
         let conn = self.conn.lock().await;
         let mut rows = conn
@@ -314,11 +346,46 @@ impl UsersDb {
         }
     }
 
+    pub async fn active_turso_for(&self, user_id: i64) -> Result<Option<TursoProfile>, String> {
+        let conn = self.conn.lock().await;
+        let mut rows = conn
+            .query("SELECT active_db FROM users WHERE id = ?", libsql::params![user_id])
+            .await
+            .map_err(|e| e.to_string())?;
+        let active = rows
+            .next()
+            .await
+            .map_err(|e| e.to_string())?
+            .and_then(|row| row.get::<Option<String>>(0).ok().flatten())
+            .unwrap_or_else(|| "local".to_string());
+        drop(rows);
+        drop(conn);
+        if active == "turso" {
+            self.turso_for(user_id).await
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub async fn set_active_db(&self, user_id: i64, source: &str) -> Result<(), String> {
+        if source != "local" && source != "turso" {
+            return Err("database source must be `local` or `turso`".to_string());
+        }
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "UPDATE users SET active_db = ? WHERE id = ?",
+            libsql::params![source, user_id],
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     pub async fn set_turso(&self, user_id: i64, url: &str, token: &str) -> Result<(), String> {
         let enc = self.seal(token);
         let conn = self.conn.lock().await;
         conn.execute(
-            "UPDATE users SET turso_url = ?, turso_token_enc = ? WHERE id = ?",
+            "UPDATE users SET turso_url = ?, turso_token_enc = ?, active_db = 'turso' WHERE id = ?",
             libsql::params![url, enc, user_id],
         )
         .await
@@ -329,7 +396,7 @@ impl UsersDb {
     pub async fn clear_turso(&self, user_id: i64) -> Result<(), String> {
         let conn = self.conn.lock().await;
         conn.execute(
-            "UPDATE users SET turso_url = NULL, turso_token_enc = NULL WHERE id = ?",
+            "UPDATE users SET turso_url = NULL, turso_token_enc = NULL, active_db = 'local' WHERE id = ?",
             libsql::params![user_id],
         )
         .await
@@ -356,5 +423,75 @@ impl UsersDb {
             .map_err(|e| e.to_string())?
             .is_some();
         Ok((url, has_token))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::UsersDb;
+
+    async fn test_users(name: &str) -> (UsersDb, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("tanwords-{name}-{}", uuid::Uuid::new_v4()));
+        let users = UsersDb::open(&dir.join("users.db"), [7; 32], 7 * 24 * 3600)
+            .await
+            .unwrap();
+        (users, dir)
+    }
+
+    #[tokio::test]
+    async fn jwt_session_is_valid_and_revocable() {
+        let (users, dir) = test_users("jwt-test").await;
+        let user_id = users.register("reader@example.com", "correct-horse").await.unwrap();
+        let (_, token) = users
+            .login("reader@example.com", "correct-horse")
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(token.split('.').count(), 3);
+        assert_eq!(users.validate(&token).await.unwrap().unwrap().id, user_id);
+
+        let (_, second_token) = users
+            .login("reader@example.com", "correct-horse")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_ne!(token, second_token);
+
+        let mut tampered = token.clone();
+        tampered.push('x');
+        assert!(users.validate(&tampered).await.unwrap().is_none());
+
+        users.logout(&token).await.unwrap();
+        assert!(users.validate(&token).await.unwrap().is_none());
+        assert!(users.validate(&second_token).await.unwrap().is_some());
+
+        drop(users);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn local_selection_preserves_turso_credentials() {
+        let (users, dir) = test_users("db-source-test").await;
+        let user_id = users.register("switcher@example.com", "correct-horse").await.unwrap();
+
+        assert!(users.active_turso_for(user_id).await.unwrap().is_none());
+        users.set_turso(user_id, "libsql://example.turso.io", "secret").await.unwrap();
+        assert!(users.active_turso_for(user_id).await.unwrap().is_some());
+
+        users.set_active_db(user_id, "local").await.unwrap();
+        assert!(users.active_turso_for(user_id).await.unwrap().is_none());
+        let remembered = users.turso_for(user_id).await.unwrap().unwrap();
+        assert_eq!(remembered.url, "libsql://example.turso.io");
+        assert_eq!(remembered.token, "secret");
+
+        users.set_active_db(user_id, "turso").await.unwrap();
+        assert!(users.active_turso_for(user_id).await.unwrap().is_some());
+        users.clear_turso(user_id).await.unwrap();
+        assert!(users.turso_for(user_id).await.unwrap().is_none());
+        assert!(users.active_turso_for(user_id).await.unwrap().is_none());
+
+        drop(users);
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

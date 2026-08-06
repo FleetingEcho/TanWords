@@ -11,7 +11,17 @@ let cachedToken: string | null = readStoredToken();
 
 function readStoredToken(): string | null {
   try {
-    return typeof sessionStorage !== "undefined" ? sessionStorage.getItem(TOKEN_KEY) : null;
+    if (typeof localStorage === "undefined") return null;
+    const persistent = localStorage.getItem(TOKEN_KEY);
+    if (persistent) return persistent;
+    // Preserve an existing login from versions that kept the token only for
+    // the current tab, then remove the short-lived copy.
+    const legacy = typeof sessionStorage !== "undefined" ? sessionStorage.getItem(TOKEN_KEY) : null;
+    if (legacy) {
+      localStorage.setItem(TOKEN_KEY, legacy);
+      sessionStorage.removeItem(TOKEN_KEY);
+    }
+    return legacy;
   } catch {
     return null;
   }
@@ -24,7 +34,8 @@ export function getWebToken(): string | null {
 export function setWebToken(token: string): void {
   cachedToken = token;
   try {
-    sessionStorage.setItem(TOKEN_KEY, token);
+    localStorage.setItem(TOKEN_KEY, token);
+    sessionStorage.removeItem(TOKEN_KEY);
   } catch {
     // In-memory session survives private-mode storage failures.
   }
@@ -35,6 +46,7 @@ export function clearWebToken(): void {
   if (cachedToken === null) return;
   cachedToken = null;
   try {
+    localStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(TOKEN_KEY);
   } catch {
     // ignore
@@ -44,9 +56,13 @@ export function clearWebToken(): void {
 
 export async function webAuthFetch(input: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
-  if (cachedToken) headers.set("authorization", `Bearer ${cachedToken}`);
+  const requestToken = cachedToken;
+  if (requestToken) headers.set("authorization", `Bearer ${requestToken}`);
   const response = await fetch(input, { ...init, headers });
-  if (response.status === 401) clearWebToken();
+  // A response can arrive after logout + a new login. Only revoke the token
+  // that actually authenticated this request; an old request's delayed 401
+  // must never throw the newly signed-in account back to the login screen.
+  if (response.status === 401 && cachedToken === requestToken) clearWebToken();
   return response;
 }
 
@@ -152,16 +168,26 @@ export async function webPickFile(options: WebPickFileOptions = {}): Promise<Fil
   return file ?? null;
 }
 
-/** Database backup export: the server streams the file; anchor-clicking the
- * URL with the token in the query lets the browser handle saving. */
-export function webExportBackup(password?: string | null): void {
-  const token = cachedToken ?? "";
-  const params = new URLSearchParams({ token });
-  if (password) params.set("password", password);
-  const a = document.createElement("a");
-  a.href = `/api/export/backup?${params.toString()}`;
-  a.download = `tanwords-backup-${new Date().toISOString().slice(0, 10)}${password ? ".zip" : ".db"}`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+/** Downloads a snapshot of either server-owned database. The password stays
+ * in a header rather than a URL/access log, and the source is a closed enum —
+ * the server derives the actual path from the authenticated user id. */
+export async function webExportBackup(
+  password?: string | null,
+  source: "local" | "turso" = "local",
+): Promise<void> {
+  const headers = new Headers();
+  if (password) headers.set("x-export-password", password);
+  const response = await webAuthFetch(`/api/export/backup?source=${source}`, { headers });
+  if (!response.ok) {
+    const body = await response.text();
+    try {
+      throw (JSON.parse(body).error ?? body);
+    } catch (error) {
+      throw typeof error === "string" ? error : body;
+    }
+  }
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const filename = disposition.match(/filename="([^"]+)"/)?.[1]
+    ?? `tanwords-${source}-backup-${new Date().toISOString().slice(0, 10)}${password ? ".zip" : ".db"}`;
+  webDownloadBlob(filename, await response.blob());
 }

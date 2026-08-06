@@ -12,6 +12,7 @@ import { EmptyCanvas } from "@/components/shared/EmptyCanvas";
 import { DocSourceTabs } from "./DocSourceTabs";
 import { LockedDocumentPanel } from "./LockedDocumentPanel";
 import { useIsNarrow } from "@/components/Vocabulary/hooks/useMediaQuery";
+import { hostCapabilities } from "@/platform";
 
 type DocSource = "db" | "local";
 
@@ -23,7 +24,7 @@ export function DocumentsPage() {
   const t = useT();
   const [source, setSourceState] = useState<DocSource>(() => {
     const saved = localStorage.getItem(LAST_SOURCE_KEY);
-    return saved === "local" ? saved : "db";
+    return hostCapabilities.localDocs && saved === "local" ? saved : "db";
   });
   const [dbRefreshKey, setDbRefreshKey] = useState(0);
   const [localRefreshTick, setLocalRefreshTick] = useState(0);
@@ -34,6 +35,7 @@ export function DocumentsPage() {
     else setLocalRefreshTick((tick) => tick + 1);
   };
   const setSource = (s: DocSource) => {
+    if (s === "local" && !hostCapabilities.localDocs) return;
     localStorage.setItem(LAST_SOURCE_KEY, s);
     setSourceState(s);
     setShowMobileEditor(false);
@@ -44,7 +46,9 @@ export function DocumentsPage() {
   // The local-folder pane only ever mounts once the user has actually looked at that tab
   // (it does real filesystem I/O) — but if that's where they left off last session, restore
   // it immediately instead of waiting for a click that will never come this visit.
-  const [localMounted, setLocalMounted] = useState(() => localStorage.getItem(LAST_SOURCE_KEY) === "local");
+  const [localMounted, setLocalMounted] = useState(
+    () => hostCapabilities.localDocs && localStorage.getItem(LAST_SOURCE_KEY) === "local",
+  );
   const [showMobileEditor, setShowMobileEditor] = useState(false);
   const isNarrow = useIsNarrow();
   const [dbZenMode, setDbZenMode] = useState(false);
@@ -75,7 +79,7 @@ export function DocumentsPage() {
     const loadEditors = () => {
       if (cancelled) return;
       void import("./DocEditor");
-      void import("./LocalDocEditor");
+      if (hostCapabilities.localDocs) void import("./LocalDocEditor");
     };
     const w = window as any;
     let cancel: () => void;
@@ -234,7 +238,7 @@ export function DocumentsPage() {
             </div>
         </div>
 
-        {localMounted && (
+        {hostCapabilities.localDocs && localMounted && (
           <div className={`absolute inset-0 ${source === "local" ? "block" : "hidden"}`}>
             <LocalDocsView
               sourceTabs={sourceTabs}

@@ -15,7 +15,7 @@ if command -v podman >/dev/null 2>&1; then
   # Fully qualify the tag so a Docker archive loads as `tanwords-web:latest`
   # rather than Podman's local `localhost/tanwords-web:latest` spelling.
   IMAGE=docker.io/library/tanwords-web:latest
-  BUILD_FLAGS+=(--format docker)
+  BUILD_FLAGS+=(--format docker --layers)
 elif command -v docker >/dev/null 2>&1; then
   ENGINE=docker
 else

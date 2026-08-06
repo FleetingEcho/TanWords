@@ -434,7 +434,20 @@ export function useDBExtra() {
     }
   }, []);
 
-  /** Back to the default local database, forgetting the stored credentials. */
+  /** Web-only selection between the account's preserved local database and its
+   * remembered Turso replica. Selecting local does not erase credentials. */
+  const selectDbSource = useCallback(async (source: "local" | "turso"): Promise<DbConnection> => {
+    if (isDesktopHost) throw new Error("Per-account database selection is web-only");
+    try {
+      return await dbRoute<DbConnection>("/api/db/source", "POST", { source });
+    } catch (e) {
+      reportWriteError("selectDbSource", e, "切换数据库失败");
+      throw e;
+    }
+  }, []);
+
+  /** Desktop-compatible disconnect operation. Web Settings uses
+   * selectDbSource("local") so remembered credentials are preserved. */
   const disconnectRemote = useCallback(async (): Promise<DbConnection> => {
     try {
       if (!isDesktopHost) {
@@ -573,7 +586,7 @@ export function useDBExtra() {
     addRssFeed, getRssFeeds, updateRssFeedTitle, updateRssFeedPreferences, deleteRssFeed, fetchRssFeedMeta,
     syncRssFeed, getRssEntries, markRssEntryRead, getRssUnreadCounts,
     getDbPath, getDbSize, exportBackup, switchDbPath, clearTranslations,
-    getConnection, connectTurso, disconnectRemote, syncNow,
+    getConnection, connectTurso, selectDbSource, disconnectRemote, syncNow,
     getStartupWarning, isSavedProfileTurso, forgetSavedProfile, getRememberedTurso,
     importAnalyze, importApply,
   }), [
@@ -585,7 +598,7 @@ export function useDBExtra() {
     addRssFeed, getRssFeeds, updateRssFeedTitle, updateRssFeedPreferences, deleteRssFeed, fetchRssFeedMeta,
     syncRssFeed, getRssEntries, markRssEntryRead, getRssUnreadCounts,
     getDbPath, getDbSize, exportBackup, switchDbPath, clearTranslations,
-    getConnection, connectTurso, disconnectRemote, syncNow,
+    getConnection, connectTurso, selectDbSource, disconnectRemote, syncNow,
     getStartupWarning, isSavedProfileTurso, forgetSavedProfile, getRememberedTurso,
     importAnalyze, importApply,
   ]);

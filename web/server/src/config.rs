@@ -30,9 +30,12 @@ pub struct Config {
     /// True when this process sits behind a reverse proxy whose
     /// `X-Forwarded-For` can be believed. Off by default — see `from_env`.
     pub trust_proxy: bool,
-    /// AES-256-GCM key sealing each user's stored Turso token, and the core's
-    /// provider/device key on headless servers. 32 bytes, hex or base64.
+    /// AES-256-GCM key sealing each user's stored Turso token, the core's
+    /// provider/device key on headless servers, and the HMAC key signing web
+    /// JWTs. 32 bytes, hex or base64.
     pub master_key: [u8; 32],
+    /// Absolute JWT lifetime. Defaults to one week.
+    pub jwt_ttl_secs: i64,
 }
 
 fn env(key: &str) -> Option<String> {
@@ -88,6 +91,15 @@ impl Config {
             web_dist: env("TANWORDS_WEB_DIST").map(PathBuf::from),
             invite_key: env("TANWORDS_INVITE_KEY"),
             admin_key: env("TANWORDS_ADMIN_KEY"),
+            jwt_ttl_secs: env("TANWORDS_JWT_TTL_SECS")
+                .map(|raw| {
+                    raw.parse::<i64>()
+                        .ok()
+                        .filter(|seconds| *seconds > 0)
+                        .ok_or_else(|| "TANWORDS_JWT_TTL_SECS must be a positive integer".to_string())
+                })
+                .transpose()?
+                .unwrap_or(7 * 24 * 3600),
             // Reverse proxies replace the peer address with their own, so the
             // per-IP limiter needs to be told when to read X-Forwarded-For —
             // and told explicitly, because a server that trusts that header
