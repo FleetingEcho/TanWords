@@ -344,6 +344,8 @@ export const settings: Dict = {
     "settings.documentFontSizeSub": "富文本 Markdown 文档的正文字号",
     "settings.documentLineHeight": "文档行距",
     "settings.documentLineHeightSub": "调整富文本 Markdown 文档每行之间的垂直间距",
+    "settings.documentParagraphSpacing": "文档段落间距",
+    "settings.documentParagraphSpacingSub": "调整富文本 Markdown 文档中段落及其他块之间的垂直间距",
     "settings.documentTextColor": "文档文字颜色",
     "settings.documentTextColorSub": "富文本 Markdown 文档的正文颜色；可输入 #ddd 或 #aabbcc 等十六进制颜色",
     "settings.documentTextColorHex": "文档文字颜色十六进制值",

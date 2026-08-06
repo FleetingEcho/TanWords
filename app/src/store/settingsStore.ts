@@ -12,7 +12,7 @@ import {
   cachedDefaultRssTab, cacheDefaultRssTab, cachedFeedsViewMode, cacheFeedsViewMode, saveSetting, saveSettingDebounced,
   cachedLayoutMode, cacheLayoutMode,
 } from "./settings/cache";
-import { applyTheme, applyDocumentFontSize, applyDocumentLineHeight, applyDocumentTextColor, applyHighlightColor } from "./settings/domEffects";
+import { applyTheme, applyDocumentFontSize, applyDocumentLineHeight, applyDocumentParagraphSpacing, applyDocumentTextColor, applyHighlightColor } from "./settings/domEffects";
 import { loadSettingsFromDB } from "./settings/loadFromDB";
 import type { SettingsState } from "./settings/state";
 
@@ -58,6 +58,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   appBackgroundVisible: true,
   documentFontSize: 16,
   documentLineHeight: 1.9,
+  documentParagraphSpacing: 0.8,
   documentTextColor: "",
   highlightColor: DEFAULT_HIGHLIGHT_COLOR,
   isLoaded: false,
@@ -194,6 +195,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     applyDocumentLineHeight(lineHeight);
     // Slider-bound (DocumentsSection): persist trailing-edge, not per drag tick.
     saveSettingDebounced("document_line_height", JSON.stringify(lineHeight));
+  },
+
+  setDocumentParagraphSpacing: (value) => {
+    const spacing = Math.min(2, Math.max(0.2, Math.round(value * 10) / 10));
+    set({ documentParagraphSpacing: spacing });
+    applyDocumentParagraphSpacing(spacing);
+    // Slider-bound (DocumentsSection): persist trailing-edge, not per drag tick.
+    saveSettingDebounced("document_paragraph_spacing", JSON.stringify(spacing));
   },
 
   setDocumentTextColor: (hex) => {
