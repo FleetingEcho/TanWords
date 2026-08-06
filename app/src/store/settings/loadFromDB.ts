@@ -10,7 +10,7 @@ import {
   cacheUiLanguage, cacheSidebarTabs, cacheTopBarItems, cacheDefaultRssTab, cacheFeedsViewMode,
   cacheLayoutMode,
 } from "./cache";
-import { applyTheme, applyDocumentFontSize, applyDocumentLineHeight, applyDocumentTextColor, applyHighlightColor, parseBannerPosition } from "./domEffects";
+import { applyTheme, applyDocumentFontSize, applyDocumentLineHeight, applyDocumentParagraphSpacing, applyDocumentTextColor, applyHighlightColor, parseBannerPosition } from "./domEffects";
 
 /** Loads every persisted setting from the DB in one pass, resolving each with
  * its default/legacy-format fallback, then applies the DOM-visible ones
@@ -49,6 +49,7 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       "app_background_visible",
       "document_font_size",
       "document_line_height",
+      "document_paragraph_spacing",
       "document_text_color",
       "highlight_color",
     ];
@@ -140,6 +141,7 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       appBackgroundVisible: (values.app_background_visible as unknown) !== false && values.app_background_visible !== "false",
       documentFontSize: Math.min(24, Math.max(12, Number(values.document_font_size) || 16)),
       documentLineHeight: Math.min(2.2, Math.max(1.4, Number(values.document_line_height) || 1.9)),
+      documentParagraphSpacing: Math.min(2, Math.max(0.2, Number(values.document_paragraph_spacing) || 0.8)),
       documentTextColor: DOCUMENT_TEXT_COLOR_RE.test(values.document_text_color || "")
         ? values.document_text_color
         : "",
@@ -150,6 +152,7 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
     applyTheme(get().theme);
     applyDocumentFontSize(get().documentFontSize);
     applyDocumentLineHeight(get().documentLineHeight);
+    applyDocumentParagraphSpacing(get().documentParagraphSpacing);
     applyDocumentTextColor(get().documentTextColor);
     applyHighlightColor(get().highlightColor);
   } catch (e) {

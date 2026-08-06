@@ -64,6 +64,9 @@ export interface SettingsState {
   documentFontSize: number;
   /** Line-height multiplier for full-size document editors. */
   documentLineHeight: number;
+  /** Vertical gap between top-level blocks (paragraphs, headings, …) in
+   *  full-size document editors, in `em`. */
+  documentParagraphSpacing: number;
   /** Optional body text colour for full-size document editors. Empty uses the
    * active theme's foreground colour. */
   documentTextColor: string;
@@ -105,6 +108,7 @@ export interface SettingsState {
   setAppBackgroundVisible: (visible: boolean) => void;
   setDocumentFontSize: (px: number) => void;
   setDocumentLineHeight: (value: number) => void;
+  setDocumentParagraphSpacing: (value: number) => void;
   setDocumentTextColor: (hex: string) => void;
   setHighlightColor: (hex: string) => void;
   loadFromDB: () => Promise<void>;

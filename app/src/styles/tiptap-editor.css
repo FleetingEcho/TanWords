@@ -64,6 +64,15 @@
   margin-top: 0.5em;
 }
 
+/* Full-size document editor: user-adjustable gap between top-level blocks
+   (paragraphs, headings, …). The compact editor (word notes) keeps the fixed
+   0.5em above so a document spacing preference can't blow out that small
+   surface. Driven by the Settings → Documents "Document paragraph spacing"
+   slider, which writes --document-paragraph-spacing with an `em` unit. */
+.tanwords-tiptap:not(.tanwords-editor-compact) .ProseMirror > * + * {
+  margin-top: var(--document-paragraph-spacing, 0.8em);
+}
+
 .tanwords-tiptap .ProseMirror h1 { font-size: 1.875em; font-weight: 700; line-height: 1.25; margin-top: 1.2em; }
 .tanwords-tiptap .ProseMirror h2 { font-size: 1.5em;   font-weight: 700; line-height: 1.3;  margin-top: 1.1em; }
 .tanwords-tiptap .ProseMirror h3 { font-size: 1.25em;  font-weight: 600; line-height: 1.35; margin-top: 1em; }

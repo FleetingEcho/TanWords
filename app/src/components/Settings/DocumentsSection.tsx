@@ -51,6 +51,28 @@ export function DocumentsSection() {
         </div>
       </SettingRow>
 
+      <SettingRow label={t("settings.documentParagraphSpacing")} sub={t("settings.documentParagraphSpacingSub")}>
+        <div className="w-52 space-y-1.5">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>0.2em</span>
+            <span className="rounded-md bg-muted px-2 py-0.5 font-semibold tabular-nums text-foreground">
+              {settings.documentParagraphSpacing.toFixed(1)}em
+            </span>
+            <span>2.0em</span>
+          </div>
+          <input
+            type="range"
+            min={0.2}
+            max={2}
+            step={0.1}
+            value={settings.documentParagraphSpacing}
+            onChange={(event) => settings.setDocumentParagraphSpacing(Number(event.target.value))}
+            className="w-full accent-primary"
+            aria-label={t("settings.documentParagraphSpacing")}
+          />
+        </div>
+      </SettingRow>
+
       <SettingRow label={t("settings.documentFontSize")} sub={t("settings.documentFontSizeSub")}>
         <div className="w-52 space-y-1.5">
           <div className="flex items-center justify-between text-xs text-muted-foreground">

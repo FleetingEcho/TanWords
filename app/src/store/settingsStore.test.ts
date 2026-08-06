@@ -57,4 +57,15 @@ describe("settingsStore database hydration", () => {
     expect(useSettingsStore.getState().documentLineHeight).toBe(2.2);
     expect(document.documentElement.style.getPropertyValue("--document-line-height")).toBe("2.2");
   });
+
+  it("clamps and applies the document paragraph spacing CSS variable", () => {
+    useSettingsStore.getState().setDocumentParagraphSpacing(1);
+    expect(useSettingsStore.getState().documentParagraphSpacing).toBe(1);
+    expect(document.documentElement.style.getPropertyValue("--document-paragraph-spacing")).toBe("1em");
+
+    // Above the max (2) clamps to 2.0; below the min (0.2) clamps to 0.2.
+    useSettingsStore.getState().setDocumentParagraphSpacing(5);
+    expect(useSettingsStore.getState().documentParagraphSpacing).toBe(2);
+    expect(document.documentElement.style.getPropertyValue("--document-paragraph-spacing")).toBe("2em");
+  });
 });

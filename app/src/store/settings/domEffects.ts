@@ -31,6 +31,13 @@ export function applyDocumentLineHeight(value: number) {
   document.documentElement.style.setProperty("--document-line-height", String(value));
 }
 
+/** Paragraph spacing is stored as a unitless number and emitted with an `em`
+ *  unit so it scales with `--document-font-size`; the CSS reads it directly as
+ *  `var(--document-paragraph-spacing, 0.8em)`. */
+export function applyDocumentParagraphSpacing(value: number) {
+  document.documentElement.style.setProperty("--document-paragraph-spacing", `${value}em`);
+}
+
 export function applyDocumentTextColor(hex: string) {
   if (DOCUMENT_TEXT_COLOR_RE.test(hex)) {
     document.documentElement.style.setProperty("--document-text-color", hex);

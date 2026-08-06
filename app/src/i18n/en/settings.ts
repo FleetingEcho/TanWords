@@ -344,6 +344,8 @@ export const settings: Dict = {
     "settings.documentFontSizeSub": "Text size in rich Markdown documents",
     "settings.documentLineHeight": "Document line spacing",
     "settings.documentLineHeightSub": "Vertical space between lines in rich Markdown documents",
+    "settings.documentParagraphSpacing": "Document paragraph spacing",
+    "settings.documentParagraphSpacingSub": "Vertical gap between paragraphs and other blocks in rich Markdown documents",
     "settings.documentTextColor": "Document text color",
     "settings.documentTextColorSub": "Body text color in rich Markdown documents; enter a hex color such as #ddd or #aabbcc",
     "settings.documentTextColorHex": "Document text color hex value",
