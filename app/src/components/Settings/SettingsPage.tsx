@@ -149,14 +149,14 @@ export function SettingsPage() {
             <LearningSection />
           </section>
 
-          <section ref={(el) => { sectionRefs.current.tts = el; }} data-section="tts" className="scroll-mt-6">
+          {hostCapabilities.nativeTts && <section ref={(el) => { sectionRefs.current.tts = el; }} data-section="tts" className="scroll-mt-6">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">{t("settings.section.tts")}</p>
             <TtsSection />
-          </section>
+          </section>}
 
-          <section ref={(el) => { sectionRefs.current.mcp = el; }} data-section="mcp" className="scroll-mt-6">
+          {hostCapabilities.mcp && <section ref={(el) => { sectionRefs.current.mcp = el; }} data-section="mcp" className="scroll-mt-6">
             <McpSection />
-          </section>
+          </section>}
 
           <section ref={(el) => { sectionRefs.current.documents = el; }} data-section="documents" className="scroll-mt-6">
             <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">

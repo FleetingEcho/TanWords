@@ -1,0 +1,25 @@
+# Let's Encrypt requires its short-lived (six-day) ACME profile for public
+# IP-address certificates. Caddy renews these certificates automatically.
+{
+	# TLS clients commonly omit SNI when connecting to a literal IP.
+	default_sni {$TANWORDS_PUBLIC_HOST}
+}
+
+{$TANWORDS_PUBLIC_HOST} {
+	tls {
+		issuer acme https://acme-v02.api.letsencrypt.org/directory {
+			profile shortlived
+		}
+	}
+
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+	}
+
+	reverse_proxy app:8740 {
+		# Flush SSE and AI streaming responses immediately.
+		flush_interval -1
+	}
+}
