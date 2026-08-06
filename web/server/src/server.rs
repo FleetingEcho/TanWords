@@ -17,8 +17,9 @@
 //!   GET  /api/assets/{id}            session (Bearer or ?token=), document-asset bytes
 //!   POST /api/import/upload          session, multipart "file" -> {"path"}
 //!   POST /api/import/analyze|apply   session, {"path"} -> dispatch (validated under uploads/)
-//!   GET  /api/export/backup          session, optional X-Export-Password -> db file
+//!   GET  /api/export/backup?source=  session, local|turso + optional X-Export-Password -> db file
 //!   GET  /api/db/profile             session -> {"connection":...,"remembered":{...}}
+//!   POST /api/db/source              session, {"source":"local"|"turso"} -> descriptor
 //!   POST /api/db/turso/connect       session, {"url","token"} -> descriptor
 //!   POST /api/db/turso/disconnect    session -> descriptor (back to per-user local db)
 //!   GET  /api/db/turso/remembered    session -> {"url":...,"token_present":bool}
@@ -31,7 +32,7 @@ use std::sync::Arc;
 
 use axum::body::{Body, Bytes};
 use axum::extract::multipart::MultipartError;
-use axum::extract::{ConnectInfo, DefaultBodyLimit, Multipart, Path, Request, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Multipart, Path, Query, Request, State};
 use axum::response::Redirect;
 use axum::http::{header, HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
@@ -96,9 +97,9 @@ fn json_error(status: StatusCode, error: impl Into<String>) -> Response {
     (status, Json(json!({ "error": error.into() }))).into_response()
 }
 
-/// `?token=` lookup without pulling in a form-urlencode dependency: session
-/// tokens are URL-safe base64 (no `+`, `/`, `=`), so the raw value compare is
-/// exact for the only tokens this server ever issues.
+/// `?token=` lookup without pulling in a form-urlencode dependency: JWTs use
+/// base64url segments (no `+`, `/`, or padding), so the raw value is exact for
+/// the only tokens this server ever issues.
 fn query_token(request: &Request) -> Option<String> {
     let query = request.uri().query()?;
     for pair in query.split('&') {
@@ -425,7 +426,7 @@ async fn asset_handler(
             // The stored mime is whatever was attached at upload time. Served
             // back verbatim on this origin, `text/html` would be a script the
             // browser runs with the app's own privileges — same origin as the
-            // session token in sessionStorage. Anything that isn't a plain
+            // session JWT in localStorage. Anything that isn't a plain
             // media type is downgraded to an opaque download.
             let mime = value
                 .get("mime_type")
@@ -623,14 +624,21 @@ async fn import_step(
     }
 }
 
+#[derive(Deserialize)]
+struct ExportQuery {
+    source: Option<String>,
+}
+
 /// Runs the same VACUUM-based snapshot the desktop's `db_export_backup`
-/// performs — only the destination is chosen server-side here. An optional
+/// performs — only the destination and source are chosen server-side here. The
+/// source is a closed enum, never a client path. An optional
 /// `X-Export-Password` header requests the encrypted format; kept out of the
 /// URL so it cannot end up in access logs. The temp file is deleted as soon
 /// as its bytes have been read into the response.
 async fn export_backup(
     State(state): State<WebState>,
     axum::Extension(session): axum::Extension<UserSession>,
+    Query(query): Query<ExportQuery>,
     headers: HeaderMap,
 ) -> Response {
     let exports = state.config.data_dir.join("exports");
@@ -647,11 +655,60 @@ async fn export_backup(
     if let Some(password) = password {
         args["password"] = Value::from(password);
     }
+    let requested = query.source.as_deref().unwrap_or("active");
+    if !matches!(requested, "active" | "local" | "turso") {
+        return json_error(StatusCode::BAD_REQUEST, "export source must be `local` or `turso`");
+    }
     let runtime = match state.runtime_for(&session).await {
         Ok(r) => r,
         Err(response) => return response,
     };
-    if let Err(error) = dispatch(&runtime.ctx, "db_export_backup", Args::new(args)).await {
+    let active_kind = match runtime.ctx.state::<AppState>().descriptor() {
+        Ok(descriptor) => descriptor.kind,
+        Err(e) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, e),
+    };
+    let use_active = requested == "active"
+        || (requested == "local" && active_kind == tanwords_lib::db::connection::DbKind::Local)
+        || (requested == "turso" && active_kind == tanwords_lib::db::connection::DbKind::Turso);
+
+    let result = if use_active {
+        if requested == "turso" {
+            if let Err(error) = dispatch(&runtime.ctx, "db_sync_now", Args::new(Value::Null)).await {
+                return json_error(StatusCode::BAD_REQUEST, error);
+            }
+        }
+        dispatch(&runtime.ctx, "db_export_backup", Args::new(args)).await
+    } else {
+        let user_dir = state.pool.user_dir(session.user_id);
+        let database = if requested == "local" {
+            let profile = DbProfile::Local {
+                path: user_dir.join("tanwords.db").to_string_lossy().to_string(),
+            };
+            tanwords_lib::db::connection::open(&profile, None).await
+        } else {
+            let turso = match state.users.turso_for(session.user_id).await {
+                Ok(Some(profile)) => profile,
+                Ok(None) => {
+                    return json_error(StatusCode::BAD_REQUEST, "No Turso connection is saved for this account")
+                }
+                Err(e) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, e),
+            };
+            let profile = DbProfile::Turso {
+                path: user_dir.join("turso-replica.db").to_string_lossy().to_string(),
+                url: turso.url,
+            };
+            tanwords_lib::db::connection::open(&profile, Some(&turso.token)).await
+        };
+        match database {
+            Ok(database) => {
+                let (registry, app) = tanwords_lib::build_state_for(database, None).await;
+                let ctx = tanwords_lib::rpc::Ctx::new(registry, app);
+                dispatch(&ctx, "db_export_backup", Args::new(args)).await
+            }
+            Err(error) => Err(error),
+        }
+    };
+    if let Err(error) = result {
         let _ = tokio::fs::remove_file(&path).await;
         return json_error(StatusCode::BAD_REQUEST, error);
     }
@@ -664,8 +721,16 @@ async fn export_backup(
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or_default();
-    let ext = if password.is_some() { "twbackup" } else { "db" };
-    let filename = format!("tanwords-backup-{unix_ts}.{ext}");
+    let ext = if password.is_some() { "zip" } else { "db" };
+    let source_name = if requested == "active" {
+        match active_kind {
+            tanwords_lib::db::connection::DbKind::Local => "local",
+            tanwords_lib::db::connection::DbKind::Turso => "turso",
+        }
+    } else {
+        requested
+    };
+    let filename = format!("tanwords-{source_name}-backup-{unix_ts}.{ext}");
     (
         [
             (header::CONTENT_TYPE, "application/octet-stream".to_string()),
@@ -700,6 +765,69 @@ async fn db_profile(
 }
 
 #[derive(Deserialize)]
+struct DbSourceBody {
+    source: String,
+}
+
+/// Selects one of this account's two fixed database files. Paths are derived
+/// exclusively from the authenticated user id; the client never supplies one.
+/// Switching local deliberately preserves remembered Turso credentials.
+async fn db_select_source(
+    State(state): State<WebState>,
+    axum::Extension(session): axum::Extension<UserSession>,
+    Json(body): Json<DbSourceBody>,
+) -> Response {
+    let source = body.source.trim().to_ascii_lowercase();
+    if source != "local" && source != "turso" {
+        return json_error(StatusCode::BAD_REQUEST, "database source must be `local` or `turso`");
+    }
+
+    let runtime = match state.runtime_for(&session).await {
+        Ok(r) => r,
+        Err(response) => return response,
+    };
+    let app_state = runtime.ctx.state::<AppState>();
+    let previous = match app_state.descriptor() {
+        Ok(descriptor) => if descriptor.kind == tanwords_lib::db::connection::DbKind::Turso { "turso" } else { "local" },
+        Err(e) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, e),
+    };
+    let user_dir = state.pool.user_dir(session.user_id);
+    let database = if source == "local" {
+        let profile = DbProfile::Local {
+            path: user_dir.join("tanwords.db").to_string_lossy().to_string(),
+        };
+        match tanwords_lib::db::connection::open(&profile, None).await {
+            Ok(db) => db,
+            Err(e) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, e),
+        }
+    } else {
+        let turso = match state.users.turso_for(session.user_id).await {
+            Ok(Some(profile)) => profile,
+            Ok(None) => return json_error(StatusCode::BAD_REQUEST, "No Turso connection is saved for this account"),
+            Err(e) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, e),
+        };
+        let profile = DbProfile::Turso {
+            path: user_dir.join("turso-replica.db").to_string_lossy().to_string(),
+            url: turso.url,
+        };
+        match tanwords_lib::db::connection::open(&profile, Some(&turso.token)).await {
+            Ok(db) => db,
+            Err(e) => return json_error(StatusCode::BAD_REQUEST, e),
+        }
+    };
+    let descriptor = database.descriptor();
+
+    if let Err(e) = state.users.set_active_db(session.user_id, &source).await {
+        return json_error(StatusCode::INTERNAL_SERVER_ERROR, e);
+    }
+    if let Err(e) = app_state.replace_db(database) {
+        let _ = state.users.set_active_db(session.user_id, previous).await;
+        return json_error(StatusCode::INTERNAL_SERVER_ERROR, e);
+    }
+    Json(descriptor).into_response()
+}
+
+#[derive(Deserialize)]
 struct TursoConnectBody {
     url: String,
     token: String,
@@ -723,25 +851,33 @@ async fn turso_connect(
     Json(body): Json<TursoConnectBody>,
 ) -> Response {
     let url = body.url.trim().to_string();
-    let token = body.token.trim().to_string();
     if url.is_empty() {
         return json_error(StatusCode::BAD_REQUEST, "Please fill in the Turso database URL");
     }
-    if token.is_empty() {
-        return json_error(StatusCode::BAD_REQUEST, "Please fill in the Turso auth token");
-    }
+    let previous = match state.users.turso_for(session.user_id).await {
+        Ok(profile) => profile,
+        Err(e) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, e),
+    };
+    // An empty token means "reuse the remembered token", but only for the same
+    // URL. Never apply one database's credential to a newly typed endpoint.
+    let token = if body.token.trim().is_empty() {
+        match previous.as_ref().filter(|profile| profile.url == url) {
+            Some(profile) => profile.token.clone(),
+            None => return json_error(StatusCode::BAD_REQUEST, "Please fill in the Turso auth token"),
+        }
+    } else {
+        body.token.trim().to_string()
+    };
     // Another URL the caller picks and the server dials. libsql speaks to it
     // over HTTP, so the same private-range refusal applies.
     if let Err(e) = tanwords_lib::http_util::guard::resolve_public(&turso_probe_url(&url)).await {
         return json_error(StatusCode::BAD_REQUEST, e);
     }
 
-    // Save first, respawn second: if the open fails below we restore the old
-    // stored profile and the caller sees the original working connection.
-    let previous = match state.users.turso_for(session.user_id).await {
-        Ok(p) => p.map(|p| (p.url, p.token)),
-        Err(e) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, e),
-    };
+    // Save first, respawn second: if replacing the live database fails below we
+    // restore the old stored profile and the caller sees the original working
+    // connection.
+    let previous = previous.map(|p| (p.url, p.token));
     let replica = state
         .pool
         .user_dir(session.user_id)
@@ -1088,7 +1224,7 @@ async fn spa_handler(State(state): State<WebState>, request: Request) -> Respons
 ///
 /// Applied as a layer rather than per-handler so a route added later cannot
 /// forget them. Values are deliberately conservative — this origin holds the
-/// session token in sessionStorage, so an XSS here is a full account takeover
+/// session JWT in localStorage, so an XSS here is a full account takeover
 /// and the cheapest defences are worth having on by default.
 async fn security_headers(request: Request, next: Next) -> Response {
     let mut response = next.run(request).await;
@@ -1116,9 +1252,12 @@ async fn security_headers(request: Request, next: Next) -> Response {
             // bundled SPA and its markdown/mermaid rendering need them; the
             // clauses that matter here are the ones nailing down where content
             // may be *loaded from* and, above all, `frame-ancestors 'none'`
-            // and `object-src 'none'`.
+            // and `object-src 'none'`. YouTube's privacy-enhanced host is the
+            // sole frame source because the document editor renders its embeds
+            // in an iframe; without an explicit `frame-src`, `default-src
+            // 'self'` blocks every video in the web build.
             HeaderValue::from_static(
-                "default-src 'self';                  script-src 'self' 'unsafe-inline' 'unsafe-eval';                  style-src 'self' 'unsafe-inline';                  img-src 'self' data: blob: https:;                  media-src 'self' data: blob: https:;                  font-src 'self' data:;                  connect-src 'self' blob:;                  worker-src 'self' blob:;                  object-src 'none';                  base-uri 'none';                  form-action 'none';                  frame-ancestors 'none'",
+                "default-src 'self';                  script-src 'self' 'unsafe-inline' 'unsafe-eval';                  style-src 'self' 'unsafe-inline';                  img-src 'self' data: blob: https:;                  media-src 'self' data: blob: https:;                  font-src 'self' data:;                  connect-src 'self' blob:;                  worker-src 'self' blob:;                  frame-src https://www.youtube-nocookie.com;                  object-src 'none';                  base-uri 'none';                  form-action 'none';                  frame-ancestors 'none'",
             ),
         );
     }
@@ -1157,6 +1296,7 @@ pub async fn serve(config: Config, users: Arc<UsersDb>, pool: Arc<RuntimePool>) 
         .route("/api/export/backup", get(export_backup))
         .route("/api/ai-proxy/{provider_id}/{*rest}", post(ai_proxy))
         .route("/api/db/profile", get(db_profile))
+        .route("/api/db/source", post(db_select_source))
         .route("/api/db/turso/connect", post(turso_connect))
         .route("/api/db/turso/disconnect", post(turso_disconnect))
         .route("/api/db/turso/remembered", get(turso_remembered))

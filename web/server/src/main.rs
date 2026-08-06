@@ -38,7 +38,7 @@ async fn main() {
     }
 
     let users_db_path = config.data_dir.join("users.db");
-    let users = match users::UsersDb::open(&users_db_path, config.master_key).await {
+    let users = match users::UsersDb::open(&users_db_path, config.master_key, config.jwt_ttl_secs).await {
         Ok(u) => Arc::new(u),
         Err(e) => {
             eprintln!("[tanwords-web] {e}");

@@ -151,6 +151,7 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
   const [stuckTursoWarning, setStuckTursoWarning] = useState<string | null>(null);
   const [forgetting, setForgetting] = useState(false);
   const [showExportPassword, setShowExportPassword] = useState(false);
+  const [pendingExportSource, setPendingExportSource] = useState<"local" | "turso">("local");
   const [showImportPassword, setShowImportPassword] = useState(false);
   const [pendingImportPath, setPendingImportPath] = useState<string | null>(null);
   const [importPassword, setImportPassword] = useState("");
@@ -249,7 +250,23 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
     }
   };
 
+  const handleSelectSource = async (source: "local" | "turso") => {
+    setSwitching(true);
+    try {
+      await db.selectDbSource(source);
+      toast.success(t(source === "local" ? "settings.dbUseLocalOk" : "settings.dbUseReplicaOk"));
+      setTimeout(() => window.location.reload(), 600);
+    } catch {
+      setSwitching(false);
+      setConfirmDisconnect(false);
+    }
+  };
+
   const handleDisconnect = async () => {
+    if (!isDesktopHost) {
+      await handleSelectSource("local");
+      return;
+    }
     try {
       await db.disconnectRemote();
       toast.success(t("settings.remoteDBDisconnectOk"));
@@ -361,10 +378,12 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
     if (!isDesktopHost) {
       setExporting(true);
       try {
-        webExportBackup(password);
+        await webExportBackup(password, pendingExportSource);
         toast.success(t("settings.exportOk"));
+      } catch (error) {
+        toast.error(typeof error === "string" ? error : String(error));
       } finally {
-        setTimeout(() => setExporting(false), 1200);
+        setExporting(false);
       }
       return;
     }
@@ -387,7 +406,10 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
     }
   };
 
-  const handleExport = () => setShowExportPassword(true);
+  const handleExport = (source: "local" | "turso" = "local") => {
+    setPendingExportSource(source);
+    setShowExportPassword(true);
+  };
 
   const handleClearTranslations = async () => {
     if (!confirmClear) {
@@ -481,7 +503,25 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
           ) : isDesktopHost ? (
             <p className="text-xs text-muted-foreground py-2">{t("settings.switchDBUnavailableRemote")}</p>
           ) : (
-            <p className="text-xs text-muted-foreground py-2">{t("settings.remoteDBLocal")}</p>
+            <SettingRow label={t("settings.dbLocalSource")} sub={t("settings.dbLocalSourceSub")}>
+              <div className="flex items-center gap-2">
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                  !isRemote ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                }`}>
+                  {t(!isRemote ? "settings.dbSourceActive" : "settings.dbSourceInactive")}
+                </span>
+                {isRemote && (
+                  <Button
+                    variant="outline"
+                    onClick={() => void handleSelectSource("local")}
+                    disabled={switching}
+                    className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted disabled:opacity-50"
+                  >
+                    {switching ? t("settings.switching") : t("settings.dbUseLocal")}
+                  </Button>
+                )}
+              </div>
+            </SettingRow>
           )
         ) : (
           <div className="space-y-3">
@@ -518,18 +558,30 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
                       onClick={() => setConfirmDisconnect(true)}
                       className="h-8 px-3 rounded-lg text-xs font-medium border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
                     >
-                      {t("settings.remoteDBDisconnect")}
+                      {t(isDesktopHost ? "settings.remoteDBDisconnect" : "settings.dbUseLocal")}
                     </Button>
                   </>
                 ) : (
-                  <Button
-                    variant="outline"
-                    onClick={() => setTursoOpen((open) => !open)}
-                    aria-expanded={tursoOpen}
-                    className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted transition-colors"
-                  >
-                    {t("settings.remoteDBConnect")}
-                  </Button>
+                  <>
+                    {!isDesktopHost && rememberedTurso?.tokenPresent && rememberedTurso.url && (
+                      <Button
+                        variant="outline"
+                        onClick={() => void handleSelectSource("turso")}
+                        disabled={switching}
+                        className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted disabled:opacity-50"
+                      >
+                        {switching ? t("settings.switching") : t("settings.dbUseReplica")}
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      onClick={() => setTursoOpen((open) => !open)}
+                      aria-expanded={tursoOpen}
+                      className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted transition-colors"
+                    >
+                      {t(rememberedTurso?.tokenPresent ? "settings.dbChangeTurso" : "settings.remoteDBConnect")}
+                    </Button>
+                  </>
                 )}
               </div>
             </SettingRow>
@@ -616,18 +668,43 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
 
         <SettingRow
           label={t("settings.exportDB")}
-          sub={canExport ? t("settings.exportDBSub") : t("settings.exportUnavailableRemote")}
+          sub={isDesktopHost
+            ? (canExport ? t("settings.exportDBSub") : t("settings.exportUnavailableRemote"))
+            : t("settings.exportBothDBSub")}
         >
-          <Button
-            size="icon"
-            onClick={handleExport}
-            disabled={exporting || !canExport}
-            title={exporting ? t("settings.exporting") : t("settings.exportDB")}
-            aria-label={exporting ? t("settings.exporting") : t("settings.exportDB")}
-            className="h-8 w-8 rounded-lg disabled:opacity-50 transition-colors"
-          >
-            <DownloadIcon className={`w-4 h-4 ${exporting ? "animate-pulse" : ""}`} />
-          </Button>
+          {isDesktopHost ? (
+            <Button
+              size="icon"
+              onClick={() => handleExport("local")}
+              disabled={exporting || !canExport}
+              title={exporting ? t("settings.exporting") : t("settings.exportDB")}
+              aria-label={exporting ? t("settings.exporting") : t("settings.exportDB")}
+              className="h-8 w-8 rounded-lg disabled:opacity-50 transition-colors"
+            >
+              <DownloadIcon className={`w-4 h-4 ${exporting ? "animate-pulse" : ""}`} />
+            </Button>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => handleExport("local")}
+                disabled={exporting}
+                className="h-8 gap-1.5 px-3 rounded-lg text-xs font-medium disabled:opacity-50"
+              >
+                <DownloadIcon className="h-3.5 w-3.5" />
+                {t("settings.exportLocalDB")}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => handleExport("turso")}
+                disabled={exporting || !rememberedTurso?.tokenPresent}
+                className="h-8 gap-1.5 px-3 rounded-lg text-xs font-medium disabled:opacity-50"
+              >
+                <DownloadIcon className="h-3.5 w-3.5" />
+                {t("settings.exportReplicaDB")}
+              </Button>
+            </div>
+          )}
         </SettingRow>
       </div>
 
@@ -702,9 +779,9 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
 
       <ConfirmModal
         open={confirmDisconnect}
-        title={t("settings.remoteDBDisconnectTitle")}
-        message={t("settings.remoteDBDisconnectMessage")}
-        confirmLabel={t("settings.remoteDBDisconnect")}
+        title={t(isDesktopHost ? "settings.remoteDBDisconnectTitle" : "settings.dbUseLocalTitle")}
+        message={t(isDesktopHost ? "settings.remoteDBDisconnectMessage" : "settings.dbUseLocalMessage")}
+        confirmLabel={t(isDesktopHost ? "settings.remoteDBDisconnect" : "settings.dbUseLocal")}
         danger
         onCancel={() => setConfirmDisconnect(false)}
         onConfirm={handleDisconnect}

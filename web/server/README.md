@@ -68,7 +68,8 @@ TANWORDS_PORT=8740 \
 
 | Var | Required | Default | Meaning |
 |---|---|---|---|
-| `TANWORDS_MASTER_KEY` | **yes** | — | 32 bytes, hex or base64. Seals each user's Turso token + AI provider keys on disk. Generate: `openssl rand -hex 32`. |
+| `TANWORDS_MASTER_KEY` | **yes** | — | 32 bytes, hex or base64. Seals each user's Turso token + AI provider keys on disk and signs web JWTs. Generate: `openssl rand -hex 32`. |
+| `TANWORDS_JWT_TTL_SECS` | no | `604800` | Absolute JWT lifetime in seconds (one week by default). |
 | `TANWORDS_INVITE_KEY` | no | unset | Gates **register** only. This is the one you hand to people you invite. Unset = registration closed (existing logins still work). |
 | `TANWORDS_ADMIN_KEY` | no | unset | Gates **reset-password**. Keep it to yourself — it can set any account's password from its email address alone. **Must not equal the invite key**: sharing one secret between the two doors gives every invited user the ability to take over every other account, including yours. Unset = password reset closed. |
 | `TANWORDS_TRUST_PROXY` | no | `false` | Set to `1` only when nothing can reach this port except your reverse proxy. Makes the rate limiter read the last hop of `X-Forwarded-For` instead of the peer address. Leaving it off behind a proxy means every user shares one rate-limit bucket, so ten failed logins from anyone lock out everyone. Turning it on while the port is directly reachable lets any caller forge a fresh identity per request and skip the limiter entirely. |
@@ -101,11 +102,13 @@ so the app is fully usable with no Turso at all. In Settings → Data a user can
 point their account at *any* Turso database (URL + token) — stored per-user,
 token AES-256-GCM-sealed under `TANWORDS_MASTER_KEY`:
 
-- `POST /api/db/turso/connect` `{url, token}` — fresh replica sync, live swap.
-- `POST /api/db/turso/disconnect` — back to the local DB, clears the stored profile.
+- `POST /api/db/turso/connect` `{url, token}` — remembers credentials, selects Turso, fresh replica sync, live swap.
+- `POST /api/db/source` `{source: "local"|"turso"}` — switches between the two preserved files without deleting credentials or merging data.
+- `POST /api/db/turso/disconnect` — legacy explicit disconnect: back to local and clear the stored profile.
 - `POST /api/db/turso/forget` — clears the stored profile without touching the live one (for stuck/dead profiles).
 - `GET  /api/db/turso/remembered` — `{url, tokenPresent}` (never the token).
 - `GET  /api/db/profile` — `{connection: <DbDescriptor>, remembered: {...}}`.
+- `GET  /api/export/backup?source=local|turso` — exports either database independently; paths are always derived from the authenticated user id.
 
 If a saved Turso profile fails to open at spawn time (primary down, token
 revoked), the runtime falls back to the local DB and surfaces a startup
@@ -121,8 +124,8 @@ by name from `/invoke`** on purpose; the routes above replace them per-user.
 ## Deployment notes
 
 - Multi-user lite, not multi-tenant scale: designed for you + invited friends
-  on a box you control. `users.db` holds argon2id hashes and sha256'd session
-  tokens; sessions slide-expire after 30 days idle.
+  on a box you control. `users.db` holds Argon2id hashes and revocable hashes
+  of signed JWTs; JWTs expire after one week by default.
 - HTTPS: put Caddy/nginx in front (`reverse_proxy 127.0.0.1:8740`). The SSE
   and AI-proxy streams are flushed unbuffered and proxy-safe. Have the proxy
   set `X-Forwarded-For` **and** run the server with `TANWORDS_TRUST_PROXY=1`,

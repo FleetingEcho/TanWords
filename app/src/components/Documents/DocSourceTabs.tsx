@@ -1,6 +1,7 @@
 import { FolderOpen, Library, RefreshCw } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
+import { hostCapabilities } from "@/platform";
 
 export type DocSource = "db" | "local";
 
@@ -31,7 +32,7 @@ export function DocSourceTabs({
     // read as one cluster instead of one stranded glyph.
     <div className="flex w-full min-w-0 items-center justify-between gap-1">
       <div className="flex min-w-0 items-center gap-1">
-        {(["db", "local"] as const).map((value) => {
+        {(hostCapabilities.localDocs ? (["db", "local"] as const) : (["db"] as const)).map((value) => {
           const Icon = value === "db" ? Library : FolderOpen;
           return (
             <Button

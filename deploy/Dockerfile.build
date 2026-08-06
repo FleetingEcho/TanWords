@@ -3,8 +3,14 @@
 # The renderer must exist before Cargo compiles rust-embed into the server.
 FROM oven/bun:1 AS frontend
 WORKDIR /src/app
+# Dependency installation is keyed only by the manifests. Previously `COPY
+# app/` came first, so changing any TS/TSX file invalidated this layer and made
+# every build reinstall the full frontend dependency tree.
+COPY app/package.json app/bun.lock ./
+RUN --mount=type=cache,id=tanwords-bun-cache,target=/root/.bun/install/cache \
+    bun install --frozen-lockfile
 COPY app/ ./
-RUN bun install --frozen-lockfile && bun run build
+RUN bun run build
 
 FROM rust:bookworm AS backend
 RUN apt-get update \
@@ -16,7 +22,14 @@ COPY app/core/ app/core/
 COPY web/server/ web/server/
 COPY --from=frontend /src/app/out/renderer/ app/out/renderer/
 WORKDIR /src/web/server
-RUN cargo build --release --locked
+# Source changes still rerun Cargo, but registry downloads and compiled
+# dependencies survive that invalidation in Podman/Docker BuildKit caches. Copy
+# the finished binary outside the target cache so it becomes part of the stage.
+RUN --mount=type=cache,id=tanwords-cargo-registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=tanwords-cargo-git,target=/usr/local/cargo/git \
+    --mount=type=cache,id=tanwords-web-target,target=/src/web/server/target \
+    cargo build --release --locked \
+    && cp target/release/tanwords-web-server /tmp/tanwords-web-server
 
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update \
@@ -26,7 +39,7 @@ RUN apt-get update \
     && useradd --system --uid 10001 --gid tanwords --home-dir /nonexistent --shell /usr/sbin/nologin tanwords \
     && install -d -o tanwords -g tanwords -m 0700 /data
 
-COPY --from=backend /src/web/server/target/release/tanwords-web-server /usr/local/bin/tanwords-web-server
+COPY --from=backend /tmp/tanwords-web-server /usr/local/bin/tanwords-web-server
 
 ENV TANWORDS_HOST=0.0.0.0 \
     TANWORDS_PORT=8740 \

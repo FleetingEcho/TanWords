@@ -180,11 +180,14 @@ function App() {
   // click for users who actually use TTS instead of as idle memory for
   // everyone. Do not reintroduce an eager load without that tradeoff in mind.
 
-  // Seed vocabulary once per install (localStorage flag prevents re-seeding)
+  // Desktop keeps its original starter vocabulary. Web accounts must begin
+  // empty: automatically writing sample rows into a newly registered user's
+  // private database is surprising, and an interrupted seed used to leave a
+  // seemingly random partial set behind on the login screen.
   useEffect(() => {
-    if (authState !== "ready") return;
+    if (!isDesktopHost || authState !== "ready") return;
     if (localStorage.getItem("tanwords_seeded_v1")) return;
-    (async () => {
+    void (async () => {
       try {
         for (const w of ENRICHED_SEED_WORDS) {
           await db.addWordEnriched(w.word, w.zh, w.word_type, w.enrichment);
@@ -195,7 +198,6 @@ function App() {
         localStorage.setItem("tanwords_seeded_v1", "1");
         window.dispatchEvent(new CustomEvent("vocab-updated"));
       } catch {
-        // Tauri not available (web mode) — still mark as done to avoid retry loops
         localStorage.setItem("tanwords_seeded_v1", "1");
       }
     })();
