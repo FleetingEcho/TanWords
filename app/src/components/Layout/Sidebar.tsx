@@ -12,7 +12,8 @@ import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
 import { CommandBar } from "@/components/Layout/CommandBar";
 import type { NavPage } from "@/store/navStore";
 import { hostCapabilities } from "@/platform";
-import { useIsNarrow } from "@/components/Vocabulary/hooks/useMediaQuery";
+import { useIsNarrow, useMediaQuery } from "@/components/Vocabulary/hooks/useMediaQuery";
+import { MobileNavDock, type DockNavItem } from "@/components/Layout/MobileNavDock";
 
 interface NavItemDef {
   id: SidebarTabId;
@@ -39,17 +40,6 @@ const NAV_ITEM_DEFS = BASE_NAV_ITEM_DEFS.filter((item) => {
   if (item.id === "music") return hostCapabilities.music;
   return true;
 });
-
-/** Fixed bottom tabs for flexible/narrow viewports. Feeds stays reachable
- * through Reading on the web-oriented shell; Settings is pinned for reach. */
-const MOBILE_TAB_DEFS: { id: NavPage; icon: React.FC<{ className?: string }> }[] = [
-  { id: "dashboard" as NavPage, icon: GridIcon as React.FC<{ className?: string }> },
-  { id: "vocabulary" as NavPage, icon: BookIcon as React.FC<{ className?: string }> },
-  { id: "reading" as NavPage, icon: ClipboardPaste as React.FC<{ className?: string }> },
-  { id: "chat" as NavPage, icon: ChatIcon as React.FC<{ className?: string }> },
-  { id: "documents" as NavPage, icon: DocIcon as React.FC<{ className?: string }> },
-  { id: "tools" as NavPage, icon: Wrench as React.FC<{ className?: string }> },
-];
 
 /** Shared button chrome for both the customizable nav items and the pinned Settings
  *  entry below them, so active/collapsed styling stays in one place. */
@@ -147,10 +137,20 @@ export function MainLayout({
   // Fixed is a wide-screen preference only. Below lg the mobile shell stays
   // in charge so a phone never gets a fixed desktop layout.
   const effectiveMode = layoutMode === "fixed" && !isNarrow ? "fixed" : "flexible";
-  const mobile = effectiveMode === "flexible" && isNarrow;
+  // Phone and tablet both hand navigation to the floating dock. A tablet is
+  // wide enough for a sidebar but spending 210px of a 768px-wide reading app on
+  // a list of nine links is a poor trade, and the dock costs nothing at rest.
+  const isTablet = useMediaQuery("(min-width: 768px) and (max-width: 1023px)");
+  const compact = effectiveMode === "flexible" && (isNarrow || isTablet);
   const NAV_ITEMS: NavItemDef[] = NAV_ITEM_DEFS
     .filter((d) => visibleSidebarTabs.includes(d.id))
     .map((d) => ({ ...d, label: t(`nav.${d.id}`) }));
+  // Settings rides along in the dock: without it the CommandBar gear is the
+  // only way in, since there is no sidebar to pin it below.
+  const DOCK_ITEMS: DockNavItem[] = [
+    ...NAV_ITEMS.map((d) => ({ id: d.id as NavPage, label: d.label, icon: d.icon })),
+    { id: "settings" as NavPage, label: t("nav.settings"), icon: Settings },
+  ];
 
   return (
     <div
@@ -158,7 +158,7 @@ export function MainLayout({
       className={`flex h-screen overflow-hidden ${hasCustomAppBackground ? "" : "bg-background"}`}
     >
       <aside
-        className={`${mobile ? "hidden" : "flex"} shrink-0 flex-col h-screen border-r border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar))] select-none transition-[width] duration-200 ${
+        className={`${compact ? "hidden" : "flex"} shrink-0 flex-col h-screen border-r border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar))] select-none transition-[width] duration-200 ${
           collapsed ? "w-[60px]" : "w-[210px]"
         }`}
       >
@@ -220,13 +220,18 @@ export function MainLayout({
         * in the top bar, so reserving space for it would just shove the page
         * up by 80px the moment anything started reading. */}
       <main
-        // Phones stack the player bar on top of the tab bar, so an active
-        // player needs its 3.25rem reserved as well or the last row of any
-        // list sits underneath it.
+        // The dock floats over the page rather than pushing it, so compact
+        // widths only reserve enough for its own height plus the player bar
+        // when that is docked underneath it. `lg:` can't express this: the
+        // breakpoint is 768px and tablets up to 1023px are compact too.
         className={`flex min-w-0 flex-1 flex-col overflow-hidden box-border transition-[padding-bottom] duration-200 ${
-          podcastActive
-            ? "pb-[calc(8.25rem+env(safe-area-inset-bottom))] lg:pb-16"
-            : "pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pb-0"
+          compact
+            ? podcastActive
+              ? "pb-[calc(8.5rem+env(safe-area-inset-bottom))]"
+              : "pb-[calc(4.5rem+env(safe-area-inset-bottom))]"
+            : podcastActive
+              ? "pb-16"
+              : "pb-0"
         }`}
       >
         <CommandBar activePage={activeNav as NavPage} />
@@ -239,31 +244,14 @@ export function MainLayout({
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">{children}</div>
       </main>
 
-      {mobile && (
-        <nav
-          className="fixed bottom-0 inset-x-0 z-40 border-t border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar))] pb-[env(safe-area-inset-bottom)] select-none"
-          aria-label="main navigation"
-        >
-          <div className="grid grid-cols-6">
-            {MOBILE_TAB_DEFS.map(({ id, icon: Icon }) => {
-              const isActive = activeNav === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => onNavigate(id)}
-                  aria-current={isActive ? "page" : undefined}
-                  className={`flex h-14 flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors ${
-                    isActive ? "text-primary" : "text-muted-foreground"
-                  }`}
-                >
-                  <Icon className="h-[18px] w-[18px]" />
-                  <span>{t(`nav.${id}`)}</span>
-                </button>
-              );
-            })}
-          </div>
-        </nav>
+      {compact && (
+        <MobileNavDock
+          items={DOCK_ITEMS}
+          activeNav={activeNav}
+          onNavigate={onNavigate}
+          align={isTablet ? "right" : "center"}
+          raised={podcastActive}
+        />
       )}
     </div>
   );
