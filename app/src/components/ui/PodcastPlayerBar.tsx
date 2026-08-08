@@ -12,7 +12,7 @@ import { MODE_ICONS } from "@/components/ui/playModeIcons";
 import { NowPlayingOverlay } from "@/components/ui/NowPlayingOverlay";
 import { PlaybackSpeedSelector } from "@/components/ui/PlaybackSpeedSelector";
 import { AudioSeekSlider } from "@/components/ui/AudioSeekSlider";
-import { useIsNarrow } from "@/components/Vocabulary/hooks/useMediaQuery";
+import { useIsNarrow, useMediaQuery } from "@/components/Vocabulary/hooks/useMediaQuery";
 
 function formatTime(sec: number): string {
   if (!isFinite(sec) || sec <= 0) return "0:00";
@@ -45,6 +45,8 @@ export function PodcastPlayerBar() {
   const goToOrigin = usePlayerOriginStore((s) => s.goToOrigin);
   const sidebarCollapsed = useLayoutStore((s) => s.sidebarCollapsed);
   const narrow = useIsNarrow();
+  // Below 1024px the sidebar is gone and the floating nav dock replaces it.
+  const compact = useMediaQuery("(max-width: 1023px)");
   const [expanded, setExpanded] = useState(false);
   const closeOverlay = useCallback(() => setExpanded(false), []);
   const openOverlay = useCallback(() => setExpanded(true), []);
@@ -59,17 +61,14 @@ export function PodcastPlayerBar() {
 
   return (
     <div
-      // Phones have no sidebar to clear and do have a tab bar to sit above.
-      // Docking at `left: SIDEBAR_WIDTH` / `bottom: 0` there covered the tab
-      // bar and left 210px of the bar hanging past the left edge.
-      className={`fixed right-0 z-40 flex animate-fade-in cursor-pointer flex-col items-stretch gap-0.5 border-t border-border bg-card/95 px-2 pb-1.5 pt-1 backdrop-blur-xs transition-[left] duration-200 lg:flex-row lg:items-center lg:px-4 lg:py-2.5 ${
-        narrow ? "left-0" : "bottom-0"
+      // Compact widths have no sidebar to clear, so the bar spans the full
+      // screen and sits on the bottom edge; the nav dock floats above it. Wide
+      // widths dock it beside the sidebar instead — `left: SIDEBAR_WIDTH` at
+      // compact width would hang 210px of the bar past the left edge.
+      className={`fixed right-0 bottom-0 z-40 flex animate-fade-in cursor-pointer flex-col items-stretch gap-0.5 border-t border-border bg-card/95 px-2 pb-[calc(0.375rem+env(safe-area-inset-bottom))] pt-1 backdrop-blur-xs transition-[left] duration-200 lg:flex-row lg:items-center lg:px-4 lg:py-2.5 ${
+        compact ? "left-0" : ""
       }`}
-      style={
-        narrow
-          ? { bottom: "calc(3.5rem + env(safe-area-inset-bottom))" }
-          : { left: sidebarCollapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH }
-      }
+      style={compact ? undefined : { left: sidebarCollapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH }}
       onClick={(e) => {
         // Only blank bar area expands — buttons and the slider keep their own clicks.
         if (e.target === e.currentTarget) openOverlay();
