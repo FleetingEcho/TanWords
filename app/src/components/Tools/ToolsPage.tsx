@@ -51,7 +51,13 @@ export function ToolsPage() {
             key={tool.id}
             type="button"
             onClick={() => setActive(tool.id)}
-            className="group text-left bg-card border border-border rounded-2xl p-5 transition-colors hover:border-primary/40 hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            // Hover marks the card, it doesn't repaint it. `--accent` is a
+            // bright saturated hue in most themes (it is the colour meant to
+            // sit *under* accent-foreground), so filling a whole card with it
+            // washes the title and description out to nothing — the same trap
+            // the sidebar's NavButton documents. The quiet `--muted` fill plus
+            // an accent border says "this one" while leaving the text alone.
+            className="group text-left bg-card border border-border rounded-2xl p-5 transition-colors hover:border-primary/40 hover:bg-[hsl(var(--muted))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <div className="flex items-center gap-3">
               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
