@@ -12,9 +12,8 @@ export interface HostCapabilities {
   auth: boolean;
   browser: boolean;
   music: boolean;
-  /** The launch password. Desktop-only: it lives in the *server's* config on
-   *  web, where one user setting it would lock out everyone else — and where
-   *  accounts already gate access. */
+  /** Optional UI lock. Desktop stores it per installation; Web stores a
+   *  separate verifier on each authenticated account. */
   appLock: boolean;
   localDocs: boolean;
   mcp: boolean;
@@ -41,7 +40,7 @@ export const WEB_CAPABILITIES: HostCapabilities = {
   auth: true,
   browser: false,
   music: false,
-  appLock: false,
+  appLock: true,
   localDocs: false,
   mcp: false,
   tray: false,
