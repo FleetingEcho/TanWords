@@ -90,9 +90,21 @@ function App() {
   React.useEffect(() => {
     if (!isWebHost) return;
     let cancelled = false;
-    void auth.me().then((ok) => { if (!cancelled) setAuthState(ok ? "ready" : "login"); });
-    const onUnauthorized = () => setAuthState("login");
-    const onAuthorized = () => setAuthState("ready");
+    void auth.me().then((ok) => {
+      if (cancelled) return;
+      useAppLockStore.setState({ enabled: ok ? null : false, locked: false });
+      setAuthState(ok ? "ready" : "login");
+    });
+    const onUnauthorized = () => {
+      useAppLockStore.setState({ enabled: false, locked: false });
+      setAuthState("login");
+    };
+    const onAuthorized = () => {
+      // Hold the first authenticated paint until this account's own lock
+      // status is known; otherwise a configured account briefly flashes open.
+      useAppLockStore.setState({ enabled: null, locked: false });
+      setAuthState("ready");
+    };
     window.addEventListener("tanwords:unauthorized", onUnauthorized);
     window.addEventListener("tanwords:authorized", onAuthorized);
     return () => {
@@ -224,7 +236,10 @@ function App() {
   // back yet — render nothing rather than a frame of unlocked content.
   const lockEnabled = useAppLockStore((s) => s.enabled);
   const locked = useAppLockStore((s) => s.locked);
-  React.useEffect(() => { void useAppLockStore.getState().refresh(); }, []);
+  React.useEffect(() => {
+    if (isWebHost && authState !== "ready") return;
+    void useAppLockStore.getState().refresh();
+  }, [authState]);
 
   if (lockEnabled === null) {
     return (

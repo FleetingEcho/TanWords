@@ -77,7 +77,8 @@ impl UsersDb {
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 turso_url TEXT,
                 turso_token_enc TEXT,
-                active_db TEXT NOT NULL DEFAULT 'local'
+                active_db TEXT NOT NULL DEFAULT 'local',
+                app_lock_hash TEXT
             );
             CREATE TABLE IF NOT EXISTS sessions(
                 token_hash TEXT PRIMARY KEY,
@@ -95,6 +96,7 @@ impl UsersDb {
         // touches NULL rows, so a user's later explicit local choice survives
         // every restart.
         let _ = conn.execute("ALTER TABLE users ADD COLUMN active_db TEXT", ()).await;
+        let _ = conn.execute("ALTER TABLE users ADD COLUMN app_lock_hash TEXT", ()).await;
         conn.execute(
             "UPDATE users SET active_db = CASE
                  WHEN turso_url IS NOT NULL AND turso_token_enc IS NOT NULL THEN 'turso'
@@ -319,6 +321,100 @@ impl UsersDb {
         Ok(true)
     }
 
+    pub async fn app_lock_enabled(&self, user_id: i64) -> Result<bool, String> {
+        let conn = self.conn.lock().await;
+        let mut rows = conn
+            .query("SELECT app_lock_hash FROM users WHERE id = ?", libsql::params![user_id])
+            .await
+            .map_err(|e| e.to_string())?;
+        let Some(row) = rows.next().await.map_err(|e| e.to_string())? else {
+            return Err("user not found".to_string());
+        };
+        Ok(row.get::<Option<String>>(0).map_err(|e| e.to_string())?.is_some())
+    }
+
+    pub async fn verify_app_lock(&self, user_id: i64, password: &str) -> Result<bool, String> {
+        let existing = {
+            let conn = self.conn.lock().await;
+            let mut rows = conn
+                .query("SELECT app_lock_hash FROM users WHERE id = ?", libsql::params![user_id])
+                .await
+                .map_err(|e| e.to_string())?;
+            let Some(row) = rows.next().await.map_err(|e| e.to_string())? else {
+                return Err("user not found".to_string());
+            };
+            row.get::<Option<String>>(0).map_err(|e| e.to_string())?
+        };
+        match existing {
+            Some(hash) => Ok(Self::verify_password(&hash, password)),
+            None => Ok(true),
+        }
+    }
+
+    pub async fn set_app_lock(
+        &self,
+        user_id: i64,
+        current: Option<&str>,
+        next: &str,
+    ) -> Result<(), String> {
+        let next = next.trim();
+        if next.len() < 4 {
+            return Err("Password must be at least 4 characters".to_string());
+        }
+        let existing = {
+            let conn = self.conn.lock().await;
+            let mut rows = conn
+                .query("SELECT app_lock_hash FROM users WHERE id = ?", libsql::params![user_id])
+                .await
+                .map_err(|e| e.to_string())?;
+            let Some(row) = rows.next().await.map_err(|e| e.to_string())? else {
+                return Err("user not found".to_string());
+            };
+            row.get::<Option<String>>(0).map_err(|e| e.to_string())?
+        };
+        if let Some(hash) = existing {
+            if !Self::verify_password(&hash, current.unwrap_or_default()) {
+                return Err("Current password is incorrect".to_string());
+            }
+        }
+        let hash = Self::hash_password(next)?;
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "UPDATE users SET app_lock_hash = ? WHERE id = ?",
+            libsql::params![hash, user_id],
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub async fn disable_app_lock(&self, user_id: i64, current: &str) -> Result<(), String> {
+        let existing = {
+            let conn = self.conn.lock().await;
+            let mut rows = conn
+                .query("SELECT app_lock_hash FROM users WHERE id = ?", libsql::params![user_id])
+                .await
+                .map_err(|e| e.to_string())?;
+            let Some(row) = rows.next().await.map_err(|e| e.to_string())? else {
+                return Err("user not found".to_string());
+            };
+            row.get::<Option<String>>(0).map_err(|e| e.to_string())?
+        };
+        if let Some(hash) = existing {
+            if !Self::verify_password(&hash, current) {
+                return Err("Current password is incorrect".to_string());
+            }
+        }
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "UPDATE users SET app_lock_hash = NULL WHERE id = ?",
+            libsql::params![user_id],
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     /// The user's remembered Turso profile, independent of which database is
     /// currently selected.
     pub async fn turso_for(&self, user_id: i64) -> Result<Option<TursoProfile>, String> {
@@ -465,6 +561,31 @@ mod tests {
         users.logout(&token).await.unwrap();
         assert!(users.validate(&token).await.unwrap().is_none());
         assert!(users.validate(&second_token).await.unwrap().is_some());
+
+        drop(users);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn web_app_lock_is_per_user_and_requires_current_password() {
+        let (users, dir) = test_users("app-lock-test").await;
+        let first = users.register("locked@example.com", "account-password").await.unwrap();
+        let second = users.register("other@example.com", "account-password").await.unwrap();
+
+        assert!(!users.app_lock_enabled(first).await.unwrap());
+        users.set_app_lock(first, None, "screen-lock").await.unwrap();
+        assert!(users.app_lock_enabled(first).await.unwrap());
+        assert!(!users.app_lock_enabled(second).await.unwrap());
+        assert!(users.verify_app_lock(first, "screen-lock").await.unwrap());
+        assert!(!users.verify_app_lock(first, "wrong").await.unwrap());
+
+        assert!(users.set_app_lock(first, Some("wrong"), "replacement").await.is_err());
+        users.set_app_lock(first, Some("screen-lock"), "replacement").await.unwrap();
+        assert!(users.verify_app_lock(first, "replacement").await.unwrap());
+        assert!(users.disable_app_lock(first, "wrong").await.is_err());
+        users.disable_app_lock(first, "replacement").await.unwrap();
+        assert!(!users.app_lock_enabled(first).await.unwrap());
+        assert!(users.verify_app_lock(first, "anything").await.unwrap());
 
         drop(users);
         let _ = std::fs::remove_dir_all(dir);

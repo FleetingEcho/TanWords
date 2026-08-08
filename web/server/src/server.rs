@@ -342,6 +342,68 @@ async fn me(request: Request) -> Response {
     Json(json!({ "email": session.email })).into_response()
 }
 
+#[derive(Deserialize)]
+struct AppLockSetBody {
+    current: Option<String>,
+    next: String,
+}
+
+#[derive(Deserialize)]
+struct AppLockPasswordBody {
+    password: String,
+}
+
+async fn app_lock_status(
+    State(state): State<WebState>,
+    axum::Extension(session): axum::Extension<UserSession>,
+) -> Response {
+    match state.users.app_lock_enabled(session.user_id).await {
+        Ok(enabled) => Json(json!({ "enabled": enabled })).into_response(),
+        Err(e) => json_error(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
+async fn app_lock_set(
+    State(state): State<WebState>,
+    axum::Extension(session): axum::Extension<UserSession>,
+    Json(body): Json<AppLockSetBody>,
+) -> Response {
+    match state
+        .users
+        .set_app_lock(session.user_id, body.current.as_deref(), &body.next)
+        .await
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) if e == "Current password is incorrect" || e.starts_with("Password must") => {
+            json_error(StatusCode::BAD_REQUEST, e)
+        }
+        Err(e) => json_error(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
+async fn app_lock_disable(
+    State(state): State<WebState>,
+    axum::Extension(session): axum::Extension<UserSession>,
+    Json(body): Json<AppLockPasswordBody>,
+) -> Response {
+    match state.users.disable_app_lock(session.user_id, &body.password).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) if e == "Current password is incorrect" => json_error(StatusCode::BAD_REQUEST, e),
+        Err(e) => json_error(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
+async fn app_lock_verify(
+    State(state): State<WebState>,
+    axum::Extension(session): axum::Extension<UserSession>,
+    Json(body): Json<AppLockPasswordBody>,
+) -> Response {
+    match state.users.verify_app_lock(session.user_id, &body.password).await {
+        Ok(valid) => Json(valid).into_response(),
+        Err(e) => json_error(StatusCode::INTERNAL_SERVER_ERROR, e),
+    }
+}
+
 // ── core RPC (same shapes as the desktop sidecar) ─────────────────────────
 
 async fn invoke_handler(
@@ -1286,6 +1348,10 @@ pub async fn serve(config: Config, users: Arc<UsersDb>, pool: Arc<RuntimePool>) 
     let protected = Router::new()
         .route("/api/auth/logout", post(logout))
         .route("/api/auth/me", get(me))
+        .route("/api/app-lock/status", get(app_lock_status))
+        .route("/api/app-lock/set", post(app_lock_set))
+        .route("/api/app-lock/disable", post(app_lock_disable))
+        .route("/api/app-lock/verify", post(app_lock_verify))
         // Same reason as the import route below: attachments ride along as
         // base64 in the JSON body, well past axum's 2 MB default.
         .route("/invoke/{command}", post(invoke_handler).layer(DefaultBodyLimit::max(192 * 1024 * 1024)))

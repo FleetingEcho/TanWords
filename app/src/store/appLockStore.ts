@@ -1,6 +1,23 @@
 import { create } from "zustand";
 import { invoke } from "@/ipc/backend";
-import { hostCapabilities } from "@/platform";
+import { hostCapabilities, isDesktopHost } from "@/platform";
+import { webAuthFetch } from "@/platform/webClient";
+
+async function webAppLock<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+  const response = await webAuthFetch(`/api/app-lock/${path}`, {
+    method,
+    headers: body === undefined ? undefined : { "content-type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    let message = text;
+    try { message = JSON.parse(text).error ?? text; } catch { /* plain-text response */ }
+    throw new Error(message);
+  }
+  if (response.status === 204) return undefined as T;
+  return response.json() as Promise<T>;
+}
 
 /** Screen-lock state for the whole app.
  *
@@ -30,7 +47,9 @@ export const useAppLockStore = create<AppLockState>((set, get) => ({
       return;
     }
     try {
-      const status = await invoke<{ enabled: boolean }>("app_lock_status");
+      const status = isDesktopHost
+        ? await invoke<{ enabled: boolean }>("app_lock_status")
+        : await webAppLock<{ enabled: boolean }>("status");
       set({
         enabled: status.enabled,
         // Only ever *raises* the gate here: a refresh triggered by changing
@@ -48,15 +67,21 @@ export const useAppLockStore = create<AppLockState>((set, get) => ({
     if (get().enabled) set({ locked: true });
   },
 
-  verify: (password) => invoke<boolean>("app_lock_verify", { password }),
+  verify: (password) => isDesktopHost
+    ? invoke<boolean>("app_lock_verify", { password })
+    : webAppLock<boolean>("verify", "POST", { password }),
 
   setLocked: (locked) => set({ locked }),
 }));
 
 export function setAppLockPassword(current: string | null, next: string): Promise<void> {
-  return invoke("app_lock_set", { current, next });
+  return isDesktopHost
+    ? invoke("app_lock_set", { current, next })
+    : webAppLock<void>("set", "POST", { current, next });
 }
 
 export function disableAppLock(current: string): Promise<void> {
-  return invoke("app_lock_disable", { current });
+  return isDesktopHost
+    ? invoke("app_lock_disable", { current })
+    : webAppLock<void>("disable", "POST", { password: current });
 }
