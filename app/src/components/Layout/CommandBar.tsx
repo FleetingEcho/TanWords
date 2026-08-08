@@ -32,7 +32,7 @@ import { hostCapabilities, isDesktopHost } from "@/platform";
 
 type McpState = { status: { running: boolean; error: string | null } };
 
-const PAGE_IDS: NavPage[] = (["feeds", "vocabulary", "documents", "chat", "dashboard", "music", "settings"] as NavPage[])
+const PAGE_IDS: NavPage[] = (["feeds", "vocabulary", "documents", "chat", "dashboard", "music", "settings", "tools"] as NavPage[])
   .filter((id) => id !== "music" || hostCapabilities.music);
 
 /** The icon standing in for the active theme. One definition: the top bar

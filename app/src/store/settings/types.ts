@@ -19,7 +19,7 @@ export type LayoutMode = "flexible" | "fixed";
 export type RssTabSelection = number | "all" | "hackernews";
 
 export const DEFAULT_SIDEBAR_TABS: SidebarTabId[] = [
-  "dashboard", "feeds", "reading", "documents", "vocabulary", "chat", "music", "browser",
+  "dashboard", "feeds", "reading", "documents", "vocabulary", "chat", "music", "browser", "tools",
 ];
 export const DEFAULT_TOPBAR_ITEMS: TopBarItemId[] = [
   "search", "context", "scratch", "db", "mcp", "ai", "language", "theme", "updates", "github",

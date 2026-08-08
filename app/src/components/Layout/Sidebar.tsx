@@ -1,5 +1,5 @@
 import React from "react";
-import { ClipboardPaste, Globe, PanelLeft, Settings } from "lucide-react";
+import { ClipboardPaste, Globe, PanelLeft, Settings, Wrench } from "lucide-react";
 import { useLayoutStore } from "@/store/layoutStore";
 import { useT } from "@/hooks/useT";
 import {
@@ -31,6 +31,7 @@ const BASE_NAV_ITEM_DEFS: Omit<NavItemDef, "label">[] = [
   { id: "vocabulary", icon: BookIcon, showCount: "word" },
   { id: "chat", icon: ChatIcon },
   { id: "music", icon: MusicIcon },
+  { id: "tools", icon: Wrench },
 ];
 
 const NAV_ITEM_DEFS = BASE_NAV_ITEM_DEFS.filter((item) => {
@@ -47,6 +48,7 @@ const MOBILE_TAB_DEFS: { id: NavPage; icon: React.FC<{ className?: string }> }[]
   { id: "reading" as NavPage, icon: ClipboardPaste as React.FC<{ className?: string }> },
   { id: "chat" as NavPage, icon: ChatIcon as React.FC<{ className?: string }> },
   { id: "documents" as NavPage, icon: DocIcon as React.FC<{ className?: string }> },
+  { id: "tools" as NavPage, icon: Wrench as React.FC<{ className?: string }> },
 ];
 
 /** Shared button chrome for both the customizable nav items and the pinned Settings
@@ -242,7 +244,7 @@ export function MainLayout({
           className="fixed bottom-0 inset-x-0 z-40 border-t border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar))] pb-[env(safe-area-inset-bottom)] select-none"
           aria-label="main navigation"
         >
-          <div className="grid grid-cols-5">
+          <div className="grid grid-cols-6">
             {MOBILE_TAB_DEFS.map(({ id, icon: Icon }) => {
               const isActive = activeNav === id;
               return (

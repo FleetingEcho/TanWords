@@ -15,6 +15,7 @@ export const nav: Dict = {
     "nav.feeds": "RSS",
     "nav.reading": "Reading",
     "nav.browser": "Browser",
+    "nav.tools": "Tools",
     "command.newDocument": "New document",
     "command.newChat": "New AI chat",
     "command.searchPlaceholder": "Type a command or page…",

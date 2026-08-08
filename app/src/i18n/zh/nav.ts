@@ -37,4 +37,5 @@ export const nav: Dict = {
     "command.expandIcons": "展开工具栏图标",
     "nav.reading": "精读",
     "nav.browse": "浏览",
+    "nav.tools": "工具",
 };
