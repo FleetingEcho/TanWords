@@ -9,6 +9,7 @@ export type NavPage =
   | "documents"
   | "chat"
   | "browser"
+  | "tools"
   | "settings";
 
 /** Section ids the Settings page can be jumped to directly, e.g. from the

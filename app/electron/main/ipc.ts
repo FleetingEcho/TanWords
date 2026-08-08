@@ -47,6 +47,12 @@ export function isExternalUrlAllowed(url: string): boolean {
  *  they all call `dialog:save` immediately before writing — and costs no UI
  *  change. Paths are normalized so separators/case can't smuggle a variant. */
 const saveDialogPaths = new Set<string>();
+// Directories the user picked with `dialog:pickSaveDir` this session. A write
+// is honored for a path that is *inside* one of these (e.g. each image in a
+// "download all" batch), so a multi-file save needs only one directory picker
+// instead of N save dialogs. Membership is checked with `path.relative` so a
+// `..` segment in the joined name can't escape the chosen folder.
+const saveDialogDirs = new Set<string>();
 
 function normalizeWritePath(p: string): string {
   return path.normalize(p);
@@ -56,11 +62,23 @@ function recordSavePath(p: string): void {
   saveDialogPaths.add(normalizeWritePath(p));
 }
 
-function isAllowedWritePath(p: string): boolean {
-  return saveDialogPaths.has(normalizeWritePath(p));
+function recordSaveDir(d: string): void {
+  saveDialogDirs.add(normalizeWritePath(d));
 }
 
-export const __writePathGuardForTests = { recordSavePath, isAllowedWritePath, saveDialogPaths };
+function isAllowedWritePath(p: string): boolean {
+  const n = normalizeWritePath(p);
+  if (saveDialogPaths.has(n)) return true;
+  for (const dir of saveDialogDirs) {
+    const rel = path.relative(dir, n);
+    // A non-empty relative path that stays inside `dir` (no `..`, not absolute)
+    // is a file the user implicitly authorized by picking the folder.
+    if (rel && !rel.startsWith("..") && !path.isAbsolute(rel)) return true;
+  }
+  return false;
+}
+
+export const __writePathGuardForTests = { recordSavePath, recordSaveDir, isAllowedWritePath, saveDialogPaths, saveDialogDirs };
 
 type DialogFilter = { name: string; extensions: string[] };
 
@@ -184,6 +202,19 @@ async function dispatch(
       return result.filePath;
     }
 
+    // A directory picker for multi-file saves (e.g. "download all" in the
+    // image reducer). Records the folder so `file:writeBinary` accepts any
+    // path inside it; `isAllowedWritePath` checks the path stays within bounds.
+    case "dialog:pickSaveDir": {
+      const win = deps.getMainWindow();
+      const result = win
+        ? await dialog.showOpenDialog(win, { properties: ["openDirectory"] })
+        : await dialog.showOpenDialog({ properties: ["openDirectory"] });
+      if (result.canceled || result.filePaths.length === 0) return null;
+      recordSaveDir(result.filePaths[0]);
+      return result.filePaths[0];
+    }
+
     case "file:write": {
       const { path: filePath, data } = (args ?? {}) as { path?: string; data?: string };
       if (!filePath || typeof data !== "string") throw new Error("file:write requires path and data");
@@ -191,6 +222,20 @@ async function dispatch(
         throw new Error("file:write only writes to paths the user picked in a save dialog this session");
       }
       await writeFile(filePath, data, "utf8");
+      return null;
+    }
+
+    // Binary counterpart to `file:write` for in-memory image bytes (the image
+    // reducer's reduced blobs). Same path allowlist — only a path the user just
+    // picked, or a file inside a folder the user just picked, is written.
+    case "file:writeBinary": {
+      const { path: filePath, data } = (args ?? {}) as { path?: string; data?: Uint8Array | ArrayBuffer };
+      if (!filePath || !data) throw new Error("file:writeBinary requires path and data");
+      if (!isAllowedWritePath(filePath)) {
+        throw new Error("file:writeBinary only writes to paths the user picked in a save dialog this session");
+      }
+      const buf = Buffer.isBuffer(data) ? data : Buffer.from(data as Uint8Array);
+      await writeFile(filePath, buf);
       return null;
     }
 

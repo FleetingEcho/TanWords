@@ -35,6 +35,25 @@ export function saveDialog(
   return callMain<string | null>("dialog:save", options);
 }
 
+/** Pick a folder for a multi-file save (desktop only). The folder is recorded
+ *  as a writable root for `writeBinaryFile` for the rest of the session. */
+export function pickSaveDirectory(): Promise<string | null> {
+  if (!isDesktopHost) {
+    throw new Error("pickSaveDirectory is desktop-only");
+  }
+  return callMain<string | null>("dialog:pickSaveDir");
+}
+
+/** Write in-memory bytes to a path the user just picked via `saveDialog` or
+ *  inside a folder from `pickSaveDirectory` (desktop only). Resolves once the
+ *  bytes are flushed to disk, so callers can report genuine success/failure. */
+export function writeBinaryFile(path: string, data: Uint8Array): Promise<void> {
+  if (!isDesktopHost) {
+    throw new Error("writeBinaryFile is desktop-only");
+  }
+  return callMain<void>("file:writeBinary", { path, data });
+}
+
 export function pickFiles(options: { multiple?: boolean; accept?: string } = {}): Promise<File[]> {
   return webPickFiles(options);
 }

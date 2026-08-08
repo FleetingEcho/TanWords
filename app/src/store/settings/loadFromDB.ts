@@ -80,6 +80,17 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       localStorage.setItem("tanwords_writing_tab_migrated", "1");
       await invoke("db_set_setting", { key: "visible_sidebar_tabs", value: JSON.stringify(resolvedSidebarTabs) });
     }
+    // One-time upgrade: add the Tools tab for existing installs whose
+    // persisted visible-tab list predates it. Like the writing-tab upgrade
+    // above, the localStorage flag makes this run exactly once — a user who
+    // later hides Tools from Settings stays hidden.
+    if (!localStorage.getItem("tanwords_tools_tab_migrated")) {
+      if (!resolvedSidebarTabs.includes("tools")) {
+        resolvedSidebarTabs = [...resolvedSidebarTabs, "tools"];
+      }
+      localStorage.setItem("tanwords_tools_tab_migrated", "1");
+      await invoke("db_set_setting", { key: "visible_sidebar_tabs", value: JSON.stringify(resolvedSidebarTabs) });
+    }
     cacheSidebarTabs(resolvedSidebarTabs);
 
     const resolvedTopBarItems = Array.isArray(values.visible_topbar_items)

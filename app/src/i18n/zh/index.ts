@@ -17,6 +17,7 @@ import { tts } from "./tts";
 import { feeds } from "./feeds";
 import { podcast } from "./podcast";
 import { tools } from "./tools";
+import { toolsPage } from "./toolsPage";
 import { music } from "./music";
 import { browser } from "./browser";
 import { updater } from "./updater";
@@ -40,6 +41,7 @@ export const zh: Dict = {
     ...feeds,
     ...podcast,
     ...tools,
+    ...toolsPage,
     ...music,
     ...browser,
     ...updater,

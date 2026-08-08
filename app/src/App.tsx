@@ -50,6 +50,8 @@ const ReadingPage = React.lazy(() =>
   import("@/components/Reader/ReadingPage").then((m) => ({ default: m.ReadingPage })));
 const MusicPage = React.lazy(() => import("@/components/Music/MusicPage"));
 const BrowserPage = React.lazy(() => import("@/components/Browser/BrowserPage"));
+const ToolsPage = React.lazy(() =>
+  import("@/components/Tools/ToolsPage").then((m) => ({ default: m.ToolsPage })));
 const WordDetailModal = React.lazy(() =>
   import("@/components/WordDetailModal").then((m) => ({ default: m.WordDetailModal })));
 const ToolsModal = React.lazy(() =>
@@ -280,6 +282,8 @@ function App() {
         return <AiChatPage initialSessionId={chatSessionId} />;
       case "settings":
         return <SettingsPage />;
+      case "tools":
+        return <ToolsPage />;
       case "feeds":
       default:
         return <FeedsPage />;
