@@ -44,6 +44,7 @@ use futures_util::StreamExt;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::io::AsyncWriteExt;
+use tower_http::compression::CompressionLayer;
 
 use tanwords_lib::db;
 use tanwords_lib::db::connection::DbProfile;
@@ -340,6 +341,36 @@ fn session_of(request: &Request) -> UserSession {
 async fn me(request: Request) -> Response {
     let session = session_of(&request);
     Json(json!({ "email": session.email })).into_response()
+}
+
+/// One startup round-trip for the SPA: validates the session (in middleware),
+/// returns the lock gate that must be known before painting private content,
+/// and starts the heavier per-user database runtime in parallel. The response
+/// deliberately does not wait for that runtime — route chunks and settings can
+/// download while Turso/local SQLite opens, and the pool's spawn gate makes the
+/// first `/invoke` naturally join the same initialization instead of duplicating it.
+async fn bootstrap(
+    State(state): State<WebState>,
+    axum::Extension(session): axum::Extension<UserSession>,
+) -> Response {
+    let app_lock_enabled = match state.users.app_lock_enabled(session.user_id).await {
+        Ok(enabled) => enabled,
+        Err(e) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, e),
+    };
+
+    let pool = state.pool.clone();
+    let user_id = session.user_id;
+    tokio::spawn(async move {
+        if let Err(error) = pool.runtime_for(user_id).await {
+            eprintln!("[tanwords-web] user {user_id}: runtime prewarm failed: {error}");
+        }
+    });
+
+    Json(json!({
+        "email": session.email,
+        "appLockEnabled": app_lock_enabled,
+    }))
+    .into_response()
 }
 
 #[derive(Deserialize)]
@@ -1348,6 +1379,7 @@ pub async fn serve(config: Config, users: Arc<UsersDb>, pool: Arc<RuntimePool>) 
     let protected = Router::new()
         .route("/api/auth/logout", post(logout))
         .route("/api/auth/me", get(me))
+        .route("/api/auth/bootstrap", get(bootstrap))
         .route("/api/app-lock/status", get(app_lock_status))
         .route("/api/app-lock/set", post(app_lock_set))
         .route("/api/app-lock/disable", post(app_lock_disable))
@@ -1377,6 +1409,10 @@ pub async fn serve(config: Config, users: Arc<UsersDb>, pool: Arc<RuntimePool>) 
         .merge(auth_routes)
         .merge(protected)
         .fallback(spa_handler)
+        // Hashed JS/CSS already cache immutably; compression cuts the initial
+        // transfer itself (especially when no reverse proxy is configured).
+        // Brotli is preferred by modern browsers, with gzip as the fallback.
+        .layer(CompressionLayer::new())
         .layer(middleware::from_fn(security_headers))
         .with_state(state);
 

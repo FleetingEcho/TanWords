@@ -51,6 +51,7 @@ struct JwtClaims {
 
 pub struct UsersDb {
     conn: tokio::sync::Mutex<libsql::Connection>,
+    session_reader: libsql::Connection,
     cipher: Aes256Gcm,
     jwt_encoding_key: EncodingKey,
     jwt_decoding_key: DecodingKey,
@@ -69,6 +70,7 @@ impl UsersDb {
             .await
             .map_err(|e| format!("Failed to open users database: {e}"))?;
         let conn = db.connect().map_err(|e| e.to_string())?;
+        let session_reader = db.connect().map_err(|e| e.to_string())?;
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS users(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,6 +110,7 @@ impl UsersDb {
         .map_err(|e| format!("users.db active-db migration failed: {e}"))?;
         Ok(Self {
             conn: tokio::sync::Mutex::new(conn),
+            session_reader,
             cipher: Aes256Gcm::new(&master_key.into()),
             jwt_encoding_key: EncodingKey::from_secret(&master_key),
             jwt_decoding_key: DecodingKey::from_secret(&master_key),
@@ -260,8 +263,11 @@ impl UsersDb {
         };
         let token_hash = Self::hash_token(token);
         let now = now_secs();
-        let conn = self.conn.lock().await;
-        let mut rows = conn
+        // Session checks are read-heavy and sit in front of every protected
+        // endpoint. Keep them off the serialized credential-write connection,
+        // while still consulting the database on every request so revocation
+        // remains immediate across multiple server processes.
+        let mut rows = self.session_reader
             .query(
                 "SELECT s.user_id, s.expires_at, u.email
                  FROM sessions s JOIN users u ON u.id = s.user_id
@@ -276,7 +282,9 @@ impl UsersDb {
         let user_id = row.get::<i64>(0).map_err(|e| e.to_string())?;
         let expires = row.get::<i64>(1).map_err(|e| e.to_string())?;
         let email = row.get::<String>(2).map_err(|e| e.to_string())?;
+        drop(rows);
         if claims.sub != user_id || expires < now {
+            let conn = self.conn.lock().await;
             let _ = conn
                 .execute("DELETE FROM sessions WHERE token_hash = ?", libsql::params![token_hash.clone()])
                 .await;
@@ -284,6 +292,7 @@ impl UsersDb {
         }
         // Opportunistic sweep of expired rows, ~1% of validations.
         if now % 37 == 0 {
+            let conn = self.conn.lock().await;
             let _ = conn
                 .execute("DELETE FROM sessions WHERE expires_at < ?", libsql::params![now])
                 .await;
@@ -525,6 +534,7 @@ impl UsersDb {
 #[cfg(test)]
 mod tests {
     use super::UsersDb;
+    use std::time::Duration;
 
     async fn test_users(name: &str) -> (UsersDb, std::path::PathBuf) {
         let dir = std::env::temp_dir().join(format!("tanwords-{name}-{}", uuid::Uuid::new_v4()));
@@ -546,6 +556,17 @@ mod tests {
 
         assert_eq!(token.split('.').count(), 3);
         assert_eq!(users.validate(&token).await.unwrap().unwrap().id, user_id);
+
+        // Ordinary API requests must not queue behind unrelated credential
+        // writes. Holding the writer proves validation uses its read connection.
+        let conn = users.conn.lock().await;
+        let concurrent = tokio::time::timeout(Duration::from_millis(100), users.validate(&token))
+            .await
+            .expect("session validation waited for the users.db writer")
+            .unwrap()
+            .unwrap();
+        assert_eq!(concurrent.id, user_id);
+        drop(conn);
 
         let (_, second_token) = users
             .login("reader@example.com", "correct-horse")

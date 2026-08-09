@@ -60,6 +60,25 @@ export async function me(): Promise<{ email: string } | null> {
   }
 }
 
+export type WebBootstrap = {
+  email: string;
+  appLockEnabled: boolean;
+};
+
+/** Validates the saved web session and returns every security gate needed for
+ * the first private paint in one request. The server also begins warming this
+ * user's database runtime without making this response wait for it. */
+export async function bootstrap(): Promise<WebBootstrap | null> {
+  if (!getWebToken()) return null;
+  try {
+    const response = await webAuthFetch("/api/auth/bootstrap");
+    if (!response.ok) return null;
+    return (await response.json()) as WebBootstrap;
+  } catch {
+    return null;
+  }
+}
+
 export async function logout(): Promise<void> {
   try {
     await webAuthFetch("/api/auth/logout", { method: "POST" });

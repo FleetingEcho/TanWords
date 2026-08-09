@@ -119,20 +119,26 @@ function App() {
   React.useEffect(() => {
     if (!isWebHost) return;
     let cancelled = false;
-    void auth.me().then((ok) => {
+    const loadSession = () => void auth.bootstrap().then((session) => {
       if (cancelled) return;
-      useAppLockStore.setState({ enabled: ok ? null : false, locked: false });
-      setAuthState(ok ? "ready" : "login");
+      useAppLockStore.setState({
+        enabled: session?.appLockEnabled ?? false,
+        // A configured lock must cover the very first private paint. This is
+        // the same gate refresh() previously raised in a second request.
+        locked: session?.appLockEnabled ?? false,
+      });
+      setAuthState(session ? "ready" : "login");
     });
+    loadSession();
     const onUnauthorized = () => {
       useAppLockStore.setState({ enabled: false, locked: false });
       setAuthState("login");
     };
     const onAuthorized = () => {
-      // Hold the first authenticated paint until this account's own lock
-      // status is known; otherwise a configured account briefly flashes open.
+      // Keep the gate closed until bootstrap returns this account's own lock
+      // status; otherwise a configured account briefly flashes open.
       useAppLockStore.setState({ enabled: null, locked: false });
-      setAuthState("ready");
+      loadSession();
     };
     window.addEventListener("tanwords:unauthorized", onUnauthorized);
     window.addEventListener("tanwords:authorized", onAuthorized);
@@ -249,7 +255,7 @@ function App() {
   useEffect(() => {
     if (authState !== "ready") return;
     db.getWordCount().then(setWordCount).catch(() => {});
-  }, [authState, currentPage()]);
+  }, [authState, db]);
 
   // Refresh sidebar stats when vocabulary changes
   useEffect(() => {
@@ -266,7 +272,9 @@ function App() {
   const lockEnabled = useAppLockStore((s) => s.enabled);
   const locked = useAppLockStore((s) => s.locked);
   React.useEffect(() => {
-    if (isWebHost && authState !== "ready") return;
+    // Web bootstrap already resolved the lock in the same authenticated
+    // request. Desktop still asks its sidecar once at startup.
+    if (isWebHost) return;
     void useAppLockStore.getState().refresh();
   }, [authState]);
 
