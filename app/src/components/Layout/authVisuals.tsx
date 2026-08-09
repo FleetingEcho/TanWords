@@ -88,7 +88,7 @@ export function WordmarkEntry({ gloss, compact = false }: { gloss: string; compa
 /** An underline rather than a box: it echoes the marked words in the specimen,
  *  and the primary rule sweeping in on focus is the one thing that moves. */
 export function UnderlineField({
-  label, type, value, onChange, autoComplete, autoFocus, hint, invalid,
+  label, type, value, onChange, autoComplete, autoFocus, hint, invalid, inputProps,
 }: {
   label: string;
   type: string;
@@ -98,6 +98,10 @@ export function UnderlineField({
   autoFocus?: boolean;
   hint?: string;
   invalid?: boolean;
+  /** Escape hatch for fields that need to opt out of the browser's password
+   *  handling — see `maskedPasswordProps`. Spread over `type`/`autoComplete`,
+   *  under everything this component owns. */
+  inputProps?: React.InputHTMLAttributes<HTMLInputElement>;
 }) {
   return (
     <label className="block">
@@ -107,8 +111,9 @@ export function UnderlineField({
       </span>
       <input
         type={type}
-        autoFocus={autoFocus}
         autoComplete={autoComplete}
+        {...inputProps}
+        autoFocus={autoFocus}
         aria-invalid={invalid || undefined}
         value={value}
         onChange={(event) => onChange(event.target.value)}

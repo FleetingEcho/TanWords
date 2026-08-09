@@ -71,6 +71,25 @@ export async function generateSentences(provider: AIProvider, query: string, tar
   return parseGeneratedSentences(raw);
 }
 
+/** One lightweight candidate for an empty global sentence search. Unlike the
+ * library modal's batch generator, this must not spend tokens on four hidden
+ * alternatives that the search dropdown will discard. */
+export async function generateSentenceCandidate(
+  provider: AIProvider,
+  query: string,
+  targetLevels: string,
+  signal?: AbortSignal,
+): Promise<GeneratedSentence | null> {
+  const user = [
+    `Word, phrase, or Chinese topic: ${query}`,
+    `Learner level: CEFR ${targetLevels || "B1/B2"}.`,
+    "Generate exactly one natural English sentence using or expressing this query, plus a natural Chinese translation and one reusable sentence pattern.",
+    `Format — a JSON array with exactly one 5-element array: [["the English sentence","自然中文翻译","A2|B1|B2|C1|C2","reusable pattern skeleton","一行中文使用注释"]].`,
+  ].join("\n");
+  const raw = await collect(provider, SYSTEM_PROMPT, user, signal);
+  return parseGeneratedSentences(raw)[0] ?? null;
+}
+
 const ANALYZE_SYSTEM_PROMPT =
   "You are an expert English coach for Chinese learners. Given one sentence the learner already has, you analyze it — you do not rewrite, correct, or replace it. Return ONLY a JSON array with exactly one 5-element array in the exact requested format — no markdown fences, no commentary.";
 

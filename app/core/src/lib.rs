@@ -79,7 +79,8 @@ pub async fn build_state() -> (Arc<shim::Registry>, shim::AppHandle) {
 }
 
 /// Builds the managed-state registry and app handle around an already-open
-/// database, and starts the MCP controller when enabled. The web backend
+/// database. On desktop, persisted MCP state is restored in a background task
+/// so its three settings queries never delay the sidecar handshake. The web backend
 /// (`web/server`) calls this once per active user — each user gets their own
 /// registry around their own DB (per-user local file or Turso replica), so
 /// the ~15k lines of command code keep reading one `State<AppState>` while
@@ -88,10 +89,7 @@ pub async fn build_state_for(
     database: Db,
     db_fallback_warning: Option<String>,
 ) -> (Arc<shim::Registry>, shim::AppHandle) {
-    let mcp_config = mcp::load_config(&database.conn()).await;
     let mcp_controller = mcp::McpController::default();
-    let startup_mcp_controller = mcp_controller.clone();
-
     let mut registry = shim::Registry::default();
     registry.manage(AppState {
         db: Mutex::new(database),
@@ -108,11 +106,26 @@ pub async fn build_state_for(
     let (events_tx, _events_rx) = tokio::sync::broadcast::channel(256);
     let app_handle = shim::AppHandle::new(registry.clone(), events_tx);
 
-    if mcp_config.enabled {
+    // MCP is desktop/localhost-only. Restore it after yielding back to run(),
+    // which can then enter server::serve and publish the Electron handshake
+    // without waiting for three user_settings queries. The task still owns the
+    // same AppHandle-backed connection provider, so later DB switches work as
+    // before. Web builds must never start a per-user localhost server inside the
+    // shared host process.
+    #[cfg(not(feature = "web"))]
+    {
         let handle = app_handle.clone();
         tokio::task::spawn(async move {
+            tokio::task::yield_now().await;
+            let state = handle.state::<AppState>();
+            let Ok(conn) = db::conn(&state) else { return };
+            let config = mcp::load_config(&conn).await;
+            if !config.enabled {
+                return;
+            }
+            let controller = handle.state::<mcp::McpController>().inner().clone();
             let provider = mcp::state_conn_provider(handle.clone());
-            let _ = startup_mcp_controller.restart(mcp_config, provider, handle).await;
+            let _ = controller.restart(config, provider, handle).await;
         });
     }
 
@@ -125,7 +138,12 @@ pub async fn build_state_for(
 /// then serves until the process exits.
 #[cfg(feature = "desktop")]
 pub async fn run() {
-    let (registry, app_handle) = build_state().await;
+    let started = std::time::Instant::now();
+    let (database, db_fallback_warning) =
+        open_startup_db().await.expect("Failed to open database");
+    eprintln!("[startup] database-ready +{}ms", started.elapsed().as_millis());
+    let (registry, app_handle) = build_state_for(database, db_fallback_warning).await;
+    eprintln!("[startup] registry-ready +{}ms", started.elapsed().as_millis());
     server::serve(registry, app_handle).await;
 }
 

@@ -18,6 +18,7 @@ export function ReadOnlyArticle({
   fontSize = 17.5,
   fallbackText = "",
   header,
+  headerControls,
   scrollViewportRef,
 }: {
   html: string;
@@ -30,6 +31,9 @@ export function ReadOnlyArticle({
    *  document body below (see .reader-article-header in reader-content.css),
    *  so the article title lines up with the parsed content. */
   header?: ReactNode;
+  /** Controls whose position must not follow the article's variable `ch`
+   * measure (for example the font-size buttons themselves). */
+  headerControls?: ReactNode;
 }) {
   // The editor mounts with its blocks, so parsing produces content rather than
   // writing into a live instance.
@@ -153,6 +157,7 @@ export function ReadOnlyArticle({
     >
       <div className="relative flex min-h-0 flex-1 gap-2">
         <div className="min-w-0 flex-1">
+          {headerControls && <div className="reader-article-controls">{headerControls}</div>}
           {header && <div className="reader-article-header">{header}</div>}
           {plainText ? (
             <div className="whitespace-pre-wrap break-words px-6 py-5 text-[17px] leading-8 text-foreground">

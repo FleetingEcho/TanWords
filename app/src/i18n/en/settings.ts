@@ -127,7 +127,7 @@ export const settings: Dict = {
     "settings.documentAssetsKind_archive": "Archives",
     "settings.documentAssetsKind_other": "Other",
     "settings.documentImagesRefresh": "Refresh assets",
-    "settings.documentImageReview": "Preview asset",
+    "settings.documentImageReview": "Preview",
     "settings.documentImagesSelected": "{n} selected",
     "settings.documentImagesDoubleClickExit": "Double-click an asset to exit selection",
     "settings.documentImagesExportFolder": "Export to folder",

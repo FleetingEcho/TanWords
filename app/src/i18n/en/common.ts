@@ -52,6 +52,7 @@ export const common: Dict = {
     "sel.adding": "Adding…",
     "sel.added": "Added \"{word}\"",
     "sel.inVocab": "In vocabulary",
+    "sel.copy": "Copy",
     "sel.translate": "Translate",
     "sel.translating": "Translating…",
     "scratch.open": "Reading",

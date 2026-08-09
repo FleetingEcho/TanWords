@@ -200,7 +200,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
               title={searchMode === "word" ? t("command.switchToSentenceSearch") : t("command.switchToWordSearch")}
               className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground"
             >
-              {searchMode === "word" ? <Quote className="h-4 w-4" /> : <Type className="h-4 w-4" />}
+              {searchMode === "word" ? <Type className="h-4 w-4" /> : <Quote className="h-4 w-4" />}
             </Button>
           </div>
         )}

@@ -237,7 +237,7 @@ export function MobileNavDock({
           aria-haspopup="menu"
           aria-label={open ? t("common.close") : t("nav.workspace")}
           title={active.label}
-          className={`absolute -left-7 -top-7 flex h-14 w-14 items-center justify-center rounded-full border border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar))]/90 shadow-xl shadow-black/40 backdrop-blur-xl transition-transform duration-300 ease-out active:scale-90 motion-reduce:transition-none ${
+          className={`absolute -left-5 -top-5 flex h-10 w-10 items-center justify-center rounded-full border border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar))]/90 shadow-xl shadow-black/40 backdrop-blur-xl transition-transform duration-300 ease-out active:scale-90 motion-reduce:transition-none sm:-left-7 sm:-top-7 sm:h-14 sm:w-14 ${
             open ? "rotate-90" : "rotate-0"
           }`}
         >
@@ -251,14 +251,14 @@ export function MobileNavDock({
             }`}
           />
           <span className={`transition-[opacity,transform] duration-200 ${open ? "scale-75 opacity-0" : "scale-100 opacity-100"}`}>
-            <ActiveIcon className="h-[21px] w-[21px] text-primary" />
+            <ActiveIcon className="h-[18px] w-[18px] text-primary sm:h-[21px] sm:w-[21px]" />
           </span>
           <span
             className={`absolute transition-[opacity,transform] duration-200 ${
               open ? "-rotate-90 scale-100 opacity-100" : "rotate-0 scale-75 opacity-0"
             }`}
           >
-            <X className="h-5 w-5 text-[hsl(var(--sidebar-foreground))]" />
+            <X className="h-[18px] w-[18px] text-[hsl(var(--sidebar-foreground))] sm:h-5 sm:w-5" />
           </span>
         </button>
       </div>

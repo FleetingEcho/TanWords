@@ -158,10 +158,7 @@ const BLOCKED: &[(&str, &str)] = &[
     ("db_connect_turso", "per-user replacement lives at /api/db/turso/connect"),
     ("db_disconnect_remote", "per-user replacement lives at /api/db/turso/disconnect"),
     ("db_forget_saved_profile", "per-user replacement lives at /api/db/turso/forget"),
-    // NB: the old denylist also carried `db_get_remembered_turso`, which is
-    // not in the dispatch table at all — see the note in README. Listing a
-    // name that dispatch has never heard of blocks nothing; the stale-entry
-    // test below is what surfaced it.
+    ("db_get_remembered_turso", "reads process-wide desktop config and keychain state"),
     ("db_saved_profile_is_turso", "per-user replacement lives at /api/db/profile"),
     // Arbitrary server-side filesystem paths. Re-exposed, validated, as the
     // /api/import/* and /api/export/* routes.

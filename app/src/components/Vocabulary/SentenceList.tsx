@@ -134,7 +134,6 @@ export function SentenceList({
           * pair of tab buttons now, and buttons have no baseline to align to. */}
         <div className="flex flex-wrap items-center gap-2">
           {viewTabs ?? <h2 className="min-w-0 truncate text-lg font-bold">{t("vocab.patterns.title")}</h2>}
-          <span className="text-sm text-muted-foreground">{items.length}</span>
           <div className="ml-auto flex items-center gap-1">
             <Button
               variant="ghost"
@@ -143,14 +142,6 @@ export function SentenceList({
               className="w-10 h-10 lg:w-6 lg:h-6 p-0 rounded-md flex items-center justify-center text-primary hover:bg-primary/10 transition-colors shrink-0"
             >
               <Plus className="w-3.5 h-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={onOpenGenerate}
-              title={t("vocab.patterns.genTooltip")}
-              className="w-10 h-10 lg:w-6 lg:h-6 p-0 rounded-md flex items-center justify-center text-primary hover:bg-primary/10 transition-colors shrink-0"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
             </Button>
             <Button
               variant="ghost"

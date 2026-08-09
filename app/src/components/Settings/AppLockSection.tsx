@@ -7,6 +7,7 @@ import { disableAppLock, setAppLockPassword, useAppLockStore } from "@/store/app
 import { AUTO_LOCK_CHOICES, useSettingsStore } from "@/store/settingsStore";
 import { WallpaperSetting } from "./WallpaperSetting";
 import { APP_BG_MAX_DIMENSION, MAX_APP_BG_UPLOAD_BYTES, fileToDownscaledDataUrl } from "./GeneralSection";
+import { maskedPasswordProps } from "@/lib/maskedInput";
 
 const FIELD =
   "h-8 w-full rounded-lg border border-input bg-background px-3 text-xs outline-hidden focus:ring-2 focus:ring-primary/30";
@@ -100,16 +101,16 @@ export function AppLockSection() {
           {enabled && (
             <label className="block text-xs">
               <span className="mb-1 block text-muted-foreground">{t("lock.currentPassword")}</span>
-              <input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} className={FIELD} />
+              <input {...maskedPasswordProps("app-lock-current")} value={current} onChange={(e) => setCurrent(e.target.value)} className={FIELD} />
             </label>
           )}
           <label className="block text-xs">
             <span className="mb-1 block text-muted-foreground">{t("lock.newPassword")}</span>
-            <input type="password" value={next} onChange={(e) => setNext(e.target.value)} className={FIELD} />
+            <input {...maskedPasswordProps("app-lock-new")} value={next} onChange={(e) => setNext(e.target.value)} className={FIELD} />
           </label>
           <label className="block text-xs">
             <span className="mb-1 block text-muted-foreground">{t("lock.confirmPassword")}</span>
-            <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} className={FIELD} />
+            <input {...maskedPasswordProps("app-lock-confirm")} value={confirm} onChange={(e) => setConfirm(e.target.value)} className={FIELD} />
           </label>
           <div className="flex items-center justify-end gap-2">
             {enabled && (

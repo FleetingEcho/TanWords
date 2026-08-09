@@ -173,16 +173,6 @@ export function WordDetailPanel({
             </div>
 
             <div className="flex shrink-0 items-center gap-1.5">
-              {onGeneratePatterns && (
-                <Button
-                  variant="outline"
-                  onClick={onGeneratePatterns}
-                  className="h-8 gap-1.5 rounded-lg px-2.5 text-xs font-medium text-muted-foreground hover:text-foreground"
-                >
-                  <SparkIcon className="h-3.5 w-3.5 text-primary" />
-                  <span className="hidden sm:inline">{t("vocab.genPatterns")}</span>
-                </Button>
-              )}
               {lookupMode ? (
                 lookupAdded ? (
                   <span className="inline-flex items-center rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-4 py-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">{t("search.added")}</span>

@@ -7,6 +7,24 @@ interface OutlineItem {
   text: string;
 }
 
+function romanNumeral(value: number): string {
+  if (value <= 0 || value >= 4000) return String(value);
+  const numerals: Array<[number, string]> = [
+    [1000, "M"], [900, "CM"], [500, "D"], [400, "CD"],
+    [100, "C"], [90, "XC"], [50, "L"], [40, "XL"],
+    [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"],
+  ];
+  let rest = value;
+  let result = "";
+  for (const [amount, glyph] of numerals) {
+    while (rest >= amount) {
+      result += glyph;
+      rest -= amount;
+    }
+  }
+  return result;
+}
+
 function inlineText(content: any): string {
   if (!content) return "";
   if (typeof content === "string") return content;
@@ -245,9 +263,9 @@ export function DocumentScrollOutline({
           * the border radius when the rounded surface itself scrolls, making
           * the thumb appear outside the card at its top and bottom corners. */}
         <div className="overflow-hidden rounded-[28px] border border-border/70 bg-popover/95 shadow-2xl backdrop-blur-xl">
-          <div className="document-outline-card-scroll max-h-[min(70vh,32rem)] overflow-y-auto px-5 py-5">
+          <div className="document-outline-card-scroll max-h-[min(70vh,32rem)] overflow-y-auto py-5 pl-0 pr-5">
             <div className="space-y-0.5">
-              {items.map((item) => {
+              {items.map((item, index) => {
                 const active = item.id === activeId;
                 return (
                   <button
@@ -255,12 +273,15 @@ export function DocumentScrollOutline({
                     type="button"
                     aria-current={active ? "location" : undefined}
                     onClick={() => navigate(item.id)}
-                    style={{ paddingLeft: `${8 + (item.level - 1) * 16}px` }}
-                    className={`block w-full truncate rounded-lg py-1.5 pr-2 text-left text-sm transition-colors hover:bg-muted ${
+                    style={{ paddingLeft: `${(item.level - 1) * 12}px` }}
+                    className={`flex w-full items-center gap-2 rounded-lg py-1.5 pr-2 text-left text-sm transition-colors hover:bg-muted ${
                       active ? "bg-primary/8 font-semibold text-primary" : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
-                    {item.text}
+                    <span className="w-8 shrink-0 text-right font-mono text-[10px] font-medium tracking-[0.08em] text-muted-foreground/55">
+                      {romanNumeral(index + 1)}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{item.text}</span>
                   </button>
                 );
               })}

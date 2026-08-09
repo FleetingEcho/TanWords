@@ -5,6 +5,7 @@ import { useAppLockStore } from "@/store/appLockStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { WindowControls } from "@/components/Layout/WindowControls";
 import { isDesktopHost } from "@/platform";
+import { maskedPasswordProps } from "@/lib/maskedInput";
 import { SpecimenBackdrop, UnderlineField, WordmarkEntry } from "./authVisuals";
 
 /** Full-screen password gate. Rendered instead of the app — not on top of it —
@@ -119,11 +120,16 @@ export function LockScreen() {
               <UnderlineField
                 label={t("lock.placeholder")}
                 type="password"
-                autoComplete="current-password"
+                autoComplete="off"
                 autoFocus
                 value={password}
                 onChange={(value) => { setPassword(value); setError(false); }}
                 invalid={error}
+                // The screen lock is not the account credential, and on web
+                // both live on one origin: as a password field this one makes
+                // the browser offer to overwrite the saved sign-in password
+                // with the lock PIN on every unlock.
+                inputProps={maskedPasswordProps("app-lock")}
               />
             </div>
 

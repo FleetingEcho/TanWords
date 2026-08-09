@@ -128,7 +128,6 @@ export function WordListPanel({
             </Button>
           )}
           {viewTabs ?? <h2 className="min-w-0 truncate text-lg font-bold">{t("vocab.title")}</h2>}
-          <span className="text-sm text-muted-foreground">{words.length}</span>
           <div className="ml-auto flex items-center gap-1">
             {bulkRunning ? (
               <Tooltip>

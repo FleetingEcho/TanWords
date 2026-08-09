@@ -114,3 +114,24 @@
   width: 0;
   height: 0;
 }
+
+/* Touch selection takeover — set by useTouchSelection on coarse-pointer hosts.
+ * The OS Copy/Translate bar is summoned by the browser's own text selection
+ * and cannot be suppressed from the page, so the only way to keep it off the
+ * app's selection toolbar is to never let a native selection happen. The app
+ * hit-tests its own ranges and paints its own highlight instead. Form fields
+ * keep native selection: editing needs the caret and the OS handles. */
+[data-touch-select] body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+[data-touch-select] input,
+[data-touch-select] textarea,
+[data-touch-select] [contenteditable=""],
+[data-touch-select] [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}

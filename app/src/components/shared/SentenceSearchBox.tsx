@@ -1,13 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
-import { BookPlus } from "lucide-react";
+import { BookPlus, RefreshCw, Sparkles } from "lucide-react";
 import { useDB } from "@/hooks/useDB";
 import type { PatternItem } from "@/hooks/useDB.patterns";
 import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
 import { findBestProvider } from "@/providers/select";
-import { analyzeSentence, type GeneratedSentence } from "@/features/patterns/generate";
+import { analyzeSentence, generateSentenceCandidate, type GeneratedSentence } from "@/features/patterns/generate";
 import { LevelBadge } from "@/components/shared/LevelBadge";
 import { SearchIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,7 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeFailed, setAnalyzeFailed] = useState(false);
   const [noProvider, setNoProvider] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
   /** Whether the results dropdown is showing. Separate from `searched` so
    *  dismissing it only hides the panel — the analysis behind it survives,
    *  and re-opening costs nothing. */
@@ -59,9 +60,8 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
   }, []);
 
   const q = query.trim();
-  const canAddSentence = q.split(/\s+/).filter(Boolean).length >= 3;
-  const exactMatch = matches.some((p) =>
-    p.examples.some((e) => e.sentence.trim().toLowerCase() === q.toLowerCase()));
+  const candidateAlreadySaved = analysis ? allPatterns.some((p) =>
+    p.examples.some((e) => e.sentence.trim().toLowerCase() === analysis.sentence.trim().toLowerCase())) : false;
 
   // Editing the query invalidates whatever was last searched — reset instead of
   // re-searching automatically. This box used to search on every keystroke,
@@ -76,6 +76,7 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
     setAnalyzing(false);
     setAnalyzeFailed(false);
     setNoProvider(false);
+    setDismissed(false);
   }, [query]);
 
   useEffect(() => () => analyzeAbortRef.current?.abort(), []);
@@ -89,21 +90,11 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
     setMatches(filterSentencePatterns(allPatterns, q).slice(0, 8));
   }, [allPatterns]);
 
-  const runSearch = async () => {
-    if (!q) return;
-    setOpen(true);
+  const runGeneration = async () => {
     analyzeAbortRef.current?.abort();
-    const found = filterSentencePatterns(allPatterns, q).slice(0, 8);
-    setMatches(found);
-    setSearched(true);
-
-    // Only worth an AI call for something sentence-shaped, and not for a
-    // sentence the library already holds verbatim — that one has a stored
-    // analysis already, reachable by clicking the match.
-    const alreadySaved = found.some((p) =>
-      p.examples.some((e) => e.sentence.trim().toLowerCase() === q.toLowerCase()));
-    if (alreadySaved || q.split(/\s+/).filter(Boolean).length < 3) return;
-
+    setDismissed(false);
+    setAnalysis(null);
+    setNoProvider(false);
     const provider = findBestProvider();
     if (!provider) {
       setNoProvider(true);
@@ -114,7 +105,12 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
     setAnalyzing(true);
     setAnalyzeFailed(false);
     try {
-      const result = await analyzeSentence(provider, q, levels, controller.signal);
+      const words = q.split(/\s+/).filter(Boolean);
+      const looksLikeEnglishSentence = words.length >= 3 && !/[\u3400-\u9fff]/.test(q);
+      const result = looksLikeEnglishSentence
+        ? await analyzeSentence(provider, q, levels, controller.signal)
+        : await generateSentenceCandidate(provider, q, levels, controller.signal);
+      if (!result) throw new Error("no generated sentence");
       if (!controller.signal.aborted) setAnalysis(result);
     } catch {
       if (!controller.signal.aborted) setAnalyzeFailed(true);
@@ -123,23 +119,29 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
     }
   };
 
+  const runSearch = async () => {
+    if (!q) return;
+    setOpen(true);
+    const found = filterSentencePatterns(allPatterns, q).slice(0, 8);
+    setMatches(found);
+    setSearched(true);
+    setDismissed(false);
+    setAnalysis(null);
+    setAnalyzeFailed(false);
+    setNoProvider(false);
+
+    // Empty searches generate immediately. When saved matches exist, they are
+    // shown first and generation stays opt-in through the button below.
+    if (!found.length) await runGeneration();
+  };
+
   const handleAdd = async () => {
-    if (!q || adding || exactMatch) return;
+    if (!analysis || adding || candidateAlreadySaved) return;
     setAdding(true);
     try {
-      // Whatever runSearch already analyzed and put on screen — saving is now
-      // just committing what was shown, rather than a second (and possibly
-      // differently-worded) AI call behind the user's back.
-      let result: GeneratedSentence = analysis ?? { sentence: q, zh: "", level: "", skeleton: "", note: "" };
-      if (!analysis) {
-        const provider = findBestProvider();
-        if (provider) {
-          try { result = await analyzeSentence(provider, q, levels); }
-          catch { toast.error(t("vocab.patterns.analyzeFailed")); }
-        } else {
-          toast.info(t("vocab.noApiKey"));
-        }
-      }
+      // Saving only commits the candidate that was shown. Never run a second
+      // hidden generation that could save different text from what was chosen.
+      const result = analysis;
       const saved = await db.saveSentencePattern(result.sentence, result.zh, result.skeleton, result.note, result.level, "manual");
       if (saved) {
         toast.success(t("vocab.patterns.savedOne"));
@@ -187,6 +189,17 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
         );
       })}
 
+      {matches.length > 0 && (dismissed || (!analyzing && !analysis && !analyzeFailed && !noProvider)) && (
+        <Button
+          variant="ghost"
+          onClick={() => void runGeneration()}
+          className="h-8 w-full justify-center gap-1.5 rounded-lg text-xs font-semibold text-primary hover:bg-primary/10"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          {t("vocab.patterns.generateSentence")}
+        </Button>
+      )}
+
       {!matches.length && (
         <p className="px-2 py-1 text-xs text-muted-foreground">{t("vocab.patterns.noMatch")}</p>
       )}
@@ -195,23 +208,23 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
         * beginning (WordSearchBox's quick lookup); sentences were analyzed too,
         * but only ever inside `handleAdd` — so the reading existed and was
         * saved without the learner being shown it once. */}
-      {canAddSentence && !exactMatch && (
+      {!dismissed && (analyzing || analysis || analyzeFailed || noProvider) && (
         <div className="mt-1 rounded-lg border border-border bg-muted/30 p-2.5">
-          <div className="flex items-start gap-2">
-            <p className="min-w-0 flex-1 text-xs font-medium leading-relaxed text-foreground">{q}</p>
-            {hostCapabilities.nativeTts && <SpeakButton text={q} className="mt-0.5 h-3.5 w-3.5" />}
-            {analysis?.level && <LevelBadge level={analysis.level} />}
-          </div>
-
           {analyzing && (
-            <div className="mt-2 space-y-1.5 animate-pulse" aria-hidden>
-              <div className="h-2.5 w-3/4 rounded-full bg-muted" />
+            <div className="space-y-2 animate-pulse" aria-label={t("common.loading")}>
+              <div className="h-3 w-5/6 rounded-full bg-muted" />
+              <div className="h-2.5 w-2/3 rounded-full bg-muted" />
               <div className="h-2.5 w-1/2 rounded-full bg-muted" />
             </div>
           )}
 
           {analysis && !analyzing && (
-            <div className="mt-2 space-y-1.5">
+            <div className="space-y-1.5">
+              <div className="flex items-start gap-2">
+                <p className="min-w-0 flex-1 text-xs font-medium leading-relaxed text-foreground">{analysis.sentence}</p>
+                {hostCapabilities.nativeTts && <SpeakButton text={analysis.sentence} className="mt-0.5 h-3.5 w-3.5" />}
+                {analysis.level && <LevelBadge level={analysis.level} />}
+              </div>
               {analysis.zh && <p className="text-xs leading-relaxed text-muted-foreground">{analysis.zh}</p>}
               {analysis.skeleton && (
                 <p className="font-mono text-[11px] leading-relaxed text-primary">{analysis.skeleton}</p>
@@ -227,15 +240,40 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
           )}
           {noProvider && <p className="mt-2 text-[11px] text-muted-foreground">{t("vocab.noApiKey")}</p>}
 
-          <Button
-            variant="ghost"
-            onClick={handleAdd}
-            disabled={adding || analyzing}
-            className="mt-2 h-auto w-full items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-primary hover:bg-primary/10 disabled:opacity-50 transition-colors"
-          >
-            <BookPlus className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{adding ? t("vocab.patterns.adding") : t("vocab.patterns.add")}</span>
-          </Button>
+          <div className="mt-2 flex items-center justify-end gap-1.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => void runGeneration()}
+              disabled={analyzing || adding}
+              title={t("vocab.patterns.regenerate")}
+              aria-label={t("vocab.patterns.regenerate")}
+              className="mr-auto h-7 w-7 rounded-lg text-muted-foreground hover:text-primary"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${analyzing ? "animate-spin" : ""}`} />
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                analyzeAbortRef.current?.abort();
+                setAnalyzing(false);
+                setAnalysis(null);
+                setDismissed(true);
+              }}
+              className="h-7 rounded-lg px-2.5 text-xs text-muted-foreground hover:text-foreground"
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={handleAdd}
+              disabled={!analysis || candidateAlreadySaved || adding || analyzing}
+              className="h-7 items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-primary hover:bg-primary/10 disabled:opacity-50"
+            >
+              <BookPlus className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{adding ? t("vocab.patterns.adding") : t("vocab.patterns.add")}</span>
+            </Button>
+          </div>
         </div>
       )}
     </div>

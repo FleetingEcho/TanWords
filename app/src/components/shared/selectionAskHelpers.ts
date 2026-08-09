@@ -6,9 +6,15 @@ import { findSelectionOverlayHost } from "./selectionToolbarPosition";
  *  own messages, and the Chinese glosses in cards, have nothing to offer. */
 export const AI_MESSAGE_ATTR = "data-ai-message";
 
-/** Longer than this and it isn't a word or a sentence any more — probably a
- *  drag-select of half the page, where none of these actions make sense. */
-export const MAX_SELECTION = 320;
+/** Longer than this and the selection is a drag across the whole page rather
+ *  than something you're asking about. A couple of paragraphs is well within
+ *  what translate, ask and copy can handle, so the ceiling is generous; the
+ *  narrower limit below is the one that guards the sentence library. */
+export const MAX_SELECTION = 1200;
+
+/** Past this, a selection is no longer a sentence worth keeping as a pattern —
+ *  the library is for structures you'd reuse, not for stretches of article. */
+export const MAX_PATTERN = 320;
 /** How much surrounding text goes to the model as context. */
 export const CONTEXT_CHARS = 700;
 
@@ -42,6 +48,10 @@ export interface Anchor extends AskTarget {
    *  scrolls, which is what lets the card stay pinned to the sentence it's
    *  explaining instead of being dismissed the moment the page moves. */
   range: Range;
+  /** True when the selection was made by our own touch gestures rather than
+   *  the browser. Nothing is in `window.getSelection()` in that case, so the
+   *  highlight has to be painted by us. */
+  touch?: boolean;
 }
 
 /** "translate" is a straight rendering into Chinese; "explain" is the tutor
@@ -50,6 +60,32 @@ export interface Anchor extends AskTarget {
  *  rendered in this card instead so a lookup while reading doesn't take over
  *  the screen and lose your place. */
 export type AskMode = "explain" | "translate" | "deep";
+
+/** Everything the toolbar needs about a selected range, or null if that range
+ *  isn't something to offer actions on. Shared by the mouse path and the touch
+ *  path so both surfaces agree on what counts as a lookup. */
+export function anchorFromRange(range: Range, touch = false): Anchor | null {
+  const text = range.toString().trim();
+  // Two letters in a row is the cheapest test for "this is English" — it keeps
+  // the toolbar off Chinese UI copy, numbers and punctuation.
+  if (!text || text.length > MAX_SELECTION || !/[A-Za-z]{2}/.test(text)) return null;
+  const node = range.commonAncestorContainer;
+  const el = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
+  if (!el || el.closest(IGNORED)) return null;
+  const rect = range.getBoundingClientRect();
+  const block = el.closest("p, li, blockquote, h1, h2, h3, td") ?? el;
+  return {
+    text,
+    top: rect.top,
+    bottom: rect.bottom,
+    left: rect.left + rect.width / 2,
+    context: (block.textContent ?? "").slice(0, CONTEXT_CHARS),
+    range: range.cloneRange(),
+    source: sourceFor(el),
+    inChat: !!el.closest(`[${AI_MESSAGE_ATTR}]`),
+    touch,
+  };
+}
 
 export function renderSelectionOverlay(anchor: Anchor, content: React.ReactNode) {
   const host = findSelectionOverlayHost(anchor.range);

@@ -180,7 +180,11 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
     // overshoot, since the feeds tab bar above and the player bar below both
     // eat into the viewport, leaving the panel's bottom unreachable.
     <div className="flex-1 min-h-0 flex">
-      <div ref={articleScrollRef} className="min-w-0 flex-1 overflow-y-auto">
+      <div
+        ref={articleScrollRef}
+        className="min-w-0 flex-1 overflow-y-auto"
+        style={{ scrollbarGutter: "stable" }}
+      >
       <div className="px-6 py-10">
 
         {toolbarSlot && createPortal(
@@ -197,30 +201,30 @@ export function ArticleReader({ url, domain, onOpenExternal, audio, hnItemId, to
             html={article.content_html}
             fallbackText={article.text_content}
             fontSize={FONT_STEPS[fontStep]}
+            headerControls={
+              <div className="flex h-7 shrink-0 items-center justify-end gap-1">
+                <Button
+                  variant="ghost"
+                  onClick={() => setFontStep((s) => Math.max(0, s - 1))}
+                  disabled={fontStep === 0}
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md p-0 text-xs font-bold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30"
+                  title={t("reader.fontSmaller")}
+                >
+                  A-
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => setFontStep((s) => Math.min(FONT_STEPS.length - 1, s + 1))}
+                  disabled={fontStep === FONT_STEPS.length - 1}
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md p-0 text-sm font-bold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30"
+                  title={t("reader.fontLarger")}
+                >
+                  A+
+                </Button>
+              </div>
+            }
             header={
               <>
-                {/* Font size control */}
-                <div className="flex items-center justify-end gap-1 mb-6 -mt-2">
-                  <Button
-                    variant="ghost"
-                    onClick={() => setFontStep((s) => Math.max(0, s - 1))}
-                    disabled={fontStep === 0}
-                    className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 transition-colors text-xs font-bold"
-                    title={t("reader.fontSmaller")}
-                  >
-                    A-
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    onClick={() => setFontStep((s) => Math.min(FONT_STEPS.length - 1, s + 1))}
-                    disabled={fontStep === FONT_STEPS.length - 1}
-                    className="w-7 h-7 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 transition-colors text-sm font-bold"
-                    title={t("reader.fontLarger")}
-                  >
-                    A+
-                  </Button>
-                </div>
-
                 <h1 className="text-[1.9rem] font-bold leading-tight text-foreground">{article.title}</h1>
                 {(article.byline || article.site_name) && (
                   <p className="text-xs text-muted-foreground mt-3">

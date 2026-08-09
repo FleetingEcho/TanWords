@@ -1,7 +1,6 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useLayoutEffect } from "react";
 import { Toaster, toast } from "sonner";
 import { MainLayout } from "@/components/Layout/Sidebar";
-import { SelectionAsk } from "@/components/shared/SelectionAsk";
 import { AppBackground } from "@/components/Layout/AppBackground";
 import { AuthGate } from "@/components/Layout/AuthGate";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -58,12 +57,27 @@ const ToolsModal = React.lazy(() =>
   import("@/components/ui/ToolsModal").then((m) => ({ default: m.ToolsModal })));
 const PodcastPlayerBar = React.lazy(() =>
   import("@/components/ui/PodcastPlayerBar").then((m) => ({ default: m.PodcastPlayerBar })));
+const SelectionAsk = React.lazy(() =>
+  import("@/components/shared/SelectionAsk").then((m) => ({ default: m.SelectionAsk })));
 
 const PageFallback = () => (
   <div className="h-full flex items-center justify-center">
     <div className="w-8 h-8 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
   </div>
 );
+
+/** Mounted only inside a fully committed startup destination. The splash reads
+ * both the durable dataset flag and this event, so it cannot miss readiness if
+ * this layout effect runs before its passive listener is attached. Keeping the
+ * signal inside Suspense means a lazy route's loading spinner is never mistaken
+ * for the real first screen. */
+function StartupReadySignal() {
+  useLayoutEffect(() => {
+    document.documentElement.dataset.tanwordsShellReady = "1";
+    window.dispatchEvent(new CustomEvent("tanwords:shell-ready"));
+  }, []);
+  return null;
+}
 
 type AuthState = "checking" | "ready" | "login";
 
@@ -80,6 +94,21 @@ function App() {
 
   const [authState, setAuthState] = React.useState<AuthState>(isWebHost ? "checking" : "ready");
   const [wordCount, setWordCount] = React.useState(0);
+  const [selectionToolsReady, setSelectionToolsReady] = React.useState(false);
+
+  // Selection/Ask pulls in gesture handling, AI actions and its answer panel,
+  // but renders nothing until the user selects text. Keep it out of the first
+  // parse/commit and load it during the first idle slice, normally while the
+  // splash is still covering startup. It has no layout box, so mounting later
+  // cannot move the visible page.
+  useEffect(() => {
+    const idle = window.requestIdleCallback?.(() => setSelectionToolsReady(true), { timeout: 1500 })
+      ?? window.setTimeout(() => setSelectionToolsReady(true), 750);
+    return () => {
+      if (window.cancelIdleCallback && typeof idle !== "number") window.cancelIdleCallback(idle);
+      else window.clearTimeout(idle as number);
+    };
+  }, []);
 
   if (hostCapabilities.mcp) useMcpSync();
   if (hostCapabilities.tray) useTraySync();
@@ -253,6 +282,7 @@ function App() {
     return (
       <>
         <LockScreen />
+        <StartupReadySignal />
         <Toaster position="bottom-right" richColors closeButton />
       </>
     );
@@ -271,6 +301,7 @@ function App() {
       <>
         <AppBackground />
         <AuthGate />
+        <StartupReadySignal />
         <Toaster position="bottom-right" richColors closeButton />
       </>
     );
@@ -317,6 +348,7 @@ function App() {
           holding the previous page mounted while the next chunk loads. */}
       <React.Suspense key={page} fallback={<PageFallback />}>
         {renderPage()}
+        <StartupReadySignal />
       </React.Suspense>
     </MainLayout>
     {wordModalWord && (
@@ -324,7 +356,11 @@ function App() {
         <WordDetailModal />
       </React.Suspense>
     )}
-    <SelectionAsk />
+    {selectionToolsReady && (
+      <React.Suspense fallback={null}>
+        <SelectionAsk />
+      </React.Suspense>
+    )}
     {toolsModalOpen && (
       <React.Suspense fallback={null}>
         <ToolsModal />

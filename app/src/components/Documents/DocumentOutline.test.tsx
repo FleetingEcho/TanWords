@@ -74,7 +74,8 @@ describe("DocumentOutline", () => {
     expect(screen.getByText("Details")).toBeTruthy();
     fireEvent.click(screen.getByText("Details"));
     expect(setTextCursorPosition).toHaveBeenCalledWith("details", "start");
-    expect(screen.getByText("Details").getAttribute("aria-current")).toBe("location");
+    expect(screen.getByText("Details").closest("button")?.getAttribute("aria-current")).toBe("location");
+    expect(screen.getByText("II")).toBeTruthy();
   });
 
   it("smoothly scrolls the explicit RSS viewport when an outline item is clicked", async () => {
@@ -129,9 +130,9 @@ describe("DocumentOutline", () => {
     };
 
     render(<DocumentScrollOutline editor={editor} viewportRef={viewportRef} />);
-    await waitFor(() => expect(screen.getByText("First").getAttribute("aria-current")).toBe("location"));
+    await waitFor(() => expect(screen.getByText("First").closest("button")?.getAttribute("aria-current")).toBe("location"));
     viewport.scrollTop = 550;
     fireEvent.scroll(viewport);
-    await waitFor(() => expect(screen.getByText("Second").getAttribute("aria-current")).toBe("location"));
+    await waitFor(() => expect(screen.getByText("Second").closest("button")?.getAttribute("aria-current")).toBe("location"));
   });
 });

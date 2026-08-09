@@ -7,7 +7,7 @@ import { SpecimenBackdrop, WordmarkEntry } from "./authVisuals";
 /** The floor on how long the wordmark stays up. Long enough to read the gloss,
  *  short enough that it never feels like waiting — and a floor rather than a
  *  duration because the splash also has to outlast the backend. */
-const HOLD_MS = 900;
+const HOLD_MS = 500;
 
 /** Cap on waiting for the sidecar. Past this the splash leaves regardless: a
  *  backend that never came up should surface as the app's own error state, not
@@ -34,9 +34,10 @@ export function SplashScreen() {
   const t = useT();
   const [held, setHeld] = useState(false);
   const [backendReady, setBackendReady] = useState(false);
+  const [shellReady, setShellReady] = useState(false);
   const [done, setDone] = useState(false);
 
-  const leaving = held && backendReady;
+  const leaving = held && backendReady && shellReady;
 
   // Never gate the splash's *content* on a one-shot window event. The previous
   // implementation first rendered this full-screen background empty, then
@@ -48,18 +49,38 @@ export function SplashScreen() {
     return () => window.clearTimeout(timer);
   }, []);
 
+  // The backend handshake alone is not enough: the lock probe and the first
+  // lazy route may still be resolving underneath. Wait for App to confirm that
+  // the actual destination (lock screen, login, or page) has committed before
+  // fading this cover. The dataset closes the layout-effect/passive-effect race
+  // where the signal can be emitted before this listener attaches.
+  useEffect(() => {
+    const settle = () => setShellReady(true);
+    if (document.documentElement.dataset.tanwordsShellReady === "1") {
+      settle();
+      return;
+    }
+    window.addEventListener("tanwords:shell-ready", settle, { once: true });
+    return () => window.removeEventListener("tanwords:shell-ready", settle);
+  }, []);
+
   // Asked for, not listened for: with a local database the handshake lands in
   // under 20ms, long before this component could subscribe to an event about
   // it. `backendOrigin` resolves off the same preload invoke the rest of the
   // app uses, so a handshake that already happened resolves immediately.
   useEffect(() => {
+    const startedAt = performance.now();
     if (!isDesktopHost) {
       // No sidecar to wait for, and asking would block until sign-in.
       setBackendReady(true);
       return;
     }
     let cancelled = false;
-    const settle = () => { if (!cancelled) setBackendReady(true); };
+    const settle = () => {
+      if (cancelled) return;
+      console.log(`[startup] renderer-backend-ready +${Math.round(performance.now() - startedAt)}ms`);
+      setBackendReady(true);
+    };
     void backendOrigin().then(settle, settle);
     const cap = window.setTimeout(settle, BACKEND_WAIT_CAP_MS);
     return () => { cancelled = true; window.clearTimeout(cap); };
@@ -73,9 +94,13 @@ export function SplashScreen() {
       // Animations inside bubble up here too — the wordmark's entrance, the
       // rule's sweep — and any of them could land while `leaving` is true.
       // Only this element's own fade-out means the splash is finished.
-      onAnimationEnd={(event) => { if (leaving && event.target === event.currentTarget) setDone(true); }}
-      className={`${isDesktopHost ? "app-drag-region " : ""}fixed inset-0 z-300 overflow-hidden bg-background ${
-        leaving ? "animate-out fade-out duration-400" : "animate-in fade-in duration-200"
+      onAnimationEnd={(event) => {
+        if (!leaving || event.target !== event.currentTarget) return;
+        console.log(`[startup] splash-dismissed +${Math.round(performance.now())}ms`);
+        setDone(true);
+      }}
+	      className={`${isDesktopHost ? "app-drag-region " : ""}fixed inset-0 z-300 overflow-hidden bg-background ${
+	        leaving ? "animate-out fade-out duration-250" : "animate-in fade-in duration-200"
       }`}
     >
       <SpecimenBackdrop />
@@ -83,7 +108,7 @@ export function SplashScreen() {
       <div className="relative mx-auto flex h-full w-full max-w-5xl items-center px-6 sm:px-10">
         <div
           className={`animate-in fade-in slide-in-from-bottom-3 duration-700 motion-reduce:animate-none ${
-            leaving ? "animate-out fade-out slide-out-to-bottom-2 duration-400" : ""
+	            leaving ? "animate-out fade-out slide-out-to-bottom-2 duration-250" : ""
           }`}
         >
           <WordmarkEntry gloss={t("auth.gloss")} />

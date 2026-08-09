@@ -31,6 +31,18 @@
   padding-inline: 1rem;
   padding-bottom: 1.5rem;
 }
+
+/* Keep font controls on a fixed measure. The article column uses 68ch at the
+   selected reading size, so putting the controls inside it made their right
+   edge move every time that size changed. */
+.tanwords-editor-readonly .reader-article-controls {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 68ch;
+  margin-inline: auto;
+  padding: 0 1rem 1.5rem;
+  font-size: 17.5px;
+}
 .tanwords-editor-readonly .ProseMirror > * {
   padding-block: 0.25em;
 }

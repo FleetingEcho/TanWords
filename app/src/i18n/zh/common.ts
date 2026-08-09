@@ -52,6 +52,7 @@ export const common: Dict = {
     "sel.adding": "添加中…",
     "sel.added": "已添加「{word}」",
     "sel.inVocab": "已在词库",
+    "sel.copy": "复制",
     "sel.translate": "翻译",
     "sel.translating": "翻译中…",
     "scratch.open": "精读",

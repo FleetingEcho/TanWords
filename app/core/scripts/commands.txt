@@ -100,6 +100,7 @@ db::db_get_search_history
 db::db_clear_search_history
 db::db_switch_path
 db::db_get_startup_warning
+db::db_get_remembered_turso
 db::db_saved_profile_is_turso
 db::db_forget_saved_profile
 db::db_list_scenes

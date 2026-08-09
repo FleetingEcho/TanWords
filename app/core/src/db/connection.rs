@@ -186,6 +186,7 @@ pub async fn open(profile: &DbProfile, token: Option<&str>) -> Result<Db, String
             (db, DbCaps { export: true, switch_path: true, sync: false, writable: true })
         }
         DbProfile::Turso { path, url } => {
+            let replica_started = std::time::Instant::now();
             let token = token
                 .filter(|t| !t.trim().is_empty())
                 .ok_or_else(|| "Missing Turso auth token".to_string())?;
@@ -196,6 +197,7 @@ pub async fn open(profile: &DbProfile, token: Option<&str>) -> Result<Db, String
                 .sync_interval(SYNC_INTERVAL)
                 .build()
                 .await;
+            eprintln!("[startup] turso-replica-built +{}ms", replica_started.elapsed().as_millis());
 
             // `build()` contacts the primary, so being offline fails here, not
             // at the explicit sync below.
@@ -208,6 +210,7 @@ pub async fn open(profile: &DbProfile, token: Option<&str>) -> Result<Db, String
             };
 
             // Pull once before first use so a fresh replica isn't briefly empty.
+            let sync_started = std::time::Instant::now();
             if let Err(error) = db.sync().await {
                 if !has_replica {
                     // Nothing local to fall back on — failing here is far better
@@ -221,13 +224,16 @@ pub async fn open(profile: &DbProfile, token: Option<&str>) -> Result<Db, String
                 eprintln!("[tanwords] Turso sync failed ({error}); serving the local replica");
                 offline = true;
             }
+            eprintln!("[startup] turso-initial-sync +{}ms", sync_started.elapsed().as_millis());
             (db, DbCaps { export: true, switch_path: false, sync: true, writable: true })
         }
     };
 
+    let schema_started = std::time::Instant::now();
     let conn = database.connect().map_err(|e| e.to_string())?;
     apply_pragmas(&conn, profile.kind()).await;
     super::init_db(&conn).await.map_err(|e| format!("Failed to initialize database: {e}"))?;
+    eprintln!("[startup] database-schema-ready +{}ms", schema_started.elapsed().as_millis());
 
     Ok(Db {
         database: Arc::new(database),

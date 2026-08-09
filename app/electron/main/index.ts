@@ -5,7 +5,6 @@ import path from "node:path";
 import { registerAppProtocolHandler, rendererEntryUrl, APP_SCHEME } from "./protocol";
 import { SidecarSupervisor } from "./sidecar";
 import { isExternalUrlAllowed, registerIpcHandlers } from "./ipc";
-import { initUpdater } from "./updater";
 import { BrowserPanelManager } from "./browserPanel";
 import { TrayManager, trayIconPath } from "./tray";
 import { wireWindowDevTools } from "./devtools";
@@ -26,6 +25,11 @@ import { registerYouTubeEmbedIdentity } from "./youtubeEmbed";
 // userData dir and the sidecar's data dir. No packaged Electron build has
 // shipped yet, so nothing is orphaned by fixing it here.
 app.setName("tanwords");
+
+const startupStartedAt = Date.now();
+const startupMark = (stage: string) => {
+  console.log(`[startup] ${stage} +${Date.now() - startupStartedAt}ms`);
+};
 
 // Match electron-builder.yml's appId. Windows uses this identity to associate
 // the running window with the installed shortcut (including its icon) instead
@@ -159,6 +163,7 @@ function broadcastEvent(name: string, payload: unknown) {
 }
 
 function createWindow() {
+  startupMark("create-window");
   // A plain BrowserWindow is fine as the browser panel's host — its
   // `contentView` has taken child WebContentsViews since Electron 30,
   // no separate BaseWindow needed (see browserPanel.ts).
@@ -204,8 +209,20 @@ function createWindow() {
   // visible the whole time. What used to be dead air is now the launch screen.
   win.once("ready-to-show", () => {
     if (win.isDestroyed()) return;
+    startupMark("ready-to-show");
     win.show();
+    startupMark("window-shown");
+    // Native tray/menu construction is useful but irrelevant to the first
+    // frame. Deferring it keeps OS menu work out of the visible cold-start
+    // path; its state setters are safe before create() and are applied when the
+    // menu is built here.
+    setImmediate(() => {
+      tray.create(trayIconPath());
+      startupMark("tray-ready");
+    });
   });
+
+  win.webContents.once("did-finish-load", () => startupMark("renderer-loaded"));
 
   // A renderer that exits after ready-to-show leaves the native window alive
   // and indistinguishable from a slow startup: only backgroundColor remains.
@@ -359,7 +376,6 @@ if (gotLock) {
     browserPanel.setEventSink(broadcastEvent);
 
     tray.setEventSink(broadcastEvent);
-    tray.create(trayIconPath());
 
     // `window.tanwords.backend` resolves once this handshake resolves — the
     // preload just forwards this single invoke() call as-is, so a renderer
@@ -367,10 +383,22 @@ if (gotLock) {
     // (migration plan §8's "startup ordering inverts").
     ipcMain.handle("tanwords:backend", async () => sidecar.backendReady());
 
-    const updater = initUpdater(broadcastEvent, async () => {
-      quitting = true;
-      await sidecar.shutdown().catch(() => {});
-    });
+    // Loading electron-updater (or the custom macOS updater) is not needed to
+    // paint or use the app. The renderer's silent check already waits five
+    // seconds, so import the platform implementation only when that check (or a
+    // manual one) actually happens.
+    let updaterPromise: Promise<ReturnType<typeof import("./updater")["initUpdater"]>> | null = null;
+    const getUpdater = () => {
+      updaterPromise ??= import("./updater").then(({ initUpdater }) => initUpdater(broadcastEvent, async () => {
+        quitting = true;
+        await sidecar.shutdown().catch(() => {});
+      }));
+      return updaterPromise;
+    };
+    const updater = {
+      check: async () => (await getUpdater()).check(),
+      downloadAndInstall: async () => (await getUpdater()).downloadAndInstall(),
+    };
     registerIpcHandlers({
       getMainWindow: () => mainWindow,
       broadcastEvent,
@@ -380,6 +408,7 @@ if (gotLock) {
     });
 
     createWindow();
+    void sidecar.backendReady().then(() => startupMark("sidecar-ready"));
 
     app.on("activate", () => {
       // Close-means-hide leaves the window alive but hidden, so a macOS dock

@@ -5,6 +5,7 @@ import { useSettingsStore } from "@/store/settingsStore";
 import { DashboardWidgetGrid } from "./DashboardWidgetGrid";
 import { QuickActionsBar } from "./QuickActionsBar";
 import { UploadsCard } from "./UploadsCard";
+import { useNavStore } from "@/store/navStore";
 
 // ── Small pieces ────────────────────────────────────────────────────────────
 
@@ -15,9 +16,23 @@ import { UploadsCard } from "./UploadsCard";
  *  claiming four zeros and then snapped to the real numbers: not a load, but a
  *  wrong answer being corrected. A placeholder bar of the same height says
  *  "not known yet" and turns into the number without moving anything. */
-function StatTile({ value, label, accent }: { value: number | null; label: string; accent?: boolean }) {
+function StatTile({
+  value,
+  label,
+  accent,
+  onClick,
+}: {
+  value: number | null;
+  label: string;
+  accent?: boolean;
+  onClick: () => void;
+}) {
   return (
-    <div className="bg-card border border-border rounded-2xl px-5 py-4">
+    <button
+      type="button"
+      onClick={onClick}
+      className="group rounded-2xl border border-border bg-card px-5 py-4 text-left transition-[transform,border-color,background-color,box-shadow] hover:-translate-y-0.5 hover:border-primary/35 hover:bg-muted/20 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:translate-y-0"
+    >
       {value === null ? (
         <div className="h-[30px] flex items-center" aria-hidden>
           <div className="h-6 w-14 rounded-lg bg-muted animate-pulse" />
@@ -27,10 +42,10 @@ function StatTile({ value, label, accent }: { value: number | null; label: strin
           {value}
         </p>
       )}
-      <p className="text-[11px] font-medium text-muted-foreground mt-2 uppercase tracking-wider">
+      <p className="mt-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground transition-colors group-hover:text-foreground">
         {label}
       </p>
-    </div>
+    </button>
   );
 }
 
@@ -45,6 +60,8 @@ export function DashboardPage() {
   const dashboardBanner = useSettingsStore((s) => s.dashboardBanner);
   const bannerPosition = useSettingsStore((s) => s.dashboardBannerPosition);
   const nickname = useSettingsStore((s) => s.nickname);
+  const navigate = useNavStore((s) => s.navigate);
+  const openVocabularyPatterns = useNavStore((s) => s.openVocabularyPatterns);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   // getDashboardStats resolves null when the DB is unreachable ("not connected
   // yet" looks identical to "still loading" in `stats` alone). Without this
@@ -103,10 +120,10 @@ export function DashboardPage() {
       {/* Stat tiles: how much of each thing the app collects, not how
         * diligently — one tile per kind of thing you accumulate. */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatTile value={statsSettled ? stats?.word_count ?? 0 : null} label={t("dash.stat.words")} />
-        <StatTile value={statsSettled ? stats?.pattern_count ?? 0 : null} label={t("dash.stat.sentences")} accent />
-        <StatTile value={statsSettled ? stats?.chat_count ?? 0 : null} label={t("dash.stat.chats")} />
-        <StatTile value={statsSettled ? stats?.doc_count ?? 0 : null} label={t("dash.stat.docs")} />
+        <StatTile value={statsSettled ? stats?.word_count ?? 0 : null} label={t("dash.stat.words")} onClick={() => navigate("vocabulary")} />
+        <StatTile value={statsSettled ? stats?.pattern_count ?? 0 : null} label={t("dash.stat.sentences")} accent onClick={openVocabularyPatterns} />
+        <StatTile value={statsSettled ? stats?.chat_count ?? 0 : null} label={t("dash.stat.chats")} onClick={() => navigate("chat")} />
+        <StatTile value={statsSettled ? stats?.doc_count ?? 0 : null} label={t("dash.stat.docs")} onClick={() => navigate("documents")} />
       </div>
 
       {/* Navigation, not a "recent" anything — hence outside the grid below */}

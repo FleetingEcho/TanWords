@@ -3,6 +3,7 @@ import {
   findSelectionOverlayHost,
   positionSelectionToolbar,
 } from "./selectionToolbarPosition";
+import { anchorFromRange } from "./selectionAskHelpers";
 
 describe("positionSelectionToolbar", () => {
   it("places the toolbar on whole pixels without a transform", () => {
@@ -44,5 +45,36 @@ describe("findSelectionOverlayHost", () => {
 
     expect(findSelectionOverlayHost(range)).toBeNull();
     text.remove();
+  });
+});
+
+describe("anchorFromRange", () => {
+  // jsdom has no layout; the rect only feeds toolbar placement, tested above.
+  Range.prototype.getBoundingClientRect = () => new DOMRect(0, 0, 0, 0);
+
+  function selection(content: string): Range {
+    document.body.innerHTML = "";
+    const p = document.createElement("p");
+    p.textContent = content;
+    document.body.appendChild(p);
+    const range = document.createRange();
+    range.selectNodeContents(p.firstChild!);
+    return range;
+  }
+
+  it("offers actions on a multi-paragraph selection", () => {
+    // The old ceiling was 320, which quietly swallowed a two-paragraph drag —
+    // a perfectly reasonable thing to want translated.
+    const text = "One of the apps I run made the compromise difficult to ignore. ".repeat(6);
+    expect(text.length).toBeGreaterThan(320);
+    expect(anchorFromRange(selection(text))?.text).toBe(text.trim());
+  });
+
+  it("stays out of the way of a drag across the whole page", () => {
+    expect(anchorFromRange(selection("word ".repeat(400)))).toBeNull();
+  });
+
+  it("ignores a selection with no English in it", () => {
+    expect(anchorFromRange(selection("这一段全是中文，没有可查的词。"))).toBeNull();
   });
 });

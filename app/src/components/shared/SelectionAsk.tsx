@@ -1,14 +1,15 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
 import { positionSelectionToolbar } from "./selectionToolbarPosition";
 import {
-  AI_MESSAGE_ATTR, MAX_SELECTION, CONTEXT_CHARS, IGNORED,
-  Anchor, AskMode, renderSelectionOverlay, reposition, sourceFor,
+  AI_MESSAGE_ATTR,
+  Anchor, AskMode, anchorFromRange, renderSelectionOverlay, reposition,
 } from "./selectionAskHelpers";
 import { InlineAskPanel } from "./InlineAskPanel";
 import { SelectionToolbarButtons } from "./SelectionToolbarButtons";
 import { useSelectionActions } from "./useSelectionActions";
+import { useTouchSelection } from "./useTouchSelection";
 
 export { AI_MESSAGE_ATTR };
 
@@ -22,6 +23,11 @@ export { AI_MESSAGE_ATTR };
  * Rather than opting each surface in, it works everywhere except where a
  * selection means something else (form fields, its own panel) and only for
  * text that actually contains English words.
+ *
+ * On touch devices the selection itself is ours too (see `useTouchSelection`):
+ * the browser's own long-press selection summons an OS Copy/Translate bar that
+ * a page cannot suppress and that would sit on top of this toolbar, so native
+ * selection is switched off there and the range comes from our own gestures.
  *
  * "Ask" has two shapes. Normally the answer streams into a panel right under
  * the selection, so you keep your place. Inside an AI chat reply it instead
@@ -40,37 +46,24 @@ export function SelectionAsk() {
   );
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [toolbarSize, setToolbarSize] = useState({ width: 0, height: 0 });
+  const touch = useTouchSelection(enabled);
+
+  // Dismissing has to reach the touch layer too, or the gesture state and the
+  // toolbar disagree about whether anything is selected.
+  const clearTouch = touch.clear;
+  const dismiss = useCallback(() => { setAnchor(null); clearTouch(); }, [clearTouch]);
+
+  useEffect(() => {
+    if (!touch.active) return;
+    setAnchor(touch.range ? anchorFromRange(touch.range, true) : null);
+  }, [touch.active, touch.range]);
 
   useEffect(() => {
     if (!enabled) return;
     const readSelection = () => {
       const selection = window.getSelection();
-      const text = selection?.toString().trim() ?? "";
-      // Two letters in a row is the cheapest test for "this is English" —
-      // it keeps the toolbar off Chinese UI copy, numbers and punctuation.
-      if (!selection || selection.rangeCount === 0 || !text || text.length > MAX_SELECTION || !/[A-Za-z]{2}/.test(text)) {
-        setAnchor(null);
-        return;
-      }
-      const range = selection.getRangeAt(0);
-      const node = range.commonAncestorContainer;
-      const el = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
-      if (!el || el.closest(IGNORED)) {
-        setAnchor(null);
-        return;
-      }
-      const rect = range.getBoundingClientRect();
-      const block = el.closest("p, li, blockquote, h1, h2, h3, td") ?? el;
-      setAnchor({
-        text,
-        top: rect.top,
-        bottom: rect.bottom,
-        left: rect.left + rect.width / 2,
-        context: (block.textContent ?? "").slice(0, CONTEXT_CHARS),
-        range: range.cloneRange(),
-        source: sourceFor(el),
-        inChat: !!el.closest(`[${AI_MESSAGE_ATTR}]`),
-      });
+      const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+      setAnchor(range ? anchorFromRange(range) : null);
     };
 
     // Scrolling repositions both instead of closing them. The toolbar hides
@@ -83,12 +76,18 @@ export function SelectionAsk() {
       if (frame) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
+        let scrolledOutOfView = false;
         setAnchor((prev) => {
           if (!prev) return prev;
           const next = reposition(prev);
-          if (!next || next.bottom < 40 || next.top > window.innerHeight - 20) return null;
+          if (!next || next.bottom < 40 || next.top > window.innerHeight - 20) {
+            scrolledOutOfView = prev.touch === true;
+            return null;
+          }
           return next;
         });
+        // Outside the updater: the gesture layer is a separate piece of state.
+        if (scrolledOutOfView) clearTouch();
         setAsking((prev) => (prev ? { ...prev, anchor: reposition(prev.anchor) ?? prev.anchor } : prev));
       });
     };
@@ -97,17 +96,22 @@ export function SelectionAsk() {
       if (!window.getSelection()?.toString().trim()) setAnchor(null);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { setAnchor(null); setAsking(null); }
+      if (e.key === "Escape") { dismiss(); setAsking(null); }
     };
 
-    // Radix dialogs may stop mouse events before they bubble to document.
-    // Capture the completed selection before modal event isolation runs.
-    document.addEventListener("mouseup", readSelection, true);
+    // Where touch owns the selection there is nothing in `window.getSelection()`
+    // to read, and the synthetic mouse events a tap emits would only clear what
+    // the gesture just produced.
+    if (!touch.active) {
+      // Radix dialogs may stop mouse events before they bubble to document.
+      // Capture the completed selection before modal event isolation runs.
+      document.addEventListener("mouseup", readSelection, true);
+      document.addEventListener("selectionchange", onSelectionChange);
+    }
     // Capture phase, on window: scroll doesn't bubble, and the element that
     // actually scrolls differs per surface.
     window.addEventListener("scroll", onScroll, { capture: true, passive: true });
     window.addEventListener("resize", onScroll, { passive: true });
-    document.addEventListener("selectionchange", onSelectionChange);
     document.addEventListener("keydown", onKey);
     return () => {
       if (frame) cancelAnimationFrame(frame);
@@ -117,7 +121,7 @@ export function SelectionAsk() {
       document.removeEventListener("selectionchange", onSelectionChange);
       document.removeEventListener("keydown", onKey);
     };
-  }, [enabled]);
+  }, [enabled, touch.active, clearTouch, dismiss]);
 
   useLayoutEffect(() => {
     const toolbar = toolbarRef.current;
@@ -130,12 +134,16 @@ export function SelectionAsk() {
 
   if (!enabled) return null;
 
-  const toolbarPosition = anchor && toolbarSize.width > 0
+  // Mid-drag the toolbar would chase the finger across the paragraph; the
+  // painted highlight is feedback enough until the finger lifts.
+  const toolbarPosition = anchor && toolbarSize.width > 0 && !touch.dragging
     ? positionSelectionToolbar(anchor, toolbarSize, window.innerWidth)
     : null;
 
   return (
     <>
+      {anchor?.touch && renderSelectionOverlay(anchor, <SelectionHighlight range={anchor.range} />)}
+
       {anchor && renderSelectionOverlay(anchor, (
         <div
           ref={toolbarRef}
@@ -156,8 +164,8 @@ export function SelectionAsk() {
             addWord={() => void addWord()}
             // Dismiss on success only: a failed save leaves the toolbar up so
             // the sentence can be retried rather than silently lost.
-            savePattern={(sentence) => void savePattern(sentence).then((ok) => ok && setAnchor(null))}
-            setAnchor={setAnchor}
+            savePattern={(sentence) => void savePattern(sentence).then((ok) => ok && dismiss())}
+            dismiss={dismiss}
             setAsking={setAsking}
           />
         </div>
@@ -171,5 +179,24 @@ export function SelectionAsk() {
         />
       ))}
     </>
+  );
+}
+
+/** The selection highlight, for touch — with native selection switched off
+ *  there is no ::selection to paint it, so it's drawn from the range's own
+ *  client rects (one per line the selection spans). It re-derives on every
+ *  render, which the scroll handler already triggers, so it tracks the text. */
+function SelectionHighlight({ range }: { range: Range }) {
+  const rects = Array.from(range.getClientRects());
+  return (
+    <div className="pointer-events-none fixed inset-0 z-40" aria-hidden>
+      {rects.map((rect, i) => (
+        <div
+          key={i}
+          className="absolute rounded-[3px] bg-primary/30"
+          style={{ top: rect.top, left: rect.left, width: rect.width, height: rect.height }}
+        />
+      ))}
+    </div>
   );
 }
