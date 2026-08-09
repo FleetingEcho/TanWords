@@ -23,7 +23,9 @@ function formatTimeAgo(t: (key: string, vars?: Record<string, string | number>) 
 export function RecentlyReadWidget({ maxRows = DASHBOARD_BODY_ROWS }: { maxRows?: number }) {
   const t = useT();
   const navigate = useNavStore((s) => s.navigate);
-  const [items, setItems] = useState<RecentlyReadItem[]>([]);
+  // localStorage is synchronous, so use it for the first render instead of
+  // briefly painting an empty card and filling it from a passive effect.
+  const [items, setItems] = useState<RecentlyReadItem[]>(() => getRecentlyRead().slice(0, maxRows));
 
   useEffect(() => {
     setItems(getRecentlyRead().slice(0, maxRows));

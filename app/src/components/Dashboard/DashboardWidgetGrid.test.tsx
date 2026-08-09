@@ -37,4 +37,11 @@ describe("DashboardWidgetGrid", () => {
       expect(container.querySelectorAll(".animate-pulse").length).toBe(0);
     });
   });
+
+  it("reports readiness after every independently queried widget settles", async () => {
+    const onInitialDataSettled = vi.fn();
+    render(<DashboardWidgetGrid stats={null} onInitialDataSettled={onInitialDataSettled} />);
+
+    await waitFor(() => expect(onInitialDataSettled).toHaveBeenCalledOnce());
+  });
 });

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import type { DashboardStats } from "@/hooks/useDB";
 import { RssWidget } from "./RssWidget";
 import { LatestWordsWidget } from "./LatestWordsWidget";
@@ -30,19 +30,39 @@ import { ListenNextWidget } from "./ListenNextWidget";
  *  bento cannot express — size and position are part of the composition now,
  *  not a free ordering — and nothing had been able to write to it since the
  *  drag handles were removed. */
-export function DashboardWidgetGrid({ stats, statsFailed = false }: {
+type AsyncWidget = "patterns" | "rss" | "listen-next";
+
+export function DashboardWidgetGrid({ stats, statsFailed = false, onInitialDataSettled }: {
   stats: DashboardStats | null;
   /** True once the stats query settled with an error (e.g. no DB connected yet).
    *  The stats-fed cards then render their empty states instead of skeletons. */
   statsFailed?: boolean;
+  /** The Dashboard startup cover waits for every independently queried card. */
+  onInitialDataSettled?: () => void;
 }) {
   const recentWords = stats?.recent_words ?? (statsFailed ? [] : undefined);
   const recentDocs = stats?.recent_docs ?? (statsFailed ? [] : undefined);
+  const [settledWidgets, setSettledWidgets] = useState<Set<AsyncWidget>>(() => new Set());
+  const settleWidget = useCallback((widget: AsyncWidget) => {
+    setSettledWidgets((current) => {
+      if (current.has(widget)) return current;
+      const next = new Set(current);
+      next.add(widget);
+      return next;
+    });
+  }, []);
+  const settlePatterns = useCallback(() => settleWidget("patterns"), [settleWidget]);
+  const settleRss = useCallback(() => settleWidget("rss"), [settleWidget]);
+  const settleListenNext = useCallback(() => settleWidget("listen-next"), [settleWidget]);
+
+  useEffect(() => {
+    if (settledWidgets.size === 3) onInitialDataSettled?.();
+  }, [onInitialDataSettled, settledWidgets]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-2">
       <div className="lg:col-span-7">
-        <PatternsWidget maxRows={7} />
+        <PatternsWidget maxRows={7} onInitialDataSettled={settlePatterns} />
       </div>
       {/* flex-1 on each: the pair splits whatever height this cell is given,
         * which is what keeps their outer edges level with the hero's. */}
@@ -51,12 +71,12 @@ export function DashboardWidgetGrid({ stats, statsFailed = false }: {
           <LatestWordsWidget words={recentWords} maxRows={3} />
         </div>
         <div className="flex-1 min-h-0">
-          <ListenNextWidget maxRows={3} />
+          <ListenNextWidget maxRows={3} onInitialDataSettled={settleListenNext} />
         </div>
       </div>
 
       <div className="lg:col-span-5">
-        <RssWidget maxRows={4} />
+        <RssWidget maxRows={4} onInitialDataSettled={settleRss} />
       </div>
       <div className="lg:col-span-4">
         <RecentlyReadWidget maxRows={4} />

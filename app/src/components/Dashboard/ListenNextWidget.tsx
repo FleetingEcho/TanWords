@@ -29,7 +29,10 @@ function formatDuration(sec: number | null | undefined): string {
  *  a single click from the dashboard instead of a trip through Feeds. When
  *  something *is* loaded it pins to the top with its progress, so the card
  *  answers "where was I" and "what's next" in the same place. */
-export function ListenNextWidget({ maxRows = DASHBOARD_BODY_ROWS }: { maxRows?: number }) {
+export function ListenNextWidget({ maxRows = DASHBOARD_BODY_ROWS, onInitialDataSettled }: {
+  maxRows?: number;
+  onInitialDataSettled?: () => void;
+}) {
   const t = useT();
   const db = useDB();
   const navigate = useNavStore((s) => s.navigate);
@@ -45,16 +48,25 @@ export function ListenNextWidget({ maxRows = DASHBOARD_BODY_ROWS }: { maxRows?: 
 
   useEffect(() => {
     let alive = true;
-    (async () => {
-      const [feedList, entries] = await Promise.all([db.getRssFeeds(), db.getRssEntries(null, 120)]);
-      if (!alive) return;
-      setFeedsById(new Map(feedList.map((f) => [f.id, f])));
-      const withAudio = entries.filter((e) => e.audio_url);
-      const unheard = withAudio.filter((e) => !e.is_read);
-      setEpisodes((unheard.length ? unheard : withAudio).slice(0, maxRows));
+    void (async () => {
+      try {
+        const [feedList, entries] = await Promise.all([db.getRssFeeds(), db.getRssEntries(null, 120)]);
+        if (!alive) return;
+        setFeedsById(new Map(feedList.map((f) => [f.id, f])));
+        const withAudio = entries.filter((e) => e.audio_url);
+        const unheard = withAudio.filter((e) => !e.is_read);
+        setEpisodes((unheard.length ? unheard : withAudio).slice(0, maxRows));
+      } catch {
+        if (!alive) return;
+        setFeedsById(new Map());
+      } finally {
+        if (!alive) return;
+        setEpisodes((current) => current ?? []);
+        onInitialDataSettled?.();
+      }
     })();
     return () => { alive = false; };
-  }, [maxRows]);
+  }, [maxRows, onInitialDataSettled]);
 
   const playing = status === "playing";
   const active = track && status !== "idle";

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useT } from "@/hooks/useT";
 import { isDesktopHost } from "@/platform";
 import { backendOrigin } from "@/ipc/backend";
+import { isStartupReady, STARTUP_READY_EVENT } from "@/lib/startupReady";
 import { SpecimenBackdrop, WordmarkEntry } from "./authVisuals";
 
 /** The floor on how long the wordmark stays up. Long enough to read the gloss,
@@ -56,12 +57,12 @@ export function SplashScreen() {
   // where the signal can be emitted before this listener attaches.
   useEffect(() => {
     const settle = () => setShellReady(true);
-    if (document.documentElement.dataset.tanwordsShellReady === "1") {
+    if (isStartupReady()) {
       settle();
       return;
     }
-    window.addEventListener("tanwords:shell-ready", settle, { once: true });
-    return () => window.removeEventListener("tanwords:shell-ready", settle);
+    window.addEventListener(STARTUP_READY_EVENT, settle, { once: true });
+    return () => window.removeEventListener(STARTUP_READY_EVENT, settle);
   }, []);
 
   // Asked for, not listened for: with a local database the handshake lands in

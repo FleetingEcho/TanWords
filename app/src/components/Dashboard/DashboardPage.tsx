@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { useDB, DashboardStats } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
+import { markStartupReady } from "@/lib/startupReady";
 import { useSettingsStore } from "@/store/settingsStore";
 import { DashboardWidgetGrid } from "./DashboardWidgetGrid";
 import { QuickActionsBar } from "./QuickActionsBar";
@@ -60,6 +61,7 @@ export function DashboardPage() {
   const dashboardBanner = useSettingsStore((s) => s.dashboardBanner);
   const bannerPosition = useSettingsStore((s) => s.dashboardBannerPosition);
   const nickname = useSettingsStore((s) => s.nickname);
+  const settingsLoaded = useSettingsStore((s) => s.isLoaded);
   const navigate = useNavStore((s) => s.navigate);
   const openVocabularyPatterns = useNavStore((s) => s.openVocabularyPatterns);
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -68,15 +70,18 @@ export function DashboardPage() {
   // flag the stat tiles pulse and the recents cards keep their skeletons
   // running forever on a fresh install that has no database yet.
   const [statsSettled, setStatsSettled] = useState(false);
+  const [widgetsSettled, setWidgetsSettled] = useState(false);
+  const handleWidgetsSettled = useCallback(() => setWidgetsSettled(true), []);
 
   useEffect(() => {
     let alive = true;
+    const settle = (s: DashboardStats | null) => {
+      if (!alive) return;
+      setStats(s);
+      setStatsSettled(true);
+    };
     const load = () => {
-      db.getDashboardStats().then((s) => {
-        if (!alive) return;
-        setStats(s);
-        setStatsSettled(true);
-      });
+      void db.getDashboardStats().then(settle).catch(() => settle(null));
     };
     load();
     window.addEventListener("vocab-updated", load);
@@ -85,6 +90,15 @@ export function DashboardPage() {
       window.removeEventListener("vocab-updated", load);
     };
   }, []);
+
+  // The route chunk being mounted is not enough to reveal the app: on both a
+  // local database and Turso, the first stats query can still be opening and
+  // synchronizing the real database. Signal only after that result, the
+  // independently-loaded Dashboard widgets, and persisted settings have all
+  // committed, so Splash never exposes skeletons that suddenly turn into data.
+  useLayoutEffect(() => {
+    if (statsSettled && widgetsSettled && settingsLoaded) markStartupReady();
+  }, [settingsLoaded, statsSettled, widgetsSettled]);
 
   const hour = new Date().getHours();
   const baseGreeting =
@@ -134,7 +148,11 @@ export function DashboardPage() {
       <UploadsCard />
 
       {/* Recents — six cards, every one the same height (see DashboardCard) */}
-      <DashboardWidgetGrid stats={stats} statsFailed={statsSettled && !stats} />
+      <DashboardWidgetGrid
+        stats={stats}
+        statsFailed={statsSettled && !stats}
+        onInitialDataSettled={handleWidgetsSettled}
+      />
     </div>
   );
 }

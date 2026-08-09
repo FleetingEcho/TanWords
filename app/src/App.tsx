@@ -18,6 +18,7 @@ import { initProviders } from "@/lib/initProviders";
 import { invoke } from "@/ipc/backend";
 import { ENRICHED_SEED_WORDS, BASIC_SEED_WORDS } from "@/data/seedWords";
 import { LOCAL_DOCS_ROOT_KEY, localDocsRootExists } from "@/lib/localDocs";
+import { markStartupReady } from "@/lib/startupReady";
 import { isDesktopHost, isWebHost, hostCapabilities } from "@/platform";
 import * as auth from "@/platform/auth";
 
@@ -73,8 +74,7 @@ const PageFallback = () => (
  * for the real first screen. */
 function StartupReadySignal() {
   useLayoutEffect(() => {
-    document.documentElement.dataset.tanwordsShellReady = "1";
-    window.dispatchEvent(new CustomEvent("tanwords:shell-ready"));
+    markStartupReady();
   }, []);
   return null;
 }
@@ -324,6 +324,11 @@ function App() {
 
   const page = currentPage();
   const wordId = currentWordId();
+  // Dashboard owns startup readiness because its first useful paint depends on
+  // a real DB query (including Turso initialization/sync when configured). Web
+  // falls back to Dashboard for desktop-only routes, so those must wait too.
+  const dashboardOwnsStartupReadiness = page === "dashboard"
+    || (!isDesktopHost && (page === "music" || page === "browser"));
 
   const renderPage = () => {
     switch (page) {
@@ -363,7 +368,7 @@ function App() {
           holding the previous page mounted while the next chunk loads. */}
       <React.Suspense key={page} fallback={<PageFallback />}>
         {renderPage()}
-        <StartupReadySignal />
+        {!dashboardOwnsStartupReadiness && <StartupReadySignal />}
       </React.Suspense>
     </MainLayout>
     {wordModalWord && (

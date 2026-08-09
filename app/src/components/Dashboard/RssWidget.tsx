@@ -9,7 +9,10 @@ import { DashboardCard, DashboardRow, DashboardSkeleton, DashboardFill, DASHBOAR
 
 /** Dashboard card: feed subscriptions at a glance — source/unread totals and
  * the latest unread entries — with the Feeds page as its click-through. */
-export function RssWidget({ maxRows = DASHBOARD_BODY_ROWS }: { maxRows?: number }) {
+export function RssWidget({ maxRows = DASHBOARD_BODY_ROWS, onInitialDataSettled }: {
+  maxRows?: number;
+  onInitialDataSettled?: () => void;
+}) {
   const t = useT();
   const db = useDB();
   const navigate = useNavStore((s) => s.navigate);
@@ -21,21 +24,31 @@ export function RssWidget({ maxRows = DASHBOARD_BODY_ROWS }: { maxRows?: number 
 
   useEffect(() => {
     let alive = true;
-    (async () => {
-      const [feedList, counts, entries] = await Promise.all([
-        db.getRssFeeds(),
-        db.getRssUnreadCounts(),
-        db.getRssEntries(null, 30),
-      ]);
-      if (!alive) return;
-      setFeeds(feedList);
-      setUnread(counts.reduce((sum, [, n]) => sum + n, 0));
-      const unreadEntries = entries.filter((e) => !e.is_read);
-      setLatest((unreadEntries.length ? unreadEntries : entries).slice(0, maxRows));
-      setLoaded(true);
+    void (async () => {
+      try {
+        const [feedList, counts, entries] = await Promise.all([
+          db.getRssFeeds(),
+          db.getRssUnreadCounts(),
+          db.getRssEntries(null, 30),
+        ]);
+        if (!alive) return;
+        setFeeds(feedList);
+        setUnread(counts.reduce((sum, [, n]) => sum + n, 0));
+        const unreadEntries = entries.filter((e) => !e.is_read);
+        setLatest((unreadEntries.length ? unreadEntries : entries).slice(0, maxRows));
+      } catch {
+        if (!alive) return;
+        setFeeds([]);
+        setUnread(0);
+        setLatest([]);
+      } finally {
+        if (!alive) return;
+        setLoaded(true);
+        onInitialDataSettled?.();
+      }
     })();
     return () => { alive = false; };
-  }, [maxRows]);
+  }, [maxRows, onInitialDataSettled]);
 
   const podcastCount = feeds.filter((f) => f.is_podcast).length;
   const articleCount = feeds.length - podcastCount;

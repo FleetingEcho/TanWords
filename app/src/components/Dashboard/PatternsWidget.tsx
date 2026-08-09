@@ -13,7 +13,10 @@ import { DashboardCard, DashboardRow, DashboardEmpty, DashboardSkeleton, Dashboa
  *  Click-through needs no new plumbing: `openVocabularySentence` navigates to
  *  Vocabulary and VocabularyPage switches itself to the patterns tab on a
  *  non-empty `initialSentenceId` (VocabularyPage.tsx:58). */
-export function PatternsWidget({ maxRows = DASHBOARD_BODY_ROWS }: { maxRows?: number }) {
+export function PatternsWidget({ maxRows = DASHBOARD_BODY_ROWS, onInitialDataSettled }: {
+  maxRows?: number;
+  onInitialDataSettled?: () => void;
+}) {
   const t = useT();
   const db = useDB();
   const openSentence = useNavStore((s) => s.openVocabularySentence);
@@ -22,13 +25,15 @@ export function PatternsWidget({ maxRows = DASHBOARD_BODY_ROWS }: { maxRows?: nu
 
   useEffect(() => {
     let alive = true;
-    db.listPatterns().then((all) => {
+    const settle = (all: PatternItem[]) => {
       if (!alive) return;
       const ranked = [...all].sort((a, b) => Number(b.starred) - Number(a.starred));
       setItems(ranked.slice(0, maxRows));
-    });
+      onInitialDataSettled?.();
+    };
+    void db.listPatterns().then(settle).catch(() => settle([]));
     return () => { alive = false; };
-  }, [maxRows]);
+  }, [maxRows, onInitialDataSettled]);
 
   return (
     <DashboardCard
