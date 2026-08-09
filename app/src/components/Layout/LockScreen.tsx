@@ -16,7 +16,7 @@ import { SpecimenBackdrop, UnderlineField, WordmarkEntry } from "./authVisuals";
  *  authVisuals), so locking and signing in are recognisably the same door.
  *  The specimen backdrop only shows when there is no wallpaper: over a photo
  *  it would be noise, and the photo is already doing that job. */
-export function LockScreen() {
+export function LockScreen({ pending = false }: { pending?: boolean }) {
   const t = useT();
   const verify = useAppLockStore((s) => s.verify);
   const setLocked = useAppLockStore((s) => s.setLocked);
@@ -121,7 +121,12 @@ export function LockScreen() {
                 label={t("lock.placeholder")}
                 type="password"
                 autoComplete="off"
-                autoFocus
+                key={pending ? "pending" : "ready"}
+                // Mobile browsers can resize/scroll the visual viewport when an
+                // autofocus lands while the startup cover is fading. That looks
+                // like a screen flash even though the two canvases cross-fade.
+                // Desktop keeps the keyboard-first unlock flow.
+                autoFocus={!pending && isDesktopHost}
                 value={password}
                 onChange={(value) => { setPassword(value); setError(false); }}
                 invalid={error}

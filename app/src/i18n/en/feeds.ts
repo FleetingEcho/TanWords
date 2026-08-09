@@ -27,6 +27,7 @@ export const feeds: Dict = {
   "feeds.noFeeds": "No RSS feeds yet. Add one to start reading.",
   "feeds.noArticles": "No articles",
   "feeds.all": "All",
+  "feeds.chooseSource": "Choose source",
   "feeds.more": "More",
   "feeds.searchFeeds": "Search feeds...",
   "feeds.noFeedResults": "No matching feeds",

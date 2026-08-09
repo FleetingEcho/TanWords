@@ -82,7 +82,8 @@ function StartupReadySignal() {
 type AuthState = "checking" | "ready" | "login";
 
 function App() {
-  const { loadFromDB } = useSettingsStore();
+  const loadFromDB = useSettingsStore((s) => s.loadFromDB);
+  const settingsLoaded = useSettingsStore((s) => s.isLoaded);
   const db = useDB();
   const t = useT();
   const { currentPage, currentWordId, navigate } = useNavStore();
@@ -280,9 +281,12 @@ function App() {
 
   if (lockEnabled === null) {
     return (
-      <div className="h-screen flex items-center justify-center bg-background">
-        <div className="w-8 h-8 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
-      </div>
+      <>
+        {/* Mount the destination underneath the one global startup cover. The
+          * same LockScreen survives when status resolves; SplashScreen alone
+          * owns the reveal animation, avoiding two overlapping fade timers. */}
+        <LockScreen pending />
+      </>
     );
   }
 
@@ -290,7 +294,10 @@ function App() {
     return (
       <>
         <LockScreen />
-        <StartupReadySignal />
+        {/* Lock wallpaper, blur and theme arrive through settings. Keep the
+          * startup cover until those values are committed too; otherwise the
+          * default specimen can paint for one frame before the wallpaper. */}
+        {settingsLoaded && <StartupReadySignal />}
         <Toaster position="bottom-right" richColors closeButton />
       </>
     );
@@ -298,7 +305,7 @@ function App() {
 
   if (authState === "checking") {
     return (
-      <div className="h-screen flex items-center justify-center">
+      <div className="app-viewport-height flex items-center justify-center">
         <div className="w-8 h-8 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
       </div>
     );

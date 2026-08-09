@@ -49,7 +49,16 @@ export function DocumentsPage() {
   const [localMounted, setLocalMounted] = useState(
     () => hostCapabilities.localDocs && localStorage.getItem(LAST_SOURCE_KEY) === "local",
   );
-  const [showMobileEditor, setShowMobileEditor] = useState(false);
+  // Establish restoration before the first paint. Waiting for the mount effect
+  // made compact layouts draw the document list/empty state for one frame,
+  // then replace it with a loader as the remembered document began opening.
+  const restoreLastDbDocOnMount = React.useRef(
+    source === "db"
+      && localStorage.getItem(SHOW_DOC_LIST_FLAG) !== "1"
+      && Number(localStorage.getItem(LAST_DB_ID_KEY)) > 0,
+  );
+  const [showMobileEditor, setShowMobileEditor] = useState(restoreLastDbDocOnMount.current);
+  const [restoringLastDoc, setRestoringLastDoc] = useState(restoreLastDbDocOnMount.current);
   const isNarrow = useIsNarrow();
   const [dbZenMode, setDbZenMode] = useState(false);
   const [dbSidebarOpen, setDbSidebarOpenState] = useState(() => localStorage.getItem("tanwords_doc_db_sidebar_collapsed") !== "1");
@@ -98,15 +107,22 @@ export function DocumentsPage() {
 
   // Reopen whichever database doc was open last session.
   useEffect(() => {
+    let cancelled = false;
+    const finishRestore = () => {
+      if (!cancelled) setRestoringLastDoc(false);
+    };
     const lastId = Number(localStorage.getItem(LAST_DB_ID_KEY));
     if (localStorage.getItem(SHOW_DOC_LIST_FLAG) === "1") {
       localStorage.removeItem(SHOW_DOC_LIST_FLAG);
       setSourceState("db");
       setShowMobileEditor(false);
       void loadDoc(-1);
-      return;
+      finishRestore();
+      return () => { cancelled = true; };
     }
-    if (lastId > 0) loadDoc(lastId);
+    if (lastId > 0) void loadDoc(lastId).finally(finishRestore);
+    else finishRestore();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot restore on mount only.
   }, []);
 
@@ -228,7 +244,7 @@ export function DocumentsPage() {
                   onUnlock={unlockDocument}
                   onRemoveProtection={removeLockedProtection}
                 />
-              ) : loading ? (
+              ) : loading || restoringLastDoc ? (
                 <div className="flex items-center justify-center h-full">
                   <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
                 </div>

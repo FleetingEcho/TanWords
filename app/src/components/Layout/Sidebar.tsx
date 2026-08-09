@@ -155,10 +155,10 @@ export function MainLayout({
   return (
     <div
       data-layout-mode={effectiveMode}
-      className={`flex h-screen overflow-hidden ${hasCustomAppBackground ? "" : "bg-background"}`}
+      className={`app-viewport-height flex overflow-hidden overscroll-none ${hasCustomAppBackground ? "" : "bg-background"}`}
     >
       <aside
-        className={`${compact ? "hidden" : "flex"} shrink-0 flex-col h-screen border-r border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar))] select-none transition-[width] duration-200 ${
+        className={`${compact ? "hidden" : "flex"} h-full shrink-0 flex-col border-r border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar))] select-none transition-[width] duration-200 ${
           collapsed ? "w-[60px]" : "w-[210px]"
         }`}
       >
@@ -227,8 +227,11 @@ export function MainLayout({
         className={`flex min-w-0 flex-1 flex-col overflow-hidden box-border transition-[padding-bottom] duration-200 ${
           compact
             ? podcastActive
-              ? "pb-[calc(8.5rem+env(safe-area-inset-bottom))]"
-              : "pb-[calc(4.5rem+env(safe-area-inset-bottom))]"
+              // 64px player + dock button + 5px breathing room on each side.
+              ? "pb-[calc(7.125rem+env(safe-area-inset-bottom))] sm:pb-[calc(8.125rem+env(safe-area-inset-bottom))]"
+              // The phone button is 40px; from sm upward it is 56px. Keep the
+              // reserved band to exactly button height + roughly 5px above/below.
+              : "pb-[calc(3.125rem+env(safe-area-inset-bottom))] sm:pb-[calc(4.125rem+env(safe-area-inset-bottom))]"
             : podcastActive
               ? "pb-16"
               : "pb-0"

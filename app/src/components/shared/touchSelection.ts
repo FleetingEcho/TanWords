@@ -1,14 +1,14 @@
 /**
  * Range math for taking selection over from the browser on touch devices.
  *
- * On a phone the native flow is unusable for us: a long press hands the text
- * to the OS, which paints its own Copy/Translate/Share bar over ours and gives
- * the page no way to suppress it. So on touch the app turns native selection
- * off entirely (`user-select: none`, see `[data-touch-select]` in base.css)
- * and builds the ranges itself from caret hit-testing — tap picks a word,
- * long-press-drag grows it into a phrase. Nothing is ever handed to
- * `window.getSelection()`, which is precisely why the OS bar never appears;
- * the highlight is painted by us instead.
+ * This is the custom-selection fallback used by non-Web touch hosts. Mobile
+ * websites deliberately keep native selection so their OS handles and
+ * Copy/Translate/Share actions remain available alongside our toolbar.
+ *
+ * When this fallback is enabled, the app turns native selection off entirely
+ * (`user-select: none`, see `[data-touch-select]` in base.css) and builds ranges
+ * from caret hit-testing. Nothing is handed to `window.getSelection()`, so the
+ * highlight is painted by us instead.
  */
 
 /** What counts as inside a word when growing a caret outwards: letters,

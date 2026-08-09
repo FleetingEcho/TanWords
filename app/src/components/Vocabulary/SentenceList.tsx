@@ -370,7 +370,7 @@ export function SentenceList({
       </div>
 
       {items.length > 0 && (
-        <div className="shrink-0 border-t border-border">
+        <div className="shrink-0 border-y border-border lg:border-b-0">
           <ListPaginator
             className="mx-auto w-full max-w-4xl"
             page={page}

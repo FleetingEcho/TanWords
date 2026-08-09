@@ -3,6 +3,13 @@
   html, body, #root, button, input, textarea, select { font-family: var(--app-font); }
   html, body, #root { overflow-x: hidden; }
   body { @apply bg-background text-foreground; }
+  /* `100vh` is the mobile browser's layout viewport, which can remain taller
+   * than the currently visible screen while the address/navigation bars are
+   * expanded. The dynamic viewport keeps the app shell and its fixed dock on
+   * the same bottom edge. */
+  .app-viewport-height {
+    height: 100dvh;
+  }
   .font-sans { font-family: var(--app-font); }
   .font-mono { font-family: var(--code-font); }
   .font-manuscript { font-family: var(--manuscript-font); }
@@ -115,7 +122,9 @@
   height: 0;
 }
 
-/* Touch selection takeover — set by useTouchSelection on coarse-pointer hosts.
+/* Optional touch selection takeover — set by useTouchSelection when its host
+ * enables the custom gesture fallback. Mobile Web never sets this attribute:
+ * it keeps the browser's native selection handles and OS action menu.
  * The OS Copy/Translate bar is summoned by the browser's own text selection
  * and cannot be suppressed from the page, so the only way to keep it off the
  * app's selection toolbar is to never let a native selection happen. The app

@@ -21,6 +21,24 @@ describe("positionSelectionToolbar", () => {
       800,
     )).toEqual({ top: 36, left: 8 });
   });
+
+  it("places a mobile toolbar below native selection when there is room", () => {
+    expect(positionSelectionToolbar(
+      { top: 100, bottom: 120, left: 160 },
+      { width: 200, height: 36 },
+      320,
+      { preferBelow: true, viewportHeight: 640 },
+    )).toEqual({ top: 128, left: 60 });
+  });
+
+  it("moves a mobile toolbar above selection near the viewport bottom", () => {
+    expect(positionSelectionToolbar(
+      { top: 590, bottom: 610, left: 160 },
+      { width: 200, height: 36 },
+      320,
+      { preferBelow: true, viewportHeight: 640 },
+    )).toEqual({ top: 546, left: 60 });
+  });
 });
 
 describe("findSelectionOverlayHost", () => {

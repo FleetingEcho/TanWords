@@ -14,17 +14,17 @@ import type { Extension } from "@codemirror/state";
  *  editor looking like a panel from a different program. */
 const PALETTE = {
   dark: {
-    heading: "#79B8FF",
-    quote: "#8B949E",
-    link: "#79B8FF",
-    code: "#9ECBFF",
-    keyword: "#F97583",
-    string: "#9ECBFF",
-    comment: "#6A737D",
-    number: "#79B8FF",
-    fn: "#B392F0",
-    variable: "#E1E4E8",
-    punctuation: "#8B949E",
+    heading: "var(--syntax-heading, #79B8FF)",
+    quote: "var(--syntax-quote, #8B949E)",
+    link: "var(--syntax-link, #79B8FF)",
+    code: "var(--syntax-code, #9ECBFF)",
+    keyword: "var(--syntax-keyword, #F97583)",
+    string: "var(--syntax-string, #9ECBFF)",
+    comment: "var(--syntax-comment, #6A737D)",
+    number: "var(--syntax-number, #79B8FF)",
+    fn: "var(--syntax-function, #B392F0)",
+    variable: "var(--syntax-variable, #E1E4E8)",
+    punctuation: "var(--syntax-punctuation, #8B949E)",
   },
   light: {
     heading: "#005CC5",
@@ -67,7 +67,7 @@ function highlightStyle(dark: boolean) {
     { tag: [tags.variableName, tags.propertyName, tags.attributeName], color: c.variable },
     { tag: [tags.typeName, tags.namespace], color: c.heading },
     { tag: [tags.operator, tags.punctuation, tags.separator, tags.bracket], color: c.punctuation },
-    { tag: tags.invalid, color: dark ? "#F97583" : "#D73A49" },
+    { tag: tags.invalid, color: dark ? "var(--syntax-invalid, #F97583)" : "#D73A49" },
   ]);
 }
 
@@ -91,7 +91,7 @@ const chromeSpec = {
     padding: "1.25rem 0",
   },
   ".cm-content": {
-    padding: "0 1.5rem",
+    padding: "0 var(--raw-markdown-content-inset, 1.5rem)",
     caretColor: "hsl(var(--foreground))",
     // Scroll past the end. Without it the last line sits welded to the bottom
     // edge of the window, which is where you spend most of your time writing.

@@ -23,6 +23,7 @@ import { SlashMenu } from "./ui/SlashMenu";
 import { SideMenu } from "./ui/SideMenu";
 import { TiptapToolbarExtras } from "./ui/ToolbarExtras";
 import type { SlashMenuSnapshot } from "./ui/slashSuggestion";
+import { useSettingsStore } from "@/store/settingsStore";
 
 export interface TiptapDocumentEditorProps {
   /** Initial content. Later changes are ignored — the editor owns the document
@@ -58,6 +59,7 @@ export function TiptapDocumentEditor({
   className,
 }: TiptapDocumentEditorProps) {
   const t = useT();
+  const appTheme = useSettingsStore((state) => state.theme);
   const [slash, setSlash] = useState<SlashMenuSnapshot | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
@@ -100,7 +102,7 @@ export function TiptapDocumentEditor({
 
   useEffect(() => {
     if (editor) refreshCodeBlockTheme(editor);
-  }, [editor, isDark]);
+  }, [editor, isDark, appTheme]);
 
   const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
     // Ctrl/Cmd+A inside the editor should select the document, not the page.

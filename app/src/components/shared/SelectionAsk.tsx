@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
+import { isWebHost } from "@/platform";
 import { positionSelectionToolbar } from "./selectionToolbarPosition";
 import {
   AI_MESSAGE_ATTR,
@@ -10,6 +11,7 @@ import { InlineAskPanel } from "./InlineAskPanel";
 import { SelectionToolbarButtons } from "./SelectionToolbarButtons";
 import { useSelectionActions } from "./useSelectionActions";
 import { useTouchSelection } from "./useTouchSelection";
+import { isTouchHost } from "./touchSelection";
 
 export { AI_MESSAGE_ATTR };
 
@@ -24,10 +26,10 @@ export { AI_MESSAGE_ATTR };
  * selection means something else (form fields, its own panel) and only for
  * text that actually contains English words.
  *
- * On touch devices the selection itself is ours too (see `useTouchSelection`):
- * the browser's own long-press selection summons an OS Copy/Translate bar that
- * a page cannot suppress and that would sit on top of this toolbar, so native
- * selection is switched off there and the range comes from our own gestures.
+ * Mobile Web keeps the browser's native long-press selection, handles and OS
+ * actions. Its `selectionchange` events also feed this toolbar, which is placed
+ * below the selected text so both sets of actions can coexist. The custom touch
+ * range remains available to embedded non-Web hosts that need it.
  *
  * "Ask" has two shapes. Normally the answer streams into a panel right under
  * the selection, so you keep your place. Inside an AI chat reply it instead
@@ -38,6 +40,7 @@ export { AI_MESSAGE_ATTR };
 export function SelectionAsk() {
   const t = useT();
   const enabled = useSettingsStore((s) => s.selectionActions);
+  const nativeTouchSelection = isWebHost && isTouchHost();
   const [anchor, setAnchor] = useState<Anchor | null>(null);
   const [asking, setAsking] = useState<{ anchor: Anchor; mode: AskMode } | null>(null);
   const { collected, adding, saving, addWord, savePattern } = useSelectionActions(
@@ -46,7 +49,10 @@ export function SelectionAsk() {
   );
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [toolbarSize, setToolbarSize] = useState({ width: 0, height: 0 });
-  const touch = useTouchSelection(enabled);
+  // A website should augment the browser selection, never replace it. In
+  // particular, do not install the hook's user-select/contextmenu takeover on
+  // mobile Safari or Chrome.
+  const touch = useTouchSelection(enabled && !isWebHost);
 
   // Dismissing has to reach the touch layer too, or the gesture state and the
   // toolbar disagree about whether anything is selected.
@@ -93,7 +99,15 @@ export function SelectionAsk() {
     };
 
     const onSelectionChange = () => {
-      if (!window.getSelection()?.toString().trim()) setAnchor(null);
+      const selection = window.getSelection();
+      if (!selection?.toString().trim()) {
+        setAnchor(null);
+      } else if (nativeTouchSelection) {
+        // Touch browsers do not reliably synthesize mouseup after the user
+        // finishes moving native selection handles. selectionchange is the
+        // authoritative signal, and reading it does not alter the OS selection.
+        readSelection();
+      }
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") { dismiss(); setAsking(null); }
@@ -121,7 +135,7 @@ export function SelectionAsk() {
       document.removeEventListener("selectionchange", onSelectionChange);
       document.removeEventListener("keydown", onKey);
     };
-  }, [enabled, touch.active, clearTouch, dismiss]);
+  }, [enabled, touch.active, clearTouch, dismiss, nativeTouchSelection]);
 
   useLayoutEffect(() => {
     const toolbar = toolbarRef.current;
@@ -137,7 +151,14 @@ export function SelectionAsk() {
   // Mid-drag the toolbar would chase the finger across the paragraph; the
   // painted highlight is feedback enough until the finger lifts.
   const toolbarPosition = anchor && toolbarSize.width > 0 && !touch.dragging
-    ? positionSelectionToolbar(anchor, toolbarSize, window.innerWidth)
+    ? positionSelectionToolbar(
+        anchor,
+        toolbarSize,
+        window.innerWidth,
+        nativeTouchSelection
+          ? { preferBelow: true, viewportHeight: window.innerHeight }
+          : undefined,
+      )
     : null;
 
   return (

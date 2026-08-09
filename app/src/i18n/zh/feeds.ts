@@ -27,6 +27,7 @@ export const feeds: Dict = {
   "feeds.noFeeds": "还没有订阅任何 RSS 源。添加一个开始阅读。",
   "feeds.noArticles": "暂无文章",
   "feeds.all": "全部",
+  "feeds.chooseSource": "选择订阅源",
   "feeds.more": "更多",
   "feeds.searchFeeds": "搜索订阅源...",
   "feeds.noFeedResults": "没有匹配的订阅源",

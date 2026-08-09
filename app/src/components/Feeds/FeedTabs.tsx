@@ -69,6 +69,7 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
   const totalUnread = [...unreadByFeed.values()].reduce((a, b) => a + b, 0);
   const translatingTitles = useTitleTranslateStore((s) => s.pending.size > 0);
   const [pendingDelete, setPendingDelete] = useState<RssFeed | null>(null);
+  const [sourceOpen, setSourceOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [recentOpen, setRecentOpen] = useState(false);
   const [bookmarkOpen, setBookmarkOpen] = useState(false);
@@ -86,6 +87,12 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
   const matchingFeeds = feeds.filter((f) =>
     !normalizedQuery || `${f.title} ${domainOf(f.url)}`.toLowerCase().includes(normalizedQuery)
   );
+  const selectedFeed = typeof selected === "number" ? feeds.find((f) => f.id === selected) : null;
+  const selectedLabel = selected === "all"
+    ? t("feeds.all")
+    : selected === "hackernews"
+      ? t("hn.tab")
+      : selectedFeed?.title || domainOf(selectedFeed?.url ?? "");
 
   const savePreferences = async (feed: RssFeed, category: "article" | "podcast" | null, pinned: boolean) => {
     setSavingId(feed.id);
@@ -112,10 +119,104 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
     // relative z-20: backdrop-blur-sm creates a stacking context, and without a
     // z-index the content bars below (e.g. HackerNewsSection's blurred toolbar)
     // paint over the More / Recently-read dropdowns.
-    <div className="relative z-20 flex shrink-0 items-center gap-3 border-b border-border bg-transparent backdrop-blur-xl px-4 py-2.5">
+    <div className="relative z-20 flex shrink-0 items-center gap-2 border-b border-border bg-transparent backdrop-blur-xl px-3 py-2.5 sm:px-4 lg:gap-3">
       <div className="min-w-0 flex-1 overflow-hidden">
+        {/* Compact layouts use one vertical source picker. Feed tabs are useful
+            with mouse-sized canvases, but on a phone they consume the toolbar
+            and make the primary navigation depend on horizontal swiping. */}
+        <div className="lg:hidden">
+          <Popover open={sourceOpen} onOpenChange={setSourceOpen}>
+            <PopoverTrigger asChild>
+              <button
+                className={`${pill(sourceOpen)} w-full max-w-56 justify-between`}
+                aria-label={t("feeds.chooseSource")}
+                aria-expanded={sourceOpen}
+              >
+                <span className="flex min-w-0 items-center gap-1.5">
+                  {selected === "hackernews" && (
+                    <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm bg-orange-500 text-[9px] font-bold leading-none text-white">Y</span>
+                  )}
+                  {selectedFeed?.is_podcast && <span className="shrink-0 text-[10px] leading-none">🎧</span>}
+                  <span className="truncate">{selectedLabel}</span>
+                  {selected === "all" && <UnreadBadge n={totalUnread} />}
+                  {selectedFeed && <UnreadBadge n={unreadByFeed.get(selectedFeed.id) ?? 0} />}
+                </span>
+                <span className="shrink-0 text-[10px] text-muted-foreground" aria-hidden>▾</span>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-[min(22rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border-border bg-card p-0 shadow-xl">
+              <div className="border-b border-border p-3">
+                <p className="mb-2 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  {t("feeds.chooseSource")}
+                </p>
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={t("feeds.searchFeeds")}
+                  className="h-8 w-full rounded-lg border border-input bg-background px-3 text-xs outline-hidden focus:ring-1 focus:ring-ring"
+                />
+              </div>
+              <div className="max-h-[min(65dvh,28rem)] overflow-y-auto p-2">
+                <button
+                  onClick={() => { onSelect("all"); setSourceOpen(false); }}
+                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs ${selected === "all" ? "bg-primary/10 font-semibold text-primary" : "hover:bg-muted"}`}
+                >
+                  <span>{t("feeds.all")}</span>
+                  <UnreadBadge n={totalUnread} />
+                </button>
+                <button
+                  onClick={() => { onSelect("hackernews"); setSourceOpen(false); }}
+                  className={`mt-0.5 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs ${selected === "hackernews" ? "bg-primary/10 font-semibold text-primary" : "hover:bg-muted"}`}
+                >
+                  <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm bg-orange-500 text-[9px] font-bold leading-none text-white">Y</span>
+                  <span>{t("hn.tab")}</span>
+                </button>
+
+                {(["article", "podcast"] as const).map((category) => {
+                  const group = matchingFeeds.filter((f) => f.category === category);
+                  if (group.length === 0) return null;
+                  return (
+                    <section key={category} className="mt-2 border-t border-border pt-2">
+                      <div className="flex items-center justify-between px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        <span>{t(category === "article" ? "feeds.section.articles" : "feeds.section.podcasts")}</span>
+                        <span>{group.length}</span>
+                      </div>
+                      {group.map((f) => (
+                        <div key={f.id} className={`group flex items-center gap-1 rounded-lg px-1 py-0.5 ${selected === f.id ? "bg-primary/10" : "hover:bg-muted"}`}>
+                          <button
+                            onClick={() => { onSelect(f.id); setSourceOpen(false); }}
+                            className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left"
+                          >
+                            {f.is_podcast && <span className="shrink-0 text-[10px] leading-none">🎧</span>}
+                            <span className={`truncate text-xs ${selected === f.id ? "font-semibold text-primary" : "font-medium"}`}>{f.title || domainOf(f.url)}</span>
+                            {failedFeeds.has(f.id) && <span className="shrink-0 text-xs text-amber-500">⚠</span>}
+                            <UnreadBadge n={unreadByFeed.get(f.id) ?? 0} />
+                          </button>
+                          <button disabled={savingId === f.id} onClick={() => savePreferences(f, f.category_override, !f.is_pinned)} title={t(f.is_pinned ? "feeds.unpin" : "feeds.pin")} className={`h-7 w-7 shrink-0 rounded-md text-sm hover:bg-background ${f.is_pinned ? "text-amber-500" : "text-muted-foreground"}`}>
+                            {f.is_pinned ? "★" : "☆"}
+                          </button>
+                          <button
+                            onClick={() => { setPendingDelete(f); setSourceOpen(false); }}
+                            title={t("feeds.deleteFeed")}
+                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
+                          >
+                            <CloseIcon className="h-2.5 w-2.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </section>
+                  );
+                })}
+                {normalizedQuery && matchingFeeds.length === 0 && (
+                  <p className="px-2 py-6 text-center text-xs text-muted-foreground">{t("feeds.noFeedResults")}</p>
+                )}
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
+
         <div
-          className="rss-tabs-scroll -mb-3 flex items-center gap-1.5 overflow-x-auto pb-3"
+          className="rss-tabs-scroll -mb-3 hidden items-center gap-1.5 overflow-x-auto pb-3 lg:flex"
           onWheel={scrollTabsHorizontally}
         >
         <button onClick={() => onSelect("all")} className={`${pill(selected === "all")} shrink-0`}>
@@ -167,6 +268,7 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
         * More / + Add feed rendered with their tops and bottoms shaved off. */}
       <div className="rss-tabs-scroll -mb-1 flex max-w-[min(70vw,480px)] shrink-0 items-center gap-2 overflow-x-auto pb-1">
         {feeds.length > 0 && (
+          <div className="hidden lg:block">
           <Popover open={moreOpen} onOpenChange={setMoreOpen}>
             <PopoverTrigger asChild>
               <button className={pill(moreOpen)} aria-expanded={moreOpen}>
@@ -209,6 +311,7 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
                 </div>
             </PopoverContent>
           </Popover>
+          </div>
         )}
         <Popover open={bookmarkOpen} onOpenChange={setBookmarkOpen}>
           <PopoverTrigger asChild>

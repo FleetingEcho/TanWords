@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
+    <meta name="theme-color" content="#f5f7f9" />
     <script>
       // Apply the last-known theme synchronously, before first paint — avoids
       // a flash of the wrong theme while the real setting loads from the DB
@@ -20,16 +21,34 @@
           if (theme === "tokyo-night-day") document.documentElement.classList.add("theme-tokyo-night-day");
           if (theme === "tokyo-night-storm") document.documentElement.classList.add("theme-tokyo-night-storm");
           if (theme === "dim") document.documentElement.classList.add("theme-dim");
+          var canvases = {
+            "catppuccin-latte": "hsl(220 23% 95%)",
+            "catppuccin-mocha": "hsl(240 21% 15%)",
+            "dracula": "hsl(231 15% 18%)",
+            "tokyo-night": "hsl(235 19% 13%)",
+            "tokyo-night-day": "hsl(225 25% 96%)",
+            "tokyo-night-storm": "hsl(230 24% 19%)",
+            "dim": "hsl(210 34% 8%)"
+          };
+          var canvas = canvases[theme] || (isDark ? "hsl(222 16% 10%)" : "hsl(220 25% 97%)");
+          document.documentElement.style.backgroundColor = canvas;
+          document.documentElement.style.colorScheme = isDark ? "dark" : "light";
+          var themeMeta = document.querySelector('meta[name="theme-color"]');
+          if (themeMeta) themeMeta.setAttribute("content", canvas);
         } catch (e) {}
       })();
     </script>
+    <style>
+      /* Cover the interval before the stylesheet and React bundle execute. On
+         mobile this interval is paintable and otherwise defaults to white. */
+      html, body, #root { min-height: 100%; margin: 0; background: inherit; }
+    </style>
     <meta charset="UTF-8" />
     <!-- PWA-lite: installable to a phone home screen. Harmless in Electron,
          where the real window/tray icons are set by the shell instead. -->
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-    <meta name="theme-color" content="#f5f7f9" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />

@@ -26,6 +26,24 @@
   }
 }
 
+/* The app's compact shell covers phones and tablets through 1023px. It has no
+   sidebar, so centring a 960px editor measure and reserving a 2.75rem desktop
+   hover gutter wastes a conspicuous part of the useful width (especially at a
+   2x DPR). In compact mode the document column genuinely starts at the small
+   page inset; the slash menu still provides block insertion on touch. */
+@media (max-width: 1023px) {
+  .tanwords-tiptap:not(.tanwords-editor-compact) .ProseMirror[contenteditable="true"] {
+    max-width: none;
+    margin-inline: 0;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .tanwords-tiptap [data-drag-handle-wrapper] {
+    display: none !important;
+  }
+}
+
 /* Room to scroll the last line clear of the bottom edge. An editing
    affordance only — keyed on contenteditable so read-only surfaces (the
    reader, word notes) do not end in a screen of blank space. */

@@ -30,6 +30,28 @@ function stylesheets(): { name: string; css: string }[] {
 
 const readerCss = readFileSync(join(STYLES_DIR, "reader-content.css"), "utf8");
 const tiptapCss = readFileSync(join(STYLES_DIR, "tiptap-editor.css"), "utf8");
+const rawMarkdownCss = readFileSync(join(STYLES_DIR, "raw-markdown-editor.css"), "utf8");
+const themeCss = readFileSync(join(STYLES_DIR, "theme-vars.css"), "utf8");
+
+describe("Tokyo Night palette", () => {
+  const tokyoNight = themeCss.slice(
+    themeCss.indexOf(".theme-tokyo-night {"),
+    themeCss.indexOf("/* Tokyo Night Day */"),
+  );
+
+  it("keeps the canonical layered canvas and blue accent", () => {
+    expect(tokyoNight).toContain("--background: 235 19% 13%");
+    expect(tokyoNight).toContain("--card: 229 26% 16%");
+    expect(tokyoNight).toContain("--sidebar: 240 15% 10%");
+    expect(tokyoNight).toContain("--primary: 221 89% 72%");
+  });
+
+  it("defines Tokyo Night syntax colours for the raw editor", () => {
+    expect(tokyoNight).toContain("--syntax-keyword: #bb9af7");
+    expect(tokyoNight).toContain("--syntax-string: #9ece6a");
+    expect(tokyoNight).toContain("--syntax-comment: #565f89");
+  });
+});
 
 describe("no styles target the removed editor", () => {
   it.each(stylesheets())("$name has no .bn-* selectors", ({ css }) => {
@@ -74,5 +96,38 @@ describe("the scroll-past-the-end gutter is editing-only", () => {
   it("does not put 40vh in the base padding", () => {
     const base = editor.slice(0, editor.indexOf('[contenteditable="true"]'));
     expect(base).not.toContain("40vh");
+  });
+});
+
+describe("the document editor uses the compact shell width", () => {
+  const compact = tiptapCss.slice(tiptapCss.indexOf("@media (max-width: 1023px)"));
+
+  it("reduces editable document padding without changing read-only articles", () => {
+    expect(compact).toContain('.ProseMirror[contenteditable="true"]');
+    expect(compact).toContain("max-width: none");
+    expect(compact).toContain("margin-inline: 0");
+    expect(compact).toContain("padding-left: 1rem");
+    expect(compact).toContain("padding-right: 1rem");
+  });
+
+  it("hides the desktop hover gutter throughout compact mode", () => {
+    expect(compact).toContain("[data-drag-handle-wrapper]");
+    expect(compact).toContain("display: none !important");
+  });
+});
+
+describe("the raw Markdown editor uses the compact shell width", () => {
+  const compact = rawMarkdownCss.slice(rawMarkdownCss.indexOf("@media (max-width: 1023px)"));
+
+  it("removes both independent centring layers", () => {
+    expect(compact).toContain(".raw-markdown-editor-frame");
+    expect(compact).toContain(".raw-markdown-editor-measure");
+    expect(compact).toContain("max-width: none");
+    expect(compact).toContain("margin-inline: 0");
+  });
+
+  it("uses small outer and CodeMirror content insets", () => {
+    expect(compact).toContain("padding-inline: 1rem");
+    expect(compact).toContain("--raw-markdown-content-inset: 0.5rem");
   });
 });

@@ -361,7 +361,10 @@ export function WordListPanel({
       </div>
 
       {words.length > 0 && (
-        <div className="shrink-0 border-t border-border">
+        // Compact layouts reserve a band below this for the floating nav dock.
+        // Closing the paginator with a bottom rule makes that intentional dock
+        // space read as a separate layer instead of an oversized list footer.
+        <div className="shrink-0 border-y border-border lg:border-b-0">
           <ListPaginator
             className={measure}
             page={page}

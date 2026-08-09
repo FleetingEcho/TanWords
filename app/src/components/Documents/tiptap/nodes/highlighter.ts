@@ -92,6 +92,7 @@ const createHighlighterCore = createBundledHighlighter({
   themes: {
     "github-dark": () => import("@shikijs/themes/github-dark"),
     "github-light": () => import("@shikijs/themes/github-light"),
+    "tokyo-night": () => import("@shikijs/themes/tokyo-night"),
   },
   engine: () => createJavaScriptRegexEngine(),
 });
@@ -105,7 +106,7 @@ export function createHighlighter(): Promise<AppHighlighter> {
   // and `text` needs none. Asking for "text" here is a silent no-op — it never
   // appears in getLoadedLanguages().
   return createHighlighterCore({
-    themes: ["github-dark", "github-light"],
+    themes: ["github-dark", "github-light", "tokyo-night"],
     langs: [],
   });
 }

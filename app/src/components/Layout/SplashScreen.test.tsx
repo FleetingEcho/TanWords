@@ -32,6 +32,7 @@ describe("SplashScreen", () => {
 
     act(() => { window.dispatchEvent(new CustomEvent("tanwords:shell-ready")); });
     expect(container.firstElementChild?.className).toContain("fade-out");
+    expect(container.firstElementChild?.className).toContain("[animation-fill-mode:forwards]");
     vi.useRealTimers();
   });
 });

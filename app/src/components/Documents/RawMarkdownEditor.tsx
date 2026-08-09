@@ -103,9 +103,13 @@ export function RawMarkdownEditor({
   const [view, setView] = useState<EditorView | null>(null);
   const [focused, setFocused] = useState(false);
   const [wrap, setWrap] = useState(() => localStorage.getItem("tanwords_raw_markdown_wrap") !== "0");
-  const [showLineNumbers, setShowLineNumbers] = useState(
-    () => localStorage.getItem("tanwords_raw_markdown_lines") !== "0",
-  );
+  const [showLineNumbers, setShowLineNumbers] = useState(() => {
+    const saved = localStorage.getItem("tanwords_raw_markdown_lines");
+    if (saved !== null) return saved === "1";
+    // The gutter plus CodeMirror's content inset consumes much of a compact
+    // editor. Default it off there, while respecting any explicit user choice.
+    return !window.matchMedia?.("(max-width: 1023px)").matches;
+  });
   // Off by default: the document is Markdown source, and a spell checker
   // underlining every URL and fence marker is noise. It is a toggle rather than
   // a constant because the other 90% of the file is prose.
@@ -418,9 +422,9 @@ export function RawMarkdownEditor({
   };
 
   return (
-    <div className="raw-markdown-editor flex min-h-0 flex-1 flex-col px-6 pb-4 pt-2">
-      <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col overflow-hidden rounded-xl bg-background">
-        <div className="relative mx-auto flex min-h-0 w-full max-w-[960px] flex-1 overflow-hidden">
+    <div className="raw-markdown-editor flex min-h-0 flex-1 flex-col pb-4 pt-2">
+      <div className="raw-markdown-editor-frame flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-xl bg-background">
+        <div className="raw-markdown-editor-measure relative flex min-h-0 w-full flex-1 overflow-hidden">
           {/* Floats over the text, so it steps out of the way while you write
             * and comes back on hover or focus. Without this it covers the ends
             * of the first line whenever word wrap is off. */}

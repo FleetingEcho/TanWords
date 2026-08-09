@@ -26,14 +26,16 @@ Output: `deploy/tanwords-web-linux-amd64.tar.gz`.
 For the normal build, upload, restart, and verification flow, use the one-command deployer:
 
 ```bash
-./deploy/deploy-server.sh
+./deploy/build-and-deploy.sh
 ```
 
 It prompts for SSH authentication once and does not store the password. On the
 first deployment it generates any missing master, invite, and admin keys, saves
 them in the server's mode-0600 `.env`, and prints only the newly generated
 values after deployment succeeds. Existing keys are never changed or printed.
-Reuse an already-built archive with `./deploy/deploy-server.sh --skip-build`.
+Pass a custom SSH target as its only argument, for example
+`./deploy/build-and-deploy.sh deploy@example.com`. Reuse an already-built
+archive with `./deploy/deploy-server.sh --skip-build`.
 
 Although `Dockerfile.build` is multi-stage, its final image contains only the
 compiled server binary, CA certificates, and required runtime libraries. Bun,

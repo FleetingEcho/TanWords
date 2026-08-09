@@ -100,7 +100,13 @@ export function SplashScreen() {
         setDone(true);
       }}
 	      className={`${isDesktopHost ? "app-drag-region " : ""}fixed inset-0 z-300 overflow-hidden bg-background ${
-	        leaving ? "animate-out fade-out duration-250" : "animate-in fade-in duration-200"
+	        leaving
+              // tw-animate-css defaults exit animations to fill-mode:none.
+              // Without forwards, the fully transparent cover snaps back to
+              // opacity:1 for one frame before React processes setDone(true),
+              // producing the loading-screen flash after LockScreen is visible.
+              ? "animate-out fade-out duration-[450ms] ease-out [animation-fill-mode:forwards]"
+              : "animate-in fade-in duration-200"
       }`}
     >
       <SpecimenBackdrop />
@@ -108,7 +114,9 @@ export function SplashScreen() {
       <div className="relative mx-auto flex h-full w-full max-w-5xl items-center px-6 sm:px-10">
         <div
           className={`animate-in fade-in slide-in-from-bottom-3 duration-700 motion-reduce:animate-none ${
-	            leaving ? "animate-out fade-out slide-out-to-bottom-2 duration-250" : ""
+	            leaving
+                ? "animate-out fade-out slide-out-to-bottom-2 duration-[350ms] ease-out [animation-fill-mode:forwards]"
+                : ""
           }`}
         >
           <WordmarkEntry gloss={t("auth.gloss")} />

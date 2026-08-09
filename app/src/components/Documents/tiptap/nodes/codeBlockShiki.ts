@@ -30,8 +30,11 @@ import { createHighlighter } from "./highlighter";
  */
 async function createThemeAwareHighlighter() {
   const highlighter = await createHighlighter();
-  highlighter.getLoadedThemes = () =>
-    document.documentElement.classList.contains("dark") ? ["github-dark"] : ["github-light"];
+  highlighter.getLoadedThemes = () => {
+    const root = document.documentElement;
+    if (root.classList.contains("theme-tokyo-night")) return ["tokyo-night"];
+    return root.classList.contains("dark") ? ["github-dark"] : ["github-light"];
+  };
   return highlighter;
 }
 

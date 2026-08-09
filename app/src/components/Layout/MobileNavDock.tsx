@@ -98,7 +98,12 @@ export function MobileNavDock({
   // height first, and half a bubble past the bottom edge is still lost.
   const gaps = Math.max(items.length - 1, 1);
   const needed = (gaps * (BUBBLE + GAP) * 180) / (span * Math.PI);
-  const anchorBottom = raised ? 88 : 40; // matches the `bottom` style below
+  // Resting button size follows its `h-10 sm:h-14` classes. Centre the anchor
+  // so the button sits in its reserved band with ~5px above and below; the old
+  // fixed 40px anchor left a visibly oversized empty footer on phones.
+  const restingButtonSize = vw >= 640 ? 56 : 40;
+  const playerClearance = raised ? 64 : 0;
+  const anchorBottom = restingButtonSize / 2 + 5 + playerClearance;
   const maxByHeight = vh - anchorBottom - BUBBLE / 2 - 16;
   const maxByWidth = align === "right" ? vw - 40 - BUBBLE / 2 - 16 : vw / 2 - BUBBLE / 2 - 8;
   const radius = Math.max(112, Math.min(needed, maxByWidth, maxByHeight));
@@ -134,9 +139,7 @@ export function MobileNavDock({
       <div
         className={`fixed z-50 h-0 w-0 ${align === "right" ? "right-10" : "left-1/2"}`}
         style={{
-          bottom: raised
-            ? "calc(env(safe-area-inset-bottom) + 5.5rem)"
-            : "calc(env(safe-area-inset-bottom) + 2.5rem)",
+          bottom: `calc(env(safe-area-inset-bottom) + ${anchorBottom}px)`,
           transition: "bottom 200ms ease",
         }}
       >

@@ -7,3 +7,33 @@
 .raw-markdown-editor .cm-editor {
   height: 100%;
 }
+
+.raw-markdown-editor {
+  padding-inline: 1.5rem;
+}
+
+.raw-markdown-editor-frame {
+  max-width: 72rem;
+  margin-inline: auto;
+}
+
+.raw-markdown-editor-measure {
+  max-width: 960px;
+  margin-inline: auto;
+}
+
+/* Match the app's real compact shell breakpoint, not only phone portrait.
+   Raw Markdown is a separate CodeMirror surface, so the Tiptap document rules
+   cannot remove these centring layers for it. */
+@media (max-width: 1023px) {
+  .raw-markdown-editor {
+    padding-inline: 1rem;
+    --raw-markdown-content-inset: 0.5rem;
+  }
+
+  .raw-markdown-editor-frame,
+  .raw-markdown-editor-measure {
+    max-width: none;
+    margin-inline: 0;
+  }
+}
