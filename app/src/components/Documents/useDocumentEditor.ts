@@ -175,6 +175,16 @@ export function useDocumentEditor() {
     setRefreshKey((k) => k + 1);
   }, [db, doc]);
 
+  // Bumps refreshKey rather than patching the list in place: a brand-new tag
+  // also has to reach the filter's `allTags`, which only reloads on that key.
+  const handleTagsChange = useCallback(async (tags: string[]) => {
+    if (!doc) return;
+    const serialized = JSON.stringify(tags);
+    setDoc((prev) => (prev ? { ...prev, tags: serialized } : prev));
+    await db.updateDocument(doc.id, doc.title, doc.content, doc.content_text, serialized, doc.pinned, doc.word_count);
+    setRefreshKey((k) => k + 1);
+  }, [db, doc]);
+
   const handlePinToggle = useCallback(async () => {
     if (!doc) return;
     const newPinned = !doc.pinned;
@@ -193,7 +203,7 @@ export function useDocumentEditor() {
 
   return {
     activeId, doc, lockedId, saveStatus, refreshKey, loading,
-    loadDoc, handleNewDoc, handleNewDocIn, handleSave, markDirty, handleTitleChange, handlePinToggle,
+    loadDoc, handleNewDoc, handleNewDocIn, handleSave, markDirty, handleTitleChange, handleTagsChange, handlePinToggle,
     unlockDocument, removeLockedProtection,
     reset,
   };

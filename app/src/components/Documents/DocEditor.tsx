@@ -24,6 +24,7 @@ import { DocumentHistoryModal } from "./DocumentHistoryModal";
 import type { DocumentRevision } from "@/lib/documentRevisions";
 import { DocumentToolbarActions } from "./DocumentToolbarActions";
 import { DocumentChromeToggle } from "./DocumentChromeToggle";
+import { DocumentTagBar } from "./DocumentTagBar";
 import { DocumentUndoRedoControls } from "./DocumentUndoRedoControls";
 import { contentToBlocksOffThread } from "@/lib/documentWorkerClient";
 import { withTrailingEditorParagraph } from "./trailingEditorParagraph";
@@ -36,13 +37,14 @@ interface Props {
   onSave: (content: string, contentText: string, wordCount: number) => Promise<void>;
   onDirty: () => void;
   onTitleChange: (title: string) => void;
+  onTagsChange: (tags: string[]) => void;
   onPinToggle: () => void;
   saveStatus: SaveStatus;
   zenMode: boolean;
   onZenModeChange: (enabled: boolean) => void;
 }
 
-export function DocEditor({ doc, onSave, onDirty, onTitleChange, onPinToggle, saveStatus, zenMode, onZenModeChange }: Props) {
+export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, onPinToggle, saveStatus, zenMode, onZenModeChange }: Props) {
   const t = useT();
   const isDark = useIsDark();
   const documentFontSize = useSettingsStore((state) => state.documentFontSize);
@@ -116,6 +118,10 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onPinToggle, sa
               {zenMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </Button>
           </div>
+          {/* Metadata strip: the document's own tags, on the line under the
+            * title. Reaching the editor at all means the document is unlocked
+            * (LockedDocumentPanel stands in otherwise), so these are editable. */}
+          <DocumentTagBar tags={doc.tags} onChange={onTagsChange} />
         </div>
 
         <div className={`${chromeOpen ? "flex" : "hidden"} mt-3 min-w-0 items-center gap-2 rounded-xl border border-border/50 bg-muted/20 px-1.5 py-1 lg:flex`}>
