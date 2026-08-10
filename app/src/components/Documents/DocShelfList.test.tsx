@@ -5,6 +5,7 @@ import { DocShelfList } from "./DocShelfList";
 import type { DocumentListItem } from "@/hooks/useDB";
 import type { DocListState } from "./hooks/useDocList";
 import type { DocActionsState } from "./hooks/useDocActions";
+import type { DocListDensity } from "./docListDensity";
 
 vi.mock("@/hooks/useT", () => ({
   useT: () => (key: string) => key,
@@ -20,10 +21,11 @@ function documentItem(): DocumentListItem {
 }
 
 function renderShelf({
-  doc = documentItem(), search = "result", setShelfMenu = vi.fn(),
+  doc = documentItem(), search = "result", density = "comfortable", setShelfMenu = vi.fn(),
 }: {
   doc?: DocumentListItem;
   search?: string;
+  density?: DocListDensity;
   setShelfMenu?: (value: { x: number; y: number } | null) => void;
 } = {}) {
   const noop = vi.fn();
@@ -39,7 +41,7 @@ function renderShelf({
   const view = render(
     <DocShelfList
       list={list}
-      density="comfortable"
+      density={density}
       actions={actions}
       activeId={null}
       onSelect={noop}
@@ -82,5 +84,16 @@ describe("DocShelfList search highlights", () => {
     expect(marks).toHaveLength(1);
     expect(marks[0]).toHaveTextContent("mcpserver");
     expect(marks[0]).not.toHaveClass("rounded-sm");
+  });
+});
+
+describe("DocShelfList compact alignment", () => {
+  it("does not offset the status marker inside a vertically centered row", () => {
+    const doc = { ...documentItem(), title: "Pi config", status: "active" as const };
+    renderShelf({ doc, search: "", density: "compact" });
+
+    const statusMarker = screen.getByLabelText("doc.statusActive");
+    expect(statusMarker.parentElement).toHaveClass("items-center");
+    expect(statusMarker).not.toHaveClass("mt-0.5");
   });
 });

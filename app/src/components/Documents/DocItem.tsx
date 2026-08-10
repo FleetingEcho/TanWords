@@ -258,7 +258,7 @@ export const DocItem = React.memo(function DocItem({ doc, active, compact = fals
                 <span
                   title={t(statusLabelKey(doc.status))}
                   aria-label={t(statusLabelKey(doc.status))}
-                  className="mt-0.5 shrink-0"
+                  className={`${compact ? "" : "mt-0.5"} shrink-0`}
                 >
                   <StatusIcon status={doc.status} className="h-3 w-3" />
                 </span>
