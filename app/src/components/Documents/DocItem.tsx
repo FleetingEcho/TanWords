@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { parseDbTimestamp } from "@/lib/dbTime";
 import { tagHue } from "./tagColor";
-import { StatusIcon, statusLabelKey } from "./documentStatus";
+import { StatusIcon, statusColor, statusLabelKey } from "./documentStatus";
 import { Check, Copy, FileText, FileType2, FileOutput, LockKeyhole, LockOpen, MapPin, MoreHorizontal, Pencil, ShieldCheck, Trash2 } from "lucide-react";
 import { LIBRARY_DOC_MIME } from "./DocFolderTree";
 
@@ -128,6 +128,9 @@ export const DocItem = React.memo(function DocItem({ doc, active, compact = fals
         ? contentExcerpt(doc.content_text, searchQuery)
         : plainPreview(doc.content_text)
   ), [doc.protected, doc.content_text, searchQuery]);
+  // Drives the row's height as well as the slot: a protected or empty
+  // document must not hold an empty preview band open.
+  const hasPreview = !compact && !!preview;
 
   return (
     <>
@@ -167,12 +170,15 @@ export const DocItem = React.memo(function DocItem({ doc, active, compact = fals
           event.dataTransfer.setData("text/plain", doc.title);
         }}
         className={`group cursor-pointer rounded-xl border transition-colors active:cursor-grabbing focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring ${
-          // Comfortable rows are a *fixed* 92px, not a minimum: a list whose
-          // rows swing between 56px and 138px with the length of the title and
-          // whether there are tags reads as a wall. 92 is the smallest height
-          // that holds a 2-line title, the meta line and a 2-line preview
-          // without clipping a line in half — see the slot maths below.
-          compact ? "min-h-10 px-2 py-1" : "h-[92px] px-2.5 py-2"
+          // Comfortable rows are a *fixed* height, not a minimum: a list whose
+          // rows swing with the length of the title reads as a wall. Two
+          // heights, both exact multiples of their slots so no line is ever
+          // clipped through the middle (see the slot maths below) — 96px with
+          // a preview, 76px without one. A protected row has no preview to
+          // show and shouldn't hold an empty band open for it.
+          compact
+            ? "min-h-10 px-2 py-1"
+            : hasPreview ? "h-24 px-2.5 py-2" : "h-[76px] px-2.5 py-2"
         } ${
           selected
             ? "border-primary/40 bg-primary/[0.07] text-foreground"
@@ -224,17 +230,20 @@ export const DocItem = React.memo(function DocItem({ doc, active, compact = fals
               <PinIcon filled className="absolute -left-1 -top-1 h-3 w-3 text-primary" />
             )}
           </span>
-          {/* Slot maths for the fixed 92px row: 76px of content box after
-            * py-2, split title (20 or 40, leading-5 clamped to 2) + meta
-            * (mt-1 + h-4 = 20) + preview (the remaining 36 or 16 — both hold
-            * whole leading-4 lines, so a line is never cut through). */}
+          {/* Slot maths for the fixed comfortable row, all of it worst-case so
+            * nothing can overflow: py-2 (16) + title (40, leading-5 clamped to
+            * 2) + meta (mt-1 + h-4 = 20) + preview (mt-1 + h-4 = 20) = 96, or
+            * 76 with the preview slot gone. Every slot is a whole number of
+            * its own lines — the previous layout gave the preview `flex-1`
+            * with `line-clamp-2`, and a clamp doesn't shrink to the space
+            * left, so a 2-line title sliced the second preview line in half. */}
           <div className={`min-w-0 flex-1 ${compact ? "" : "flex h-full flex-col"}`}>
             <div className={`flex gap-1 ${compact ? "items-center" : "items-start"}`}>
               {!renaming && doc.status && (
                 <span
                   title={t(statusLabelKey(doc.status))}
                   aria-label={t(statusLabelKey(doc.status))}
-                  className="mt-0.5 shrink-0 text-muted-foreground/70"
+                  className="mt-0.5 shrink-0"
                 >
                   <StatusIcon status={doc.status} className="h-3 w-3" />
                 </span>
@@ -407,11 +416,12 @@ export const DocItem = React.memo(function DocItem({ doc, active, compact = fals
                   )}
                 </div>
                 {/* Preview — recognising a doc you half-remember, not reading
-                  * it. Only for plaintext (protected rows are blanked). It is
-                  * the flexible slot: two lines under a one-line title, one
-                  * under a two-line title, so the row height stays put. */}
-                {!doc.protected && preview && (
-                  <p className="mt-1 line-clamp-2 min-h-0 flex-1 overflow-hidden text-[11px] font-normal leading-4 text-muted-foreground">
+                  * it. Only for plaintext (protected rows are blanked). One
+                  * line, ellipsised: a second line only fits under a one-line
+                  * title, and sizing it to whatever was left over is what cut
+                  * text through the middle before. */}
+                {hasPreview && (
+                  <p className="mt-1 h-4 shrink-0 truncate text-[11px] font-normal leading-4 text-muted-foreground">
                     <HighlightFuzzy text={preview} query={searchQuery} />
                   </p>
                 )}

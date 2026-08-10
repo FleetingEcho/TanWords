@@ -7,9 +7,10 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { DocPanelHeader } from "./DocPanelHeader";
 import type { DocListState } from "./hooks/useDocList";
+import type { DocStatus } from "@/hooks/useDB";
 import type { DocListDensity } from "./docListDensity";
 import { tagHue } from "./tagColor";
-import { STATUS_LIST, StatusIcon, statusLabelKey } from "./documentStatus";
+import { STATUS_LIST, StatusIcon, statusColor, statusLabelKey } from "./documentStatus";
 
 /** Search box, sort/tag/date filters, and the header action row (new doc,
  * attachments manager, import/export menu). Split out of DocSelector purely
@@ -85,9 +86,14 @@ export function DocSelectorHeader({
         label: t("doc.filters"),
         content: (
           <div className="space-y-2 pt-0.5">
-            <div className="flex gap-1.5">
+            {/* Wrapping, with a floor on each control's width: three of these
+              * side by side in a ~280px panel left each one ~85px, so every
+              * label truncated to an ellipsis ("Last…") and the last one
+              * crowded the panel edge. Two per row, the third dropping to its
+              * own line, is legible at any panel width. */}
+            <div className="flex flex-wrap gap-1.5">
               <Select value={sort} onValueChange={setSort}>
-                <SelectTrigger className="h-6 flex-1 gap-1 rounded-lg border border-border bg-card px-1.5 text-[11px] text-foreground focus:outline-hidden [&_svg]:h-3 [&_svg]:w-3">
+                <SelectTrigger className="h-6 min-w-[7.5rem] flex-1 gap-1 rounded-lg border border-border bg-card px-1.5 text-[11px] text-foreground focus:outline-hidden [&_svg]:h-3 [&_svg]:w-3">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -98,7 +104,7 @@ export function DocSelectorHeader({
               </Select>
               {allTags.length > 0 && (
                 <Select value={tagFilter || "__all__"} onValueChange={(v) => setTagFilter(v === "__all__" ? "" : v)}>
-                  <SelectTrigger className="h-6 flex-1 gap-1 rounded-lg border border-border bg-card px-1.5 text-[11px] text-foreground focus:outline-hidden [&_svg]:h-3 [&_svg]:w-3">
+                  <SelectTrigger className="h-6 min-w-[7.5rem] flex-1 gap-1 rounded-lg border border-border bg-card px-1.5 text-[11px] text-foreground focus:outline-hidden [&_svg]:h-3 [&_svg]:w-3">
                     {tagFilter && (
                       <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: `hsl(${tagHue(tagFilter)} 55% var(--tag-chip-l, 38%))` }} />
                     )}
@@ -124,7 +130,8 @@ export function DocSelectorHeader({
                 </Select>
               )}
               <Select value={statusFilter || "__all__"} onValueChange={(v) => setStatusFilter(v === "__all__" ? "" : v)}>
-                <SelectTrigger className="h-6 flex-1 gap-1 rounded-lg border border-border bg-card px-1.5 text-[11px] text-foreground focus:outline-hidden [&_svg]:h-3 [&_svg]:w-3">
+                <SelectTrigger className="h-6 min-w-[7.5rem] flex-1 gap-1 rounded-lg border border-border bg-card px-1.5 text-[11px] text-foreground focus:outline-hidden [&_svg]:h-3 [&_svg]:w-3">
+                  {statusFilter && <StatusIcon status={statusFilter as DocStatus} className="h-3 w-3" />}
                   <SelectValue placeholder={t("doc.allStatuses")} />
                 </SelectTrigger>
                 <SelectContent>
@@ -136,8 +143,8 @@ export function DocSelectorHeader({
                   </SelectItem>
                   {STATUS_LIST.map((value) => (
                     <SelectItem key={value} value={value}>
-                      <span className="flex w-full min-w-[8rem] items-center gap-1.5">
-                        <StatusIcon status={value} className="h-3 w-3 text-muted-foreground" />
+                      <span className="flex w-full min-w-[8rem] items-center gap-1.5" style={{ color: statusColor(value) }}>
+                        <StatusIcon status={value} className="h-3 w-3" />
                         <span className="min-w-0 flex-1 truncate">{t(statusLabelKey(value))}</span>
                         <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">{statusCounts.get(value) ?? 0}</span>
                       </span>
