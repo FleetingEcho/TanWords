@@ -22,7 +22,10 @@ export function DocumentStatusBar({ status, onChange, disabled = false }: {
     <Select value={status || "__none__"} onValueChange={(v) => onChange(v === "__none__" ? "" : v as DocStatus)}>
       <SelectTrigger
         disabled={disabled}
-        className={`flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] leading-4 transition-colors focus:outline-hidden focus:ring-1 focus:ring-ring ${
+        // w-auto/justify-start override SelectTrigger's `w-full
+        // justify-between` base: this is a compact inline chip, not a form
+        // field, and left unfixed it stretched across the whole strip.
+        className={`flex h-6 w-auto shrink-0 items-center justify-start gap-1 rounded-md px-1.5 py-0.5 text-[11px] leading-4 transition-colors focus:outline-hidden focus:ring-1 focus:ring-ring ${
           status
             ? "border border-border/60 bg-muted/40 text-foreground hover:bg-muted"
             : "border border-transparent text-muted-foreground/70 hover:bg-muted hover:text-foreground"

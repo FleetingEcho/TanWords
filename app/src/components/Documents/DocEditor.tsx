@@ -120,11 +120,12 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
               {zenMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </Button>
           </div>
-          {/* Metadata strip: the document's status then its tags, on the line
-            * under the title. Reaching the editor at all means the document is
-            * unlocked (LockedDocumentPanel stands in otherwise), so these are
-            * editable. */}
-          <div className="col-span-2 flex min-w-0 items-center gap-1.5">
+          {/* Metadata strip under the title: status on its own line, tags on
+            * the next. They shared a line at first and the tags lost — a
+            * document with several chips pushed the add box off the edge.
+            * Reaching the editor at all means the document is unlocked
+            * (LockedDocumentPanel stands in otherwise), so both are editable. */}
+          <div className="col-span-2 flex min-w-0 flex-col items-start gap-1.5">
             <DocumentStatusBar status={doc.status} onChange={onStatusChange} />
             <DocumentTagBar tags={doc.tags} onChange={onTagsChange} />
           </div>
