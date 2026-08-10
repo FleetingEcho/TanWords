@@ -97,7 +97,7 @@ export function DocSelectorHeader({
               {allTags.length > 0 && (
                 <Select value={tagFilter || "__all__"} onValueChange={(v) => setTagFilter(v === "__all__" ? "" : v)}>
                   <SelectTrigger className="h-6 flex-1 gap-1 rounded-lg border border-border bg-card px-1.5 text-[11px] text-foreground focus:outline-hidden [&_svg]:h-3 [&_svg]:w-3">
-                    {tagFilter && tagHue && (
+                    {tagFilter && (
                       <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: `hsl(${tagHue(tagFilter)} 55% var(--tag-chip-l, 38%))` }} />
                     )}
                     <SelectValue placeholder={t("doc.allTags")} />

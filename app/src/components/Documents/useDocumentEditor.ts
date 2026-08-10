@@ -119,12 +119,15 @@ export function useDocumentEditor() {
           if (savedStatusTimer.current) clearTimeout(savedStatusTimer.current);
           savedStatusTimer.current = setTimeout(() => setSaveStatus("idle"), 1800);
         }
+        const tasks = countTaskBlocks(content);
         window.dispatchEvent(new CustomEvent("docs-item-updated", {
           detail: {
             id: documentId, wordCount, title, tags, pinned,
             // Optimistic checklist counts so the list's task bar moves without
             // a refetch; the DB value Rust writes is the source of truth.
-            ...countTaskBlocks(content),
+            // Names must match useDocList's listener — the detail is an
+            // untyped CustomEvent, so a mismatch fails silently.
+            taskTotal: tasks.total, taskDone: tasks.done,
           },
         }));
         setDoc((prev) => (prev?.id === documentId

@@ -156,7 +156,10 @@ export function DocFolderTree({
                 {...dragOverProps(childPath)}
                 title={childPath}
                 style={{ paddingLeft: `${8 + depth * 10}px` }}
-                className={`group/folder flex min-h-8 items-center gap-1.5 rounded-md py-1 pr-2 text-muted-foreground transition-colors cursor-pointer select-none ${
+                // Roomier than the 32px this used to be: beside comfortable
+                // document rows a folder header that short reads as a label on
+                // the files rather than the container of them.
+                className={`group/folder flex min-h-10 items-center gap-1.5 rounded-md py-1.5 pr-2 text-muted-foreground transition-colors cursor-pointer select-none ${
                   isDropTarget
                     ? "bg-primary/15 text-primary ring-1 ring-inset ring-primary/40"
                     : "hover:bg-muted/70 hover:text-foreground"
