@@ -27,9 +27,18 @@ pub async fn db_duplicate_document(id: i64, conn: State<'_, AppState>) -> Result
         .await?;
         let mut content = decrypt_text(&key, &stored_content)?;
         let content_text = decrypt_text(&key, &stored_text)?;
+        let (task_total, task_done) = super::tasks::count_tasks(&content);
         db.execute(
-            "INSERT INTO documents(title,content,content_text,tags,word_count) VALUES(?1,?2,?3,?4,?5)",
-            params![format!("{title} (copy)"), content.clone(), content_text, tags, word_count],
+            "INSERT INTO documents(title,content,content_text,tags,word_count,task_total,task_done) VALUES(?1,?2,?3,?4,?5,?6,?7)",
+            params![
+                format!("{title} (copy)"),
+                content.clone(),
+                content_text,
+                tags,
+                word_count,
+                task_total,
+                task_done
+            ],
         ).await.map_err(|e| e.to_string())?;
         let new_document_id = db.last_insert_rowid();
         // The copy belongs beside the original, not at the library root.
@@ -74,8 +83,8 @@ pub async fn db_duplicate_document(id: i64, conn: State<'_, AppState>) -> Result
         return Ok(new_document_id);
     }
     db.execute(
-        "INSERT INTO documents (title, content, content_text, tags, word_count, folder)
-         SELECT title || ' (copy)', content, content_text, tags, word_count, folder
+        "INSERT INTO documents (title, content, content_text, tags, word_count, folder, task_total, task_done)
+         SELECT title || ' (copy)', content, content_text, tags, word_count, folder, task_total, task_done
          FROM documents WHERE id = ?1",
         params![id],
     )

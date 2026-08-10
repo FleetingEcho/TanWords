@@ -60,3 +60,19 @@ pub(super) const MIGRATION_29: Migration = Migration {
             ALTER TABLE document_folders ADD COLUMN locked INTEGER NOT NULL DEFAULT 0;
         ",
 };
+
+/// Checklist progress for the list row's task bar ("2 of 4").
+///
+/// `content_text` is plain text and carries no checkbox state, so the counts
+/// can't be derived from it — they're maintained alongside `content` by the
+/// document CRUD (see `documents/tasks.rs`). Plaintext rows are counted at
+/// write time; protected rows store 0/0 because their `content` is ciphertext
+/// at rest, and the counts recompute on save once unlocked.
+pub(super) const MIGRATION_30: Migration = Migration {
+    version: 30,
+    description: "checklist progress columns for documents",
+    sql: "
+            ALTER TABLE documents ADD COLUMN task_total INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE documents ADD COLUMN task_done  INTEGER NOT NULL DEFAULT 0;
+        ",
+};

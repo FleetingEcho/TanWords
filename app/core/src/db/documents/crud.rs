@@ -82,9 +82,10 @@ pub async fn db_create_document_with_content(
 ) -> Result<i64, String> {
     let db = db::conn(&conn)?;
     let folder = super::folders::normalize_folder(folder.as_deref().unwrap_or(""))?;
+    let (task_total, task_done) = super::tasks::count_tasks(&content);
     db.execute(
-        "INSERT INTO documents (title,content,content_text,tags,pinned,word_count,folder) VALUES (?1,?2,?3,?4,0,?5,?6)",
-        params![title, content, content_text, tags, word_count, folder.clone()],
+        "INSERT INTO documents (title,content,content_text,tags,pinned,word_count,folder,task_total,task_done) VALUES (?1,?2,?3,?4,0,?5,?6,?7,?8)",
+        params![title, content, content_text, tags, word_count, folder.clone(), task_total, task_done],
     )
     .await
     .map_err(|e| e.to_string())?;
@@ -152,7 +153,7 @@ pub async fn db_get_documents(
 
     let data_sql = format!(
         "SELECT d.id, d.title, d.tags, d.pinned, d.word_count, d.created_at, d.updated_at,
-                CASE WHEN d.protected=1 THEN '' ELSE d.content_text END, d.protected, d.folder
+                CASE WHEN d.protected=1 THEN '' ELSE d.content_text END, d.protected, d.folder, d.task_total, d.task_done
          FROM documents d WHERE {} ORDER BY d.protected ASC, d.pinned DESC, {} LIMIT {} OFFSET {}",
         where_clause, sort_col, page_size, offset
     );
@@ -171,6 +172,8 @@ pub async fn db_get_documents(
             protected,
             unlocked: protected && conn.document_privacy.is_unlocked(id),
             folder: row.get(9)?,
+            task_total: row.get(10)?,
+            task_done: row.get(11)?,
         })
     })
     .await?;
@@ -226,6 +229,10 @@ pub async fn db_update_document(
 ) -> Result<(), String> {
     let db = db::conn(&conn)?;
     let key = document_privacy::require_key(&db, &conn.document_privacy, id).await?;
+    // Count from the *plaintext* we were handed; a protected doc's stored copy
+    // is ciphertext and can't be walked, so the count must be taken before
+    // encryption. The caller only reaches here unlocked, so it has the text.
+    let (task_total, task_done) = super::tasks::count_tasks(&content);
     let (content, content_text) = match key {
         Some(key) => (
             encrypt_text(&key, &content)?,
@@ -235,7 +242,7 @@ pub async fn db_update_document(
     };
     db.execute(
         "UPDATE documents SET title=?1, content=?2, content_text=?3, tags=?4, pinned=?5,
-         word_count=?6, updated_at=datetime('now') WHERE id=?7",
+         word_count=?6, updated_at=datetime('now'), task_total=?7, task_done=?8 WHERE id=?9",
         params![
             title,
             content,
@@ -243,6 +250,8 @@ pub async fn db_update_document(
             tags,
             pinned as i64,
             word_count,
+            task_total,
+            task_done,
             id
         ],
     )

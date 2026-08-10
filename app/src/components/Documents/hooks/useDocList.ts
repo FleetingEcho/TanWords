@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useDB, DocumentListItem, DocumentFolder } from "@/hooks/useDB";
 
 export const PAGE_SIZE = 10_000;
@@ -95,7 +95,7 @@ export function useDocList(refreshKey: string | number) {
   // place so counts/titles/tags stay current without a full refetch.
   useEffect(() => {
     const onItemUpdated = (event: Event) => {
-      const detail = (event as CustomEvent<{ id: number; wordCount?: number; title?: string; tags?: string; pinned?: boolean }>).detail;
+      const detail = (event as CustomEvent<{ id: number; wordCount?: number; title?: string; tags?: string; pinned?: boolean; taskTotal?: number; taskDone?: number }>).detail;
       if (!detail || typeof detail.id !== "number") return;
       setDocs((current) => current.map((doc) => (
         doc.id === detail.id
@@ -105,6 +105,8 @@ export function useDocList(refreshKey: string | number) {
               title: detail.title ?? doc.title,
               tags: detail.tags ?? doc.tags,
               pinned: detail.pinned ?? doc.pinned,
+              task_total: detail.taskTotal ?? doc.task_total,
+              task_done: detail.taskDone ?? doc.task_done,
             }
           : doc
       )));
@@ -116,10 +118,22 @@ export function useDocList(refreshKey: string | number) {
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  // Whole library is in memory (PAGE_SIZE is 10k), so per-tag counts fall out
+  // of the current `docs` with no extra query. Same tolerant parse DocItem uses.
+  const tagCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const doc of docs) {
+      let list: string[] = [];
+      try { list = JSON.parse(doc.tags); } catch { /* malformed tags -> ignore */ }
+      for (const tag of list) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+    return counts;
+  }, [docs]);
+
   return {
     db, docs, folders, total, page, setPage, search, setSearch, sort, setSort,
     dateFrom, setDateFrom, dateTo, setDateTo, allTags, tagFilter, setTagFilter,
-    filtersOpen, setFiltersOpen, loading, load, totalPages,
+    filtersOpen, setFiltersOpen, loading, load, totalPages, tagCounts,
   };
 }
 

@@ -14,6 +14,8 @@ pub struct DocumentListItem {
     pub unlocked: bool,
     /// Normalised relative folder path; "" is the library root.
     pub folder: String,
+    pub task_total: i64,
+    pub task_done: i64,
 }
 
 #[derive(Serialize)]

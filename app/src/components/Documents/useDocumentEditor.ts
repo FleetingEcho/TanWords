@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { useDB, DocumentDetail } from "@/hooks/useDB";
 import { pruneDocumentAssets } from "@/lib/documentAssets";
 import { saveDocumentRevision } from "@/lib/documentRevisions";
+import { countTaskBlocks } from "./taskCounts";
 
 export type SaveStatus = "idle" | "dirty" | "saving" | "saved";
 
@@ -119,7 +120,12 @@ export function useDocumentEditor() {
           savedStatusTimer.current = setTimeout(() => setSaveStatus("idle"), 1800);
         }
         window.dispatchEvent(new CustomEvent("docs-item-updated", {
-          detail: { id: documentId, wordCount, title, tags, pinned },
+          detail: {
+            id: documentId, wordCount, title, tags, pinned,
+            // Optimistic checklist counts so the list's task bar moves without
+            // a refetch; the DB value Rust writes is the source of truth.
+            ...countTaskBlocks(content),
+          },
         }));
         setDoc((prev) => (prev?.id === documentId
           ? { ...prev, content, content_text: contentText, word_count: wordCount }

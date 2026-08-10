@@ -99,6 +99,9 @@ export interface DocumentListItem {
   archived: boolean;
   /** Normalised relative folder path; "" is the library root. */
   folder: string;
+  /** Number of checklist blocks in the document, and how many are checked. */
+  task_total: number;
+  task_done: number;
 }
 
 export interface DocumentDetail {
