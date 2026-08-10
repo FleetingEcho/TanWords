@@ -127,6 +127,17 @@ describe("Tokyo Night variants", () => {
   });
 });
 
+describe("Dim palette", () => {
+  const dim = themeCss.slice(themeCss.indexOf(".theme-dim {"));
+
+  it("keeps idle document rows clear and selection Twitter-blue", () => {
+    expect(dim).toContain("--document-list-surface: hsl(var(--card))");
+    expect(dim).toContain("--document-list-row: transparent");
+    expect(dim).toContain("--document-list-active-bg: hsl(var(--sidebar-active-bg))");
+    expect(dim).toContain("--document-list-icon-fg: hsl(var(--primary))");
+  });
+});
+
 describe("no styles target the removed editor", () => {
   it.each(stylesheets())("$name has no .bn-* selectors", ({ css }) => {
     // Comments may still mention the old editor as history; selectors may not.

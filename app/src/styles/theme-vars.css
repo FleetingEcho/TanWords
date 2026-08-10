@@ -383,6 +383,17 @@
     --sidebar-border: 206 16% 16%;
     --sidebar-active-bg: 204 35% 22%;
     --sidebar-active-fg: 204 88% 60%;
+    --document-list-surface: hsl(var(--card));
+    --document-list-title: hsl(var(--foreground));
+    --document-list-meta: hsl(var(--muted-foreground));
+    --document-list-folder: hsl(var(--secondary-foreground));
+    --document-list-row: transparent;
+    --document-list-row-hover: hsl(var(--secondary) / 0.8);
+    --document-list-active-bg: hsl(var(--sidebar-active-bg));
+    --document-list-active-border: hsl(var(--primary) / 0.5);
+    --document-list-active-title: hsl(198 100% 89%);
+    --document-list-icon-bg: hsl(var(--secondary));
+    --document-list-icon-fg: hsl(var(--primary));
     --ink: 195 85% 72%;
     --tag-chip-l: 72%;
   }
