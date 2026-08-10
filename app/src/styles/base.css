@@ -144,3 +144,17 @@
   user-select: text;
   -webkit-touch-callout: default;
 }
+
+/* App background image (AppBackground.tsx sets this class on <html> while a
+ * custom image is visible). The image lives at z-index -10 behind the page
+ * canvas, so the canvas must be transparent for it to show through. index.html
+ * paints an explicit opaque <html> background (which stops <body>'s default
+ * `bg-background` from propagating to the canvas), so we override the body
+ * background here. The whole stylesheet is imported as `layer(base)`, while
+ * index.html's `body { background: inherit }` is *unlayered* — and unlayered
+ * author styles outrank every layer in the normal cascade. `!important` is
+ * therefore required for this override to beat it. Cards/sidebar/surfaces keep
+ * their own opaque backgrounds and stay solid; only the canvas opens. */
+html.has-app-background body {
+  background: transparent !important;
+}

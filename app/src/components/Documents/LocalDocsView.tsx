@@ -28,6 +28,8 @@ import {
 } from "@/lib/localDocs";
 import { SaveStatus } from "./useDocumentEditor";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { useSettingsStore } from "@/store/settingsStore";
+import { useLayoutStore } from "@/store/layoutStore";
 import { Button } from "@/components/ui/button";
 import { blocksToStorage, markdownToBlocks } from "@/lib/docFormat";
 import { liftMermaid } from "./mermaidTransforms";
@@ -60,6 +62,8 @@ export function LocalDocsView({
 }) {
   const db = useDB();
   const t = useT();
+  const hasCustomAppBackground = useSettingsStore((s) => !!s.appBackgroundImage && s.appBackgroundVisible);
+  const setZenModeGlobal = useLayoutStore((s) => s.setZenMode);
 
   const [root, setRoot] = useState<string | null>(null);
   const [rootLoaded, setRootLoaded] = useState(false);
@@ -116,6 +120,11 @@ export function LocalDocsView({
     if (isNarrow) setSidebarOpenState(true);
   }, [isNarrow]);
   const [zenMode, setZenMode] = useState(false);
+  // Let AppBackground lift its layer above the app chrome while zen is open.
+  useEffect(() => {
+    setZenModeGlobal(zenMode);
+    return () => setZenModeGlobal(false);
+  }, [zenMode, setZenModeGlobal]);
   const [exportPickerOpen, setExportPickerOpen] = useState(false);
   // Bumped only when a file is opened — NOT on rename, which changes
   // activePath but must keep the editor (and its unsaved state) mounted.
@@ -589,7 +598,7 @@ export function LocalDocsView({
   return (
     <div className={`flex h-full overflow-hidden ${
       zenMode
-        ? "fixed inset-0 z-50 bg-background"
+        ? `fixed inset-0 z-50 ${hasCustomAppBackground ? "" : "bg-background"}`
         : "bg-transparent"
     }`}>
       {/* Sidebar */}

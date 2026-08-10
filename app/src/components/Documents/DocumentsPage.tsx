@@ -13,6 +13,8 @@ import { DocSourceTabs } from "./DocSourceTabs";
 import { LockedDocumentPanel } from "./LockedDocumentPanel";
 import { useIsNarrow } from "@/components/Vocabulary/hooks/useMediaQuery";
 import { hostCapabilities } from "@/platform";
+import { useSettingsStore } from "@/store/settingsStore";
+import { useLayoutStore } from "@/store/layoutStore";
 
 type DocSource = "db" | "local";
 
@@ -22,6 +24,7 @@ const SHOW_DOC_LIST_FLAG = "tanwords_show_doc_list";
 
 export function DocumentsPage() {
   const t = useT();
+  const hasCustomAppBackground = useSettingsStore((s) => !!s.appBackgroundImage && s.appBackgroundVisible);
   const [source, setSourceState] = useState<DocSource>(() => {
     const saved = localStorage.getItem(LAST_SOURCE_KEY);
     return hostCapabilities.localDocs && saved === "local" ? saved : "db";
@@ -60,7 +63,13 @@ export function DocumentsPage() {
   const [showMobileEditor, setShowMobileEditor] = useState(restoreLastDbDocOnMount.current);
   const [restoringLastDoc, setRestoringLastDoc] = useState(restoreLastDbDocOnMount.current);
   const isNarrow = useIsNarrow();
+  const setZenModeGlobal = useLayoutStore((s) => s.setZenMode);
   const [dbZenMode, setDbZenMode] = useState(false);
+  // Let AppBackground lift its wallpaper above the app chrome while zen is open.
+  useEffect(() => {
+    setZenModeGlobal(dbZenMode);
+    return () => setZenModeGlobal(false);
+  }, [dbZenMode, setZenModeGlobal]);
   const [dbSidebarOpen, setDbSidebarOpenState] = useState(() => localStorage.getItem("tanwords_doc_db_sidebar_collapsed") !== "1");
   const setDbSidebarOpen = (open: boolean) => {
     localStorage.setItem("tanwords_doc_db_sidebar_collapsed", open ? "0" : "1");
@@ -201,7 +210,7 @@ export function DocumentsPage() {
       )}
 
       <div className="relative flex-1 overflow-hidden">
-        <div className={`absolute inset-0 ${source === "db" ? "flex" : "hidden"} overflow-hidden ${dbZenMode ? "fixed inset-0 z-50 bg-background" : ""}`}>
+        <div className={`absolute inset-0 ${source === "db" ? "flex" : "hidden"} overflow-hidden ${dbZenMode ? `fixed inset-0 z-50 ${hasCustomAppBackground ? "" : "bg-background"}` : ""}`}>
             {!dbZenMode && (
             <Collapsible open={dbSidebarOpen} onOpenChange={setDbSidebarOpen} asChild>
               <div className={`${dbSidebarOpen ? LIST_PANEL_WIDTH : LIST_PANEL_COLLAPSED_WIDTH} h-full shrink-0 transition-[width] duration-200 max-lg:w-full max-lg:shrink ${showMobileEditor ? "max-lg:hidden" : ""}`}>

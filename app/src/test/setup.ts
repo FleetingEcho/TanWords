@@ -21,6 +21,29 @@ if (!globalThis.localStorage || typeof globalThis.localStorage.clear !== "functi
   Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
 }
 
+// jsdom does not implement matchMedia. settingsStore subscribes to the
+// colour-scheme media query at module load, so any suite that transitively
+// imports it (via settingsStore, or a component that imports it like
+// LocalDocsView / DocumentsPage) throws on import without a stub. Install a
+// minimal no-op MediaQueryList matching the shape settingsStore uses
+// (.addEventListener/.removeEventListener).
+if (!window.matchMedia) {
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    writable: true,
+    value: () => ({
+      matches: false,
+      media: "",
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  });
+}
+
 // Every src/ipc/* module talks through this preload global. In jsdom there is
 // no preload and no sidecar, so stub it: suites mock the `@/ipc/*` modules they
 // actually exercise, and anything that slips through gets a rejected promise

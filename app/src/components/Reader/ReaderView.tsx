@@ -9,6 +9,8 @@ import type { PodcastTrack } from "@/store/podcastPlayerStore";
 import { Button } from "@/components/ui/button";
 import { useReaderNotesStore } from "@/store/readerNotesStore";
 import { useAnalyzeArticle } from "@/hooks/useAnalyzeArticle";
+import { useSettingsStore } from "@/store/settingsStore";
+import { useLayoutStore } from "@/store/layoutStore";
 
 interface Props {
   url: string;
@@ -34,6 +36,8 @@ interface Props {
 export function ReaderView({ url, title, domain, onBack, onOpenExternal, audio, hnItemId, fullscreen = false, hideBar = false }: Props) {
   const t = useT();
   const { analyze } = useAnalyzeArticle();
+  const hasCustomAppBackground = useSettingsStore((s) => !!s.appBackgroundImage && s.appBackgroundVisible);
+  const setZenModeGlobal = useLayoutStore((s) => s.setZenMode);
   const readerArticle = useReaderNotesStore((state) => state.article);
   const readerAnalyzing = useReaderNotesStore((state) => state.analyzing);
   const readerShowNotes = useReaderNotesStore((state) => state.showNotes);
@@ -44,6 +48,13 @@ export function ReaderView({ url, title, domain, onBack, onOpenExternal, audio, 
   // Full-screen distraction-free mode, same idea (and same fixed-inset-0-overlay trick,
   // no separate Dialog) as Docs' zen mode — covers the whole app, sidebar included.
   const [zenMode, setZenMode] = useState(false);
+
+  // Let AppBackground lift its layer above the app chrome while zen is open, so
+  // the wallpaper (not an opaque overlay) is what hides the navigation.
+  useEffect(() => {
+    setZenModeGlobal(zenMode);
+    return () => setZenModeGlobal(false);
+  }, [zenMode, setZenModeGlobal]);
 
   useEffect(() => {
     if (!zenMode) return;
@@ -103,7 +114,7 @@ export function ReaderView({ url, title, domain, onBack, onOpenExternal, audio, 
   };
 
   return (
-    <div className={`flex flex-col animate-fade-in ${zenMode ? "fixed inset-0 z-50 bg-background" : "h-full"}`}>
+    <div className={`flex flex-col animate-fade-in ${zenMode ? `fixed inset-0 z-50 ${hasCustomAppBackground ? "" : "bg-background"}` : "h-full"}`}>
       {/* Reader bar */}
       {!hideBar && <div className="flex flex-wrap items-center gap-2 px-3 py-2 min-h-12 border-b border-border shrink-0">
         <Button

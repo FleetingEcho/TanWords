@@ -96,6 +96,12 @@ function reportWindowBackground() {
   try {
     if (!window.tanwords) return; // browser/test context, no preload
     const color = getComputedStyle(document.body).backgroundColor;
+    // When a custom app background is visible the canvas is intentionally
+    // transparent, so the computed body colour is rgba(0,0,0,0) — not a real
+    // next-launch window colour. Skip reporting so the last solid theme canvas
+    // stays cached; a transparent BrowserWindow layer would flash white on the
+    // next frame before the renderer paints the image.
+    if (color === "transparent" || /^rgba\([\s\S]*,\s*0\)$/i.test(color)) return;
     if (color) void callMain("window:background", { color }).catch(() => {});
   } catch {
     // getComputedStyle can throw if body isn't attached yet; the next
