@@ -7,6 +7,7 @@ import React from "react";
 import type { DocumentListItem } from "@/hooks/useDB";
 import type { DocListState } from "./hooks/useDocList";
 import type { DocActionsState } from "./hooks/useDocActions";
+import type { DocListDensity } from "./docListDensity";
 
 /** The library's document list: one folder tree over everything.
  *
@@ -16,12 +17,14 @@ import type { DocActionsState } from "./hooks/useDocActions";
  * property, so it is now shown as one: a lock on the row, toggled from its
  * menu, and inherited from a locked folder (document_privacy/folder_lock.rs). */
 export function DocShelfList({
-  list, actions, activeId, onSelect, onExport,
+  list, density, actions, activeId, onSelect, onExport,
   onExportHtml, onExportPdf, shelfMenu, setShelfMenu,
   onNewDoc, onNewDocIn, onCreateFolder, onRenameFolder, onSetFolderLocked,
   selectedIds, selectionMode, onToggleSelect, onToggleSelectionMode, selectionBar,
 }: {
   list: DocListState;
+  /** Comfortable rows show a preview even flat; compact keeps the tree tight. */
+  density: DocListDensity;
   actions: DocActionsState;
   activeId: number | null;
   onSelect: (id: number) => void;
@@ -59,7 +62,10 @@ export function DocShelfList({
   const renderDoc = (doc: DocumentListItem, inTree = false) => (
     <DocItem
       doc={doc}
-      compact={inTree}
+      // Rows inside the folder tree are compact only when the user has chosen
+      // compact density; otherwise they open up to comfortable cards. Flat
+      // search results are always comfortable.
+      compact={inTree && density === "compact"}
       active={activeId === doc.id}
       selected={selectedIds.has(doc.id)}
       selectionMode={selectionMode}

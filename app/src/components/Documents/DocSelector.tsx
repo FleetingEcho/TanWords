@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useT } from "@/hooks/useT";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { useDensity, type DocListDensity } from "./docListDensity";
 import { Button } from "@/components/ui/button";
 import { Download, FolderInput } from "lucide-react";
 import { LIST_PANEL_WIDTH } from "@/components/shared/listPanel";
@@ -42,6 +43,9 @@ export function DocSelector({ activeId, onSelect, onNewDoc, onNewDocIn, refreshK
 
   const [imagesOpen, setImagesOpen] = useState(false);
   const [shelfMenu, setShelfMenu] = useState<{ x: number; y: number } | null>(null);
+  // Comfortable vs compact rows. This is a glance preference, not a filter, so
+  // it persists locally.
+  const [density, setDensity] = useDensity();
 
   useEffect(() => {
     if (!shelfMenu) return;
@@ -140,6 +144,8 @@ export function DocSelector({ activeId, onSelect, onNewDoc, onNewDocIn, refreshK
     <div className={`flex flex-col h-full border-r border-border ${LIST_PANEL_WIDTH} shrink-0 max-lg:w-full max-lg:shrink bg-transparent`}>
       <DocSelectorHeader
         list={list}
+        density={density}
+        onDensityChange={setDensity}
         sourceTabs={sourceTabs}
         onCollapse={onCollapse}
         onNewDoc={() => setNewDocFolderOpen(true)}
@@ -150,6 +156,7 @@ export function DocSelector({ activeId, onSelect, onNewDoc, onNewDocIn, refreshK
 
       <DocShelfList
         list={list}
+        density={density}
         actions={actions}
         activeId={activeId}
         onSelect={onSelect}

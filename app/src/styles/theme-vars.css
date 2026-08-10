@@ -31,6 +31,7 @@
     --sidebar-active-fg: 226 64% 43%;
     /* Writing studio — blue "fountain-pen ink" for annotations + manuscript serif */
     --ink: 211 65% 40%;
+    --tag-chip-l: 38%;
     --manuscript-font: "Georgia", "Iowan Old Style", "Times New Roman", "Songti SC", "STSong", serif;
   }
 
@@ -61,6 +62,7 @@
     --sidebar-active-bg: 243 50% 22%;
     --sidebar-active-fg: 243 75% 75%;
     --ink: 210 55% 70%;
+    --tag-chip-l: 72%;
   }
 
   /* Catppuccin Latte */
@@ -121,6 +123,7 @@
     --sidebar-active-bg: 267 30% 27%;
     --sidebar-active-fg: 267 84% 84%;
     --ink: 171 57% 73%;
+    --tag-chip-l: 72%;
   }
 
   /* Dracula — https://draculatheme.com/contribute */
@@ -151,6 +154,7 @@
     --sidebar-active-bg: 265 35% 28%;
     --sidebar-active-fg: 265 89% 82%;
     --ink: 191 97% 77%;
+    --tag-chip-l: 72%;
   }
 
   /* Tokyo Night */
@@ -185,6 +189,7 @@
     --sidebar-active-bg: 230 24% 19%;
     --sidebar-active-fg: 221 89% 72%;
     --ink: 202 100% 75%;             /* #7dcfff */
+    --tag-chip-l: 72%;
 
     /* Raw Markdown / fenced-code tokens. Shiki uses its native Tokyo Night
        theme; these variables give CodeMirror the same visual vocabulary. */
@@ -262,6 +267,7 @@
     --sidebar-active-bg: 224 35% 29%;
     --sidebar-active-fg: 224 89% 77%;
     --ink: 189 71% 73%;
+    --tag-chip-l: 72%;
   }
 
   /* Dim — X (Twitter)'s dark-navy mode: Dim background, Twitter Blue primary,
@@ -293,5 +299,6 @@
     --sidebar-active-bg: 204 35% 22%;
     --sidebar-active-fg: 204 88% 60%;
     --ink: 195 85% 72%;
+    --tag-chip-l: 72%;
   }
 }

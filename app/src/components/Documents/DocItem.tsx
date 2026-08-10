@@ -5,6 +5,7 @@ import { PinIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { parseDbTimestamp } from "@/lib/dbTime";
+import { tagHue } from "./tagColor";
 import { Check, Copy, FileText, FileType2, FileOutput, LockKeyhole, LockOpen, MapPin, MoreHorizontal, Pencil, ShieldCheck, Trash2 } from "lucide-react";
 import { LIBRARY_DOC_MIME } from "./DocFolderTree";
 
@@ -75,6 +76,14 @@ function contentExcerpt(content: string, query: string): string | null {
   return `${start > 0 ? "…" : ""}${normalized.slice(start, end)}${end < normalized.length ? "…" : ""}`;
 }
 
+/** A short leading slice of the document text, for recognizing the doc rather
+ *  than reading it. Whitespace collapsed so an accidental line break in the
+ *  middle of a sentence doesn't read as a paragraph break. */
+function plainPreview(content: string): string | null {
+  const normalized = content.replace(/\s+/g, " ").trim();
+  return normalized ? normalized.slice(0, 160) : null;
+}
+
 /** Memoized: with large libraries (PAGE_SIZE is 10k) every autosave rebuilds
  * the shelf arrays, and without this each save reconciles every row. Identity
  * stability holds up because the list patches items in place (useDocList's
@@ -103,7 +112,11 @@ export const DocItem = React.memo(function DocItem({ doc, active, compact = fals
   };
 
   const tags: string[] = (() => { try { return JSON.parse(doc.tags); } catch { return []; } })();
-  const excerpt = searchQuery.trim() ? contentExcerpt(doc.content_text, searchQuery) : null;
+  const taskTotal = Number(doc.task_total) || 0;
+  const taskDone = Math.max(0, Math.min(taskTotal, Number(doc.task_done) || 0));
+  const preview = !doc.protected
+    ? (searchQuery.trim() ? contentExcerpt(doc.content_text, searchQuery) : plainPreview(doc.content_text))
+    : null;
 
   return (
     <>
@@ -161,7 +174,7 @@ export const DocItem = React.memo(function DocItem({ doc, active, compact = fals
               {selected && <Check className="h-3 w-3" strokeWidth={3} />}
             </button>
           )}
-          <span className={`flex shrink-0 items-center justify-center rounded-lg ${
+          <span className={`relative flex shrink-0 items-center justify-center rounded-lg ${
             compact ? "h-7 w-7" : "h-8 w-8"
           } ${
             active
@@ -170,11 +183,16 @@ export const DocItem = React.memo(function DocItem({ doc, active, compact = fals
                 ? "bg-muted text-muted-foreground"
                 : "bg-muted/70 text-muted-foreground"
           }`}>
+            {/* The base glyph — a lock when protected, a file otherwise. Pinned
+              * docs keep it and carry a small pin badge over the corner instead
+              * of substituting the icon (a pinned protected doc would otherwise
+              * lose its lock). */}
             {doc.protected
               ? <LockKeyhole className={`${compact ? "h-3.5 w-3.5" : "h-4 w-4"} ${doc.unlocked ? "text-primary" : ""}`} strokeWidth={1.8} />
-              : doc.pinned
-              ? <PinIcon filled className={`${compact ? "h-3.5 w-3.5" : "h-4 w-4"} text-primary`} />
               : <FileText className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} strokeWidth={1.8} />}
+            {doc.pinned && (
+              <PinIcon filled className="absolute -left-1 -top-1 h-3 w-3 text-primary" />
+            )}
           </span>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1">
@@ -192,7 +210,11 @@ export const DocItem = React.memo(function DocItem({ doc, active, compact = fals
                   className="flex-1 min-w-0 text-sm font-medium bg-card border border-primary/40 rounded px-1 outline-hidden"
                 />
               ) : (
-                <p className={`min-w-0 flex-1 truncate font-semibold ${compact ? "text-xs leading-4" : "text-[13px] leading-5"}`}><HighlightFuzzy text={doc.title || t("doc.untitled")} query={searchQuery} /></p>
+                <p className={`min-w-0 flex-1 font-semibold ${
+                  compact
+                    ? "truncate text-xs leading-4"
+                    : "line-clamp-2 text-[13px] leading-5"
+                }`}><HighlightFuzzy text={doc.title || t("doc.untitled")} query={searchQuery} /></p>
               )}
               {/* Fixed-height slot so swapping date <-> actions never changes
                 * row height — the same arrangement LocalDocTree's FileRow uses. */}
@@ -283,24 +305,69 @@ export const DocItem = React.memo(function DocItem({ doc, active, compact = fals
               </DropdownMenu>
               </div>
             </div>
-            {excerpt && (
-              <p className="mt-1.5 line-clamp-2 text-[10px] font-normal leading-4 text-muted-foreground">
-                <HighlightFuzzy text={excerpt} query={searchQuery} />
-              </p>
+            {!compact && (
+              <div className="mt-1.5 min-w-0">
+                {/* Meta line: task progress · updated · word count. One line,
+                  * truncate — items drop off in reverse priority if it doesn't
+                  * fit (progress, then date, then words). */}
+                <div className="flex min-w-0 items-center gap-1.5">
+                  {!doc.protected && taskTotal > 0 && (
+                    <span className="flex shrink-0 items-center gap-1" title={t("doc.tasksLabel")}>
+                      <span aria-hidden className="h-1 w-10 overflow-hidden rounded-full bg-muted">
+                        <span
+                          className="block h-full rounded-full bg-primary"
+                          style={{ width: `${Math.max(4, Math.round((taskDone / taskTotal) * 100))}%` }}
+                        />
+                      </span>
+                      <span className={`text-[10px] tabular-nums ${taskDone >= taskTotal ? "text-muted-foreground/50" : "text-muted-foreground/70"}`}>{t("doc.taskProgress", { done: taskDone, total: taskTotal })}</span>
+                    </span>
+                  )}
+                  <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/70">{formatDate(doc.updated_at)}</span>
+                  {!doc.protected && doc.word_count > 0 && (
+                    <span className="truncate text-[10px] text-muted-foreground/70">
+                      · {t("doc.wordCount", { n: doc.word_count })}
+                    </span>
+                  )}
+                </div>
+                {/* Preview — recognising a doc you half-remember, not reading
+                  * it. Only for plaintext (protected rows are blanked). */}
+                {!doc.protected && preview && (
+                  <p className="mt-1.5 line-clamp-2 text-[11px] font-normal leading-4 text-muted-foreground">
+                    <HighlightFuzzy text={preview} query={searchQuery} />
+                  </p>
+                )}
+                {/* Tags are the only colored thing on the row; keep to the
+                  * first two and a +N number once there are more. */}
+                {tags.length > 0 && (
+                  <div className="mt-1.5 flex min-w-0 items-center gap-1">
+                    {tags.slice(0, 2).map((tag) => {
+                      const hue = tagHue(tag);
+                      return (
+                        <span
+                          key={tag}
+                          title={tag}
+                          className="min-w-0 truncate rounded px-1.5 py-0.5 text-[10px]"
+                          style={{
+                            background: `color-mix(in oklab, hsl(${hue} 70% 50%) 14%, transparent)`,
+                            color: `hsl(${hue} 55% var(--tag-chip-l, 38%))`,
+                          }}
+                        >
+                          {tag}
+                        </span>
+                      );
+                    })}
+                    {tags.length > 2 && (
+                      <span
+                        title={tags.slice(2).join(", ")}
+                        className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                      >
+                        +{tags.length - 2}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
-            {!compact && <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
-              <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/70">{formatDate(doc.updated_at)}</span>
-              {!doc.protected && doc.word_count > 0 && (
-                <span className="shrink-0 text-[10px] text-muted-foreground/70">
-                  · {t("doc.wordCount", { n: doc.word_count })}
-                </span>
-              )}
-              {tags.slice(0, 2).map((tag) => (
-                <span key={tag} className="min-w-0 truncate rounded bg-muted/80 px-1.5 py-0.5 text-[9px] text-muted-foreground">
-                  {tag}
-                </span>
-              ))}
-            </div>}
           </div>
         </div>
       </div>
