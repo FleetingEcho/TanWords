@@ -114,12 +114,23 @@
     --border: 225 14% 77%;
     --input: 225 14% 77%;
     --ring: 266 85% 58%;
-    --sidebar: 220 24% 93%;
+    --sidebar: 220 21% 87%;
     --sidebar-foreground: 234 16% 35%;
     --sidebar-muted: 233 10% 47%;
-    --sidebar-border: 223 16% 83%;
+    --sidebar-border: 223 16% 80%;
     --sidebar-active-bg: 267 70% 89%;
     --sidebar-active-fg: 266 85% 48%;
+    --document-list-surface: hsl(var(--card));
+    --document-list-title: hsl(var(--foreground));
+    --document-list-meta: hsl(var(--muted-foreground));
+    --document-list-folder: hsl(var(--secondary-foreground));
+    --document-list-row: transparent;
+    --document-list-row-hover: hsl(var(--background) / 0.78);
+    --document-list-active-bg: hsl(var(--sidebar-active-bg));
+    --document-list-active-border: hsl(var(--primary) / 0.38);
+    --document-list-active-title: hsl(266 55% 34%);
+    --document-list-icon-bg: hsl(var(--secondary));
+    --document-list-icon-fg: hsl(var(--primary));
     --ink: 197 97% 46%;
   }
 
@@ -150,6 +161,17 @@
     --sidebar-border: 237 16% 23%;
     --sidebar-active-bg: 267 30% 27%;
     --sidebar-active-fg: 267 84% 84%;
+    --document-list-surface: hsl(var(--card));
+    --document-list-title: hsl(var(--foreground));
+    --document-list-meta: hsl(var(--muted-foreground));
+    --document-list-folder: hsl(var(--secondary-foreground));
+    --document-list-row: transparent;
+    --document-list-row-hover: hsl(var(--secondary) / 0.78);
+    --document-list-active-bg: hsl(var(--sidebar-active-bg));
+    --document-list-active-border: hsl(var(--primary) / 0.52);
+    --document-list-active-title: hsl(267 100% 91%);
+    --document-list-icon-bg: hsl(var(--secondary));
+    --document-list-icon-fg: hsl(var(--primary));
     --ink: 171 57% 73%;
     --tag-chip-l: 72%;
   }

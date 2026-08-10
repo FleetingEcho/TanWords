@@ -57,6 +57,32 @@ describe("default dark palette", () => {
   });
 });
 
+describe("Catppuccin palettes", () => {
+  const latte = themeCss.slice(
+    themeCss.indexOf(".theme-catppuccin-latte {"),
+    themeCss.indexOf("/* Catppuccin Mocha */"),
+  );
+  const mocha = themeCss.slice(
+    themeCss.indexOf(".theme-catppuccin-mocha {"),
+    themeCss.indexOf("/* Dracula"),
+  );
+
+  it("gives Latte a darker rail than its shelf and canvas", () => {
+    expect(latte).toContain("--background: 220 23% 95%");
+    expect(latte).toContain("--card: 220 22% 92%");
+    expect(latte).toContain("--sidebar: 220 21% 87%");
+  });
+
+  it.each([
+    ["Latte", latte],
+    ["Mocha", mocha],
+  ])("gives Catppuccin %s restrained document row states", (_name, palette) => {
+    expect(palette).toContain("--document-list-row: transparent");
+    expect(palette).toContain("--document-list-active-bg: hsl(var(--sidebar-active-bg))");
+    expect(palette).toContain("--document-list-icon-fg: hsl(var(--primary))");
+  });
+});
+
 describe("Tokyo Night palette", () => {
   const tokyoNight = themeCss.slice(
     themeCss.indexOf(".theme-tokyo-night {"),
