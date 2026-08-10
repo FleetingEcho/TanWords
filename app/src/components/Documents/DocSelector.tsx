@@ -141,7 +141,7 @@ export function DocSelector({ activeId, onSelect, onNewDoc, onNewDocIn, refreshK
   };
 
   return (
-    <div className={`flex flex-col h-full border-r border-border ${LIST_PANEL_WIDTH} shrink-0 max-lg:w-full max-lg:shrink bg-transparent`}>
+    <div className={`flex flex-col h-full border-r border-border ${LIST_PANEL_WIDTH} shrink-0 max-lg:w-full max-lg:shrink bg-[var(--document-list-surface)]`}>
       <DocSelectorHeader
         list={list}
         density={density}

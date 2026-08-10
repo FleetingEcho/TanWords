@@ -159,10 +159,10 @@ export function DocFolderTree({
                 // Roomier than the 32px this used to be: beside comfortable
                 // document rows a folder header that short reads as a label on
                 // the files rather than the container of them.
-                className={`group/folder flex min-h-10 items-center gap-1.5 rounded-md py-1.5 pr-2 text-muted-foreground transition-colors cursor-pointer select-none ${
+                className={`group/folder flex min-h-10 items-center gap-1.5 rounded-md py-1.5 pr-2 text-[var(--document-list-folder)] transition-colors cursor-pointer select-none ${
                   isDropTarget
                     ? "bg-primary/15 text-primary ring-1 ring-inset ring-primary/40"
-                    : "hover:bg-muted/70 hover:text-foreground"
+                    : "hover:bg-[var(--document-list-row-hover)] hover:text-[var(--document-list-title)]"
                 }`}
               >
                 <svg
@@ -183,7 +183,7 @@ export function DocFolderTree({
                   * behind the menu button (the pattern the file rows use for
                   * their date) left nothing to push that button to the right
                   * edge, so it slid back against the folder name. */}
-                <span className="ml-auto shrink-0 text-[10px] tabular-nums text-muted-foreground/50">
+                <span className="ml-auto shrink-0 text-[10px] tabular-nums text-[var(--document-list-meta)] opacity-60">
                   {subtreeDocCount(child)}
                 </span>
                 <DropdownMenu open={menuFor === childPath} onOpenChange={(open) => setMenuFor(open ? childPath : null)}>

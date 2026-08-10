@@ -45,6 +45,8 @@ describe("Tokyo Night palette", () => {
     expect(tokyoNight).toContain("--sidebar: 234 25% 12%");
     expect(tokyoNight).toContain("--primary: 213 100% 72%");
     expect(tokyoNight).toContain("--muted-foreground: 226 32% 68%");
+    expect(tokyoNight).toContain("--document-list-folder: hsl(263 78% 82%)");
+    expect(tokyoNight).toContain("--document-list-active-border: hsl(198 100% 72% / 0.78)");
   });
 
   it("defines Tokyo Night syntax colours for the raw editor", () => {

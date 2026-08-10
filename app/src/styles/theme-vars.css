@@ -29,6 +29,19 @@
     --sidebar-border: 220 16% 85%;
     --sidebar-active-bg: 226 70% 92%;
     --sidebar-active-fg: 226 64% 43%;
+    /* Document shelf semantics. Themes can energize the dense navigation list
+       without leaking those stronger colours into the reading canvas. */
+    --document-list-surface: transparent;
+    --document-list-title: hsl(var(--foreground) / 0.9);
+    --document-list-meta: hsl(var(--muted-foreground));
+    --document-list-folder: hsl(var(--muted-foreground));
+    --document-list-row: transparent;
+    --document-list-row-hover: hsl(var(--muted) / 0.6);
+    --document-list-active-bg: hsl(var(--primary) / 0.1);
+    --document-list-active-border: hsl(var(--primary) / 0.25);
+    --document-list-active-title: hsl(var(--foreground));
+    --document-list-icon-bg: hsl(var(--muted) / 0.7);
+    --document-list-icon-fg: hsl(var(--muted-foreground));
     /* Writing studio — blue "fountain-pen ink" for annotations + manuscript serif */
     --ink: 211 65% 40%;
     --tag-chip-l: 38%;
@@ -187,6 +200,20 @@
     --sidebar-border: 229 26% 25%;
     --sidebar-active-bg: 223 42% 27%;
     --sidebar-active-fg: 211 100% 83%;
+    /* The shelf is navigation, not reading chrome: purple folders establish
+       hierarchy, cyan marks location, and lifted idle rows create a brisk scan
+       rhythm against the deep rail. */
+    --document-list-surface: hsl(232 30% 14%);
+    --document-list-title: hsl(224 100% 94%);
+    --document-list-meta: hsl(218 42% 70%);
+    --document-list-folder: hsl(263 78% 82%);
+    --document-list-row: hsl(230 28% 20% / 0.42);
+    --document-list-row-hover: hsl(224 40% 25% / 0.78);
+    --document-list-active-bg: hsl(222 50% 30%);
+    --document-list-active-border: hsl(198 100% 72% / 0.78);
+    --document-list-active-title: hsl(194 100% 85%);
+    --document-list-icon-bg: hsl(226 38% 29%);
+    --document-list-icon-fg: hsl(213 100% 78%);
     --ink: 190 100% 73%;
     --tag-chip-l: 74%;
 

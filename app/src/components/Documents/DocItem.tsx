@@ -183,8 +183,8 @@ export const DocItem = React.memo(function DocItem({ doc, active, compact = fals
           selected
             ? "border-primary/40 bg-primary/[0.07] text-foreground"
             : active
-            ? "border-primary/25 bg-primary/10 text-foreground shadow-xs shadow-primary/5"
-            : "border-transparent text-foreground/90 hover:bg-muted/60"
+            ? "border-[var(--document-list-active-border)] bg-[var(--document-list-active-bg)] text-[var(--document-list-active-title)] shadow-sm shadow-primary/10"
+            : "border-transparent bg-[var(--document-list-row)] text-[var(--document-list-title)] hover:border-[var(--document-list-active-border)] hover:bg-[var(--document-list-row-hover)]"
         }`}
       >
         {/* One left rail: in comfortable mode the icon sits at the *top*, on
@@ -214,10 +214,8 @@ export const DocItem = React.memo(function DocItem({ doc, active, compact = fals
             compact ? "h-7 w-7" : "h-8 w-8"
           } ${
             active
-              ? "bg-primary/15 text-primary"
-              : doc.protected
-                ? "bg-muted text-muted-foreground"
-                : "bg-muted/70 text-muted-foreground"
+              ? "bg-primary/25 text-[var(--document-list-active-title)]"
+              : "bg-[var(--document-list-icon-bg)] text-[var(--document-list-icon-fg)]"
           }`}>
             {/* The base glyph — a lock when protected, a file otherwise. Pinned
               * docs keep it and carry a small pin badge over the corner instead
@@ -272,7 +270,7 @@ export const DocItem = React.memo(function DocItem({ doc, active, compact = fals
                 * row height — the same arrangement LocalDocTree's FileRow uses. */}
               <div className={compact ? "relative ml-auto h-5 shrink-0 flex items-center" : "contents"}>
               {compact && (
-                <span className="text-[10px] tabular-nums text-muted-foreground/50 group-hover:hidden">
+                <span className="text-[10px] tabular-nums text-[var(--document-list-meta)] opacity-65 group-hover:hidden">
                   {formatDate(doc.updated_at)}
                 </span>
               )}
@@ -373,12 +371,12 @@ export const DocItem = React.memo(function DocItem({ doc, active, compact = fals
                           style={{ width: `${Math.max(4, Math.round((taskDone / taskTotal) * 100))}%` }}
                         />
                       </span>
-                      <span className={`text-[10px] tabular-nums ${taskDone >= taskTotal ? "text-muted-foreground/50" : "text-muted-foreground/70"}`}>{t("doc.taskProgress", { done: taskDone, total: taskTotal })}</span>
+                      <span className={`text-[10px] tabular-nums text-[var(--document-list-meta)] ${taskDone >= taskTotal ? "opacity-60" : "opacity-80"}`}>{t("doc.taskProgress", { done: taskDone, total: taskTotal })}</span>
                     </span>
                   )}
-                  <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/70">{formatDate(doc.updated_at)}</span>
+                  <span className="shrink-0 text-[10px] tabular-nums text-[var(--document-list-meta)] opacity-80">{formatDate(doc.updated_at)}</span>
                   {!doc.protected && doc.word_count > 0 && (
-                    <span className="shrink truncate text-[10px] text-muted-foreground/70">
+                    <span className="shrink truncate text-[10px] text-[var(--document-list-meta)] opacity-80">
                       · {t("doc.wordCount", { n: doc.word_count })}
                     </span>
                   )}
@@ -421,7 +419,7 @@ export const DocItem = React.memo(function DocItem({ doc, active, compact = fals
                   * title, and sizing it to whatever was left over is what cut
                   * text through the middle before. */}
                 {hasPreview && (
-                  <p className="mt-1 h-4 shrink-0 truncate text-[11px] font-normal leading-4 text-muted-foreground">
+                  <p className="mt-1 h-4 shrink-0 truncate text-[11px] font-normal leading-4 text-[var(--document-list-meta)]">
                     <HighlightFuzzy text={preview} query={searchQuery} />
                   </p>
                 )}
