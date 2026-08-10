@@ -296,7 +296,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
             title={iconsCollapsed ? t("command.expandIcons") : t("command.collapseIcons")}
             className="h-8 w-8 rounded-lg text-muted-foreground"
           >
-            {iconsCollapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
+            {iconsCollapsed ? <ChevronsLeft className="h-4 w-4" /> : <ChevronsRight className="h-4 w-4" />}
           </Button>
           {!iconsCollapsed && <>
           <Button

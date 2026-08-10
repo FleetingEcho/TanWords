@@ -44,10 +44,9 @@ export function useDocImportExport(params: {
         for (const source of sources) {
           const blocks = liftMermaid(await markdownToBlocks(source.content));
           const { content, contentText, wordCount } = blocksToStorage(blocks);
-          const id = await db.createDocument();
-          if (firstImportedId === null) firstImportedId = id;
           const title = source.name.replace(/\.(md|markdown)$/i, "");
-          await db.updateDocument(id, title, content, contentText, "[]", false, wordCount, "");
+          const id = await db.createDocumentWithContent(title, content, contentText, "[]", wordCount);
+          if (firstImportedId === null) firstImportedId = id;
         }
         await load(0);
         if (firstImportedId !== null) onSelect(firstImportedId);
@@ -65,10 +64,9 @@ export function useDocImportExport(params: {
       for (const source of sources) {
         const blocks = liftMermaid(await markdownToBlocks(source.content));
         const { content, contentText, wordCount } = blocksToStorage(blocks);
-        const id = await db.createDocument();
-        if (firstImportedId === null) firstImportedId = id;
         const title = source.name.replace(/\.(md|markdown)$/i, "");
-        await db.updateDocument(id, title, content, contentText, "[]", false, wordCount, "");
+        const id = await db.createDocumentWithContent(title, content, contentText, "[]", wordCount);
+        if (firstImportedId === null) firstImportedId = id;
       }
       await load(0);
       if (firstImportedId !== null) onSelect(firstImportedId);

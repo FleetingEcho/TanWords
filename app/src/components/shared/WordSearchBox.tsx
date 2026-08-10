@@ -231,8 +231,10 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
         <input
           autoFocus={!inline}
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
           onFocus={() => { if (searched) setOpen(true); }}
+          // Normalize to lowercase on every keystroke so both search and
+          // add use lowercase by default (a no-op for Chinese reverse lookup).
+          onChange={(e) => setQuery(e.target.value.toLowerCase())}
           onKeyDown={(e) => {
             if (e.key !== "Enter") return;
             e.preventDefault();

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
 use serde::Serialize;
@@ -12,12 +12,14 @@ pub(super) const MASTER_CONFIG_SETTING: &str = "document_privacy.master_config";
 pub struct DocumentPrivacyState {
     keys: Mutex<HashMap<i64, [u8; 32]>>,
     master_key: Mutex<Option<[u8; 32]>>,
+    explicitly_locked: Mutex<HashSet<i64>>,
 }
 
 impl DocumentPrivacyState {
     pub fn clear(&self) -> Result<(), String> {
         self.keys.lock().map_err(|e| e.to_string())?.clear();
         *self.master_key.lock().map_err(|e| e.to_string())? = None;
+        self.explicitly_locked.lock().map_err(|e| e.to_string())?.clear();
         Ok(())
     }
 
@@ -26,7 +28,19 @@ impl DocumentPrivacyState {
             .lock()
             .map_err(|e| e.to_string())?
             .remove(&document_id);
+        self.explicitly_locked
+            .lock()
+            .map_err(|e| e.to_string())?
+            .insert(document_id);
         Ok(())
+    }
+
+    pub(super) fn is_explicitly_locked(&self, document_id: i64) -> Result<bool, String> {
+        Ok(self
+            .explicitly_locked
+            .lock()
+            .map_err(|e| e.to_string())?
+            .contains(&document_id))
     }
 
     pub fn is_unlocked(&self, document_id: i64) -> bool {
@@ -50,6 +64,10 @@ impl DocumentPrivacyState {
             .lock()
             .map_err(|e| e.to_string())?
             .insert(document_id, key);
+        self.explicitly_locked
+            .lock()
+            .map_err(|e| e.to_string())?
+            .remove(&document_id);
         Ok(())
     }
 
@@ -68,4 +86,21 @@ pub struct PrivatePasswordStatus {
     pub(super) configured: bool,
     pub(super) unlocked: bool,
     pub(super) legacy_documents: i64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DocumentPrivacyState;
+
+    #[test]
+    fn locking_one_document_keeps_other_documents_unlocked() {
+        let privacy = DocumentPrivacyState::default();
+        privacy.unlock(1, [1; 32]).unwrap();
+        privacy.unlock(2, [2; 32]).unwrap();
+
+        privacy.lock(1).unwrap();
+
+        assert!(!privacy.is_unlocked(1));
+        assert!(privacy.is_unlocked(2));
+    }
 }

@@ -22,6 +22,7 @@ export function useDocumentEditor() {
   const activeIdRef = useRef<number | null>(null);
   const loadSequence = useRef(0);
   const lastSavedContent = useRef<string | null>(null);
+  const activeFlush = useRef<(() => Promise<void>) | null>(null);
 
   const pendingSave = useRef<{ content: string; contentText: string; wordCount: number } | null>(null);
   const saveQueue = useRef(Promise.resolve());
@@ -108,7 +109,7 @@ export function useDocumentEditor() {
     setSaveStatus("saving");
     const save = async () => {
       try {
-        const saved = await db.updateDocument(documentId, title, content, contentText, tags, pinned, wordCount, status);
+        const saved = await db.updateDocumentContent(documentId, content, contentText, wordCount);
         if (!saved) throw new Error("Save failed");
         await pruneDocumentAssets(documentId, content);
         if (content !== lastSavedContent.current) {
@@ -148,6 +149,17 @@ export function useDocumentEditor() {
     setSaveStatus("dirty");
   }, []);
 
+  const registerActiveFlush = useCallback((flush: (() => Promise<void>) | null) => {
+    activeFlush.current = flush;
+  }, []);
+
+  const flushActiveDocument = useCallback(async (id: number) => {
+    if (activeIdRef.current !== id) return;
+    await activeFlush.current?.();
+    // Also cover a save that was already queued before the lock action began.
+    await saveQueue.current;
+  }, []);
+
   // handleSave rewrites the whole record (title/tags/pinned included) from
   // this hook's doc state. The sidebar's rename/pin (useDocActions) goes
   // straight to the DB — without this subscription, the open editor's next
@@ -173,8 +185,8 @@ export function useDocumentEditor() {
   const handleTitleChange = useCallback(async (title: string) => {
     if (!doc) return;
     setDoc((prev) => (prev ? { ...prev, title } : prev));
-    await db.updateDocument(doc.id, title, doc.content, doc.content_text, doc.tags, doc.pinned, doc.word_count, doc.status);
-    setRefreshKey((k) => k + 1);
+    const saved = await db.updateDocumentMetadata(doc.id, { title });
+    if (saved) window.dispatchEvent(new CustomEvent("docs-item-updated", { detail: { id: doc.id, title } }));
   }, [db, doc]);
 
   // Bumps refreshKey rather than patching the list in place: a brand-new tag
@@ -183,7 +195,7 @@ export function useDocumentEditor() {
     if (!doc) return;
     const serialized = JSON.stringify(tags);
     setDoc((prev) => (prev ? { ...prev, tags: serialized } : prev));
-    await db.updateDocument(doc.id, doc.title, doc.content, doc.content_text, serialized, doc.pinned, doc.word_count, doc.status);
+    await db.updateDocumentMetadata(doc.id, { tags: serialized });
     setRefreshKey((k) => k + 1);
   }, [db, doc]);
 
@@ -194,7 +206,7 @@ export function useDocumentEditor() {
   const handleStatusChange = useCallback(async (status: DocStatus) => {
     if (!doc) return;
     setDoc((prev) => (prev ? { ...prev, status } : prev));
-    await db.updateDocument(doc.id, doc.title, doc.content, doc.content_text, doc.tags, doc.pinned, doc.word_count, status);
+    await db.updateDocumentMetadata(doc.id, { status });
     setRefreshKey((k) => k + 1);
   }, [db, doc]);
 
@@ -202,7 +214,7 @@ export function useDocumentEditor() {
     if (!doc) return;
     const newPinned = !doc.pinned;
     setDoc((prev) => (prev ? { ...prev, pinned: newPinned } : prev));
-    await db.updateDocument(doc.id, doc.title, doc.content, doc.content_text, doc.tags, newPinned, doc.word_count, doc.status);
+    await db.updateDocumentMetadata(doc.id, { pinned: newPinned });
     setRefreshKey((k) => k + 1);
   }, [db, doc]);
 
@@ -217,6 +229,7 @@ export function useDocumentEditor() {
   return {
     activeId, doc, lockedId, saveStatus, refreshKey, loading,
     loadDoc, handleNewDoc, handleNewDocIn, handleSave, markDirty, handleTitleChange, handleTagsChange, handleStatusChange, handlePinToggle,
+    registerActiveFlush, flushActiveDocument,
     unlockDocument, removeLockedProtection,
     reset,
   };

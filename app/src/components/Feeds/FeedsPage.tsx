@@ -72,6 +72,7 @@ export function FeedsPage() {
   const setBrowse = useFeedsNavStore((s) => s.setBrowse);
   const [recentlyRead, setRecentlyRead] = useState<RecentlyReadItem[]>(() => getRecentlyRead());
   const syncingRef = useRef(false);
+  const forcedSyncQueueRef = useRef<Map<number, RssFeed>>(new Map());
   // The live selection, readable from long-running background syncs — their
   // captured `selected` would otherwise be stale and yank the view back.
   const selectedRef = useRef<RssTabSelection>(selected);
@@ -108,24 +109,42 @@ export function FeedsPage() {
     if (showTitleTranslations && noTitleProvider) toast(t("reading.translate.noProvider"));
   }, [showTitleTranslations, noTitleProvider, t]);
 
-  /** Sync sequentially in the backend, then update the visible cache once for the whole batch. */
-  const syncFeeds = useCallback(async (targets: RssFeed[]) => {
-    if (syncingRef.current || targets.length === 0) return;
+  /** Sync sequentially in the backend, then update the visible cache once for the whole batch.
+   *  Paused feeds are bulk-sync proof; opening that exact feed queues a forced exception. */
+  const syncFeeds = useCallback(async (targets: RssFeed[], force = false) => {
+    if (targets.length === 0) return;
+    if (syncingRef.current) {
+      if (force) targets.forEach((feed) => forcedSyncQueueRef.current.set(feed.id, feed));
+      return;
+    }
     syncingRef.current = true;
     setSyncing(true);
     const failed = new Set<number>();
-    for (const feed of targets) {
-      try {
-        await db.syncRssFeed(feed.id);
-      } catch {
-        failed.add(feed.id);
+    let batch = targets;
+    let forceBatch = force;
+    try {
+      while (true) {
+        for (const feed of batch) {
+          if (feed.is_paused && !forceBatch) continue;
+          try {
+            await db.syncRssFeed(feed.id, forceBatch);
+          } catch {
+            failed.add(feed.id);
+          }
+        }
+        const queued = [...forcedSyncQueueRef.current.values()];
+        forcedSyncQueueRef.current.clear();
+        if (queued.length === 0) break;
+        batch = queued;
+        forceBatch = true;
       }
+      await refreshEntries(selectedRef.current);
+      setFailedFeeds(failed);
+      setFeeds(await db.getRssFeeds());
+    } finally {
+      syncingRef.current = false;
+      setSyncing(false);
     }
-    await refreshEntries(selectedRef.current);
-    setFailedFeeds(failed);
-    setFeeds(await db.getRssFeeds());
-    syncingRef.current = false;
-    setSyncing(false);
   }, [db, refreshEntries]);
 
   // Initial load: paint cached data first. Network refresh starts after a short
@@ -157,8 +176,13 @@ export function FeedsPage() {
         }
         await refreshEntries(validTab);
         setBooting(false);
-        const stale = list.filter((f) => isStale(f.last_fetched_at));
-        syncTimer = window.setTimeout(() => { void syncFeeds(stale); }, 1200);
+        const selectedPausedFeed = typeof validTab === "number"
+          ? list.find((feed) => feed.id === validTab && feed.is_paused)
+          : undefined;
+        const stale = list.filter((f) => !f.is_paused && isStale(f.last_fetched_at));
+        syncTimer = window.setTimeout(() => {
+          void (selectedPausedFeed ? syncFeeds([selectedPausedFeed], true) : syncFeeds(stale));
+        }, 1200);
       } finally {
         setBooting(false);
       }
@@ -175,14 +199,18 @@ export function FeedsPage() {
     selectedRef.current = sel;
     setBrowse(null);
     refreshEntries(sel);
+    if (typeof sel === "number") {
+      const feed = feeds.find((candidate) => candidate.id === sel);
+      if (feed?.is_paused) void syncFeeds([feed], true);
+    }
   };
 
-  const handleRefresh = () => syncFeeds(feeds);
+  const handleRefresh = () => syncFeeds(feeds.filter((feed) => !feed.is_paused));
 
   const handleAdded = async () => {
     const list = await db.getRssFeeds();
     setFeeds(list);
-    syncFeeds(list.filter((f) => isStale(f.last_fetched_at)));
+    syncFeeds(list.filter((f) => !f.is_paused && isStale(f.last_fetched_at)));
   };
 
   const handleDelete = async (id: number) => {
@@ -200,6 +228,11 @@ export function FeedsPage() {
   ) => {
     await db.updateRssFeedPreferences(id, category, isPinned);
     setFeeds(await db.getRssFeeds());
+  };
+
+  const handlePausedChange = async (id: number, isPaused: boolean) => {
+    await db.setRssFeedPaused(id, isPaused);
+    setFeeds((current) => current.map((feed) => feed.id === id ? { ...feed, is_paused: isPaused } : feed));
   };
 
   const markRead = (entry: RssEntryRow) => {
@@ -373,6 +406,7 @@ export function FeedsPage() {
         onSelect={selectFeed}
         onDelete={handleDelete}
         onPreferences={handlePreferences}
+        onPausedChange={handlePausedChange}
         onAdd={() => setShowAdd(true)}
         onRefresh={handleRefresh}
         viewMode={feedsViewMode}

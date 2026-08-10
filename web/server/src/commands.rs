@@ -82,6 +82,8 @@ const ALLOWED: &[&str] = &[
     "db_set_folder_locked",
     "db_unlock_document",
     "db_update_document",
+    "db_update_document_content",
+    "db_update_document_metadata",
     // ── reading / RSS / feeds ─────────────────────────────────────────────
     "db_add_reading_comment",
     "db_add_rss_feed",
@@ -100,6 +102,7 @@ const ALLOWED: &[&str] = &[
     "db_save_article_analysis",
     "db_save_reading_article",
     "db_sync_rss_feed",
+    "db_set_rss_feed_paused",
     "db_toggle_feed_bookmark",
     "db_update_rss_feed_preferences",
     "db_update_rss_feed_title",

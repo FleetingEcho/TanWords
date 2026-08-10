@@ -60,6 +60,8 @@ db::db_export_document_assets_zip
 db::db_get_document_link_context
 db::db_prune_document_assets
 db::db_update_document
+db::db_update_document_content
+db::db_update_document_metadata
 db::db_delete_document
 db::db_duplicate_document
 db::db_get_all_tags
@@ -137,6 +139,7 @@ rss::db_add_rss_feed
 rss::db_get_rss_feeds
 rss::db_update_rss_feed_title
 rss::db_update_rss_feed_preferences
+rss::db_set_rss_feed_paused
 rss::db_delete_rss_feed
 rss::db_sync_rss_feed
 rss::db_get_rss_entries

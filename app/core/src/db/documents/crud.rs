@@ -289,6 +289,91 @@ pub async fn db_update_document(
     Ok(())
 }
 
+/// Replaces only the large, derived-content portion of a document. Metadata is
+/// deliberately absent from this interface so an autosave can never revert a
+/// title/tag/pin/status change that completed while serialization was running.
+#[crate::shim::command]
+pub async fn db_update_document_content(
+    id: i64,
+    content: String,
+    content_text: String,
+    word_count: i64,
+    conn: State<'_, AppState>,
+) -> Result<(), String> {
+    let db = db::conn(&conn)?;
+    let key = document_privacy::require_key(&db, &conn.document_privacy, id).await?;
+    let (task_total, task_done) = super::tasks::count_tasks(&content);
+    let (content, content_text) = match key {
+        Some(key) => (
+            encrypt_text(&key, &content)?,
+            encrypt_text(&key, &content_text)?,
+        ),
+        None => (content, content_text),
+    };
+    db.execute(
+        "UPDATE documents SET content=?1, content_text=?2, word_count=?3,
+         updated_at=datetime('now'), task_total=?4, task_done=?5 WHERE id=?6",
+        params![content, content_text, word_count, task_total, task_done, id],
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Patches small document metadata without reading, transporting, counting, or
+/// re-encrypting the document body. The dynamically-built SET list matters:
+/// SQLite's `UPDATE OF title` trigger fires when `title` appears syntactically,
+/// even if a COALESCE would ultimately leave its value unchanged.
+#[crate::shim::command]
+pub async fn db_update_document_metadata(
+    id: i64,
+    title: Option<String>,
+    tags: Option<String>,
+    pinned: Option<bool>,
+    status: Option<String>,
+    conn: State<'_, AppState>,
+) -> Result<(), String> {
+    let status = status.map(|value| normalize_status(&value)).transpose()?;
+    let mut assignments = Vec::with_capacity(5);
+    let mut values: Vec<libsql::Value> = Vec::with_capacity(5);
+
+    if let Some(title) = title {
+        values.push(title.into());
+        assignments.push(format!("title=?{}", values.len()));
+    }
+    if let Some(tags) = tags {
+        values.push(tags.into());
+        assignments.push(format!("tags=?{}", values.len()));
+    }
+    if let Some(pinned) = pinned {
+        values.push((pinned as i64).into());
+        assignments.push(format!("pinned=?{}", values.len()));
+    }
+    if let Some(status) = status {
+        values.push(status.into());
+        assignments.push(format!("status=?{}", values.len()));
+    }
+    if assignments.is_empty() {
+        return Ok(());
+    }
+
+    let db = db::conn(&conn)?;
+    document_privacy::require_key(&db, &conn.document_privacy, id).await?;
+    assignments.push("updated_at=datetime('now')".to_string());
+    values.push(id.into());
+    db.execute(
+        &format!(
+            "UPDATE documents SET {} WHERE id=?{}",
+            assignments.join(", "),
+            values.len(),
+        ),
+        values,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[crate::shim::command]
 pub async fn db_delete_document(id: i64, conn: State<'_, AppState>) -> Result<(), String> {
     let db = db::conn(&conn)?;

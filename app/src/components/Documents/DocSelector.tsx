@@ -28,11 +28,12 @@ interface Props {
   manualRefreshKey?: number;
   onRefreshingChange?: (refreshing: boolean) => void;
   onCollapse?: () => void;
+  beforeLock?: (id: number) => Promise<void>;
   /** Passed straight to the header — see DocSourceTabs. */
   sourceTabs?: React.ReactNode;
 }
 
-export function DocSelector({ activeId, onSelect, onNewDoc, onNewDocIn, refreshKey, manualRefreshKey = 0, onRefreshingChange, onCollapse, sourceTabs }: Props) {
+export function DocSelector({ activeId, onSelect, onNewDoc, onNewDocIn, refreshKey, manualRefreshKey = 0, onRefreshingChange, onCollapse, beforeLock, sourceTabs }: Props) {
   const t = useT();
   const list = useDocList(`${refreshKey}:${manualRefreshKey}`);
   const { db, page, load, total, totalPages, loading: listLoading } = list;
@@ -58,7 +59,7 @@ export function DocSelector({ activeId, onSelect, onNewDoc, onNewDocIn, refreshK
     };
   }, [shelfMenu]);
 
-  const actions = useDocActions({ db, activeId, onSelect, load, page });
+  const actions = useDocActions({ db, activeId, onSelect, load, page, beforeLock });
   const importExport = useDocImportExport({ db, onSelect, load, requestPassword: actions.requestPassword });
   const { exportDocumentHtml, exportDocumentPdf } = importExport;
 

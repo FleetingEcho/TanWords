@@ -209,6 +209,8 @@ export interface RssFeed {
   category_override: "article" | "podcast" | null;
   is_pinned: boolean;
   pin_order: number | null;
+  /** Excluded from bulk/background refreshes; direct channel visits may still sync it. */
+  is_paused: boolean;
 }
 
 /** One persisted feed/HN bookmark. */

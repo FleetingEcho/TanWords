@@ -114,7 +114,7 @@ export function useVocabEnrichSelected(params: {
           }
         : prev);
 
-      toast.success(`「${word}」AI 分析完成`);
+      toast.success(`「${word}」 AI analyzed`);
       window.dispatchEvent(new CustomEvent("vocab-updated"));
       useVocabEnrichStore.getState().finishSingle(word, "done", controller);
     } catch (e: any) {

@@ -313,46 +313,65 @@
     --ink: 197 70% 36%;
   }
 
-  /* Tokyo Night Storm — the brighter, blue-grey Tokyo Night variant */
+  /* Tokyo Night Storm — Tokyo Night's brighter, blue-grey workspace.
+     It keeps the Night theme's blue interaction, cyan location, and purple
+     hierarchy cues, but lifts each working surface one deliberate step:
+     deep rail -> navy shelf -> storm canvas -> raised cards and popovers. */
   .theme-tokyo-night-storm {
-    --background: 230 24% 19%;
-    --foreground: 226 64% 86%;
-    --card: 228 23% 21%;
-    --card-foreground: 226 64% 86%;
-    --popover: 228 23% 21%;
-    --popover-foreground: 226 64% 86%;
-    --primary: 224 89% 72%;
-    --primary-foreground: 230 24% 15%;
-    --secondary: 229 22% 27%;
-    --secondary-foreground: 226 64% 86%;
-    --muted: 229 22% 25%;
-    --muted-foreground: 227 23% 60%;
-    --accent: 267 83% 79%;
-    --accent-foreground: 230 24% 15%;
-    --destructive: 349 89% 72%;
-    --destructive-foreground: 230 24% 15%;
-    --border: 229 24% 31%;
-    --input: 229 24% 31%;
-    --ring: 224 89% 72%;
-    --sidebar: 230 25% 17%;
-    --sidebar-foreground: 226 64% 86%;
-    --sidebar-muted: 227 23% 60%;
-    --sidebar-border: 229 22% 26%;
-    --sidebar-active-bg: 224 35% 29%;
-    --sidebar-active-fg: 224 89% 77%;
-    --document-list-surface: hsl(var(--card));
-    --document-list-title: hsl(var(--foreground));
-    --document-list-meta: hsl(var(--muted-foreground));
-    --document-list-folder: hsl(var(--secondary-foreground));
+    --background: 229 24% 22%;
+    --foreground: 226 76% 91%;
+    --card: 230 25% 25%;
+    --card-foreground: 226 76% 91%;
+    --popover: 229 27% 28%;
+    --popover-foreground: 226 76% 91%;
+    --primary: 218 100% 73%;
+    --primary-foreground: 232 30% 14%;
+    --secondary: 230 24% 29%;
+    --secondary-foreground: 225 48% 84%;
+    --muted: 230 21% 27%;
+    --muted-foreground: 226 29% 68%;
+    --accent: 225 39% 33%;
+    --accent-foreground: 211 100% 86%;
+    --destructive: 349 92% 72%;
+    --destructive-foreground: 232 30% 14%;
+    --border: 228 24% 35%;
+    --input: 225 31% 42%;
+    --ring: 218 100% 73%;
+    --sidebar: 233 28% 16%;
+    --sidebar-foreground: 226 62% 89%;
+    --sidebar-muted: 226 29% 67%;
+    --sidebar-border: 229 26% 28%;
+    --sidebar-active-bg: 222 42% 31%;
+    --sidebar-active-fg: 207 100% 84%;
+    --document-list-surface: hsl(231 26% 20%);
+    --document-list-title: hsl(224 100% 95%);
+    --document-list-meta: hsl(219 39% 72%);
+    --document-list-folder: hsl(263 73% 82%);
     --document-list-row: transparent;
-    --document-list-row-hover: hsl(var(--secondary) / 0.78);
-    --document-list-active-bg: hsl(var(--sidebar-active-bg));
-    --document-list-active-border: hsl(var(--primary) / 0.55);
-    --document-list-active-title: hsl(216 100% 91%);
-    --document-list-icon-bg: hsl(var(--secondary));
-    --document-list-icon-fg: hsl(var(--primary));
-    --ink: 189 71% 73%;
-    --tag-chip-l: 72%;
+    --document-list-row-hover: hsl(226 33% 29% / 0.86);
+    --document-list-active-bg: hsl(222 48% 34%);
+    --document-list-active-border: hsl(193 100% 75% / 0.78);
+    --document-list-active-title: hsl(194 100% 88%);
+    --document-list-icon-bg: hsl(226 35% 32%);
+    --document-list-icon-fg: hsl(216 100% 80%);
+    --ink: 190 100% 76%;
+    --tag-chip-l: 75%;
+
+    /* Keep raw Markdown and fenced code visually continuous with Tokyo Night.
+       The slightly brighter Storm canvas supplies the contrast, so syntax
+       hues stay familiar instead of becoming a second, competing palette. */
+    --syntax-heading: #7aa2f7;
+    --syntax-quote: #737aa2;
+    --syntax-link: #7dcfff;
+    --syntax-code: #9ece6a;
+    --syntax-keyword: #bb9af7;
+    --syntax-string: #9ece6a;
+    --syntax-comment: #626a96;
+    --syntax-number: #ff9e64;
+    --syntax-function: #7aa2f7;
+    --syntax-variable: #c0caf5;
+    --syntax-punctuation: #89ddff;
+    --syntax-invalid: #f7768e;
   }
 
   /* Dim — X (Twitter)'s dark-navy mode: Dim background, Twitter Blue primary,

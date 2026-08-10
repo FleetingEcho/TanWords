@@ -100,7 +100,144 @@ impl Ctx {
 
 #[cfg(test)]
 mod tests {
-    use super::to_snake_case;
+    use super::{dispatch, to_snake_case, Args, Ctx};
+
+    #[test]
+    fn rss_pause_command_is_exposed_to_the_renderer() {
+        assert!(dispatch::COMMAND_NAMES.contains(&"db_set_rss_feed_paused"));
+    }
+
+    #[test]
+    fn split_document_save_commands_are_exposed_to_the_renderer() {
+        assert!(dispatch::COMMAND_NAMES.contains(&"db_update_document_content"));
+        assert!(dispatch::COMMAND_NAMES.contains(&"db_update_document_metadata"));
+    }
+
+    #[tokio::test]
+    async fn content_and_metadata_updates_do_not_overwrite_each_other() {
+        let database = crate::db::connection::open_memory().await.unwrap();
+        let (registry, app) = crate::build_state_for(database, None).await;
+        let ctx = Ctx::new(registry, app);
+        let id = dispatch::dispatch(
+            &ctx,
+            "db_create_document_with_content",
+            Args::new(serde_json::json!({
+                "title": "Original",
+                "content": "old-content",
+                "contentText": "old text",
+                "tags": "[]",
+                "wordCount": 2,
+                "folder": null
+            })),
+        )
+        .await
+        .unwrap()
+        .as_i64()
+        .unwrap();
+
+        dispatch::dispatch(
+            &ctx,
+            "db_update_document_metadata",
+            Args::new(serde_json::json!({
+                "id": id,
+                "title": "Renamed",
+                "tags": null,
+                "pinned": null,
+                "status": null
+            })),
+        )
+        .await
+        .unwrap();
+        dispatch::dispatch(
+            &ctx,
+            "db_update_document_content",
+            Args::new(serde_json::json!({
+                "id": id,
+                "content": "new-content",
+                "contentText": "new text",
+                "wordCount": 2
+            })),
+        )
+        .await
+        .unwrap();
+
+        let document = dispatch::dispatch(
+            &ctx,
+            "db_get_document",
+            Args::new(serde_json::json!({ "id": id })),
+        )
+        .await
+        .unwrap();
+        assert_eq!(document["title"], "Renamed");
+        assert_eq!(document["content"], "new-content");
+        assert_eq!(document["content_text"], "new text");
+    }
+
+    #[tokio::test]
+    async fn lock_document_accepts_the_renderer_id_payload() {
+        let database = crate::db::connection::open_memory().await.unwrap();
+        let (registry, app) = crate::build_state_for(database, None).await;
+        let ctx = Ctx::new(registry, app);
+
+        let result = dispatch::dispatch(
+            &ctx,
+            "db_lock_document",
+            Args::new(serde_json::json!({ "id": 42 })),
+        )
+        .await;
+
+        assert!(result.is_ok(), "renderer payload was rejected: {result:?}");
+    }
+
+    #[tokio::test]
+    async fn lock_document_makes_an_open_private_document_unreadable() {
+        let database = crate::db::connection::open_memory().await.unwrap();
+        let (registry, app) = crate::build_state_for(database, None).await;
+        let ctx = Ctx::new(registry, app);
+        let id = dispatch::dispatch(&ctx, "db_create_document", Args::new(serde_json::Value::Null))
+            .await
+            .unwrap()
+            .as_i64()
+            .unwrap();
+        dispatch::dispatch(
+            &ctx,
+            "db_protect_document",
+            Args::new(serde_json::json!({ "id": id, "password": "test-password" })),
+        )
+        .await
+        .unwrap();
+
+        dispatch::dispatch(
+            &ctx,
+            "db_lock_document",
+            Args::new(serde_json::json!({ "id": id })),
+        )
+        .await
+        .unwrap();
+        let reopened = dispatch::dispatch(
+            &ctx,
+            "db_get_document",
+            Args::new(serde_json::json!({ "id": id })),
+        )
+        .await;
+
+        assert_eq!(reopened.unwrap_err(), "DOCUMENT_LOCKED");
+
+        dispatch::dispatch(
+            &ctx,
+            "db_unlock_document",
+            Args::new(serde_json::json!({ "id": id, "password": "test-password" })),
+        )
+        .await
+        .unwrap();
+        let unlocked = dispatch::dispatch(
+            &ctx,
+            "db_get_document",
+            Args::new(serde_json::json!({ "id": id })),
+        )
+        .await;
+        assert!(unlocked.is_ok());
+    }
 
     #[test]
     fn converts_the_argument_names_the_frontend_actually_sends() {

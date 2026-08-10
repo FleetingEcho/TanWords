@@ -60,6 +60,7 @@ pub struct RssFeed {
     pub category_override: Option<String>,
     pub is_pinned: bool,
     pub pin_order: Option<i64>,
+    pub is_paused: bool,
 }
 
 #[derive(Serialize)]

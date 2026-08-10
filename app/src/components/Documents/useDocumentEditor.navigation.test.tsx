@@ -1,12 +1,17 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getDocument } = vi.hoisted(() => ({ getDocument: vi.fn() }));
+const { getDocument, updateDocumentContent, updateDocumentMetadata } = vi.hoisted(() => ({
+  getDocument: vi.fn(),
+  updateDocumentContent: vi.fn(async () => true),
+  updateDocumentMetadata: vi.fn(async () => true),
+}));
 
 vi.mock("@/hooks/useDB", () => ({
   useDB: () => ({
     getDocument,
-    updateDocument: vi.fn(),
+    updateDocumentContent,
+    updateDocumentMetadata,
     createDocument: vi.fn(),
     setDocumentsFolder: vi.fn(),
     unlockDocument: vi.fn(),
@@ -64,5 +69,18 @@ describe("useDocumentEditor latest-click navigation", () => {
     await act(async () => { second.resolve(detail(2)); await secondLoad; });
     expect(result.current.doc?.id).toBe(2);
     expect(result.current.loading).toBe(false);
+  });
+
+  it("keeps metadata and content writes on separate persistence paths", async () => {
+    getDocument.mockResolvedValue(detail(1));
+    const { result } = renderHook(() => useDocumentEditor());
+    await act(async () => { await result.current.loadDoc(1); });
+
+    await act(async () => { await result.current.handleTitleChange("Renamed"); });
+    expect(updateDocumentMetadata).toHaveBeenCalledWith(1, { title: "Renamed" });
+    expect(updateDocumentContent).not.toHaveBeenCalled();
+
+    await act(async () => { await result.current.handleSave("new-content", "new text", 2); });
+    expect(updateDocumentContent).toHaveBeenCalledWith(1, "new-content", "new text", 2);
   });
 });

@@ -315,21 +315,36 @@ export function useDBCore() {
     }
   }, []);
 
-  const updateDocument = useCallback(async (
+  const updateDocumentContent = useCallback(async (
     id: number,
-    title: string,
     content: string,
     contentText: string,
-    tags: string,
-    pinned: boolean,
     wordCount: number,
-    status: DocStatus | string = "",
   ): Promise<boolean> => {
     try {
-      await invoke("db_update_document", { id, title, content, contentText, tags, pinned, wordCount, status });
+      await invoke("db_update_document_content", { id, content, contentText, wordCount });
       return true;
     } catch (e) {
-      reportWriteError("updateDocument", e, "保存文档失败");
+      reportWriteError("updateDocumentContent", e, "保存文档失败");
+      return false;
+    }
+  }, []);
+
+  const updateDocumentMetadata = useCallback(async (
+    id: number,
+    patch: { title?: string; tags?: string; pinned?: boolean; status?: DocStatus | string },
+  ): Promise<boolean> => {
+    try {
+      await invoke("db_update_document_metadata", {
+        id,
+        title: patch.title ?? null,
+        tags: patch.tags ?? null,
+        pinned: patch.pinned ?? null,
+        status: patch.status ?? null,
+      });
+      return true;
+    } catch (e) {
+      reportWriteError("updateDocumentMetadata", e, "保存文档失败");
       return false;
     }
   }, []);
@@ -442,7 +457,7 @@ export function useDBCore() {
     saveWordNotes, saveWordChat,
     getSetting, setSetting, getDevicePath, setDevicePath,
     createDocument, createDocumentWithContent, getDocuments, getDocument,
-    updateDocument, deleteDocument, duplicateDocument,
+    updateDocumentContent, updateDocumentMetadata, deleteDocument, duplicateDocument,
     listDocumentFolders, createDocumentFolder, renameDocumentFolder,
     deleteDocumentFolder, setDocumentsFolder, setFolderLocked,
     protectDocument, unlockDocument, lockDocument, removeDocumentProtection, changeDocumentPassword,
@@ -456,7 +471,7 @@ export function useDBCore() {
     saveWordNotes, saveWordChat,
     getSetting, setSetting, getDevicePath, setDevicePath,
     createDocument, createDocumentWithContent, getDocuments, getDocument,
-    updateDocument, deleteDocument, duplicateDocument,
+    updateDocumentContent, updateDocumentMetadata, deleteDocument, duplicateDocument,
     listDocumentFolders, createDocumentFolder, renameDocumentFolder,
     deleteDocumentFolder, setDocumentsFolder, setFolderLocked,
     protectDocument, unlockDocument, lockDocument, removeDocumentProtection, changeDocumentPassword,

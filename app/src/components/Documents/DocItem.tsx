@@ -22,7 +22,7 @@ interface Props {
   onToggleSelectionMode?: (id: number) => void;
   onSelect: (id: number) => void;
   onRename: (id: number, title: string) => void;
-  onPin: (id: number) => void;
+  onPin: (id: number, pinned: boolean) => void;
   onDuplicate: (id: number) => void;
   onDelete: (id: number) => void;
   searchQuery?: string;
@@ -340,7 +340,7 @@ export const DocItem = React.memo(function DocItem({ doc, active, compact = fals
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     disabled={doc.protected && !doc.unlocked}
-                    onSelect={() => onPin(doc.id)}
+                    onSelect={() => onPin(doc.id, !doc.pinned)}
                     className="gap-2.5 text-sm"
                   >
                     <MapPin className="w-4 h-4 shrink-0" /> {doc.pinned ? t("doc.unpin") : t("doc.pin")}

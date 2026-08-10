@@ -72,6 +72,7 @@ export function DocumentsPage() {
   const {
     activeId, doc, lockedId, saveStatus, refreshKey, loading,
     loadDoc, handleNewDoc, handleNewDocIn, handleSave, markDirty, handleTitleChange, handleTagsChange, handleStatusChange, handlePinToggle,
+    registerActiveFlush, flushActiveDocument,
     unlockDocument, removeLockedProtection,
   } = useDocumentEditor();
 
@@ -220,6 +221,7 @@ export function DocumentsPage() {
                     manualRefreshKey={dbRefreshKey}
                     onRefreshingChange={setDbRefreshing}
                     onCollapse={() => setDbSidebarOpen(false)}
+                    beforeLock={flushActiveDocument}
                   />
                 </CollapsibleContent>
               </div>
@@ -240,6 +242,7 @@ export function DocumentsPage() {
                   saveStatus={saveStatus}
                   zenMode={dbZenMode}
                   onZenModeChange={setDbZenMode}
+                  onFlushReady={registerActiveFlush}
                 />
               ) : lockedId !== null ? (
                 <LockedDocumentPanel

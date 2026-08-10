@@ -63,7 +63,7 @@ pub async fn db_get_rss_feeds(conn: State<'_, AppState>) -> Result<Vec<RssFeed>,
                 COALESCE(category_override, CASE WHEN EXISTS(
                     SELECT 1 FROM rss_entries e WHERE e.feed_id = rss_feeds.id AND e.audio_url IS NOT NULL
                 ) THEN 'podcast' ELSE 'article' END),
-                category_override, is_pinned, pin_order
+                category_override, is_pinned, pin_order, is_paused
          FROM rss_feeds ORDER BY is_pinned DESC, pin_order ASC, created_at DESC",
         (),
         |row| {
@@ -80,6 +80,7 @@ pub async fn db_get_rss_feeds(conn: State<'_, AppState>) -> Result<Vec<RssFeed>,
                 category_override: row.get(9)?,
                 is_pinned: row.get(10)?,
                 pin_order: row.get(11)?,
+                is_paused: row.get(12)?,
             })
         },
     )
@@ -251,6 +252,22 @@ pub async fn db_update_rss_feed_title(
 }
 
 #[crate::shim::command]
+pub async fn db_set_rss_feed_paused(
+    id: i64,
+    is_paused: bool,
+    conn: State<'_, AppState>,
+) -> Result<(), String> {
+    let db = db::conn(&conn)?;
+    db.execute(
+        "UPDATE rss_feeds SET is_paused = ?1 WHERE id = ?2",
+        params![is_paused, id],
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[crate::shim::command]
 pub async fn db_delete_rss_feed(id: i64, conn: State<'_, AppState>) -> Result<(), String> {
     let db = db::conn(&conn)?;
     db.execute("DELETE FROM rss_feeds WHERE id = ?1", params![id])
@@ -262,18 +279,33 @@ pub async fn db_delete_rss_feed(id: i64, conn: State<'_, AppState>) -> Result<()
 /// Fetch the feed and upsert its entries into `rss_entries` (deduped by url; `is_read` is
 /// never touched on conflict). Updates `rss_feeds.last_fetched_at` and backfills feed
 /// metadata that was empty at subscribe time. Returns the number of newly-inserted entries.
+fn should_sync_feed(is_paused: bool, force: Option<bool>) -> bool {
+    !is_paused || force.unwrap_or(false)
+}
+
 #[crate::shim::command]
-pub async fn db_sync_rss_feed(feed_id: i64, conn: State<'_, AppState>) -> Result<i64, String> {
+pub async fn db_sync_rss_feed(
+    feed_id: i64,
+    force: Option<bool>,
+    conn: State<'_, AppState>,
+) -> Result<i64, String> {
     // txn_conn, not conn: the entry upserts below run in an interactive
     // transaction, which must not pin the shared Hrana stream on Turso.
     let db = db::txn_conn(&conn).await?;
-    let url: String = db::fetch_one(
+    let (url, is_paused): (String, bool) = db::fetch_one(
         &db,
-        "SELECT url FROM rss_feeds WHERE id = ?1",
+        "SELECT url, is_paused FROM rss_feeds WHERE id = ?1",
         params![feed_id],
-        |row| row.get::<String>(0),
+        |row| Ok((row.get::<String>(0)?, row.get::<bool>(1)?)),
     )
     .await?;
+
+    // This is enforced at the command boundary so every bulk caller (including
+    // the system tray) respects the pause. The feed's own page opts in with
+    // `force=true`, which is the one intentional exception.
+    if !should_sync_feed(is_paused, force) {
+        return Ok(0);
+    }
 
     let meta = fetch_feed_meta(&url).await?;
 
@@ -422,4 +454,17 @@ pub async fn db_get_rss_unread_counts(
         |row| Ok((row.get::<i64>(0)?, row.get::<i64>(1)?)),
     )
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_sync_feed;
+
+    #[test]
+    fn paused_feeds_only_sync_when_the_caller_forces_a_direct_visit() {
+        assert!(should_sync_feed(false, None));
+        assert!(!should_sync_feed(true, None));
+        assert!(!should_sync_feed(true, Some(false)));
+        assert!(should_sync_feed(true, Some(true)));
+    }
 }

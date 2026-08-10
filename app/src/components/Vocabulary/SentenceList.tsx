@@ -202,7 +202,7 @@ export function SentenceList({
           <input
             type="text"
             value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
+            onChange={(e) => onSearchChange(e.target.value.toLowerCase())}
             placeholder={t("vocab.patterns.searchPlaceholder")}
             className="w-full h-9 pl-8 pr-3 rounded-lg border border-input bg-background text-sm placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30"
           />

@@ -18,7 +18,7 @@ mod v022_026;
 mod v027_030;
 mod v031_035;
 
-use v031_035::MIGRATION_31;
+use v031_035::{MIGRATION_31, MIGRATION_32, MIGRATION_33};
 
 use v001_005::{MIGRATION_01, MIGRATION_02, MIGRATION_03, MIGRATION_04, MIGRATION_05};
 use v006_010::{MIGRATION_06, MIGRATION_07, MIGRATION_08, MIGRATION_09, MIGRATION_10};
@@ -59,6 +59,8 @@ const MIGRATIONS: &[Migration] = &[
     MIGRATION_29,
     MIGRATION_30,
     MIGRATION_31,
+    MIGRATION_32,
+    MIGRATION_33,
 ];
 
 /// The version a fully-migrated database lands on. Exposed so tests can assert
@@ -151,6 +153,11 @@ mod tests {
                 feed_id INTEGER NOT NULL,
                 url TEXT NOT NULL UNIQUE
              );
+             CREATE TABLE IF NOT EXISTS rss_feeds (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL DEFAULT '',
+                url TEXT NOT NULL
+             );
              CREATE TABLE IF NOT EXISTS extracted_items (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 article_id INTEGER NOT NULL,
@@ -191,6 +198,21 @@ mod tests {
     async fn opt_int(conn: &Connection, sql: &str) -> Option<i64> {
         let mut rows = conn.query(sql, ()).await.unwrap();
         rows.next().await.unwrap().unwrap().get(0).unwrap()
+    }
+
+    #[tokio::test]
+    async fn document_fts_trigger_only_runs_for_searchable_columns() {
+        let conn = memory_conn().await;
+        crate::db::init_db(&conn).await.unwrap();
+
+        let sql = opt_text(
+            &conn,
+            "SELECT sql FROM sqlite_master WHERE type='trigger' AND name='docs_au'",
+        )
+        .await
+        .unwrap();
+
+        assert!(sql.contains("AFTER UPDATE OF title, content_text"), "{sql}");
     }
 
     #[tokio::test]
@@ -287,6 +309,38 @@ mod tests {
         )
         .await;
         assert_eq!(article_id, None);
+    }
+
+    #[tokio::test]
+    async fn migration_32_adds_paused_rss_updates_defaulting_to_running() {
+        let conn = memory_conn().await;
+        conn.execute_batch(
+            "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at DATETIME);
+             INSERT INTO schema_migrations(version) VALUES (31);
+             CREATE TABLE rss_feeds (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL DEFAULT '', url TEXT NOT NULL
+             );
+             CREATE TABLE documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL DEFAULT 'Untitled',
+                content_text TEXT NOT NULL DEFAULT ''
+             );
+             CREATE VIRTUAL TABLE documents_fts USING fts5(
+                title, content_text, content='documents', content_rowid='id'
+             );
+             INSERT INTO rss_feeds(title, url) VALUES ('Test', 'https://example.com/feed');",
+        )
+        .await
+        .unwrap();
+
+        run(&conn).await.unwrap();
+
+        assert_eq!(count(&conn, "SELECT is_paused FROM rss_feeds WHERE id = 1").await, 0);
+        conn.execute("UPDATE rss_feeds SET is_paused = 1 WHERE id = 1", ())
+            .await
+            .unwrap();
+        assert_eq!(count(&conn, "SELECT is_paused FROM rss_feeds WHERE id = 1").await, 1);
     }
 
     /// The version stamp rides along inside each migration's own batch. If that

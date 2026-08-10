@@ -117,13 +117,17 @@ describe("Tokyo Night variants", () => {
     themeCss.indexOf("/* Dim"),
   );
 
-  it.each([
-    ["Day", tokyoDay],
-    ["Storm", tokyoStorm],
-  ])("gives Tokyo Night %s a layered document shelf", (_name, palette) => {
-    expect(palette).toContain("--document-list-surface: hsl(var(--card))");
-    expect(palette).toContain("--document-list-active-bg: hsl(var(--sidebar-active-bg))");
-    expect(palette).toContain("--document-list-icon-fg: hsl(var(--primary))");
+  it("keeps Tokyo Night Day's shelf tied to its quiet paper surfaces", () => {
+    expect(tokyoDay).toContain("--document-list-surface: hsl(var(--card))");
+    expect(tokyoDay).toContain("--document-list-active-bg: hsl(var(--sidebar-active-bg))");
+    expect(tokyoDay).toContain("--document-list-icon-fg: hsl(var(--primary))");
+  });
+
+  it("gives Tokyo Night Storm explicit depth and matching syntax colours", () => {
+    expect(tokyoStorm).toContain("--document-list-surface: hsl(231 26% 20%)");
+    expect(tokyoStorm).toContain("--document-list-active-bg: hsl(222 48% 34%)");
+    expect(tokyoStorm).toContain("--document-list-icon-fg: hsl(216 100% 80%)");
+    expect(tokyoStorm).toContain("--syntax-keyword: #bb9af7");
   });
 });
 

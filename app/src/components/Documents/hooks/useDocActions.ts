@@ -28,8 +28,9 @@ export function useDocActions(params: {
   onSelect: (id: number) => void;
   load: (page?: number) => Promise<void>;
   page: number;
+  beforeLock?: (id: number) => Promise<void>;
 }) {
-  const { db, activeId, onSelect, load, page } = params;
+  const { db, activeId, onSelect, load, page, beforeLock } = params;
   const t = useT();
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
   const [passwordRequest, setPasswordRequest] = useState<DocumentPasswordRequest | null>(null);
@@ -50,18 +51,14 @@ export function useDocActions(params: {
   // useCallback on every action: memoized DocItem rows receive these as
   // props; unstable identities would defeat the memo on every parent render.
   const handleRename = useCallback(async (id: number, title: string) => {
-    const doc = await db.getDocument(id);
-    if (!doc) return;
-    await db.updateDocument(id, title, doc.content, doc.content_text, doc.tags, doc.pinned, doc.word_count, doc.status);
-    notifyDocItemUpdated({ id, title, tags: doc.tags, pinned: doc.pinned, status: doc.status });
-    load(page);
-  }, [db, load, page]);
+    const saved = await db.updateDocumentMetadata(id, { title });
+    if (saved) notifyDocItemUpdated({ id, title });
+  }, [db]);
 
-  const handlePin = useCallback(async (id: number) => {
-    const doc = await db.getDocument(id);
-    if (!doc) return;
-    await db.updateDocument(id, doc.title, doc.content, doc.content_text, doc.tags, !doc.pinned, doc.word_count, doc.status);
-    notifyDocItemUpdated({ id, title: doc.title, tags: doc.tags, pinned: !doc.pinned, status: doc.status });
+  const handlePin = useCallback(async (id: number, pinned: boolean) => {
+    const saved = await db.updateDocumentMetadata(id, { pinned });
+    if (!saved) return;
+    notifyDocItemUpdated({ id, pinned });
     load(page);
   }, [db, load, page]);
 
@@ -90,6 +87,7 @@ export function useDocActions(params: {
     }
     try {
       if (doc.protected) {
+        if (activeId === doc.id) await beforeLock?.(doc.id);
         await db.lockDocument(doc.id);
         if (activeId === doc.id) onSelect(doc.id);
       } else {
@@ -101,7 +99,7 @@ export function useDocActions(params: {
     } catch (error) {
       toast.error(String(error));
     }
-  }, [db, onSelect, activeId, load, page, passwordForPrivateDocument, t]);
+  }, [db, onSelect, activeId, load, page, passwordForPrivateDocument, beforeLock]);
 
   const handleRemoveProtection = useCallback(async (doc: DocumentListItem) => {
     const password = await requestPassword({

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { History, Plus } from "lucide-react";
+import { History, LoaderCircle, Pause, Play, Plus } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { CloseIcon, RefreshIcon, GridIcon, ListIcon, TranslateIcon, BookmarkIcon } from "@/components/ui/icons";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
@@ -22,6 +22,7 @@ interface Props {
   onSelect: (id: RssTabSelection) => void;
   onDelete: (id: number) => void;
   onPreferences: (id: number, category: "article" | "podcast" | null, isPinned: boolean) => Promise<void>;
+  onPausedChange: (id: number, isPaused: boolean) => Promise<void>;
   onAdd: () => void;
   onRefresh: () => void;
   viewMode: FeedViewMode;
@@ -64,7 +65,7 @@ function UnreadBadge({ n }: { n: number }) {
 }
 
 /** Single-row switcher: pinned feeds stay visible; the full categorized library lives in More. */
-export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, onSelect, onDelete, onPreferences, onAdd, onRefresh, viewMode, onSetViewMode, showTitleTranslations, onToggleTitleTranslations, recentlyRead, onOpenRecent, onClearRecentlyRead, onRemoveRecent, bookmarks, onOpenBookmark, onRemoveBookmark, bookmarkPendingUrls }: Props) {
+export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, onSelect, onDelete, onPreferences, onPausedChange, onAdd, onRefresh, viewMode, onSetViewMode, showTitleTranslations, onToggleTitleTranslations, recentlyRead, onOpenRecent, onClearRecentlyRead, onRemoveRecent, bookmarks, onOpenBookmark, onRemoveBookmark, bookmarkPendingUrls }: Props) {
   const t = useT();
   const totalUnread = [...unreadByFeed.values()].reduce((a, b) => a + b, 0);
   const translatingTitles = useTitleTranslateStore((s) => s.pending.size > 0);
@@ -75,6 +76,7 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
   const [bookmarkOpen, setBookmarkOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [savingId, setSavingId] = useState<number | null>(null);
+  const [pausingId, setPausingId] = useState<number | null>(null);
 
   const visibleFeeds = useMemo(() => {
     const pinned = feeds.filter((f) => f.is_pinned).slice(0, 5);
@@ -98,6 +100,38 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
     setSavingId(feed.id);
     try { await onPreferences(feed.id, category, pinned); }
     finally { setSavingId(null); }
+  };
+
+  const setPaused = async (feed: RssFeed) => {
+    setPausingId(feed.id);
+    try { await onPausedChange(feed.id, !feed.is_paused); }
+    catch { /* The persistence layer already reports the save error to the user. */ }
+    finally { setPausingId(null); }
+  };
+
+  const pauseButton = (feed: RssFeed) => {
+    const pending = pausingId === feed.id;
+    const label = t(feed.is_paused ? "feeds.resumeUpdates" : "feeds.pauseUpdates");
+    const Icon = feed.is_paused ? Play : Pause;
+    return (
+      <button
+        disabled={pending}
+        onClick={() => void setPaused(feed)}
+        title={pending ? t("feeds.updatingPauseState") : label}
+        aria-label={pending ? t("feeds.updatingPauseState") : label}
+        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md hover:bg-background ${feed.is_paused ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
+      >
+        {pending ? (
+          <LoaderCircle
+            role="status"
+            aria-label={t("feeds.updatingPauseState")}
+            className="h-3.5 w-3.5 animate-spin"
+          />
+        ) : (
+          <Icon className="h-3.5 w-3.5" />
+        )}
+      </button>
+    );
   };
 
   const pill = (active: boolean) =>
@@ -195,6 +229,7 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
                           <button disabled={savingId === f.id} onClick={() => savePreferences(f, f.category_override, !f.is_pinned)} title={t(f.is_pinned ? "feeds.unpin" : "feeds.pin")} className={`h-7 w-7 shrink-0 rounded-md text-sm hover:bg-background ${f.is_pinned ? "text-amber-500" : "text-muted-foreground"}`}>
                             {f.is_pinned ? "★" : "☆"}
                           </button>
+                          {pauseButton(f)}
                           <button
                             onClick={() => { setPendingDelete(f); setSourceOpen(false); }}
                             title={t("feeds.deleteFeed")}
@@ -299,6 +334,7 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
                             <button disabled={savingId === f.id} onClick={() => savePreferences(f, f.category === "article" ? "podcast" : "article", f.is_pinned)} title={t("feeds.changeCategory")} className="h-7 rounded-md px-1.5 text-[10px] text-muted-foreground hover:bg-background hover:text-foreground">
                               {f.category === "podcast" ? "🎧" : "A"}
                             </button>
+                            {pauseButton(f)}
                             <button onClick={() => setPendingDelete(f)} title={t("feeds.deleteFeed")} className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/15 hover:text-destructive">
                               <CloseIcon className="h-2.5 w-2.5" />
                             </button>

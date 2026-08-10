@@ -26,19 +26,29 @@ import React from "react";
  *  WordDetailPanel sets a real headword the same way, at reading scale; these
  *  screens are quoting it, not the other way round. */
 
-/** A real paragraph with a few words underlined: what the reader does inside
- *  the app, turned down until it is texture rather than content. Chosen over
- *  an abstract gradient because this product's material is running text. */
+/** A real paragraph with a few words underlined: the reader's material in the
+ * app, turned down until it is texture rather than content. Chosen over an
+ * abstract gradient because this product's material is running text.
+ *
+ * Written in a detached, essayistic register — the prose a careful editor
+ * would let stand in a serious journal — and the underlining quietly carries
+ * the product's two subjects without naming them: the careful revising of a
+ * document (discipline / revision) and the vocabulary that is retained and
+ * drilled until it is owned (retained / glossed / rehearsed / fortify). */
 const SPECIMEN = [
-  { text: "The argument is " },
-  { text: "compelling", mark: true },
-  { text: ", though its premises rest on a " },
-  { text: "tenuous", mark: true },
-  { text: " reading of the data. Where the author is at their most " },
-  { text: "persuasive", mark: true },
-  { text: " is in the closing section, which " },
-  { text: "reframes", mark: true },
-  { text: " the whole question." },
+  { text: "The " },
+  { text: "discipline", mark: true },
+  { text: " of writing is the careful " },
+  { text: "revision", mark: true },
+  { text: " of a document; and the words so " },
+  { text: "retained", mark: true },
+  { text: ", " },
+  { text: "glossed", mark: true },
+  { text: " and " },
+  { text: "rehearsed", mark: true },
+  { text: ", come to " },
+  { text: "fortify", mark: true },
+  { text: " one's own speech." },
 ];
 
 export function SpecimenBackdrop() {

@@ -283,6 +283,15 @@ export function useDBExtra() {
     }
   }, []);
 
+  const setRssFeedPaused = useCallback(async (id: number, isPaused: boolean): Promise<void> => {
+    try {
+      await invoke("db_set_rss_feed_paused", { id, isPaused });
+    } catch (e) {
+      reportWriteError("setRssFeedPaused", e, "更新 RSS 源暂停状态失败");
+      throw e;
+    }
+  }, []);
+
   const deleteRssFeed = useCallback(async (id: number): Promise<void> => {
     try {
       await invoke("db_delete_rss_feed", { id });
@@ -301,9 +310,9 @@ export function useDBExtra() {
   }, []);
 
   /** Fetch the feed and upsert its entries into rss_entries. Returns new-entry count. */
-  const syncRssFeed = useCallback(async (feedId: number): Promise<number> => {
+  const syncRssFeed = useCallback(async (feedId: number, force = false): Promise<number> => {
     try {
-      return await invoke<number>("db_sync_rss_feed", { feedId });
+      return await invoke<number>("db_sync_rss_feed", { feedId, force });
     } catch (e) {
       logError("syncRssFeed", e);
       throw e;
@@ -583,7 +592,7 @@ export function useDBExtra() {
     getDashboardStats,
     getDueCards, reviewCard,
     addSearchHistory, getSearchHistory, clearSearchHistory,
-    addRssFeed, getRssFeeds, updateRssFeedTitle, updateRssFeedPreferences, deleteRssFeed, fetchRssFeedMeta,
+    addRssFeed, getRssFeeds, updateRssFeedTitle, updateRssFeedPreferences, setRssFeedPaused, deleteRssFeed, fetchRssFeedMeta,
     syncRssFeed, getRssEntries, markRssEntryRead, getRssUnreadCounts,
     getDbPath, getDbSize, exportBackup, switchDbPath, clearTranslations,
     getConnection, connectTurso, selectDbSource, disconnectRemote, syncNow,
@@ -595,7 +604,7 @@ export function useDBExtra() {
     getDashboardStats,
     getDueCards, reviewCard,
     addSearchHistory, getSearchHistory, clearSearchHistory,
-    addRssFeed, getRssFeeds, updateRssFeedTitle, updateRssFeedPreferences, deleteRssFeed, fetchRssFeedMeta,
+    addRssFeed, getRssFeeds, updateRssFeedTitle, updateRssFeedPreferences, setRssFeedPaused, deleteRssFeed, fetchRssFeedMeta,
     syncRssFeed, getRssEntries, markRssEntryRead, getRssUnreadCounts,
     getDbPath, getDbSize, exportBackup, switchDbPath, clearTranslations,
     getConnection, connectTurso, selectDbSource, disconnectRemote, syncNow,

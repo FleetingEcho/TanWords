@@ -2,7 +2,7 @@ import React from "react";
 import {
   ArrowUp,
   Bookmark,
-  BookOpen,
+  TypeOutline,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -105,7 +105,7 @@ export function ShuffleIcon({ className }: IconProps) {
 }
 
 export function BookIcon({ className }: IconProps) {
-  return <BookOpen className={className} />;
+  return <TypeOutline className={className} />;
 }
 
 export function DocIcon({ className }: IconProps) {

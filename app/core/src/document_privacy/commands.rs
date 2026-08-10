@@ -66,8 +66,8 @@ pub async fn db_unlock_document(
 }
 
 #[crate::shim::command]
-pub fn db_lock_document(_id: i64, state: State<'_, AppState>) -> Result<(), String> {
-    state.document_privacy.clear()
+pub fn db_lock_document(id: i64, state: State<'_, AppState>) -> Result<(), String> {
+    state.document_privacy.lock(id)
 }
 
 /// Encrypts one document (and its assets) under a data key wrapped by `master`.

@@ -241,7 +241,7 @@ export function WordListPanel({
           <input
             type="text"
             value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
+            onChange={(e) => onSearchChange(e.target.value.toLowerCase())}
             onKeyDown={(e) => {
               if (e.key === "Enter" && showAiLookup && search.trim()) onAiLookup(search.trim());
             }}

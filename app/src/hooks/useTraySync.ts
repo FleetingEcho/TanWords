@@ -24,7 +24,7 @@ export function useTraySync() {
       "tray://refresh-rss": async () => {
         const feeds = await db.getRssFeeds();
         // allSettled: one dead feed shouldn't stop the rest from refreshing.
-        await Promise.allSettled(feeds.map((f) => db.syncRssFeed(f.id)));
+        await Promise.allSettled(feeds.filter((f) => !f.is_paused).map((f) => db.syncRssFeed(f.id)));
       },
     });
   }, [db]);

@@ -44,9 +44,10 @@ interface Props {
   saveStatus: SaveStatus;
   zenMode: boolean;
   onZenModeChange: (enabled: boolean) => void;
+  onFlushReady?: (flush: (() => Promise<void>) | null) => void;
 }
 
-export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, onStatusChange, onPinToggle, saveStatus, zenMode, onZenModeChange }: Props) {
+export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, onStatusChange, onPinToggle, saveStatus, zenMode, onZenModeChange, onFlushReady }: Props) {
   const t = useT();
   const isDark = useIsDark();
   const documentFontSize = useSettingsStore((state) => state.documentFontSize);
@@ -64,8 +65,13 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
   const content = useDocEditorContent(doc, onSave, onDirty);
   const {
     editor, setEditor, initialBlocks, uploadFile,
-    mode, rawMarkdown, switchingMode, richLoading, switchMode, handleChange, handleRawChange, scheduleSave,
+    mode, rawMarkdown, switchingMode, richLoading, switchMode, handleChange, handleRawChange, scheduleSave, flushSave,
   } = content;
+
+  React.useEffect(() => {
+    onFlushReady?.(flushSave);
+    return () => onFlushReady?.(null);
+  }, [flushSave, onFlushReady]);
 
   const links = useDocEditorLinks({ documentId: doc.id, documentContent: doc.content, editor, scheduleSave });
   const attachments = useDocEditorAttachments({ doc, editor, scheduleSave });

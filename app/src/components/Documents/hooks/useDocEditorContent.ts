@@ -251,7 +251,7 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
   return {
     editor, setEditor, initialBlocks, uploadFile,
     mode, rawMarkdown, switchingMode, richLoading,
-    switchMode, handleChange, handleRawChange, scheduleSave,
+    switchMode, handleChange, handleRawChange, scheduleSave, flushSave,
   };
 }
 

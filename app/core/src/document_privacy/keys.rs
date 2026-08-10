@@ -24,6 +24,9 @@ pub async fn require_key(
     document_id: i64,
 ) -> Result<Option<[u8; 32]>, String> {
     if document_is_protected(database, document_id).await? {
+        if privacy.is_explicitly_locked(document_id)? {
+            return Err(LOCKED_ERROR.to_string());
+        }
         if let Ok(key) = privacy.key(document_id) {
             return Ok(Some(key));
         }
