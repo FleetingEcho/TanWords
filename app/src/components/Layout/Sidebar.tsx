@@ -26,10 +26,10 @@ interface NavItemDef {
 const BASE_NAV_ITEM_DEFS: Omit<NavItemDef, "label">[] = [
   { id: "dashboard", icon: GridIcon },
   { id: "browser", icon: Globe },
+  { id: "documents", icon: DocIcon },
   { id: "feeds", icon: FeedIcon },
   { id: "reading", icon: ClipboardPaste },
-  { id: "documents", icon: DocIcon },
-  { id: "vocabulary", icon: BookIcon},
+  { id: "vocabulary", icon: BookIcon },
   { id: "chat", icon: ChatIcon },
   { id: "music", icon: MusicIcon },
   { id: "tools", icon: Wrench },
