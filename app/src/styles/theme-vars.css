@@ -84,7 +84,7 @@
     --document-list-folder: hsl(var(--secondary-foreground));
     --document-list-row: transparent;
     --document-list-row-hover: hsl(var(--secondary) / 0.78);
-    --document-list-active-bg: hsl(var(--accent));
+    --document-list-active-bg: hsl(var(--sidebar-active-bg));
     --document-list-active-border: hsl(var(--primary) / 0.42);
     --document-list-active-title: hsl(216 100% 94%);
     --document-list-icon-bg: hsl(var(--secondary));
@@ -222,7 +222,7 @@
     --document-list-title: hsl(224 100% 94%);
     --document-list-meta: hsl(218 42% 70%);
     --document-list-folder: hsl(263 78% 82%);
-    --document-list-row: hsl(230 28% 20% / 0.42);
+    --document-list-row: transparent;
     --document-list-row-hover: hsl(224 40% 25% / 0.78);
     --document-list-active-bg: hsl(222 50% 30%);
     --document-list-active-border: hsl(198 100% 72% / 0.78);

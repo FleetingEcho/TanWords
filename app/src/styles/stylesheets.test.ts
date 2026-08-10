@@ -53,7 +53,7 @@ describe("default dark palette", () => {
     expect(dark).toContain("--card: 0 3% 16%");
     expect(dark).toContain("--sidebar: 0 2% 10%");
     expect(dark).toContain("--primary: 220 93% 67%");
-    expect(dark).toContain("--document-list-active-bg: hsl(var(--accent))");
+    expect(dark).toContain("--document-list-active-bg: hsl(var(--sidebar-active-bg))");
   });
 });
 
@@ -70,6 +70,7 @@ describe("Tokyo Night palette", () => {
     expect(tokyoNight).toContain("--primary: 213 100% 72%");
     expect(tokyoNight).toContain("--muted-foreground: 226 32% 68%");
     expect(tokyoNight).toContain("--document-list-folder: hsl(263 78% 82%)");
+    expect(tokyoNight).toContain("--document-list-row: transparent");
     expect(tokyoNight).toContain("--document-list-active-border: hsl(198 100% 72% / 0.78)");
   });
 
