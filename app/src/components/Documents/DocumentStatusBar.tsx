@@ -2,7 +2,7 @@ import React from "react";
 import { useT } from "@/hooks/useT";
 import type { DocStatus } from "@/hooks/useDB";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { STATUS_LIST, StatusIcon, statusColor, statusLabelKey } from "./documentStatus";
+import { STATUS_LIST, StatusIcon, statusLabelKey } from "./documentStatus";
 
 /** The document's lifecycle status, in the editor's metadata strip (left of
  *  the tags). A closed set — "No status" clears it back to ""; everything
@@ -33,7 +33,7 @@ export function DocumentStatusBar({ status, onChange, disabled = false }: {
       >
         <StatusIcon status={status} className="h-3 w-3" />
         <SelectValue>
-          <span className="font-normal" style={{ color: statusColor(status) }}>
+          <span className="font-normal">
             {status ? t(statusLabelKey(status)) : t("doc.noStatus")}
           </span>
         </SelectValue>
@@ -49,7 +49,7 @@ export function DocumentStatusBar({ status, onChange, disabled = false }: {
         </SelectItem>
         {STATUS_LIST.map((value) => (
           <SelectItem key={value} value={value} className="font-normal">
-            <span className="flex items-center gap-1.5 pr-1 font-normal" style={{ color: statusColor(value) }}>
+            <span className="flex items-center gap-1.5 pr-1 font-normal">
               <StatusIcon status={value} className="h-3 w-3" />
               <span>{t(statusLabelKey(value))}</span>
             </span>

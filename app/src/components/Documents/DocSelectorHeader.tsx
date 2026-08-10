@@ -10,7 +10,7 @@ import type { DocListState } from "./hooks/useDocList";
 import type { DocStatus } from "@/hooks/useDB";
 import type { DocListDensity } from "./docListDensity";
 import { tagHue } from "./tagColor";
-import { STATUS_LIST, StatusIcon, statusColor, statusLabelKey } from "./documentStatus";
+import { STATUS_LIST, StatusIcon, statusLabelKey } from "./documentStatus";
 
 /** Search box, sort/tag/date filters, and the header action row (new doc,
  * attachments manager, import/export menu). Split out of DocSelector purely
@@ -143,7 +143,7 @@ export function DocSelectorHeader({
                   </SelectItem>
                   {STATUS_LIST.map((value) => (
                     <SelectItem key={value} value={value}>
-                      <span className="flex w-full min-w-[8rem] items-center gap-1.5" style={{ color: statusColor(value) }}>
+                      <span className="flex w-full min-w-[8rem] items-center gap-1.5">
                         <StatusIcon status={value} className="h-3 w-3" />
                         <span className="min-w-0 flex-1 truncate">{t(statusLabelKey(value))}</span>
                         <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">{statusCounts.get(value) ?? 0}</span>
