@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { useDB, DocumentDetail } from "@/hooks/useDB";
+import { useDB, DocumentDetail, DocStatus } from "@/hooks/useDB";
 import { pruneDocumentAssets } from "@/lib/documentAssets";
 import { saveDocumentRevision } from "@/lib/documentRevisions";
 import { countTaskBlocks } from "./taskCounts";
@@ -103,11 +103,12 @@ export function useDocumentEditor() {
     const title = doc.title;
     const tags = doc.tags;
     const pinned = doc.pinned;
+    const status = doc.status;
     pendingSave.current = { content, contentText, wordCount };
     setSaveStatus("saving");
     const save = async () => {
       try {
-        const saved = await db.updateDocument(documentId, title, content, contentText, tags, pinned, wordCount);
+        const saved = await db.updateDocument(documentId, title, content, contentText, tags, pinned, wordCount, status);
         if (!saved) throw new Error("Save failed");
         await pruneDocumentAssets(documentId, content);
         if (content !== lastSavedContent.current) {
@@ -122,7 +123,7 @@ export function useDocumentEditor() {
         const tasks = countTaskBlocks(content);
         window.dispatchEvent(new CustomEvent("docs-item-updated", {
           detail: {
-            id: documentId, wordCount, title, tags, pinned,
+            id: documentId, wordCount, title, tags, pinned, status,
             // Optimistic checklist counts so the list's task bar moves without
             // a refetch; the DB value Rust writes is the source of truth.
             // Names must match useDocList's listener — the detail is an
@@ -153,7 +154,7 @@ export function useDocumentEditor() {
   // autosave would write the old metadata back and silently revert them.
   useEffect(() => {
     const onItemUpdated = (event: Event) => {
-      const detail = (event as CustomEvent<{ id: number; title?: string; tags?: string; pinned?: boolean }>).detail;
+      const detail = (event as CustomEvent<{ id: number; title?: string; tags?: string; pinned?: boolean; status?: string }>).detail;
       if (!detail || detail.id !== activeIdRef.current) return;
       setDoc((prev) => (prev && prev.id === detail.id
         ? {
@@ -161,6 +162,7 @@ export function useDocumentEditor() {
             title: detail.title ?? prev.title,
             tags: detail.tags ?? prev.tags,
             pinned: detail.pinned ?? prev.pinned,
+            status: (detail.status ?? prev.status) as DocStatus,
           }
         : prev));
     };
@@ -171,17 +173,28 @@ export function useDocumentEditor() {
   const handleTitleChange = useCallback(async (title: string) => {
     if (!doc) return;
     setDoc((prev) => (prev ? { ...prev, title } : prev));
-    await db.updateDocument(doc.id, title, doc.content, doc.content_text, doc.tags, doc.pinned, doc.word_count);
+    await db.updateDocument(doc.id, title, doc.content, doc.content_text, doc.tags, doc.pinned, doc.word_count, doc.status);
     setRefreshKey((k) => k + 1);
   }, [db, doc]);
 
   // Bumps refreshKey rather than patching the list in place: a brand-new tag
-  // also has to reach the filter's `allTags`, which only reloads on that key.
+  // also has to reach the list's `allTags`, which only reloads on that key.
   const handleTagsChange = useCallback(async (tags: string[]) => {
     if (!doc) return;
     const serialized = JSON.stringify(tags);
     setDoc((prev) => (prev ? { ...prev, tags: serialized } : prev));
-    await db.updateDocument(doc.id, doc.title, doc.content, doc.content_text, serialized, doc.pinned, doc.word_count);
+    await db.updateDocument(doc.id, doc.title, doc.content, doc.content_text, serialized, doc.pinned, doc.word_count, doc.status);
+    setRefreshKey((k) => k + 1);
+  }, [db, doc]);
+
+  // The status dropdown writes through the same hook state as every other
+  // editor metadata (title/tags/pin): the next autosave would otherwise
+  // rewrite the record and revert the change. Bumps refreshKey so the list's
+  // status filter and the sidebar counts reload their queries.
+  const handleStatusChange = useCallback(async (status: DocStatus) => {
+    if (!doc) return;
+    setDoc((prev) => (prev ? { ...prev, status } : prev));
+    await db.updateDocument(doc.id, doc.title, doc.content, doc.content_text, doc.tags, doc.pinned, doc.word_count, status);
     setRefreshKey((k) => k + 1);
   }, [db, doc]);
 
@@ -189,7 +202,7 @@ export function useDocumentEditor() {
     if (!doc) return;
     const newPinned = !doc.pinned;
     setDoc((prev) => (prev ? { ...prev, pinned: newPinned } : prev));
-    await db.updateDocument(doc.id, doc.title, doc.content, doc.content_text, doc.tags, newPinned, doc.word_count);
+    await db.updateDocument(doc.id, doc.title, doc.content, doc.content_text, doc.tags, newPinned, doc.word_count, doc.status);
     setRefreshKey((k) => k + 1);
   }, [db, doc]);
 
@@ -203,7 +216,7 @@ export function useDocumentEditor() {
 
   return {
     activeId, doc, lockedId, saveStatus, refreshKey, loading,
-    loadDoc, handleNewDoc, handleNewDocIn, handleSave, markDirty, handleTitleChange, handleTagsChange, handlePinToggle,
+    loadDoc, handleNewDoc, handleNewDocIn, handleSave, markDirty, handleTitleChange, handleTagsChange, handleStatusChange, handlePinToggle,
     unlockDocument, removeLockedProtection,
     reset,
   };

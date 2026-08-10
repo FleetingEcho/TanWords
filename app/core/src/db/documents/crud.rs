@@ -6,11 +6,30 @@ use crate::db;
 use crate::document_privacy::{self, decrypt_text, encrypt_text};
 use crate::AppState;
 
+/// The closed set of document lifecycle statuses. Empty string is "None".
+/// Kept as a match here and mirror-matched as `DocStatus` in useDB.types.ts:
+/// a free-text status becomes an un-filterable mess within a week.
+pub const STATUS_VALUES: [&str; 4] = ["active", "onhold", "completed", "dropped"];
+
+/// Validates a status before a write. Rejects anything outside the closed set
+/// so the filter and the list never have to sanitise free text.
+fn normalize_status(status: &str) -> Result<String, String> {
+    let status = status.trim();
+    if status.is_empty() {
+        return Ok(String::new());
+    }
+    if STATUS_VALUES.contains(&status) {
+        return Ok(status.to_string());
+    }
+    Err(format!("invalid document status: {status:?}"))
+}
+
 pub(super) fn build_doc_where(
     search: &Option<String>,
     date_from: &Option<String>,
     date_to: &Option<String>,
     tag: &Option<String>,
+    status: &Option<String>,
 ) -> (String, Vec<String>) {
     let mut conditions = vec!["1=1".to_string()];
     let mut params: Vec<String> = vec![];
@@ -54,6 +73,10 @@ pub(super) fn build_doc_where(
             params.len() + 1
         ));
         params.push(t.clone());
+    }
+    if let Some(s) = status {
+        conditions.push(format!("d.status = ?{}", params.len() + 1));
+        params.push(s.clone());
     }
     (conditions.join(" AND "), params)
 }
@@ -128,6 +151,7 @@ pub async fn db_get_documents(
     tag: Option<String>,
     sort: Option<String>,
     page: Option<i64>,
+    status: Option<String>,
     conn: State<'_, AppState>,
 ) -> Result<DocumentListResult, String> {
     let db = db::conn(&conn)?;
@@ -142,7 +166,7 @@ pub async fn db_get_documents(
         _ => "d.updated_at DESC",
     };
 
-    let (where_clause, p) = build_doc_where(&search, &date_from, &date_to, &tag);
+    let (where_clause, p) = build_doc_where(&search, &date_from, &date_to, &tag, &status);
 
     let total = db::scalar_i64(
         &db,
@@ -153,7 +177,7 @@ pub async fn db_get_documents(
 
     let data_sql = format!(
         "SELECT d.id, d.title, d.tags, d.pinned, d.word_count, d.created_at, d.updated_at,
-                CASE WHEN d.protected=1 THEN '' ELSE d.content_text END, d.protected, d.folder, d.task_total, d.task_done
+                CASE WHEN d.protected=1 THEN '' ELSE d.content_text END, d.protected, d.folder, d.task_total, d.task_done, d.status
          FROM documents d WHERE {} ORDER BY d.protected ASC, d.pinned DESC, {} LIMIT {} OFFSET {}",
         where_clause, sort_col, page_size, offset
     );
@@ -174,6 +198,7 @@ pub async fn db_get_documents(
             folder: row.get(9)?,
             task_total: row.get(10)?,
             task_done: row.get(11)?,
+            status: row.get(12)?,
         })
     })
     .await?;
@@ -186,14 +211,14 @@ pub async fn db_get_document(id: i64, conn: State<'_, AppState>) -> Result<Docum
     let db = db::conn(&conn)?;
     let row = db::fetch_one(
         &db,
-        "SELECT id, title, content, content_text, tags, pinned, word_count, created_at, updated_at, protected, folder
+        "SELECT id, title, content, content_text, tags, pinned, word_count, created_at, updated_at, protected, folder, status
          FROM documents WHERE id = ?1",
         params![id],
         |row| Ok((
             row.get::<i64>(0)?, row.get::<String>(1)?, row.get::<String>(2)?,
             row.get::<String>(3)?, row.get::<String>(4)?, row.get::<i64>(5)? != 0,
             row.get::<i64>(6)?, row.get::<String>(7)?, row.get::<String>(8)?,
-            row.get::<i64>(9)? != 0, row.get::<String>(10)?,
+            row.get::<i64>(9)? != 0, row.get::<String>(10)?, row.get::<String>(11)?,
         )),
     ).await?;
     let key = document_privacy::require_key(&db, &conn.document_privacy, id).await?;
@@ -213,6 +238,7 @@ pub async fn db_get_document(id: i64, conn: State<'_, AppState>) -> Result<Docum
         updated_at: row.8,
         protected: row.9,
         folder: row.10,
+        status: row.11,
     })
 }
 
@@ -225,9 +251,11 @@ pub async fn db_update_document(
     tags: String,
     pinned: bool,
     word_count: i64,
+    status: String,
     conn: State<'_, AppState>,
 ) -> Result<(), String> {
     let db = db::conn(&conn)?;
+    let status = normalize_status(&status)?;
     let key = document_privacy::require_key(&db, &conn.document_privacy, id).await?;
     // Count from the *plaintext* we were handed; a protected doc's stored copy
     // is ciphertext and can't be walked, so the count must be taken before
@@ -242,7 +270,7 @@ pub async fn db_update_document(
     };
     db.execute(
         "UPDATE documents SET title=?1, content=?2, content_text=?3, tags=?4, pinned=?5,
-         word_count=?6, updated_at=datetime('now'), task_total=?7, task_done=?8 WHERE id=?9",
+         word_count=?6, updated_at=datetime('now'), task_total=?7, task_done=?8, status=?9 WHERE id=?10",
         params![
             title,
             content,
@@ -252,6 +280,7 @@ pub async fn db_update_document(
             word_count,
             task_total,
             task_done,
+            status,
             id
         ],
     )

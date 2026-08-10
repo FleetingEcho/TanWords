@@ -16,6 +16,9 @@ mod v011_015;
 mod v016_021;
 mod v022_026;
 mod v027_030;
+mod v031_035;
+
+use v031_035::MIGRATION_31;
 
 use v001_005::{MIGRATION_01, MIGRATION_02, MIGRATION_03, MIGRATION_04, MIGRATION_05};
 use v006_010::{MIGRATION_06, MIGRATION_07, MIGRATION_08, MIGRATION_09, MIGRATION_10};
@@ -55,6 +58,7 @@ const MIGRATIONS: &[Migration] = &[
     MIGRATION_28,
     MIGRATION_29,
     MIGRATION_30,
+    MIGRATION_31,
 ];
 
 /// The version a fully-migrated database lands on. Exposed so tests can assert

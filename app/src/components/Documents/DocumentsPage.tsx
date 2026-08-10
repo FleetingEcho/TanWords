@@ -71,7 +71,7 @@ export function DocumentsPage() {
   }, [isNarrow]);
   const {
     activeId, doc, lockedId, saveStatus, refreshKey, loading,
-    loadDoc, handleNewDoc, handleNewDocIn, handleSave, markDirty, handleTitleChange, handleTagsChange, handlePinToggle,
+    loadDoc, handleNewDoc, handleNewDocIn, handleSave, markDirty, handleTitleChange, handleTagsChange, handleStatusChange, handlePinToggle,
     unlockDocument, removeLockedProtection,
   } = useDocumentEditor();
 
@@ -235,6 +235,7 @@ export function DocumentsPage() {
                   onDirty={markDirty}
                   onTitleChange={handleTitleChange}
                   onTagsChange={handleTagsChange}
+                  onStatusChange={handleStatusChange}
                   onPinToggle={handlePinToggle}
                   saveStatus={saveStatus}
                   zenMode={dbZenMode}

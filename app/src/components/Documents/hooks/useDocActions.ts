@@ -14,7 +14,7 @@ type PrivatePasswordStatus = {
 /** Let an editor holding this doc open know its metadata changed, so its
  *  next autosave (which rewrites the whole record from its own state)
  *  doesn't revert the change. The list listens to the same event. */
-function notifyDocItemUpdated(detail: { id: number; title?: string; tags?: string; pinned?: boolean; wordCount?: number }) {
+function notifyDocItemUpdated(detail: { id: number; title?: string; tags?: string; pinned?: boolean; wordCount?: number; status?: string }) {
   window.dispatchEvent(new CustomEvent("docs-item-updated", { detail }));
 }
 
@@ -52,16 +52,16 @@ export function useDocActions(params: {
   const handleRename = useCallback(async (id: number, title: string) => {
     const doc = await db.getDocument(id);
     if (!doc) return;
-    await db.updateDocument(id, title, doc.content, doc.content_text, doc.tags, doc.pinned, doc.word_count);
-    notifyDocItemUpdated({ id, title, tags: doc.tags, pinned: doc.pinned });
+    await db.updateDocument(id, title, doc.content, doc.content_text, doc.tags, doc.pinned, doc.word_count, doc.status);
+    notifyDocItemUpdated({ id, title, tags: doc.tags, pinned: doc.pinned, status: doc.status });
     load(page);
   }, [db, load, page]);
 
   const handlePin = useCallback(async (id: number) => {
     const doc = await db.getDocument(id);
     if (!doc) return;
-    await db.updateDocument(id, doc.title, doc.content, doc.content_text, doc.tags, !doc.pinned, doc.word_count);
-    notifyDocItemUpdated({ id, title: doc.title, tags: doc.tags, pinned: !doc.pinned });
+    await db.updateDocument(id, doc.title, doc.content, doc.content_text, doc.tags, !doc.pinned, doc.word_count, doc.status);
+    notifyDocItemUpdated({ id, title: doc.title, tags: doc.tags, pinned: !doc.pinned, status: doc.status });
     load(page);
   }, [db, load, page]);
 

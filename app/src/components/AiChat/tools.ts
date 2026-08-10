@@ -402,6 +402,7 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
           tags: doc.tags,
           pinned: doc.pinned,
           wordCount,
+          status: doc.status ?? "",
         });
         return { tool_use_id: id, content: `✓ Appended content to "${doc.title}".` };
       }

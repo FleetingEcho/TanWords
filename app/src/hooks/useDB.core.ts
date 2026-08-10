@@ -6,7 +6,7 @@ import { invoke } from "@/ipc/backend";
 import { logError, reportWriteError } from "./useDB.errors";
 import {
   WordListItem, WordDetail, TranslationItem, EnrichmentInput,
-  DocumentDetail, DocumentListResult, DocumentFolder,
+  DocumentDetail, DocumentListResult, DocumentFolder, DocStatus,
 } from "./useDB.types";
 
 export function useDBCore() {
@@ -287,6 +287,7 @@ export function useDBCore() {
     tag?: string;
     sort?: string;
     page?: number;
+    status?: string;
   }): Promise<DocumentListResult> => {
     try {
       return await invoke<DocumentListResult>("db_get_documents", {
@@ -296,6 +297,7 @@ export function useDBCore() {
         tag: opts?.tag || null,
         sort: opts?.sort || null,
         page: opts?.page ?? 0,
+        status: opts?.status || null,
       });
     } catch (e) {
       logError("getDocuments", e);
@@ -321,9 +323,10 @@ export function useDBCore() {
     tags: string,
     pinned: boolean,
     wordCount: number,
+    status: DocStatus | string = "",
   ): Promise<boolean> => {
     try {
-      await invoke("db_update_document", { id, title, content, contentText, tags, pinned, wordCount });
+      await invoke("db_update_document", { id, title, content, contentText, tags, pinned, wordCount, status });
       return true;
     } catch (e) {
       reportWriteError("updateDocument", e, "保存文档失败");

@@ -9,6 +9,7 @@ import { DocPanelHeader } from "./DocPanelHeader";
 import type { DocListState } from "./hooks/useDocList";
 import type { DocListDensity } from "./docListDensity";
 import { tagHue } from "./tagColor";
+import { STATUS_LIST, StatusIcon, statusLabelKey } from "./documentStatus";
 
 /** Search box, sort/tag/date filters, and the header action row (new doc,
  * attachments manager, import/export menu). Split out of DocSelector purely
@@ -35,10 +36,11 @@ export function DocSelectorHeader({
   const t = useT();
   const {
     search, setSearch, sort, setSort, tagFilter, setTagFilter, allTags, tagCounts,
+    statusFilter, setStatusFilter, statusCounts,
     dateFrom, dateTo, setDateFrom, setDateTo, filtersOpen, setFiltersOpen, total,
   } = list;
 
-  const activeFilters = [sort !== "modified", !!tagFilter, !!(dateFrom || dateTo)].filter(Boolean).length;
+  const activeFilters = [sort !== "modified", !!tagFilter, !!statusFilter, !!(dateFrom || dateTo)].filter(Boolean).length;
 
   return (
     <DocPanelHeader
@@ -121,6 +123,28 @@ export function DocSelectorHeader({
                   </SelectContent>
                 </Select>
               )}
+              <Select value={statusFilter || "__all__"} onValueChange={(v) => setStatusFilter(v === "__all__" ? "" : v)}>
+                <SelectTrigger className="h-6 flex-1 gap-1 rounded-lg border border-border bg-card px-1.5 text-[11px] text-foreground focus:outline-hidden [&_svg]:h-3 [&_svg]:w-3">
+                  <SelectValue placeholder={t("doc.allStatuses")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">
+                    <span className="flex min-w-[8rem] items-center justify-between gap-2 pr-1">
+                      <span>{t("doc.allStatuses")}</span>
+                      <span className="text-[10px] tabular-nums text-muted-foreground">{total}</span>
+                    </span>
+                  </SelectItem>
+                  {STATUS_LIST.map((value) => (
+                    <SelectItem key={value} value={value}>
+                      <span className="flex w-full min-w-[8rem] items-center gap-1.5">
+                        <StatusIcon status={value} className="h-3 w-3 text-muted-foreground" />
+                        <span className="min-w-0 flex-1 truncate">{t(statusLabelKey(value))}</span>
+                        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">{statusCounts.get(value) ?? 0}</span>
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <DateRangePicker

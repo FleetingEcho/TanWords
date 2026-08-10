@@ -1,6 +1,6 @@
 import React, { useRef, useState } from "react";
 import { toast } from "sonner";
-import { DocumentDetail } from "@/hooks/useDB";
+import { DocumentDetail, DocStatus } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { useIsDark } from "@/hooks/useIsDark";
 import { parseDbTimestamp } from "@/lib/dbTime";
@@ -25,6 +25,7 @@ import type { DocumentRevision } from "@/lib/documentRevisions";
 import { DocumentToolbarActions } from "./DocumentToolbarActions";
 import { DocumentChromeToggle } from "./DocumentChromeToggle";
 import { DocumentTagBar } from "./DocumentTagBar";
+import { DocumentStatusBar } from "./DocumentStatusBar";
 import { DocumentUndoRedoControls } from "./DocumentUndoRedoControls";
 import { contentToBlocksOffThread } from "@/lib/documentWorkerClient";
 import { withTrailingEditorParagraph } from "./trailingEditorParagraph";
@@ -38,13 +39,14 @@ interface Props {
   onDirty: () => void;
   onTitleChange: (title: string) => void;
   onTagsChange: (tags: string[]) => void;
+  onStatusChange: (status: DocStatus) => void;
   onPinToggle: () => void;
   saveStatus: SaveStatus;
   zenMode: boolean;
   onZenModeChange: (enabled: boolean) => void;
 }
 
-export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, onPinToggle, saveStatus, zenMode, onZenModeChange }: Props) {
+export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, onStatusChange, onPinToggle, saveStatus, zenMode, onZenModeChange }: Props) {
   const t = useT();
   const isDark = useIsDark();
   const documentFontSize = useSettingsStore((state) => state.documentFontSize);
@@ -118,10 +120,14 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
               {zenMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </Button>
           </div>
-          {/* Metadata strip: the document's own tags, on the line under the
-            * title. Reaching the editor at all means the document is unlocked
-            * (LockedDocumentPanel stands in otherwise), so these are editable. */}
-          <DocumentTagBar tags={doc.tags} onChange={onTagsChange} />
+          {/* Metadata strip: the document's status then its tags, on the line
+            * under the title. Reaching the editor at all means the document is
+            * unlocked (LockedDocumentPanel stands in otherwise), so these are
+            * editable. */}
+          <div className="col-span-2 flex min-w-0 items-center gap-1.5">
+            <DocumentStatusBar status={doc.status} onChange={onStatusChange} />
+            <DocumentTagBar tags={doc.tags} onChange={onTagsChange} />
+          </div>
         </div>
 
         <div className={`${chromeOpen ? "flex" : "hidden"} mt-3 min-w-0 items-center gap-2 rounded-xl border border-border/50 bg-muted/20 px-1.5 py-1 lg:flex`}>

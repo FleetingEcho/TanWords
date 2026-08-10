@@ -102,7 +102,14 @@ export interface DocumentListItem {
   /** Number of checklist blocks in the document, and how many are checked. */
   task_total: number;
   task_done: number;
+  /** Lifecycle status; "" means none. See `DocStatus`. */
+  status: DocStatus;
 }
+
+/** Document lifecycle status. "" is "None"; the other four are the closed
+ *  set mirrored from `STATUS_VALUES` in core/src/db/documents/crud.rs — a
+ *  free-text status becomes an un-filterable mess, so both sides enforce it. */
+export type DocStatus = "" | "active" | "onhold" | "completed" | "dropped";
 
 export interface DocumentDetail {
   id: number;
@@ -117,6 +124,8 @@ export interface DocumentDetail {
   protected: boolean;
   /** Normalised relative folder path; "" is the library root. */
   folder: string;
+  /** Lifecycle status; "" means none. */
+  status: DocStatus;
 }
 
 export interface DocumentFolder {

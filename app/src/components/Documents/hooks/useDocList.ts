@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { useDB, DocumentListItem, DocumentFolder } from "@/hooks/useDB";
+import { useDB, DocumentListItem, DocumentFolder, DocStatus } from "@/hooks/useDB";
 
 export const PAGE_SIZE = 10_000;
 
@@ -30,6 +30,7 @@ export function useDocList(refreshKey: string | number) {
   const [dateTo, setDateTo] = useState("");
   const [allTags, setAllTags] = useState<string[]>([]);
   const [tagFilter, setTagFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -57,6 +58,7 @@ export function useDocList(refreshKey: string | number) {
           dateFrom: dateFrom || undefined,
           dateTo: dateTo || undefined,
           tag: tagFilter || undefined,
+          status: statusFilter || undefined,
           sort,
           page: p,
         }),
@@ -69,7 +71,7 @@ export function useDocList(refreshKey: string | number) {
     } finally {
       if (mySeq === querySeq.current) setLoading(false);
     }
-  }, [effectiveSearch, sort, dateFrom, dateTo, tagFilter]);
+  }, [effectiveSearch, sort, dateFrom, dateTo, tagFilter, statusFilter]);
 
   // New filters always start from page 0. If we're already there the load
   // happens here; otherwise the [page] effect's load covers the reset —
@@ -95,7 +97,7 @@ export function useDocList(refreshKey: string | number) {
   // place so counts/titles/tags stay current without a full refetch.
   useEffect(() => {
     const onItemUpdated = (event: Event) => {
-      const detail = (event as CustomEvent<{ id: number; wordCount?: number; title?: string; tags?: string; pinned?: boolean; taskTotal?: number; taskDone?: number }>).detail;
+      const detail = (event as CustomEvent<{ id: number; wordCount?: number; title?: string; tags?: string; pinned?: boolean; taskTotal?: number; taskDone?: number; status?: string }>).detail;
       if (!detail || typeof detail.id !== "number") return;
       setDocs((current) => current.map((doc) => (
         doc.id === detail.id
@@ -107,6 +109,7 @@ export function useDocList(refreshKey: string | number) {
               pinned: detail.pinned ?? doc.pinned,
               task_total: detail.taskTotal ?? doc.task_total,
               task_done: detail.taskDone ?? doc.task_done,
+              status: (detail.status ?? doc.status) as DocStatus,
             }
           : doc
       )));
@@ -130,9 +133,17 @@ export function useDocList(refreshKey: string | number) {
     return counts;
   }, [docs]);
 
+  // Per-status counts for the filter, straight from the already-loaded rows.
+  const statusCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const doc of docs) counts.set(doc.status, (counts.get(doc.status) ?? 0) + 1);
+    return counts;
+  }, [docs]);
+
   return {
     db, docs, folders, total, page, setPage, search, setSearch, sort, setSort,
     dateFrom, setDateFrom, dateTo, setDateTo, allTags, tagFilter, setTagFilter,
+    statusFilter, setStatusFilter, statusCounts,
     filtersOpen, setFiltersOpen, loading, load, totalPages, tagCounts,
   };
 }

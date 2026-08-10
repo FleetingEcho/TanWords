@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { parseDbTimestamp } from "@/lib/dbTime";
 import { tagHue } from "./tagColor";
+import { StatusIcon, statusLabelKey } from "./documentStatus";
 import { Check, Copy, FileText, FileType2, FileOutput, LockKeyhole, LockOpen, MapPin, MoreHorizontal, Pencil, ShieldCheck, Trash2 } from "lucide-react";
 import { LIBRARY_DOC_MIME } from "./DocFolderTree";
 
@@ -229,6 +230,15 @@ export const DocItem = React.memo(function DocItem({ doc, active, compact = fals
             * whole leading-4 lines, so a line is never cut through). */}
           <div className={`min-w-0 flex-1 ${compact ? "" : "flex h-full flex-col"}`}>
             <div className={`flex gap-1 ${compact ? "items-center" : "items-start"}`}>
+              {!renaming && doc.status && (
+                <span
+                  title={t(statusLabelKey(doc.status))}
+                  aria-label={t(statusLabelKey(doc.status))}
+                  className="mt-0.5 shrink-0 text-muted-foreground/70"
+                >
+                  <StatusIcon status={doc.status} className="h-3 w-3" />
+                </span>
+              )}
               {renaming ? (
                 <input
                   ref={renameRef}

@@ -16,6 +16,9 @@ pub struct DocumentListItem {
     pub folder: String,
     pub task_total: i64,
     pub task_done: i64,
+    /// Lifecycle status: one of "", "active", "onhold", "completed",
+    /// "dropped". String so it rides DocumentListItem's serialisation.
+    pub status: String,
 }
 
 #[derive(Serialize)]
@@ -32,6 +35,9 @@ pub struct DocumentDetail {
     pub protected: bool,
     /// Normalised relative folder path; "" is the library root.
     pub folder: String,
+    /// Lifecycle status: one of "", "active", "onhold", "completed",
+    /// "dropped". See `normalize_status` in crud.rs.
+    pub status: String,
 }
 
 #[derive(Serialize)]

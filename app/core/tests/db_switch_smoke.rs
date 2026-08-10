@@ -48,7 +48,7 @@ async fn real_database_opens_and_serves_every_read_path() {
     .expect("db_list_reading_articles with search");
 
     // FTS5: documents_fts, reached through the document list's own filter.
-    tanwords_lib::db::db_get_documents(Some("a".into()), None, None, None, None, None, state.clone())
+    tanwords_lib::db::db_get_documents(Some("a".into()), None, None, None, None, None, None, state.clone())
         .await
         .expect("db_get_documents with search");
 

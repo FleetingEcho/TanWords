@@ -16,7 +16,7 @@ function doc(id: number, folder: string): DocumentListItem {
   return {
     id, title: `doc ${id}`, tags: "[]", pinned: false, word_count: 0,
     created_at: "", updated_at: "", content_text: "", protected: false,
-    unlocked: false, archived: false, folder, task_total: 0, task_done: 0,
+    unlocked: false, archived: false, folder, task_total: 0, task_done: 0, status: "",
   };
 }
 
