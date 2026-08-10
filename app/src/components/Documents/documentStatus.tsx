@@ -1,5 +1,5 @@
 import type React from "react";
-import { Check, Pause, Play, X } from "lucide-react";
+import { Check, Circle, Pause, Play, X } from "lucide-react";
 import type { DocStatus } from "@/hooks/useDB";
 
 /** The closed set of lifecycle statuses, in display order. Mirrors
@@ -56,8 +56,8 @@ export function StatusIcon({ status, className = "h-3 w-3", muted = false }: {
   switch (status) {
     case "active": return <Play className={className} style={style} strokeWidth={2.2} />;
     case "onhold": return <Pause className={className} style={style} strokeWidth={2.2} />;
-    case "completed": return <Check className={className} style={style} strokeWidth={2.4} />;
-    case "dropped": return <X className={className} style={style} strokeWidth={2.4} />;
-    default: return null;
+    case "completed": return <Check className={className} style={style} strokeWidth={2.2} />;
+    case "dropped": return <X className={className} style={style} strokeWidth={2.2} />;
+    default: return <Circle className={className} strokeWidth={2.2} />;
   }
 }
