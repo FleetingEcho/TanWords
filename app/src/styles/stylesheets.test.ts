@@ -33,6 +33,18 @@ const tiptapCss = readFileSync(join(STYLES_DIR, "tiptap-editor.css"), "utf8");
 const rawMarkdownCss = readFileSync(join(STYLES_DIR, "raw-markdown-editor.css"), "utf8");
 const themeCss = readFileSync(join(STYLES_DIR, "theme-vars.css"), "utf8");
 
+describe("default light palette", () => {
+  const light = themeCss.slice(themeCss.indexOf(":root {"), themeCss.indexOf(".dark {"));
+
+  it("uses warm layered surfaces with a blue focus colour", () => {
+    expect(light).toContain("--background: 30 8% 96%");
+    expect(light).toContain("--card: 24 7% 91%");
+    expect(light).toContain("--sidebar: 24 7% 82%");
+    expect(light).toContain("--primary: 217 91% 59%");
+    expect(light).toContain("--document-list-active-bg: hsl(var(--accent))");
+  });
+});
+
 describe("Tokyo Night palette", () => {
   const tokyoNight = themeCss.slice(
     themeCss.indexOf(".theme-tokyo-night {"),

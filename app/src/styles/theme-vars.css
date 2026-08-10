@@ -2,46 +2,48 @@
   :root {
     --app-font: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
     --code-font: "Monaspace Neon NF", "SFMono-Regular", Consolas, monospace;
-    --background: 220 25% 97%;
-    --foreground: 222 24% 14%;
-    --card: 0 0% 100%;
-    --card-foreground: 222 24% 14%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 24% 14%;
-    --primary: 226 68% 51%;
+    /* Default light: warm paper canvas, neutral chrome, and a cool blue focus
+       colour. The three principal surfaces deliberately step from the darker
+       sidebar through the document shelf to the quiet reading canvas. */
+    --background: 30 8% 96%;
+    --foreground: 220 8% 18%;
+    --card: 24 7% 91%;
+    --card-foreground: 220 8% 18%;
+    --popover: 30 12% 98%;
+    --popover-foreground: 220 8% 18%;
+    --primary: 217 91% 59%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 20% 94%;
-    --secondary-foreground: 222 16% 28%;
-    --muted: 220 18% 94%;
-    --muted-foreground: 220 10% 43%;
-    --accent: 226 65% 94%;
-    --accent-foreground: 226 60% 42%;
-    --destructive: 0 72% 51%;
+    --secondary: 24 6% 87%;
+    --secondary-foreground: 220 7% 28%;
+    --muted: 24 6% 89%;
+    --muted-foreground: 220 6% 46%;
+    --accent: 211 22% 82%;
+    --accent-foreground: 217 70% 38%;
+    --destructive: 0 72% 52%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 16% 86%;
-    --input: 220 16% 82%;
-    --ring: 226 68% 51%;
+    --border: 24 6% 79%;
+    --input: 218 10% 72%;
+    --ring: 217 91% 59%;
     --radius: 0.5rem;
-    /* A faintly tinted navigation rail separates structure from white cards. */
-    --sidebar: 220 24% 96%;
-    --sidebar-foreground: 222 20% 18%;
-    --sidebar-muted: 220 10% 43%;
-    --sidebar-border: 220 16% 85%;
-    --sidebar-active-bg: 226 70% 92%;
-    --sidebar-active-fg: 226 64% 43%;
+    --sidebar: 24 7% 82%;
+    --sidebar-foreground: 220 8% 21%;
+    --sidebar-muted: 220 6% 43%;
+    --sidebar-border: 24 6% 73%;
+    --sidebar-active-bg: 211 16% 70%;
+    --sidebar-active-fg: 220 10% 18%;
     /* Document shelf semantics. Themes can energize the dense navigation list
        without leaking those stronger colours into the reading canvas. */
-    --document-list-surface: transparent;
-    --document-list-title: hsl(var(--foreground) / 0.9);
+    --document-list-surface: hsl(var(--card));
+    --document-list-title: hsl(var(--foreground));
     --document-list-meta: hsl(var(--muted-foreground));
     --document-list-folder: hsl(var(--muted-foreground));
     --document-list-row: transparent;
-    --document-list-row-hover: hsl(var(--muted) / 0.6);
-    --document-list-active-bg: hsl(var(--primary) / 0.1);
-    --document-list-active-border: hsl(var(--primary) / 0.25);
+    --document-list-row-hover: hsl(var(--background) / 0.72);
+    --document-list-active-bg: hsl(var(--accent));
+    --document-list-active-border: hsl(var(--primary) / 0.28);
     --document-list-active-title: hsl(var(--foreground));
-    --document-list-icon-bg: hsl(var(--muted) / 0.7);
-    --document-list-icon-fg: hsl(var(--muted-foreground));
+    --document-list-icon-bg: hsl(var(--secondary));
+    --document-list-icon-fg: hsl(var(--accent-foreground));
     /* Writing studio — blue "fountain-pen ink" for annotations + manuscript serif */
     --ink: 211 65% 40%;
     --tag-chip-l: 38%;
@@ -74,6 +76,17 @@
     --sidebar-border: 222 14% 18%;
     --sidebar-active-bg: 243 50% 22%;
     --sidebar-active-fg: 243 75% 75%;
+    --document-list-surface: transparent;
+    --document-list-title: hsl(var(--foreground) / 0.9);
+    --document-list-meta: hsl(var(--muted-foreground));
+    --document-list-folder: hsl(var(--muted-foreground));
+    --document-list-row: transparent;
+    --document-list-row-hover: hsl(var(--muted) / 0.6);
+    --document-list-active-bg: hsl(var(--primary) / 0.1);
+    --document-list-active-border: hsl(var(--primary) / 0.25);
+    --document-list-active-title: hsl(var(--foreground));
+    --document-list-icon-bg: hsl(var(--muted) / 0.7);
+    --document-list-icon-fg: hsl(var(--muted-foreground));
     --ink: 210 55% 70%;
     --tag-chip-l: 72%;
   }
