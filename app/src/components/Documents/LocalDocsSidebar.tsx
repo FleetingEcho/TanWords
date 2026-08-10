@@ -89,7 +89,7 @@ export function LocalDocsSidebar({
 
   return (
     <Collapsible open={sidebarOpen} onOpenChange={onSidebarOpenChange} asChild>
-      <div className={`${sidebarOpen ? LIST_PANEL_WIDTH : LIST_PANEL_COLLAPSED_WIDTH} h-full shrink-0 border-r border-border bg-transparent transition-[width] duration-200 ${sidebarOpen ? "max-lg:w-full max-lg:shrink" : "max-lg:w-[60px]"}`}>
+      <div className={`${sidebarOpen ? LIST_PANEL_WIDTH : LIST_PANEL_COLLAPSED_WIDTH} h-full shrink-0 border-r border-border bg-[var(--document-list-surface)] transition-[width] duration-200 ${sidebarOpen ? "max-lg:w-full max-lg:shrink" : "max-lg:w-[60px]"}`}>
         {!sidebarOpen && (
           <div className="flex justify-center pt-3">
             <CollapsibleTrigger asChild>
