@@ -150,6 +150,13 @@ export const DocItem = React.memo(function DocItem({ doc, active, compact = fals
           event.stopPropagation();
           onToggleSelectionMode?.(doc.id);
         }}
+        // The shelf owns a right-click menu for its empty background. Without
+        // this boundary, a right-click on a document bubbles there and offers
+        // "New document / New folder" as though the user clicked empty space.
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
         role="button"
         tabIndex={0}
         onKeyDown={(event) => {
