@@ -45,6 +45,18 @@ describe("default light palette", () => {
   });
 });
 
+describe("default dark palette", () => {
+  const dark = themeCss.slice(themeCss.indexOf(".dark {"), themeCss.indexOf("/* Catppuccin Latte */"));
+
+  it("mirrors the light theme with charcoal layers and blue focus", () => {
+    expect(dark).toContain("--background: 20 4% 12%");
+    expect(dark).toContain("--card: 0 3% 16%");
+    expect(dark).toContain("--sidebar: 0 2% 10%");
+    expect(dark).toContain("--primary: 220 93% 67%");
+    expect(dark).toContain("--document-list-active-bg: hsl(var(--accent))");
+  });
+});
+
 describe("Tokyo Night palette", () => {
   const tokyoNight = themeCss.slice(
     themeCss.indexOf(".theme-tokyo-night {"),
@@ -65,6 +77,26 @@ describe("Tokyo Night palette", () => {
     expect(tokyoNight).toContain("--syntax-keyword: #bb9af7");
     expect(tokyoNight).toContain("--syntax-string: #9ece6a");
     expect(tokyoNight).toContain("--syntax-comment: #565f89");
+  });
+});
+
+describe("Tokyo Night variants", () => {
+  const tokyoDay = themeCss.slice(
+    themeCss.indexOf(".theme-tokyo-night-day {"),
+    themeCss.indexOf("/* Tokyo Night Storm"),
+  );
+  const tokyoStorm = themeCss.slice(
+    themeCss.indexOf(".theme-tokyo-night-storm {"),
+    themeCss.indexOf("/* Dim"),
+  );
+
+  it.each([
+    ["Day", tokyoDay],
+    ["Storm", tokyoStorm],
+  ])("gives Tokyo Night %s a layered document shelf", (_name, palette) => {
+    expect(palette).toContain("--document-list-surface: hsl(var(--card))");
+    expect(palette).toContain("--document-list-active-bg: hsl(var(--sidebar-active-bg))");
+    expect(palette).toContain("--document-list-icon-fg: hsl(var(--primary))");
   });
 });
 

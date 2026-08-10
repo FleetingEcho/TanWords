@@ -51,43 +51,45 @@
   }
 
   .dark {
-    --background: 222 16% 10%;
-    --foreground: 210 20% 92%;
-    --card: 222 16% 13%;
-    --card-foreground: 210 20% 92%;
-    --popover: 222 16% 13%;
-    --popover-foreground: 210 20% 92%;
-    --primary: 243 75% 65%;
+    /* Dark counterpart to the default light palette: warm charcoal surfaces,
+       cool slate selection, and the same blue interaction vocabulary. */
+    --background: 20 4% 12%;
+    --foreground: 24 7% 90%;
+    --card: 0 3% 16%;
+    --card-foreground: 24 7% 90%;
+    --popover: 0 3% 19%;
+    --popover-foreground: 24 7% 90%;
+    --primary: 220 93% 67%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 222 14% 18%;
-    --secondary-foreground: 210 20% 75%;
-    --muted: 222 14% 18%;
-    --muted-foreground: 215 12% 55%;
-    --accent: 243 50% 20%;
-    --accent-foreground: 243 75% 75%;
-    --destructive: 0 62% 40%;
+    --secondary: 0 3% 21%;
+    --secondary-foreground: 24 5% 80%;
+    --muted: 0 3% 20%;
+    --muted-foreground: 20 3% 64%;
+    --accent: 212 23% 27%;
+    --accent-foreground: 220 100% 82%;
+    --destructive: 0 72% 58%;
     --destructive-foreground: 0 0% 100%;
-    --border: 222 14% 20%;
-    --input: 222 14% 20%;
-    --ring: 243 75% 65%;
-    --sidebar: 222 16% 11%;
-    --sidebar-foreground: 210 20% 85%;
-    --sidebar-muted: 215 12% 50%;
-    --sidebar-border: 222 14% 18%;
-    --sidebar-active-bg: 243 50% 22%;
-    --sidebar-active-fg: 243 75% 75%;
-    --document-list-surface: transparent;
-    --document-list-title: hsl(var(--foreground) / 0.9);
+    --border: 0 3% 27%;
+    --input: 220 7% 35%;
+    --ring: 220 93% 67%;
+    --sidebar: 0 2% 10%;
+    --sidebar-foreground: 24 6% 87%;
+    --sidebar-muted: 20 3% 59%;
+    --sidebar-border: 0 3% 20%;
+    --sidebar-active-bg: 210 17% 27%;
+    --sidebar-active-fg: 216 100% 93%;
+    --document-list-surface: hsl(var(--card));
+    --document-list-title: hsl(var(--foreground));
     --document-list-meta: hsl(var(--muted-foreground));
-    --document-list-folder: hsl(var(--muted-foreground));
+    --document-list-folder: hsl(var(--secondary-foreground));
     --document-list-row: transparent;
-    --document-list-row-hover: hsl(var(--muted) / 0.6);
-    --document-list-active-bg: hsl(var(--primary) / 0.1);
-    --document-list-active-border: hsl(var(--primary) / 0.25);
-    --document-list-active-title: hsl(var(--foreground));
-    --document-list-icon-bg: hsl(var(--muted) / 0.7);
-    --document-list-icon-fg: hsl(var(--muted-foreground));
-    --ink: 210 55% 70%;
+    --document-list-row-hover: hsl(var(--secondary) / 0.78);
+    --document-list-active-bg: hsl(var(--accent));
+    --document-list-active-border: hsl(var(--primary) / 0.42);
+    --document-list-active-title: hsl(216 100% 94%);
+    --document-list-icon-bg: hsl(var(--secondary));
+    --document-list-icon-fg: hsl(var(--primary));
+    --ink: 213 76% 74%;
     --tag-chip-l: 72%;
   }
 
@@ -275,6 +277,17 @@
     --sidebar-border: 225 18% 81%;
     --sidebar-active-bg: 216 55% 86%;
     --sidebar-active-fg: 224 55% 40%;
+    --document-list-surface: hsl(var(--card));
+    --document-list-title: hsl(var(--foreground));
+    --document-list-meta: hsl(var(--muted-foreground));
+    --document-list-folder: hsl(var(--secondary-foreground));
+    --document-list-row: transparent;
+    --document-list-row-hover: hsl(var(--background) / 0.78);
+    --document-list-active-bg: hsl(var(--sidebar-active-bg));
+    --document-list-active-border: hsl(var(--primary) / 0.36);
+    --document-list-active-title: hsl(224 60% 32%);
+    --document-list-icon-bg: hsl(var(--secondary));
+    --document-list-icon-fg: hsl(var(--primary));
     --ink: 197 70% 36%;
   }
 
@@ -305,6 +318,17 @@
     --sidebar-border: 229 22% 26%;
     --sidebar-active-bg: 224 35% 29%;
     --sidebar-active-fg: 224 89% 77%;
+    --document-list-surface: hsl(var(--card));
+    --document-list-title: hsl(var(--foreground));
+    --document-list-meta: hsl(var(--muted-foreground));
+    --document-list-folder: hsl(var(--secondary-foreground));
+    --document-list-row: transparent;
+    --document-list-row-hover: hsl(var(--secondary) / 0.78);
+    --document-list-active-bg: hsl(var(--sidebar-active-bg));
+    --document-list-active-border: hsl(var(--primary) / 0.55);
+    --document-list-active-title: hsl(216 100% 91%);
+    --document-list-icon-bg: hsl(var(--secondary));
+    --document-list-icon-fg: hsl(var(--primary));
     --ink: 189 71% 73%;
     --tag-chip-l: 72%;
   }
