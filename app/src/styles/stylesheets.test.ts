@@ -39,11 +39,12 @@ describe("Tokyo Night palette", () => {
     themeCss.indexOf("/* Tokyo Night Day */"),
   );
 
-  it("keeps the canonical layered canvas and blue accent", () => {
-    expect(tokyoNight).toContain("--background: 235 19% 13%");
-    expect(tokyoNight).toContain("--card: 229 26% 16%");
-    expect(tokyoNight).toContain("--sidebar: 240 15% 10%");
-    expect(tokyoNight).toContain("--primary: 221 89% 72%");
+  it("keeps a bright layered canvas and blue accent", () => {
+    expect(tokyoNight).toContain("--background: 232 24% 16%");
+    expect(tokyoNight).toContain("--card: 230 27% 20%");
+    expect(tokyoNight).toContain("--sidebar: 234 25% 12%");
+    expect(tokyoNight).toContain("--primary: 213 100% 72%");
+    expect(tokyoNight).toContain("--muted-foreground: 226 32% 68%");
   });
 
   it("defines Tokyo Night syntax colours for the raw editor", () => {

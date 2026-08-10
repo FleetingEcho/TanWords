@@ -159,37 +159,36 @@
 
   /* Tokyo Night */
   .theme-tokyo-night {
-    /* Canonical Tokyo Night hierarchy: ink-blue editor canvas, a darker rail,
-       and slightly lifted panels. The old palette put every surface around the
-       same luminance, which made the app look washed together rather than like
-       the layered editor UI this theme is meant to evoke. */
-    --background: 235 19% 13%;       /* #1a1b26 */
-    --foreground: 229 73% 86%;       /* #c0caf5 */
-    --card: 229 26% 16%;             /* #1f2335 */
-    --card-foreground: 229 73% 86%;
-    --popover: 229 26% 16%;
-    --popover-foreground: 229 73% 86%;
-    --primary: 221 89% 72%;          /* #7aa2f7 */
-    --primary-foreground: 235 19% 13%;
-    --secondary: 230 24% 19%;        /* #24283b */
-    --secondary-foreground: 229 35% 75%; /* #a9b1d6 */
-    --muted: 230 24% 19%;
-    --muted-foreground: 231 20% 54%; /* #737aa2 */
-    --accent: 228 23% 21%;           /* #292e42 */
-    --accent-foreground: 261 85% 79%; /* #bb9af7 */
-    --destructive: 349 89% 72%;      /* #f7768e */
-    --destructive-foreground: 235 19% 13%;
-    --border: 228 23% 21%;           /* #292e42 */
-    --input: 229 24% 31%;            /* #3b4261 */
-    --ring: 221 89% 72%;
-    --sidebar: 240 15% 10%;          /* #16161e */
-    --sidebar-foreground: 229 35% 75%;
-    --sidebar-muted: 231 20% 54%;
-    --sidebar-border: 228 23% 21%;
-    --sidebar-active-bg: 230 24% 19%;
-    --sidebar-active-fg: 221 89% 72%;
-    --ink: 202 100% 75%;             /* #7dcfff */
-    --tag-chip-l: 72%;
+    /* A brighter, higher-contrast take on Tokyo Night. The rail remains deep,
+       while the canvas, cards, controls, and borders each occupy a distinct
+       luminance step so long reading sessions do not collapse into navy haze. */
+    --background: 232 24% 16%;
+    --foreground: 226 80% 91%;
+    --card: 230 27% 20%;
+    --card-foreground: 226 80% 91%;
+    --popover: 230 28% 22%;
+    --popover-foreground: 226 80% 91%;
+    --primary: 213 100% 72%;
+    --primary-foreground: 232 24% 12%;
+    --secondary: 230 25% 24%;
+    --secondary-foreground: 226 50% 84%;
+    --muted: 230 22% 22%;
+    --muted-foreground: 226 32% 68%;
+    --accent: 226 38% 28%;
+    --accent-foreground: 213 100% 84%;
+    --destructive: 349 92% 72%;
+    --destructive-foreground: 232 24% 12%;
+    --border: 228 26% 30%;
+    --input: 227 32% 38%;
+    --ring: 213 100% 72%;
+    --sidebar: 234 25% 12%;
+    --sidebar-foreground: 226 60% 88%;
+    --sidebar-muted: 226 30% 67%;
+    --sidebar-border: 229 26% 25%;
+    --sidebar-active-bg: 223 42% 27%;
+    --sidebar-active-fg: 211 100% 83%;
+    --ink: 190 100% 73%;
+    --tag-chip-l: 74%;
 
     /* Raw Markdown / fenced-code tokens. Shiki uses its native Tokyo Night
        theme; these variables give CodeMirror the same visual vocabulary. */
