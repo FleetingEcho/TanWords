@@ -61,6 +61,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   const visibleItems = useSettingsStore((state) => state.visibleTopBarItems);
   const toggleToolsModal = useToolsBallStore((state) => state.toggleModal);
   const userAvatar = useSettingsStore((state) => state.userAvatar);
+  const hasCustomAppBackground = useSettingsStore((state) => !!state.appBackgroundImage && state.appBackgroundVisible);
   const visible = (item: import("@/store/settingsStore").TopBarItemId) => {
     if (!visibleItems.includes(item)) return false;
     if (item === "mcp") return hostCapabilities.mcp;
@@ -187,7 +188,9 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
           both `auto`, so the page paints later and its toolbars (the Browser
           address bar, FeedTabs at z-20, sticky list headers at z-10) come out
           on top of the dropdown. This has to stay above all of those. */}
-      <header className="app-drag-region relative z-30 flex min-h-12 shrink-0 select-none flex-col lg:flex-row lg:items-center gap-x-1.5 gap-y-2 border-b border-border/80 bg-background/90 px-3 py-2 backdrop-blur-xl">
+      <header className={`app-drag-region relative z-30 flex min-h-12 shrink-0 select-none flex-col lg:flex-row lg:items-center gap-x-1.5 gap-y-2 border-b border-border/80 px-3 py-2 ${
+        hasCustomAppBackground ? "bg-transparent" : "bg-background/90 backdrop-blur-xl"
+      }`}>
         {visible("search") && (
           <div className="flex min-w-0 order-2 w-full lg:order-none lg:w-auto lg:max-w-2xl lg:flex-1 lg:shrink items-center gap-1">
             <div className="min-w-0 flex-1">

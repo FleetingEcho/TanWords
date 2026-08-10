@@ -158,9 +158,9 @@ export function MainLayout({
       className={`app-viewport-height flex overflow-hidden overscroll-none ${hasCustomAppBackground ? "" : "bg-background"}`}
     >
       <aside
-        className={`${compact ? "hidden" : "flex"} h-full shrink-0 flex-col border-r border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar))] select-none transition-[width] duration-200 ${
+        className={`${compact ? "hidden" : "flex"} h-full shrink-0 flex-col border-r border-[hsl(var(--sidebar-border))] select-none transition-[width] duration-200 ${
           collapsed ? "w-[60px]" : "w-[210px]"
-        }`}
+        } ${hasCustomAppBackground ? "bg-transparent" : "bg-[hsl(var(--sidebar))]"}`}
       >
         <div className={`app-drag-region flex items-center pt-5 pb-3 ${collapsed ? "px-2 justify-center" : "px-4 justify-between"}`}>
           {/* The product's name, set the way the app sets a headword — rather
