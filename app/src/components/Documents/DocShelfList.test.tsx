@@ -95,5 +95,6 @@ describe("DocShelfList compact alignment", () => {
     const statusMarker = screen.getByLabelText("doc.statusActive");
     expect(statusMarker.parentElement).toHaveClass("items-center");
     expect(statusMarker).not.toHaveClass("mt-0.5");
+    expect(statusMarker).toHaveClass("inline-flex", "h-4", "items-center", "justify-center");
   });
 });
