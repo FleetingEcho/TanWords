@@ -135,4 +135,45 @@ describe("DocumentOutline", () => {
     fireEvent.scroll(viewport);
     await waitFor(() => expect(screen.getByText("Second").closest("button")?.getAttribute("aria-current")).toBe("location"));
   });
+
+  // The geometry effect re-subscribes whenever the heading list changes, and it
+  // always leaves a frame pending. Its cleanup used to cancel that frame while
+  // leaving the handle in the ref, and the scheduler reads a non-zero handle as
+  // "a frame is already coming" — so from the first re-run onwards every scroll
+  // was dropped and the rail froze on whatever heading it was showing.
+  it("keeps following the scroll after the heading list changes", async () => {
+    const viewport = document.createElement("div");
+    Object.defineProperty(viewport, "clientHeight", { value: 400 });
+    viewport.getBoundingClientRect = () => ({ top: 0, bottom: 400 } as DOMRect);
+    const root = document.createElement("div");
+    const first = document.createElement("h2");
+    first.dataset.id = "first";
+    first.getBoundingClientRect = () => ({ top: 80 - viewport.scrollTop } as DOMRect);
+    const second = document.createElement("h2");
+    second.dataset.id = "second";
+    second.getBoundingClientRect = () => ({ top: 600 - viewport.scrollTop } as DOMRect);
+    root.append(first, second);
+    const viewportRef = createRef<HTMLDivElement>();
+    viewportRef.current = viewport;
+    const headings = [
+      { id: "first", level: 1, text: "First" },
+      { id: "second", level: 1, text: "Second" },
+    ];
+    const editorFor = () => ({
+      // A fresh array each call, as the real editor's walk returns — that is
+      // what makes the memo produce new items and the effect re-subscribe.
+      getOutlineHeadings: () => headings.map((heading) => ({ ...heading })),
+      getViewDom: () => root,
+      setTextCursorPosition: vi.fn(),
+      onHistoryChange: () => () => {},
+    });
+
+    const { rerender } = render(<DocumentScrollOutline editor={editorFor()} viewportRef={viewportRef} />);
+    // Synchronously, before the mount's frame has run: the cleanup cancels it.
+    rerender(<DocumentScrollOutline editor={editorFor()} viewportRef={viewportRef} />);
+
+    viewport.scrollTop = 550;
+    fireEvent.scroll(viewport);
+    await waitFor(() => expect(screen.getByText("Second").closest("button")?.getAttribute("aria-current")).toBe("location"));
+  });
 });

@@ -185,7 +185,14 @@ export function DocumentScrollOutline({
       resizeObserver?.disconnect();
       scrollTarget.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", schedule);
+      // Clearing the handle matters as much as cancelling the frame: the ref
+      // outlives the effect, and `schedule` treats a non-zero handle as "a
+      // frame is already coming". This effect re-runs whenever the heading
+      // list changes and always leaves a frame pending, so a cancel that
+      // forgot to reset latched the rail shut — every later scroll saw a
+      // stale handle, scheduled nothing, and the highlight stopped moving.
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
+      frameRef.current = 0;
     };
   }, [editor, getViewport, items, updateActive]);
 

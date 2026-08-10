@@ -115,7 +115,12 @@ export function DocumentPreviewScrollArea({
       resizeObserver?.disconnect();
       mutationObserver.disconnect();
       viewport.removeEventListener("scroll", scheduleUpdate);
+      // Reset the handle, not just the frame — `scheduleUpdate` reads a
+      // non-zero handle as "already scheduled", so a cancelled frame that
+      // left its handle behind would freeze the thumb for good (StrictMode's
+      // dev remount is enough to trigger it).
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
+      frameRef.current = 0;
     };
   }, [scheduleUpdate]);
 
