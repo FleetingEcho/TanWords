@@ -63,9 +63,19 @@ function HighlightFuzzy({ text, query }: { text: string; query: string }) {
   const positions = fuzzyPositions(text, query);
   if (!positions) return <>{text}</>;
   const matched = new Set(positions);
-  return <>{[...text].map((char, index) => matched.has(index)
-    ? <mark key={index} className="rounded-sm bg-yellow-300/70 text-inherit dark:bg-yellow-500/40">{char}</mark>
-    : char)}</>;
+  const chars = [...text];
+  const runs: React.ReactNode[] = [];
+  for (let start = 0; start < chars.length;) {
+    const highlighted = matched.has(start);
+    let end = start + 1;
+    while (end < chars.length && matched.has(end) === highlighted) end += 1;
+    const content = chars.slice(start, end).join("");
+    runs.push(highlighted
+      ? <mark key={start} className="bg-yellow-300/70 text-inherit dark:bg-yellow-500/40">{content}</mark>
+      : <React.Fragment key={start}>{content}</React.Fragment>);
+    start = end;
+  }
+  return <>{runs}</>;
 }
 
 function contentExcerpt(content: string, query: string): string | null {

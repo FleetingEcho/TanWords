@@ -19,45 +19,68 @@ function documentItem(): DocumentListItem {
   };
 }
 
+function renderShelf({
+  doc = documentItem(), search = "result", setShelfMenu = vi.fn(),
+}: {
+  doc?: DocumentListItem;
+  search?: string;
+  setShelfMenu?: (value: { x: number; y: number } | null) => void;
+} = {}) {
+  const noop = vi.fn();
+  const list = {
+    docs: [doc], folders: [], loading: false, search,
+  } as unknown as DocListState;
+  const actions = {
+    handleRename: noop, handlePin: noop, handleDuplicate: noop,
+    handleDelete: noop, handlePrivacyAction: noop, handleRemoveProtection: noop,
+    handleMoveToFolder: noop, handleDeleteFolder: noop,
+  } as unknown as DocActionsState;
+
+  const view = render(
+    <DocShelfList
+      list={list}
+      density="comfortable"
+      actions={actions}
+      activeId={null}
+      onSelect={noop}
+      onExport={noop}
+      onExportHtml={noop}
+      onExportPdf={noop}
+      shelfMenu={null}
+      setShelfMenu={setShelfMenu}
+      onNewDoc={noop}
+      onNewDocIn={noop}
+      onCreateFolder={noop}
+      onRenameFolder={noop}
+      onSetFolderLocked={noop}
+      selectedIds={new Set()}
+      selectionMode={false}
+      onToggleSelect={noop}
+      onToggleSelectionMode={noop}
+    />,
+  );
+  return { ...view, setShelfMenu };
+}
+
 describe("DocShelfList context menu", () => {
   it("does not open the shelf background menu from a document row", () => {
     const setShelfMenu = vi.fn();
-    const noop = vi.fn();
-    const list = {
-      docs: [documentItem()], folders: [], loading: false, search: "result",
-    } as unknown as DocListState;
-    const actions = {
-      handleRename: noop, handlePin: noop, handleDuplicate: noop,
-      handleDelete: noop, handlePrivacyAction: noop, handleRemoveProtection: noop,
-      handleMoveToFolder: noop, handleDeleteFolder: noop,
-    } as unknown as DocActionsState;
-
-    render(
-      <DocShelfList
-        list={list}
-        density="comfortable"
-        actions={actions}
-        activeId={null}
-        onSelect={noop}
-        onExport={noop}
-        onExportHtml={noop}
-        onExportPdf={noop}
-        shelfMenu={null}
-        setShelfMenu={setShelfMenu}
-        onNewDoc={noop}
-        onNewDocIn={noop}
-        onCreateFolder={noop}
-        onRenameFolder={noop}
-        onSetFolderLocked={noop}
-        selectedIds={new Set()}
-        selectionMode={false}
-        onToggleSelect={noop}
-        onToggleSelectionMode={noop}
-      />,
-    );
+    renderShelf({ setShelfMenu });
 
     fireEvent.contextMenu(screen.getByText("Context-menu regression"));
 
     expect(setShelfMenu).not.toHaveBeenCalled();
+  });
+});
+
+describe("DocShelfList search highlights", () => {
+  it("renders a contiguous match as one rectangular highlight", () => {
+    const doc = { ...documentItem(), title: "mcpserver config" };
+    const { container } = renderShelf({ doc, search: "mcpserver" });
+    const marks = [...container.querySelectorAll("mark")];
+
+    expect(marks).toHaveLength(1);
+    expect(marks[0]).toHaveTextContent("mcpserver");
+    expect(marks[0]).not.toHaveClass("rounded-sm");
   });
 });
