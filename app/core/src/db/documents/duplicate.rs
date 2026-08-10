@@ -10,9 +10,9 @@ pub async fn db_duplicate_document(id: i64, conn: State<'_, AppState>) -> Result
     let db = db::conn(&conn)?;
     if document_privacy::document_is_protected(&db, id).await? {
         let key = conn.document_privacy.key(id)?;
-        let (title, stored_content, stored_text, tags, word_count) = db::fetch_one(
+        let (title, stored_content, stored_text, tags, word_count, status) = db::fetch_one(
             &db,
-            "SELECT title,content,content_text,tags,word_count FROM documents WHERE id=?1",
+            "SELECT title,content,content_text,tags,word_count,status FROM documents WHERE id=?1",
             [id],
             |row| {
                 Ok((
@@ -21,6 +21,7 @@ pub async fn db_duplicate_document(id: i64, conn: State<'_, AppState>) -> Result
                     row.get::<String>(2)?,
                     row.get::<String>(3)?,
                     row.get::<i64>(4)?,
+                    row.get::<String>(5)?,
                 ))
             },
         )
@@ -29,7 +30,7 @@ pub async fn db_duplicate_document(id: i64, conn: State<'_, AppState>) -> Result
         let content_text = decrypt_text(&key, &stored_text)?;
         let (task_total, task_done) = super::tasks::count_tasks(&content);
         db.execute(
-            "INSERT INTO documents(title,content,content_text,tags,word_count,task_total,task_done) VALUES(?1,?2,?3,?4,?5,?6,?7)",
+            "INSERT INTO documents(title,content,content_text,tags,word_count,task_total,task_done,status) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
             params![
                 format!("{title} (copy)"),
                 content.clone(),
@@ -37,7 +38,8 @@ pub async fn db_duplicate_document(id: i64, conn: State<'_, AppState>) -> Result
                 tags,
                 word_count,
                 task_total,
-                task_done
+                task_done,
+                status
             ],
         ).await.map_err(|e| e.to_string())?;
         let new_document_id = db.last_insert_rowid();
@@ -83,8 +85,8 @@ pub async fn db_duplicate_document(id: i64, conn: State<'_, AppState>) -> Result
         return Ok(new_document_id);
     }
     db.execute(
-        "INSERT INTO documents (title, content, content_text, tags, word_count, folder, task_total, task_done)
-         SELECT title || ' (copy)', content, content_text, tags, word_count, folder, task_total, task_done
+        "INSERT INTO documents (title, content, content_text, tags, word_count, folder, task_total, task_done, status)
+         SELECT title || ' (copy)', content, content_text, tags, word_count, folder, task_total, task_done, status
          FROM documents WHERE id = ?1",
         params![id],
     )
