@@ -120,15 +120,6 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
               {zenMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </Button>
           </div>
-          {/* Metadata strip under the title: status on its own line, tags on
-            * the next. They shared a line at first and the tags lost — a
-            * document with several chips pushed the add box off the edge.
-            * Reaching the editor at all means the document is unlocked
-            * (LockedDocumentPanel stands in otherwise), so both are editable. */}
-          <div className="col-span-2 flex min-w-0 flex-col items-start gap-1.5">
-            <DocumentStatusBar status={doc.status} onChange={onStatusChange} />
-            <DocumentTagBar tags={doc.tags} onChange={onTagsChange} />
-          </div>
         </div>
 
         <div className={`${chromeOpen ? "flex" : "hidden"} mt-3 min-w-0 items-center gap-2 rounded-xl border border-border/50 bg-muted/20 px-1.5 py-1 lg:flex`}>
@@ -153,6 +144,17 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
               className="h-8 w-36 min-w-0 shrink-0 rounded-lg bg-background/75 shadow-none ring-1 ring-border/50 sm:w-56 lg:w-72"
             />
           )}
+        </div>
+        {/* Metadata strip: status then tags, on their own row under the
+          * toolbar. It sat beside the title first, where it had no width to
+          * live in — the status control and the tag chips fought each other
+          * for the same sliver. Down here the row is the header's full width,
+          * so chips wrap instead of pushing the add box off the edge.
+          * Reaching the editor at all means the document is unlocked
+          * (LockedDocumentPanel stands in otherwise), so both are editable. */}
+        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <DocumentStatusBar status={doc.status} onChange={onStatusChange} />
+          <DocumentTagBar tags={doc.tags} onChange={onTagsChange} />
         </div>
         <input ref={attachmentInputRef} type="file" className="hidden"
           onChange={(event) => { void attachments.insertAttachment(event.target.files?.[0]); event.target.value = ""; }} />
