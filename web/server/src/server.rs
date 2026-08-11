@@ -1350,8 +1350,12 @@ async fn security_headers(request: Request, next: Next) -> Response {
     // executable.
     headers.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
     // Nothing here is meaningful inside someone else's frame, and framing it
-    // is how a clickjack starts.
-    headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+    // is how a clickjack starts. Respect a handler-set value: the browser
+    // proxy sets SAMEORIGIN so the app shell can frame proxied pages, while
+    // everything else stays DENY.
+    if !headers.contains_key(header::X_FRAME_OPTIONS) {
+        headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+    }
     // Referrer would otherwise carry the path — and on the two routes that
     // still accept ?token=, the token — to whatever the page links to.
     headers.insert(header::REFERRER_POLICY, HeaderValue::from_static("no-referrer"));
@@ -1398,7 +1402,11 @@ pub async fn serve(config: Config, users: Arc<UsersDb>, pool: Arc<RuntimePool>) 
     let auth_routes = Router::new()
         .route("/api/auth/login", post(login))
         .route("/api/auth/register", post(register))
-        .route("/api/auth/reset-password", post(reset_password));
+        .route("/api/auth/reset-password", post(reset_password))
+        // Public: the browser-proxy Service Worker script. Static JS, no
+        // secrets, and the browser's SW update fetch may not carry the
+        // tw_proxy cookie, so it must not require a session.
+        .route("/api/browser/proxy-sw.js", get(browser_proxy::proxy_sw));
 
     let protected = Router::new()
         .route("/api/auth/logout", post(logout))

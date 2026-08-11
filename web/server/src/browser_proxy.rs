@@ -16,10 +16,13 @@
 //! rewritten with `lol_html`; other content types are streamed through and
 //! engine-checked first.
 //!
-//! Honest v1 limits (inherent to in-page web proxies): no upstream cookie
-//! persistence (login-gated sites won't work), no `<style>`/`url()` or
-//! JS-constructed-URL rewriting, and JS-heavy SPAs that build URLs at runtime
-//! break. Static/content sites — news, blogs, wikis — work.
+//! Honest limits (inherent to in-page web proxies): no upstream cookie
+//! persistence (login-gated sites won't work). CSS `url()`/`@import` and
+//! JS-constructed URLs ARE handled — the former by rewriting CSS bodies below,
+//! the latter by a Service Worker (scope `/api/browser/proxy`, see
+//! `proxy_sw`) that re-routes runtime fetches back through this proxy.
+//! Static/content sites work; many SPAs render too (best effort, not a
+//! promise for arbitrary sites).
 
 use std::sync::Arc;
 
@@ -153,6 +156,21 @@ pub async fn browser_proxy(
         }
     }
 
+    // CSS: rewrite `url(...)` and `@import` references through the proxy.
+    // Relative URLs in a stylesheet resolve against the CSS file's own URL;
+    // without this they would request our origin (404) and absolute CDN URLs
+    // would bypass the proxy's filtering.
+    if content_type.contains("text/css") {
+        let bytes = match upstream.bytes().await {
+            Ok(b) => b,
+            Err(e) => return json_error(StatusCode::BAD_GATEWAY, format!("upstream read failed: {e}")),
+        };
+        let rewritten = rewrite_css(&String::from_utf8_lossy(&bytes), &final_url, block_enabled);
+        return builder
+            .body(Body::from(rewritten))
+            .unwrap_or_else(|_| json_error(StatusCode::INTERNAL_SERVER_ERROR, "css rewrite failed"));
+    }
+
     // Everything else: stream bytes through verbatim (already engine-checked).
     builder
         .body(Body::from_stream(upstream.bytes_stream()))
@@ -170,11 +188,19 @@ fn referer_original(request: &axum::http::Request<Body>) -> Option<String> {
 /// (CSP, X-Frame-Options), and set our own content-type.
 fn strip_framing_headers(mut builder: axum::http::response::Builder, content_type: &str) -> axum::http::response::Builder {
     // We deliberately do NOT copy Content-Security-Policy or X-Frame-Options
-    // from upstream — they'd block framing and inline scripts under our origin.
+    // from upstream — the page must render in our iframe under our origin, so
+    // the upstream's would break it. We set our own instead: SAMEORIGIN +
+    // `frame-ancestors 'self'` so the app shell (same origin) can frame the
+    // proxy, and a content-only CSP that leaves scripts/styles unrestricted
+    // (the proxy runs arbitrary upstream JS inline by design). The global
+    // `security_headers` layer respects an existing X-Frame-Options/CSP and
+    // skips its own `DENY` / `frame-ancestors 'none'` (see server.rs).
     builder = builder.header(header::CONTENT_TYPE, content_type);
     if content_type.is_empty() {
         builder = builder.header(header::CONTENT_TYPE, "application/octet-stream");
     }
+    builder = builder.header(header::X_FRAME_OPTIONS, HeaderValue::from_static("SAMEORIGIN"));
+    builder = builder.header(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static("frame-ancestors 'self'"));
     builder
 }
 
@@ -262,6 +288,13 @@ fn rewrite_html(body: &[u8], base_url: &url::Url, block_enabled: bool, cosmetics
     if !cosmetics.script.is_empty() {
         inject.push_str(&format!("<script>{}</script>", cosmetics.script));
     }
+    // Register the proxy Service Worker (scope /api/browser/proxy) so fetches
+    // the page constructs at runtime — dynamic imports, Worker requests, XHR
+    // with built URLs — are re-routed through the filtering proxy instead of
+    // 404ing against our origin. The page is same-origin (served by us), so the
+    // registration succeeds; the SW only touches non-proxy, non-navigation
+    // requests, so static (already-rewritten) sites are unaffected.
+    inject.push_str("<script>(function(){if('serviceWorker' in navigator){navigator.serviceWorker.register('/api/browser/proxy-sw.js',{scope:'/api/browser/proxy'}).catch(function(){});}})();</script>");
     let inject_for_head = inject.clone();
 
     let mut rewriter = HtmlRewriter::new(
@@ -288,6 +321,56 @@ fn rewrite_html(body: &[u8], base_url: &url::Url, block_enabled: bool, cosmetics
     rewriter.write(body)?;
     rewriter.end()?;
     Ok(output)
+}
+
+/// Rewrite `url(...)` and `@import` references in a CSS body so they route
+/// through the proxy. Relative URLs resolve against the stylesheet's own URL
+/// (`base`), the way a browser does — without this, a proxied stylesheet's
+/// `url(/img.png)` would request our origin and 404, and `url(https://cdn/x)`
+/// would bypass the proxy's filtering. `data:`/`blob:`/fragment-only and
+/// already-proxied URLs are left untouched.
+fn rewrite_css(css: &str, base: &url::Url, block_enabled: bool) -> String {
+    static URL_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    static IMPORT_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let url_re = URL_RE.get_or_init(|| regex::Regex::new(r#"url\(\s*('([^']*)'|"([^"]*)"|([^)]*))\s*\)"#).unwrap());
+    let import_re = IMPORT_RE.get_or_init(|| regex::Regex::new(r#"@import\s+('([^']*)'|"([^"]*)")"#).unwrap());
+
+    let out = url_re.replace_all(css, |c: &regex::Captures| -> String {
+        let (raw, quote) = if let Some(m) = c.get(2) { (m.as_str(), '\'') }
+            else if let Some(m) = c.get(3) { (m.as_str(), '"') }
+            else if let Some(m) = c.get(4) { (m.as_str(), '\0') }
+            else { return c.get(0).unwrap().as_str().to_string(); };
+        let proxied = proxy_css_url(raw, base, block_enabled);
+        match quote {
+            '\'' => format!("url('{}')", proxied),
+            '"' => format!("url(\"{}\")", proxied),
+            _ => format!("url({})", proxied),
+        }
+    });
+    let out = import_re.replace_all(&out, |c: &regex::Captures| -> String {
+        let (raw, quote) = if let Some(m) = c.get(2) { (m.as_str(), '\'') }
+            else if let Some(m) = c.get(3) { (m.as_str(), '"') }
+            else { return c.get(0).unwrap().as_str().to_string(); };
+        let proxied = proxy_css_url(raw, base, block_enabled);
+        if quote == '\'' { format!("@import '{}'", proxied) } else { format!("@import \"{}\"", proxied) }
+    });
+    out.into_owned()
+}
+
+/// Resolve one CSS URL against the stylesheet base and re-route it through the
+/// proxy. `data:`/`blob:`/`#`/empty and already-proxied URLs pass through.
+fn proxy_css_url(raw: &str, base: &url::Url, block_enabled: bool) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with("data:") || trimmed.starts_with("blob:") {
+        return raw.to_string();
+    }
+    if trimmed.starts_with("/api/browser/proxy") {
+        return raw.to_string();
+    }
+    match base.join(trimmed) {
+        Ok(resolved) => proxy_url(&resolved, block_enabled),
+        Err(_) => raw.to_string(),
+    }
 }
 
 /// Rewrite the URL attributes on a single element, skipping `<base href>`
@@ -366,3 +449,145 @@ mod urlencoding {
 // Keep the Arc import meaningful if future handlers need shared state.
 #[allow(dead_code)]
 fn _unused(_: Arc<()>) {}
+
+/// The Service Worker that proxied pages register (scope `/api/browser/proxy`)
+/// to re-route runtime-constructed fetches through the filtering proxy. Served
+/// as a public static JS body — it carries no secrets, and the browser's SW
+/// update fetch may not carry the `tw_proxy` cookie, so it must not require a
+/// session. See `rewrite_html` for the registration injection.
+pub async fn proxy_sw() -> Response {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/javascript; charset=utf-8")
+        .header(header::CACHE_CONTROL, "no-cache")
+        .body(Body::from(SW_SCRIPT))
+        .unwrap_or_else(|_| json_error(StatusCode::INTERNAL_SERVER_ERROR, "sw build failed"))
+}
+
+const SW_SCRIPT: &str = r#"
+// TanWords browser-proxy Service Worker.
+// Registered with scope /api/browser/proxy so it controls the proxied iframe
+// (served at /api/browser/proxy?u=...). It intercepts fetches the page makes
+// at runtime — including URLs constructed in JS — and re-routes them back
+// through the filtering proxy, which the rewritten HTML attributes already do
+// for static URLs. Requests already targeting the proxy, plus navigations and
+// data:/blob: URIs, pass through untouched, so static sites are unaffected.
+const PROXY_PATH = '/api/browser/proxy';
+
+self.addEventListener('install', () => { self.skipWaiting(); });
+self.addEventListener('activate', (event) => { event.waitUntil(self.clients.claim()); });
+
+function pageOf(referrer) {
+  if (!referrer) return null;
+  try {
+    const u = new URL(referrer, self.location.origin);
+    if (u.pathname !== PROXY_PATH) return null;
+    return { u: u.searchParams.get('u'), block0: u.searchParams.get('block') === '0' };
+  } catch (e) { return null; }
+}
+
+self.addEventListener('fetch', (event) => {
+  const req = event.request;
+  if (req.mode === 'navigate') return;
+  let u;
+  try { u = new URL(req.url); } catch (e) { return; }
+  if (u.pathname === PROXY_PATH) return;                         // already proxied
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return; // data:/blob:/...
+
+  event.respondWith((async () => {
+    // Recover the page's original URL (to resolve relative URLs the browser
+    // already collapsed onto our origin) and its block state. Prefer the
+    // referrer (fast, sync); fall back to the client's URL.
+    let page = pageOf(req.referrer);
+    if (!page || !page.u) {
+      const client = event.clientId ? await self.clients.get(event.clientId) : null;
+      page = client ? pageOf(client.url) : null;
+    }
+    const base = page && page.u ? page.u : null;
+    const blockSuffix = page && page.block0 ? '&block=0' : '';
+
+    let resolved;
+    if (u.origin === self.location.origin) {
+      // The browser resolved a runtime URL against OUR origin (the page is
+      // served by us). Re-resolve its path+query against the original page URL
+      // so it targets the upstream, then route through the proxy.
+      if (!base) return fetch(req);
+      try { resolved = new URL(u.pathname + u.search, base).href; }
+      catch (e) { return fetch(req); }
+    } else {
+      resolved = req.url; // cross-origin absolute → wrap directly
+    }
+
+    const proxied = PROXY_PATH + '?u=' + encodeURIComponent(resolved) + blockSuffix;
+    try {
+      const init = {
+        method: req.method,
+        headers: req.headers,
+        redirect: req.redirect,
+        credentials: 'same-origin',
+        mode: 'same-origin',
+      };
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        init.body = req.body;
+        init.duplex = 'half';
+      }
+      return await fetch(proxied, init);
+    } catch (e) {
+      if (req.method === 'GET' || req.method === 'HEAD') return fetch(req);
+      throw e;
+    }
+  })());
+});
+"#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn base() -> url::Url {
+        url::Url::parse("https://example.com/styles/main.css").unwrap()
+    }
+
+    #[test]
+    fn rewrites_relative_and_absolute_css_urls() {
+        let css = "a{background:url(/img.png)} b{background:url(./sprite.png)} c{src:url(https://cdn.test/x.png)}";
+        let out = rewrite_css(css, &base(), true);
+        assert!(out.contains("url(/api/browser/proxy?u=https://example.com/img.png)"), "root-relative: {out}");
+        assert!(out.contains("url(/api/browser/proxy?u=https://example.com/styles/sprite.png)"), "dir-relative: {out}");
+        assert!(out.contains("url(/api/browser/proxy?u=https://cdn.test/x.png)"), "absolute: {out}");
+    }
+
+    #[test]
+    fn preserves_quote_style() {
+        let out = rewrite_css("a{b:url(\"q.png\")} c{d:url('r.png')}", &base(), true);
+        assert!(out.contains("url(\"/api/browser/proxy?u=https://example.com/styles/q.png\")"), "double-quoted: {out}");
+        assert!(out.contains("url('/api/browser/proxy?u=https://example.com/styles/r.png')"), "single-quoted: {out}");
+    }
+
+    #[test]
+    fn leaves_data_blob_and_fragment_urls_alone() {
+        let css = "a{b:url(data:image/png;base64,abc)} c{d:url(#frag)} e{f:url(blob:https://x/y)}";
+        let out = rewrite_css(css, &base(), true);
+        assert_eq!(out, css, "data/blob/fragment URLs must be left untouched");
+    }
+
+    #[test]
+    fn rewrites_import_string_and_url_forms() {
+        let out = rewrite_css("@import \"sub.css\"; @import url(deep.css);", &base(), true);
+        assert!(out.contains("@import \"/api/browser/proxy?u=https://example.com/styles/sub.css\""), "import string: {out}");
+        assert!(out.contains("@import url(/api/browser/proxy?u=https://example.com/styles/deep.css)"), "import url: {out}");
+    }
+
+    #[test]
+    fn does_not_double_wrap_already_proxied_urls() {
+        let css = "a{b:url(/api/browser/proxy?u=https://x/y)}";
+        let out = rewrite_css(css, &base(), true);
+        assert_eq!(out, css, "already-proxied URLs must not be wrapped again");
+    }
+
+    #[test]
+    fn threads_block0_when_filtering_disabled() {
+        let out = rewrite_css("a{b:url(/img.png)}", &base(), false);
+        assert!(out.contains("?u=https://example.com/img.png&block=0"), "block=0 appended: {out}");
+    }
+}

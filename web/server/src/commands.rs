@@ -191,6 +191,12 @@ const BLOCKED: &[(&str, &str)] = &[
     // Hands the decrypted provider key to the browser. The whole point of
     // /api/ai-proxy is that the key never has to go there.
     ("ai_provider_key", "returns a plaintext API key; use /api/ai-proxy instead"),
+    // Desktop sidecar RPCs. On web the filtering proxy runs the same engine
+    // in-process (see browser_proxy.rs), so these are never needed over
+    // /invoke/ here — the Electron main is the only caller, and it talks to
+    // its own localhost sidecar, not this server.
+    ("adblock_check", "desktop sidecar only; the web proxy uses the engine in-process"),
+    ("adblock_cosmetics", "desktop sidecar only; the web proxy uses the engine in-process"),
 ];
 
 /// The gate `/invoke/{command}` consults.

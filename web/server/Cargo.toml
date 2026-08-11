@@ -31,3 +31,4 @@ base64 = "0.22"
 uuid = { version = "1", features = ["v4"] }
 dirs = "5"
 rust-embed = "8"
+regex = "1"

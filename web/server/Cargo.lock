@@ -3647,6 +3647,7 @@ dependencies = [
  "libsql",
  "lol_html",
  "rand 0.8.7",
+ "regex",
  "reqwest",
  "rust-embed",
  "serde",
