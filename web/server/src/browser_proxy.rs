@@ -49,16 +49,13 @@ pub async fn browser_proxy(
     Extension(_session): Extension<UserSession>,
     request: axum::http::Request<Body>,
 ) -> Response {
-    // Extract `u=` from the query (the only parameter the route takes).
-    let target_url = match request
-        .uri()
-        .query()
-        .and_then(|q| q.split('&').find_map(|p| p.strip_prefix("u=").map(str::to_string)))
-    {
-        Some(u) => url::Url::parse(&u).ok(),
-        None => None,
-    };
-    let Some(target) = target_url else {
+    // Extract `u=` from the query (the only parameter the route takes). The
+    // frontend sends it `encodeURIComponent`-encoded (so `&`/`=`/`#` in the URL
+    // don't break query parsing), so the value must be percent-decoded before
+    // `Url::parse` — a raw `strip_prefix("u=")` leaves `https%3A%2F%2F…` which
+    // has no literal `:` and so no scheme, and parse fails. `query_pairs()` form-
+    // decodes consistently with `encodeURIComponent`.
+    let Some(target) = extract_target_url(request.uri().query()) else {
         return json_error(StatusCode::BAD_REQUEST, "missing or invalid `u` parameter");
     };
     if !matches!(target.scheme(), "http" | "https") {
@@ -373,6 +370,19 @@ fn proxy_css_url(raw: &str, base: &url::Url, block_enabled: bool) -> String {
     }
 }
 
+/// Parse the `u=` query parameter into the target URL to proxy. The frontend
+/// sends it `encodeURIComponent`-encoded, so the value is percent-decoded via
+/// `query_pairs()` (form-decoding, consistent with `encodeURIComponent`) before
+/// `Url::parse`. Returns `None` when `u=` is absent or not a parseable URL.
+fn extract_target_url(query: Option<&str>) -> Option<url::Url> {
+    let q = query?;
+    let dummy = url::Url::parse(&format!("http://_/?{q}")).ok()?;
+    dummy
+        .query_pairs()
+        .find(|(k, _)| k == "u")
+        .and_then(|(_, v)| url::Url::parse(v.as_ref()).ok())
+}
+
 /// Rewrite the URL attributes on a single element, skipping `<base href>`
 /// (rewriting it would mis-resolve the page's other relative URLs).
 fn rewrite_element_urls(el: &mut Element, base: &url::Url, block_enabled: bool) {
@@ -589,5 +599,34 @@ mod tests {
     fn threads_block0_when_filtering_disabled() {
         let out = rewrite_css("a{b:url(/img.png)}", &base(), false);
         assert!(out.contains("?u=https://example.com/img.png&block=0"), "block=0 appended: {out}");
+    }
+
+    #[test]
+    fn extract_target_decodes_percent_encoded_u() {
+        // The frontend sends u= via encodeURIComponent, so `:`/`/` arrive as
+        // %3A/%2F. A raw read would hand `https%3A%2F%2F...` to Url::parse,
+        // which sees no scheme and fails — the original "missing or invalid u"
+        // bug. query_pairs() form-decodes it back to a real URL.
+        let u = extract_target_url(Some("u=https%3A%2F%2Fwww.youtube.com&token=abc&block=1"));
+        assert_eq!(u.expect("decoded u must parse").host_str(), Some("www.youtube.com"));
+    }
+
+    #[test]
+    fn extract_target_preserves_url_query_and_amp() {
+        // A target URL containing `&`/`=` (e.g. a watch?v=... link) survives
+        // encodeURIComponent on the way in and comes back out intact.
+        let encoded = "u=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3Daqz-KE-bpKQ%26t%3D10s";
+        let u = extract_target_url(Some(encoded)).expect("must parse");
+        assert_eq!(u.host_str(), Some("www.youtube.com"));
+        assert_eq!(u.path(), "/watch");
+        assert_eq!(u.query(), Some("v=aqz-KE-bpKQ&t=10s"));
+    }
+
+    #[test]
+    fn extract_target_returns_none_when_u_absent() {
+        assert!(extract_target_url(Some("token=abc&block=0")).is_none());
+        assert!(extract_target_url(None).is_none());
+        // Garbage that isn't a URL: `u=` is present but unparseable.
+        assert!(extract_target_url(Some("u=not-a-url")).is_none());
     }
 }
