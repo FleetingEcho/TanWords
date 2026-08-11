@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use db::connection::{Db, DbDescriptor, DbProfile};
 
 pub mod appconfig;
+pub mod adblock;
 pub mod db;
 pub mod document_privacy;
 #[cfg(feature = "tts")]

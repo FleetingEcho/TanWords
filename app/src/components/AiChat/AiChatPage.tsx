@@ -145,7 +145,7 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
 
       <main className="min-w-0 flex-1 flex flex-col overflow-hidden">
         {/* Compact icon-led session toolbar */}
-        <div className="flex items-center gap-2 px-3 lg:px-5 h-12 lg:h-16 border-b border-border/60 bg-background/65 backdrop-blur-xl shrink-0">
+        <div className={`flex items-center gap-2 px-3 lg:px-5 h-12 lg:h-16 border-b border-border/60 shrink-0 ${hasCustomAppBackground ? "bg-transparent" : "bg-background/65 backdrop-blur-xl"}`}>
           <Button
             variant="ghost"
             onClick={() => setMobileSidebarOpen(true)}
@@ -222,7 +222,7 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
         {/* Tutor and its effective system prompt live together, directly above
           * the conversation. The role stays switchable while collapsed; expanding
           * reveals the exact prompt that will be sent and makes it editable. */}
-        <section className={`${headerOpen ? "block" : "hidden"} border-b border-border/60 bg-background/40 backdrop-blur-md shrink-0 lg:block`}>
+        <section className={`${headerOpen ? "block" : "hidden"} border-b border-border/60 shrink-0 lg:block ${hasCustomAppBackground ? "bg-transparent" : "bg-background/40 backdrop-blur-md"}`}>
           <div className="flex min-h-12 items-center gap-2 px-3 lg:px-5">
             <Bot className="h-4 w-4 shrink-0 text-primary" />
             <Select value={s.selectedPreset} onValueChange={(v) => s.setSelectedPreset(v)}>

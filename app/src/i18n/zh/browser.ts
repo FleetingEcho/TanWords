@@ -19,6 +19,8 @@ export const browser: Dict = {
     "browser.clearDataConfirmTitle": "清除浏览数据？",
     "browser.clearDataConfirmMessage": "这将退出此处登录的所有网站，并清除内置浏览器的 Cookie、本地存储和缓存。此操作无法撤销。",
     "browser.clearDataDone": "浏览数据已清除",
+    "browser.adBlockOn": "广告拦截已开启",
+    "browser.adBlockOff": "广告拦截已关闭",
     "browser.emptyTitle": "无需离开 TanWords 即可浏览",
     "browser.emptyBody": "在上方粘贴任意链接，或从下面几个网站开始。",
 };

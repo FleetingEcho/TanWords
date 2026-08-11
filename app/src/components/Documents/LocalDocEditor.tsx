@@ -77,6 +77,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
   const isDark = useIsDark();
   const documentFontSize = useSettingsStore((state) => state.documentFontSize);
   const setDocumentFontSize = useSettingsStore((state) => state.setDocumentFontSize);
+  const hasCustomAppBackground = useSettingsStore((state) => !!state.appBackgroundImage && state.appBackgroundVisible);
   const [title, setTitle] = useState(fileStem(relPath));
   const initiallyLarge = isLargeDocumentText(initialRawMarkdown);
   const [mode, setMode] = useState<EditorMode>(initiallyLarge ? "raw" : "rich");
@@ -362,7 +363,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
   return (
     <div className="flex flex-col h-full">
       {/* Local files share the same compact responsive chrome as library docs. */}
-      <div className="shrink-0 border-b border-border/60 bg-background/85 px-3 py-3 backdrop-blur-xl lg:px-8 lg:py-4">
+      <div className={`shrink-0 border-b border-border/60 px-3 py-3 lg:px-8 lg:py-4 ${hasCustomAppBackground ? "bg-transparent" : "bg-background/85 backdrop-blur-xl"}`}>
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-2">
           <input
             ref={titleRef}

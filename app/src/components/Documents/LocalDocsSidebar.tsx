@@ -10,6 +10,7 @@ import { LocalDocSearchResults } from "./LocalDocSearchResults";
 import { LIST_PANEL_WIDTH, LIST_PANEL_COLLAPSED_WIDTH, LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
 import { DocPanelHeader } from "./DocPanelHeader";
 import { toast } from "sonner";
+import { useSettingsStore } from "@/store/settingsStore";
 
 interface Props {
   sidebarOpen: boolean;
@@ -86,10 +87,11 @@ export function LocalDocsSidebar({
   sourceTabs,
 }: Props) {
   const t = useT();
+  const hasCustomAppBackground = useSettingsStore((state) => !!state.appBackgroundImage && state.appBackgroundVisible);
 
   return (
     <Collapsible open={sidebarOpen} onOpenChange={onSidebarOpenChange} asChild>
-      <div className={`${sidebarOpen ? LIST_PANEL_WIDTH : LIST_PANEL_COLLAPSED_WIDTH} h-full shrink-0 border-r border-border bg-[var(--document-list-surface)] transition-[width] duration-200 ${sidebarOpen ? "max-lg:w-full max-lg:shrink" : "max-lg:w-[60px]"}`}>
+      <div className={`${sidebarOpen ? LIST_PANEL_WIDTH : LIST_PANEL_COLLAPSED_WIDTH} h-full shrink-0 border-r border-border ${hasCustomAppBackground ? "bg-transparent" : "bg-[var(--document-list-surface)]"} transition-[width] duration-200 ${sidebarOpen ? "max-lg:w-full max-lg:shrink" : "max-lg:w-[60px]"}`}>
         {!sidebarOpen && (
           <div className="flex justify-center pt-3">
             <CollapsibleTrigger asChild>

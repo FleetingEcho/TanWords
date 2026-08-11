@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useT } from "@/hooks/useT";
+import { useSettingsStore } from "@/store/settingsStore";
 import { ChatSessionItem } from "@/hooks/useDB";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Button } from "@/components/ui/button";
@@ -96,6 +97,7 @@ export function AiChatSidebar({
   onNewChat, collapsed, onToggleCollapsed, variant = "inline", onRequestClose,
 }: Props) {
   const t = useT();
+  const hasCustomAppBackground = useSettingsStore((state) => !!state.appBackgroundImage && state.appBackgroundVisible);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   /** Which of the two lists is showing, not whether a footer section is open. */
   const [showArchive, setShowArchive] = useState(false);
@@ -224,8 +226,8 @@ export function AiChatSidebar({
 
   return (
     <aside className={variant === "drawer"
-      ? "flex h-full w-full flex-col bg-card"
-      : `${collapsed ? LIST_PANEL_COLLAPSED_WIDTH : LIST_PANEL_WIDTH} shrink-0 border-r border-border/60 flex flex-col backdrop-blur-xl transition-[width] duration-300 ease-out bg-card`}>
+      ? `flex h-full w-full flex-col ${hasCustomAppBackground ? "bg-transparent" : "bg-card"}`
+      : `${collapsed ? LIST_PANEL_COLLAPSED_WIDTH : LIST_PANEL_WIDTH} shrink-0 border-r border-border/60 flex flex-col transition-[width] duration-300 ease-out ${hasCustomAppBackground ? "bg-transparent" : "backdrop-blur-xl bg-card"}`}>
       {collapsed ? (
         <div className="p-3 pb-2 border-b border-border flex flex-col items-center gap-2">
           <Button variant="ghost" onClick={onToggleCollapsed} className={`h-7 w-7 p-0 ${LIST_PANEL_TOGGLE_CLASS}`} title={t("aichat.sidebarExpand")}>

@@ -388,6 +388,11 @@ async function dispatch(
       await deps.browserPanel.clearData();
       return null;
     }
+    case "browser_set_adblock_enabled": {
+      const { enabled } = (args ?? {}) as { enabled?: boolean };
+      deps.browserPanel.setAdBlockEnabled(enabled !== false);
+      return null;
+    }
 
     default: {
       throw new Error(`tanwords: unknown IPC channel "${channel}"`);

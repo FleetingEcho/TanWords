@@ -38,7 +38,7 @@ export const DESKTOP_CAPABILITIES: HostCapabilities = {
 export const WEB_CAPABILITIES: HostCapabilities = {
   desktop: false,
   auth: true,
-  browser: false,
+  browser: true,
   music: false,
   appLock: true,
   localDocs: false,

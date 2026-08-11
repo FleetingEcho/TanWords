@@ -214,7 +214,7 @@ export function DocumentsPage() {
             {!dbZenMode && (
             <Collapsible open={dbSidebarOpen} onOpenChange={setDbSidebarOpen} asChild>
               <div className={`${dbSidebarOpen ? LIST_PANEL_WIDTH : LIST_PANEL_COLLAPSED_WIDTH} h-full shrink-0 transition-[width] duration-200 max-lg:w-full max-lg:shrink ${showMobileEditor ? "max-lg:hidden" : ""}`}>
-                {!dbSidebarOpen && <div className="flex h-full justify-center border-r border-border bg-card pt-3">
+                {!dbSidebarOpen && <div className={`flex h-full justify-center border-r border-border pt-3 ${hasCustomAppBackground ? "bg-transparent" : "bg-card"}`}>
                   <CollapsibleTrigger asChild>
                     <Button variant="ghost" size="icon" className={`h-7 w-7 ${LIST_PANEL_TOGGLE_CLASS}`} title={t("doc.expandFiles")}><ChevronsRight className="h-3.5 w-3.5" /></Button>
                   </CollapsibleTrigger>

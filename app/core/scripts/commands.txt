@@ -189,6 +189,8 @@ browser_panel::browser_go_forward
 browser_panel::browser_set_bounds
 browser_panel::browser_hide
 browser_panel::browser_clear_data
+adblock::adblock_check
+adblock::adblock_cosmetics
 db::ai_providers::ai_provider_list
 db::ai_providers::ai_provider_key
 db::ai_providers::ai_provider_upsert

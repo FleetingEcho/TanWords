@@ -55,7 +55,7 @@ const freshTab = (): BrowserTab => ({
 /** Turns any pasted text into something navigable: a bare domain gets a
  *  scheme, anything that isn't URL-shaped becomes a Google search — the
  *  same address-bar convention every browser uses. */
-function normalizeAddress(input: string): string | null {
+export function normalizeAddress(input: string): string | null {
   const trimmed = input.trim();
   if (!trimmed) return null;
   if (/^https?:\/\//i.test(trimmed)) return trimmed;

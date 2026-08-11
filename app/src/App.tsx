@@ -328,7 +328,7 @@ function App() {
   // a real DB query (including Turso initialization/sync when configured). Web
   // falls back to Dashboard for desktop-only routes, so those must wait too.
   const dashboardOwnsStartupReadiness = page === "dashboard"
-    || (!isDesktopHost && (page === "music" || page === "browser"));
+    || (!isDesktopHost && page === "music");
 
   const renderPage = () => {
     switch (page) {
@@ -339,7 +339,7 @@ function App() {
       case "music":
         return isDesktopHost ? <MusicPage /> : <DashboardPage />;
       case "browser":
-        return isDesktopHost ? <BrowserPage /> : <DashboardPage />;
+        return <BrowserPage />;
       case "vocabulary":
         return <VocabularyPage initialWordId={wordId} initialSentenceId={sentenceId} />;
       case "documents":

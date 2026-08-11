@@ -7,6 +7,7 @@
 //! and the built SPA.
 
 mod auth;
+mod browser_proxy;
 mod commands;
 mod config;
 mod embedded;

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { isDesktopHost } from "@/platform";
 import {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR, DEFAULT_BANNER_POSITION,
   DEFAULT_LAYOUT_MODE, DEFAULT_AUTO_LOCK_MINUTES,
@@ -56,6 +57,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   autoLockMinutes: DEFAULT_AUTO_LOCK_MINUTES,
   appBackgroundBlur: 20,
   appBackgroundVisible: true,
+  browserAdBlockEnabled: true,
   documentFontSize: 16,
   documentLineHeight: 1.9,
   documentParagraphSpacing: 0.8,
@@ -179,6 +181,18 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setAppBackgroundVisible: (visible) => {
     set({ appBackgroundVisible: visible });
     saveSetting("app_background_visible", JSON.stringify(visible));
+  },
+
+  setBrowserAdBlockEnabled: (enabled) => {
+    set({ browserAdBlockEnabled: enabled });
+    saveSetting("browser_adblock_enabled", JSON.stringify(enabled));
+    // The actual blocker lives in the Electron main process (it hooks the
+    // panel session's webRequest). Keep it in sync; on web this invoke is a
+    // no-op (the Browser page renders iframes there, which can't be blocked).
+    if (isDesktopHost) {
+      void import("@/ipc/backend").then(({ invoke }) =>
+        invoke("browser_set_adblock_enabled", { enabled }));
+    }
   },
 
   setDocumentFontSize: (px) => {

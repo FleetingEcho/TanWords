@@ -136,6 +136,9 @@ app.commandLine.appendSwitch("js-flags", "--max-old-space-size=512");
 let mainWindow: BrowserWindow | null = null;
 const sidecar = new SidecarSupervisor();
 const browserPanel = new BrowserPanelManager();
+// The ad blocker's matching engine lives in the Rust sidecar; Electron main
+// only intercepts requests and asks the sidecar whether to block each one.
+browserPanel.setBackendGetter(() => sidecar.backendReady());
 const tray = new TrayManager();
 
 /** Set once the app has committed to quitting: before-quit lets the real

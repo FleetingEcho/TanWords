@@ -17,6 +17,7 @@ import { LibraryFolderPicker } from "./LibraryFolderPicker";
 import { useDocList } from "./hooks/useDocList";
 import { useDocActions } from "./hooks/useDocActions";
 import { useDocImportExport } from "./hooks/useDocImportExport";
+import { useSettingsStore } from "@/store/settingsStore";
 
 interface Props {
   activeId: number | null;
@@ -47,6 +48,7 @@ export function DocSelector({ activeId, onSelect, onNewDoc, onNewDocIn, refreshK
   // Comfortable vs compact rows. This is a glance preference, not a filter, so
   // it persists locally.
   const [density, setDensity] = useDensity();
+  const hasCustomAppBackground = useSettingsStore((state) => !!state.appBackgroundImage && state.appBackgroundVisible);
 
   useEffect(() => {
     if (!shelfMenu) return;
@@ -142,7 +144,7 @@ export function DocSelector({ activeId, onSelect, onNewDoc, onNewDocIn, refreshK
   };
 
   return (
-    <div className={`flex flex-col h-full border-r border-border ${LIST_PANEL_WIDTH} shrink-0 max-lg:w-full max-lg:shrink bg-[var(--document-list-surface)]`}>
+    <div className={`flex flex-col h-full border-r border-border ${LIST_PANEL_WIDTH} shrink-0 max-lg:w-full max-lg:shrink ${hasCustomAppBackground ? "bg-transparent" : "bg-[var(--document-list-surface)]"}`}>
       <DocSelectorHeader
         list={list}
         density={density}

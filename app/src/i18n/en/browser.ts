@@ -19,6 +19,8 @@ export const browser: Dict = {
     "browser.clearDataConfirmTitle": "Clear browsing data?",
     "browser.clearDataConfirmMessage": "This signs you out of any sites you're logged into here and clears cookies, local storage, and cache for the embedded browser. This can't be undone.",
     "browser.clearDataDone": "Browsing data cleared",
+    "browser.adBlockOn": "Ad blocker on",
+    "browser.adBlockOff": "Ad blocker off",
     "browser.emptyTitle": "Browse without leaving TanWords",
     "browser.emptyBody": "Paste any link above, or start from one of these.",
 };

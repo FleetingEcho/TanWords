@@ -9,7 +9,9 @@
  *  `hide()` detaches with nothing to replace it, for when the browser page
  *  itself is off-screen (nav'd away, or a modal needs to sit above native
  *  content — see useBrowserPanel's `blocked`). */
-import { BrowserWindow, session, WebContentsView } from "electron";
+import { app, BrowserWindow, session, WebContentsView } from "electron";
+import { promises as fs } from "node:fs";
+import path from "node:path";
 import { wireDevToolsShortcut } from "./devtools";
 
 export type BrowserTabState = { id: string; url: string; title: string; atHome: boolean };
@@ -30,6 +32,17 @@ function hardenPanelSession() {
   const ses = session.fromPartition(PANEL_PARTITION);
   ses.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
   ses.setPermissionCheckHandler(() => false);
+}
+
+/** Ad/tracker blocking for the panel session. The matching engine lives in
+ *  the Rust `tanwords` core sidecar (the `adblock_check` RPC, built on
+ *  Brave's `adblock` crate); this main process only intercepts requests — an
+ *  Electron-only API the sidecar can't reach — and asks the sidecar whether
+ *  to block each subresource. Network-level blocking only (no cosmetic DOM
+ *  hiding). Fails open with a short timeout + an LRU cache, so a slow/down
+ *  sidecar never stalls a page. */
+function panelSession() {
+  return session.fromPartition(PANEL_PARTITION);
 }
 
 type TabRecord = {
@@ -79,6 +92,151 @@ export class BrowserPanelManager {
   private onEvent: ((name: string, payload: unknown) => void) | null = null;
   private lastInputEmit = 0;
 
+  /** Ad/tracker blocking, scoped to the panel session. Defaults on; the
+   *  renderer pushes the persisted preference (browser_set_adblock_enabled)
+   *  once its settings hydrate. The matching engine lives in the Rust
+   *  `tanwords` core sidecar (`adblock_check` RPC); this main process only
+   *  intercepts requests (an Electron-only API the sidecar can't reach) and
+   *  asks the sidecar whether to block each subresource. Fail-open with a
+   *  short timeout + an LRU cache, so a slow/down sidecar never stalls a page. */
+  private adBlockEnabled = true;
+  private adBlockRegistered = false;
+  private cosmeticPreloadId: string | null = null;
+  /** Returns the sidecar's localhost port + session token. Set from
+   *  index.ts once the SidecarSupervisor is created. */
+  private getBackend: (() => Promise<{ port: number; token: string }>) | null = null;
+  /** Cap on the per-URL decision cache. Ad beacons repeat across a session;
+   *  caching avoids a roundtrip per repeat. */
+  private adBlockCache = new Map<string, { block: boolean; redirect?: string }>();
+  private static ADBLOCK_CACHE_MAX = 2000;
+  private static ADBLOCK_TIMEOUT_MS = 800;
+
+  setBackendGetter(fn: () => Promise<{ port: number; token: string }>) {
+    this.getBackend = fn;
+    // Register the cosmetic preload at startup (before any WebContentsView is
+    // created) so every view gets it. registerPreloadScript applies only to
+    // newly-created webContents, so registering here — at app init — means the
+    // first tab isn't missed.
+    void this.registerCosmeticPreload();
+  }
+
+  setAdBlockEnabled(enabled: boolean): void {
+    this.adBlockEnabled = enabled;
+    if (enabled) void this.enableAdBlock();
+    else this.disableAdBlock();
+  }
+
+  private async askSidecar(url: string, sourceUrl: string, resourceType: string): Promise<{ block: boolean; redirect?: string } | null> {
+    if (!this.getBackend) return null;
+    try {
+      const { port, token } = await this.getBackend();
+      const res = await fetch(`http://127.0.0.1:${port}/invoke/adblock_check`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify({ url, sourceUrl: sourceUrl || "", resourceType: resourceType || "other" }),
+      });
+      if (!res.ok) return null;
+      const j = (await res.json()) as { block?: boolean; redirect?: string | null };
+      return { block: !!j.block, redirect: j.redirect ?? undefined };
+    } catch {
+      return null;
+    }
+  }
+
+  private rememberDecision(url: string, dec: { block: boolean; redirect?: string }) {
+    if (this.adBlockCache.size >= BrowserPanelManager.ADBLOCK_CACHE_MAX) {
+      // Evict the oldest entry (Map preserves insertion order).
+      const oldest = this.adBlockCache.keys().next().value;
+      if (oldest) this.adBlockCache.delete(oldest);
+    }
+    this.adBlockCache.set(url, dec);
+  }
+
+  private async enableAdBlock(): Promise<void> {
+    if (this.adBlockRegistered) return;
+    if (!this.adBlockEnabled || !this.getBackend) return;
+    const ses = panelSession();
+    ses.webRequest.onBeforeRequest({ urls: ["<all_urls>"] }, (details, callback) => {
+      // Never block a top-level document load — that would blank the tab.
+      if (details.resourceType === "mainFrame") { callback({}); return; }
+      if (!this.adBlockEnabled) { callback({}); return; }
+
+      const url = details.url;
+      const cached = this.adBlockCache.get(url);
+      if (cached) {
+        if (cached.redirect) callback({ redirectURL: cached.redirect });
+        else if (cached.block) callback({ cancel: true });
+        else callback({});
+        return;
+      }
+
+      let settled = false;
+      const settle = (dec: { block: boolean; redirect?: string } | null) => {
+        if (settled) return;
+        settled = true;
+        if (dec) this.rememberDecision(url, dec);
+        if (dec?.redirect) callback({ redirectURL: dec.redirect });
+        else if (dec?.block) callback({ cancel: true });
+        else callback({});
+      };
+      // Fail-open after a short timeout: a blocker must never stall a page.
+      const timer = setTimeout(() => settle(null), BrowserPanelManager.ADBLOCK_TIMEOUT_MS);
+      this.askSidecar(url, details.referrer, details.resourceType)
+        .then((dec) => { clearTimeout(timer); settle(dec); })
+        .catch(() => { clearTimeout(timer); settle(null); });
+    });
+    this.adBlockRegistered = true;
+  }
+
+  private disableAdBlock(): void {
+    if (!this.adBlockRegistered) return;
+    // onBeforeRequest(null) removes *all* listeners for that event on the
+    // session — fine here, the panel session has no other onBeforeRequest
+    // listener (the app shell's youtubeEmbed handler is on defaultSession).
+    panelSession().webRequest.onBeforeRequest(null);
+    this.adBlockRegistered = false;
+    // Remove the cosmetic preload so newly-built tabs don't get it.
+    if (this.cosmeticPreloadId) {
+      try { panelSession().unregisterPreloadScript(this.cosmeticPreloadId); } catch {}
+      this.cosmeticPreloadId = null;
+    }
+  }
+
+  /** Writes the self-contained YouTube ad-pruning preload to userData and
+   *  registers it on the panel session.
+   *
+   *  CRITICAL: the panel's WebContentsView has `contextIsolation: true` +
+   *  `sandbox: true`, so the preload runs in an ISOLATED world — its `window`
+   *  is NOT the page's `window`. Modifying `JSON.parse` or defining properties
+   *  on `window` directly would only affect the isolated world, which YouTube's
+   *  main-world scripts never see.
+   *
+   *  The fix: the preload creates a `<script>` element with the json-prune code
+   *  as `textContent` and appends it to `document.documentElement`. The script
+   *  element's code runs in the PAGE's MAIN world, where YouTube's scripts live.
+   *  This is the standard "main-world injection from an isolated preload"
+   *  pattern — the script executes synchronously at document-start, before
+   *  YouTube's own inline scripts.
+   *
+   *  Writing to disk is required because `registerPreloadScript` takes a file
+   *  path, and the packaged app excludes node_modules. */
+  private async registerCosmeticPreload(): Promise<void> {
+    if (this.cosmeticPreloadId) return;
+    const preloadPath = path.join(app.getPath("userData"), "adblock-preload.cjs");
+    // The json-prune code that runs in the PAGE's main world via <script> injection.
+    const innerScript = `(function(){'use strict';var K=['adPlacements','playerAds','adParams','adBreakHeartbeatParams','adSignalingParams','adSlots'];function p(o){if(!o||typeof o!=='object')return o;for(var i=0;i<K.length;i++){try{delete o[K[i]]}catch(e){}}if(o.playerResponse&&typeof o.playerResponse==='object'){for(var i=0;i<K.length;i++){try{delete o.playerResponse[K[i]]}catch(e){}}}return o}var _j=JSON.parse;JSON.parse=function(){var r=_j.apply(this,arguments);if(r&&typeof r==='object'&&(r.adPlacements||r.playerAds||r.adSlots)){return p(r)}return r};if(self.Response){var _k=Response.prototype.json;Response.prototype.json=function(){return _k.call(this).then(function(r){if(r&&typeof r==='object'&&(r.adPlacements||r.playerAds||r.adSlots)){return p(r)}return r})}}var s=document.createElement('style');s.textContent='.ad-showing,#masthead-ad,.ytd-ad-slot-renderer,.ytp-ad-overlay-container,.ytp-ad-module,.ytd-banner-promo-renderer,.ytd-search-pyv-renderer,.ytd-promo-video-renderer{display:none!important}';(document.head||document.documentElement).appendChild(s)})();`;
+    // The preload itself runs in the isolated world. It checks the hostname,
+    // then injects the inner script into the DOM — which runs in the MAIN world.
+    const preloadCode = `(function(){var h=location.hostname;if(h.indexOf('youtube.com')===-1&&h.indexOf('youtube-nocookie.com')===-1)return;var s=document.createElement('script');s.textContent=${JSON.stringify(innerScript)};(document.documentElement||document.head).appendChild(s);s.remove()})();`;
+    try {
+      await fs.writeFile(preloadPath, preloadCode, "utf-8");
+      const id = panelSession().registerPreloadScript({ type: "frame", filePath: preloadPath });
+      this.cosmeticPreloadId = id;
+    } catch (e) {
+      console.warn("[browser] cosmetic preload registration failed:", e);
+    }
+  }
+
   setWindow(win: BrowserWindow) {
     this.win = win;
   }
@@ -105,6 +263,9 @@ export class BrowserPanelManager {
   private buildView(rec: TabRecord): WebContentsView {
     const id = rec.id;
     hardenPanelSession();
+    // Kick off ad blocking if it's on — the engine loads async, so this is a
+    // fire-and-forget that registers the webRequest listener once ready.
+    if (this.adBlockEnabled) void this.enableAdBlock();
     const view = new WebContentsView({
       webPreferences: {
         partition: PANEL_PARTITION,

@@ -52,6 +52,7 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
   const isDark = useIsDark();
   const documentFontSize = useSettingsStore((state) => state.documentFontSize);
   const setDocumentFontSize = useSettingsStore((state) => state.setDocumentFontSize);
+  const hasCustomAppBackground = useSettingsStore((state) => !!state.appBackgroundImage && state.appBackgroundVisible);
   const [title, setTitle] = useState(doc.title);
   const titleRef = useRef<HTMLInputElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
@@ -88,7 +89,7 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
     >
       {/* Compact two-row document header. On phones the title gets its own
         * line and controls move below it instead of squeezing it to a sliver. */}
-      <div className="shrink-0 border-b border-border/60 bg-background/85 px-3 py-3 backdrop-blur-xl lg:px-8 lg:py-4">
+      <div className={`shrink-0 border-b border-border/60 px-3 py-3 lg:px-8 lg:py-4 ${hasCustomAppBackground ? "bg-transparent" : "bg-background/85 backdrop-blur-xl"}`}>
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-2">
           <input
             ref={titleRef}

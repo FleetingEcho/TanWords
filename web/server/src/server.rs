@@ -54,6 +54,7 @@ use tanwords_lib::AppState;
 
 use crate::embedded::Assets;
 use crate::auth::{bearer_token, constant_time_eq, RateLimiter};
+use crate::browser_proxy;
 use crate::config::Config;
 use crate::runtime::{RuntimePool, UserRuntime};
 use crate::users::UsersDb;
@@ -64,12 +65,12 @@ use crate::users::UsersDb;
 const MAX_UPLOAD_BYTES: u64 = 512 * 1024 * 1024;
 
 #[derive(Clone)]
-struct WebState {
-    users: Arc<UsersDb>,
+pub(crate) struct WebState {
+    pub(crate) users: Arc<UsersDb>,
     limiter: Arc<RateLimiter>,
     pool: Arc<RuntimePool>,
     config: Arc<Config>,
-    http: reqwest::Client,
+    pub(crate) http: reqwest::Client,
     shutdown: tokio::sync::watch::Receiver<()>,
 }
 
@@ -79,9 +80,9 @@ struct WebState {
 /// header itself), and a credential carried around in request extensions is a
 /// credential that can end up somewhere it was never meant to go.
 #[derive(Clone)]
-struct UserSession {
-    user_id: i64,
-    email: String,
+pub(crate) struct UserSession {
+    pub(crate) user_id: i64,
+    pub(crate) email: String,
 }
 
 impl WebState {
@@ -94,7 +95,7 @@ impl WebState {
     }
 }
 
-fn json_error(status: StatusCode, error: impl Into<String>) -> Response {
+pub(crate) fn json_error(status: StatusCode, error: impl Into<String>) -> Response {
     (status, Json(json!({ "error": error.into() }))).into_response()
 }
 
@@ -111,6 +112,27 @@ fn query_token(request: &Request) -> Option<String> {
     None
 }
 
+/// The Browser-page filtering proxy sets an HttpOnly `tw_proxy` cookie on the
+/// top-level page load so the subresource requests the returned HTML makes
+/// stay authenticated without a token in every URL. This reads that cookie —
+/// only on proxy paths — as a session token equivalent.
+fn proxy_cookie_token(request: &Request) -> Option<String> {
+    if !request.uri().path().starts_with("/api/browser/proxy") {
+        return None;
+    }
+    for cookie in request.headers().get_all(header::COOKIE).iter() {
+        if let Ok(s) = cookie.to_str() {
+            for pair in s.split(';') {
+                let pair = pair.trim();
+                if let Some(value) = pair.strip_prefix("tw_proxy=") {
+                    return Some(value.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Routes reached by URL rather than by fetch, where the caller has no way to
 /// set a header: `EventSource` cannot, and neither can `<img src>`. Only these
 /// accept `?token=`.
@@ -120,7 +142,9 @@ fn query_token(request: &Request) -> Option<String> {
 /// page links onward to — so the exception stays as narrow as the two places
 /// that actually need it.
 fn accepts_query_token(path: &str) -> bool {
-    path == "/events" || path.starts_with("/api/assets/")
+    path == "/events"
+        || path.starts_with("/api/assets/")
+        || path.starts_with("/api/browser/proxy")
 }
 
 /// The one gate for everything past the auth routes: `Authorization: Bearer`,
@@ -131,7 +155,7 @@ async fn require_session(State(state): State<WebState>, mut request: Request, ne
         accepts_query_token(request.uri().path())
             .then(|| query_token(&request))
             .flatten()
-    });
+    }).or_else(|| proxy_cookie_token(&request));
     let Some(token) = token else {
         return json_error(StatusCode::UNAUTHORIZED, "missing token");
     };
@@ -1399,6 +1423,7 @@ pub async fn serve(config: Config, users: Arc<UsersDb>, pool: Arc<RuntimePool>) 
         .route("/api/db/turso/disconnect", post(turso_disconnect))
         .route("/api/db/turso/remembered", get(turso_remembered))
         .route("/api/db/turso/forget", post(turso_forget))
+        .route("/api/browser/proxy", get(browser_proxy::browser_proxy))
         // Consumed as URLs (EventSource, <img src>) as well as fetch — the
         // session middleware accepts ?token= on every gated route.
         .route("/events", get(events_handler))

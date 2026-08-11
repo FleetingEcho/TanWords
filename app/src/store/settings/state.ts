@@ -60,6 +60,10 @@ export interface SettingsState {
   /** Whether appBackgroundImage is currently shown. False hides it without
    *  discarding the stored image, so it can be turned back on unchanged. */
   appBackgroundVisible: boolean;
+  /** Block ads and trackers in the embedded Browser page (desktop only —
+   *  web-mode iframes can't be intercepted). Defaults on. The toggle button
+   *  lives in the Browser page toolbar. */
+  browserAdBlockEnabled: boolean;
   /** Body font size, in pixels, for full-size document editors. */
   documentFontSize: number;
   /** Line-height multiplier for full-size document editors. */
@@ -106,6 +110,7 @@ export interface SettingsState {
   setAutoLockMinutes: (minutes: number) => void;
   setAppBackgroundBlur: (px: number) => void;
   setAppBackgroundVisible: (visible: boolean) => void;
+  setBrowserAdBlockEnabled: (enabled: boolean) => void;
   setDocumentFontSize: (px: number) => void;
   setDocumentLineHeight: (value: number) => void;
   setDocumentParagraphSpacing: (value: number) => void;
