@@ -1,0 +1,48 @@
+/* Terminal tool scrollbar styling.
+ *
+ * xterm.js draws its own scrollbar inside `.xterm .xterm-viewport`, which the
+ * app's global `::-webkit-scrollbar` rules (base.css) don't reach — those are
+ * page-level, and the xterm viewport establishes its own box. Match the thin,
+ * rounded, low-contrast thumb used elsewhere so the terminal doesn't flash
+ * browser-default scrollbars.
+ *
+ * The terminal background is a real dark canvas (terminals are always dark,
+ * whatever the app theme), so the thumb borrows white, not the theme's
+ * muted-foreground, to stay visible against it. xterm mounts into the element
+ * carrying `.terminal-tool-shell`, hence the scoping below. */
+.terminal-tool-shell .xterm .xterm-viewport::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.terminal-tool-shell .xterm .xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+.terminal-tool-shell .xterm .xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.terminal-tool-shell .xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.32);
+}
+
+/* Firefox path: a thin scrollbar with a light thumb on the dark track. */
+.terminal-tool-shell .xterm .xterm-viewport {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+}
+
+/* Fullscreen mode: the wrapper is the requestFullscreen() target. The shell is
+   `flex-1 min-h-0`, so once the wrapper fills the screen everything else just
+   follows; harden the fill here in case the flex chain loses its definite
+   height in that state. */
+.terminal-tool-outer:fullscreen {
+  height: 100vh;
+  width: 100vw;
+}
+.terminal-tool-outer:fullscreen .terminal-tool-shell {
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+}

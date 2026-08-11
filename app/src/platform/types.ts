@@ -12,6 +12,9 @@ export interface HostCapabilities {
   auth: boolean;
   browser: boolean;
   music: boolean;
+  /** Local shell / PTY terminal (desktop only — the web build has no local
+   *  process to talk to). Gates the Tools-page Terminal tool. */
+  terminal: boolean;
   /** Optional UI lock. Desktop stores it per installation; Web stores a
    *  separate verifier on each authenticated account. */
   appLock: boolean;
@@ -27,6 +30,7 @@ export const DESKTOP_CAPABILITIES: HostCapabilities = {
   auth: false,
   browser: true,
   music: true,
+  terminal: true,
   appLock: true,
   localDocs: true,
   mcp: true,
@@ -48,6 +52,7 @@ export const WEB_CAPABILITIES: HostCapabilities = {
   // connection.
   browser: false,
   music: false,
+  terminal: false,
   appLock: true,
   localDocs: false,
   mcp: false,

@@ -13,7 +13,7 @@ import {
 /** Commands the Electron main process owns rather than the sidecar. Keep this
  *  in sync with SKIP_MODULES in core/build.rs (generate_dispatch_table()) —
  *  a name in one list and not the other is a silent routing bug. */
-const MAIN_PROCESS_COMMANDS = /^(browser|tray)_/;
+const MAIN_PROCESS_COMMANDS = /^(browser|tray|pty)_/;
 
 let cached: { port: number; token: string } | null = null;
 let cachedPromise: Promise<{ port: number; token: string }> | null = null;

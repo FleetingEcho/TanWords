@@ -3607,6 +3607,7 @@ dependencies = [
  "hmac",
  "ignore",
  "keyring",
+ "libc",
  "libsql",
  "rand 0.8.7",
  "regex",

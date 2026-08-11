@@ -7,6 +7,7 @@ import { SidecarSupervisor } from "./sidecar";
 import { isExternalUrlAllowed, registerIpcHandlers } from "./ipc";
 import { BrowserPanelManager } from "./browserPanel";
 import { TrayManager, trayIconPath } from "./tray";
+import { setTerminalEventSink, terminalShutdownAll } from "./terminal";
 import { wireWindowDevTools } from "./devtools";
 import { rememberedWindowBackground } from "./windowBackground";
 import { abortAllFor } from "./http";
@@ -380,6 +381,8 @@ if (gotLock) {
 
     tray.setEventSink(broadcastEvent);
 
+    setTerminalEventSink(broadcastEvent);
+
     // `window.tanwords.backend` resolves once this handshake resolves — the
     // preload just forwards this single invoke() call as-is, so a renderer
     // that mounts before the sidecar is ready naturally queues on it
@@ -436,6 +439,7 @@ if (gotLock) {
     if (quitting) return;
     event.preventDefault();
     quitting = true;
+    terminalShutdownAll();
     void sidecar.shutdown().finally(() => {
       app.exit();
     });

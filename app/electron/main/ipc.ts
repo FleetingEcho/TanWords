@@ -10,6 +10,12 @@ import type { BrowserPanelManager, PanelBounds } from "./browserPanel";
 import type { TrayManager } from "./tray";
 import { abortFetch, startFetch } from "./http";
 import { rememberWindowBackground } from "./windowBackground";
+import {
+  terminalClose,
+  terminalResize,
+  terminalSpawn,
+  terminalWrite,
+} from "./terminal";
 
 export type IpcDeps = {
   getMainWindow: () => BrowserWindow | null;
@@ -114,6 +120,29 @@ async function dispatch(
     case "http:abort": {
       const { id } = (args ?? {}) as { id: number };
       abortFetch(sender, id);
+      return null;
+    }
+
+    // PTY terminal sessions (desktop Terminal tool). Spawn resolves with the
+    // {"id","shell","cwd","pid"} handshake once the shell is ready; output
+    // and exit arrive on the "pty:data" / "pty:exit" broadcast events.
+    case "pty_spawn": {
+      const { cols, rows } = (args ?? {}) as { cols?: number; rows?: number };
+      return terminalSpawn({ cols, rows });
+    }
+    case "pty_write": {
+      const { id, data } = (args ?? {}) as { id: string; data?: string };
+      if (id && typeof data === "string") terminalWrite(id, data);
+      return null;
+    }
+    case "pty_resize": {
+      const { id, cols, rows } = (args ?? {}) as { id: string; cols?: number; rows?: number };
+      if (id) terminalResize(id, cols ?? 0, rows ?? 0);
+      return null;
+    }
+    case "pty_close": {
+      const { id } = (args ?? {}) as { id: string };
+      if (id) terminalClose(id);
       return null;
     }
 

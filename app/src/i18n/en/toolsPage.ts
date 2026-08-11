@@ -48,4 +48,13 @@ export const toolsPage: Dict = {
     "toolsPage.imageReducer.downloadAll": "Download all",
     "toolsPage.imageReducer.moreActions": "More actions",
     "toolsPage.imageReducer.quality": "q {pct}%",
+
+    "toolsPage.terminal.title": "Terminal",
+    "toolsPage.terminal.description": "A local shell on your machine. Desktop only.",
+    "toolsPage.terminal.starting": "Starting…",
+    "toolsPage.terminal.connected": "Connected",
+    "toolsPage.terminal.closed": "Shell closed",
+    "toolsPage.terminal.error": "Couldn't start shell",
+    "toolsPage.terminal.maximize": "Maximize terminal",
+    "toolsPage.terminal.restore": "Exit fullscreen",
 };

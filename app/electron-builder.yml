@@ -87,6 +87,11 @@ asarUnpack: []
 extraResources:
   - from: core/target/release/tanwords-core
     to: core/tanwords-core
+  # The PTY daemon for the Terminal tool (Tools page) travels the same way as
+  # the sidecar, so terminal.ts can resolve it at process.resourcesPath/core/
+  # when packaged. Built by the same `core:build` step as tanwords-core.
+  - from: core/target/release/tanwords-pty
+    to: core/tanwords-pty
   # The window icon, read at runtime by electron/main/index.ts. mac.icon /
   # win.icon / linux.icon above only dress the *bundle*; a BrowserWindow on
   # Linux still needs a real file it can load, and `files` deliberately keeps
@@ -197,6 +202,8 @@ win:
   extraResources:
     - from: core/target/release/tanwords-core.exe
       to: core/tanwords-core.exe
+    - from: core/target/release/tanwords-pty.exe
+      to: core/tanwords-pty.exe
     - from: core/icons/icon.png
       to: icon.png
     - from: core/icons/tray-template.png

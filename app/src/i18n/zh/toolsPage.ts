@@ -48,4 +48,13 @@ export const toolsPage: Dict = {
     "toolsPage.imageReducer.downloadAll": "下载全部",
     "toolsPage.imageReducer.moreActions": "更多操作",
     "toolsPage.imageReducer.quality": "质量 {pct}%",
+
+    "toolsPage.terminal.title": "终端",
+    "toolsPage.terminal.description": "本机本地 shell，仅桌面端可用。",
+    "toolsPage.terminal.starting": "启动中…",
+    "toolsPage.terminal.connected": "已连接",
+    "toolsPage.terminal.closed": "shell 已退出",
+    "toolsPage.terminal.error": "无法启动 shell",
+    "toolsPage.terminal.maximize": "终端最大化",
+    "toolsPage.terminal.restore": "退出全屏",
 };

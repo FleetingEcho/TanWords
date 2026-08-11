@@ -13,19 +13,34 @@ crate-type = ["rlib"]
 name = "tanwords-core"
 path = "src/main.rs"
 
+# A standalone PTY bridge used by the desktop Terminal tool (Tools page).
+# Spawns the user's login shell in a real pseudo-terminal and streams I/O
+# over framed stdio — see src/bin/tanwords-pty.rs. It is a separate binary so
+# Electron main can start and stop it independently of the core sidecar. It
+# shares this crate's `[dependencies]` but links in only `portable-pty` and
+# serde_json, so the tanwords-core binary and the web server are unaffected.
+[[bin]]
+name = "tanwords-pty"
+path = "src/bin/tanwords-pty.rs"
+required-features = ["desktop"]
+
 [build-dependencies]
 # Used by generate_dispatch_table() in build.rs to scan src/ for
 # `#[crate::shim::command]`-annotated functions and generate dispatch.rs.
 regex = "1"
 
 [features]
-# Desktop is the Electron sidecar, with on-device TTS and local audio
-# playback. Server builds (web/server) compile with --no-default-features
-# (+ "web"): they never link sherpa-onnx or the audio stack, which keeps the
-# build light and portable. These features only gate *modules*; the dispatch
-# table in build.rs drops the corresponding commands in step.
+# Desktop is the Electron side; with on-device TTS and local audio playback.
+# Server builds (web/server) compile with --no-default-features (+ "web"):
+# they never link sherpa-onnx or the audio stack, which keeps the build light
+# and portable. These features only gate *modules*; the dispatch table in
+# build.rs drops the corresponding commands in step.
 default = ["desktop"]
-desktop = ["tts", "audio"]
+desktop = ["tts", "audio", "pty"]
+# The standalone tanwords-pty binary (local-shell Terminal tool) needs a real
+# pseudo-terminal library. Gated so web/server builds — which only compile the
+# *lib* target and never the pty binary — don't pull portable-pty in.
+pty = ["dep:portable-pty"]
 tts = ["dep:sherpa-onnx", "dep:tar", "dep:bzip2"]
 audio = ["dep:rodio", "dep:symphonia", "dep:libloading", "dep:lofty"]
 # Marker feature for the web/server build (no code of its own yet — exists so
@@ -89,6 +104,10 @@ schemars = "1"
 zip = { version = "4.6.1", default-features = false, features = ["deflate", "aes-crypto"] }
 regex = "1"
 adblock = "0.12"
+portable-pty = { version = "0.9", optional = true }
+# Direct dep only for the tanwords-pty binary (poll/read on the pty fd);
+# already pulled transitively by portable-pty, so this adds no new tree.
+libc = "0.2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

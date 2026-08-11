@@ -1,18 +1,22 @@
 import React, { useState } from "react";
-import { ImageMinus } from "lucide-react";
+import { ImageMinus, TerminalSquare } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { ImageReducerTool } from "./ImageReducerTool";
+import { TerminalTool } from "./TerminalTool";
+import { hostCapabilities } from "@/platform";
 
 /** The set of utility tools the Tools page offers. Each entry maps a card on
  *  the landing grid to the component rendered when it is opened. Add a new
  *  entry here and its i18n keys under `toolsPage.*` to ship another tool. */
-type ToolId = "image-reducer";
+type ToolId = "image-reducer" | "terminal";
 
 interface ToolDef {
   id: ToolId;
   titleKey: string;
   descKey: string;
   Icon: React.FC<{ className?: string }>;
+  /** Omitted on hosts that can't run the tool (e.g. a local shell on web). */
+  available: boolean;
 }
 
 const TOOLS: ToolDef[] = [
@@ -21,6 +25,14 @@ const TOOLS: ToolDef[] = [
     titleKey: "toolsPage.imageReducer.title",
     descKey: "toolsPage.imageReducer.description",
     Icon: ImageMinus,
+    available: true,
+  },
+  {
+    id: "terminal",
+    titleKey: "toolsPage.terminal.title",
+    descKey: "toolsPage.terminal.description",
+    Icon: TerminalSquare,
+    available: hostCapabilities.terminal,
   },
 ];
 
@@ -34,6 +46,11 @@ export function ToolsPage() {
   if (active === "image-reducer") {
     return <ImageReducerTool onBack={() => setActive(null)} />;
   }
+  if (active === "terminal") {
+    return <TerminalTool onBack={() => setActive(null)} />;
+  }
+
+  const visibleTools = TOOLS.filter((tool) => tool.available);
 
   return (
     <div className="p-4 sm:p-6 space-y-5 animate-fade-in w-full">
@@ -46,7 +63,7 @@ export function ToolsPage() {
           desktops. The cards are buttons so the whole tile is the click
           target — bigger on touch, no "Open" button needed. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {TOOLS.map((tool) => (
+        {visibleTools.map((tool) => (
           <button
             key={tool.id}
             type="button"
