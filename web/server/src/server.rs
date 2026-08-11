@@ -1344,6 +1344,17 @@ async fn spa_handler(State(state): State<WebState>, request: Request) -> Respons
 /// session JWT in localStorage, so an XSS here is a full account takeover
 /// and the cheapest defences are worth having on by default.
 async fn security_headers(request: Request, next: Next) -> Response {
+    // The browser proxy's responses must be frameable by this app's shell — the
+    // Browser page embeds `/api/browser/proxy?u=…` in an iframe. That includes
+    // *error* responses: a 401 from the auth middleware ahead of the proxy, or
+    // a 400/502 `json_error` from the proxy itself, set no framing headers of
+    // their own, so without a permissive default here they would inherit the
+    // app shell's `DENY` / `frame-ancestors 'none'` and the iframe would blank
+    // with a CSP violation instead of showing the error. Success responses
+    // (HTML/CSS) set their own framing headers (see browser_proxy.rs), which the
+    // `contains_key` guards below respect. Everything outside the proxy stays
+    // unframeable — clickjack protection for the app shell itself.
+    let proxy_path = request.uri().path().starts_with("/api/browser/proxy");
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
     // Never let a declared Content-Type be second-guessed into something
@@ -1352,9 +1363,13 @@ async fn security_headers(request: Request, next: Next) -> Response {
     // Nothing here is meaningful inside someone else's frame, and framing it
     // is how a clickjack starts. Respect a handler-set value: the browser
     // proxy sets SAMEORIGIN so the app shell can frame proxied pages, while
-    // everything else stays DENY.
+    // everything else stays DENY. For proxy paths the default is also
+    // SAMEORIGIN so error responses (which set nothing) still frame.
     if !headers.contains_key(header::X_FRAME_OPTIONS) {
-        headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+        headers.insert(
+            header::X_FRAME_OPTIONS,
+            if proxy_path { HeaderValue::from_static("SAMEORIGIN") } else { HeaderValue::from_static("DENY") },
+        );
     }
     // Referrer would otherwise carry the path — and on the two routes that
     // still accept ?token=, the token — to whatever the page links to.
@@ -1365,24 +1380,34 @@ async fn security_headers(request: Request, next: Next) -> Response {
         HeaderValue::from_static("geolocation=(), camera=(), microphone=(), payment=(), usb=()"),
     );
     // Only set where it isn't already: the asset route ships its own, much
-    // stricter, sandboxed policy.
+    // stricter, sandboxed policy, and the proxy ships `frame-ancestors 'self'`
+    // on its HTML/CSS responses. For proxy *error* responses that set none,
+    // fall back to `frame-ancestors 'self'` so the iframe can render the error
+    // instead of being blanked by the app shell's `'none'`.
     if !headers.contains_key(header::CONTENT_SECURITY_POLICY) {
-        headers.insert(
-            header::CONTENT_SECURITY_POLICY,
-            // 'unsafe-inline'/'unsafe-eval' for styles and scripts because the
-            // bundled SPA and its markdown/mermaid rendering need them; the
-            // clauses that matter here are the ones nailing down where content
-            // may be *loaded from* and, above all, `frame-ancestors 'none'`
-            // and `object-src 'none'`. `frame-src` lists the frames the app shell
-            // is allowed to embed: `'self'` for the web Browser page's
-            // same-origin proxy iframe (`/api/browser/proxy?u=…`), and
-            // YouTube's privacy-enhanced host for the document editor's embeds.
-            // (The proxy response carries its own `frame-ancestors 'self'` —
-            // see browser_proxy.rs — so only this app can frame it.)
-            HeaderValue::from_static(
-                "default-src 'self';                  script-src 'self' 'unsafe-inline' 'unsafe-eval';                  style-src 'self' 'unsafe-inline';                  img-src 'self' data: blob: https:;                  media-src 'self' data: blob: https:;                  font-src 'self' data:;                  connect-src 'self' blob:;                  worker-src 'self' blob:;                  frame-src 'self' https://www.youtube-nocookie.com;                  object-src 'none';                  base-uri 'none';                  form-action 'none';                  frame-ancestors 'none'",
-            ),
-        );
+        if proxy_path {
+            headers.insert(
+                header::CONTENT_SECURITY_POLICY,
+                HeaderValue::from_static("frame-ancestors 'self'"),
+            );
+        } else {
+            headers.insert(
+                header::CONTENT_SECURITY_POLICY,
+                // 'unsafe-inline'/'unsafe-eval' for styles and scripts because the
+                // bundled SPA and its markdown/mermaid rendering need them; the
+                // clauses that matter here are the ones nailing down where content
+                // may be *loaded from* and, above all, `frame-ancestors 'none'`
+                // and `object-src 'none'`. `frame-src` lists the frames the app shell
+                // is allowed to embed: `'self'` for the web Browser page's
+                // same-origin proxy iframe (`/api/browser/proxy?u=…`), and
+                // YouTube's privacy-enhanced host for the document editor's embeds.
+                // (The proxy response carries its own `frame-ancestors 'self'` —
+                // see browser_proxy.rs — so only this app can frame it.)
+                HeaderValue::from_static(
+                    "default-src 'self';                  script-src 'self' 'unsafe-inline' 'unsafe-eval';                  style-src 'self' 'unsafe-inline';                  img-src 'self' data: blob: https:;                  media-src 'self' data: blob: https:;                  font-src 'self' data:;                  connect-src 'self' blob:;                  worker-src 'self' blob:;                  frame-src 'self' https://www.youtube-nocookie.com;                  object-src 'none';                  base-uri 'none';                  form-action 'none';                  frame-ancestors 'none'",
+                ),
+            );
+        }
     }
     response
 }
