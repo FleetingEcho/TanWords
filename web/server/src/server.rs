@@ -1373,12 +1373,14 @@ async fn security_headers(request: Request, next: Next) -> Response {
             // bundled SPA and its markdown/mermaid rendering need them; the
             // clauses that matter here are the ones nailing down where content
             // may be *loaded from* and, above all, `frame-ancestors 'none'`
-            // and `object-src 'none'`. YouTube's privacy-enhanced host is the
-            // sole frame source because the document editor renders its embeds
-            // in an iframe; without an explicit `frame-src`, `default-src
-            // 'self'` blocks every video in the web build.
+            // and `object-src 'none'`. `frame-src` lists the frames the app shell
+            // is allowed to embed: `'self'` for the web Browser page's
+            // same-origin proxy iframe (`/api/browser/proxy?u=…`), and
+            // YouTube's privacy-enhanced host for the document editor's embeds.
+            // (The proxy response carries its own `frame-ancestors 'self'` —
+            // see browser_proxy.rs — so only this app can frame it.)
             HeaderValue::from_static(
-                "default-src 'self';                  script-src 'self' 'unsafe-inline' 'unsafe-eval';                  style-src 'self' 'unsafe-inline';                  img-src 'self' data: blob: https:;                  media-src 'self' data: blob: https:;                  font-src 'self' data:;                  connect-src 'self' blob:;                  worker-src 'self' blob:;                  frame-src https://www.youtube-nocookie.com;                  object-src 'none';                  base-uri 'none';                  form-action 'none';                  frame-ancestors 'none'",
+                "default-src 'self';                  script-src 'self' 'unsafe-inline' 'unsafe-eval';                  style-src 'self' 'unsafe-inline';                  img-src 'self' data: blob: https:;                  media-src 'self' data: blob: https:;                  font-src 'self' data:;                  connect-src 'self' blob:;                  worker-src 'self' blob:;                  frame-src 'self' https://www.youtube-nocookie.com;                  object-src 'none';                  base-uri 'none';                  form-action 'none';                  frame-ancestors 'none'",
             ),
         );
     }
