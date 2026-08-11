@@ -9,7 +9,7 @@
  *  `hide()` detaches with nothing to replace it, for when the browser page
  *  itself is off-screen (nav'd away, or a modal needs to sit above native
  *  content — see useBrowserPanel's `blocked`). */
-import { app, BrowserWindow, session, WebContentsView } from "electron";
+import { app, BrowserWindow, session, WebContents, WebContentsView } from "electron";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { wireDevToolsShortcut } from "./devtools";
@@ -81,6 +81,22 @@ function toIntBounds(b: PanelBounds) {
   };
 }
 
+/** JS that injects cosmetic resources directly into the page's MAIN world
+ *  (webContents.executeJavaScript runs there). Used as the late fallback when
+ *  the preload missed its cache hit — CSS hiding still works once it lands,
+ *  scriptlets are best-effort. `stylesheet` is a selector list; the caller
+ *  wraps it in `{display:none!important}` per the shared convention. */
+function buildCosmeticInjectionJs(c: { stylesheet: string; script: string }): string {
+  const parts: string[] = [];
+  if (c.stylesheet) {
+    parts.push(`(()=>{const s=document.createElement('style');s.textContent=${JSON.stringify(c.stylesheet + "{display:none!important}")};(document.head||document.documentElement).appendChild(s)})()`);
+  }
+  if (c.script) {
+    parts.push(c.script);
+  }
+  return parts.join("\n");
+}
+
 export class BrowserPanelManager {
   private win: BrowserWindow | null = null;
   private tabs = new Map<string, TabRecord>();
@@ -110,6 +126,11 @@ export class BrowserPanelManager {
   private adBlockCache = new Map<string, { block: boolean; redirect?: string }>();
   private static ADBLOCK_CACHE_MAX = 2000;
   private static ADBLOCK_TIMEOUT_MS = 800;
+  /** Per-URL cosmetic resources (CSS selectors + injected script), prewarmed
+   *  at navigation start so the preload's sync IPC never blocks on a sidecar
+   *  roundtrip. */
+  private cosmeticsCache = new Map<string, { stylesheet: string; script: string }>();
+  private static COSMETICS_CACHE_MAX = 500;
 
   setBackendGetter(fn: () => Promise<{ port: number; token: string }>) {
     this.getBackend = fn;
@@ -155,6 +176,7 @@ export class BrowserPanelManager {
   private async enableAdBlock(): Promise<void> {
     if (this.adBlockRegistered) return;
     if (!this.adBlockEnabled || !this.getBackend) return;
+    void this.registerCosmeticPreload();
     const ses = panelSession();
     ses.webRequest.onBeforeRequest({ urls: ["<all_urls>"] }, (details, callback) => {
       // Never block a top-level document load — that would blank the tab.
@@ -189,6 +211,10 @@ export class BrowserPanelManager {
   }
 
   private disableAdBlock(): void {
+    // Drop the cosmetics prewarm cache first, unconditionally — the listener
+    // below may never have been registered (e.g. a toggle before the first
+    // enable landed), but stale cosmetics must not survive a re-enable.
+    this.cosmeticsCache.clear();
     if (!this.adBlockRegistered) return;
     // onBeforeRequest(null) removes *all* listeners for that event on the
     // session — fine here, the panel session has no other onBeforeRequest
@@ -202,32 +228,104 @@ export class BrowserPanelManager {
     }
   }
 
-  /** Writes the self-contained YouTube ad-pruning preload to userData and
-   *  registers it on the panel session.
+  /** Answer the preload's sync `adblock:cosmetics` query from the prewarmed
+   *  cache. Never blocks on the sidecar: a miss returns empty immediately
+   *  (fail-open) and kicks off an async fetch + late injection. */
+  cosmeticsForSync(url: string, wc: WebContents): { stylesheet: string; script: string } {
+    const hit = this.cosmeticsCache.get(url);
+    if (hit) return hit;
+    void this.fetchCosmetics(url).then((c) => {
+      if (!c) return;
+      this.rememberCosmetics(url, c);
+      // The preload already ran and found nothing; a late executeJavaScript
+      // injection still hides elements (CSS), and scriptlets are best-effort.
+      const js = buildCosmeticInjectionJs(c);
+      if (js) void wc.executeJavaScript(js, true).catch(() => {});
+    });
+    return { stylesheet: "", script: "" };
+  }
+
+  private async fetchCosmetics(url: string): Promise<{ stylesheet: string; script: string } | null> {
+    if (!this.getBackend) return null;
+    try {
+      const { port, token } = await this.getBackend();
+      const res = await fetch(`http://127.0.0.1:${port}/invoke/adblock_cosmetics`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify({ url }),
+      });
+      if (!res.ok) return null;
+      const j = (await res.json()) as { stylesheet?: string; script?: string };
+      return { stylesheet: j.stylesheet ?? "", script: j.script ?? "" };
+    } catch {
+      return null;
+    }
+  }
+
+  private rememberCosmetics(url: string, c: { stylesheet: string; script: string }) {
+    if (this.cosmeticsCache.size >= BrowserPanelManager.COSMETICS_CACHE_MAX) {
+      const oldest = this.cosmeticsCache.keys().next().value;
+      if (oldest) this.cosmeticsCache.delete(oldest);
+    }
+    this.cosmeticsCache.set(url, c);
+  }
+
+  /** Prewarm cosmetics for an about-to-load URL so the preload's sync IPC
+   *  (which must never block) finds a hit. Fires on main-frame navigations. */
+  private prewarmCosmetics(url: string): void {
+    if (!this.adBlockEnabled || this.cosmeticsCache.has(url)) return;
+    void this.fetchCosmetics(url).then((c) => {
+      if (c) this.rememberCosmetics(url, c);
+    });
+  }
+
+  /** Writes the cosmetic-injection preload to userData and registers it on
+   *  the panel session.
    *
    *  CRITICAL: the panel's WebContentsView has `contextIsolation: true` +
    *  `sandbox: true`, so the preload runs in an ISOLATED world — its `window`
-   *  is NOT the page's `window`. Modifying `JSON.parse` or defining properties
-   *  on `window` directly would only affect the isolated world, which YouTube's
-   *  main-world scripts never see.
+   *  is NOT the page's `window`. Directly modifying `JSON.parse` or defining
+   *  properties on `window` would only affect the isolated world.
    *
-   *  The fix: the preload creates a `<script>` element with the json-prune code
-   *  as `textContent` and appends it to `document.documentElement`. The script
-   *  element's code runs in the PAGE's MAIN world, where YouTube's scripts live.
-   *  This is the standard "main-world injection from an isolated preload"
-   *  pattern — the script executes synchronously at document-start, before
-   *  YouTube's own inline scripts.
+   *  The fix: the preload asks main for the engine's cosmetics (sendSync —
+   *  answered from a prewarmed cache, never a sidecar roundtrip), then
+   *  creates a `<style>` (CSS is DOM-shared, applies in every world) and a
+   *  `<script>` element whose `textContent` carries the injected script. The
+   *  script element's code runs in the PAGE's MAIN world, where YouTube's
+   *  scripts live — the standard "main-world injection from an isolated
+   *  preload" pattern, executing at document-start before page scripts.
+   *
+   *  Top frame only: subframe cosmetics are a separate concern (uBO injects
+   *  per-frame), and per-frame sync IPC would get chatty. Ad iframes are
+   *  usually network-blocked anyway.
    *
    *  Writing to disk is required because `registerPreloadScript` takes a file
    *  path, and the packaged app excludes node_modules. */
   private async registerCosmeticPreload(): Promise<void> {
     if (this.cosmeticPreloadId) return;
     const preloadPath = path.join(app.getPath("userData"), "adblock-preload.cjs");
-    // The json-prune code that runs in the PAGE's main world via <script> injection.
-    const innerScript = `(function(){'use strict';var K=['adPlacements','playerAds','adParams','adBreakHeartbeatParams','adSignalingParams','adSlots'];function p(o){if(!o||typeof o!=='object')return o;for(var i=0;i<K.length;i++){try{delete o[K[i]]}catch(e){}}if(o.playerResponse&&typeof o.playerResponse==='object'){for(var i=0;i<K.length;i++){try{delete o.playerResponse[K[i]]}catch(e){}}}return o}var _j=JSON.parse;JSON.parse=function(){var r=_j.apply(this,arguments);if(r&&typeof r==='object'&&(r.adPlacements||r.playerAds||r.adSlots)){return p(r)}return r};if(self.Response){var _k=Response.prototype.json;Response.prototype.json=function(){return _k.call(this).then(function(r){if(r&&typeof r==='object'&&(r.adPlacements||r.playerAds||r.adSlots)){return p(r)}return r})}}var s=document.createElement('style');s.textContent='.ad-showing,#masthead-ad,.ytd-ad-slot-renderer,.ytp-ad-overlay-container,.ytp-ad-module,.ytd-banner-promo-renderer,.ytd-search-pyv-renderer,.ytd-promo-video-renderer{display:none!important}';(document.head||document.documentElement).appendChild(s)})();`;
-    // The preload itself runs in the isolated world. It checks the hostname,
-    // then injects the inner script into the DOM — which runs in the MAIN world.
-    const preloadCode = `(function(){var h=location.hostname;if(h.indexOf('youtube.com')===-1&&h.indexOf('youtube-nocookie.com')===-1)return;var s=document.createElement('script');s.textContent=${JSON.stringify(innerScript)};(document.documentElement||document.head).appendChild(s);s.remove()})();`;
+    // Runs in the isolated world on every top frame. Sync IPC is answered
+    // from main's prewarmed cache, so it never blocks on the sidecar.
+    const preloadCode = `(function(){
+  if (window.self !== window.top) return;
+  var url = '';
+  try { url = location.href; } catch(e) {}
+  if (!url) return;
+  var c = null;
+  try { c = require('electron').ipcRenderer.sendSync('adblock:cosmetics', url); } catch(e) {}
+  if (!c) return;
+  if (c.stylesheet) {
+    var s = document.createElement('style');
+    s.textContent = c.stylesheet + '{display:none!important}';
+    (document.head || document.documentElement).appendChild(s);
+  }
+  if (c.script) {
+    var sc = document.createElement('script');
+    sc.textContent = c.script;
+    (document.documentElement || document.head).appendChild(sc);
+    sc.remove();
+  }
+})();`;
     try {
       await fs.writeFile(preloadPath, preloadCode, "utf-8");
       const id = panelSession().registerPreloadScript({ type: "frame", filePath: preloadPath });
@@ -281,6 +379,14 @@ export class BrowserPanelManager {
     rec.view = view;
 
     const wc = view.webContents;
+    // Prewarm cosmetics for the URL about to load so the preload's sync IPC
+    // (which must never block on a sidecar roundtrip) finds a cache hit.
+    wc.on("did-start-navigation", (_e, navUrl, _isInPlace, isMainFrame) => {
+      if (isMainFrame) this.prewarmCosmetics(navUrl);
+    });
+    wc.on("did-navigate", (_e, navUrl) => {
+      this.prewarmCosmetics(navUrl);
+    });
     // Its own inspector, not the app shell's — while the embedded page has
     // focus it is the thing you are trying to debug.
     wireDevToolsShortcut(wc);

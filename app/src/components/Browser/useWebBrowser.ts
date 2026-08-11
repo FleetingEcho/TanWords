@@ -10,7 +10,9 @@ import type { BrowserTab } from "./useBrowserPanel";
  *  the web platform: many sites send `X-Frame-Options`/`frame-ancestors` and
  *  will refuse to embed (the iframe goes blank — the "Open in default browser"
  *  button is the escape hatch), and the app cannot intercept cross-origin
- *  iframe requests, so the ad-block shield is desktop-only.
+ *  iframe requests, so ad blocking happens server-side: the iframe is routed
+ *  through the filtering proxy (see `web/server/src/browser_proxy.rs`), which
+ *  runs the same Rust engine as the desktop panel.
  *
  *  Cross-origin iframes also hide their `location` and `document.title` from the
  *  parent, so the address bar tracks only what the user typed and back/forward

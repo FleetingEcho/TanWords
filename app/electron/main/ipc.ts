@@ -86,6 +86,16 @@ export function registerIpcHandlers(deps: IpcDeps) {
   ipcMain.handle("tanwords:call", async (event, channel: string, args: unknown) => {
     return dispatch(channel, args, deps, event.sender);
   });
+
+  // Sync channel for the browser panel's cosmetic preload: the preload runs
+  // at document-start in a sandboxed isolated world and cannot await, so it
+  // uses sendSync. Main answers purely from the prewarmed cache — never a
+  // sidecar roundtrip — and fills a miss asynchronously with a late
+  // executeJavaScript injection (fail-open: an empty answer is instant).
+  ipcMain.on("adblock:cosmetics", (event, url: unknown) => {
+    const c = deps.browserPanel.cosmeticsForSync(String(url ?? ""), event.sender);
+    event.returnValue = c;
+  });
 }
 
 async function dispatch(

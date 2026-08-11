@@ -74,3 +74,63 @@ describe("BrowserPanelManager.hide", () => {
     expect(removeChildView).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("BrowserPanelManager cosmetics", () => {
+  function setup() {
+    const manager = new BrowserPanelManager();
+    const internals = manager as unknown as {
+      cosmeticsCache: Map<string, { stylesheet: string; script: string }>;
+    };
+    internals.cosmeticsCache = new Map();
+    return { manager, internals };
+  }
+
+  it("serves a prewarmed cache hit synchronously without touching the sidecar", () => {
+    const { manager, internals } = setup();
+    const wc = { executeJavaScript: vi.fn(async () => {}) };
+    const cached = { stylesheet: ".ad{", script: "console.log(1)" };
+    internals.cosmeticsCache.set("https://site.test/", cached);
+
+    expect(manager.cosmeticsForSync("https://site.test/", wc as never)).toEqual(cached);
+    expect(wc.executeJavaScript).not.toHaveBeenCalled();
+  });
+
+  it("fails open on a miss and fills the cache + late-injects asynchronously", async () => {
+    const { manager, internals } = setup();
+    const wc = { executeJavaScript: vi.fn(async () => {}) };
+    // No backend getter → fetchCosmetics returns null → nothing to inject.
+    expect(manager.cosmeticsForSync("https://site.test/", wc as never)).toEqual({ stylesheet: "", script: "" });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(wc.executeJavaScript).not.toHaveBeenCalled();
+    expect(internals.cosmeticsCache.size).toBe(0);
+  });
+
+  it("late-injects when a miss resolves with cosmetics", async () => {
+    const { manager, internals } = setup();
+    const wc = { executeJavaScript: vi.fn(async () => {}) };
+    (manager as unknown as { getBackend: unknown }).getBackend = async () => ({ port: 1, token: "t" });
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ stylesheet: ".ad{", script: "console.log(1)" }),
+    }));
+    (globalThis as unknown as { fetch: unknown }).fetch = fetchMock;
+
+    try {
+      const miss = manager.cosmeticsForSync("https://site.test/", wc as never);
+      expect(miss).toEqual({ stylesheet: "", script: "" });
+      await new Promise((r) => setTimeout(r, 30));
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(internals.cosmeticsCache.get("https://site.test/")).toEqual({ stylesheet: ".ad{", script: "console.log(1)" });
+      expect(wc.executeJavaScript).toHaveBeenCalled();
+    } finally {
+      delete (globalThis as unknown as { fetch: unknown }).fetch;
+    }
+  });
+
+  it("clears the cosmetics cache on disable", () => {
+    const { manager, internals } = setup();
+    internals.cosmeticsCache.set("https://site.test/", { stylesheet: ".ad{", script: "" });
+    manager.setAdBlockEnabled(false);
+    expect(internals.cosmeticsCache.size).toBe(0);
+  });
+});
