@@ -385,7 +385,7 @@ export class BrowserPanelManager {
       // another, and `$domain=`/`$third-party` rules turn on exactly that.
       // Keying on the URL alone let the first page to request a resource
       // decide it for every other page in the session.
-      const key = `${details.resourceType} ${sourceOriginOf(sourceUrl)} ${url}`;
+      const key = `${details.resourceType}|${sourceOriginOf(sourceUrl)}|${url}`;
       const cached = this.adBlockCache.get(key);
       if (cached) {
         if (cached.redirect) callback({ redirectURL: cached.redirect });
