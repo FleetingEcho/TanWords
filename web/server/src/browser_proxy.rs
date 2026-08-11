@@ -9,12 +9,14 @@
 //! `tanwords_lib::adblock` engine, and returns cleaned content with every
 //! URL rewritten to come back through the proxy.
 //!
-//! Route: `GET /api/browser/proxy?u=<absolute-url>`. Auth is the existing
-//! session gate (`?token=` on the top-level load, then an HttpOnly
-//! `tw_proxy` cookie the handler sets so subresource requests made by the
-//! returned HTML stay authenticated without a token in every URL). HTML is
-//! rewritten with `lol_html`; other content types are streamed through and
-//! engine-checked first.
+//! Route: `/api/browser/proxy?u=<absolute-url>` (any method — the proxied
+//! page's POSTs, e.g. YouTube's `youtubei/v1/*` JSON APIs, arrive here via the
+//! Service Worker with their original method, headers and body and are
+//! forwarded upstream whole). Auth is the existing session gate (`?token=` on
+//! the top-level load, then an HttpOnly `tw_proxy` cookie the handler sets so
+//! subresource requests made by the returned HTML stay authenticated without
+//! a token in every URL). HTML is rewritten with `lol_html`; other content
+//! types are streamed through and engine-checked first.
 //!
 //! Honest limits (inherent to in-page web proxies): no upstream cookie
 //! persistence (login-gated sites won't work). CSS `url()`/`@import` and
@@ -43,12 +45,30 @@ use crate::server::{json_error, UserSession, WebState};
 /// (same-origin subresources carry it; never sent cross-site).
 const PROXY_COOKIE: &str = "tw_proxy";
 const PROXY_PATH: &str = "/api/browser/proxy";
+/// Ceiling on forwarded request bodies. The proxied page (through the Service
+/// Worker) sends its API POSTs here whole — YouTube's `youtubei/v1` JSON
+/// calls are a few hundred KB at most, but a large form or a generous SPA
+/// shouldn't get truncated. Well above axum's 2 MB default, which would
+/// otherwise 413 a busy page's legitimate traffic.
+pub const PROXY_BODY_LIMIT: usize = 32 * 1024 * 1024;
 
 pub async fn browser_proxy(
     State(state): State<WebState>,
     Extension(_session): Extension<UserSession>,
     request: axum::http::Request<Body>,
 ) -> Response {
+    // A proxy must forward the method, headers and body the page actually
+    // sent, or it is only a half-proxy. The Service Worker re-routes runtime
+    // fetches through here with their original method/body: YouTube's entire
+    // UI is `POST /youtubei/v1/*` JSON calls, and media/video needs `Range`.
+    // The method/headers are cloned before the request is consumed; the body
+    // is read once, after every borrow of `request` is done.
+    let method = request.method().clone();
+    let req_headers = request.headers().clone();
+    // The query string, captured before the request is consumed — the cookie
+    // setter below still needs it after the body is read.
+    let request_query = request.uri().query().map(str::to_string);
+
     // Extract `u=` from the query (the only parameter the route takes). The
     // frontend sends it `encodeURIComponent`-encoded (so `&`/`=`/`#` in the URL
     // don't break query parsing), so the value must be percent-decoded before
@@ -82,6 +102,19 @@ pub async fn browser_proxy(
     // Referer; we recover the real page URL from its `u=` query.
     let source_url = referer_original(&request);
 
+    // Read the forwarded body (empty for GET/HEAD). `to_bytes` applies the
+    // limit here regardless of the router's layer, so a body past the ceiling
+    // is rejected loudly instead of silently truncated.
+    let body_bytes = match axum::body::to_bytes(request.into_body(), PROXY_BODY_LIMIT).await {
+        Ok(b) => b,
+        Err(e) => {
+            return json_error(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                &format!("request body too large or unreadable: {e}"),
+            );
+        }
+    };
+
     // Build a clean upstream request — never forward our auth/cookies/host.
     let mut up_headers = reqwest::header::HeaderMap::new();
     up_headers.insert(
@@ -94,8 +127,30 @@ pub async fn browser_proxy(
             up_headers.insert(reqwest::header::REFERER, v);
         }
     }
+    // Forward only the headers the upstream actually needs to serve the page:
+    // Content-Type (a POST body is useless without it), Range (media
+    // streaming/seeking), Origin (APIs that check it — videoplayback, some SPA
+    // backends), Accept-Language (localized content). Everything else — our
+    // proxy cookie, the session, Host — stays behind.
+    for name in [
+        reqwest::header::CONTENT_TYPE,
+        reqwest::header::RANGE,
+        reqwest::header::ORIGIN,
+        reqwest::header::ACCEPT_LANGUAGE,
+    ] {
+        if let Some(v) = req_headers.get(&name) {
+            up_headers.insert(name, v.clone());
+        }
+    }
 
-    let upstream = match state.http.get(target.as_str()).headers(up_headers).send().await {
+    // Carry the forwarded method and body upstream. GET/HEAD get no body;
+    // everything else (POST/PUT/PATCH…) sends the page's payload whole.
+    let mut req_builder = state.http.request(method.clone(), target.as_str()).headers(up_headers);
+    if method != reqwest::Method::GET && method != reqwest::Method::HEAD {
+        req_builder = req_builder.body(body_bytes);
+    }
+
+    let upstream = match req_builder.send().await {
         Ok(r) => r,
         Err(e) => return json_error(StatusCode::BAD_GATEWAY, format!("upstream fetch failed: {e}")),
     };
@@ -146,7 +201,7 @@ pub async fn browser_proxy(
         match rewrite_html(&body, &final_url, block_enabled, &cosmetics) {
             Ok(rewritten) => {
                 let mut resp = builder.body(Body::from(rewritten)).unwrap_or_else(|_| json_error(StatusCode::INTERNAL_SERVER_ERROR, "rewrite failed"));
-                set_proxy_cookie(&mut resp, &request);
+                set_proxy_cookie(&mut resp, request_query.as_deref());
                 return resp;
             }
             Err(_) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, "html rewrite failed"),
@@ -218,20 +273,16 @@ fn redirect_or_data(data_url: &str) -> Response {
 
 /// Set the `tw_proxy` session cookie on a top-level proxy response so that
 /// the subresource requests the returned HTML makes are authenticated.
-fn set_proxy_cookie(resp: &mut Response, request: &axum::http::Request<Body>) {
+fn set_proxy_cookie(resp: &mut Response, query: Option<&str>) {
     // Only set when the caller authenticated via `?token=` (top-level load).
     // Subresource requests arrive with the cookie, not a query token.
-    let has_query_token = request
-        .uri()
-        .query()
+    let has_query_token = query
         .map(|q| q.split('&').any(|p| p.starts_with("token=")))
         .unwrap_or(false);
     if !has_query_token {
         return;
     }
-    let token = request
-        .uri()
-        .query()
+    let token = query
         .and_then(|q| q.split('&').find_map(|p| p.strip_prefix("token=").map(str::to_string)));
     let Some(token) = token else { return };
     let value = format!(

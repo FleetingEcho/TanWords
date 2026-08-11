@@ -1458,7 +1458,7 @@ pub async fn serve(config: Config, users: Arc<UsersDb>, pool: Arc<RuntimePool>) 
         .route("/api/db/turso/disconnect", post(turso_disconnect))
         .route("/api/db/turso/remembered", get(turso_remembered))
         .route("/api/db/turso/forget", post(turso_forget))
-        .route("/api/browser/proxy", get(browser_proxy::browser_proxy))
+        .route("/api/browser/proxy", axum::routing::any(browser_proxy::browser_proxy).layer(DefaultBodyLimit::max(browser_proxy::PROXY_BODY_LIMIT)))
         // Consumed as URLs (EventSource, <img src>) as well as fetch — the
         // session middleware accepts ?token= on every gated route.
         .route("/events", get(events_handler))
