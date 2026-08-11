@@ -38,7 +38,15 @@ export const DESKTOP_CAPABILITIES: HostCapabilities = {
 export const WEB_CAPABILITIES: HostCapabilities = {
   desktop: false,
   auth: true,
-  browser: true,
+  // Desktop-only. The web build has no native browser view, so the page could
+  // only ever be an iframe fed by a server-side filtering proxy — which means
+  // every embedded site sees the server's datacenter address instead of the
+  // user's, and treats a whole deployment's traffic as coming from one client.
+  // Google/YouTube answer that with sign-in walls and bot interstitials, and
+  // sustained proxying risks the address being blocked outright. Browsing
+  // belongs on the desktop app, where it goes out over the user's own
+  // connection.
+  browser: false,
   music: false,
   appLock: true,
   localDocs: false,

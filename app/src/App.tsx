@@ -328,7 +328,8 @@ function App() {
   // a real DB query (including Turso initialization/sync when configured). Web
   // falls back to Dashboard for desktop-only routes, so those must wait too.
   const dashboardOwnsStartupReadiness = page === "dashboard"
-    || (!isDesktopHost && page === "music");
+    || (!isDesktopHost && page === "music")
+    || (!hostCapabilities.browser && page === "browser");
 
   const renderPage = () => {
     switch (page) {
@@ -339,7 +340,9 @@ function App() {
       case "music":
         return isDesktopHost ? <MusicPage /> : <DashboardPage />;
       case "browser":
-        return <BrowserPage />;
+        // Gated, not just hidden from the sidebar: a persisted nav state or a
+        // deep link could still land here on a host without the capability.
+        return hostCapabilities.browser ? <BrowserPage /> : <DashboardPage />;
       case "vocabulary":
         return <VocabularyPage initialWordId={wordId} initialSentenceId={sentenceId} />;
       case "documents":
