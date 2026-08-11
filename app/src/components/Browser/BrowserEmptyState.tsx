@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyCanvas } from "@/components/shared/EmptyCanvas";
 
 const QUICK_LAUNCH = [
+  { label: "YouTube", url: "https://www.youtube.com" },
   { label: "X", url: "https://x.com" },
   { label: "GitHub", url: "https://github.com" },
   { label: "Hacker News", url: "https://news.ycombinator.com" },
