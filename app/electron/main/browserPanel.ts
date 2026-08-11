@@ -9,7 +9,7 @@
  *  `hide()` detaches with nothing to replace it, for when the browser page
  *  itself is off-screen (nav'd away, or a modal needs to sit above native
  *  content — see useBrowserPanel's `blocked`). */
-import { app, BrowserWindow, session, WebContents, WebContentsView } from "electron";
+import { app, BrowserWindow, session, Session, WebContents, WebContentsView } from "electron";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { wireDevToolsShortcut } from "./devtools";
@@ -32,15 +32,69 @@ function hardenPanelSession() {
   const ses = session.fromPartition(PANEL_PARTITION);
   ses.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
   ses.setPermissionCheckHandler(() => false);
+  normalizePanelIdentity(ses);
+}
+
+/** Electron's default User-Agent is Chrome's, plus two extra product tokens:
+ *  `TanWords/<appVersion>` and `Electron/<electronVersion>`. Those tokens are
+ *  a loud "this is not a browser" signal — Google in particular treats an
+ *  Electron UA as automation and answers with sign-in walls, interstitial
+ *  "verify you're human" checks, and eventually rate limits on the address
+ *  behind it. Nothing about the panel *is* automation (it renders a real
+ *  Chromium for a human), so presenting the real Chromium underneath is both
+ *  accurate and what keeps ordinary browsing from being treated as abuse.
+ *
+ *  Both halves of the identity have to agree or the mismatch is itself a
+ *  signal: the UA string is stripped back to Chrome's, and `Sec-CH-UA` (the
+ *  client-hint form of the same claim, which `setUserAgent` does NOT touch —
+ *  Chromium builds it from its own brand list, where Electron appears as a
+ *  brand) is rewritten to the same Chrome version. The Chrome major comes
+ *  from `process.versions.chrome`, so an Electron upgrade carries it along
+ *  instead of leaving a stale hardcoded version behind. */
+function secChUa(): string {
+  const major = (process.versions.chrome ?? "").split(".")[0] || "0";
+  return `"Chromium";v="${major}", "Google Chrome";v="${major}", "Not?A_Brand";v="24"`;
+}
+
+/** Strips the two Electron-added product tokens back out of the default UA,
+ *  leaving the genuine Chrome string underneath. */
+export function chromeUserAgent(): string {
+  return app.userAgentFallback
+    .replace(/ Electron\/\S+/, "")
+    .replace(/ [^ /]+\/\d[^ ]* (?=Chrome\/)/, " ");
+}
+
+let identityNormalized = false;
+function normalizePanelIdentity(ses: Session) {
+  if (identityNormalized) return;
+  identityNormalized = true;
+  // Resolved here rather than at import: `userAgentFallback` reflects the app
+  // name, which is only final once main has configured the app object.
+  const CHROME_UA = chromeUserAgent();
+  const SEC_CH_UA = secChUa();
+  ses.setUserAgent(CHROME_UA);
+  // Separate from the ad-block listener on purpose: this is not part of
+  // blocking and must survive `disableAdBlock()`, which drops *all*
+  // onBeforeRequest listeners on this session.
+  ses.webRequest.onBeforeSendHeaders({ urls: ["<all_urls>"] }, (details, callback) => {
+    const headers = details.requestHeaders;
+    headers["User-Agent"] = CHROME_UA;
+    // Only rewrite the hint when Chromium already chose to send it — adding
+    // it where Chromium withheld it (non-secure origins) would be its own
+    // anomaly.
+    if (headers["sec-ch-ua"] !== undefined) headers["sec-ch-ua"] = SEC_CH_UA;
+    if (headers["Sec-CH-UA"] !== undefined) headers["Sec-CH-UA"] = SEC_CH_UA;
+    callback({ requestHeaders: headers });
+  });
 }
 
 /** Ad/tracker blocking for the panel session. The matching engine lives in
  *  the Rust `tanwords` core sidecar (the `adblock_check` RPC, built on
  *  Brave's `adblock` crate); this main process only intercepts requests — an
  *  Electron-only API the sidecar can't reach — and asks the sidecar whether
- *  to block each subresource. Network-level blocking only (no cosmetic DOM
- *  hiding). Fails open with a short timeout + an LRU cache, so a slow/down
- *  sidecar never stalls a page. */
+ *  to block each subresource. Cosmetic hiding is a separate path — see
+ *  `registerCosmeticPreload`. Fails open with a short timeout + an LRU cache,
+ *  so a slow/down sidecar never stalls a page. */
 function panelSession() {
   return session.fromPartition(PANEL_PARTITION);
 }
@@ -71,6 +125,133 @@ const MAX_LIVE_TABS = 2;
  *  only consumer is the auto-lock idle timer, whose shortest interval is ten
  *  minutes. */
 const INPUT_EMIT_INTERVAL_MS = 30_000;
+
+/** The document a request was made from — what the filter engine calls the
+ *  source URL, and what every `$third-party` / `$domain=` rule is evaluated
+ *  against.
+ *
+ *  This used to be `details.referrer`, which is the wrong thing and is very
+ *  often empty: `Referrer-Policy: strict-origin-when-cross-origin` (the web
+ *  default) reduces it to a bare origin, `no-referrer` removes it entirely,
+ *  and XHR/fetch/beacon requests frequently carry none at all. With an empty
+ *  source the engine sees no party relationship, so `$third-party` rules —
+ *  the bulk of EasyList — could not match, and blocking silently degraded to
+ *  only the unconditional URL-pattern rules.
+ *
+ *  `details.frame.url` is the requesting frame's real document URL, which is
+ *  what uBO uses. It can be null once a frame has navigated away or been
+ *  destroyed (and touching it then throws), so fall back to the tab's
+ *  top-level URL, then to the referrer. */
+export function documentUrlFor(details: { frame?: { url: string } | null; webContents?: { getURL(): string }; referrer: string }): string {
+  try {
+    const frameUrl = details.frame?.url;
+    if (frameUrl) return frameUrl;
+  } catch {
+    // Frame already gone — fall through.
+  }
+  try {
+    const topUrl = details.webContents?.getURL();
+    if (topUrl) return topUrl;
+  } catch {
+    // WebContents destroyed mid-flight — fall through.
+  }
+  return details.referrer || "";
+}
+
+/** The cosmetic-injection preload, as source. Runs in the isolated world on
+ *  every top frame; its sync IPC is answered from main's prewarmed cache, so
+ *  it never blocks on the sidecar.
+ *
+ *  Exported so its two hard-won behaviours can be tested rather than only
+ *  shipped: that it survives a document-start with no `documentElement` yet,
+ *  and that a refused scriptlet does not take the stylesheet down with it. */
+export const COSMETIC_PRELOAD_SOURCE = `(function(){
+  if (window.self !== window.top) return;
+  var url = '';
+  try { url = location.href; } catch(e) {}
+  if (!url) return;
+  var c = null;
+  try { c = require('electron').ipcRenderer.sendSync('adblock:cosmetics', url); } catch(e) {}
+  if (!c || (!c.stylesheet && !c.script)) return;
+  // A preload runs at document-start, which on a fresh document is BEFORE the
+  // parser has produced <html>: document.documentElement and document.head are
+  // both null, and appending to null throws — which used to abort the whole
+  // preload, taking the stylesheet down with the script. Inject as soon as a
+  // root exists, and if there is none yet, watch for it.
+  function inject() {
+    var root = document.documentElement || document.head;
+    if (!root) return false;
+    if (c.stylesheet) {
+      try {
+        var s = document.createElement('style');
+        s.textContent = c.stylesheet + '{display:none!important}';
+        root.appendChild(s);
+      } catch (e) {}
+    }
+    // Kept separate from the stylesheet on purpose: scriptlets are the part
+    // that can still be refused (a page may enforce Trusted Types before the
+    // panel's header pass has relaxed it), and a refusal must not cost us the
+    // cosmetic hiding that already succeeded.
+    if (c.script) {
+      try {
+        var sc = document.createElement('script');
+        sc.textContent = c.script;
+        root.appendChild(sc);
+        sc.remove();
+      } catch (e) {}
+    }
+    return true;
+  }
+  if (!inject()) {
+    try {
+      var obs = new MutationObserver(function(_m, o) { if (inject()) o.disconnect(); });
+      obs.observe(document, { childList: true });
+    } catch (e) {}
+  }
+})();`;
+
+/** Drops only the two Trusted Types directives from one CSP header value,
+ *  leaving every other directive (`script-src`, `frame-ancestors`, …) intact.
+ *
+ *  Why this is needed at all: uBO's ad rules for YouTube are *scriptlets*
+ *  (`json-prune` on the player response, `set-constant`), not network rules —
+ *  video ads come from the same googlevideo host as the video itself, so
+ *  nothing can block them by URL. Scriptlets have to execute in the page's
+ *  main world, and the only document-start hook Electron gives an isolated
+ *  preload is building a `<script>` element. Under
+ *  `require-trusted-types-for 'script'` — which YouTube sends — assigning a
+ *  string to `script.textContent` throws, so the scriptlets never ran and
+ *  video ads played while banner ads were correctly hidden.
+ *
+ *  The tradeoff, stated plainly: Trusted Types is the visited site's own
+ *  hardening against DOM XSS, and this turns it off for main-frame documents
+ *  while blocking is enabled. A real browser extension does not pay this —
+ *  it injects into an isolated MAIN world that bypasses Trusted Types
+ *  natively — but no Electron API offers that at document-start. It is
+ *  narrowed as far as it can be: enforcing CSP headers only (report-only is
+ *  left alone since it blocks nothing), main-frame documents only, on the
+ *  panel's own partition only, and removed again the moment blocking is
+ *  turned off. `script-src` is deliberately left standing — the probe that
+ *  found this confirmed YouTube's `script-src` does not refuse the injected
+ *  script once Trusted Types is out of the way. */
+export function stripTrustedTypes(csp: string): string {
+  if (!/trusted-types/i.test(csp)) return csp;
+  return csp
+    .split(";")
+    .filter((directive) => !/^\s*(require-trusted-types-for|trusted-types)\s*(\s|$)/i.test(directive))
+    .join(";");
+}
+
+/** Origin of a source URL, for the decision cache key: party-ness and
+ *  `$domain=` depend on the document's host, not its full path, so keying on
+ *  the origin keeps one entry per site rather than one per page. */
+function sourceOriginOf(sourceUrl: string): string {
+  try {
+    return new URL(sourceUrl).origin;
+  } catch {
+    return "";
+  }
+}
 
 function toIntBounds(b: PanelBounds) {
   return {
@@ -164,13 +345,13 @@ export class BrowserPanelManager {
     }
   }
 
-  private rememberDecision(url: string, dec: { block: boolean; redirect?: string }) {
+  private rememberDecision(key: string, dec: { block: boolean; redirect?: string }) {
     if (this.adBlockCache.size >= BrowserPanelManager.ADBLOCK_CACHE_MAX) {
       // Evict the oldest entry (Map preserves insertion order).
       const oldest = this.adBlockCache.keys().next().value;
       if (oldest) this.adBlockCache.delete(oldest);
     }
-    this.adBlockCache.set(url, dec);
+    this.adBlockCache.set(key, dec);
   }
 
   private async enableAdBlock(): Promise<void> {
@@ -178,13 +359,34 @@ export class BrowserPanelManager {
     if (!this.adBlockEnabled || !this.getBackend) return;
     void this.registerCosmeticPreload();
     const ses = panelSession();
+    ses.webRequest.onHeadersReceived({ urls: ["<all_urls>"] }, (details, callback) => {
+      if (!this.adBlockEnabled || details.resourceType !== "mainFrame") { callback({}); return; }
+      const headers = details.responseHeaders;
+      if (!headers) { callback({}); return; }
+      let touched = false;
+      for (const name of Object.keys(headers)) {
+        if (name.toLowerCase() !== "content-security-policy") continue;
+        const values = headers[name];
+        if (!Array.isArray(values)) continue;
+        headers[name] = values.map((v) => stripTrustedTypes(v));
+        touched = true;
+      }
+      callback(touched ? { responseHeaders: headers } : {});
+    });
     ses.webRequest.onBeforeRequest({ urls: ["<all_urls>"] }, (details, callback) => {
       // Never block a top-level document load — that would blank the tab.
       if (details.resourceType === "mainFrame") { callback({}); return; }
       if (!this.adBlockEnabled) { callback({}); return; }
 
       const url = details.url;
-      const cached = this.adBlockCache.get(url);
+      const sourceUrl = documentUrlFor(details);
+      // The engine's answer is a function of all three inputs, not the URL
+      // alone: the same script is third-party on one page and first-party on
+      // another, and `$domain=`/`$third-party` rules turn on exactly that.
+      // Keying on the URL alone let the first page to request a resource
+      // decide it for every other page in the session.
+      const key = `${details.resourceType} ${sourceOriginOf(sourceUrl)} ${url}`;
+      const cached = this.adBlockCache.get(key);
       if (cached) {
         if (cached.redirect) callback({ redirectURL: cached.redirect });
         else if (cached.block) callback({ cancel: true });
@@ -196,14 +398,14 @@ export class BrowserPanelManager {
       const settle = (dec: { block: boolean; redirect?: string } | null) => {
         if (settled) return;
         settled = true;
-        if (dec) this.rememberDecision(url, dec);
+        if (dec) this.rememberDecision(key, dec);
         if (dec?.redirect) callback({ redirectURL: dec.redirect });
         else if (dec?.block) callback({ cancel: true });
         else callback({});
       };
       // Fail-open after a short timeout: a blocker must never stall a page.
       const timer = setTimeout(() => settle(null), BrowserPanelManager.ADBLOCK_TIMEOUT_MS);
-      this.askSidecar(url, details.referrer, details.resourceType)
+      this.askSidecar(url, sourceUrl, details.resourceType)
         .then((dec) => { clearTimeout(timer); settle(dec); })
         .catch(() => { clearTimeout(timer); settle(null); });
     });
@@ -220,6 +422,9 @@ export class BrowserPanelManager {
     // session — fine here, the panel session has no other onBeforeRequest
     // listener (the app shell's youtubeEmbed handler is on defaultSession).
     panelSession().webRequest.onBeforeRequest(null);
+    // Same for the CSP pass: with blocking off there are no scriptlets to
+    // inject, so the site's Trusted Types enforcement goes straight back.
+    panelSession().webRequest.onHeadersReceived(null);
     this.adBlockRegistered = false;
     // Remove the cosmetic preload so newly-built tabs don't get it.
     if (this.cosmeticPreloadId) {
@@ -304,30 +509,8 @@ export class BrowserPanelManager {
   private async registerCosmeticPreload(): Promise<void> {
     if (this.cosmeticPreloadId) return;
     const preloadPath = path.join(app.getPath("userData"), "adblock-preload.cjs");
-    // Runs in the isolated world on every top frame. Sync IPC is answered
-    // from main's prewarmed cache, so it never blocks on the sidecar.
-    const preloadCode = `(function(){
-  if (window.self !== window.top) return;
-  var url = '';
-  try { url = location.href; } catch(e) {}
-  if (!url) return;
-  var c = null;
-  try { c = require('electron').ipcRenderer.sendSync('adblock:cosmetics', url); } catch(e) {}
-  if (!c) return;
-  if (c.stylesheet) {
-    var s = document.createElement('style');
-    s.textContent = c.stylesheet + '{display:none!important}';
-    (document.head || document.documentElement).appendChild(s);
-  }
-  if (c.script) {
-    var sc = document.createElement('script');
-    sc.textContent = c.script;
-    (document.documentElement || document.head).appendChild(sc);
-    sc.remove();
-  }
-})();`;
     try {
-      await fs.writeFile(preloadPath, preloadCode, "utf-8");
+      await fs.writeFile(preloadPath, COSMETIC_PRELOAD_SOURCE, "utf-8");
       const id = panelSession().registerPreloadScript({ type: "frame", filePath: preloadPath });
       this.cosmeticPreloadId = id;
     } catch (e) {

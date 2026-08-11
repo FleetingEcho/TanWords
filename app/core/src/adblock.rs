@@ -329,7 +329,30 @@ fn drain_allow(rx: &mut mpsc::UnboundedReceiver<WorkerMsg>) {
     }
 }
 
+/// Map a caller's resource-type token onto the ABP spelling adblock-rust
+/// understands.
+///
+/// **Load-bearing.** adblock-rust's `cpt_match_type` matches snake_case ABP
+/// tokens and silently falls back to `Other` for anything else. Electron's
+/// `webRequest` reports Chromium's camelCase spellings (`subFrame`,
+/// `mainFrame`, `cspReport`, `webSocket`), so passing them through verbatim
+/// typed every ad iframe as `Other` — `$subdocument` and `$websocket` rules
+/// (a large slice of EasyList, and most of uBO's ad-frame rules) never
+/// matched at all. The tokens that already agree (`script`, `image`,
+/// `stylesheet`, `font`, `object`, `media`, `ping`, `xhr`, `other`) pass
+/// through unchanged.
+fn normalize_rtype(rtype: &str) -> &str {
+    match rtype {
+        "mainFrame" => "main_frame",
+        "subFrame" => "sub_frame",
+        "cspReport" => "csp_report",
+        "webSocket" => "websocket",
+        other => other,
+    }
+}
+
 fn decide(engine: &Engine, url: &str, source: &str, rtype: &str) -> BlockDecision {
+    let rtype = normalize_rtype(rtype);
     // Never block a top-level document load — that would blank the page.
     if rtype.eq_ignore_ascii_case("document")
         || rtype.eq_ignore_ascii_case("main_frame")

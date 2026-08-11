@@ -78,6 +78,79 @@ async fn network_decisions() {
     assert_eq!(allowed, adblock::BlockDecision::Allow);
 }
 
+/// Electron's `webRequest` reports Chromium's camelCase resource types, but
+/// adblock-rust matches snake_case ABP tokens and silently degrades anything
+/// it doesn't recognise to `Other`. Without normalization every ad iframe
+/// arrived as `subFrame` → `Other`, so `$subdocument` rules never fired.
+/// Network required.
+#[tokio::test]
+#[ignore = "network: fetches the real filter lists"]
+async fn electron_resource_types_are_normalized() {
+    let engine = wait_for_network_engine().await;
+    // Matched by EasyList's `/ads_iframe.$subdocument` — a rule that applies
+    // to frames and nothing else, so it can tell the two spellings apart.
+    let url = "https://third-party.example.net/ads_iframe.html";
+    let source = "https://example.com/page";
+    assert_eq!(
+        engine.check(url, source, "sub_frame").await,
+        adblock::BlockDecision::Block,
+        "$subdocument rule should block the ABP spelling",
+    );
+    assert_eq!(
+        engine.check(url, source, "subFrame").await,
+        adblock::BlockDecision::Block,
+        "Electron's camelCase spelling must reach the same decision",
+    );
+    // Guards the premise: this URL is blocked *because* of its type, so the
+    // assertions above would still pass if normalization regressed to Other.
+    assert_eq!(
+        engine.check(url, source, "other").await,
+        adblock::BlockDecision::Allow,
+        "the rule is type-scoped — an untyped request is not blocked",
+    );
+}
+
+/// Domain-scoped rules (`$domain=youtube.com`, `$third-party`) are evaluated
+/// against the *source document*, so the caller must pass the real page URL.
+/// This is why the desktop panel reads the requesting frame's URL rather than
+/// `details.referrer`, which is empty or origin-only for most subresources —
+/// with no source, uBO's YouTube rules quietly stop matching. Network
+/// required.
+#[tokio::test]
+#[ignore = "network: fetches the real filter lists"]
+async fn domain_scoped_rules_need_the_source_document() {
+    let engine = wait_for_network_engine().await;
+    // uBO/EasyList: `||www.youtube.com/get_midroll_$domain=youtube.com`.
+    let url = "https://www.youtube.com/get_midroll_info?v=1";
+    assert_eq!(
+        engine.check(url, "https://www.youtube.com/watch?v=abc", "xhr").await,
+        adblock::BlockDecision::Block,
+        "midroll rule should match when the source document is the watch page",
+    );
+    assert_eq!(
+        engine.check(url, "", "xhr").await,
+        adblock::BlockDecision::Allow,
+        "premise: an empty source silently loses the $domain= match",
+    );
+}
+
+/// Poll until the engine's first real (non-allow-all) decision lands, then
+/// hand back the ready handle.
+async fn wait_for_network_engine() -> adblock::AdblockEngine {
+    let engine = adblock::engine().await;
+    for _ in 0..40 {
+        if engine
+            .check("https://ad.doubleclick.net/pixel.gif", "https://example.com/", "image")
+            .await
+            == adblock::BlockDecision::Block
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+    engine
+}
+
 /// Poll `cosmetics_for` until the engine build lands (cold starts serve
 /// allow-all while the lists fetch in the background).
 async fn wait_for_engine(url: &str) -> adblock::CosmeticResources {
