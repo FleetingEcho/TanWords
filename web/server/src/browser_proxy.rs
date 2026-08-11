@@ -135,6 +135,7 @@ pub async fn browser_proxy(
     // session, Host — stays behind.
     for name in [
         reqwest::header::CONTENT_TYPE,
+        reqwest::header::CONTENT_ENCODING,
         reqwest::header::RANGE,
         reqwest::header::ACCEPT_LANGUAGE,
     ] {
@@ -586,31 +587,31 @@ self.addEventListener('fetch', (event) => {
   if (u.protocol !== 'http:' && u.protocol !== 'https:') return; // data:/blob:/...
 
   event.respondWith((async () => {
-    // Recover the page's original URL (to resolve relative URLs the browser
-    // already collapsed onto our origin) and its block state. Prefer the
-    // referrer (fast, sync); fall back to the client's URL.
-    let page = pageOf(req.referrer);
-    if (!page || !page.u) {
-      const client = event.clientId ? await self.clients.get(event.clientId) : null;
-      page = client ? pageOf(client.url) : null;
-    }
-    const base = page && page.u ? page.u : null;
-    const blockSuffix = page && page.block0 ? '&block=0' : '';
-
-    let resolved;
-    if (u.origin === self.location.origin) {
-      // The browser resolved a runtime URL against OUR origin (the page is
-      // served by us). Re-resolve its path+query against the original page URL
-      // so it targets the upstream, then route through the proxy.
-      if (!base) return fetch(req);
-      try { resolved = new URL(u.pathname + u.search, base).href; }
-      catch (e) { return fetch(req); }
-    } else {
-      resolved = req.url; // cross-origin absolute → wrap directly
-    }
-
-    const proxied = PROXY_PATH + '?u=' + encodeURIComponent(resolved) + blockSuffix;
     try {
+      // Recover the page's original URL (to resolve relative URLs the browser
+      // already collapsed onto our origin) and its block state. Prefer the
+      // referrer (fast, sync); fall back to the client's URL.
+      let page = pageOf(req.referrer);
+      if (!page || !page.u) {
+        const client = event.clientId ? await self.clients.get(event.clientId) : null;
+        page = client ? pageOf(client.url) : null;
+      }
+      const base = page && page.u ? page.u : null;
+      const blockSuffix = page && page.block0 ? '&block=0' : '';
+
+      let resolved;
+      if (u.origin === self.location.origin) {
+        // The browser resolved a runtime URL against OUR origin (the page is
+        // served by us). Re-resolve its path+query against the original page URL
+        // so it targets the upstream, then route through the proxy.
+        if (!base) return fetch(req);
+        try { resolved = new URL(u.pathname + u.search, base).href; }
+        catch (e) { return fetch(req); }
+      } else {
+        resolved = req.url; // cross-origin absolute → wrap directly
+      }
+
+      const proxied = PROXY_PATH + '?u=' + encodeURIComponent(resolved) + blockSuffix;
       const init = {
         method: req.method,
         headers: req.headers,
@@ -619,8 +620,21 @@ self.addEventListener('fetch', (event) => {
         mode: 'same-origin',
       };
       if (req.method !== 'GET' && req.method !== 'HEAD') {
-        init.body = req.body;
-        init.duplex = 'half';
+        // Forward the body as bytes, NOT `req.body` (a ReadableStream).
+        // Stream request bodies fail outright in several Chromium builds
+        // (TypeError: Failed to fetch, request never sent) — that broke every
+        // POST through the proxy. Reading the body once and resending it as a
+        // Uint8Array works everywhere and is byte-exact. Body sizes here are
+        // API payloads (KBs); a huge upload would buffer in the SW, which is
+        // fine for a browser page.
+        init.body = new Uint8Array(await req.clone().arrayBuffer());
+        // `req.headers` is an immutable Headers; copy to a mutable one so the
+        // stale Content-Length can be dropped (the browser recomputes it from
+        // the new body). Deleting on the original throws "Headers are
+        // immutable", which failed every POST through the proxy.
+        const hdrs = new Headers(req.headers);
+        hdrs.delete('Content-Length');
+        init.headers = hdrs;
       }
       return await fetch(proxied, init);
     } catch (e) {
