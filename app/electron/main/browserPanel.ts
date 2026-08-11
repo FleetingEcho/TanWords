@@ -437,15 +437,31 @@ export class BrowserPanelManager {
    *  cache. Never blocks on the sidecar: a miss returns empty immediately
    *  (fail-open) and kicks off an async fetch + late injection. */
   cosmeticsForSync(url: string, wc: WebContents): { stylesheet: string; script: string } {
+    if (!this.adBlockEnabled) return { stylesheet: "", script: "" };
     const hit = this.cosmeticsCache.get(url);
     if (hit) return hit;
     void this.fetchCosmetics(url).then((c) => {
       if (!c) return;
+      // Re-check the toggle: this resolves a sidecar roundtrip later, and the
+      // user may have switched blocking off in between. Without this the late
+      // injection still fires, and it refills the cache `disableAdBlock` had
+      // just cleared.
+      if (!this.adBlockEnabled) return;
       this.rememberCosmetics(url, c);
       // The preload already ran and found nothing; a late executeJavaScript
       // injection still hides elements (CSS), and scriptlets are best-effort.
       const js = buildCosmeticInjectionJs(c);
-      if (js) void wc.executeJavaScript(js, true).catch(() => {});
+      if (!js) return;
+      // The tab may have been closed or LRU-discarded during the roundtrip.
+      // Calling into a destroyed WebContents throws *synchronously*, so the
+      // trailing .catch() would never be attached and it would surface as an
+      // unhandled rejection in main rather than being swallowed here.
+      try {
+        if (wc.isDestroyed()) return;
+        void wc.executeJavaScript(js, true).catch(() => {});
+      } catch {
+        // Destroyed between the check and the call.
+      }
     });
     return { stylesheet: "", script: "" };
   }

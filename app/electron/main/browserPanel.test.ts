@@ -371,7 +371,7 @@ describe("BrowserPanelManager cosmetics", () => {
 
   it("late-injects when a miss resolves with cosmetics", async () => {
     const { manager, internals } = setup();
-    const wc = { executeJavaScript: vi.fn(async () => {}) };
+    const wc = { executeJavaScript: vi.fn(async () => {}), isDestroyed: () => false };
     (manager as unknown as { getBackend: unknown }).getBackend = async () => ({ port: 1, token: "t" });
     const fetchMock = vi.fn(async () => ({
       ok: true,
@@ -389,6 +389,60 @@ describe("BrowserPanelManager cosmetics", () => {
     } finally {
       delete (globalThis as unknown as { fetch: unknown }).fetch;
     }
+  });
+
+  it("does not inject a late result once blocking has been switched off", async () => {
+    const { manager, internals } = setup();
+    const wc = { executeJavaScript: vi.fn(async () => {}), isDestroyed: () => false };
+    (manager as unknown as { getBackend: unknown }).getBackend = async () => ({ port: 1, token: "t" });
+    (manager as unknown as { adBlockEnabled: boolean }).adBlockEnabled = true;
+    (globalThis as unknown as { fetch: unknown }).fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ stylesheet: ".ad{", script: "console.log(1)" }),
+    }));
+
+    try {
+      manager.cosmeticsForSync("https://site.test/", wc as never);
+      // The user toggles the shield off while the sidecar roundtrip is in flight.
+      manager.setAdBlockEnabled(false);
+      await new Promise((r) => setTimeout(r, 30));
+      expect(wc.executeJavaScript).not.toHaveBeenCalled();
+      expect(internals.cosmeticsCache.size).toBe(0);
+    } finally {
+      delete (globalThis as unknown as { fetch: unknown }).fetch;
+    }
+  });
+
+  it("survives the tab being destroyed mid-roundtrip", async () => {
+    const { manager } = setup();
+    const wc = {
+      isDestroyed: () => true,
+      executeJavaScript: () => { throw new Error("Object has been destroyed"); },
+    };
+    (manager as unknown as { getBackend: unknown }).getBackend = async () => ({ port: 1, token: "t" });
+    (manager as unknown as { adBlockEnabled: boolean }).adBlockEnabled = true;
+    (globalThis as unknown as { fetch: unknown }).fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ stylesheet: ".ad{", script: "console.log(1)" }),
+    }));
+    const onRejection = vi.fn();
+    process.on("unhandledRejection", onRejection);
+    try {
+      manager.cosmeticsForSync("https://site.test/", wc as never);
+      await new Promise((r) => setTimeout(r, 40));
+      expect(onRejection).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", onRejection);
+      delete (globalThis as unknown as { fetch: unknown }).fetch;
+    }
+  });
+
+  it("returns nothing at all while blocking is off", () => {
+    const { manager, internals } = setup();
+    internals.cosmeticsCache.set("https://site.test/", { stylesheet: ".ad{", script: "x" });
+    (manager as unknown as { adBlockEnabled: boolean }).adBlockEnabled = false;
+    expect(manager.cosmeticsForSync("https://site.test/", { isDestroyed: () => false } as never))
+      .toEqual({ stylesheet: "", script: "" });
   });
 
   it("clears the cosmetics cache on disable", () => {
