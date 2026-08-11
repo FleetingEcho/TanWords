@@ -129,17 +129,47 @@ pub async fn browser_proxy(
     }
     // Forward only the headers the upstream actually needs to serve the page:
     // Content-Type (a POST body is useless without it), Range (media
-    // streaming/seeking), Origin (APIs that check it — videoplayback, some SPA
-    // backends), Accept-Language (localized content). Everything else — our
-    // proxy cookie, the session, Host — stays behind.
+    // streaming/seeking), Accept-Language (localized content), and the page's
+    // own Google/YouTube client headers (visitor id, client name/version) so
+    // API calls stay recognizable. Everything else — our proxy cookie, the
+    // session, Host — stays behind.
     for name in [
         reqwest::header::CONTENT_TYPE,
         reqwest::header::RANGE,
-        reqwest::header::ORIGIN,
         reqwest::header::ACCEPT_LANGUAGE,
     ] {
         if let Some(v) = req_headers.get(&name) {
             up_headers.insert(name, v.clone());
+        }
+    }
+    for (name, value) in req_headers.iter() {
+        let n = name.as_str();
+        if n.starts_with("x-goog-") || n.starts_with("x-youtube-") {
+            up_headers.insert(name.clone(), value.clone());
+        }
+    }
+    // The proxied page runs on OUR origin, so the browser stamps every
+    // request with `Origin: https://<our host>`. YouTube rejects youtubei API
+    // calls (and Google's WAA rejects GenerateIT) whose Origin is a foreign
+    // host — 403. A reverse proxy must present the *target site's* own origin
+    // so upstream believes the page is same-site with it.
+    if let Some(src) = &source_url {
+        if let Ok(parsed) = url::Url::parse(src) {
+            let origin = match (parsed.scheme(), parsed.host_str(), parsed.port_or_known_default()) {
+                ("http" | "https", Some(host), Some(port))
+                    if !(parsed.scheme() == "http" && port == 80)
+                        && !(parsed.scheme() == "https" && port == 443) =>
+                {
+                    format!("{}://{}:{}", parsed.scheme(), host, port)
+                }
+                (scheme @ ("http" | "https"), Some(host), _) => format!("{scheme}://{host}"),
+                _ => String::new(),
+            };
+            if !origin.is_empty() {
+                if let Ok(v) = HeaderValue::from_str(&origin) {
+                    up_headers.insert(reqwest::header::ORIGIN, v);
+                }
+            }
         }
     }
 
