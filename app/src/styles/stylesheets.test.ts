@@ -32,6 +32,21 @@ const readerCss = readFileSync(join(STYLES_DIR, "reader-content.css"), "utf8");
 const tiptapCss = readFileSync(join(STYLES_DIR, "tiptap-editor.css"), "utf8");
 const rawMarkdownCss = readFileSync(join(STYLES_DIR, "raw-markdown-editor.css"), "utf8");
 const themeCss = readFileSync(join(STYLES_DIR, "theme-vars.css"), "utf8");
+const terminalCss = readFileSync(join(STYLES_DIR, "terminal-tool.css"), "utf8");
+
+describe("terminal fullscreen canvas", () => {
+  it("paints the active theme behind the fullscreen toolbar", () => {
+    const fullscreenRule = terminalCss.match(/\.terminal-tool-outer:fullscreen\s*\{([^}]*)\}/s)?.[1];
+    expect(fullscreenRule).toContain("background-color: hsl(var(--background))");
+  });
+
+  it("overrides WebGL's inline viewport fill so glass remains visible", () => {
+    const viewportRule = terminalCss.match(
+      /\.terminal-tool-shell \.xterm \.xterm-viewport\s*\{([^}]*)\}/s,
+    )?.[1];
+    expect(viewportRule).toContain("background-color: transparent !important");
+  });
+});
 
 describe("default light palette", () => {
   const light = themeCss.slice(themeCss.indexOf(":root {"), themeCss.indexOf(".dark {"));

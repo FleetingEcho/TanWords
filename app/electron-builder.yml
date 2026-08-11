@@ -140,6 +140,7 @@ mac:
   # see the packaging report for what still needs a real Mac to check.
   binaries:
     - core/tanwords-core
+    - core/tanwords-pty
 
 linux:
   target:

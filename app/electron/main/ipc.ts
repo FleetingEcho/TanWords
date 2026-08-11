@@ -3,7 +3,8 @@
  *  a native WebContentsView-based panel (see browserPanel.ts). `http:*` is the
  *  streaming case and lives in its own module (see http.ts). */
 import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, type WebContents } from "electron";
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { UpdateInfoPayload } from "./updater";
 import type { BrowserPanelManager, PanelBounds } from "./browserPanel";
@@ -12,6 +13,7 @@ import { abortFetch, startFetch } from "./http";
 import { rememberWindowBackground } from "./windowBackground";
 import {
   terminalClose,
+  terminalDefaultShell,
   terminalResize,
   terminalSpawn,
   terminalWrite,
@@ -126,9 +128,15 @@ async function dispatch(
     // PTY terminal sessions (desktop Terminal tool). Spawn resolves with the
     // {"id","shell","cwd","pid"} handshake once the shell is ready; output
     // and exit arrive on the "pty:data" / "pty:exit" broadcast events.
+    case "pty_default_shell":
+      return terminalDefaultShell();
     case "pty_spawn": {
-      const { cols, rows } = (args ?? {}) as { cols?: number; rows?: number };
-      return terminalSpawn({ cols, rows });
+      const { cols, rows, shellPath } = (args ?? {}) as {
+        cols?: number;
+        rows?: number;
+        shellPath?: string;
+      };
+      return terminalSpawn({ cols, rows, shellPath });
     }
     case "pty_write": {
       const { id, data } = (args ?? {}) as { id: string; data?: string };
@@ -331,6 +339,21 @@ async function dispatch(
     }
     case "clipboard:readText": {
       return clipboard.readText();
+    }
+    case "clipboard:readForTerminal": {
+      // A shell cannot consume image pixels directly. Materialize clipboard
+      // images as temporary PNGs and let the renderer paste the resulting path,
+      // matching what desktop terminals do for dragged/pasted files.
+      const image = clipboard.readImage();
+      if (!image.isEmpty()) {
+        const directory = path.join(app.getPath("temp"), "tanwords-terminal-paste");
+        await mkdir(directory, { recursive: true });
+        const imagePath = path.join(directory, `clipboard-${Date.now()}-${randomUUID()}.png`);
+        await writeFile(imagePath, image.toPNG());
+        return { kind: "image", path: imagePath };
+      }
+      const text = clipboard.readText();
+      return text ? { kind: "text", text } : null;
     }
 
     case "process:relaunch": {

@@ -21,9 +21,26 @@
 //! desktop `pty` feature, web/server builds never compile it.
 
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
+use std::sync::mpsc;
+
+enum Event {
+    HostFrame(Frame),
+    HostClosed,
+    PtyData(Vec<u8>),
+    PtyClosed,
+}
 
 fn main() {
+    // Settings uses this probe so its empty/default state can show the exact
+    // executable this same helper would launch. Keeping the answer here avoids
+    // duplicating the Windows Git Bash preference in Electron or the renderer.
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--print-default-shell")) {
+        let (_, shell) = shell_command();
+        println!("{shell}");
+        return;
+    }
+
     let initial_cols = env_u16("PTY_COLS", 80);
     let initial_rows = env_u16("PTY_ROWS", 24);
 
@@ -41,10 +58,9 @@ fn main() {
         }
     };
 
-    // Build a default-prog command: portable-pty resolves the user's login
-    // shell ($SHELL on unix, %ComSpec% / cmd.exe on Windows) and re-executes
-    // it as a login shell, mirroring a fresh terminal session.
-    let mut cmd = CommandBuilder::new_default_prog();
+    // Unix follows the user's login shell. Windows prefers Git Bash when Git
+    // for Windows is installed, then falls back to the regular system shell.
+    let (mut cmd, shell) = shell_command();
     // A genuine xterm-compatible terminal: colour programmes key off TERM to
     // decide whether to emit ANSI colour/box-drawing sequences. Honour the
     // ambient TERM if set (the Electron host sets none and lands on the
@@ -52,9 +68,6 @@ fn main() {
     // non-querying shell).
     let term = std::env::var("TERM").unwrap_or_else(|_| "xterm-256color".to_string());
     cmd.env("TERM", &term);
-    // Capture the resolved shell before the builder is consumed by spawn.
-    let shell = cmd.get_shell();
-
     let mut child = match pair.slave.spawn_command(cmd) {
         Ok(child) => child,
         Err(e) => {
@@ -63,23 +76,14 @@ fn main() {
         }
     };
 
-    // We need a real file descriptor for this pty so the event loop can poll
-    // on it next to stdin. Unix PTYs expose one; Windows conpty does not (it
-    // is a handle-based API), in which case we bail with a clear message. The
-    // tanwords-pty desktop target today is Linux/macOS; Windows PTY support is
-    // a follow-up and would replace this fd path rather than grow beside it.
     let master = pair.master;
-    let pty_fd = match master.as_raw_fd() {
-        Some(fd) => fd,
-        None => {
-            eprintln!("[tanwords-pty] conpty/as_raw_fd unsupported on this platform yet");
+    let reader = match master.try_clone_reader() {
+        Ok(reader) => reader,
+        Err(e) => {
+            eprintln!("[tanwords-pty] try_clone_reader failed: {e}");
             std::process::exit(1);
         }
     };
-    let stdin_fd = libc::STDIN_FILENO;
-
-    // Split the pty into a writable handle (keyboard input) while keeping
-    // `master` alive for resize + polling on pty_fd.
     let mut writer = match master.take_writer() {
         Ok(w) => w,
         Err(e) => {
@@ -92,90 +96,49 @@ fn main() {
     let mut out = stdout.lock();
     let cwd = home_dir();
     let pid = child.process_id().unwrap_or(0);
-    let handshake = format!(
-        "{{\"shell\":\"{}\",\"cwd\":\"{}\",\"pid\":{}}}",
-        shell.replace('"', "\\\""),
-        cwd.replace('"', "\\\""),
-        pid
-    );
+    // serde_json is important on Windows: both shell and cwd normally contain
+    // backslashes, which cannot safely be interpolated into JSON by hand.
+    let handshake = serde_json::json!({ "shell": shell, "cwd": cwd, "pid": pid }).to_string();
     write_frame(&mut out, b'H', handshake.as_bytes());
     let _ = out.flush();
 
-    let mut framed = FramedDecoder::new();
-    let mut inbuf = vec![0u8; 8192];
-    let mut ptybuf = vec![0u8; 8192];
-    // Minimal state: we keep asking ourselves whether either side has closed.
+    // Unix PTYs and Windows ConPTY pipes both expose portable blocking readers.
+    // Read the host and PTY on separate threads, then serialize mutations and
+    // output here. This replaces the old Unix-only poll(2) loop.
+    let (tx, rx) = mpsc::channel();
+    spawn_host_reader(tx.clone());
+    spawn_pty_reader(reader, tx);
+
     let mut running = true;
 
     while running {
-        // Block until the user is typing or the pty has more than enough.
-        let mut pfds = [
-            libc::pollfd { fd: stdin_fd, events: libc::POLLIN, revents: 0 },
-            libc::pollfd { fd: pty_fd, events: libc::POLLIN | libc::POLLHUP, revents: 0 },
-        ];
-        let rc = unsafe { libc::poll(pfds.as_mut_ptr(), 2, -1) };
-        if rc < 0 {
-            if io_error_would_block() {
-                continue;
-            }
-            break; // poll() error: nothing sane to do but exit
-        }
-        if rc == 0 {
-            continue; // timeout (only reachable with a non-negative timeout)
-        }
-
-        // ── stdin: host commands ────────────────────────────────
-        if pfds[0].revents & (libc::POLLIN | libc::POLLHUP) != 0 {
-            let n = unsafe { libc::read(stdin_fd, inbuf.as_mut_ptr() as *mut libc::c_void, inbuf.len()) };
-            if n <= 0 {
-                running = false; // parent closed our stdin -> session over
-            } else {
-                for frame in framed.ingest(&inbuf[..n as usize]) {
-                    match frame.op {
-                        b'I' => {
-                            let _ = writer.write_all(&frame.payload);
-                            let _ = writer.flush();
-                        }
-                        b'R' => {
-                            if frame.payload.len() >= 8 {
-                                let cols = u32::from_le_bytes([
-                                    frame.payload[0], frame.payload[1], frame.payload[2], frame.payload[3],
-                                ]) as u16;
-                                let rows = u32::from_le_bytes([
-                                    frame.payload[4], frame.payload[5], frame.payload[6], frame.payload[7],
-                                ]) as u16;
-                                let _ = master.resize(PtySize {
-                                    rows,
-                                    cols,
-                                    pixel_width: 0,
-                                    pixel_height: 0,
-                                });
-                            }
-                        }
-                        b'C' => {
-                            // Requested shutdown: kill the shell so it can't
-                            // linger, then wind down below.
-                            let _ = child.kill();
-                            running = false;
-                        }
-                        _ => eprintln!("[tanwords-pty] unknown opcode {}", frame.op),
-                    }
+        match rx.recv() {
+            // ── stdin: host commands ────────────────────────────────
+            Ok(Event::HostFrame(frame)) => match frame.op {
+                b'I' => {
+                    let _ = writer.write_all(&frame.payload);
+                    let _ = writer.flush();
                 }
-            }
-        }
+                b'R' if frame.payload.len() >= 8 => {
+                    let cols = u32::from_le_bytes(frame.payload[0..4].try_into().unwrap()) as u16;
+                    let rows = u32::from_le_bytes(frame.payload[4..8].try_into().unwrap()) as u16;
+                    let _ = master.resize(PtySize {
+                        rows,
+                        cols,
+                        pixel_width: 0,
+                        pixel_height: 0,
+                    });
+                }
+                b'C' => running = false,
+                _ => eprintln!("[tanwords-pty] unknown opcode {}", frame.op),
+            },
 
-        // ── pty: shell output ──────────────────────────────────
-        if pfds[1].revents != 0 {
-            let n = unsafe { libc::read(pty_fd, ptybuf.as_mut_ptr() as *mut libc::c_void, ptybuf.len()) };
-            if n > 0 {
-                write_frame(&mut out, b'D', &ptybuf[..n as usize]);
-                // stdout is piped (block-buffered); flush each frame or the
-                // host would see output only on exit.
+            // ── pty: shell output ──────────────────────────────────
+            Ok(Event::PtyData(data)) => {
+                write_frame(&mut out, b'D', &data);
                 let _ = out.flush();
-            } else {
-                // EOF / hangup: the shell is gone.
-                running = false;
             }
+            Ok(Event::HostClosed | Event::PtyClosed) | Err(_) => running = false,
         }
     }
 
@@ -187,16 +150,125 @@ fn main() {
     let _ = child.wait();
 }
 
-/// True if the global errno indicates a spurious `poll` interruption.
-fn io_error_would_block() -> bool {
-    matches!(
-        io_errno(),
-        libc::EINTR | libc::EAGAIN
-    )
+fn spawn_host_reader(tx: mpsc::Sender<Event>) {
+    std::thread::spawn(move || {
+        let mut input = io::stdin().lock();
+        let mut decoder = FramedDecoder::new();
+        let mut buf = [0u8; 8192];
+        loop {
+            match input.read(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    for frame in decoder.ingest(&buf[..n]) {
+                        if tx.send(Event::HostFrame(frame)).is_err() {
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+        let _ = tx.send(Event::HostClosed);
+    });
 }
 
-fn io_errno() -> i32 {
-    std::io::Error::last_os_error().raw_os_error().unwrap_or(0)
+fn spawn_pty_reader(mut reader: Box<dyn Read + Send>, tx: mpsc::Sender<Event>) {
+    std::thread::spawn(move || {
+        let mut buf = [0u8; 8192];
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(n) if tx.send(Event::PtyData(buf[..n].to_vec())).is_err() => return,
+                Ok(_) => {}
+            }
+        }
+        let _ = tx.send(Event::PtyClosed);
+    });
+}
+
+#[cfg(not(windows))]
+fn shell_command() -> (CommandBuilder, String) {
+    if let Some(path) = configured_shell() {
+        let shell = path.to_string_lossy().into_owned();
+        return (CommandBuilder::new(path), shell);
+    }
+    let cmd = CommandBuilder::new_default_prog();
+    let shell = cmd.get_shell();
+    (cmd, shell)
+}
+
+#[cfg(windows)]
+fn shell_command() -> (CommandBuilder, String) {
+    if let Some(path) = configured_shell() {
+        return windows_shell_command(path);
+    }
+    if let Some(path) = find_git_bash() {
+        return windows_shell_command(path);
+    }
+
+    let cmd = CommandBuilder::new_default_prog();
+    let shell = cmd.get_shell();
+    (cmd, shell)
+}
+
+fn configured_shell() -> Option<std::path::PathBuf> {
+    std::env::var_os("PTY_SHELL")
+        .filter(|value| !value.is_empty())
+        .map(std::path::PathBuf::from)
+}
+
+#[cfg(windows)]
+fn windows_shell_command(path: std::path::PathBuf) -> (CommandBuilder, String) {
+    let shell = path.to_string_lossy().into_owned();
+    let mut cmd = CommandBuilder::new(&path);
+    if path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case("bash.exe"))
+    {
+        cmd.arg("--login");
+        cmd.arg("-i");
+        cmd.env("CHERE_INVOKING", "1");
+    }
+    (cmd, shell)
+}
+
+#[cfg(windows)]
+fn find_git_bash() -> Option<std::path::PathBuf> {
+    use std::path::{Path, PathBuf};
+
+    let mut candidates = Vec::new();
+    for key in ["ProgramFiles", "ProgramFiles(x86)"] {
+        if let Some(base) = std::env::var_os(key) {
+            candidates.push(PathBuf::from(base).join("Git").join("bin").join("bash.exe"));
+        }
+    }
+    if let Some(base) = std::env::var_os("LOCALAPPDATA") {
+        candidates.push(
+            PathBuf::from(base)
+                .join("Programs")
+                .join("Git")
+                .join("bin")
+                .join("bash.exe"),
+        );
+    }
+
+    // git.exe is usually on PATH through Git's cmd directory while bash.exe
+    // is not. Derive the installation root from every matching git.exe.
+    if let Ok(output) = std::process::Command::new("where.exe")
+        .arg("git.exe")
+        .output()
+    {
+        if output.status.success() {
+            for line in String::from_utf8_lossy(&output.stdout).lines() {
+                let git = Path::new(line.trim());
+                if let Some(root) = git.parent().and_then(Path::parent) {
+                    candidates.push(root.join("bin").join("bash.exe"));
+                }
+            }
+        }
+    }
+
+    candidates.into_iter().find(|path| path.is_file())
 }
 
 /// Length-prefixed frame: `[op][len u32 LE][payload]`.
@@ -251,7 +323,10 @@ impl FramedDecoder {
                 }
                 self.op = Some(self.payload[0]);
                 self.payload_len = u32::from_le_bytes([
-                    self.payload[1], self.payload[2], self.payload[3], self.payload[4],
+                    self.payload[1],
+                    self.payload[2],
+                    self.payload[3],
+                    self.payload[4],
                 ]) as usize;
                 self.payload.drain(..5);
             }

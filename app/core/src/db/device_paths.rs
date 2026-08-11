@@ -2,9 +2,9 @@
 //!
 //! `user_settings` travels: on a Turso profile the same row reaches every
 //! machine signed into the account. That is right for preferences and wrong for
-//! paths. The mounted local-docs vault and the music library are the two
+//! paths. The mounted local-docs vault, music library, and terminal shell are
 //! settings whose value is a filesystem path, so syncing them means the last
-//! machine to write wins and the other two open to a folder that does not exist
+//! machine to write wins and the other two open a path that does not exist
 //! — the failure the user sees is "my local folder keeps resetting".
 //!
 //! So these keys are stored per device instead: `<key>::<device_id>`, where
@@ -19,7 +19,11 @@ use crate::{db, AppState};
 /// Keys whose value is a path, so they must not be shared between machines.
 /// A closed list rather than a flag on the call: the fallback below only makes
 /// sense for values that can be checked against the filesystem.
-const DEVICE_PATH_KEYS: &[&str] = &["localdocs.root", "music_folder_path"];
+const DEVICE_PATH_KEYS: &[&str] = &[
+    "localdocs.root",
+    "music_folder_path",
+    "terminal_shell_path",
+];
 
 /// A JSON-encoded string setting as its plain value; anything else unchanged.
 fn unquote(value: &str) -> String {
@@ -104,6 +108,7 @@ mod tests {
         assert!(scoped_key("theme").is_err());
         assert!(scoped_key("localdocs.root").is_ok());
         assert!(scoped_key("music_folder_path").is_ok());
+        assert!(scoped_key("terminal_shell_path").is_ok());
     }
 
     #[test]

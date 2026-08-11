@@ -34,20 +34,16 @@ struct Frame {
 /// Spawn a thread that frames the child's stdout and pushes one frame at a
 /// time down the channel, so the test can poll with a hard timeout instead of
 /// blocking forever.
-fn spawn_reader<R: std::io::Read + Send + 'static>(
-    mut r: R,
-) -> mpsc::Receiver<Frame> {
+fn spawn_reader<R: std::io::Read + Send + 'static>(mut r: R) -> mpsc::Receiver<Frame> {
     let (tx, rx) = mpsc::channel();
-    std::thread::spawn(move || {
-        loop {
-            match next_frame(&mut r) {
-                Some(f) => {
-                    if tx.send(f).is_err() {
-                        break;
-                    }
+    std::thread::spawn(move || loop {
+        match next_frame(&mut r) {
+            Some(f) => {
+                if tx.send(f).is_err() {
+                    break;
                 }
-                None => break,
             }
+            None => break,
         }
     });
     rx
@@ -98,9 +94,10 @@ fn pty_echo_loop_roundtrip() {
     // 1) Handshake.
     let handshake = rx.recv_timeout(deadline(5)).expect("handshake frame");
     assert_eq!(handshake.op, b'H', "first frame must be the handshake");
-    let hs = String::from_utf8_lossy(&handshake.payload).into_owned();
+    let hs: serde_json::Value = serde_json::from_slice(&handshake.payload)
+        .expect("handshake payload must be valid JSON on every platform");
     assert!(
-        hs.contains("\"shell\"") && hs.contains("\"cwd\"") && hs.contains("\"pid\""),
+        hs.get("shell").is_some() && hs.get("cwd").is_some() && hs.get("pid").is_some(),
         "handshake should be {{shell,cwd,pid}} JSON: {hs}"
     );
 
@@ -135,9 +132,7 @@ fn pty_echo_loop_roundtrip() {
     );
 
     // 3) Close and expect the exit frame.
-    stdin
-        .write_all(&frame(b'C', &[]))
-        .expect("write close");
+    stdin.write_all(&frame(b'C', &[])).expect("write close");
     stdin.flush().ok();
 
     let mut saw_exit = false;

@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { ImageMinus, TerminalSquare } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { ImageReducerTool } from "./ImageReducerTool";
-import { TerminalTool } from "./TerminalTool";
+import { TerminalWorkspace } from "./TerminalWorkspace";
 import { hostCapabilities } from "@/platform";
 
 /** The set of utility tools the Tools page offers. Each entry maps a card on
@@ -21,80 +21,97 @@ interface ToolDef {
 
 const TOOLS: ToolDef[] = [
   {
-    id: "image-reducer",
-    titleKey: "toolsPage.imageReducer.title",
-    descKey: "toolsPage.imageReducer.description",
-    Icon: ImageMinus,
-    available: true,
-  },
-  {
     id: "terminal",
     titleKey: "toolsPage.terminal.title",
     descKey: "toolsPage.terminal.description",
     Icon: TerminalSquare,
     available: hostCapabilities.terminal,
   },
+  {
+    id: "image-reducer",
+    titleKey: "toolsPage.imageReducer.title",
+    descKey: "toolsPage.imageReducer.description",
+    Icon: ImageMinus,
+    available: true,
+  },
 ];
 
-export function ToolsPage() {
+interface ToolsPageProps {
+  /**
+   * Navigation hides this page instead of unmounting it. That keeps an open
+   * tool (most importantly its live terminal process and scrollback) alive.
+   */
+  visible?: boolean;
+}
+
+export function ToolsPage({ visible = true }: ToolsPageProps) {
   const t = useT();
   const [active, setActive] = useState<ToolId | null>(null);
 
-  // The page is its own tiny router: a card grid, or the open tool. State is
-  // local because the choice is page-scoped — leaving Tools and coming back
-  // should land on the grid again, not on a half-finished tool.
+  // The page is its own tiny router: a card grid, or the open tool. App keeps
+  // this component mounted after its first visit, so ordinary navigation does
+  // not reset the active tool. The tool's Back button is the explicit close.
+  let content: React.ReactNode;
   if (active === "image-reducer") {
-    return <ImageReducerTool onBack={() => setActive(null)} />;
-  }
-  if (active === "terminal") {
-    return <TerminalTool onBack={() => setActive(null)} />;
-  }
+    content = <ImageReducerTool onBack={() => setActive(null)} />;
+  } else if (active === "terminal") {
+    content = <TerminalWorkspace onBack={() => setActive(null)} visible={visible} />;
+  } else {
+    const visibleTools = TOOLS.filter((tool) => tool.available);
+    content = (
+      <div className="p-4 sm:p-6 space-y-5 animate-fade-in w-full">
+        <div>
+          <h1 className="text-2xl font-bold">{t("toolsPage.title")}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t("toolsPage.subtitle")}</p>
+        </div>
 
-  const visibleTools = TOOLS.filter((tool) => tool.available);
+        {/* Responsive grid: one column on phones, two on tablets, three on
+            desktops. The cards are buttons so the whole tile is the click
+            target — bigger on touch, no "Open" button needed. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {visibleTools.map((tool) => (
+            <button
+              key={tool.id}
+              type="button"
+              onClick={() => setActive(tool.id)}
+              // Hover marks the card, it doesn't repaint it. `--accent` is a
+              // bright saturated hue in most themes (it is the colour meant to
+              // sit *under* accent-foreground), so filling a whole card with it
+              // washes the title and description out to nothing — the same trap
+              // the sidebar's NavButton documents. The quiet `--muted` fill plus
+              // an accent border says "this one" while leaving the text alone.
+              className="group text-left bg-card border border-border rounded-2xl p-5 transition-colors hover:border-primary/40 hover:bg-[hsl(var(--muted))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <div className="flex items-center gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <tool.Icon className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="font-semibold truncate">{t(tool.titleKey)}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 transition-colors group-hover:text-primary">
+                    {t("toolsPage.open")} →
+                  </p>
+                </div>
+              </div>
+              <p className="mt-3 text-sm text-muted-foreground leading-relaxed line-clamp-2">
+                {t(tool.descKey)}
+              </p>
+            </button>
+          ))}
+        </div>
+
+      </div>
+    );
+  }
 
   return (
-    <div className="p-4 sm:p-6 space-y-5 animate-fade-in w-full">
-      <div>
-        <h1 className="text-2xl font-bold">{t("toolsPage.title")}</h1>
-        <p className="text-sm text-muted-foreground mt-1">{t("toolsPage.subtitle")}</p>
-      </div>
-
-      {/* Responsive grid: one column on phones, two on tablets, three on
-          desktops. The cards are buttons so the whole tile is the click
-          target — bigger on touch, no "Open" button needed. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {visibleTools.map((tool) => (
-          <button
-            key={tool.id}
-            type="button"
-            onClick={() => setActive(tool.id)}
-            // Hover marks the card, it doesn't repaint it. `--accent` is a
-            // bright saturated hue in most themes (it is the colour meant to
-            // sit *under* accent-foreground), so filling a whole card with it
-            // washes the title and description out to nothing — the same trap
-            // the sidebar's NavButton documents. The quiet `--muted` fill plus
-            // an accent border says "this one" while leaving the text alone.
-            className="group text-left bg-card border border-border rounded-2xl p-5 transition-colors hover:border-primary/40 hover:bg-[hsl(var(--muted))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <div className="flex items-center gap-3">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <tool.Icon className="h-5 w-5" />
-              </span>
-              <div className="min-w-0">
-                <p className="font-semibold truncate">{t(tool.titleKey)}</p>
-                <p className="text-xs text-muted-foreground mt-0.5 transition-colors group-hover:text-primary">
-                  {t("toolsPage.open")} →
-                </p>
-              </div>
-            </div>
-            <p className="mt-3 text-sm text-muted-foreground leading-relaxed line-clamp-2">
-              {t(tool.descKey)}
-            </p>
-          </button>
-        ))}
-      </div>
-
-      <p className="text-xs text-muted-foreground pt-1">{t("toolsPage.comingSoon")}</p>
+    <div
+      data-testid="tools-page-host"
+      hidden={!visible}
+      aria-hidden={!visible}
+      className={visible ? "h-full w-full" : "hidden"}
+    >
+      {content}
     </div>
   );
 }

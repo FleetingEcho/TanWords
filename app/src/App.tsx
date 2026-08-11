@@ -67,6 +67,14 @@ const PageFallback = () => (
   </div>
 );
 
+// Web notifications belong above mobile browser chrome and the floating dock;
+// the desktop shell keeps its established lower-right placement.
+const APP_TOAST_POSITION = isWebHost ? "top-center" : "bottom-right";
+
+function AppToaster() {
+  return <Toaster position={APP_TOAST_POSITION} richColors closeButton />;
+}
+
 /** Mounted only inside a fully committed startup destination. The splash reads
  * both the durable dataset flag and this event, so it cannot miss readiness if
  * this layout effect runs before its passive listener is attached. Keeping the
@@ -96,6 +104,9 @@ function App() {
   const [authState, setAuthState] = React.useState<AuthState>(isWebHost ? "checking" : "ready");
   const [wordCount, setWordCount] = React.useState(0);
   const [selectionToolsReady, setSelectionToolsReady] = React.useState(false);
+  // Lazy-load Tools on first use, then retain its component tree. Its own Back
+  // button remains the explicit lifecycle boundary for a live terminal.
+  const toolsVisited = React.useRef(false);
 
   // Selection/Ask pulls in gesture handling, AI actions and its answer panel,
   // but renders nothing until the user selects text. Keep it out of the first
@@ -286,6 +297,7 @@ function App() {
           * same LockScreen survives when status resolves; SplashScreen alone
           * owns the reveal animation, avoiding two overlapping fade timers. */}
         <LockScreen pending />
+        <AppToaster />
       </>
     );
   }
@@ -298,16 +310,19 @@ function App() {
           * startup cover until those values are committed too; otherwise the
           * default specimen can paint for one frame before the wallpaper. */}
         {settingsLoaded && <StartupReadySignal />}
-        <Toaster position="bottom-right" richColors closeButton />
+        <AppToaster />
       </>
     );
   }
 
   if (authState === "checking") {
     return (
-      <div className="app-viewport-height flex items-center justify-center">
-        <div className="w-8 h-8 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
-      </div>
+      <>
+        <div className="app-viewport-height flex items-center justify-center">
+          <div className="w-8 h-8 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+        </div>
+        <AppToaster />
+      </>
     );
   }
 
@@ -317,12 +332,13 @@ function App() {
         <AppBackground />
         <AuthGate />
         <StartupReadySignal />
-        <Toaster position="bottom-right" richColors closeButton />
+        <AppToaster />
       </>
     );
   }
 
   const page = currentPage();
+  if (page === "tools") toolsVisited.current = true;
   const wordId = currentWordId();
   // Dashboard owns startup readiness because its first useful paint depends on
   // a real DB query (including Turso initialization/sync when configured). Web
@@ -352,7 +368,9 @@ function App() {
       case "settings":
         return <SettingsPage />;
       case "tools":
-        return <ToolsPage />;
+        // Tools owns a persistent host below; it must never enter the keyed
+        // route slot, whose unmount semantics would terminate a live PTY.
+        return null;
       case "feeds":
       default:
         return <FeedsPage />;
@@ -367,12 +385,21 @@ function App() {
       onNavigate={(id) => navigate(id as any)}
       wordCount={wordCount}
     >
-      {/* Keyed on the page so switching pages shows the spinner rather than
-          holding the previous page mounted while the next chunk loads. */}
-      <React.Suspense key={page} fallback={<PageFallback />}>
-        {renderPage()}
-        {!dashboardOwnsStartupReadiness && <StartupReadySignal />}
-      </React.Suspense>
+      {toolsVisited.current && (
+        <React.Suspense fallback={page === "tools" ? <PageFallback /> : null}>
+          <ToolsPage visible={page === "tools"} />
+          {page === "tools" && <StartupReadySignal />}
+        </React.Suspense>
+      )}
+      {page !== "tools" && (
+        /* Keyed on the page so switching ordinary pages shows the spinner.
+           Tools is hosted separately because its running processes survive
+           route navigation. */
+        <React.Suspense key={page} fallback={<PageFallback />}>
+          {renderPage()}
+          {!dashboardOwnsStartupReadiness && <StartupReadySignal />}
+        </React.Suspense>
+      )}
     </MainLayout>
     {wordModalWord && (
       <React.Suspense fallback={null}>
@@ -394,7 +421,7 @@ function App() {
         <PodcastPlayerBar />
       </React.Suspense>
     )}
-    <Toaster position="bottom-right" richColors closeButton />
+    <AppToaster />
     </>
   );
 }

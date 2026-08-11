@@ -4106,7 +4106,6 @@ dependencies = [
  "hmac",
  "ignore",
  "keyring",
- "libc",
  "libloading",
  "libsql",
  "lofty",

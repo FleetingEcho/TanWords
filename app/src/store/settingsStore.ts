@@ -3,6 +3,8 @@ import { isDesktopHost } from "@/platform";
 import {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR, DEFAULT_BANNER_POSITION,
   DEFAULT_LAYOUT_MODE, DEFAULT_AUTO_LOCK_MINUTES,
+  DEFAULT_TERMINAL_BACKGROUND_BLUR, DEFAULT_TERMINAL_BACKGROUND_OPACITY, DEFAULT_TERMINAL_TRANSPARENT,
+  DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE,
   DOCUMENT_TEXT_COLOR_RE,
   type Theme, type SidebarTabId, type TopBarItemId, type RssTabSelection, type LayoutMode,
   type BannerPosition,
@@ -24,6 +26,8 @@ export {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS,
   DEFAULT_HIGHLIGHT_COLOR, HIGHLIGHT_PRESETS, DEFAULT_BANNER_POSITION, DEFAULT_LAYOUT_MODE,
   AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES,
+  DEFAULT_TERMINAL_BACKGROUND_BLUR, DEFAULT_TERMINAL_BACKGROUND_OPACITY, DEFAULT_TERMINAL_TRANSPARENT,
+  DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE,
 } from "./settings/types";
 export type { SettingsState } from "./settings/state";
 
@@ -58,6 +62,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   appBackgroundBlur: 20,
   appBackgroundVisible: true,
   browserAdBlockEnabled: true,
+  terminalTransparent: DEFAULT_TERMINAL_TRANSPARENT,
+  terminalBackgroundBlur: DEFAULT_TERMINAL_BACKGROUND_BLUR,
+  terminalBackgroundOpacity: DEFAULT_TERMINAL_BACKGROUND_OPACITY,
+  terminalFontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
+  terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
+  terminalShellPath: "",
   documentFontSize: 16,
   documentLineHeight: 1.9,
   documentParagraphSpacing: 0.8,
@@ -193,6 +203,44 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       void import("@/ipc/backend").then(({ invoke }) =>
         invoke("browser_set_adblock_enabled", { enabled }));
     }
+  },
+
+  setTerminalTransparent: (enabled) => {
+    set({ terminalTransparent: enabled });
+    saveSetting("terminal_transparent", JSON.stringify(enabled));
+  },
+
+  setTerminalBackgroundBlur: (px) => {
+    const value = Math.min(30, Math.max(0, Math.round(px)));
+    set({ terminalBackgroundBlur: value });
+    saveSettingDebounced("terminal_background_blur", JSON.stringify(value));
+  },
+
+  setTerminalBackgroundOpacity: (percent) => {
+    const value = Math.min(100, Math.max(0, Math.round(percent)));
+    set({ terminalBackgroundOpacity: value });
+    saveSettingDebounced("terminal_background_opacity", JSON.stringify(value));
+  },
+
+  setTerminalFontFamily: (family) => {
+    const value = family.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 120)
+      || DEFAULT_TERMINAL_FONT_FAMILY;
+    set({ terminalFontFamily: value });
+    saveSettingDebounced("terminal_font_family", JSON.stringify(value));
+  },
+
+  setTerminalFontSize: (px) => {
+    const value = Math.min(32, Math.max(8, Math.round(px)));
+    set({ terminalFontSize: value });
+    saveSettingDebounced("terminal_font_size", JSON.stringify(value));
+  },
+
+  setTerminalShellPath: (path) => {
+    const value = path.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 2048);
+    set({ terminalShellPath: value });
+    // Shell executables are machine-specific and must not sync across devices.
+    void import("@/ipc/backend").then(({ invoke }) =>
+      invoke("db_set_device_path", { key: "terminal_shell_path", value }));
   },
 
   setDocumentFontSize: (px) => {

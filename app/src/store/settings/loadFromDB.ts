@@ -3,6 +3,8 @@ import type { SettingsState } from "./state";
 import {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR,
   DEFAULT_LAYOUT_MODE, AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES,
+  DEFAULT_TERMINAL_BACKGROUND_BLUR, DEFAULT_TERMINAL_BACKGROUND_OPACITY, DEFAULT_TERMINAL_TRANSPARENT,
+  DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE,
   DOCUMENT_TEXT_COLOR_RE, type Theme, type RssTabSelection,
   type LayoutMode,
 } from "./types";
@@ -48,6 +50,11 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       "app_background_blur",
       "app_background_visible",
       "browser_adblock_enabled",
+      "terminal_transparent",
+      "terminal_background_blur",
+      "terminal_background_opacity",
+      "terminal_font_family",
+      "terminal_font_size",
       "document_font_size",
       "document_line_height",
       "document_paragraph_spacing",
@@ -56,15 +63,31 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
     ];
 
     const values: Record<string, string> = {};
+    const readDevicePath = async (key: string) => {
+      try {
+        return (await invoke<string | null>("db_get_device_path", { key })) || "";
+      } catch (error) {
+        // A device-only preference must never prevent synced preferences from
+        // hydrating. This also keeps newer frontends compatible with an older
+        // sidecar that does not know a newly introduced device-path key yet.
+        console.warn(`Device setting ${key} could not be loaded:`, error);
+        return "";
+      }
+    };
     // Read on its own, unencoded, because it is stored per device — see
     // db/device_paths.rs.
-    const musicFolderPath = (await invoke<string | null>("db_get_device_path", {
-      key: "music_folder_path",
-    })) || "";
+    const musicFolderPath = await readDevicePath("music_folder_path");
+    const terminalShellPath = await readDevicePath("terminal_shell_path");
     for (const key of keys) {
-      const val = await invoke<string | null>("db_get_setting", { key });
-      if (val) {
-        values[key] = JSON.parse(val);
+      try {
+        const val = await invoke<string | null>("db_get_setting", { key });
+        if (val) {
+          values[key] = JSON.parse(val);
+        }
+      } catch (error) {
+        // Settings are independent rows. A legacy or damaged value should
+        // fall back on its own default instead of hiding every valid setting.
+        console.warn(`Setting ${key} could not be loaded:`, error);
       }
     }
 
@@ -152,6 +175,22 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       appBackgroundBlur: values.app_background_blur !== undefined ? Number(values.app_background_blur) : 20,
       appBackgroundVisible: (values.app_background_visible as unknown) !== false && values.app_background_visible !== "false",
       browserAdBlockEnabled: (values.browser_adblock_enabled as unknown) !== false && values.browser_adblock_enabled !== "false",
+      terminalTransparent: values.terminal_transparent === "true"
+        || (values.terminal_transparent as unknown) === true
+        || DEFAULT_TERMINAL_TRANSPARENT,
+      terminalBackgroundBlur: Number.isFinite(Number(values.terminal_background_blur))
+        ? Math.min(30, Math.max(0, Math.round(Number(values.terminal_background_blur))))
+        : DEFAULT_TERMINAL_BACKGROUND_BLUR,
+      terminalBackgroundOpacity: Number.isFinite(Number(values.terminal_background_opacity))
+        ? Math.min(100, Math.max(0, Math.round(Number(values.terminal_background_opacity))))
+        : DEFAULT_TERMINAL_BACKGROUND_OPACITY,
+      terminalFontFamily: typeof values.terminal_font_family === "string" && values.terminal_font_family.trim()
+        ? values.terminal_font_family.trim().slice(0, 120)
+        : DEFAULT_TERMINAL_FONT_FAMILY,
+      terminalFontSize: Number.isFinite(Number(values.terminal_font_size))
+        ? Math.min(32, Math.max(8, Math.round(Number(values.terminal_font_size))))
+        : DEFAULT_TERMINAL_FONT_SIZE,
+      terminalShellPath,
       documentFontSize: Math.min(24, Math.max(12, Number(values.document_font_size) || 16)),
       documentLineHeight: Math.min(2.2, Math.max(1.4, Number(values.document_line_height) || 1.9)),
       documentParagraphSpacing: Math.min(2, Math.max(0.2, Number(values.document_paragraph_spacing) || 0.8)),

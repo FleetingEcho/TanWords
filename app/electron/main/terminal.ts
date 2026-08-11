@@ -14,7 +14,7 @@
  *  is the middle layer: it keeps each child alive, forwards keyboard input down
  *  and terminal output/exit up, and tears a session down on close so no shell
  *  ever lingers. */
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { app } from "electron";
@@ -27,6 +27,8 @@ interface PtySession {
   dec: Decoder;
   ready: Promise<{ shell: string; cwd: string; pid: number }>;
   resolveReady: (v: { shell: string; cwd: string; pid: number }) => void;
+  rejectReady: (reason: Error) => void;
+  readySettled: boolean;
   closing: boolean;
 }
 
@@ -101,11 +103,27 @@ function encodeFrame(op: number, payload: Buffer): Buffer {
 
 export type TerminalSessionInfo = { id: string; shell: string; cwd: string; pid: number };
 
+/** Ask the PTY helper which shell it would launch without an override. The
+ * helper owns that platform policy (including Git Bash discovery on Windows),
+ * so the value shown in Settings cannot drift from the actual terminal. */
+export function terminalDefaultShell(): string {
+  const bin = resolvePtyBinary();
+  if (!fs.existsSync(bin)) return "";
+  const result = spawnSync(bin, ["--print-default-shell"], {
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 3_000,
+  });
+  if (result.status !== 0 || result.error) return "";
+  const shell = result.stdout.trim();
+  return /[\u0000-\u001f\u007f]/.test(shell) ? "" : shell.slice(0, 2048);
+}
+
 /** Spawn a fresh shell session. Resolves only once the daemon's `H` handshake
  *  has landed, so callers (and the renderer) know the shell is ready to type
  *  into. Throws if the daemon can't be found or dies before handshaking. */
 export async function terminalSpawn(
-  opts: { cols?: number; rows?: number },
+  opts: { cols?: number; rows?: number; shellPath?: string },
 ): Promise<TerminalSessionInfo> {
   const cols = Math.max(2, Math.floor(opts.cols ?? 80));
   const rows = Math.max(1, Math.floor(opts.rows ?? 24));
@@ -116,19 +134,42 @@ export async function terminalSpawn(
     );
   }
 
+  const shellPath = typeof opts.shellPath === "string"
+    ? opts.shellPath.replace(/\0/g, "").trim().slice(0, 2048)
+    : "";
+  if (shellPath && !fs.existsSync(shellPath)) {
+    throw new Error(`[terminal] configured shell was not found at ${shellPath}`);
+  }
+
   const child = spawn(bin, [], {
     stdio: ["pipe", "pipe", "pipe"],
     windowsHide: true,
-    env: { ...process.env, PTY_COLS: String(cols), PTY_ROWS: String(rows) },
+    env: {
+      ...process.env,
+      PTY_COLS: String(cols),
+      PTY_ROWS: String(rows),
+      ...(shellPath ? { PTY_SHELL: shellPath } : {}),
+    },
   });
 
   const id = String(nextId++);
   let resolveReady!: (v: { shell: string; cwd: string; pid: number }) => void;
-  const ready = new Promise<{ shell: string; cwd: string; pid: number }>((res) => {
+  let rejectReady!: (reason: Error) => void;
+  const ready = new Promise<{ shell: string; cwd: string; pid: number }>((res, reject) => {
     resolveReady = res;
+    rejectReady = reject;
   });
 
-  const session: PtySession = { id, child, dec: new Decoder(), ready, resolveReady, closing: false };
+  const session: PtySession = {
+    id,
+    child,
+    dec: new Decoder(),
+    ready,
+    resolveReady,
+    rejectReady,
+    readySettled: false,
+    closing: false,
+  };
   sessions.set(id, session);
 
   child.stdout.on("data", (d: Buffer) => {
@@ -139,6 +180,10 @@ export async function terminalSpawn(
 
   child.on("close", () => {
     if (sessions.has(id)) sessions.delete(id);
+    if (!session.readySettled) {
+      session.readySettled = true;
+      session.rejectReady(new Error("[terminal] shell exited before the PTY was ready"));
+    }
     if (!session.closing) {
       emit("pty:exit", { id, code: 0 });
     }
@@ -146,6 +191,10 @@ export async function terminalSpawn(
   child.on("error", (err) => {
     console.error("[terminal] daemon error:", err);
     if (sessions.has(id)) sessions.delete(id);
+    if (!session.readySettled) {
+      session.readySettled = true;
+      session.rejectReady(err);
+    }
     emit("pty:exit", { id, code: 1 });
   });
 
@@ -161,9 +210,15 @@ export async function terminalSpawn(
           cwd?: string;
           pid?: number;
         };
-        s.resolveReady({ shell: j.shell ?? "", cwd: j.cwd ?? "", pid: j.pid ?? 0 });
+        if (!s.readySettled) {
+          s.readySettled = true;
+          s.resolveReady({ shell: j.shell ?? "", cwd: j.cwd ?? "", pid: j.pid ?? 0 });
+        }
       } catch {
-        s.resolveReady({ shell: "", cwd: "", pid: 0 });
+        if (!s.readySettled) {
+          s.readySettled = true;
+          s.resolveReady({ shell: "", cwd: "", pid: 0 });
+        }
       }
     } else if (op === 0x44) {
       // D — raw terminal output. Base64 for the sandboxed window.

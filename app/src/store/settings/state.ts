@@ -64,6 +64,15 @@ export interface SettingsState {
    *  web-mode iframes can't be intercepted). Defaults on. The toggle button
    *  lives in the Browser page toolbar. */
   browserAdBlockEnabled: boolean;
+  /** Glass appearance used when the Terminal transparency toggle is enabled. */
+  terminalTransparent: boolean;
+  terminalBackgroundBlur: number;
+  terminalBackgroundOpacity: number;
+  /** Local font family name, or ui-monospace for the operating-system default. */
+  terminalFontFamily: string;
+  terminalFontSize: number;
+  /** Device-local executable override. Empty lets TanWords select the platform default. */
+  terminalShellPath: string;
   /** Body font size, in pixels, for full-size document editors. */
   documentFontSize: number;
   /** Line-height multiplier for full-size document editors. */
@@ -111,6 +120,12 @@ export interface SettingsState {
   setAppBackgroundBlur: (px: number) => void;
   setAppBackgroundVisible: (visible: boolean) => void;
   setBrowserAdBlockEnabled: (enabled: boolean) => void;
+  setTerminalTransparent: (enabled: boolean) => void;
+  setTerminalBackgroundBlur: (px: number) => void;
+  setTerminalBackgroundOpacity: (percent: number) => void;
+  setTerminalFontFamily: (family: string) => void;
+  setTerminalFontSize: (px: number) => void;
+  setTerminalShellPath: (path: string) => void;
   setDocumentFontSize: (px: number) => void;
   setDocumentLineHeight: (value: number) => void;
   setDocumentParagraphSpacing: (value: number) => void;

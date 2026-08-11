@@ -39,6 +39,12 @@ export const HIGHLIGHT_PRESETS = ["#d97706", "#eab308", "#22c55e", "#0ea5e9", "#
  *  coffee" and "when I leave for the day", and both are coarse. */
 export const AUTO_LOCK_CHOICES = [0, 10, 20, 30, 60] as const;
 export const DEFAULT_AUTO_LOCK_MINUTES = 0;
+export const DEFAULT_TERMINAL_BACKGROUND_BLUR = 16;
+export const DEFAULT_TERMINAL_BACKGROUND_OPACITY = 16;
+export const DEFAULT_TERMINAL_TRANSPARENT = false;
+/** `ui-monospace` resolves to the desktop OS/browser's native monospace face. */
+export const DEFAULT_TERMINAL_FONT_FAMILY = "ui-monospace";
+export const DEFAULT_TERMINAL_FONT_SIZE = 16;
 
 /** Which part of the dashboard banner survives the crop into its letterbox frame,
  *  as CSS `object-position` percentages. The image itself is stored whole, so this

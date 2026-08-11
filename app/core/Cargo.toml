@@ -22,7 +22,7 @@ path = "src/main.rs"
 [[bin]]
 name = "tanwords-pty"
 path = "src/bin/tanwords-pty.rs"
-required-features = ["desktop"]
+required-features = ["pty"]
 
 [build-dependencies]
 # Used by generate_dispatch_table() in build.rs to scan src/ for
@@ -105,9 +105,6 @@ zip = { version = "4.6.1", default-features = false, features = ["deflate", "aes
 regex = "1"
 adblock = "0.12"
 portable-pty = { version = "0.9", optional = true }
-# Direct dep only for the tanwords-pty binary (poll/read on the pty fd);
-# already pulled transitively by portable-pty, so this adds no new tree.
-libc = "0.2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
