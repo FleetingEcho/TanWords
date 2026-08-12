@@ -10,6 +10,11 @@ type Item = {
 };
 
 const built: Item[][] = [];
+const trayInstances: Array<{
+  handlers: Map<string, () => void>;
+  setContextMenu: ReturnType<typeof vi.fn>;
+  popUpContextMenu: ReturnType<typeof vi.fn>;
+}> = [];
 
 vi.mock("electron", () => ({
   app: { getName: () => "TanWords", isPackaged: false, getAppPath: () => "/app", quit: vi.fn() },
@@ -32,10 +37,13 @@ vi.mock("electron", () => ({
     },
   },
   Tray: class {
+    handlers = new Map<string, () => void>();
     setToolTip = vi.fn();
     setContextMenu = vi.fn();
+    popUpContextMenu = vi.fn();
     destroy = vi.fn();
-    on = vi.fn();
+    on = vi.fn((event: string, handler: () => void) => { this.handlers.set(event, handler); });
+    constructor() { trayInstances.push(this); }
   },
   nativeImage: { createFromPath: () => ({ setTemplateImage: vi.fn() }) },
 }));
@@ -55,10 +63,43 @@ function makeTray() {
   return { tray, events };
 }
 
-beforeEach(() => { built.length = 0; });
+beforeEach(() => {
+  built.length = 0;
+  trayInstances.length = 0;
+});
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe("TrayManager menu", () => {
+  it("opens the window directly on a macOS left-click and keeps the menu on right-click", () => {
+    vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
+    const manager = new TrayManager();
+    const win = {
+      isDestroyed: () => false,
+      isMinimized: () => false,
+      show: vi.fn(),
+      focus: vi.fn(),
+    };
+    manager.setWindow(win as never);
+    manager.create("/icons/tray-template.png");
+    const nativeTray = trayInstances[0];
+
+    nativeTray.handlers.get("click")?.();
+    expect(win.show).toHaveBeenCalledOnce();
+    expect(win.focus).toHaveBeenCalledOnce();
+    expect(nativeTray.setContextMenu).not.toHaveBeenCalled();
+
+    nativeTray.handlers.get("right-click")?.();
+    expect(nativeTray.popUpContextMenu).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the native context menu on Windows and Linux", () => {
+    vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+    makeTray();
+
+    expect(trayInstances[0].setContextMenu).toHaveBeenCalledOnce();
+    expect(trayInstances[0].handlers.has("right-click")).toBe(false);
+  });
+
   it("renders the ported menu in English by default", () => {
     makeTray();
 

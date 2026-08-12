@@ -67,10 +67,9 @@ export class TrayManager {
   private onEvent: ((name: string, payload: unknown) => void) | null = null;
   private lang: TrayLang = "en";
   private now: NowPlaying = { title: null, playing: false, hasPlaylist: false };
-  /** Holds the menu currently handed to the tray. AppKit keeps its own
-   *  reference to the NSMenu behind it, so letting the JS object be collected
-   *  is what produces the "representedObject is not a
-   *  WeakPtrToElectronMenuModelAsNSObject" warnings on macOS. */
+  /** Holds the native menu for Windows/Linux and the manual right-click popup
+   *  on macOS. Keeping the JS object alive also avoids AppKit weak-reference
+   *  warnings while a popup is open. */
   private menu: Menu | null = null;
 
   setWindow(win: BrowserWindow) {
@@ -90,10 +89,15 @@ export class TrayManager {
     image.setTemplateImage(process.platform === "darwin");
     this.tray = new Tray(image);
     this.tray.setToolTip(app.getName());
-    // Clicking the icon itself is the fastest path back to the app; the menu
-    // is still available via right-click (and via left-click on macOS, which
-    // opens the context menu rather than firing "click").
+    // Clicking the icon itself is the fastest path back to the app. On macOS
+    // setContextMenu() takes over the ordinary left-click, so its menu is kept
+    // manual and opened only from the distinct right-click event below.
     this.tray.on("click", () => this.showMainWindow());
+    if (process.platform === "darwin") {
+      this.tray.on("right-click", () => {
+        if (this.menu) this.tray?.popUpContextMenu(this.menu);
+      });
+    }
     this.buildMenu();
   }
 
@@ -162,7 +166,7 @@ export class TrayManager {
       { label: s.quit, click: () => app.quit() },
     ]);
     this.syncPlaybackItems();
-    this.tray.setContextMenu(this.menu);
+    if (process.platform !== "darwin") this.tray.setContextMenu(this.menu);
   }
 
   /** Applies the current playback state to the already-installed menu.
