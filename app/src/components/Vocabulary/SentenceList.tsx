@@ -9,6 +9,7 @@ import { ListPaginator } from "@/components/shared/ListPaginator";
 import { LevelDateFilter, LevelFilter } from "@/components/shared/LevelDateFilter";
 import { Plus, Sparkles, ListChecks, Trash2, X, RefreshCw, Star } from "lucide-react";
 import { hostCapabilities } from "@/platform";
+import { useSettingsStore } from "@/store/settingsStore";
 
 interface Props {
   items: PatternItem[];
@@ -118,6 +119,7 @@ export function SentenceList({
   viewTabs,
 }: Props) {
   const t = useT();
+  const hasCustomAppBackground = useSettingsStore((state) => !!state.appBackgroundImage && state.appBackgroundVisible);
   const paged = items.slice(page * pageSize, (page + 1) * pageSize);
   const [jumpHighlightId, setJumpHighlightId] = React.useState<number | null>(highlightId ?? null);
   React.useEffect(() => {
@@ -204,7 +206,7 @@ export function SentenceList({
             value={search}
             onChange={(e) => onSearchChange(e.target.value.toLowerCase())}
             placeholder={t("vocab.patterns.searchPlaceholder")}
-            className="w-full h-9 pl-8 pr-3 rounded-lg border border-input bg-background text-sm placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30"
+            className={`w-full h-9 pl-8 pr-3 rounded-lg border border-input text-sm placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 ${hasCustomAppBackground ? "bg-background/65 backdrop-blur-md" : "bg-background"}`}
           />
           <svg className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-muted-foreground" viewBox="0 0 20 20" fill="currentColor">
             <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
@@ -257,7 +259,7 @@ export function SentenceList({
                   onClick={() => (selectMode ? onToggleSelect(item.id) : onToggleExpand(item))}
                   onDoubleClick={() => onDoubleClick(item)}
                   className={`flex items-center gap-2 px-4 py-2.5 lg:px-5 cursor-pointer hover:bg-muted/50 transition-colors ${
-                    expanded ? "sticky top-0 z-10 bg-background" : ""
+                    expanded ? `sticky top-0 z-10 ${hasCustomAppBackground ? "bg-background/70 backdrop-blur-xl" : "bg-background"}` : ""
                   } ${
                     selectedIds.has(item.id) ? "bg-accent/50" : ""
                   }`}

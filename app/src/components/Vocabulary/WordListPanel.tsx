@@ -12,6 +12,7 @@ import { LevelDateFilter, LevelValue } from "@/components/shared/LevelDateFilter
 import { LIST_PANEL_WIDTH, LIST_PANEL_COLLAPSED_WIDTH, LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
 import { Wand2, RefreshCw, Sparkles, Loader2, ChevronsLeft, ChevronsRight, Trash2, X, Star, ListChecks, Columns2, Rows3 } from "lucide-react";
 import { hostCapabilities } from "@/platform";
+import { useSettingsStore } from "@/store/settingsStore";
 
 interface Props {
   words: WordListItem[];
@@ -82,6 +83,7 @@ export function WordListPanel({
   fullWidth, inlineDetail = true, onToggleLayout, renderDetail, viewTabs,
 }: Props) {
   const t = useT();
+  const hasCustomAppBackground = useSettingsStore((state) => !!state.appBackgroundImage && state.appBackgroundVisible);
   const paged = words.slice(page * pageSize, (page + 1) * pageSize);
   const measure = fullWidth ? "mx-auto w-full max-w-4xl" : "";
   const [jumpHighlightId, setJumpHighlightId] = React.useState<number | null>(highlightId ?? null);
@@ -94,7 +96,7 @@ export function WordListPanel({
 
   if (collapsed && !fullWidth) {
     return (
-      <div className={`${LIST_PANEL_COLLAPSED_WIDTH} shrink-0 border-r border-border bg-card flex flex-col items-center py-3`}>
+      <div className={`${LIST_PANEL_COLLAPSED_WIDTH} shrink-0 border-r border-border flex flex-col items-center py-3 ${hasCustomAppBackground ? "bg-transparent" : "bg-card"}`}>
         <Button
           variant="ghost"
           onClick={onToggleCollapsed}
@@ -108,7 +110,9 @@ export function WordListPanel({
   }
 
   return (
-    <div className={fullWidth ? "flex-1 min-h-0 flex flex-col" : `${LIST_PANEL_WIDTH} shrink-0 border-r border-border bg-card flex flex-col h-full`}>
+    <div className={fullWidth
+      ? "flex-1 min-h-0 flex flex-col"
+      : `${LIST_PANEL_WIDTH} shrink-0 border-r border-border flex flex-col h-full ${hasCustomAppBackground ? "bg-transparent" : "bg-card"}`}>
       <div className={`${measure} ${fullWidth ? "px-4 lg:px-6" : "px-4"} pt-5 pb-3 space-y-2.5`}>
         {/* Wraps rather than overflowing: the action group is four fixed 40px
           * touch targets, which stop fitting beside the title well before the
@@ -246,7 +250,7 @@ export function WordListPanel({
               if (e.key === "Enter" && showAiLookup && search.trim()) onAiLookup(search.trim());
             }}
             placeholder={t("vocab.searchDict")}
-            className="w-full h-9 pl-8 pr-3 rounded-lg border border-input bg-background text-sm placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30"
+            className={`w-full h-9 pl-8 pr-3 rounded-lg border border-input text-sm placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 ${hasCustomAppBackground ? "bg-background/65 backdrop-blur-md" : "bg-background"}`}
           />
           <svg className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-muted-foreground" viewBox="0 0 20 20" fill="currentColor">
             <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
@@ -284,7 +288,7 @@ export function WordListPanel({
               <p className="text-xs text-muted-foreground mt-0.5">{t("vocab.aiLookupHint")}</p>
             </Button>
             {fullWidth && lookupActive && (
-              <div className="flex h-[70vh] border-b border-border bg-background">{renderDetail()}</div>
+              <div className={`flex h-[70vh] border-b border-border ${hasCustomAppBackground ? "bg-transparent" : "bg-background"}`}>{renderDetail()}</div>
             )}
           </>
         )}
@@ -308,10 +312,10 @@ export function WordListPanel({
             onDoubleClick={() => onDoubleClick(w)}
             onClick={() => (selectMode ? onToggleSelect(w.id) : onSelect(w))}
             className={`${fullWidth ? "px-4 py-2.5 lg:px-6" : "px-4 py-3"} cursor-pointer transition-colors ${
-              expanded ? "sticky top-0 z-10 bg-background" : ""
+              expanded ? `sticky top-0 z-10 ${hasCustomAppBackground ? "bg-background/70 backdrop-blur-xl" : "bg-background"}` : ""
             } ${
               selectedIds.has(w.id) || (selectedId === w.id && !lookupActive)
-                ? "bg-muted hover:bg-muted"
+                ? hasCustomAppBackground ? "bg-muted/65 hover:bg-muted/75" : "bg-muted hover:bg-muted"
                 : "hover:bg-muted"
             }`}
           >
@@ -351,7 +355,7 @@ export function WordListPanel({
             )}
           </div>
           {expanded && (
-            <div className="flex h-[70vh] border-t border-border bg-background">{renderDetail()}</div>
+            <div className={`flex h-[70vh] border-t border-border ${hasCustomAppBackground ? "bg-transparent" : "bg-background"}`}>{renderDetail()}</div>
           )}
           </div>
           </div>

@@ -11,6 +11,7 @@ import { SparkIcon, RefreshIcon, NotesIcon, ChevronDownIcon } from "@/components
 import { TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { hostCapabilities } from "@/platform";
+import { useSettingsStore } from "@/store/settingsStore";
 
 /** Shared by the header and the scrolling body so the word, its jump nav and the
  * prose it points at all sit on the same measure — a centred column of text under
@@ -53,6 +54,7 @@ export function WordDetailPanel({
   onNotesChange, onClearNotes, onRetry, onReenrich, onGeneratePatterns,
 }: Props) {
   const t = useT();
+  const hasCustomAppBackground = useSettingsStore((state) => !!state.appBackgroundImage && state.appBackgroundVisible);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
 
@@ -126,9 +128,9 @@ export function WordDetailPanel({
   const gloss = [selected.wordType && `${selected.wordType}.`, selected.zh].filter(Boolean).join(" ");
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col bg-background">
+    <div className={`flex min-w-0 flex-1 flex-col ${hasCustomAppBackground ? "bg-transparent" : "bg-background"}`}>
       {/* ── Identity + actions: pinned, so they survive a long explanation ── */}
-      <header className="shrink-0 border-b border-border/60 bg-background">
+      <header className={`shrink-0 border-b border-border/60 ${hasCustomAppBackground ? "bg-transparent" : "bg-background"}`}>
         <div className={`${MEASURE} transition-[padding] duration-200 ${condensed ? "py-2.5" : "pb-4 pt-6"}`}>
           <div className="flex items-center gap-3">
             <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -307,7 +309,7 @@ export function WordDetailPanel({
               )}
             </div>
             {notesOpen && (
-              <div className="mb-3 h-44 rounded-xl border border-border bg-background">
+              <div className={`mb-3 h-44 rounded-xl border border-border ${hasCustomAppBackground ? "bg-background/70 backdrop-blur-xl" : "bg-background"}`}>
                 <LazyWordNotesEditor wordId={wordId} text={notes} onChange={onNotesChange} />
               </div>
             )}

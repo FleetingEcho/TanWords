@@ -21,6 +21,7 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
   const db = useDB();
   const t = useT();
   const targetLevel = useSettingsStore((s) => s.targetLevels.join("/"));
+  const hasCustomAppBackground = useSettingsStore((state) => !!state.appBackgroundImage && state.appBackgroundVisible);
 
   const list = useVocabWordList(db);
   const detail = useVocabWordDetail(db);
@@ -229,7 +230,9 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
       {/* Mobile (<lg): selection pushes a full-screen detail overlay with a
         * back affordance, hiding the bottom tab bar beneath it for space. */}
       {narrow && (selected || lookup) && (
-        <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-background lg:hidden">
+        <div className={`fixed inset-0 z-50 flex flex-col overflow-hidden lg:hidden ${
+          hasCustomAppBackground ? "bg-background/70 backdrop-blur-xl" : "bg-background"
+        }`}>
           <div className="flex h-12 shrink-0 items-center border-b border-border px-2">
             <button
               type="button"
