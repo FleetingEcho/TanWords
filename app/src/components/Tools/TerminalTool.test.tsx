@@ -59,11 +59,17 @@ const mocks = vi.hoisted(() => {
     if (channel === "clipboard:readForTerminal") return Promise.resolve(clipboardValue);
     return Promise.resolve(null);
   });
+  const openExternal = vi.fn(() => Promise.resolve());
+  const toastSuccess = vi.fn();
+  const toastError = vi.fn();
   return {
     terminal,
     webgl,
     search,
     callMain,
+    openExternal,
+    toastSuccess,
+    toastError,
     getKeyHandler: () => keyHandler,
     getTerminalOptions: () => terminalOptions,
     triggerContextLoss: () => contextLossHandler?.(),
@@ -119,6 +125,10 @@ vi.mock("@xterm/addon-webgl", () => ({
 }));
 vi.mock("@/ipc/events", () => ({ subscribe: mocks.subscribe }));
 vi.mock("@/ipc/host", () => ({ callMain: mocks.callMain }));
+vi.mock("@/ipc/shell", () => ({ openExternal: mocks.openExternal }));
+vi.mock("sonner", () => ({
+  toast: { success: mocks.toastSuccess, error: mocks.toastError },
+}));
 
 import { quoteTerminalPath, terminalFontStack, TerminalTool } from "./TerminalTool";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -195,6 +205,24 @@ describe("TerminalTool clipboard controls", () => {
     renderTerminal();
 
     expect(screen.getByText("Terminal").parentElement?.parentElement).toHaveClass("app-drag-region");
+  });
+
+  it("explains the 5k scrollback limit and recommends Herdr", async () => {
+    renderTerminal();
+    const badge = screen.getByLabelText("Scrollback limit and Herdr recommendation");
+
+    expect(badge).toHaveTextContent("5k scrollback");
+    expect(badge).toHaveClass("app-region-no-drag");
+    fireEvent.focus(badge);
+
+    expect(await screen.findByText("Each terminal tab retains up to 5,000 scrollback lines."))
+      .toBeInTheDocument();
+    expect(screen.getByText(/recommend managing your sessions with Herdr/)).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: "Open Herdr on GitHub" });
+    expect(link).toHaveAttribute("href", "https://github.com/herdrdev/herdr");
+
+    fireEvent.click(link);
+    expect(mocks.openExternal).toHaveBeenCalledWith("https://github.com/herdrdev/herdr");
   });
 
   it("fits only once when a hidden terminal tab becomes visible", () => {
@@ -328,6 +356,22 @@ describe("TerminalTool clipboard controls", () => {
     expect(mocks.callMain).toHaveBeenCalledWith("clipboard:writeText", {
       text: "selected output",
     });
+    await waitFor(() => expect(mocks.toastSuccess).toHaveBeenCalledWith("Copied"));
+  });
+
+  it("reports a right-click copy failure", async () => {
+    mocks.terminal.hasSelection.mockReturnValue(true);
+    mocks.terminal.getSelection.mockReturnValue("selected output");
+    const { shell } = renderTerminal();
+    mocks.callMain.mockRejectedValueOnce(new Error("clipboard unavailable"));
+
+    fireEvent.contextMenu(shell, { clientX: 40, clientY: 60 });
+    fireEvent.click(screen.getByRole("menuitem", { name: /Copy/ }));
+
+    await waitFor(() => {
+      expect(mocks.toastError).toHaveBeenCalledWith("Could not copy terminal text");
+    });
+    expect(mocks.toastSuccess).not.toHaveBeenCalled();
   });
 
   it("uses Ctrl+C for copy only while text is selected", () => {

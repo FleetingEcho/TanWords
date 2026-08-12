@@ -19,6 +19,7 @@
  *  state, allowing MainLayout to remove its chrome without moving the terminal
  *  into the browser fullscreen API or recreating its PTY. */
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon, type ISearchOptions } from "@xterm/addon-search";
@@ -28,6 +29,8 @@ import {
   ChevronDown,
   ChevronUp,
   Droplets,
+  ExternalLink,
+  History,
   Maximize2,
   Minimize2,
   Minus,
@@ -40,8 +43,10 @@ import "@xterm/xterm/css/xterm.css";
 import "@/styles/terminal-tool.css";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { subscribe } from "@/ipc/events";
 import { callMain } from "@/ipc/host";
+import { openExternal } from "@/ipc/shell";
 import { useSettingsStore } from "@/store/settingsStore";
 import { DEFAULT_TERMINAL_FONT_FAMILY } from "@/store/settings/types";
 
@@ -89,6 +94,7 @@ export function quoteTerminalPath(filePath: string): string {
 const SYSTEM_MONOSPACE_STACK =
   'ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace';
 const TERMINAL_SCROLLBACK_LINES = 5_000;
+const HERDR_URL = "https://github.com/herdrdev/herdr";
 const MAX_PENDING_OUTPUT_BYTES = 64 * 1024;
 const MAX_AUTOMATIC_RECOVERY_ATTEMPTS = 3;
 const SEARCH_DECORATIONS: NonNullable<ISearchOptions["decorations"]> = {
@@ -181,6 +187,15 @@ export function TerminalTool({
     if (!term?.hasSelection()) return;
     await callMain("clipboard:writeText", { text: term.getSelection() });
   }, []);
+
+  const copySelectionWithFeedback = useCallback(async () => {
+    try {
+      await copySelection();
+      toast.success(t("toolsPage.terminal.copied"));
+    } catch {
+      toast.error(t("toolsPage.terminal.copyFailed"));
+    }
+  }, [copySelection, t]);
 
   const pasteClipboard = useCallback(async () => {
     const term = terminalRef.current;
@@ -679,6 +694,44 @@ export function TerminalTool({
                   : t("toolsPage.terminal.starting")}
           </span>
 
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  tabIndex={0}
+                  aria-label={t("toolsPage.terminal.scrollbackTooltip")}
+                  className="app-region-no-drag flex cursor-help items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2.5 py-1 text-[11px] font-medium text-primary/90 outline-none transition-colors hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <History className="h-3 w-3" aria-hidden="true" />
+                  {t("toolsPage.terminal.scrollbackBadge")}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" align="end" className="max-w-72 leading-relaxed">
+                <p className="font-medium text-popover-foreground">
+                  {t("toolsPage.terminal.scrollbackLimit")}
+                </p>
+                <p className="mt-1 text-muted-foreground">
+                  {t("toolsPage.terminal.scrollbackHerdrRecommendation")}
+                </p>
+                <a
+                  href={HERDR_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void openExternal(HERDR_URL).catch(() => {
+                      window.open(HERDR_URL, "_blank", "noopener,noreferrer");
+                    });
+                  }}
+                  className="app-region-no-drag mt-2 inline-flex items-center gap-1 font-medium text-primary underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {t("toolsPage.terminal.openHerdr")}
+                  <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                </a>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
           <div
             role="group"
             aria-label={t("toolsPage.terminal.fontSize")}
@@ -947,7 +1000,7 @@ export function TerminalTool({
             type="button"
             role="menuitem"
             disabled={!contextMenu.canCopy}
-            onClick={() => runMenuAction(copySelection)}
+            onClick={() => runMenuAction(copySelectionWithFeedback)}
             className="flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
           >
             <span>{t("toolsPage.terminal.copy")}</span>
