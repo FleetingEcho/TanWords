@@ -1,6 +1,6 @@
 [package]
 name = "tanwords"
-version = "1.17.0"
+version = "1.17.1"
 description = "TanWords - AI-powered English learning assistant"
 authors = ["Tanner"]
 edition = "2021"
