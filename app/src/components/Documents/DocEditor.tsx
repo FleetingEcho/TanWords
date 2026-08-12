@@ -6,7 +6,7 @@ import { useIsDark } from "@/hooks/useIsDark";
 import { parseDbTimestamp } from "@/lib/dbTime";
 import { PinIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
-import { Check, Link2, Maximize2, Minimize2, Search } from "lucide-react";
+import { Check, Link2, Loader2, Maximize2, Minimize2, Search } from "lucide-react";
 import { RawMarkdownEditor } from "./RawMarkdownEditor";
 import type { SaveStatus } from "./useDocumentEditor";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
@@ -45,9 +45,10 @@ interface Props {
   zenMode: boolean;
   onZenModeChange: (enabled: boolean) => void;
   onFlushReady?: (flush: (() => Promise<void>) | null) => void;
+  onUploadPending?: (pending: Promise<void> | null) => void;
 }
 
-export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, onStatusChange, onPinToggle, saveStatus, zenMode, onZenModeChange, onFlushReady }: Props) {
+export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, onStatusChange, onPinToggle, saveStatus, zenMode, onZenModeChange, onFlushReady, onUploadPending }: Props) {
   const t = useT();
   const isDark = useIsDark();
   const documentFontSize = useSettingsStore((state) => state.documentFontSize);
@@ -56,6 +57,7 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
   const [title, setTitle] = useState(doc.title);
   const titleRef = useRef<HTMLInputElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const rawFileInserterRef = useRef<((files: File[]) => Promise<void>) | null>(null);
   const searchRootRef = useRef<HTMLDivElement>(null);
   // Phone-only: the search/toolbar stack is ~half the readable area on
   // a narrow screen, so it starts folded away. Ignored at `lg` (see
@@ -75,7 +77,27 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
   }, [flushSave, onFlushReady]);
 
   const links = useDocEditorLinks({ documentId: doc.id, documentContent: doc.content, editor, scheduleSave });
-  const attachments = useDocEditorAttachments({ doc, editor, scheduleSave });
+  const attachments = useDocEditorAttachments({ doc, editor, scheduleSave, onUploadPending });
+  const uploadPercent = attachments.uploadState?.total
+    ? Math.min(100, Math.round((attachments.uploadState.sent / attachments.uploadState.total) * 100))
+    : 0;
+  const registerRawFileInserter = React.useCallback((insert: ((files: File[]) => Promise<void>) | null) => {
+    rawFileInserterRef.current = insert;
+  }, []);
+
+  const handleAttachmentInput = (file: File | undefined) => {
+    if (!file) return;
+    if (mode === "raw") {
+      const insert = rawFileInserterRef.current;
+      if (!insert) {
+        toast.error("Markdown editor is still loading");
+        return;
+      }
+      void insert([file]);
+      return;
+    }
+    void attachments.insertAttachment(file);
+  };
 
   const handleTitleBlur = () => {
     const val = title.trim() || t("doc.untitled");
@@ -134,6 +156,7 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
             <DocumentToolbarActions
               mode={mode}
               switching={switchingMode}
+              attachmentBusy={attachments.uploadState !== null}
               onMode={(nextMode) => void switchMode(nextMode)}
               onAttach={() => attachmentInputRef.current?.click()}
               onInsertLink={() => links.setLinkPickerOpen(true)}
@@ -164,8 +187,27 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
           <DocumentTagBar tags={doc.tags} onChange={onTagsChange} />
         </div>
         <input ref={attachmentInputRef} type="file" className="hidden"
-          onChange={(event) => { void attachments.insertAttachment(event.target.files?.[0]); event.target.value = ""; }} />
+          onChange={(event) => { handleAttachmentInput(event.target.files?.[0]); event.target.value = ""; }} />
       </div>
+
+      {attachments.uploadState && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="shrink-0 border-b border-border/60 bg-primary/5 px-4 py-2 lg:px-12"
+        >
+          <div className="flex items-center gap-2 text-xs text-foreground">
+            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
+            <span className="min-w-0 flex-1 truncate">
+              {t("doc.attachmentUploading", { name: attachments.uploadState.fileName })}
+            </span>
+            <span className="shrink-0 font-mono text-[10px] text-muted-foreground">{uploadPercent}%</span>
+          </div>
+          <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-muted">
+            <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${uploadPercent}%` }} />
+          </div>
+        </div>
+      )}
 
       {mode === "rich" ? (
         <div ref={searchRootRef} className="contents">
@@ -208,6 +250,7 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
           label={t("doc.rawMode")}
           placeholderText={t("doc.rawPlaceholder")}
           onUploadFile={attachments.uploadFile}
+          onInsertFilesReady={registerRawFileInserter}
         />
       )}
 

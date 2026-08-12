@@ -1,5 +1,7 @@
 use libsql::{Connection, Result as SqlResult};
 use crate::shim::State;
+use std::future::Future;
+use std::time::Duration;
 
 use crate::AppState;
 
@@ -13,6 +15,34 @@ use crate::AppState;
 /// Arc handle, so cloning is cheap and every clone talks to the same database.
 pub fn conn(state: &State<'_, AppState>) -> Result<Connection, String> {
     Ok(state.db.lock().map_err(|e| e.to_string())?.conn())
+}
+
+/// Turso embedded-replica writes are forwarded to the primary. If that network
+/// request becomes half-open, libsql may otherwise leave the calling command
+/// pending forever — which in turn leaves editor autosave stuck on "Saving".
+const TURSO_WRITE_TIMEOUT: Duration = Duration::from_secs(10);
+
+async fn await_write_for_kind<T>(
+    kind: connection::DbKind,
+    timeout: Duration,
+    future: impl Future<Output = Result<T, String>>,
+) -> Result<T, String> {
+    if kind == connection::DbKind::Local {
+        return future.await;
+    }
+    tokio::time::timeout(timeout, future)
+        .await
+        .map_err(|_| format!("Turso database write timed out after {timeout:?}"))?
+}
+
+/// Await a write using the active profile's policy. Local SQLite remains
+/// unbounded because it has no network hop; only Turso needs the deadline.
+pub async fn await_write<T>(
+    state: &State<'_, AppState>,
+    future: impl Future<Output = Result<T, String>>,
+) -> Result<T, String> {
+    let kind = state.db.lock().map_err(|e| e.to_string())?.kind();
+    await_write_for_kind(kind, TURSO_WRITE_TIMEOUT, future).await
 }
 
 /// A dedicated connection for commands that open an interactive transaction.
@@ -82,6 +112,34 @@ pub use srs::*;
 pub use search_history::*;
 pub use scene_lab::*;
 pub use patterns::*;
+
+#[cfg(test)]
+mod write_timeout_tests {
+    use super::{await_write_for_kind, connection::DbKind};
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn stalled_turso_write_returns_an_error() {
+        let error = await_write_for_kind(
+            DbKind::Turso,
+            Duration::from_millis(20),
+            std::future::pending::<Result<(), String>>(),
+        )
+        .await
+        .expect_err("a stalled remote write must time out");
+
+        assert_eq!(error, "Turso database write timed out after 20ms");
+    }
+
+    #[tokio::test]
+    async fn completed_local_write_passes_through() {
+        let value = await_write_for_kind(DbKind::Local, Duration::ZERO, async { Ok(42) })
+            .await
+            .expect("local writes should not use the Turso deadline");
+
+        assert_eq!(value, 42);
+    }
+}
 
 // ── Database Initialization ─────────────────────────────────────────────────
 

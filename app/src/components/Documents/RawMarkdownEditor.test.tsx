@@ -13,7 +13,7 @@ vi.hoisted(() => {
     ({ top: 0, left: 0, bottom: 0, right: 0, width: 0, height: 0 }) as never;
 });
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { EditorView } from "@codemirror/view";
 import { selectNextOccurrence } from "@codemirror/search";
 import { RawMarkdownEditor } from "./RawMarkdownEditor";
@@ -36,6 +36,33 @@ describe("RawMarkdownEditor", () => {
     const { view } = renderEditor("a", onChange);
     view.dispatch({ changes: { from: 1, insert: "b" } });
     await waitFor(() => expect(onChange).toHaveBeenCalledWith("ab"));
+  });
+
+  it("lets the parent toolbar insert an uploaded file at the cursor", async () => {
+    let insertFiles: ((files: File[]) => Promise<void>) | null = null;
+    const onChange = vi.fn();
+    const onUploadFile = vi.fn(async () => "tanwords-asset://video-id");
+    const { container } = render(
+      <RawMarkdownEditor
+        value="before "
+        onChange={onChange}
+        label="Raw Markdown"
+        onUploadFile={onUploadFile}
+        onInsertFilesReady={(insert) => { insertFiles = insert; }}
+      />,
+    );
+    const view = EditorView.findFromDOM(container.querySelector<HTMLElement>(".cm-editor")!)!;
+    view.dispatch({ selection: { anchor: view.state.doc.length } });
+    await waitFor(() => expect(insertFiles).not.toBeNull());
+
+    await act(async () => {
+      await insertFiles!([new File(["video"], "clip.mp4", { type: "video/mp4" })]);
+    });
+
+    expect(onUploadFile).toHaveBeenCalledWith(expect.objectContaining({ name: "clip.mp4" }));
+    expect(view.state.doc.toString()).toBe(
+      "before [clip.mp4](tanwords-asset://video-id?tanwords-type=video)",
+    );
   });
 
   it("takes an outside edit without echoing it back", () => {

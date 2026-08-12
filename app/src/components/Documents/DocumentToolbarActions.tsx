@@ -8,6 +8,7 @@ import { subscribeToExportBusy } from "@/lib/documentExport";
 interface Props {
   mode: "rich" | "raw";
   switching: boolean;
+  attachmentBusy?: boolean;
   onMode: (mode: "rich" | "raw") => void;
   onAttach: () => void;
   onInsertLink?: () => void;
@@ -22,6 +23,7 @@ interface Props {
 export function DocumentToolbarActions({
   mode,
   switching,
+  attachmentBusy = false,
   onMode,
   onAttach,
   onInsertLink,
@@ -44,6 +46,7 @@ export function DocumentToolbarActions({
         variant="ghost"
         size="icon"
         onClick={onAttach}
+        disabled={attachmentBusy}
         title={t("doc.attachFile")}
         aria-label={t("doc.attachFile")}
         className="h-7 w-7 rounded-lg text-muted-foreground"
@@ -71,7 +74,7 @@ export function DocumentToolbarActions({
         <Button
           type="button"
           variant="ghost"
-          disabled={switching}
+          disabled={switching || attachmentBusy}
           onClick={() => onMode("rich")}
           title={t("doc.richMode")}
           aria-label={t("doc.richMode")}
@@ -82,7 +85,7 @@ export function DocumentToolbarActions({
         <Button
           type="button"
           variant="ghost"
-          disabled={switching}
+          disabled={switching || attachmentBusy}
           onClick={() => onMode("raw")}
           title={t("doc.rawMode")}
           aria-label={t("doc.rawMode")}

@@ -268,24 +268,27 @@ pub async fn db_update_document(
         ),
         None => (content, content_text),
     };
-    db.execute(
-        "UPDATE documents SET title=?1, content=?2, content_text=?3, tags=?4, pinned=?5,
-         word_count=?6, updated_at=datetime('now'), task_total=?7, task_done=?8, status=?9 WHERE id=?10",
-        params![
-            title,
-            content,
-            content_text,
-            tags,
-            pinned as i64,
-            word_count,
-            task_total,
-            task_done,
-            status,
-            id
-        ],
-    )
-    .await
-    .map_err(|e| e.to_string())?;
+    db::await_write(&conn, async {
+        db.execute(
+            "UPDATE documents SET title=?1, content=?2, content_text=?3, tags=?4, pinned=?5,
+             word_count=?6, updated_at=datetime('now'), task_total=?7, task_done=?8, status=?9 WHERE id=?10",
+            params![
+                title,
+                content,
+                content_text,
+                tags,
+                pinned as i64,
+                word_count,
+                task_total,
+                task_done,
+                status,
+                id
+            ],
+        )
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+    }).await?;
     Ok(())
 }
 
@@ -310,13 +313,16 @@ pub async fn db_update_document_content(
         ),
         None => (content, content_text),
     };
-    db.execute(
-        "UPDATE documents SET content=?1, content_text=?2, word_count=?3,
-         updated_at=datetime('now'), task_total=?4, task_done=?5 WHERE id=?6",
-        params![content, content_text, word_count, task_total, task_done, id],
-    )
-    .await
-    .map_err(|e| e.to_string())?;
+    db::await_write(&conn, async {
+        db.execute(
+            "UPDATE documents SET content=?1, content_text=?2, word_count=?3,
+             updated_at=datetime('now'), task_total=?4, task_done=?5 WHERE id=?6",
+            params![content, content_text, word_count, task_total, task_done, id],
+        )
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+    }).await?;
     Ok(())
 }
 
@@ -361,16 +367,19 @@ pub async fn db_update_document_metadata(
     document_privacy::require_key(&db, &conn.document_privacy, id).await?;
     assignments.push("updated_at=datetime('now')".to_string());
     values.push(id.into());
-    db.execute(
-        &format!(
-            "UPDATE documents SET {} WHERE id=?{}",
-            assignments.join(", "),
-            values.len(),
-        ),
-        values,
-    )
-    .await
-    .map_err(|e| e.to_string())?;
+    db::await_write(&conn, async {
+        db.execute(
+            &format!(
+                "UPDATE documents SET {} WHERE id=?{}",
+                assignments.join(", "),
+                values.len(),
+            ),
+            values,
+        )
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+    }).await?;
     Ok(())
 }
 

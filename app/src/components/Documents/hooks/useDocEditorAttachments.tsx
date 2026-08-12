@@ -5,6 +5,7 @@ import { Download, Trash2 } from "lucide-react";
 import { DocumentDetail } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { uploadDocumentAsset } from "@/lib/documentAssets";
+import { subscribe } from "@/ipc/events";
 import { DocumentPasswordRequest } from "../DocumentPasswordDialog";
 import { requiresAttachmentPassword, type PrivateAttachmentAction } from "../privateDocumentPolicy";
 import type { DocEditorApi } from "../tiptap/DocEditorApi";
@@ -18,10 +19,13 @@ export function useDocEditorAttachments(params: {
   doc: DocumentDetail;
   editor: DocEditorApi | null;
   scheduleSave: () => void;
+  onUploadPending?: (pending: Promise<void> | null) => void;
 }) {
-  const { doc, editor, scheduleSave } = params;
+  const { doc, editor, scheduleSave, onUploadPending } = params;
   const t = useT();
   const [passwordRequest, setPasswordRequest] = useState<DocumentPasswordRequest | null>(null);
+  const [uploadState, setUploadState] = useState<{ fileName: string; sent: number; total: number } | null>(null);
+  const uploadingRef = useRef(false);
   const passwordResolver = useRef<((password: string | null) => void) | null>(null);
 
   const requestPassword = useCallback((request: DocumentPasswordRequest) => new Promise<string | null>((resolve) => {
@@ -38,12 +42,40 @@ export function useDocEditorAttachments(params: {
 
   /** Stores a file and hands back its URL, without touching the rich editor.
    *  Raw Markdown mode writes its own link and needs only this half. */
-  const uploadFile = useCallback((file: File) => uploadDocumentAsset(doc.id, file), [doc.id]);
+  const uploadFile = useCallback((file: File) => {
+    if (uploadingRef.current) {
+      return Promise.reject(new Error("Another attachment is still uploading"));
+    }
+    uploadingRef.current = true;
+    const fileName = file.name || "attachment";
+    setUploadState({ fileName, sent: 0, total: file.size });
+    const stop = subscribe<{ fileName: string; sent: number; total: number }>(
+      "r2:upload-progress",
+      (progress) => {
+        if (progress.fileName !== fileName) return;
+        setUploadState({ fileName, sent: progress.sent, total: progress.total || file.size });
+      },
+    );
+    const upload = uploadDocumentAsset(doc.id, file);
+    // Navigation only needs a settlement barrier; upload errors are rendered by
+    // the editor that initiated them and must not become unhandled rejections.
+    onUploadPending?.(upload.then(() => {}, () => {}));
+    const cleanup = () => {
+      stop();
+      uploadingRef.current = false;
+      setUploadState(null);
+      onUploadPending?.(null);
+    };
+    void upload.then(cleanup, cleanup);
+    return upload;
+  }, [doc.id, onUploadPending]);
 
   const insertAttachment = async (file: File | undefined) => {
     if (!file || !editor) return;
+    const name = file.name || "attachment";
+    const toastId = toast.loading(t("doc.attachmentUploading", { name }));
     try {
-      const url = await uploadDocumentAsset(doc.id, file);
+      const url = await uploadFile(file);
       const type = file.type.startsWith("image/") ? "image"
         : file.type.startsWith("audio/") ? "audio"
         : file.type.startsWith("video/") ? "video"
@@ -51,11 +83,12 @@ export function useDocEditorAttachments(params: {
       const current = editor.getTextCursorPosition().block;
       editor.insertBlocks([{
         type,
-        props: { url, name: file.name || "attachment" },
+        props: { url, name },
       } as any], current, "after");
       scheduleSave();
+      toast.success(t("doc.attachmentUploaded", { name }), { id: toastId });
     } catch (error) {
-      toast.error(String(error));
+      toast.error(String(error), { id: toastId });
     }
   };
 
@@ -125,6 +158,6 @@ export function useDocEditorAttachments(params: {
 
   return {
     passwordRequest, finishPasswordRequest,
-    insertAttachment, uploadFile, renderToolbarExtras,
+    insertAttachment, uploadFile, uploadState, renderToolbarExtras,
   };
 }

@@ -23,6 +23,7 @@ export function useDocumentEditor() {
   const loadSequence = useRef(0);
   const lastSavedContent = useRef<string | null>(null);
   const activeFlush = useRef<(() => Promise<void>) | null>(null);
+  const activeUpload = useRef<Promise<void> | null>(null);
 
   const pendingSave = useRef<{ content: string; contentText: string; wordCount: number } | null>(null);
   const saveQueue = useRef(Promise.resolve());
@@ -34,6 +35,23 @@ export function useDocumentEditor() {
 
   const loadDoc = useCallback(async (id: number) => {
     const sequence = ++loadSequence.current;
+    const previousId = activeIdRef.current;
+    const upload = previousId !== null && previousId !== id ? activeUpload.current : null;
+    if (upload) {
+      await upload;
+      if (sequence !== loadSequence.current) return;
+      try {
+        // The upload continuation inserts its block and marks the editor dirty.
+        // Flush that exact document before unmounting it for navigation.
+        await activeFlush.current?.();
+        await saveQueue.current;
+      } catch {
+        // The save path already surfaced the error and kept the document dirty.
+        // Stay here rather than navigating away from unsaved attachment markup.
+        return;
+      }
+      if (sequence !== loadSequence.current) return;
+    }
     if (id < 0) {
       setActiveId(null);
       activeIdRef.current = null;
@@ -135,9 +153,15 @@ export function useDocumentEditor() {
         setDoc((prev) => (prev?.id === documentId
           ? { ...prev, content, content_text: contentText, word_count: wordCount }
           : prev));
-      } catch {
-        setSaveStatus("idle");
+      } catch (error) {
+        // Keep the document visibly dirty and propagate the failure back to the
+        // content hook. It owns the retry flag; swallowing this error made a
+        // timed-out write look clean even though nothing reached the database.
+        if (activeIdRef.current === documentId && pendingSave.current?.content === content) {
+          setSaveStatus("dirty");
+        }
         toast.error("Save failed");
+        throw error;
       }
     };
     saveQueue.current = saveQueue.current.then(save, save);
@@ -151,6 +175,10 @@ export function useDocumentEditor() {
 
   const registerActiveFlush = useCallback((flush: (() => Promise<void>) | null) => {
     activeFlush.current = flush;
+  }, []);
+
+  const registerActiveUpload = useCallback((pending: Promise<void> | null) => {
+    activeUpload.current = pending;
   }, []);
 
   const flushActiveDocument = useCallback(async (id: number) => {
@@ -229,7 +257,7 @@ export function useDocumentEditor() {
   return {
     activeId, doc, lockedId, saveStatus, refreshKey, loading,
     loadDoc, handleNewDoc, handleNewDocIn, handleSave, markDirty, handleTitleChange, handleTagsChange, handleStatusChange, handlePinToggle,
-    registerActiveFlush, flushActiveDocument,
+    registerActiveFlush, registerActiveUpload, flushActiveDocument,
     unlockDocument, removeLockedProtection,
     reset,
   };

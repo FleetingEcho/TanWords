@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { ListOrdered, Search, SpellCheck, WandSparkles, WrapText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useIsDark } from "@/hooks/useIsDark";
+import { useT } from "@/hooks/useT";
 import { formatMarkdown } from "@/lib/formatMarkdown";
 import { markdownEditorTheme } from "./markdownEditorTheme";
 import { MarkdownSearchBar } from "./MarkdownSearchBar";
@@ -80,6 +81,7 @@ export function RawMarkdownEditor({
   label,
   placeholderText,
   onUploadFile,
+  onInsertFilesReady,
   readNativeImage,
 }: {
   value: string;
@@ -89,6 +91,9 @@ export function RawMarkdownEditor({
   /** Stores a pasted or dropped file and returns its URL. Omitted, the editor
    *  lets the browser handle a paste as plain text. */
   onUploadFile?: (file: File) => Promise<string>;
+  /** Gives the parent toolbar the same cursor-aware insertion path used by
+   *  drag/drop. Without this, its hidden file input only worked in rich mode. */
+  onInsertFilesReady?: (insert: ((files: File[]) => Promise<void>) | null) => void;
   /** Desktop-WebView fallback: some of them never put a pasted screenshot in
    *  `DataTransfer`, so it has to be read from the native clipboard instead. */
   readNativeImage?: () => Promise<File | null>;
@@ -96,6 +101,7 @@ export function RawMarkdownEditor({
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const isDark = useIsDark();
+  const t = useT();
   const lightweight = isLargeDocumentText(value);
 
   const [searchRequest, setSearchRequest] = useState<SearchRequest | null>(null);
@@ -172,10 +178,16 @@ export function RawMarkdownEditor({
     const upload = uploadRef.current;
     if (!upload) return;
     for (const file of files) {
+      const name = file.name || "attachment";
+      const toastId = toast.loading(t("doc.attachmentUploading", { name }));
       try {
         const url = await upload(file);
-        const name = file.name || "attachment";
-        const snippet = file.type.startsWith("image/") ? `![${name}](${url})` : `[${name}](${url})`;
+        const type = file.type.startsWith("video/") ? "video"
+          : file.type.startsWith("audio/") ? "audio"
+          : "file";
+        const snippet = file.type.startsWith("image/")
+          ? `![${name}](${url})`
+          : `[${name}](${url}?tanwords-type=${type})`;
         // Re-read the selection each time: the awaits above mean the cursor may
         // have moved, and the previous file in this loop moved it itself.
         const at = target.state.selection.main;
@@ -183,11 +195,23 @@ export function RawMarkdownEditor({
           changes: { from: at.from, to: at.to, insert: snippet },
           selection: { anchor: at.from + snippet.length },
         });
+        toast.success(t("doc.attachmentUploaded", { name }), { id: toastId });
       } catch (error) {
-        toast.error(String(error));
+        toast.error(String(error), { id: toastId });
       }
     }
-  }, []);
+  }, [t]);
+
+  useEffect(() => {
+    if (!onInsertFilesReady) return;
+    const insert = async (files: File[]) => {
+      const target = viewRef.current;
+      if (!target) throw new Error("Markdown editor is still loading");
+      await insertFiles(target, files);
+    };
+    onInsertFilesReady(insert);
+    return () => onInsertFilesReady(null);
+  }, [insertFiles, onInsertFilesReady]);
 
   useEffect(() => {
     const host = hostRef.current;

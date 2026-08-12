@@ -1,10 +1,11 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getDocument, updateDocumentContent, updateDocumentMetadata } = vi.hoisted(() => ({
+const { getDocument, updateDocumentContent, updateDocumentMetadata, toastError } = vi.hoisted(() => ({
   getDocument: vi.fn(),
   updateDocumentContent: vi.fn(async () => true),
   updateDocumentMetadata: vi.fn(async () => true),
+  toastError: vi.fn(),
 }));
 
 vi.mock("@/hooks/useDB", () => ({
@@ -20,6 +21,7 @@ vi.mock("@/hooks/useDB", () => ({
 }));
 vi.mock("@/lib/documentAssets", () => ({ pruneDocumentAssets: vi.fn() }));
 vi.mock("@/lib/documentRevisions", () => ({ saveDocumentRevision: vi.fn() }));
+vi.mock("sonner", () => ({ toast: { error: toastError } }));
 
 import { useDocumentEditor } from "./useDocumentEditor";
 
@@ -82,5 +84,47 @@ describe("useDocumentEditor latest-click navigation", () => {
 
     await act(async () => { await result.current.handleSave("new-content", "new text", 2); });
     expect(updateDocumentContent).toHaveBeenCalledWith(1, "new-content", "new text", 2);
+  });
+
+  it("keeps a failed save dirty so it can be retried", async () => {
+    getDocument.mockResolvedValue(detail(1));
+    updateDocumentContent.mockRejectedValueOnce(new Error("Turso database write timed out"));
+    const { result } = renderHook(() => useDocumentEditor());
+    await act(async () => { await result.current.loadDoc(1); });
+
+    await act(async () => {
+      await expect(result.current.handleSave("unsaved-content", "unsaved text", 2))
+        .rejects.toThrow("Turso database write timed out");
+    });
+
+    expect(result.current.saveStatus).toBe("dirty");
+    expect(toastError).toHaveBeenCalledWith("Save failed");
+  });
+
+  it("waits for an attachment upload and flushes its document before navigating", async () => {
+    getDocument.mockImplementation(async (id: number) => detail(id));
+    const upload = deferred<void>();
+    const flush = vi.fn(async () => {});
+    const { result } = renderHook(() => useDocumentEditor());
+    await act(async () => { await result.current.loadDoc(1); });
+    act(() => {
+      result.current.registerActiveFlush(flush);
+      result.current.registerActiveUpload(upload.promise);
+    });
+
+    let navigation!: Promise<void>;
+    act(() => { navigation = result.current.loadDoc(2); });
+    expect(result.current.activeId).toBe(1);
+    expect(result.current.doc?.id).toBe(1);
+    expect(getDocument).not.toHaveBeenCalledWith(2);
+
+    await act(async () => {
+      upload.resolve();
+      await navigation;
+    });
+
+    expect(flush).toHaveBeenCalledOnce();
+    expect(getDocument).toHaveBeenCalledWith(2);
+    expect(result.current.doc?.id).toBe(2);
   });
 });

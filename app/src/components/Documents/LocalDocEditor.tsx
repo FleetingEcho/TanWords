@@ -100,6 +100,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
   const [historyOpen, setHistoryOpen] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const rawFileInserterRef = useRef<((files: File[]) => Promise<void>) | null>(null);
   const searchRootRef = useRef<HTMLDivElement>(null);
   const loaded = useRef(false);
   const dirty = useRef(false);
@@ -287,6 +288,8 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
 
   const insertAttachment = async (file: File | undefined) => {
     if (!file || !editor) return;
+    const name = file.name || "attachment";
+    const toastId = toast.loading(t("doc.attachmentUploading", { name }));
     try {
       const url = await onUploadImage(file);
       const type = file.type.startsWith("image/") ? "image"
@@ -295,13 +298,32 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
         : "file";
       editor.insertBlocks([{
         type,
-        props: { url, name: file.name || "attachment" },
+        props: { url, name },
       } as any], editor.getTextCursorPosition().block, "after");
       dirty.current = true;
       scheduleSave();
+      toast.success(t("doc.attachmentUploaded", { name }), { id: toastId });
     } catch (error) {
-      toast.error(String(error));
+      toast.error(String(error), { id: toastId });
     }
+  };
+
+  const registerRawFileInserter = useCallback((insert: ((files: File[]) => Promise<void>) | null) => {
+    rawFileInserterRef.current = insert;
+  }, []);
+
+  const handleAttachmentInput = (file: File | undefined) => {
+    if (!file) return;
+    if (mode === "raw") {
+      const insert = rawFileInserterRef.current;
+      if (!insert) {
+        toast.error("Markdown editor is still loading");
+        return;
+      }
+      void insert([file]);
+      return;
+    }
+    void insertAttachment(file);
   };
 
   const handleImagePaste = (event: React.ClipboardEvent) => {
@@ -421,7 +443,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
           </div>
         </div>
         <input ref={attachmentInputRef} type="file" className="hidden"
-          onChange={(event) => { void insertAttachment(event.target.files?.[0]); event.target.value = ""; }} />
+          onChange={(event) => { handleAttachmentInput(event.target.files?.[0]); event.target.value = ""; }} />
       </div>
 
       {mode === "rich" ? (
@@ -462,6 +484,7 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
           label={t("doc.rawMode")}
           placeholderText={t("doc.rawPlaceholder")}
           onUploadFile={onUploadImage}
+          onInsertFilesReady={registerRawFileInserter}
           readNativeImage={readNativeClipboardImage}
         />
       )}

@@ -81,7 +81,7 @@ export function DocumentsPage() {
   const {
     activeId, doc, lockedId, saveStatus, refreshKey, loading,
     loadDoc, handleNewDoc, handleNewDocIn, handleSave, markDirty, handleTitleChange, handleTagsChange, handleStatusChange, handlePinToggle,
-    registerActiveFlush, flushActiveDocument,
+    registerActiveFlush, registerActiveUpload, flushActiveDocument,
     unlockDocument, removeLockedProtection,
   } = useDocumentEditor();
 
@@ -252,6 +252,7 @@ export function DocumentsPage() {
                   zenMode={dbZenMode}
                   onZenModeChange={setDbZenMode}
                   onFlushReady={registerActiveFlush}
+                  onUploadPending={registerActiveUpload}
                 />
               ) : lockedId !== null ? (
                 <LockedDocumentPanel

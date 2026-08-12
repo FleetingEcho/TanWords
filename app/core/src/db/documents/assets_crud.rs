@@ -31,13 +31,16 @@ pub async fn db_create_document_asset(
         None => data,
     };
     let id = uuid::Uuid::new_v4().to_string();
-    db.execute(
-        "INSERT INTO document_assets (id, document_id, file_name, mime_type, data, size)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![id.clone(), document_id, file_name, mime_type, data, size],
-    )
-    .await
-    .map_err(|e| e.to_string())?;
+    db::await_write(&conn, async {
+        db.execute(
+            "INSERT INTO document_assets (id, document_id, file_name, mime_type, data, size)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![id.clone(), document_id, file_name, mime_type, data, size],
+        )
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+    }).await?;
     Ok(id)
 }
 
@@ -59,13 +62,16 @@ pub async fn db_create_standalone_asset(
     let db = db::conn(&conn)?;
     let size = data.len() as i64;
     let id = uuid::Uuid::new_v4().to_string();
-    db.execute(
-        "INSERT INTO standalone_assets (id, file_name, mime_type, data, size)
-         VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![id.clone(), file_name, mime_type, data, size],
-    )
-    .await
-    .map_err(|e| e.to_string())?;
+    db::await_write(&conn, async {
+        db.execute(
+            "INSERT INTO standalone_assets (id, file_name, mime_type, data, size)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![id.clone(), file_name, mime_type, data, size],
+        )
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+    }).await?;
     Ok(id)
 }
 
@@ -85,13 +91,16 @@ pub async fn db_create_remote_asset(
     }
     let db = db::conn(&conn)?;
     let id = uuid::Uuid::new_v4().to_string();
-    db.execute(
-        "INSERT INTO standalone_assets (id, file_name, mime_type, data, size, remote_key)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![id.clone(), file_name, mime_type, Vec::<u8>::new(), size, remote_key],
-    )
-    .await
-    .map_err(|e| e.to_string())?;
+    db::await_write(&conn, async {
+        db.execute(
+            "INSERT INTO standalone_assets (id, file_name, mime_type, data, size, remote_key)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![id.clone(), file_name, mime_type, Vec::<u8>::new(), size, remote_key],
+        )
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+    }).await?;
     Ok(id)
 }
 
@@ -355,9 +364,12 @@ pub async fn db_prune_document_assets(
     .await?;
     for id in assets {
         if !referenced_ids.contains(&id) {
-            db.execute("DELETE FROM document_assets WHERE id = ?1", params![id])
-                .await
-                .map_err(|e| e.to_string())?;
+            db::await_write(&conn, async {
+                db.execute("DELETE FROM document_assets WHERE id = ?1", params![id])
+                    .await
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }).await?;
         }
     }
     Ok(())

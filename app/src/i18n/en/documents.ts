@@ -64,6 +64,8 @@ export const documents: Dict = {
     "doc.backlinks": "Backlinks",
     "doc.attach": "Attach",
     "doc.attachFile": "Attach file (up to 100 MB)",
+    "doc.attachmentUploading": "Uploading {name}…",
+    "doc.attachmentUploaded": "Uploaded {name}",
     "doc.copyCode": "Copy code",
     "doc.unsavedChanges": "Unsaved changes",
     "doc.mountFolder": "Mount Folder",

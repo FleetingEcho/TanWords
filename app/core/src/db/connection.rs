@@ -15,6 +15,21 @@ use std::time::Duration;
 /// How often an embedded replica pulls changes from the primary. Writes are
 /// pushed immediately; this only bounds how stale another device's edits look.
 const SYNC_INTERVAL: Duration = Duration::from_secs(60);
+/// Bound the network-dependent part of opening a Turso profile. Startup callers
+/// already fall back to the normal local database when `open` returns an error;
+/// without this deadline a half-open connection can keep the loading screen up
+/// forever and never reach that fallback.
+const TURSO_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
+
+async fn await_before_turso_deadline<T>(
+    deadline: tokio::time::Instant,
+    operation: &str,
+    future: impl std::future::Future<Output = T>,
+) -> Result<T, String> {
+    tokio::time::timeout_at(deadline, future)
+        .await
+        .map_err(|_| format!("Turso {operation} timed out after {TURSO_STARTUP_TIMEOUT:?}"))
+}
 
 // Why writes are forwarded to the primary rather than queued locally:
 //
@@ -186,6 +201,10 @@ pub async fn open(profile: &DbProfile, token: Option<&str>) -> Result<Db, String
             (db, DbCaps { export: true, switch_path: true, sync: false, writable: true })
         }
         DbProfile::Turso { path, url } => {
+            // `build()` and the initial `sync()` are both network-dependent and
+            // share one deadline, so a slow build cannot buy another full wait
+            // before startup is allowed to fall back to the local database.
+            let remote_deadline = tokio::time::Instant::now() + TURSO_STARTUP_TIMEOUT;
             let replica_started = std::time::Instant::now();
             let token = token
                 .filter(|t| !t.trim().is_empty())
@@ -195,8 +214,8 @@ pub async fn open(profile: &DbProfile, token: Option<&str>) -> Result<Db, String
             let has_replica = std::path::Path::new(path).exists();
             let built = Builder::new_remote_replica(path.clone(), url.clone(), token.to_string())
                 .sync_interval(SYNC_INTERVAL)
-                .build()
-                .await;
+                .build();
+            let built = await_before_turso_deadline(remote_deadline, "connection", built).await?;
             eprintln!("[startup] turso-replica-built +{}ms", replica_started.elapsed().as_millis());
 
             // `build()` contacts the primary, so being offline fails here, not
@@ -211,7 +230,9 @@ pub async fn open(profile: &DbProfile, token: Option<&str>) -> Result<Db, String
 
             // Pull once before first use so a fresh replica isn't briefly empty.
             let sync_started = std::time::Instant::now();
-            if let Err(error) = db.sync().await {
+            let sync =
+                await_before_turso_deadline(remote_deadline, "initial sync", db.sync()).await?;
+            if let Err(error) = sync {
                 if !has_replica {
                     // Nothing local to fall back on — failing here is far better
                     // than handing back an empty database that looks like data
@@ -310,4 +331,31 @@ pub(crate) async fn apply_pragmas(conn: &Connection, kind: DbKind) {
         let _ = conn.execute_batch("PRAGMA journal_mode=WAL;").await;
     }
     let _ = conn.execute_batch("PRAGMA foreign_keys=ON;").await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::await_before_turso_deadline;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn stalled_turso_operation_reaches_the_fallback_error_path() {
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(20);
+        let error =
+            await_before_turso_deadline(deadline, "connection", std::future::pending::<()>())
+                .await
+                .expect_err("a stalled Turso connection must time out");
+
+        assert_eq!(error, "Turso connection timed out after 10s");
+    }
+
+    #[tokio::test]
+    async fn completed_turso_operation_is_not_delayed_by_the_deadline() {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
+        let value = await_before_turso_deadline(deadline, "connection", async { 42 })
+            .await
+            .expect("a completed Turso connection should pass through");
+
+        assert_eq!(value, 42);
+    }
 }
