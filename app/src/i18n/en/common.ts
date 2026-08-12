@@ -107,6 +107,7 @@ export const common: Dict = {
     "windowControls.restore": "Restore",
     "windowControls.fullscreen": "Fullscreen",
     "windowControls.exitFullscreen": "Exit fullscreen",
+    "windowControls.dragToExitFullscreen": "Drag the top bar down to exit fullscreen",
     "windowControls.close": "Close",
     "auth.subtitle": "Your content-driven English library",
     "auth.gloss": "Note down every thought, explore every curiosity, and build whatever comes next.",

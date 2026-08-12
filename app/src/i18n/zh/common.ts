@@ -107,6 +107,7 @@ export const common: Dict = {
     "windowControls.restore": "还原",
     "windowControls.fullscreen": "全屏",
     "windowControls.exitFullscreen": "退出全屏",
+    "windowControls.dragToExitFullscreen": "向下拖动顶部栏以退出全屏",
     "windowControls.close": "关闭",
     "auth.subtitle": "你的内容驱动英语知识库",
     "auth.gloss": "记下每一个想法，探索每一份好奇，创造下一种可能。",

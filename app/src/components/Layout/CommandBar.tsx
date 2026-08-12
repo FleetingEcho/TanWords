@@ -1,6 +1,7 @@
 import React from "react";
 import { invoke } from "@/ipc/backend";
 import { openExternal as openUrl } from "@/ipc/shell";
+import { callMain } from "@/ipc/host";
 import {
   BrainCircuit, Check, ChevronsLeft, ChevronsRight, ClipboardPaste, Cloud, CloudOff, Database, Lock,
   FilePlus2, Languages, MessageSquarePlus, Monitor, Moon, Palette, Quote, Search, Server, Settings, Sun,
@@ -18,6 +19,7 @@ import { SentenceSearchBox } from "@/components/shared/SentenceSearchBox";
 import { WindowControls } from "@/components/Layout/WindowControls";
 import { useAppLockStore } from "@/store/appLockStore";
 import { useT } from "@/hooks/useT";
+import { useWindowState } from "@/hooks/useWindowState";
 import { useDB } from "@/hooks/useDB";
 import type { DbConnection } from "@/hooks/useDB.types";
 import { useProviderStatus } from "@/hooks/useProviderStatus";
@@ -55,6 +57,9 @@ function ThemeIcon({ theme }: { theme: string }) {
 
 export function CommandBar({ activePage }: { activePage: NavPage }) {
   const t = useT();
+  // OS-level fullscreen state (desktop only; inert on web). Used to switch the
+  // banner from a native drag region into a drag-to-exit gesture — see below.
+  const { fullScreen } = useWindowState();
   const navigate = useNavStore((state) => state.navigate);
   const defaultProvider = useSettingsStore((state) => state.defaultAiProvider);
   const setDefaultProvider = useSettingsStore((state) => state.setDefaultAiProvider);
@@ -183,6 +188,35 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
     ? { label: t("command.newDocument"), icon: FilePlus2, run: newDocument }
     : null;
 
+  // OS-fullscreen exit-by-dragging. The `-webkit-app-region: drag` region that
+  // makes the banner movable in normal mode swallows pointer events, so it is
+  // dropped while fullscreen — a fullscreen window is pinned by the WM and can't
+  // move anyway, and dropping the region lets us receive the mousedown. With
+  // pointer events available, a downward drag on the banner's empty area exits
+  // fullscreen: the GNOME-style "pull the top bar down" gesture, which works on
+  // every WM since it's pure DOM rather than a native window move (which most
+  // Linux WMs reject for pinned fullscreen windows). Interactive children
+  // (buttons, inputs, links) opt out via the closest() check, exactly mirroring
+  // the no-drag CSS rule in base.css, so the window controls and search box keep
+  // working while the banner itself is draggable.
+  const onBannerMouseDown = (event: React.MouseEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("button, input, textarea, select, a, [role='button'], [role='combobox']")) return;
+    const startY = event.clientY;
+    const onMove = (e: MouseEvent) => {
+      if (e.clientY - startY < 4) return;
+      cleanup();
+      void callMain("window:toggleFullScreen").catch(() => {});
+    };
+    const onUp = () => cleanup();
+    const cleanup = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
   return (
     <>
       {/* `z-30` is load-bearing, not decoration. `backdrop-blur-sm` makes this
@@ -192,9 +226,12 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
           both `auto`, so the page paints later and its toolbars (the Browser
           address bar, FeedTabs at z-20, sticky list headers at z-10) come out
           on top of the dropdown. This has to stay above all of those. */}
-      <header className={`app-drag-region relative z-30 flex min-h-12 shrink-0 select-none flex-col lg:flex-row lg:items-center gap-x-1.5 gap-y-2 border-b border-border/80 px-3 py-2 ${
-        hasCustomAppBackground ? "bg-transparent" : "bg-background/90 backdrop-blur-xl"
-      }`}>
+      <header
+        onMouseDown={fullScreen ? onBannerMouseDown : undefined}
+        title={fullScreen ? t("windowControls.dragToExitFullscreen") : undefined}
+        className={`${fullScreen ? "cursor-grab " : "app-drag-region "}relative z-30 flex min-h-12 shrink-0 select-none flex-col lg:flex-row lg:items-center gap-x-1.5 gap-y-2 border-b border-border/80 px-3 py-2 ${
+          hasCustomAppBackground ? "bg-transparent" : "bg-background/90 backdrop-blur-xl"
+        }`}>
         {visible("search") && (
           <div className="flex min-w-0 order-2 w-full lg:order-none lg:w-auto lg:max-w-2xl lg:flex-1 lg:shrink items-center gap-1">
             <div className="min-w-0 flex-1">
