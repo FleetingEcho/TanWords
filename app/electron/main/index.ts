@@ -14,6 +14,7 @@ import {
 } from "./terminal";
 import { wireWindowDevTools } from "./devtools";
 import { rememberedWindowBackground } from "./windowBackground";
+import { requestWindowHide, showWindow } from "./windowVisibility";
 import { abortAllFor } from "./http";
 import { registerYouTubeEmbedIdentity } from "./youtubeEmbed";
 
@@ -383,7 +384,7 @@ function createWindow() {
   win.on("close", (event) => {
     if (quitting) return;
     event.preventDefault();
-    win.hide();
+    requestWindowHide(win);
   });
   win.on("closed", () => {
     abortAllFor(contentsId);
@@ -400,7 +401,7 @@ if (gotLock) {
     const win = mainWindow;
     if (win && !win.isDestroyed()) {
       if (win.isMinimized()) win.restore();
-      win.show();
+      showWindow(win);
       win.focus();
       return;
     }
@@ -479,7 +480,7 @@ if (gotLock) {
       // recreate. The recreate branch stays for a genuinely destroyed window.
       const win = mainWindow;
       if (win && !win.isDestroyed()) {
-        win.show();
+        showWindow(win);
         return;
       }
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

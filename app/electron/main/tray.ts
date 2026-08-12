@@ -16,6 +16,7 @@
  *  and the renderer pushes playback state back so the labels stay honest. */
 import { app, BrowserWindow, Menu, Tray, nativeImage } from "electron";
 import path from "node:path";
+import { showWindow } from "./windowVisibility";
 
 export type TrayLang = "en" | "zh";
 
@@ -132,7 +133,7 @@ export class TrayManager {
     const win = this.win;
     if (!win || win.isDestroyed()) return;
     if (win.isMinimized()) win.restore();
-    win.show();
+    showWindow(win);
     win.focus();
   }
 

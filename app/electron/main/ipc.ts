@@ -11,6 +11,7 @@ import type { BrowserPanelManager, PanelBounds } from "./browserPanel";
 import type { TrayManager } from "./tray";
 import { abortFetch, startFetch } from "./http";
 import { rememberWindowBackground } from "./windowBackground";
+import { requestWindowHide, showWindow } from "./windowVisibility";
 import {
   terminalClose,
   terminalDefaultShell,
@@ -161,12 +162,13 @@ async function dispatch(
     }
 
     case "window:hide": {
-      deps.getMainWindow()?.hide();
+      const win = deps.getMainWindow();
+      if (win) requestWindowHide(win);
       return null;
     }
     case "window:show": {
       const win = deps.getMainWindow();
-      win?.show();
+      if (win) showWindow(win);
       win?.focus();
       return null;
     }
