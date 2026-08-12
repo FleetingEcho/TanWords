@@ -379,6 +379,23 @@ describe("TerminalTool clipboard controls", () => {
     await waitFor(() => expect(mocks.toastSuccess).toHaveBeenCalledWith("Copied"));
   });
 
+  it("does not cover a terminal program's context menu when nothing is selected", () => {
+    const { shell } = renderTerminal();
+
+    const allowed = fireEvent.contextMenu(shell, { clientX: 40, clientY: 60 });
+
+    expect(allowed).toBe(false);
+    expect(screen.queryByRole("menu", { name: "Terminal actions" })).not.toBeInTheDocument();
+
+    mocks.terminal.hasSelection.mockReturnValue(true);
+    fireEvent.contextMenu(shell);
+    expect(screen.getByRole("menu", { name: "Terminal actions" })).toBeInTheDocument();
+
+    mocks.terminal.hasSelection.mockReturnValue(false);
+    fireEvent.contextMenu(shell);
+    expect(screen.queryByRole("menu", { name: "Terminal actions" })).not.toBeInTheDocument();
+  });
+
   it("reports a right-click copy failure", async () => {
     mocks.terminal.hasSelection.mockReturnValue(true);
     mocks.terminal.getSelection.mockReturnValue("selected output");
@@ -439,6 +456,7 @@ describe("TerminalTool clipboard controls", () => {
   });
 
   it("does not consume Escape from xterm to close its context menu", () => {
+    mocks.terminal.hasSelection.mockReturnValue(true);
     const { shell } = renderTerminal();
     fireEvent.contextMenu(shell);
 
@@ -504,6 +522,7 @@ describe("TerminalTool clipboard controls", () => {
   });
 
   it("pastes clipboard text from the context menu", async () => {
+    mocks.terminal.hasSelection.mockReturnValue(true);
     mocks.setClipboardValue({ kind: "text", text: "echo hello" });
     const { shell } = renderTerminal();
 
@@ -513,6 +532,7 @@ describe("TerminalTool clipboard controls", () => {
   });
 
   it("pastes a safely escaped temporary image path from the context menu", async () => {
+    mocks.terminal.hasSelection.mockReturnValue(true);
     mocks.setClipboardValue({ kind: "image", path: "/tmp/Tan Words/image (1).png" });
     const { shell } = renderTerminal();
 
@@ -527,6 +547,7 @@ describe("TerminalTool clipboard controls", () => {
   });
 
   it("selects the full terminal buffer from the context menu", () => {
+    mocks.terminal.hasSelection.mockReturnValue(true);
     const { shell } = renderTerminal();
     fireEvent.contextMenu(shell);
     fireEvent.click(screen.getByRole("menuitem", { name: "Select all" }));

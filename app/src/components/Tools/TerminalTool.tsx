@@ -620,12 +620,20 @@ export function TerminalTool({
 
   const openContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
+    const term = terminalRef.current;
+    if (!term?.hasSelection()) {
+      // Full-screen terminal programs can draw and handle their own mouse menus.
+      // With no xterm selection there is nothing for TanWords to copy, so keep
+      // our overlay out of the way while still suppressing Chromium's menu.
+      setContextMenu(null);
+      return;
+    }
     const width = 184;
     const height = 112;
     setContextMenu({
       x: Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8)),
       y: Math.max(8, Math.min(event.clientY, window.innerHeight - height - 8)),
-      canCopy: terminalRef.current?.hasSelection() ?? false,
+      canCopy: true,
     });
   };
 
