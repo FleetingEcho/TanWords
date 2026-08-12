@@ -157,6 +157,14 @@ linux:
   # they don't match its <N>x<N>.png naming pattern.
   icon: core/icons
   category: Education
+  # Align the installed .desktop filename AND StartupWMClass with the runtime
+  # app_id so docks/taskbars can associate the running window with this icon.
+  # Electron pins the window's WM_CLASS to "tanwords" via app.setName() in
+  # electron/main/index.ts; package.json's desktopName="tanwords" makes
+  # electron-builder emit StartupWMClass=tanwords to match. Without this the
+  # generated .desktop fell back to StartupWMClass=TanWords (productName) and
+  # the case-sensitive mismatch left the dock showing a generic "..." icon.
+  syncDesktopName: true
 
 # AppImage has no equivalent of Tauri's `bundle.linux.bundleMediaFramework`
 # (which bundled GStreamer's own codec plugins into the AppImage so it didn't
