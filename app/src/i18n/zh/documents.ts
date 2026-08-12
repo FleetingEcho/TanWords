@@ -63,7 +63,7 @@ export const documents: Dict = {
     "doc.outgoingLinks": "文档链接",
     "doc.backlinks": "反向链接",
     "doc.attach": "附件",
-    "doc.attachFile": "添加附件（最大 100 MB）",
+    "doc.attachFile": "添加附件",
     "doc.attachmentUploading": "正在上传 {name}…",
     "doc.attachmentUploaded": "已上传 {name}",
     "doc.copyCode": "复制代码",
