@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { ShieldCheck } from "lucide-react";
 import { useIsNarrow } from "@/components/Vocabulary/hooks/useMediaQuery";
+import { useSettingsStore } from "@/store/settingsStore";
 
 const GROUP_ICONS: Record<ToolGroupKey, React.FC<{ className?: string }>> = {
   vocabulary: BookIcon,
@@ -40,9 +41,10 @@ export function AiChatComposer({
 }: Props) {
   const t = useT();
   const narrow = useIsNarrow();
+  const hasCustomAppBackground = useSettingsStore((state) => !!state.appBackgroundImage && state.appBackgroundVisible);
 
   return (
-    <div className="shrink-0 bg-background/75 px-2 py-2 backdrop-blur-xl lg:py-3">
+    <div className={`shrink-0 px-2 py-2 lg:py-3 ${hasCustomAppBackground ? "bg-transparent" : "bg-background/75 backdrop-blur-xl"}`}>
       <div className="mx-auto max-w-full">
       {/* Attachment chip */}
       {attachment && (
@@ -73,7 +75,7 @@ export function AiChatComposer({
         * three lines tall is wasted screen on a phone and dead space on a
         * desktop; it grows only as the message does (the autosize effect in
         * useChatComposer). Only the labels differ by width. */}
-      <div className="flex items-end gap-1 rounded-[22px] border border-border/70 bg-card/95 p-1.5 shadow-[0_14px_45px_-28px_rgba(0,0,0,.55)] transition-colors focus-within:border-primary/30 lg:gap-2 lg:p-2">
+      <div className={`flex items-end gap-1 rounded-[22px] border border-border/70 p-1.5 shadow-[0_14px_45px_-28px_rgba(0,0,0,.55)] transition-colors focus-within:border-primary/30 lg:gap-2 lg:p-2 ${hasCustomAppBackground ? "bg-transparent" : "bg-card/95"}`}>
         <textarea
           ref={textareaRef}
           value={input}
