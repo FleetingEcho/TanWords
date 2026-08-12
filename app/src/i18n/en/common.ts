@@ -109,7 +109,7 @@ export const common: Dict = {
     "windowControls.exitFullscreen": "Exit fullscreen",
     "windowControls.close": "Close",
     "auth.subtitle": "Your content-driven English library",
-    "auth.gloss": "Read, write, learn, and build—all in one place.",
+    "auth.gloss": "Note down every thought, explore every curiosity, and build whatever comes next.",
     "auth.note1": "Paste an article, or read a feed — the words come from what you actually read.",
     "auth.note2": "Every saved word gets a full write-up: usage, collocations, nuance, etymology.",
     "auth.note3": "Reviews are scheduled by FSRS, so you see a word just before you would forget it.",

@@ -109,7 +109,7 @@ export const common: Dict = {
     "windowControls.exitFullscreen": "退出全屏",
     "windowControls.close": "关闭",
     "auth.subtitle": "你的内容驱动英语知识库",
-    "auth.gloss": "阅读、写作、学习与创造，尽在一处。",
+    "auth.gloss": "记下每一个想法，探索每一份好奇，创造下一种可能。",
     "auth.note1": "粘贴文章，或直接读订阅源——词来自你真正在读的内容。",
     "auth.note2": "每个收藏的词都有完整解析：用法、搭配、语感差别、词源。",
     "auth.note3": "复习由 FSRS 排期，在你快忘掉它的前一刻再见到它。",
