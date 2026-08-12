@@ -6,8 +6,11 @@ const mocks = vi.hoisted(() => {
   let terminalOptions: Record<string, unknown> | null = null;
   let clipboardValue: unknown = null;
   let contextLossHandler: (() => void) | null = null;
+  let searchResultsHandler: ((result: { resultIndex: number; resultCount: number }) => void) | null = null;
   let resizeHandler: (() => void) | null = null;
   let spawnInfo: { id: string; shell: string; cwd: string; pid: number } | null = null;
+  let deferWrites = false;
+  const pendingWriteCallbacks: Array<() => void> = [];
   const eventHandlers = new Map<string, (payload: any) => void>();
   const fit = vi.fn();
   const webgl = {
@@ -17,12 +20,27 @@ const mocks = vi.hoisted(() => {
       return { dispose: vi.fn() };
     }),
   };
+  const search = {
+    findNext: vi.fn(() => true),
+    findPrevious: vi.fn(() => true),
+    clearDecorations: vi.fn(),
+    clearActiveDecoration: vi.fn(),
+    dispose: vi.fn(),
+    onDidChangeResults: vi.fn((handler: typeof searchResultsHandler) => {
+      searchResultsHandler = handler;
+      return { dispose: vi.fn() };
+    }),
+  };
   const terminal = {
     cols: 80,
     rows: 24,
     loadAddon: vi.fn(),
     open: vi.fn(),
-    write: vi.fn(),
+    write: vi.fn((_data: Uint8Array, callback?: () => void) => {
+      if (!callback) return;
+      if (deferWrites) pendingWriteCallbacks.push(callback);
+      else callback();
+    }),
     focus: vi.fn(),
     dispose: vi.fn(),
     paste: vi.fn(),
@@ -44,13 +62,19 @@ const mocks = vi.hoisted(() => {
   return {
     terminal,
     webgl,
+    search,
     callMain,
     getKeyHandler: () => keyHandler,
     getTerminalOptions: () => terminalOptions,
     triggerContextLoss: () => contextLossHandler?.(),
+    emitSearchResults: (result: { resultIndex: number; resultCount: number }) => searchResultsHandler?.(result),
     triggerResize: () => resizeHandler?.(),
     emit: (event: string, payload: unknown) => eventHandlers.get(event)?.(payload),
     setSpawnInfo: (value: typeof spawnInfo) => { spawnInfo = value; },
+    setDeferWrites: (value: boolean) => { deferWrites = value; },
+    flushWrites: () => {
+      while (pendingWriteCallbacks.length > 0) pendingWriteCallbacks.shift()!();
+    },
     subscribe: (event: string, handler: (payload: any) => void) => {
       eventHandlers.set(event, handler);
       return () => { eventHandlers.delete(event); };
@@ -62,8 +86,11 @@ const mocks = vi.hoisted(() => {
       keyHandler = null;
       terminalOptions = null;
       contextLossHandler = null;
+      searchResultsHandler = null;
       resizeHandler = null;
       spawnInfo = null;
+      deferWrites = false;
+      pendingWriteCallbacks.length = 0;
       eventHandlers.clear();
       terminal.options = {};
     },
@@ -80,6 +107,11 @@ vi.mock("@xterm/xterm", () => ({
   },
 }));
 vi.mock("@xterm/addon-fit", () => ({ FitAddon: class { fit = mocks.fit; } }));
+vi.mock("@xterm/addon-search", () => ({
+  SearchAddon: class {
+    constructor() { return mocks.search; }
+  },
+}));
 vi.mock("@xterm/addon-webgl", () => ({
   WebglAddon: class {
     constructor() { return mocks.webgl; }
@@ -131,7 +163,9 @@ describe("TerminalTool clipboard controls", () => {
     renderTerminal();
 
     expect(mocks.getTerminalOptions()).toMatchObject({
+      allowProposedApi: true,
       allowTransparency: true,
+      scrollback: 40_000,
       theme: { background: "rgba(0, 0, 0, 0)" },
     });
     expect(mocks.terminal.loadAddon).toHaveBeenCalledWith(mocks.webgl);
@@ -145,6 +179,22 @@ describe("TerminalTool clipboard controls", () => {
 
     expect(shell).not.toHaveClass("mx-4", "mb-4", "sm:mx-6", "sm:mb-6");
     expect(shell).toHaveClass("rounded-none");
+  });
+
+  it("fits xterm inside a padding-free host so the final row is not clipped", () => {
+    const { shell } = renderTerminal();
+    const host = shell.querySelector(".terminal-tool-host");
+
+    expect(shell).toHaveClass("p-2", "border-t");
+    expect(host).toHaveClass("h-full", "w-full");
+    expect(host).not.toHaveClass("p-2", "border-t");
+    expect(mocks.terminal.open).toHaveBeenCalledWith(host);
+  });
+
+  it("uses the terminal toolbar as a window drag region", () => {
+    renderTerminal();
+
+    expect(screen.getByText("Terminal").parentElement?.parentElement).toHaveClass("app-drag-region");
   });
 
   it("fits only once when a hidden terminal tab becomes visible", () => {
@@ -177,6 +227,52 @@ describe("TerminalTool clipboard controls", () => {
     await act(async () => { mocks.emit("pty:exit", { id: "session-1", code: 0 }); });
 
     expect(onSessionExit).toHaveBeenCalledOnce();
+  });
+
+  it("restarts the PTY in place when its helper exits unexpectedly", async () => {
+    mocks.setSpawnInfo({ id: "session-1", shell: "/bin/fish", cwd: "/tmp", pid: 42 });
+    const onSessionExit = vi.fn();
+    render(<TerminalTool onBack={() => {}} onSessionExit={onSessionExit} />);
+    await screen.findByText("Connected");
+    const initialSpawns = mocks.callMain.mock.calls.filter(([channel]) => channel === "pty_spawn").length;
+
+    act(() => {
+      mocks.emit("pty:exit", { id: "session-1", code: 1, error: "helper crashed" });
+    });
+
+    await waitFor(() => {
+      expect(mocks.callMain.mock.calls.filter(([channel]) => channel === "pty_spawn"))
+        .toHaveLength(initialSpawns + 1);
+    }, { timeout: 1_500 });
+    expect(onSessionExit).not.toHaveBeenCalled();
+    expect(screen.getByText("Connected")).toBeInTheDocument();
+  });
+
+  it("truncates a pending output flood and resumes forwarding after xterm catches up", async () => {
+    mocks.setSpawnInfo({ id: "session-1", shell: "/bin/fish", cwd: "/tmp", pid: 42 });
+    mocks.setDeferWrites(true);
+    render(<TerminalTool onBack={() => {}} />);
+    await screen.findByText("Connected");
+    const data = Buffer.alloc(8192, 0x78).toString("base64");
+
+    act(() => {
+      for (let index = 0; index < 40; index += 1) {
+        mocks.emit("pty:data", { id: "session-1", data });
+      }
+    });
+
+    expect(mocks.callMain).toHaveBeenCalledWith("pty_set_output_suppressed", {
+      id: "session-1",
+      suppressed: true,
+    });
+    act(() => mocks.flushWrites());
+    expect(mocks.callMain).toHaveBeenCalledWith("pty_set_output_suppressed", {
+      id: "session-1",
+      suppressed: false,
+    });
+    expect(mocks.terminal.write.mock.calls.some(([chunk]) => (
+      new TextDecoder().decode(chunk).includes("Output truncated")
+    ))).toBe(true);
   });
 
   it("delegates maximize and restore to the standalone page shell", () => {
@@ -249,6 +345,68 @@ describe("TerminalTool clipboard controls", () => {
     mocks.terminal.hasSelection.mockReturnValue(false);
     expect(handler!(new KeyboardEvent("keydown", { key: "c", ctrlKey: true }))).toBe(true);
     expect(mocks.callMain).not.toHaveBeenCalledWith("clipboard:writeText", expect.anything());
+  });
+
+  it("searches scrollback, highlights matches, and navigates results", async () => {
+    renderTerminal();
+    // Simulate a terminal instance retained across Vite Fast Refresh from
+    // before proposed decoration APIs were enabled.
+    mocks.terminal.options.allowProposedApi = false;
+
+    act(() => {
+      const handled = mocks.getKeyHandler()!(
+        new KeyboardEvent("keydown", { key: "f", metaKey: true, cancelable: true }),
+      );
+      expect(handled).toBe(false);
+    });
+
+    const input = await screen.findByRole("searchbox", { name: "Terminal search query" });
+    fireEvent.change(input, { target: { value: "build complete" } });
+    expect(mocks.terminal.options.allowProposedApi).toBe(true);
+    expect(mocks.search.findNext).toHaveBeenCalledWith(
+      "build complete",
+      expect.objectContaining({
+        caseSensitive: false,
+        incremental: true,
+        decorations: expect.objectContaining({
+          matchBackground: expect.any(String),
+          activeMatchBackground: expect.any(String),
+        }),
+      }),
+    );
+
+    act(() => mocks.emitSearchResults({ resultIndex: 1, resultCount: 4 }));
+    expect(screen.getByText("2 / 4")).toBeInTheDocument();
+
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(mocks.search.findNext).toHaveBeenLastCalledWith(
+      "build complete",
+      expect.objectContaining({ incremental: false }),
+    );
+
+    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+    expect(mocks.search.findPrevious).toHaveBeenCalledWith(
+      "build complete",
+      expect.objectContaining({ incremental: false }),
+    );
+  });
+
+  it("supports case-sensitive search and clears highlights when closed", async () => {
+    renderTerminal();
+    fireEvent.click(screen.getByRole("button", { name: "Search terminal" }));
+    const input = await screen.findByRole("searchbox", { name: "Terminal search query" });
+    fireEvent.change(input, { target: { value: "Error" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Match case" }));
+    expect(mocks.search.findNext).toHaveBeenLastCalledWith(
+      "Error",
+      expect.objectContaining({ caseSensitive: true, incremental: true }),
+    );
+
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByRole("searchbox", { name: "Terminal search query" })).not.toBeInTheDocument();
+    expect(mocks.search.clearDecorations).toHaveBeenCalled();
+    expect(mocks.terminal.focus).toHaveBeenCalled();
   });
 
   it("pastes clipboard text with Ctrl+V", async () => {

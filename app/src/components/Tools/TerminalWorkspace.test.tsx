@@ -59,20 +59,20 @@ describe("TerminalWorkspace tabs", () => {
     expect(sessions[1]).toHaveAttribute("data-visible", "false");
   });
 
-  it("limits the workspace to six live terminal tabs and frees a slot on close", () => {
+  it("limits the workspace to three live terminal tabs and frees a slot on close", () => {
     render(<TerminalWorkspace onBack={() => {}} />);
 
-    for (let index = 1; index < 6; index += 1) {
+    for (let index = 1; index < 3; index += 1) {
       fireEvent.click(screen.getByRole("button", { name: "New terminal tab" }));
     }
 
-    expect(screen.getAllByTestId("terminal-session")).toHaveLength(6);
+    expect(screen.getAllByTestId("terminal-session")).toHaveLength(3);
     expect(screen.getByRole("button", { name: "New terminal tab" })).toBeDisabled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Close terminal tab 6" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close terminal tab 3" }));
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
 
-    expect(screen.getAllByTestId("terminal-session")).toHaveLength(5);
+    expect(screen.getAllByTestId("terminal-session")).toHaveLength(2);
     expect(screen.getByRole("button", { name: "New terminal tab" })).toBeEnabled();
   });
 
@@ -131,6 +131,18 @@ describe("TerminalWorkspace tabs", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getAllByTestId("terminal-session")).toHaveLength(1);
     expect(screen.getByRole("tab", { name: "Terminal 1" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("opens a fresh shell after the final terminal exits", () => {
+    const onBack = vi.fn();
+    const view = render(<TerminalWorkspace onBack={onBack} visible />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Exit terminal session" }));
+    expect(onBack).toHaveBeenCalledOnce();
+
+    view.rerender(<TerminalWorkspace onBack={onBack} visible={false} />);
+    view.rerender(<TerminalWorkspace onBack={onBack} visible />);
+    expect(screen.getByRole("tab", { name: "Terminal 2" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("renames a tab through its right-click modal", () => {

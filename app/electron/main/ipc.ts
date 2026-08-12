@@ -15,6 +15,7 @@ import {
   terminalClose,
   terminalDefaultShell,
   terminalResize,
+  terminalSetOutputSuppressed,
   terminalSpawn,
   terminalWrite,
 } from "./terminal";
@@ -151,6 +152,11 @@ async function dispatch(
     case "pty_close": {
       const { id } = (args ?? {}) as { id: string };
       if (id) terminalClose(id);
+      return null;
+    }
+    case "pty_set_output_suppressed": {
+      const { id, suppressed } = (args ?? {}) as { id: string; suppressed?: boolean };
+      if (id) terminalSetOutputSuppressed(id, suppressed === true);
       return null;
     }
 

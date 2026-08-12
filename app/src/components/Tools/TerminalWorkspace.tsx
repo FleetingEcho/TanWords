@@ -18,7 +18,7 @@ interface TerminalTab {
   pinned: boolean;
 }
 
-export const MAX_TERMINAL_TABS = 6;
+export const MAX_TERMINAL_TABS = 3;
 
 function newTab(id: number): TerminalTab {
   return {
@@ -53,6 +53,8 @@ export function TerminalWorkspace({
 }) {
   const t = useT();
   const nextId = useRef(2);
+  const refreshOnNextOpenRef = useRef(false);
+  const wasVisibleRef = useRef(visible);
   const [tabs, setTabs] = useState<TerminalTab[]>(() => [newTab(1)]);
   const [activeId, setActiveId] = useState(1);
   const [tabMenu, setTabMenu] = useState<TabMenu | null>(null);
@@ -66,6 +68,20 @@ export function TerminalWorkspace({
   useEffect(() => {
     if (!visible && maximized) onMaximizedChange(false);
   }, [maximized, onMaximizedChange, visible]);
+
+  // `exit` on the final shell hides the workspace. Its persistent page remains
+  // mounted across navigation, so replace that closed instance only when the
+  // user opens Terminal again; otherwise reopening would reveal a dead xterm
+  // with no PTY behind it (or spawn an unwanted background shell immediately).
+  useEffect(() => {
+    const wasVisible = wasVisibleRef.current;
+    wasVisibleRef.current = visible;
+    if (!visible || wasVisible || !refreshOnNextOpenRef.current) return;
+    refreshOnNextOpenRef.current = false;
+    const tab = newTab(nextId.current++);
+    setTabs([tab]);
+    setActiveId(tab.id);
+  }, [visible]);
 
   const closeWorkspace = useCallback(() => {
     onMaximizedChange(false);
@@ -99,6 +115,7 @@ export function TerminalWorkspace({
     const index = tabs.findIndex((tab) => tab.id === id);
     if (index < 0) return;
     if (tabs.length === 1) {
+      refreshOnNextOpenRef.current = true;
       closeWorkspace();
       return;
     }

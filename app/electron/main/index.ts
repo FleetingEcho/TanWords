@@ -7,7 +7,11 @@ import { SidecarSupervisor } from "./sidecar";
 import { isExternalUrlAllowed, registerIpcHandlers } from "./ipc";
 import { BrowserPanelManager } from "./browserPanel";
 import { TrayManager, trayIconPath } from "./tray";
-import { setTerminalEventSink, terminalShutdownAll } from "./terminal";
+import {
+  setTerminalEventSink,
+  terminalSetOutputPaused,
+  terminalShutdownAll,
+} from "./terminal";
 import { wireWindowDevTools } from "./devtools";
 import { rememberedWindowBackground } from "./windowBackground";
 import { abortAllFor } from "./http";
@@ -162,7 +166,15 @@ function appIconPath(): string {
 
 function broadcastEvent(name: string, payload: unknown) {
   for (const win of BrowserWindow.getAllWindows()) {
-    win.webContents.send("event", { name, payload });
+    if (win.webContents.isDestroyed()) continue;
+    try {
+      win.webContents.send("event", { name, payload });
+    } catch (error) {
+      // A renderer can disappear between isDestroyed() and send(). Terminal
+      // output must never turn that normal process race into a main-process
+      // exception; render-process-gone owns recovery below.
+      console.error("[event] renderer delivery failed", { name, error });
+    }
   }
 }
 
@@ -226,13 +238,55 @@ function createWindow() {
     });
   });
 
+  let rendererRecoveryAttempts = 0;
+  let rendererStableTimer: ReturnType<typeof setTimeout> | null = null;
+  let rendererUnresponsiveTimer: ReturnType<typeof setTimeout> | null = null;
   win.webContents.once("did-finish-load", () => startupMark("renderer-loaded"));
+  win.webContents.on("did-finish-load", () => {
+    terminalSetOutputPaused(false);
+    if (rendererStableTimer) clearTimeout(rendererStableTimer);
+    rendererStableTimer = setTimeout(() => {
+      rendererRecoveryAttempts = 0;
+    }, 30_000);
+    rendererStableTimer.unref?.();
+  });
 
   // A renderer that exits after ready-to-show leaves the native window alive
   // and indistinguishable from a slow startup: only backgroundColor remains.
   // Keep the Chromium reason in release logs so this cannot fail silently.
   win.webContents.on("render-process-gone", (_event, details) => {
     console.error("[renderer] process gone", details);
+    if (rendererUnresponsiveTimer) clearTimeout(rendererUnresponsiveTimer);
+    rendererUnresponsiveTimer = null;
+    terminalSetOutputPaused(true);
+    terminalShutdownAll();
+    if (quitting || win.isDestroyed()) return;
+    if (rendererStableTimer) clearTimeout(rendererStableTimer);
+    rendererRecoveryAttempts += 1;
+    if (rendererRecoveryAttempts > 3) {
+      console.error("[renderer] automatic recovery stopped after three rapid crashes");
+      return;
+    }
+    setTimeout(() => {
+      if (!quitting && !win.isDestroyed()) win.webContents.reload();
+    }, Math.min(250 * (2 ** (rendererRecoveryAttempts - 1)), 1_000));
+  });
+  win.webContents.on("unresponsive", () => {
+    console.error("[renderer] unresponsive; pausing terminal output");
+    terminalSetOutputPaused(true);
+    if (rendererUnresponsiveTimer) clearTimeout(rendererUnresponsiveTimer);
+    rendererUnresponsiveTimer = setTimeout(() => {
+      rendererUnresponsiveTimer = null;
+      if (quitting || win.isDestroyed() || win.webContents.isDestroyed()) return;
+      console.error("[renderer] still unresponsive after 10s; forcing recovery");
+      win.webContents.forcefullyCrashRenderer();
+    }, 10_000);
+    rendererUnresponsiveTimer.unref?.();
+  });
+  win.webContents.on("responsive", () => {
+    if (rendererUnresponsiveTimer) clearTimeout(rendererUnresponsiveTimer);
+    rendererUnresponsiveTimer = null;
+    terminalSetOutputPaused(false);
   });
   win.webContents.on("did-fail-load", (_event, code, description, url, isMainFrame) => {
     if (!isMainFrame) return;
@@ -313,7 +367,10 @@ function createWindow() {
   // this renderer; without this they'd keep downloading into a dead sender.
   const contentsId = win.webContents.id;
   win.webContents.on("did-start-navigation", ({ isSameDocument }) => {
-    if (!isSameDocument) abortAllFor(contentsId);
+    if (!isSameDocument) {
+      abortAllFor(contentsId);
+      terminalShutdownAll();
+    }
   });
 
   mainWindow = win;

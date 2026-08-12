@@ -21,8 +21,21 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { SearchAddon, type ISearchOptions } from "@xterm/addon-search";
 import { WebglAddon } from "@xterm/addon-webgl";
-import { ArrowLeft, Droplets, Maximize2, Minimize2, Minus, Plus } from "lucide-react";
+import {
+  ArrowLeft,
+  ChevronDown,
+  ChevronUp,
+  Droplets,
+  Maximize2,
+  Minimize2,
+  Minus,
+  Plus,
+  RotateCcw,
+  Search,
+  X,
+} from "lucide-react";
 import "@xterm/xterm/css/xterm.css";
 import "@/styles/terminal-tool.css";
 import { useT } from "@/hooks/useT";
@@ -75,6 +88,25 @@ export function quoteTerminalPath(filePath: string): string {
 
 const SYSTEM_MONOSPACE_STACK =
   'ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace';
+const TERMINAL_SCROLLBACK_LINES = 40_000;
+const MAX_PENDING_OUTPUT_BYTES = 64 * 1024;
+const MAX_AUTOMATIC_RECOVERY_ATTEMPTS = 3;
+const SEARCH_DECORATIONS: NonNullable<ISearchOptions["decorations"]> = {
+  matchBackground: "#5f4a18",
+  matchBorder: "#c99b26",
+  matchOverviewRuler: "#c99b26",
+  activeMatchBackground: "#b85f14",
+  activeMatchBorder: "#ffd166",
+  activeMatchColorOverviewRuler: "#ffd166",
+};
+
+function terminalSearchOptions(caseSensitive: boolean, incremental = false): ISearchOptions {
+  return {
+    caseSensitive,
+    incremental,
+    decorations: SEARCH_DECORATIONS,
+  };
+}
 
 /** A selected local face stays first, with the machine's native monospace as
  * fallback. Escaping quotes/backslashes keeps arbitrary local family names a
@@ -110,14 +142,24 @@ export function TerminalTool({
   const t = useT();
   const shellRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
+  const searchAddonRef = useRef<SearchAddon | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const refitRef = useRef<() => void>(() => {});
   const onSessionExitRef = useRef(onSessionExit);
   onSessionExitRef.current = onSessionExit;
+  const onSessionReadyRef = useRef(onSessionReady);
+  onSessionReadyRef.current = onSessionReady;
+  const recoveryAttemptsRef = useRef(0);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const [status, setStatus] = useState<"starting" | "connected" | "closed" | "error">("starting");
   const [message, setMessage] = useState("");
+  const [sessionGeneration, setSessionGeneration] = useState(0);
   const [contextMenu, setContextMenu] = useState<ContextMenuPosition | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
+  const [searchResult, setSearchResult] = useState({ resultIndex: -1, resultCount: 0 });
   // Opening/closing the adjustment controls must not also enable/disable the
   // glass effect. That persisted preference is intentionally separate below.
   const [appearanceControlsOpen, setAppearanceControlsOpen] = useState(false);
@@ -185,6 +227,10 @@ export function TerminalTool({
       fontSize: terminalFontSize,
       lineHeight: 1.15,
       cursorBlink: true,
+      // SearchAddon uses xterm's decoration and overview-ruler APIs to paint
+      // all matches. xterm 6 still marks those APIs as proposed and throws at
+      // the first search unless the embedding terminal opts in explicitly.
+      allowProposedApi: true,
       // WebGL paints into a canvas. Preserve its alpha channel so the terminal
       // glass controls continue to reveal the app wallpaper underneath it.
       allowTransparency: true,
@@ -192,12 +238,77 @@ export function TerminalTool({
       // WebGL's color parser treats the CSS keyword `transparent` as opaque
       // black. An explicit alpha channel is required for a clear framebuffer.
       theme: { background: "rgba(0, 0, 0, 0)" },
-      scrollback: 4000,
+      // Scrollback lives in xterm's JS buffer, independently of the WebGL
+      // canvas renderer. Keep a generous daily-development history without the
+      // excessive aggregate memory exposure across three persistent tabs.
+      scrollback: TERMINAL_SCROLLBACK_LINES,
     });
     terminalRef.current = term;
     const fit = new FitAddon();
+    const searchAddon = new SearchAddon({ highlightLimit: 1000 });
+    searchAddonRef.current = searchAddon;
     term.loadAddon(fit);
+    term.loadAddon(searchAddon);
+    const searchResultsSubscription = searchAddon.onDidChangeResults((result) => {
+      setSearchResult(result);
+    });
     term.open(el);
+    setStatus("starting");
+    setMessage("");
+
+    // xterm's writes are asynchronous. Feed it one chunk at a time and cap the
+    // waiting queue so a command that prints indefinitely cannot retain
+    // unlimited decoded output in the renderer while Chromium is busy painting.
+    const outputQueue: Uint8Array[] = [];
+    let outputQueueBytes = 0;
+    let outputWriting = false;
+    let droppedOutput = false;
+    let outputSuppressed = false;
+    const setOutputSuppressed = (suppressed: boolean) => {
+      if (!state.sessionId || outputSuppressed === suppressed) return;
+      outputSuppressed = suppressed;
+      void callMain("pty_set_output_suppressed", { id: state.sessionId, suppressed }).catch(() => {});
+    };
+    const pumpOutput = () => {
+      if (!alive || outputWriting) return;
+      const data = outputQueue.shift();
+      if (!data) {
+        if (!droppedOutput) return;
+        droppedOutput = false;
+        outputWriting = true;
+        const notice = encoder.encode(`\r\n[TanWords] ${t("toolsPage.terminal.outputTruncated")}\r\n`);
+        term.write(notice, () => {
+          outputWriting = false;
+          setOutputSuppressed(false);
+          pumpOutput();
+        });
+        return;
+      }
+      outputQueueBytes -= data.byteLength;
+      outputWriting = true;
+      term.write(data, () => {
+        outputWriting = false;
+        pumpOutput();
+      });
+    };
+    const enqueueOutput = (data: Uint8Array) => {
+      let discarded = false;
+      while (outputQueue.length > 0 && outputQueueBytes + data.byteLength > MAX_PENDING_OUTPUT_BYTES) {
+        outputQueueBytes -= outputQueue.shift()!.byteLength;
+        discarded = true;
+      }
+      const bounded = data.byteLength > MAX_PENDING_OUTPUT_BYTES
+        ? data.slice(data.byteLength - MAX_PENDING_OUTPUT_BYTES)
+        : data;
+      if (bounded.byteLength !== data.byteLength) discarded = true;
+      if (discarded) {
+        droppedOutput = true;
+        setOutputSuppressed(true);
+      }
+      outputQueue.push(bounded);
+      outputQueueBytes += bounded.byteLength;
+      pumpOutput();
+    };
 
     // Prefer xterm's GPU-backed canvas renderer. Unsupported/blocked WebGL2
     // contexts throw here, in which case xterm's built-in DOM renderer remains
@@ -221,10 +332,18 @@ export function TerminalTool({
 
     // Terminal-aware clipboard shortcuts. Ctrl+C remains SIGINT when there is
     // no selection; with a selection it copies instead. Ctrl/Cmd+V uses the
-    // native clipboard so Electron can also materialize copied images.
+    // native clipboard so Electron can also materialize copied images. Search
+    // stays in the renderer and never sends the query to the shell.
     term.attachCustomKeyEventHandler((event) => {
       const modifier = event.ctrlKey || event.metaKey;
       const key = event.key.toLowerCase();
+      if (modifier && key === "f") {
+        if (event.type === "keydown") {
+          event.preventDefault();
+          setSearchOpen(true);
+        }
+        return false;
+      }
       if (modifier && key === "c" && term.hasSelection()) {
         if (event.type === "keydown") {
           event.preventDefault();
@@ -246,6 +365,23 @@ export function TerminalTool({
 
     // Keep the session in step with this component's lifetime.
     let alive = true;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let stabilityTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const recoverAfterFailure = (reason: string) => {
+      const attempt = recoveryAttemptsRef.current + 1;
+      recoveryAttemptsRef.current = attempt;
+      if (attempt > MAX_AUTOMATIC_RECOVERY_ATTEMPTS) {
+        setStatus("error");
+        setMessage(reason);
+        return;
+      }
+      setStatus("starting");
+      setMessage(reason);
+      retryTimer = setTimeout(() => {
+        if (alive) setSessionGeneration((generation) => generation + 1);
+      }, Math.min(250 * (2 ** (attempt - 1)), 1_000));
+    };
 
     let fitFrame: number | null = null;
     let lastPtyCols = 0;
@@ -288,17 +424,21 @@ export function TerminalTool({
         if (state.sessionId !== id || !alive) return;
         if (!data) return;
         try {
-          term.write(bytesFromB64(data));
+          enqueueOutput(bytesFromB64(data));
         } catch {
           // A malformed/late transport event must not take down the React tree
           // or the other terminal tabs. The live session can keep streaming.
         }
       }),
-      subscribe<{ id: string; code?: number }>("pty:exit", ({ id }) => {
+      subscribe<{ id: string; code?: number; error?: string }>("pty:exit", ({ id, code, error }) => {
         if (state.sessionId !== id || !alive) return;
-        setStatus("closed");
         state.sessionId = null;
-        onSessionExitRef.current?.();
+        if ((code ?? 1) === 0) {
+          setStatus("closed");
+          onSessionExitRef.current?.();
+          return;
+        }
+        recoverAfterFailure(error || t("toolsPage.terminal.recovering"));
       }),
     ];
 
@@ -319,11 +459,15 @@ export function TerminalTool({
         lastPtyCols = term.cols;
         lastPtyRows = term.rows;
         setStatus("connected");
-        onSessionReady?.(info.shell);
+        onSessionReadyRef.current?.(info.shell);
+        // A session that remains healthy for a while earns a fresh recovery
+        // budget; rapid crash loops still stop after the bounded retry count.
+        stabilityTimer = setTimeout(() => {
+          recoveryAttemptsRef.current = 0;
+        }, 30_000);
       } catch (err) {
         if (!alive) return;
-        setStatus("error");
-        setMessage(err instanceof Error ? err.message : String(err));
+        recoverAfterFailure(err instanceof Error ? err.message : String(err));
       }
     };
     void spawn();
@@ -350,18 +494,70 @@ export function TerminalTool({
     return () => {
       alive = false;
       if (state.sessionId) callMain("pty_close", { id: state.sessionId }).catch(() => {});
+      if (retryTimer) clearTimeout(retryTimer);
+      if (stabilityTimer) clearTimeout(stabilityTimer);
       if (fitFrame !== null) window.cancelAnimationFrame(fitFrame);
       contextLossSubscription?.dispose();
+      searchResultsSubscription.dispose();
       onData.dispose();
       onResize.dispose();
       ro.disconnect();
       el.removeEventListener("focus", onFocus);
       offs.forEach((off) => off());
       term.dispose();
+      outputQueue.length = 0;
+      outputQueueBytes = 0;
       refitRef.current = () => {};
       if (terminalRef.current === term) terminalRef.current = null;
+      if (searchAddonRef.current === searchAddon) searchAddonRef.current = null;
     };
-  }, []);
+  }, [sessionGeneration]);
+
+  // Search the actual xterm scrollback buffer. Incremental searches preserve a
+  // matching selection while the query grows; explicit navigation starts from
+  // the current match instead.
+  useEffect(() => {
+    const addon = searchAddonRef.current;
+    if (!addon) return;
+    if (!searchOpen || !searchQuery) {
+      addon.clearDecorations();
+      setSearchResult({ resultIndex: -1, resultCount: 0 });
+      return;
+    }
+    // Vite Fast Refresh can preserve an xterm instance that was constructed
+    // before decorated search was enabled. Update the live option immediately
+    // before using SearchAddon's proposed decoration API as well as setting the
+    // constructor default above.
+    if (terminalRef.current) terminalRef.current.options.allowProposedApi = true;
+    addon.findNext(searchQuery, terminalSearchOptions(searchCaseSensitive, true));
+  }, [searchCaseSensitive, searchOpen, searchQuery, sessionGeneration]);
+
+  useEffect(() => {
+    if (!searchOpen || !visible) return;
+    const frame = window.requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [searchOpen, visible]);
+
+  // Catch find while focus is on the toolbar/search controls as well as in the
+  // xterm canvas. Hidden persistent terminal tabs must not compete for it.
+  useEffect(() => {
+    if (!visible) return;
+    const openSearch = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "f") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setSearchOpen(true);
+      if (searchOpen) {
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+    };
+    document.addEventListener("keydown", openSearch, true);
+    return () => document.removeEventListener("keydown", openSearch, true);
+  }, [searchOpen, visible]);
 
   // Typography changes are live options: updating them must not recreate the
   // Terminal instance (and therefore must not terminate the running PTY).
@@ -394,6 +590,36 @@ export function TerminalTool({
     setAppearanceControlsOpen((open) => !open);
   };
 
+  const restartTerminal = () => {
+    recoveryAttemptsRef.current = 0;
+    setSessionGeneration((generation) => generation + 1);
+  };
+
+  const closeSearch = () => {
+    searchAddonRef.current?.clearDecorations();
+    setSearchResult({ resultIndex: -1, resultCount: 0 });
+    setSearchOpen(false);
+    window.requestAnimationFrame(() => terminalRef.current?.focus());
+  };
+
+  const findNext = () => {
+    if (!searchQuery) return;
+    if (terminalRef.current) terminalRef.current.options.allowProposedApi = true;
+    searchAddonRef.current?.findNext(
+      searchQuery,
+      terminalSearchOptions(searchCaseSensitive),
+    );
+  };
+
+  const findPrevious = () => {
+    if (!searchQuery) return;
+    if (terminalRef.current) terminalRef.current.options.allowProposedApi = true;
+    searchAddonRef.current?.findPrevious(
+      searchQuery,
+      terminalSearchOptions(searchCaseSensitive),
+    );
+  };
+
   const openContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     const width = 184;
@@ -417,7 +643,7 @@ export function TerminalTool({
     >
       <div className="flex h-full flex-col">
         {/* toolbar */}
-        <div className="flex shrink-0 flex-wrap items-center gap-3 px-4 sm:px-6">
+        <div className="app-drag-region flex shrink-0 flex-wrap items-center gap-3 px-4 sm:px-6">
           <Button
             variant="ghost"
             size="icon"
@@ -483,6 +709,20 @@ export function TerminalTool({
               <Plus className="h-3.5 w-3.5" />
             </Button>
           </div>
+
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
+            title={t("toolsPage.terminal.search")}
+            aria-label={t("toolsPage.terminal.search")}
+            aria-pressed={searchOpen}
+            className={`h-9 w-9 shrink-0 rounded-lg ${
+              searchOpen ? "bg-primary/15 text-primary" : "text-muted-foreground"
+            }`}
+          >
+            <Search className="h-4 w-4" />
+          </Button>
 
           {/* glass / transparency toggle + appearance controls */}
           {appearanceControlsOpen && (
@@ -560,12 +800,103 @@ export function TerminalTool({
 
         {tabBar}
 
-        {/* xterm shell — fills the remaining height */}
+        {searchOpen && (
+          <div
+            role="search"
+            className="terminal-search-bar flex shrink-0 items-center gap-1.5 border-t border-border/70 bg-background/75 px-3 py-1.5 shadow-sm backdrop-blur-md sm:px-6"
+          >
+            <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <input
+              ref={searchInputRef}
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  closeSearch();
+                  return;
+                }
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  if (event.shiftKey) findPrevious();
+                  else findNext();
+                }
+              }}
+              aria-label={t("toolsPage.terminal.searchInput")}
+              placeholder={t("toolsPage.terminal.searchPlaceholder")}
+              autoComplete="off"
+              spellCheck={false}
+              className="h-7 min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground/70"
+            />
+            <span
+              aria-live="polite"
+              className="min-w-12 text-right text-[10px] tabular-nums text-muted-foreground"
+            >
+              {searchQuery
+                ? searchResult.resultCount > 0
+                  ? searchResult.resultIndex >= 0
+                    ? `${searchResult.resultIndex + 1} / ${searchResult.resultCount}`
+                    : `${searchResult.resultCount}+`
+                  : t("toolsPage.terminal.noMatches")
+                : ""}
+            </span>
+            <button
+              type="button"
+              onClick={() => setSearchCaseSensitive((value) => !value)}
+              title={t("toolsPage.terminal.matchCase")}
+              aria-label={t("toolsPage.terminal.matchCase")}
+              aria-pressed={searchCaseSensitive}
+              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[11px] font-semibold transition-colors ${
+                searchCaseSensitive
+                  ? "bg-primary/15 text-primary"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+            >
+              Aa
+            </button>
+            <Button
+              variant="ghost"
+              size="icon"
+              disabled={!searchQuery}
+              onClick={findPrevious}
+              title={t("toolsPage.terminal.previousMatch")}
+              aria-label={t("toolsPage.terminal.previousMatch")}
+              className="h-7 w-7 shrink-0 rounded-md text-muted-foreground"
+            >
+              <ChevronUp className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              disabled={!searchQuery}
+              onClick={findNext}
+              title={t("toolsPage.terminal.nextMatch")}
+              aria-label={t("toolsPage.terminal.nextMatch")}
+              className="h-7 w-7 shrink-0 rounded-md text-muted-foreground"
+            >
+              <ChevronDown className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={closeSearch}
+              title={t("toolsPage.terminal.closeSearch")}
+              aria-label={t("toolsPage.terminal.closeSearch")}
+              className="h-7 w-7 shrink-0 rounded-md text-muted-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        )}
+
+        {/* xterm shell — fills the remaining height. The measured host is a
+            padding-free child: FitAddon measures the parent of `.xterm`, so
+            putting padding/borders on that same element can over-report its
+            drawable height and clip the final row at certain window sizes. */}
         <div
-          ref={shellRef}
-          tabIndex={0}
           onContextMenu={openContextMenu}
-          className="terminal-tool-shell min-h-0 flex-1 overflow-hidden rounded-none border-x-0 border-b-0 border-t border-border p-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          className="terminal-tool-shell relative min-h-0 flex-1 overflow-hidden rounded-none border-x-0 border-b-0 border-t border-border p-2"
           style={
             transparent
               ? {
@@ -580,11 +911,24 @@ export function TerminalTool({
               : { background: "rgb(13,17,23)" }
           }
         >
+          <div
+            ref={shellRef}
+            tabIndex={0}
+            className="terminal-tool-host h-full w-full overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          />
           {status === "error" && (
-            <p className="p-4 text-sm text-destructive">✗ {message}</p>
+            <div className="absolute left-2 top-2 z-10 flex items-center gap-3 p-4 text-sm text-destructive">
+              <span>✗ {message}</span>
+              <Button variant="outline" size="sm" onClick={restartTerminal}>
+                <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                {t("toolsPage.terminal.restart")}
+              </Button>
+            </div>
           )}
           {status === "closed" && (
-            <p className="p-4 text-sm text-muted-foreground">{t("toolsPage.terminal.closed")}</p>
+            <p className="absolute left-2 top-2 z-10 p-4 text-sm text-muted-foreground">
+              {t("toolsPage.terminal.closed")}
+            </p>
           )}
         </div>
       </div>

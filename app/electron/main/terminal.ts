@@ -30,11 +30,19 @@ interface PtySession {
   rejectReady: (reason: Error) => void;
   readySettled: boolean;
   closing: boolean;
+  exitEmitted: boolean;
+  readyTimer: ReturnType<typeof setTimeout> | null;
+  outputSuppressed: boolean;
 }
 
+const HANDSHAKE_TIMEOUT_MS = 5_000;
+const MAX_FRAME_BYTES = 1024 * 1024;
+const MAX_INPUT_BASE64_CHARS = 2 * 1024 * 1024;
+const MAX_PTY_DIMENSION = 65_535;
 const sessions = new Map<string, PtySession>();
 let nextId = 1;
 let sink: SessionSink | null = null;
+let outputPaused = false;
 
 export function setTerminalEventSink(fn: SessionSink) {
   sink = fn;
@@ -76,7 +84,6 @@ function resolvePtyBinary(): string {
 /** Incremental frame decoder: feed stdout, get whole `[op, payload]` frames. */
 class Decoder {
   private buf = Buffer.alloc(0);
-  primitives: Array<{ op: number; payload: Buffer }> = [];
   /** Drain as many complete frames as are buffered. */
   ingest(chunk: Buffer): Array<{ op: number; payload: Buffer }> {
     this.buf = Buffer.concat([this.buf, chunk]);
@@ -85,12 +92,53 @@ class Decoder {
       if (this.buf.length < 5) break;
       const op = this.buf[0];
       const len = this.buf.readUInt32LE(1);
+      if (len > MAX_FRAME_BYTES) {
+        throw new Error(`[terminal] daemon frame exceeds ${MAX_FRAME_BYTES} bytes`);
+      }
       if (this.buf.length < 5 + len) break;
       out.push({ op, payload: this.buf.subarray(5, 5 + len) });
       this.buf = this.buf.subarray(5 + len);
     }
     return out;
   }
+}
+
+function settleReadyError(session: PtySession, error: Error) {
+  if (session.readySettled) return;
+  session.readySettled = true;
+  if (session.readyTimer) clearTimeout(session.readyTimer);
+  session.readyTimer = null;
+  session.rejectReady(error);
+}
+
+/** End one unexpectedly broken session exactly once. A renderer only learns an
+ * id after the handshake, so pre-handshake failures reject `terminalSpawn`
+ * instead of also emitting an unusable exit event. */
+function failSession(session: PtySession, error: Error, code = 1) {
+  if (session.closing) return;
+  const rendererKnowsSession = session.readySettled;
+  settleReadyError(session, error);
+  session.closing = true;
+  sessions.delete(session.id);
+  if (rendererKnowsSession && !session.exitEmitted) {
+    session.exitEmitted = true;
+    emit("pty:exit", { id: session.id, code, error: error.message });
+  }
+  if (!session.child.killed) session.child.kill();
+}
+
+function writeSessionFrame(session: PtySession, frame: Buffer) {
+  if (session.closing || session.child.stdin.destroyed) return;
+  try {
+    session.child.stdin.write(frame);
+  } catch (error) {
+    failSession(session, error instanceof Error ? error : new Error(String(error)));
+  }
+}
+
+function clampPtyDimension(value: number, minimum: number) {
+  if (!Number.isFinite(value)) return minimum;
+  return Math.min(MAX_PTY_DIMENSION, Math.max(minimum, Math.floor(value)));
 }
 
 /** Encode one outbound frame: `[op][len u32 LE][payload]`. */
@@ -125,8 +173,8 @@ export function terminalDefaultShell(): string {
 export async function terminalSpawn(
   opts: { cols?: number; rows?: number; shellPath?: string },
 ): Promise<TerminalSessionInfo> {
-  const cols = Math.max(2, Math.floor(opts.cols ?? 80));
-  const rows = Math.max(1, Math.floor(opts.rows ?? 24));
+  const cols = clampPtyDimension(opts.cols ?? 80, 2);
+  const rows = clampPtyDimension(opts.rows ?? 24, 1);
   const bin = resolvePtyBinary();
   if (!fs.existsSync(bin)) {
     throw new Error(
@@ -169,33 +217,52 @@ export async function terminalSpawn(
     rejectReady,
     readySettled: false,
     closing: false,
+    exitEmitted: false,
+    readyTimer: null,
+    outputSuppressed: false,
   };
   sessions.set(id, session);
 
+  session.readyTimer = setTimeout(() => {
+    failSession(session, new Error(`[terminal] PTY did not become ready within ${HANDSHAKE_TIMEOUT_MS}ms`));
+  }, HANDSHAKE_TIMEOUT_MS);
+  session.readyTimer.unref?.();
+
   child.stdout.on("data", (d: Buffer) => {
-    for (const f of session.dec.ingest(d)) {
-      handleDaemonFrame(session, f.op, f.payload);
+    try {
+      for (const f of session.dec.ingest(d)) {
+        handleDaemonFrame(session, f.op, f.payload);
+      }
+    } catch (error) {
+      failSession(session, error instanceof Error ? error : new Error(String(error)));
     }
   });
+  if (outputPaused) child.stdout.pause();
 
-  child.on("close", () => {
-    if (sessions.has(id)) sessions.delete(id);
-    if (!session.readySettled) {
-      session.readySettled = true;
-      session.rejectReady(new Error("[terminal] shell exited before the PTY was ready"));
-    }
-    if (!session.closing) {
-      emit("pty:exit", { id, code: 0 });
-    }
+  // Every piped stream needs an error listener. In particular, writing after a
+  // helper crash can raise EPIPE on stdin; without this listener Node treats it
+  // as an uncaught EventEmitter error and can terminate Electron main.
+  child.stdin.on("error", (error) => failSession(session, error));
+  child.stdout.on("error", (error) => failSession(session, error));
+  // Drain diagnostics so a full stderr pipe cannot deadlock the helper. The
+  // helper writes here only on protocol/startup failures, so retain a bounded
+  // excerpt in logs rather than reflecting it into the terminal stream.
+  child.stderr.on("data", (chunk: Buffer) => {
+    const message = chunk.toString("utf8", 0, 4096).trim();
+    if (message) console.error("[terminal] daemon stderr:", message);
+  });
+  child.stderr.on("error", (error) => {
+    if (!session.closing) console.error("[terminal] daemon stderr error:", error);
+  });
+
+  child.on("close", (code, signal) => {
+    if (session.closing) return;
+    const suffix = signal ? ` (signal ${signal})` : code == null ? "" : ` (code ${code})`;
+    failSession(session, new Error(`[terminal] PTY helper exited unexpectedly${suffix}`), code || 1);
   });
   child.on("error", (err) => {
     console.error("[terminal] daemon error:", err);
-    if (sessions.has(id)) sessions.delete(id);
-    if (!session.readySettled) {
-      session.readySettled = true;
-      session.rejectReady(err);
-    }
-    emit("pty:exit", { id, code: 1 });
+    failSession(session, err);
   });
 
   return { id, ...(await ready) };
@@ -212,22 +279,41 @@ export async function terminalSpawn(
         };
         if (!s.readySettled) {
           s.readySettled = true;
+          if (s.readyTimer) clearTimeout(s.readyTimer);
+          s.readyTimer = null;
           s.resolveReady({ shell: j.shell ?? "", cwd: j.cwd ?? "", pid: j.pid ?? 0 });
         }
-      } catch {
-        if (!s.readySettled) {
-          s.readySettled = true;
-          s.resolveReady({ shell: "", cwd: "", pid: 0 });
-        }
+      } catch (error) {
+        failSession(
+          s,
+          new Error(`[terminal] invalid PTY handshake: ${error instanceof Error ? error.message : String(error)}`),
+        );
       }
     } else if (op === 0x44) {
       // D — raw terminal output. Base64 for the sandboxed window.
-      if (!s.closing) emit("pty:data", { id: s.id, data: payload.toString("base64") });
+      if (!s.closing && !s.outputSuppressed) {
+        emit("pty:data", { id: s.id, data: payload.toString("base64") });
+      }
     } else if (op === 0x58) {
       // X — shell exited.
       if (!s.closing) {
+        let code = 0;
+        try {
+          const value = JSON.parse(payload.toString("utf8")) as { code?: unknown };
+          if (typeof value.code === "number" && Number.isFinite(value.code)) code = value.code;
+        } catch {
+          // An exit frame still means the helper shut down cleanly. Its optional
+          // JSON only refines the shell's status code.
+        }
+        if (!s.readySettled) {
+          failSession(s, new Error("[terminal] shell exited before the PTY was ready"), code || 1);
+          return;
+        }
         s.closing = true;
-        emit("pty:exit", { id: s.id, code: 0 });
+        if (!s.exitEmitted) {
+          s.exitEmitted = true;
+          emit("pty:exit", { id: s.id, code });
+        }
         sessions.delete(s.id);
       }
     }
@@ -238,7 +324,8 @@ export async function terminalSpawn(
 export function terminalWrite(id: string, b64: string): void {
   const s = sessions.get(id);
   if (!s || s.closing) return;
-  s.child.stdin.write(encodeFrame(0x49, Buffer.from(b64, "base64")));
+  if (typeof b64 !== "string" || b64.length > MAX_INPUT_BASE64_CHARS) return;
+  writeSessionFrame(s, encodeFrame(0x49, Buffer.from(b64, "base64")));
 }
 
 /** Tell the pty the viewport resized. */
@@ -246,9 +333,9 @@ export function terminalResize(id: string, cols: number, rows: number): void {
   const s = sessions.get(id);
   if (!s || s.closing) return;
   const p = Buffer.alloc(8);
-  p.writeUInt32LE(Math.max(2, Math.floor(cols)), 0);
-  p.writeUInt32LE(Math.max(1, Math.floor(rows)), 4);
-  s.child.stdin.write(encodeFrame(0x52, p));
+  p.writeUInt32LE(clampPtyDimension(cols, 2), 0);
+  p.writeUInt32LE(clampPtyDimension(rows, 1), 4);
+  writeSessionFrame(s, encodeFrame(0x52, p));
 }
 
 /** Ask the daemon to kill the shell and wind down the session. */
@@ -256,6 +343,9 @@ export function terminalClose(id: string): void {
   const s = sessions.get(id);
   if (!s || s.closing) return;
   s.closing = true;
+  if (s.readyTimer) clearTimeout(s.readyTimer);
+  s.readyTimer = null;
+  settleReadyError(s, new Error("[terminal] PTY session closed before it became ready"));
   try {
     s.child.stdin.write(encodeFrame(0x43, Buffer.alloc(0)));
   } catch {
@@ -270,4 +360,22 @@ export function terminalClose(id: string): void {
 /** Wipe every session — called on app quit so no shell is orphaned. */
 export function terminalShutdownAll(): void {
   for (const id of [...sessions.keys()]) terminalClose(id);
+}
+
+/** Stop/resume reading helper stdout while Chromium cannot consume terminal
+ * events. OS pipe pressure plus the helper's bounded queue then cap memory. */
+export function terminalSetOutputPaused(paused: boolean): void {
+  outputPaused = paused;
+  for (const session of sessions.values()) {
+    if (paused) session.child.stdout.pause();
+    else session.child.stdout.resume();
+  }
+}
+
+/** Drain but temporarily stop forwarding one flood of shell output. Unlike
+ * pausing stdout, this keeps the helper reading the PTY, so Ctrl-C/input and the
+ * shell itself cannot deadlock behind a full pipe while the renderer catches up. */
+export function terminalSetOutputSuppressed(id: string, suppressed: boolean): void {
+  const session = sessions.get(id);
+  if (session && !session.closing) session.outputSuppressed = suppressed;
 }

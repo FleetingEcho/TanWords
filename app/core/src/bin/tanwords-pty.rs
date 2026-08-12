@@ -35,7 +35,8 @@ fn main() {
     // Settings uses this probe so its empty/default state can show the exact
     // executable this same helper would launch. Keeping the answer here avoids
     // duplicating the Windows Git Bash preference in Electron or the renderer.
-    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--print-default-shell")) {
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--print-default-shell"))
+    {
         let (_, shell) = shell_command();
         println!("{shell}");
         return;
@@ -99,13 +100,23 @@ fn main() {
     // serde_json is important on Windows: both shell and cwd normally contain
     // backslashes, which cannot safely be interpolated into JSON by hand.
     let handshake = serde_json::json!({ "shell": shell, "cwd": cwd, "pid": pid }).to_string();
-    write_frame(&mut out, b'H', handshake.as_bytes());
-    let _ = out.flush();
+    if write_frame(&mut out, b'H', handshake.as_bytes())
+        .and_then(|_| out.flush())
+        .is_err()
+    {
+        let _ = child.kill();
+        let _ = child.wait();
+        return;
+    }
 
     // Unix PTYs and Windows ConPTY pipes both expose portable blocking readers.
     // Read the host and PTY on separate threads, then serialize mutations and
     // output here. This replaces the old Unix-only poll(2) loop.
-    let (tx, rx) = mpsc::channel();
+    // Bound the reader-to-writer queue. When Electron or its renderer cannot
+    // consume output quickly enough, backpressure now reaches the PTY instead of
+    // allowing an unbounded Vec queue to grow until the helper is OOM-killed.
+    // 128 × 8 KiB reader chunks caps queued payload near 1 MiB per terminal.
+    let (tx, rx) = mpsc::sync_channel(128);
     spawn_host_reader(tx.clone());
     spawn_pty_reader(reader, tx);
 
@@ -135,8 +146,12 @@ fn main() {
 
             // ── pty: shell output ──────────────────────────────────
             Ok(Event::PtyData(data)) => {
-                write_frame(&mut out, b'D', &data);
-                let _ = out.flush();
+                if write_frame(&mut out, b'D', &data)
+                    .and_then(|_| out.flush())
+                    .is_err()
+                {
+                    running = false;
+                }
             }
             Ok(Event::HostClosed | Event::PtyClosed) | Err(_) => running = false,
         }
@@ -145,12 +160,12 @@ fn main() {
     // Teardown. Ensure nothing lingers, then tell the host the shell ended.
     let _ = child.kill();
     drop(writer);
-    write_frame(&mut out, b'X', b"{\"code\":0}");
+    let _ = write_frame(&mut out, b'X', b"{\"code\":0}");
     let _ = out.flush();
     let _ = child.wait();
 }
 
-fn spawn_host_reader(tx: mpsc::Sender<Event>) {
+fn spawn_host_reader(tx: mpsc::SyncSender<Event>) {
     std::thread::spawn(move || {
         let mut input = io::stdin().lock();
         let mut decoder = FramedDecoder::new();
@@ -171,7 +186,7 @@ fn spawn_host_reader(tx: mpsc::Sender<Event>) {
     });
 }
 
-fn spawn_pty_reader(mut reader: Box<dyn Read + Send>, tx: mpsc::Sender<Event>) {
+fn spawn_pty_reader(mut reader: Box<dyn Read + Send>, tx: mpsc::SyncSender<Event>) {
     std::thread::spawn(move || {
         let mut buf = [0u8; 8192];
         loop {
@@ -272,7 +287,7 @@ fn find_git_bash() -> Option<std::path::PathBuf> {
 }
 
 /// Length-prefixed frame: `[op][len u32 LE][payload]`.
-fn write_frame<W: Write>(out: &mut W, op: u8, payload: &[u8]) {
+fn write_frame<W: Write>(out: &mut W, op: u8, payload: &[u8]) -> io::Result<()> {
     let len = payload.len() as u32;
     let header = [
         op,
@@ -281,8 +296,8 @@ fn write_frame<W: Write>(out: &mut W, op: u8, payload: &[u8]) {
         ((len >> 16) & 0xff) as u8,
         ((len >> 24) & 0xff) as u8,
     ];
-    let _ = out.write_all(&header);
-    let _ = out.write_all(payload);
+    out.write_all(&header)?;
+    out.write_all(payload)
 }
 
 /// Streaming decoder so one frame may be split across several reads. Feed

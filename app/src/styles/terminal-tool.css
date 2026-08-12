@@ -4,27 +4,36 @@
  * app's global `::-webkit-scrollbar` rules (base.css) don't reach — those are
  * page-level, and the xterm viewport establishes its own box. Match the thin,
  * rounded, low-contrast thumb used elsewhere so the terminal doesn't flash
- * browser-default scrollbars.
+ * browser-default scrollbars. xterm 6 may render either a native viewport
+ * scrollbar or its own `.xterm-scrollable-element` overlay, so both paths are
+ * covered below.
  *
  * The terminal background is a real dark canvas (terminals are always dark,
  * whatever the app theme), so the thumb borrows white, not the theme's
  * muted-foreground, to stay visible against it. xterm mounts into the element
  * carrying `.terminal-tool-shell`, hence the scoping below. */
 .terminal-tool-shell .xterm .xterm-viewport::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 .terminal-tool-shell .xterm .xterm-viewport::-webkit-scrollbar-track {
-  background: transparent;
+  background: rgba(255, 255, 255, 0.025);
+  border-radius: 9999px;
 }
 .terminal-tool-shell .xterm .xterm-viewport::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
+  background-color: rgba(255, 255, 255, 0.24);
   border-radius: 9999px;
-  border: 2px solid transparent;
+  border: 3px solid transparent;
   background-clip: padding-box;
 }
 .terminal-tool-shell .xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(255, 255, 255, 0.32);
+  background-color: rgba(255, 255, 255, 0.42);
+}
+.terminal-tool-shell .xterm .xterm-viewport::-webkit-scrollbar-thumb:active {
+  background-color: rgba(255, 255, 255, 0.56);
+}
+.terminal-tool-shell .xterm .xterm-viewport::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 /* Firefox path: a thin scrollbar with a light thumb on the dark track. */
@@ -39,6 +48,22 @@
  * hides the shell's glass layer unless explicitly cleared. */
 .terminal-tool-shell .xterm .xterm-scrollable-element {
   background-color: transparent !important;
+}
+.terminal-tool-shell .xterm .xterm-scrollable-element > .scrollbar {
+  background: rgba(255, 255, 255, 0.025) !important;
+  border-radius: 9999px;
+  box-shadow: none !important;
+}
+.terminal-tool-shell .xterm .xterm-scrollable-element > .scrollbar > .slider {
+  background: rgba(255, 255, 255, 0.24) !important;
+  border-radius: 9999px;
+  transition: background-color 120ms ease;
+}
+.terminal-tool-shell .xterm .xterm-scrollable-element > .scrollbar:hover > .slider {
+  background: rgba(255, 255, 255, 0.42) !important;
+}
+.terminal-tool-shell .xterm .xterm-scrollable-element > .scrollbar > .slider.active {
+  background: rgba(255, 255, 255, 0.56) !important;
 }
 /* xterm's single-char selector also defaults to an opaque fill that would block
  * the backdrop; keep it transparent too. */
