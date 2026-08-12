@@ -165,7 +165,7 @@ describe("TerminalTool clipboard controls", () => {
     expect(mocks.getTerminalOptions()).toMatchObject({
       allowProposedApi: true,
       allowTransparency: true,
-      scrollback: 40_000,
+      scrollback: 5_000,
       theme: { background: "rgba(0, 0, 0, 0)" },
     });
     expect(mocks.terminal.loadAddon).toHaveBeenCalledWith(mocks.webgl);

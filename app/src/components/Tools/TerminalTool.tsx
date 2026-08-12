@@ -88,7 +88,7 @@ export function quoteTerminalPath(filePath: string): string {
 
 const SYSTEM_MONOSPACE_STACK =
   'ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace';
-const TERMINAL_SCROLLBACK_LINES = 40_000;
+const TERMINAL_SCROLLBACK_LINES = 5_000;
 const MAX_PENDING_OUTPUT_BYTES = 64 * 1024;
 const MAX_AUTOMATIC_RECOVERY_ATTEMPTS = 3;
 const SEARCH_DECORATIONS: NonNullable<ISearchOptions["decorations"]> = {
@@ -240,7 +240,8 @@ export function TerminalTool({
       theme: { background: "rgba(0, 0, 0, 0)" },
       // Scrollback lives in xterm's JS buffer, independently of the WebGL
       // canvas renderer. Keep a generous daily-development history without the
-      // excessive aggregate memory exposure across three persistent tabs.
+      // excessive aggregate memory exposure across three persistent tabs. The
+      // usual Herdr workflow owns its larger pane history outside this buffer.
       scrollback: TERMINAL_SCROLLBACK_LINES,
     });
     terminalRef.current = term;
