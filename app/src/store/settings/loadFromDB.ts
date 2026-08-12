@@ -13,6 +13,7 @@ import {
   cacheLayoutMode,
 } from "./cache";
 import { applyTheme, applyDocumentFontSize, applyDocumentLineHeight, applyDocumentParagraphSpacing, applyDocumentTextColor, applyHighlightColor, parseBannerPosition } from "./domEffects";
+import { isDesktopHost } from "@/platform";
 
 /** Loads every persisted setting from the DB in one pass, resolving each with
  * its default/legacy-format fallback, then applies the DOM-visible ones
@@ -113,6 +114,18 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
         resolvedSidebarTabs = [...resolvedSidebarTabs, "tools"];
       }
       localStorage.setItem("tanwords_tools_tab_migrated", "1");
+      await invoke("db_set_setting", { key: "visible_sidebar_tabs", value: JSON.stringify(resolvedSidebarTabs) });
+    }
+    // Terminal used to be a card inside Tools. Give existing desktop installs
+    // its new standalone navigation entry once, while still respecting a user
+    // who hides it later in Settings.
+    if (isDesktopHost && !localStorage.getItem("tanwords_terminal_tab_migrated")) {
+      if (!resolvedSidebarTabs.includes("terminal")) {
+        const toolsIndex = resolvedSidebarTabs.indexOf("tools");
+        resolvedSidebarTabs = [...resolvedSidebarTabs];
+        resolvedSidebarTabs.splice(toolsIndex < 0 ? resolvedSidebarTabs.length : toolsIndex, 0, "terminal");
+      }
+      localStorage.setItem("tanwords_terminal_tab_migrated", "1");
       await invoke("db_set_setting", { key: "visible_sidebar_tabs", value: JSON.stringify(resolvedSidebarTabs) });
     }
     cacheSidebarTabs(resolvedSidebarTabs);

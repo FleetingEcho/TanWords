@@ -55,7 +55,7 @@ export const toolsPage: Dict = {
     "toolsPage.terminal.closed": "shell 已退出",
     "toolsPage.terminal.error": "无法启动 shell",
     "toolsPage.terminal.maximize": "终端最大化",
-    "toolsPage.terminal.restore": "退出全屏",
+    "toolsPage.terminal.restore": "最小化终端",
     "toolsPage.terminal.transparent": "透明终端",
     "toolsPage.terminal.appearance": "终端外观",
     "toolsPage.terminal.blurLabel": "背景模糊",

@@ -39,4 +39,5 @@ export const nav: Dict = {
     "nav.browse": "浏览",
     "nav.tools": "工具",
     "nav.browser": "浏览",
+    "nav.terminal": "终端",
 };

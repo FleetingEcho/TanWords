@@ -1,5 +1,5 @@
 import React from "react";
-import { ClipboardPaste, Globe, PanelLeft, Settings, Wrench } from "lucide-react";
+import { ClipboardPaste, Globe, PanelLeft, Settings, TerminalSquare, Wrench } from "lucide-react";
 import { useLayoutStore } from "@/store/layoutStore";
 import { useT } from "@/hooks/useT";
 import {
@@ -32,12 +32,14 @@ const BASE_NAV_ITEM_DEFS: Omit<NavItemDef, "label">[] = [
   { id: "vocabulary", icon: BookIcon },
   { id: "chat", icon: ChatIcon },
   { id: "music", icon: MusicIcon },
+  { id: "terminal", icon: TerminalSquare },
   { id: "tools", icon: Wrench },
 ];
 
 const NAV_ITEM_DEFS = BASE_NAV_ITEM_DEFS.filter((item) => {
   if (item.id === "browser") return hostCapabilities.browser;
   if (item.id === "music") return hostCapabilities.music;
+  if (item.id === "terminal") return hostCapabilities.terminal;
   return true;
 });
 
@@ -118,6 +120,9 @@ interface MainLayoutProps {
   activeNav: string;
   onNavigate: (id: string) => void;
   wordCount?: number;
+  /** Terminal maximize mode removes app chrome without invoking the fragile
+   * browser fullscreen API or unmounting the live PTY. */
+  immersive?: boolean;
 }
 
 export function MainLayout({
@@ -125,6 +130,7 @@ export function MainLayout({
   activeNav,
   onNavigate,
   wordCount = 0,
+  immersive = false,
 }: MainLayoutProps) {
   const t = useT();
   const collapsed = useLayoutStore((s) => s.sidebarCollapsed);
@@ -158,7 +164,8 @@ export function MainLayout({
       className={`app-viewport-height flex overflow-hidden overscroll-none ${hasCustomAppBackground ? "" : "bg-background"}`}
     >
       <aside
-        className={`${compact ? "hidden" : "flex"} h-full shrink-0 flex-col border-r border-[hsl(var(--sidebar-border))] select-none transition-[width] duration-200 ${
+        aria-hidden={immersive || undefined}
+        className={`${compact || immersive ? "hidden" : "flex"} h-full shrink-0 flex-col border-r border-[hsl(var(--sidebar-border))] select-none transition-[width] duration-200 ${
           collapsed ? "w-[60px]" : "w-[210px]"
         } ${hasCustomAppBackground ? "bg-transparent" : "bg-[hsl(var(--sidebar))]"}`}
       >
@@ -225,7 +232,9 @@ export function MainLayout({
         // when that is docked underneath it. `lg:` can't express this: the
         // breakpoint is 768px and tablets up to 1023px are compact too.
         className={`flex min-w-0 flex-1 flex-col overflow-hidden box-border transition-[padding-bottom] duration-200 ${
-          compact
+          immersive
+            ? "pb-0"
+            : compact
             ? podcastActive
               // 64px player + dock button + 5px breathing room on each side.
               ? "pb-[calc(7.125rem+env(safe-area-inset-bottom))] sm:pb-[calc(8.125rem+env(safe-area-inset-bottom))]"
@@ -237,7 +246,7 @@ export function MainLayout({
               : "pb-0"
         }`}
       >
-        <CommandBar activePage={activeNav as NavPage} />
+        {!immersive && <CommandBar activePage={activeNav as NavPage} />}
         {/* `overflow-x-hidden` is load-bearing, not defensive: `overflow-y: auto`
           * alone computes the *other* axis to `auto` too, so any page whose
           * content overran the viewport by a few pixels gave the whole shell a
@@ -247,7 +256,7 @@ export function MainLayout({
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">{children}</div>
       </main>
 
-      {compact && (
+      {compact && !immersive && (
         <MobileNavDock
           items={DOCK_ITEMS}
           activeNav={activeNav}

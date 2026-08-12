@@ -55,7 +55,7 @@ export const toolsPage: Dict = {
     "toolsPage.terminal.closed": "Shell closed",
     "toolsPage.terminal.error": "Couldn't start shell",
     "toolsPage.terminal.maximize": "Maximize terminal",
-    "toolsPage.terminal.restore": "Exit fullscreen",
+    "toolsPage.terminal.restore": "Minimize terminal",
     "toolsPage.terminal.transparent": "Transparent terminal",
     "toolsPage.terminal.appearance": "Terminal appearance",
     "toolsPage.terminal.blurLabel": "Background blur",

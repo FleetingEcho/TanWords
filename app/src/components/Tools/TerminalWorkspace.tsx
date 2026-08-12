@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Pencil, Pin, PinOff, Plus, Star, StarOff, TerminalSquare, X } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -38,12 +38,18 @@ interface TabMenu {
   y: number;
 }
 
+const ignoreMaximizedChange = () => {};
+
 export function TerminalWorkspace({
   onBack,
   visible = true,
+  maximized = false,
+  onMaximizedChange = ignoreMaximizedChange,
 }: {
   onBack: () => void;
   visible?: boolean;
+  maximized?: boolean;
+  onMaximizedChange?: (maximized: boolean) => void;
 }) {
   const t = useT();
   const nextId = useRef(2);
@@ -54,6 +60,17 @@ export function TerminalWorkspace({
   const [renameDraft, setRenameDraft] = useState("");
   const [closeTabId, setCloseTabId] = useState<number | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // An external navigation (shortcut/deep link) must restore app chrome. The
+  // terminal itself remains mounted and its PTYs continue running.
+  useEffect(() => {
+    if (!visible && maximized) onMaximizedChange(false);
+  }, [maximized, onMaximizedChange, visible]);
+
+  const closeWorkspace = useCallback(() => {
+    onMaximizedChange(false);
+    onBack();
+  }, [onBack, onMaximizedChange]);
 
   const addTab = () => {
     if (tabs.length >= MAX_TERMINAL_TABS) return;
@@ -82,7 +99,7 @@ export function TerminalWorkspace({
     const index = tabs.findIndex((tab) => tab.id === id);
     if (index < 0) return;
     if (tabs.length === 1) {
-      onBack();
+      closeWorkspace();
       return;
     }
     const remaining = tabs.filter((tab) => tab.id !== id);
@@ -216,8 +233,10 @@ export function TerminalWorkspace({
               className={selected ? "absolute inset-0" : "hidden"}
             >
               <TerminalTool
-                onBack={onBack}
+                onBack={closeWorkspace}
                 visible={visible && selected}
+                maximized={maximized && selected}
+                onMaximizedChange={onMaximizedChange}
                 shellPath={tab.shellPath}
                 onSessionReady={(shell) => recordShell(tab.id, shell)}
                 onSessionExit={() => closeTabNow(tab.id)}

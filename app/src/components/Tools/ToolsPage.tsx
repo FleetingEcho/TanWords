@@ -1,45 +1,33 @@
 import React, { useState } from "react";
-import { ImageMinus, TerminalSquare } from "lucide-react";
+import { ImageMinus } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { ImageReducerTool } from "./ImageReducerTool";
-import { TerminalWorkspace } from "./TerminalWorkspace";
-import { hostCapabilities } from "@/platform";
 
 /** The set of utility tools the Tools page offers. Each entry maps a card on
  *  the landing grid to the component rendered when it is opened. Add a new
  *  entry here and its i18n keys under `toolsPage.*` to ship another tool. */
-type ToolId = "image-reducer" | "terminal";
+type ToolId = "image-reducer";
 
 interface ToolDef {
   id: ToolId;
   titleKey: string;
   descKey: string;
   Icon: React.FC<{ className?: string }>;
-  /** Omitted on hosts that can't run the tool (e.g. a local shell on web). */
-  available: boolean;
 }
 
 const TOOLS: ToolDef[] = [
-  {
-    id: "terminal",
-    titleKey: "toolsPage.terminal.title",
-    descKey: "toolsPage.terminal.description",
-    Icon: TerminalSquare,
-    available: hostCapabilities.terminal,
-  },
   {
     id: "image-reducer",
     titleKey: "toolsPage.imageReducer.title",
     descKey: "toolsPage.imageReducer.description",
     Icon: ImageMinus,
-    available: true,
   },
 ];
 
 interface ToolsPageProps {
   /**
-   * Navigation hides this page instead of unmounting it. That keeps an open
-   * tool (most importantly its live terminal process and scrollback) alive.
+   * Navigation hides this page instead of unmounting it, preserving an open
+   * utility's in-progress state.
    */
   visible?: boolean;
 }
@@ -48,16 +36,12 @@ export function ToolsPage({ visible = true }: ToolsPageProps) {
   const t = useT();
   const [active, setActive] = useState<ToolId | null>(null);
 
-  // The page is its own tiny router: a card grid, or the open tool. App keeps
-  // this component mounted after its first visit, so ordinary navigation does
-  // not reset the active tool. The tool's Back button is the explicit close.
+  // The page is its own tiny router: a card grid, or the open utility. App
+  // retains it after first visit, so ordinary navigation does not reset work.
   let content: React.ReactNode;
   if (active === "image-reducer") {
     content = <ImageReducerTool onBack={() => setActive(null)} />;
-  } else if (active === "terminal") {
-    content = <TerminalWorkspace onBack={() => setActive(null)} visible={visible} />;
   } else {
-    const visibleTools = TOOLS.filter((tool) => tool.available);
     content = (
       <div className="p-4 sm:p-6 space-y-5 animate-fade-in w-full">
         <div>
@@ -69,7 +53,7 @@ export function ToolsPage({ visible = true }: ToolsPageProps) {
             desktops. The cards are buttons so the whole tile is the click
             target — bigger on touch, no "Open" button needed. */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {visibleTools.map((tool) => (
+          {TOOLS.map((tool) => (
             <button
               key={tool.id}
               type="button"

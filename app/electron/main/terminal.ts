@@ -1,4 +1,4 @@
-/** PTY session bridge for the desktop Terminal tool (Tools page).
+/** PTY session bridge for the standalone desktop Terminal page.
  *
  *  Electron main spawns one `tanwords-pty` daemon per terminal session and
  *  speaks its framed stdio protocol (see app/core/src/bin/tanwords-pty.rs):

@@ -32,8 +32,12 @@ import { hostCapabilities, isDesktopHost } from "@/platform";
 
 type McpState = { status: { running: boolean; error: string | null } };
 
-const PAGE_IDS: NavPage[] = (["feeds", "vocabulary", "documents", "chat", "dashboard", "music", "settings", "tools"] as NavPage[])
-  .filter((id) => id !== "music" || hostCapabilities.music);
+const PAGE_IDS: NavPage[] = (["feeds", "vocabulary", "documents", "chat", "dashboard", "music", "terminal", "settings", "tools"] as NavPage[])
+  .filter((id) => {
+    if (id === "music") return hostCapabilities.music;
+    if (id === "terminal") return hostCapabilities.terminal;
+    return true;
+  });
 
 /** The icon standing in for the active theme. One definition: the top bar
  *  renders a wide and a narrow copy of this menu, and keeping two `theme ===`

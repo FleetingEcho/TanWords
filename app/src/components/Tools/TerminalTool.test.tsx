@@ -179,43 +179,20 @@ describe("TerminalTool clipboard controls", () => {
     expect(onSessionExit).toHaveBeenCalledOnce();
   });
 
-  it("brings the app wallpaper into the native fullscreen compositing tree", () => {
-    useSettingsStore.setState({
-      appBackgroundImage: "data:image/png;base64,wallpaper",
-      appBackgroundVisible: true,
-      appBackgroundBlur: 12,
-    });
-    let fullscreenElement: Element | null = null;
-    Object.defineProperty(document, "fullscreenElement", {
-      configurable: true,
-      get: () => fullscreenElement,
-    });
-    const requestFullscreen = vi.fn(function (this: HTMLElement) {
-      fullscreenElement = this;
-      document.dispatchEvent(new Event("fullscreenchange"));
-      return Promise.resolve();
-    });
-    Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
-      configurable: true,
-      value: requestFullscreen,
-    });
-    Object.defineProperty(document, "exitFullscreen", {
-      configurable: true,
-      value: vi.fn(() => {
-        fullscreenElement = null;
-        document.dispatchEvent(new Event("fullscreenchange"));
-        return Promise.resolve();
-      }),
-    });
-    const { container } = renderTerminal();
+  it("delegates maximize and restore to the standalone page shell", () => {
+    const onMaximizedChange = vi.fn();
+    const view = render(
+      <TerminalTool onBack={() => {}} onMaximizedChange={onMaximizedChange} />,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Maximize terminal" }));
+    expect(onMaximizedChange).toHaveBeenCalledWith(true);
 
-    const outer = container.querySelector(".terminal-tool-outer");
-    expect(requestFullscreen).toHaveBeenCalledOnce();
-    expect(outer?.querySelector('img[src="data:image/png;base64,wallpaper"]')).toHaveStyle({
-      filter: "blur(12px)",
-    });
+    view.rerender(
+      <TerminalTool onBack={() => {}} maximized onMaximizedChange={onMaximizedChange} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Minimize terminal" }));
+    expect(onMaximizedChange).toHaveBeenLastCalledWith(false);
   });
 
   it("applies terminal typography live without replacing the PTY", () => {

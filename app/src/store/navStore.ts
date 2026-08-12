@@ -9,6 +9,7 @@ export type NavPage =
   | "documents"
   | "chat"
   | "browser"
+  | "terminal"
   | "tools"
   | "settings";
 

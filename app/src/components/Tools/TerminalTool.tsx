@@ -1,4 +1,4 @@
-/** Desktop Terminal tool: a local shell over xterm.js.
+/** Desktop Terminal page: a local shell over xterm.js.
  *
  *  The renderer is sandboxed (contextIsolation + sandbox), so there is no
  *  Node in here — the shell lives behind `tanwords-pty`, a Rust daemon Electron
@@ -15,9 +15,9 @@
  *
  *  Layout: the root fills the page (which sits in a `min-h-0 flex-1
  *  overflow-y-auto` shell from MainLayout), the terminal is `flex-1 min-h-0`
- *  so it takes all the leftover height, and the top-right Maximize toggle runs
- *  the wrapper into browser/electron fullscreen — a ResizeObserver re-fits
- *  xterm whenever that (or any other) layout change moves the viewport. */
+ *  so it takes all the leftover height. The standalone page owns maximize
+ *  state, allowing MainLayout to remove its chrome without moving the terminal
+ *  into the browser fullscreen API or recreating its PTY. */
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -92,6 +92,8 @@ export function TerminalTool({
   onSessionReady,
   onSessionExit,
   tabBar,
+  maximized = false,
+  onMaximizedChange = () => {},
 }: {
   onBack: () => void;
   visible?: boolean;
@@ -102,9 +104,10 @@ export function TerminalTool({
   onSessionExit?: () => void;
   /** Workspace-owned tabs belong below this terminal's toolbar, above xterm. */
   tabBar?: React.ReactNode;
+  maximized?: boolean;
+  onMaximizedChange?: (maximized: boolean) => void;
 }) {
   const t = useT();
-  const outerRef = useRef<HTMLDivElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const refitRef = useRef<() => void>(() => {});
@@ -114,9 +117,6 @@ export function TerminalTool({
 
   const [status, setStatus] = useState<"starting" | "connected" | "closed" | "error">("starting");
   const [message, setMessage] = useState("");
-  // Tracks browser fullscreen separately so the Maximize icon can swap to a
-  // Minimize ("exit fullscreen") glyph while the mode is active.
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuPosition | null>(null);
   // Opening/closing the adjustment controls must not also enable/disable the
   // glass effect. That persisted preference is intentionally separate below.
@@ -133,9 +133,6 @@ export function TerminalTool({
   const terminalFontFamily = useSettingsStore((state) => state.terminalFontFamily);
   const terminalFontSize = useSettingsStore((state) => state.terminalFontSize);
   const setTerminalFontSize = useSettingsStore((state) => state.setTerminalFontSize);
-  const appBackgroundImage = useSettingsStore((state) => state.appBackgroundImage);
-  const appBackgroundBlur = useSettingsStore((state) => state.appBackgroundBlur);
-  const appBackgroundVisible = useSettingsStore((state) => state.appBackgroundVisible);
 
   const copySelection = useCallback(async () => {
     const term = terminalRef.current;
@@ -206,10 +203,15 @@ export function TerminalTool({
     // contexts throw here, in which case xterm's built-in DOM renderer remains
     // active. Context loss later follows the same safe fallback path.
     let webgl: WebglAddon | null = null;
+    let contextLossSubscription: { dispose: () => void } | null = null;
     try {
       const webglAddon = new WebglAddon();
       webgl = webglAddon;
-      webglAddon.onContextLoss(() => webglAddon.dispose());
+      contextLossSubscription = webglAddon.onContextLoss(() => {
+        // xterm falls back to its built-in renderer after the GPU context is
+        // lost. Dispose promptly so a dead canvas cannot retain GPU memory.
+        webglAddon.dispose();
+      });
       term.loadAddon(webglAddon);
     } catch {
       webgl?.dispose();
@@ -245,31 +247,52 @@ export function TerminalTool({
     // Keep the session in step with this component's lifetime.
     let alive = true;
 
-    // Fullscreen-aware fit: entering/exiting fullscreen changes the viewport
-    // size, so refit and re-sync the pty dimensions when it happens.
+    let fitFrame: number | null = null;
+    let lastPtyCols = 0;
+    let lastPtyRows = 0;
+    const syncPtySize = () => {
+      if (!state.sessionId || (term.cols === lastPtyCols && term.rows === lastPtyRows)) return;
+      lastPtyCols = term.cols;
+      lastPtyRows = term.rows;
+      void callMain("pty_resize", {
+        id: state.sessionId,
+        cols: term.cols,
+        rows: term.rows,
+      }).catch(() => {});
+    };
+
+    // Layout transitions and window drags can deliver many ResizeObserver
+    // callbacks in one paint. Fit at most once per animation frame and only
+    // send the PTY a resize when its rows or columns actually changed.
     const refit = () => {
-      // A persistent Tools page is `display: none` while another route is in
+      // A persistent Terminal page is `display: none` while another route is in
       // front. Do not collapse the live PTY to xterm's minimum dimensions.
       if (el.clientWidth === 0 || el.clientHeight === 0) return;
-      fit.fit();
-      if (state.sessionId) {
-        callMain("pty_resize", { id: state.sessionId, cols: term.cols, rows: term.rows }).catch(() => {});
-      }
+      if (fitFrame !== null) return;
+      // The sentinel also keeps this correct under synchronous RAF shims used
+      // by tests and a few embedded webviews.
+      fitFrame = -1;
+      const scheduledFrame = window.requestAnimationFrame(() => {
+        fitFrame = null;
+        if (!alive || el.clientWidth === 0 || el.clientHeight === 0) return;
+        fit.fit();
+        syncPtySize();
+      });
+      if (fitFrame !== null) fitFrame = scheduledFrame;
     };
     refitRef.current = refit;
-
-    const onFsChange = () => {
-      if (!alive) return;
-      setIsFullscreen(document.fullscreenElement === outerRef.current);
-      refit();
-    };
-    document.addEventListener("fullscreenchange", onFsChange);
 
     // ── events ────────────────────────────────────────────────────────
     const offs = [
       subscribe<{ id: string; data?: string }>("pty:data", ({ id, data }) => {
         if (state.sessionId !== id || !alive) return;
-        if (data) term.write(bytesFromB64(data));
+        if (!data) return;
+        try {
+          term.write(bytesFromB64(data));
+        } catch {
+          // A malformed/late transport event must not take down the React tree
+          // or the other terminal tabs. The live session can keep streaming.
+        }
       }),
       subscribe<{ id: string; code?: number }>("pty:exit", ({ id }) => {
         if (state.sessionId !== id || !alive) return;
@@ -286,8 +309,15 @@ export function TerminalTool({
           "pty_spawn",
           { cols: term.cols, rows: term.rows, shellPath },
         );
-        if (!alive) return;
+        if (!alive) {
+          // Unmount can win the race with a slow spawn handshake. Close the
+          // newly-created backend session instead of leaking an orphan shell.
+          void callMain("pty_close", { id: info.id }).catch(() => {});
+          return;
+        }
         state.sessionId = info.id;
+        lastPtyCols = term.cols;
+        lastPtyRows = term.rows;
         setStatus("connected");
         onSessionReady?.(info.shell);
       } catch (err) {
@@ -304,8 +334,7 @@ export function TerminalTool({
       void callMain("pty_write", { id: state.sessionId, data: b64EncodeUtf8(data) }).catch(() => {});
     });
     const onResize = term.onResize(() => {
-      if (!state.sessionId) return;
-      callMain("pty_resize", { id: state.sessionId, cols: term.cols, rows: term.rows }).catch(() => {});
+      syncPtySize();
     });
 
     // Resize the pty whenever the page layout changes (sidebar toggle, window
@@ -321,7 +350,8 @@ export function TerminalTool({
     return () => {
       alive = false;
       if (state.sessionId) callMain("pty_close", { id: state.sessionId }).catch(() => {});
-      document.removeEventListener("fullscreenchange", onFsChange);
+      if (fitFrame !== null) window.cancelAnimationFrame(fitFrame);
+      contextLossSubscription?.dispose();
       onData.dispose();
       onResize.dispose();
       ro.disconnect();
@@ -330,7 +360,6 @@ export function TerminalTool({
       term.dispose();
       refitRef.current = () => {};
       if (terminalRef.current === term) terminalRef.current = null;
-      if (document.fullscreenElement) void document.exitFullscreen();
     };
   }, []);
 
@@ -345,15 +374,17 @@ export function TerminalTool({
     return () => window.cancelAnimationFrame(frame);
   }, [terminalFontFamily, terminalFontSize]);
 
+  // MainLayout changes two large boxes when maximize toggles. ResizeObserver
+  // normally catches that, and this scheduled fit also covers hosts where the
+  // observer coalesces the transition away.
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => refitRef.current());
+    return () => window.cancelAnimationFrame(frame);
+  }, [maximized]);
+
   // ── maximize toggle ─────────────────────────────────────────────────
   const toggleFullscreen = () => {
-    const host = outerRef.current;
-    if (!host) return;
-    if (document.fullscreenElement) {
-      void document.exitFullscreen();
-    } else {
-      void host.requestFullscreen?.();
-    }
+    onMaximizedChange(!maximized);
   };
 
   const toggleAppearanceControls = () => {
@@ -381,32 +412,10 @@ export function TerminalTool({
 
   return (
     <div
-      ref={outerRef}
       aria-hidden={!visible}
       className="terminal-tool-outer relative h-full w-full"
     >
-      {isFullscreen && (
-        <div
-          className="pointer-events-none absolute inset-0 z-0 overflow-hidden bg-background"
-          aria-hidden="true"
-        >
-          {appBackgroundImage && appBackgroundVisible && (
-            <>
-              <img
-                src={appBackgroundImage}
-                alt=""
-                className="h-full w-full object-cover"
-                style={{
-                  filter: `blur(${appBackgroundBlur}px)`,
-                  transform: appBackgroundBlur > 0 ? "scale(1.08)" : undefined,
-                }}
-              />
-              <div className="absolute inset-0 bg-black/20 dark:bg-black/45" />
-            </>
-          )}
-        </div>
-      )}
-      <div className={`${isFullscreen ? "relative z-10" : ""} flex h-full flex-col`}>
+      <div className="flex h-full flex-col">
         {/* toolbar */}
         <div className="flex shrink-0 flex-wrap items-center gap-3 px-4 sm:px-6">
           <Button
@@ -537,11 +546,11 @@ export function TerminalTool({
             variant="ghost"
             size="icon"
             onClick={toggleFullscreen}
-            title={isFullscreen ? t("toolsPage.terminal.restore") : t("toolsPage.terminal.maximize")}
-            aria-label={isFullscreen ? t("toolsPage.terminal.restore") : t("toolsPage.terminal.maximize")}
+            title={maximized ? t("toolsPage.terminal.restore") : t("toolsPage.terminal.maximize")}
+            aria-label={maximized ? t("toolsPage.terminal.restore") : t("toolsPage.terminal.maximize")}
             className="h-9 w-9 shrink-0 rounded-lg text-muted-foreground"
           >
-            {isFullscreen ? (
+            {maximized ? (
               <Minimize2 className="h-4 w-4" />
             ) : (
               <Maximize2 className="h-4 w-4" />

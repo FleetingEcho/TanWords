@@ -8,17 +8,24 @@ vi.mock("./TerminalTool", () => ({
     shellPath,
     tabBar,
     onSessionExit,
+    maximized,
+    onMaximizedChange,
   }: {
     visible?: boolean;
     shellPath?: string;
     tabBar?: ReactNode;
     onSessionExit?: () => void;
+    maximized?: boolean;
+    onMaximizedChange?: (maximized: boolean) => void;
   }) => (
     <div data-testid="terminal-session" data-visible={String(visible)} data-shell={shellPath}>
       <div data-testid="terminal-toolbar">terminal toolbar</div>
       {tabBar}
       <div data-testid="terminal-shell">terminal session</div>
       <button type="button" onClick={onSessionExit}>Exit terminal session</button>
+      <button type="button" onClick={() => onMaximizedChange?.(!maximized)}>
+        {maximized ? "Restore terminal" : "Maximize terminal"}
+      </button>
     </div>
   ),
 }));
@@ -80,6 +87,29 @@ describe("TerminalWorkspace tabs", () => {
     expect(terminal).toContainElement(tabList);
     expect(toolbar.compareDocumentPosition(tabList) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(tabList.compareDocumentPosition(shell) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("keeps maximize state at workspace level and restores chrome when hidden", () => {
+    const onMaximizedChange = vi.fn();
+    const view = render(
+      <TerminalWorkspace
+        onBack={() => {}}
+        maximized
+        onMaximizedChange={onMaximizedChange}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Restore terminal" })).toBeInTheDocument();
+    view.rerender(
+      <TerminalWorkspace
+        onBack={() => {}}
+        visible={false}
+        maximized
+        onMaximizedChange={onMaximizedChange}
+      />,
+    );
+
+    expect(onMaximizedChange).toHaveBeenCalledWith(false);
   });
 
   it("closes one session without unmounting the others", () => {

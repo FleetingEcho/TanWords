@@ -9,30 +9,17 @@ vi.mock("./ImageReducerTool", () => ({
   ImageReducerTool: () => <div>Image reducer workspace</div>,
 }));
 
-vi.mock("./TerminalTool", () => ({
-  TerminalTool: ({ visible }: { visible?: boolean }) => (
-    <div data-testid="live-terminal" data-visible={String(visible)}>
-      Live terminal workspace
-    </div>
-  ),
-}));
-
 import { ToolsPage } from "./ToolsPage";
 
-describe("ToolsPage lifecycle", () => {
-  it("keeps the active terminal mounted while navigation hides the page", () => {
+describe("ToolsPage", () => {
+  it("contains utility tools without embedding the standalone terminal", () => {
     const view = render(<ToolsPage visible />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Terminal/i }));
-    expect(screen.getByTestId("live-terminal")).toHaveAttribute("data-visible", "true");
+    expect(screen.queryByRole("button", { name: /Terminal/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Image reducer/i }));
+    expect(screen.getByText("Image reducer workspace")).toBeInTheDocument();
 
     view.rerender(<ToolsPage visible={false} />);
     expect(screen.getByTestId("tools-page-host")).not.toBeVisible();
-    expect(screen.getByTestId("live-terminal")).toBeInTheDocument();
-    expect(screen.getByTestId("live-terminal")).toHaveAttribute("data-visible", "false");
-
-    view.rerender(<ToolsPage visible />);
-    expect(screen.getByTestId("tools-page-host")).toBeVisible();
-    expect(screen.getByTestId("live-terminal")).toHaveAttribute("data-visible", "true");
   });
 });

@@ -347,6 +347,7 @@ export function GeneralSection() {
           {DEFAULT_SIDEBAR_TABS.filter((tab) => {
             if (tab === "music") return hostCapabilities.music;
             if (tab === "browser") return hostCapabilities.browser;
+            if (tab === "terminal") return hostCapabilities.terminal;
             return true;
           }).map((tab) => {
             const visible = settings.visibleSidebarTabs.includes(tab);

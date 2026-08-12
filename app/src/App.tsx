@@ -52,6 +52,8 @@ const MusicPage = React.lazy(() => import("@/components/Music/MusicPage"));
 const BrowserPage = React.lazy(() => import("@/components/Browser/BrowserPage"));
 const ToolsPage = React.lazy(() =>
   import("@/components/Tools/ToolsPage").then((m) => ({ default: m.ToolsPage })));
+const TerminalPage = React.lazy(() =>
+  import("@/components/Terminal/TerminalPage").then((m) => ({ default: m.TerminalPage })));
 const WordDetailModal = React.lazy(() =>
   import("@/components/WordDetailModal").then((m) => ({ default: m.WordDetailModal })));
 const ToolsModal = React.lazy(() =>
@@ -104,9 +106,19 @@ function App() {
   const [authState, setAuthState] = React.useState<AuthState>(isWebHost ? "checking" : "ready");
   const [wordCount, setWordCount] = React.useState(0);
   const [selectionToolsReady, setSelectionToolsReady] = React.useState(false);
-  // Lazy-load Tools on first use, then retain its component tree. Its own Back
-  // button remains the explicit lifecycle boundary for a live terminal.
+  // Lazy-load Tools on first use, then retain in-progress utility state while
+  // the user visits another route.
   const toolsVisited = React.useRef(false);
+  // Like an editor buffer, a terminal route is hidden rather than destroyed
+  // during ordinary navigation. Explicit Back/last-tab close remains the
+  // lifecycle boundary that tears down its PTYs.
+  const terminalVisited = React.useRef(false);
+  const [terminalMaximized, setTerminalMaximized] = React.useState(false);
+  const closeTerminalPage = React.useCallback(() => {
+    terminalVisited.current = false;
+    setTerminalMaximized(false);
+    navigate("dashboard");
+  }, [navigate]);
 
   // Selection/Ask pulls in gesture handling, AI actions and its answer panel,
   // but renders nothing until the user selects text. Keep it out of the first
@@ -339,13 +351,16 @@ function App() {
 
   const page = currentPage();
   if (page === "tools") toolsVisited.current = true;
+  const isTerminalRoute = page === "terminal" && hostCapabilities.terminal;
+  if (isTerminalRoute) terminalVisited.current = true;
   const wordId = currentWordId();
   // Dashboard owns startup readiness because its first useful paint depends on
   // a real DB query (including Turso initialization/sync when configured). Web
   // falls back to Dashboard for desktop-only routes, so those must wait too.
   const dashboardOwnsStartupReadiness = page === "dashboard"
     || (!isDesktopHost && page === "music")
-    || (!hostCapabilities.browser && page === "browser");
+    || (!hostCapabilities.browser && page === "browser")
+    || (!hostCapabilities.terminal && page === "terminal");
 
   const renderPage = () => {
     switch (page) {
@@ -368,9 +383,13 @@ function App() {
       case "settings":
         return <SettingsPage />;
       case "tools":
-        // Tools owns a persistent host below; it must never enter the keyed
-        // route slot, whose unmount semantics would terminate a live PTY.
+        // Tools owns a retained host below so an in-progress utility does not
+        // reset during ordinary navigation.
         return null;
+      case "terminal":
+        // Terminal owns a persistent host below. Web cannot launch a local
+        // shell, so a stale/deep-linked route safely falls back to Dashboard.
+        return hostCapabilities.terminal ? null : <DashboardPage />;
       case "feeds":
       default:
         return <FeedsPage />;
@@ -384,17 +403,28 @@ function App() {
       activeNav={page}
       onNavigate={(id) => navigate(id as any)}
       wordCount={wordCount}
+      immersive={isTerminalRoute && terminalMaximized}
     >
+      {terminalVisited.current && hostCapabilities.terminal && (
+        <React.Suspense fallback={isTerminalRoute ? <PageFallback /> : null}>
+          <TerminalPage
+            visible={isTerminalRoute}
+            maximized={terminalMaximized}
+            onMaximizedChange={setTerminalMaximized}
+            onClose={closeTerminalPage}
+          />
+          {isTerminalRoute && <StartupReadySignal />}
+        </React.Suspense>
+      )}
       {toolsVisited.current && (
         <React.Suspense fallback={page === "tools" ? <PageFallback /> : null}>
           <ToolsPage visible={page === "tools"} />
           {page === "tools" && <StartupReadySignal />}
         </React.Suspense>
       )}
-      {page !== "tools" && (
+      {page !== "tools" && !isTerminalRoute && (
         /* Keyed on the page so switching ordinary pages shows the spinner.
-           Tools is hosted separately because its running processes survive
-           route navigation. */
+           Retained workspaces are hosted separately above. */
         <React.Suspense key={page} fallback={<PageFallback />}>
           {renderPage()}
           {!dashboardOwnsStartupReadiness && <StartupReadySignal />}
@@ -416,7 +446,7 @@ function App() {
         <ToolsModal />
       </React.Suspense>
     )}
-    {podcastVisible && (
+    {podcastVisible && !(isTerminalRoute && terminalMaximized) && (
       <React.Suspense fallback={null}>
         <PodcastPlayerBar />
       </React.Suspense>
