@@ -67,7 +67,7 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
 
   const content = useDocEditorContent(doc, onSave, onDirty);
   const {
-    editor, setEditor, initialBlocks, uploadFile,
+    editor, handleEditorReady, initialBlocks, uploadFile,
     mode, rawMarkdown, switchingMode, richLoading, switchMode, handleChange, handleRawChange, scheduleSave, flushSave,
   } = content;
 
@@ -229,7 +229,7 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
                   initialBlocks={initialBlocks as Block[]}
                   isDark={isDark}
                   onUploadFile={uploadFile}
-                  onReady={setEditor}
+                  onReady={handleEditorReady}
                   onError={(message) => toast.error(message)}
                   onChange={handleChange}
                   toolbarExtras={attachments.renderToolbarExtras}

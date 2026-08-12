@@ -53,6 +53,16 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
   const [initialBlocks, setInitialBlocks] = useState<Block[] | null>(null);
   const uploadFile = useCallback((file: File) => uploadDocumentAsset(doc.id, file), [doc.id]);
 
+  const handleEditorReady = useCallback((nextEditor: DocEditorApi) => {
+    setEditor(nextEditor);
+    // Parsing being finished does not mean the lazily-loaded editor has
+    // finished mounting. Only release the content hook when Tiptap itself is
+    // ready; TiptapDocumentEditor filters its remaining setup transactions
+    // until the first interactive frame.
+    loaded.current = true;
+    setRichLoading(false);
+  }, []);
+
   // Load stored content (block JSON, or legacy Lexical — lazily migrated).
   // Keyed on doc.id: a different document must re-read, and the editor is
   // remounted for it (see the `key` in DocEditor).
@@ -72,6 +82,8 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
           setRawMarkdown(markdown);
           setInitialBlocks(null);
           setMode("raw");
+          loaded.current = true;
+          setRichLoading(false);
           return;
         }
 
@@ -89,13 +101,13 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
           setRawMarkdown(markdown);
           setInitialBlocks(null);
           setMode("raw");
+          loaded.current = true;
+          setRichLoading(false);
         } else {
           setInitialBlocks(withTrailingEditorParagraph(lifted) as Block[]);
         }
       } catch (error) {
         if ((error as { name?: string })?.name !== "AbortError") throw error;
-      } finally {
-        if (!cancelled) requestAnimationFrame(() => { loaded.current = true; setRichLoading(false); });
       }
     })();
     return () => {
@@ -207,7 +219,6 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
           rawDirty.current = false;
           dirty.current = false;
         }
-        requestAnimationFrame(() => { loaded.current = true; setRichLoading(false); });
       }
       setMode(next);
     } finally {
@@ -249,7 +260,7 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
   }, []);
 
   return {
-    editor, setEditor, initialBlocks, uploadFile,
+    editor, handleEditorReady, initialBlocks, uploadFile,
     mode, rawMarkdown, switchingMode, richLoading,
     switchMode, handleChange, handleRawChange, scheduleSave, flushSave,
   };

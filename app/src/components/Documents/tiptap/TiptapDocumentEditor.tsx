@@ -62,7 +62,12 @@ export function TiptapDocumentEditor({
   const appTheme = useSettingsStore((state) => state.theme);
   const [slash, setSlash] = useState<SlashMenuSnapshot | null>(null);
   const onChangeRef = useRef(onChange);
+  const acceptsChanges = useRef(false);
   onChangeRef.current = onChange;
+
+  const reportChange = useCallback(() => {
+    if (acceptsChanges.current) onChangeRef.current?.();
+  }, []);
 
   // Built once: extensions define the schema, and swapping it under a live
   // editor rebuilds the document. Callbacks are read through refs instead.
@@ -71,7 +76,7 @@ export function TiptapDocumentEditor({
       upload: onUploadFile,
       readNativeImage,
       onError,
-      onChanged: () => onChangeRef.current?.(),
+      onChanged: reportChange,
       onSlashMenu: setSlash,
       label: t,
     }),
@@ -91,13 +96,23 @@ export function TiptapDocumentEditor({
     // React 19 + StrictMode double-invokes effects; without this the editor
     // renders its DOM immediately and the second pass finds it already there.
     immediatelyRender: false,
-    onUpdate: () => onChangeRef.current?.(),
+    onUpdate: reportChange,
   });
 
   const api = useMemo(() => (editor ? createDocEditorApi(editor) : null), [editor]);
 
   useEffect(() => {
-    if (api) onReady?.(api);
+    if (!api) return;
+    onReady?.(api);
+    // Extensions such as UniqueID may normalize the initial ProseMirror
+    // document during setup. Those transactions can arrive after `onReady`,
+    // especially when this component came from a lazy chunk, but still before
+    // the user can interact with the painted editor.
+    const frame = requestAnimationFrame(() => { acceptsChanges.current = true; });
+    return () => {
+      cancelAnimationFrame(frame);
+      acceptsChanges.current = false;
+    };
   }, [api, onReady]);
 
   useEffect(() => {

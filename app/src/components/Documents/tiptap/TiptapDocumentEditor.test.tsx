@@ -71,6 +71,30 @@ describe("mounting", () => {
     await mount([paragraph("loaded")], { onChange });
     expect(onChange).not.toHaveBeenCalled();
   });
+
+  it("ignores setup transactions around ready but reports later edits", async () => {
+    const onChange = vi.fn();
+    let api: DocEditorApi | null = null;
+    render(
+      <TiptapDocumentEditor
+        initialBlocks={[paragraph("loaded")]}
+        isDark={false}
+        onChange={onChange}
+        onReady={(ready) => {
+          api = ready;
+          // Model an extension normalizing the document as the editor finishes
+          // setup. This is too early to be user input and must stay clean.
+          ready.insertBlocks([paragraph("setup")], ready.document[0], "after");
+        }}
+      />,
+    );
+    await waitFor(() => expect(api).not.toBeNull());
+    expect(onChange).not.toHaveBeenCalled();
+
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    api!.insertBlocks([paragraph("user edit")], api!.document[0], "after");
+    expect(onChange).toHaveBeenCalled();
+  });
 });
 
 describe("media blocks", () => {
