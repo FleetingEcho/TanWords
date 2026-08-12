@@ -220,7 +220,9 @@ export function TerminalTool({
       if (!menuRef.current?.contains(event.target as Node)) setContextMenu(null);
     };
     const closeOnKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setContextMenu(null);
+      if (event.key === "Escape" && menuRef.current?.contains(event.target as Node)) {
+        setContextMenu(null);
+      }
     };
     const close = () => setContextMenu(null);
     document.addEventListener("mousedown", closeOnPointerDown, true);
@@ -349,38 +351,33 @@ export function TerminalTool({
     }
     fit.fit();
 
-    // Terminal-aware clipboard shortcuts. Ctrl+C remains SIGINT when there is
-    // no selection; with a selection it copies instead. Ctrl/Cmd+V uses the
-    // native clipboard so Electron can also materialize copied images. Search
-    // stays in the renderer and never sends the query to the shell.
+    const state = { sessionId: null as string | null };
+
+    // Do not assign application shortcuts while xterm has focus: every key
+    // belongs to the foreground terminal program. xterm 6 collapses all
+    // modified Enter keys to plain CR, however, so preserve that browser input
+    // as a CSI-u key event. This is transport encoding, not a TanWords action;
+    // Herdr (or any other foreground TUI) remains responsible for its meaning.
     term.attachCustomKeyEventHandler((event) => {
-      const modifier = event.ctrlKey || event.metaKey;
       const key = event.key.toLowerCase();
-      if (modifier && key === "f") {
+      const modifierBits = Number(event.shiftKey)
+        | (Number(event.altKey) << 1)
+        | (Number(event.ctrlKey) << 2)
+        | (Number(event.metaKey) << 3);
+      if (key === "enter" && modifierBits !== 0) {
         if (event.type === "keydown") {
           event.preventDefault();
-          setSearchOpen(true);
-        }
-        return false;
-      }
-      if (modifier && key === "c" && term.hasSelection()) {
-        if (event.type === "keydown") {
-          event.preventDefault();
-          void copySelection().catch(() => {});
-        }
-        return false;
-      }
-      if (modifier && key === "v") {
-        if (event.type === "keydown") {
-          event.preventDefault();
-          void pasteClipboard().catch(() => {});
+          if (state.sessionId) {
+            void callMain("pty_write", {
+              id: state.sessionId,
+              data: b64EncodeUtf8(`\x1b[13;${modifierBits + 1}u`),
+            }).catch(() => {});
+          }
         }
         return false;
       }
       return true;
     });
-
-    const state = { sessionId: null as string | null };
 
     // Keep the session in step with this component's lifetime.
     let alive = true;
@@ -558,24 +555,6 @@ export function TerminalTool({
       searchInputRef.current?.select();
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [searchOpen, visible]);
-
-  // Catch find while focus is on the toolbar/search controls as well as in the
-  // xterm canvas. Hidden persistent terminal tabs must not compete for it.
-  useEffect(() => {
-    if (!visible) return;
-    const openSearch = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "f") return;
-      event.preventDefault();
-      event.stopPropagation();
-      setSearchOpen(true);
-      if (searchOpen) {
-        searchInputRef.current?.focus();
-        searchInputRef.current?.select();
-      }
-    };
-    document.addEventListener("keydown", openSearch, true);
-    return () => document.removeEventListener("keydown", openSearch, true);
   }, [searchOpen, visible]);
 
   // Typography changes are live options: updating them must not recreate the

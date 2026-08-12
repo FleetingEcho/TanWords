@@ -394,21 +394,57 @@ describe("TerminalTool clipboard controls", () => {
     expect(mocks.toastSuccess).not.toHaveBeenCalled();
   });
 
-  it("uses Ctrl+C for copy only while text is selected", () => {
-    mocks.terminal.hasSelection.mockReturnValue(true);
-    mocks.terminal.getSelection.mockReturnValue("copy me");
+  it("passes terminal keys through without assigning TanWords shortcuts", () => {
     renderTerminal();
     const handler = mocks.getKeyHandler();
     expect(handler).not.toBeNull();
 
-    const copyEvent = new KeyboardEvent("keydown", { key: "c", ctrlKey: true, cancelable: true });
-    expect(handler!(copyEvent)).toBe(false);
-    expect(mocks.callMain).toHaveBeenCalledWith("clipboard:writeText", { text: "copy me" });
+    for (const event of [
+      new KeyboardEvent("keydown", { key: "Escape", cancelable: true }),
+      new KeyboardEvent("keydown", { key: "c", ctrlKey: true, cancelable: true }),
+      new KeyboardEvent("keydown", { key: "f", ctrlKey: true, cancelable: true }),
+      new KeyboardEvent("keydown", { key: "v", metaKey: true, cancelable: true }),
+    ]) {
+      expect(handler!(event)).toBe(true);
+      expect(event.defaultPrevented).toBe(false);
+    }
+    expect(mocks.callMain).not.toHaveBeenCalledWith("clipboard:writeText", expect.anything());
+    expect(mocks.callMain).not.toHaveBeenCalledWith("clipboard:readForTerminal");
+  });
+
+  it("forwards Ctrl+Enter as a modified key for the foreground terminal program", async () => {
+    mocks.setSpawnInfo({ id: "terminal-1", shell: "/bin/bash", cwd: "/tmp", pid: 42 });
+    renderTerminal();
+    await waitFor(() => expect(mocks.callMain).toHaveBeenCalledWith("pty_spawn", expect.anything()));
+    mocks.callMain.mockClear();
+
+    const event = new KeyboardEvent("keydown", {
+      key: "Enter",
+      ctrlKey: true,
+      cancelable: true,
+    });
+    expect(mocks.getKeyHandler()!(event)).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
+    expect(mocks.callMain).toHaveBeenCalledWith("pty_write", {
+      id: "terminal-1",
+      data: "G1sxMzs1dQ==",
+    });
 
     mocks.callMain.mockClear();
-    mocks.terminal.hasSelection.mockReturnValue(false);
-    expect(handler!(new KeyboardEvent("keydown", { key: "c", ctrlKey: true }))).toBe(true);
-    expect(mocks.callMain).not.toHaveBeenCalledWith("clipboard:writeText", expect.anything());
+    expect(mocks.getKeyHandler()!(new KeyboardEvent("keyup", {
+      key: "Enter",
+      ctrlKey: true,
+    }))).toBe(false);
+    expect(mocks.callMain).not.toHaveBeenCalled();
+  });
+
+  it("does not consume Escape from xterm to close its context menu", () => {
+    const { shell } = renderTerminal();
+    fireEvent.contextMenu(shell);
+
+    fireEvent.keyDown(shell, { key: "Escape" });
+
+    expect(screen.getByRole("menu", { name: "Terminal actions" })).toBeInTheDocument();
   });
 
   it("searches scrollback, highlights matches, and navigates results", async () => {
@@ -417,13 +453,7 @@ describe("TerminalTool clipboard controls", () => {
     // before proposed decoration APIs were enabled.
     mocks.terminal.options.allowProposedApi = false;
 
-    act(() => {
-      const handled = mocks.getKeyHandler()!(
-        new KeyboardEvent("keydown", { key: "f", metaKey: true, cancelable: true }),
-      );
-      expect(handled).toBe(false);
-    });
-
+    fireEvent.click(screen.getByRole("button", { name: "Search terminal" }));
     const input = await screen.findByRole("searchbox", { name: "Terminal search query" });
     fireEvent.change(input, { target: { value: "build complete" } });
     expect(mocks.terminal.options.allowProposedApi).toBe(true);
@@ -473,23 +503,21 @@ describe("TerminalTool clipboard controls", () => {
     expect(mocks.terminal.focus).toHaveBeenCalled();
   });
 
-  it("pastes clipboard text with Ctrl+V", async () => {
+  it("pastes clipboard text from the context menu", async () => {
     mocks.setClipboardValue({ kind: "text", text: "echo hello" });
-    renderTerminal();
+    const { shell } = renderTerminal();
 
-    const handled = mocks.getKeyHandler()!(
-      new KeyboardEvent("keydown", { key: "v", ctrlKey: true, cancelable: true }),
-    );
-
-    expect(handled).toBe(false);
+    fireEvent.contextMenu(shell);
+    fireEvent.click(screen.getByRole("menuitem", { name: /Paste/ }));
     await waitFor(() => expect(mocks.terminal.paste).toHaveBeenCalledWith("echo hello"));
   });
 
-  it("pastes a safely escaped temporary image path with Ctrl+V", async () => {
+  it("pastes a safely escaped temporary image path from the context menu", async () => {
     mocks.setClipboardValue({ kind: "image", path: "/tmp/Tan Words/image (1).png" });
-    renderTerminal();
+    const { shell } = renderTerminal();
 
-    mocks.getKeyHandler()!(new KeyboardEvent("keydown", { key: "v", ctrlKey: true }));
+    fireEvent.contextMenu(shell);
+    fireEvent.click(screen.getByRole("menuitem", { name: /Paste/ }));
 
     await waitFor(() => {
       expect(mocks.terminal.paste).toHaveBeenCalledWith("/tmp/Tan\\ Words/image\\ \\(1\\).png");
