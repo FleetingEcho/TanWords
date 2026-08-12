@@ -69,6 +69,17 @@ fn main() {
     // non-querying shell).
     let term = std::env::var("TERM").unwrap_or_else(|_| "xterm-256color".to_string());
     cmd.env("TERM", &term);
+    // TERM only advertises 256 colours. Tools that can emit 24-bit colour
+    // (neovim, delta, bat, eza, starship, ...) gate that on COLORTERM and
+    // otherwise quantise into the 256-colour cube, which bands gradients and
+    // approximates theme colours. xterm.js renders truecolor natively, so the
+    // renderer is already able to show what those programmes would emit.
+    // `dumb` means the caller asked for a quiet terminal; promising colour
+    // there would contradict it. Any ambient COLORTERM still wins.
+    if term != "dumb" {
+        let colorterm = std::env::var("COLORTERM").unwrap_or_else(|_| "truecolor".to_string());
+        cmd.env("COLORTERM", colorterm);
+    }
     let mut child = match pair.slave.spawn_command(cmd) {
         Ok(child) => child,
         Err(e) => {

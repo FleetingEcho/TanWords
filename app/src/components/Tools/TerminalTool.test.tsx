@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => {
   let contextLossHandler: (() => void) | null = null;
   let searchResultsHandler: ((result: { resultIndex: number; resultCount: number }) => void) | null = null;
   let resizeHandler: (() => void) | null = null;
+  let titleHandler: ((title: string) => void) | null = null;
   let spawnInfo: { id: string; shell: string; cwd: string; pid: number } | null = null;
   let deferWrites = false;
   const pendingWriteCallbacks: Array<() => void> = [];
@@ -49,6 +50,10 @@ const mocks = vi.hoisted(() => {
     getSelection: vi.fn(() => ""),
     onData: vi.fn(() => ({ dispose: vi.fn() })),
     onResize: vi.fn(() => ({ dispose: vi.fn() })),
+    onTitleChange: vi.fn((handler: (title: string) => void) => {
+      titleHandler = handler;
+      return { dispose: vi.fn() };
+    }),
     attachCustomKeyEventHandler: vi.fn((handler: (event: KeyboardEvent) => boolean) => {
       keyHandler = handler;
     }),
@@ -75,6 +80,7 @@ const mocks = vi.hoisted(() => {
     triggerContextLoss: () => contextLossHandler?.(),
     emitSearchResults: (result: { resultIndex: number; resultCount: number }) => searchResultsHandler?.(result),
     triggerResize: () => resizeHandler?.(),
+    emitTitle: (title: string) => titleHandler?.(title),
     emit: (event: string, payload: unknown) => eventHandlers.get(event)?.(payload),
     setSpawnInfo: (value: typeof spawnInfo) => { spawnInfo = value; },
     setDeferWrites: (value: boolean) => { deferWrites = value; },
@@ -94,6 +100,7 @@ const mocks = vi.hoisted(() => {
       contextLossHandler = null;
       searchResultsHandler = null;
       resizeHandler = null;
+      titleHandler = null;
       spawnInfo = null;
       deferWrites = false;
       pendingWriteCallbacks.length = 0;
@@ -130,7 +137,7 @@ vi.mock("sonner", () => ({
   toast: { success: mocks.toastSuccess, error: mocks.toastError },
 }));
 
-import { quoteTerminalPath, terminalFontStack, TerminalTool } from "./TerminalTool";
+import { quoteTerminalPath, shellTabTitle, terminalFontStack, TerminalTool } from "./TerminalTool";
 import { useSettingsStore } from "@/store/settingsStore";
 
 describe("TerminalTool clipboard controls", () => {
@@ -182,6 +189,23 @@ describe("TerminalTool clipboard controls", () => {
 
     mocks.triggerContextLoss();
     expect(mocks.webgl.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("paints an explicit palette contrast-matched to its own backdrop", () => {
+    renderTerminal();
+    const theme = (mocks.getTerminalOptions()?.theme ?? {}) as Record<string, string>;
+
+    // Every ANSI slot is set: an unset theme falls back to xterm's Tango
+    // default, whose black/bright-black all but disappear on this backdrop.
+    for (const slot of ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"]) {
+      expect(theme[slot]).toMatch(/^#[0-9a-f]{6}$/);
+      expect(theme[`bright${slot[0].toUpperCase()}${slot.slice(1)}`]).toMatch(/^#[0-9a-f]{6}$/);
+    }
+    expect(theme.foreground).toBe("#c9d1d9");
+    // Tango's values must not survive anywhere in the palette.
+    expect(Object.values(theme)).not.toContain("#2e3436");
+    // The pane behind xterm owns the fill, so the canvas stays clear.
+    expect(theme.background).toBe("rgba(0, 0, 0, 0)");
   });
 
   it("keeps the terminal shell flush with its tab strip without page margins", () => {
@@ -255,6 +279,22 @@ describe("TerminalTool clipboard controls", () => {
     await act(async () => { mocks.emit("pty:exit", { id: "session-1", code: 0 }); });
 
     expect(onSessionExit).toHaveBeenCalledOnce();
+  });
+
+  it("forwards the shell's OSC title to its workspace owner", async () => {
+    mocks.setSpawnInfo({ id: "session-1", shell: "/bin/fish", cwd: "/tmp", pid: 42 });
+    const onShellTitleChange = vi.fn();
+    const { unmount } = render(
+      <TerminalTool onBack={() => {}} onShellTitleChange={onShellTitleChange} />,
+    );
+    await screen.findByText("Connected");
+
+    act(() => { mocks.emitTitle("user@host:~/projects/demo"); });
+    expect(onShellTitleChange).toHaveBeenLastCalledWith("~/projects/demo");
+
+    // A dead session must not leave its directory on the tab.
+    unmount();
+    expect(onShellTitleChange).toHaveBeenLastCalledWith("");
   });
 
   it("restarts the PTY in place when its helper exits unexpectedly", async () => {
@@ -585,5 +625,31 @@ describe("TerminalTool clipboard controls", () => {
       background: "rgba(8,10,14,0.16)",
       backdropFilter: "blur(1px)",
     });
+  });
+});
+
+describe("shellTabTitle", () => {
+  it("drops the user@host prefix that every tab would share", () => {
+    expect(shellTabTitle("user@host:~/projects/demo")).toBe("~/projects/demo");
+  });
+
+  it("keeps a title that carries no prefix", () => {
+    expect(shellTabTitle("npm run build")).toBe("npm run build");
+  });
+
+  it("strips control characters before the title reaches the DOM", () => {
+    expect(shellTabTitle("np\u0007m run\u001b build")).toBe("npm run build");
+  });
+
+  it("truncates from the left so the identifying tail survives", () => {
+    const title = shellTabTitle(`~/${"deep/".repeat(20)}leaf`);
+    expect(title).toHaveLength(60);
+    expect(title.startsWith("\u2026")).toBe(true);
+    expect(title.endsWith("deep/leaf")).toBe(true);
+  });
+
+  it("treats a blank or whitespace-only title as no title", () => {
+    expect(shellTabTitle("")).toBe("");
+    expect(shellTabTitle("     ")).toBe("");
   });
 });

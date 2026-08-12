@@ -8,6 +8,7 @@ vi.mock("./TerminalTool", () => ({
     shellPath,
     tabBar,
     onSessionExit,
+    onShellTitleChange,
     maximized,
     onMaximizedChange,
   }: {
@@ -15,6 +16,7 @@ vi.mock("./TerminalTool", () => ({
     shellPath?: string;
     tabBar?: ReactNode;
     onSessionExit?: () => void;
+    onShellTitleChange?: (title: string) => void;
     maximized?: boolean;
     onMaximizedChange?: (maximized: boolean) => void;
   }) => (
@@ -23,6 +25,12 @@ vi.mock("./TerminalTool", () => ({
       {tabBar}
       <div data-testid="terminal-shell">terminal session</div>
       <button type="button" onClick={onSessionExit}>Exit terminal session</button>
+      <button type="button" onClick={() => onShellTitleChange?.("~/projects/demo")}>
+        Report shell title
+      </button>
+      <button type="button" onClick={() => onShellTitleChange?.("")}>
+        Clear shell title
+      </button>
       <button type="button" onClick={() => onMaximizedChange?.(!maximized)}>
         {maximized ? "Restore terminal" : "Maximize terminal"}
       </button>
@@ -151,6 +159,32 @@ describe("TerminalWorkspace tabs", () => {
     const input = screen.getByRole("textbox", { name: "Tab name" });
     fireEvent.change(input, { target: { value: "Server logs" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(screen.getByRole("tab", { name: "Server logs" })).toBeInTheDocument();
+  });
+
+  it("labels a tab with the shell's reported title and retires it with the session", () => {
+    render(<TerminalWorkspace onBack={() => {}} />);
+    expect(screen.getByRole("tab", { name: "Terminal 1" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Report shell title" }));
+    expect(screen.getByRole("tab", { name: "~/projects/demo" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear shell title" }));
+    expect(screen.getByRole("tab", { name: "Terminal 1" })).toBeInTheDocument();
+  });
+
+  it("keeps a manual tab name ahead of whatever the shell reports", () => {
+    render(<TerminalWorkspace onBack={() => {}} />);
+
+    fireEvent.contextMenu(screen.getByRole("tab", { name: "Terminal 1" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Tab name" }), {
+      target: { value: "Server logs" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Report shell title" }));
 
     expect(screen.getByRole("tab", { name: "Server logs" })).toBeInTheDocument();
   });

@@ -151,3 +151,121 @@ fn pty_echo_loop_roundtrip() {
 
     let _ = child.wait();
 }
+
+/// A colour-capable shell must be told so. `TERM=xterm-256color` alone caps
+/// tools at the 256-colour cube; the truecolour path is gated on `COLORTERM`,
+/// which the frontend (xterm.js) renders natively. `/bin/sh` keeps the check
+/// deterministic: unlike an interactive login shell it emits no prompt escapes
+/// and asks the terminal no questions.
+#[test]
+#[cfg(unix)]
+fn pty_advertises_truecolor_to_the_shell() {
+    let bin = env!("CARGO_BIN_EXE_tanwords-pty");
+    let mut child = Command::new(bin)
+        .env("PTY_COLS", "80")
+        .env("PTY_ROWS", "24")
+        .env("PTY_SHELL", "/bin/sh")
+        .env_remove("TERM")
+        .env_remove("COLORTERM")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("failed to spawn tanwords-pty");
+
+    let mut stdin = child.stdin.take().expect("stdin");
+    let rx = spawn_reader(child.stdout.take().expect("stdout"));
+
+    let handshake = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("handshake frame");
+    assert_eq!(handshake.op, b'H');
+
+    stdin
+        .write_all(&frame(b'I', b"echo \"ct=[$COLORTERM][$TERM]\"\r"))
+        .expect("write input");
+    stdin.flush().ok();
+
+    let mut acc = String::new();
+    let start = Instant::now();
+    while start.elapsed() < Duration::from_secs(10) {
+        match rx.recv_timeout(Duration::from_secs(5)) {
+            Ok(fr) if fr.op == b'D' => {
+                acc.push_str(&String::from_utf8_lossy(&fr.payload));
+                if acc.contains("ct=[truecolor]") {
+                    break;
+                }
+            }
+            Ok(fr) if fr.op == b'X' => break,
+            Ok(_) => {}
+            Err(_) => break,
+        }
+    }
+
+    assert!(
+        acc.contains("ct=[truecolor][xterm-256color]"),
+        "shell should see COLORTERM=truecolor and TERM=xterm-256color; saw: {acc}"
+    );
+
+    stdin.write_all(&frame(b'C', &[])).expect("write close");
+    stdin.flush().ok();
+    let _ = child.wait();
+}
+
+/// `TERM=dumb` is how a caller asks for a quiet terminal. Promising colour
+/// there would contradict the request, so COLORTERM stays unset.
+#[test]
+#[cfg(unix)]
+fn pty_leaves_colorterm_unset_for_a_dumb_terminal() {
+    let bin = env!("CARGO_BIN_EXE_tanwords-pty");
+    let mut child = Command::new(bin)
+        .env("PTY_COLS", "80")
+        .env("PTY_ROWS", "24")
+        .env("PTY_SHELL", "/bin/sh")
+        .env("TERM", "dumb")
+        .env_remove("COLORTERM")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("failed to spawn tanwords-pty");
+
+    let mut stdin = child.stdin.take().expect("stdin");
+    let rx = spawn_reader(child.stdout.take().expect("stdout"));
+    assert_eq!(
+        rx.recv_timeout(Duration::from_secs(5))
+            .expect("handshake frame")
+            .op,
+        b'H'
+    );
+
+    stdin
+        .write_all(&frame(b'I', b"echo \"ct=[$COLORTERM]\"\r"))
+        .expect("write input");
+    stdin.flush().ok();
+
+    let mut acc = String::new();
+    let start = Instant::now();
+    while start.elapsed() < Duration::from_secs(10) {
+        match rx.recv_timeout(Duration::from_secs(5)) {
+            Ok(fr) if fr.op == b'D' => {
+                acc.push_str(&String::from_utf8_lossy(&fr.payload));
+                if acc.contains("ct=[]") {
+                    break;
+                }
+            }
+            Ok(fr) if fr.op == b'X' => break,
+            Ok(_) => {}
+            Err(_) => break,
+        }
+    }
+
+    assert!(
+        acc.contains("ct=[]"),
+        "a dumb terminal must not advertise COLORTERM; saw: {acc}"
+    );
+
+    stdin.write_all(&frame(b'C', &[])).expect("write close");
+    stdin.flush().ok();
+    let _ = child.wait();
+}

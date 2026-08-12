@@ -13,6 +13,8 @@ interface TerminalTab {
   /** Snapshot of the device setting. It intentionally never changes in place. */
   shellPath: string;
   shellName: string;
+  /** Live OSC 0/2 title from the running shell (cwd or foreground command). */
+  shellTitle: string;
   customName: string;
   starred: boolean;
   pinned: boolean;
@@ -26,6 +28,7 @@ function newTab(id: number): TerminalTab {
     ordinal: id,
     shellPath: useSettingsStore.getState().terminalShellPath,
     shellName: "",
+    shellTitle: "",
     customName: "",
     starred: false,
     pinned: false,
@@ -133,6 +136,9 @@ export function TerminalWorkspace({
 
   const titleFor = (tab: TerminalTab) => {
     if (tab.customName) return tab.customName;
+    // A shell-reported cwd/command beats the shell's own name: with two
+    // long-lived tabs, `bash · 1` and `bash · 2` say nothing about either.
+    if (tab.shellTitle) return tab.shellTitle;
     return tab.shellName
       ? `${tab.shellName} · ${tab.ordinal}`
       : t("toolsPage.terminal.tab", { n: tab.ordinal });
@@ -169,6 +175,17 @@ export function TerminalWorkspace({
     )));
   };
 
+  // Shells re-emit their title on every prompt, and some TUIs on every
+  // keystroke. Bail out when nothing changed so a busy shell cannot drive a
+  // workspace re-render (and with it both mounted terminals) per character.
+  const recordShellTitle = useCallback((id: number, shellTitle: string) => {
+    setTabs((current) => (
+      current.some((tab) => tab.id === id && tab.shellTitle !== shellTitle)
+        ? current.map((tab) => (tab.id === id ? { ...tab, shellTitle } : tab))
+        : current
+    ));
+  }, []);
+
   const orderedTabs = [...tabs].sort((a, b) => Number(b.pinned) - Number(a.pinned));
   const menuTab = tabMenu ? tabs.find((tab) => tab.id === tabMenu.id) ?? null : null;
   const closingTab = closeTabId == null ? null : tabs.find((tab) => tab.id === closeTabId) ?? null;
@@ -200,6 +217,9 @@ export function TerminalWorkspace({
               role="tab"
               aria-selected={selected}
               aria-label={title}
+              // Shell titles are longer than the 9rem label slot; the CSS
+              // truncation hides exactly the tail that identifies the tab.
+              title={title}
               data-starred={String(tab.starred)}
               data-pinned={String(tab.pinned)}
               onClick={() => setActiveId(tab.id)}
@@ -256,6 +276,7 @@ export function TerminalWorkspace({
                 onMaximizedChange={onMaximizedChange}
                 shellPath={tab.shellPath}
                 onSessionReady={(shell) => recordShell(tab.id, shell)}
+                onShellTitleChange={(shellTitle) => recordShellTitle(tab.id, shellTitle)}
                 onSessionExit={() => closeTabNow(tab.id)}
                 tabBar={selected ? tabBar : undefined}
               />
