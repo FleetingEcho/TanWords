@@ -276,7 +276,7 @@ describe("TerminalTool clipboard controls", () => {
     expect(screen.getByText("Connected")).toBeInTheDocument();
   });
 
-  it("truncates a pending output flood and resumes forwarding after xterm catches up", async () => {
+  it("preserves a finite TUI startup burst while xterm paints", async () => {
     mocks.setSpawnInfo({ id: "session-1", shell: "/bin/fish", cwd: "/tmp", pid: 42 });
     mocks.setDeferWrites(true);
     render(<TerminalTool onBack={() => {}} />);
@@ -285,6 +285,26 @@ describe("TerminalTool clipboard controls", () => {
 
     act(() => {
       for (let index = 0; index < 40; index += 1) {
+        mocks.emit("pty:data", { id: "session-1", data });
+      }
+    });
+
+    expect(mocks.callMain).not.toHaveBeenCalledWith("pty_set_output_suppressed", expect.anything());
+    act(() => mocks.flushWrites());
+    expect(mocks.terminal.write.mock.calls.some(([chunk]) => (
+      new TextDecoder().decode(chunk).includes("Output truncated")
+    ))).toBe(false);
+  });
+
+  it("truncates an unbounded output flood and resumes forwarding after xterm catches up", async () => {
+    mocks.setSpawnInfo({ id: "session-1", shell: "/bin/fish", cwd: "/tmp", pid: 42 });
+    mocks.setDeferWrites(true);
+    render(<TerminalTool onBack={() => {}} />);
+    await screen.findByText("Connected");
+    const data = Buffer.alloc(8192, 0x78).toString("base64");
+
+    act(() => {
+      for (let index = 0; index < 640; index += 1) {
         mocks.emit("pty:data", { id: "session-1", data });
       }
     });

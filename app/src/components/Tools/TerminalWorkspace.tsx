@@ -18,7 +18,7 @@ interface TerminalTab {
   pinned: boolean;
 }
 
-export const MAX_TERMINAL_TABS = 3;
+export const MAX_TERMINAL_TABS = 2;
 
 function newTab(id: number): TerminalTab {
   return {

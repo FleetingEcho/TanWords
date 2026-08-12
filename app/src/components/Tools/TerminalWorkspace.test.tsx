@@ -59,20 +59,18 @@ describe("TerminalWorkspace tabs", () => {
     expect(sessions[1]).toHaveAttribute("data-visible", "false");
   });
 
-  it("limits the workspace to three live terminal tabs and frees a slot on close", () => {
+  it("limits the workspace to two live terminal tabs and frees a slot on close", () => {
     render(<TerminalWorkspace onBack={() => {}} />);
 
-    for (let index = 1; index < 3; index += 1) {
-      fireEvent.click(screen.getByRole("button", { name: "New terminal tab" }));
-    }
-
-    expect(screen.getAllByTestId("terminal-session")).toHaveLength(3);
-    expect(screen.getByRole("button", { name: "New terminal tab" })).toBeDisabled();
-
-    fireEvent.click(screen.getByRole("button", { name: "Close terminal tab 3" }));
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByRole("button", { name: "New terminal tab" }));
 
     expect(screen.getAllByTestId("terminal-session")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "New terminal tab" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close terminal tab 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    expect(screen.getAllByTestId("terminal-session")).toHaveLength(1);
     expect(screen.getByRole("button", { name: "New terminal tab" })).toBeEnabled();
   });
 

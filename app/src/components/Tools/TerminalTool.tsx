@@ -95,7 +95,10 @@ const SYSTEM_MONOSPACE_STACK =
   'ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace';
 const TERMINAL_SCROLLBACK_LINES = 5_000;
 const HERDR_URL = "https://github.com/herdrdev/herdr";
-const MAX_PENDING_OUTPUT_BYTES = 64 * 1024;
+// Full-screen TUIs such as Herdr can legitimately repaint several MiB while
+// xterm is still completing its first asynchronous write. Keep that finite
+// startup intact while retaining a hard bound for genuinely runaway output.
+const MAX_PENDING_OUTPUT_BYTES = 4 * 1024 * 1024;
 const MAX_AUTOMATIC_RECOVERY_ATTEMPTS = 3;
 const SEARCH_DECORATIONS: NonNullable<ISearchOptions["decorations"]> = {
   matchBackground: "#5f4a18",
@@ -255,7 +258,7 @@ export function TerminalTool({
       theme: { background: "rgba(0, 0, 0, 0)" },
       // Scrollback lives in xterm's JS buffer, independently of the WebGL
       // canvas renderer. Keep a generous daily-development history without the
-      // excessive aggregate memory exposure across three persistent tabs. The
+      // excessive aggregate memory exposure across two persistent tabs. The
       // usual Herdr workflow owns its larger pane history outside this buffer.
       scrollback: TERMINAL_SCROLLBACK_LINES,
     });
