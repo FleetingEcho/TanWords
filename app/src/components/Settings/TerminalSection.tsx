@@ -3,8 +3,9 @@ import { Check, ChevronsUpDown } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { invoke } from "@/ipc/backend";
 import { useSettingsStore } from "@/store/settingsStore";
-import { DEFAULT_TERMINAL_FONT_FAMILY } from "@/store/settings/types";
+import { DEFAULT_TERMINAL_FONT_FAMILY, type TerminalColorScheme } from "@/store/settings/types";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SettingRow } from "./SettingsShared";
 
 interface LocalFontData {
@@ -29,6 +30,8 @@ export function TerminalSection() {
   const blur = useSettingsStore((state) => state.terminalBackgroundBlur);
   const opacity = useSettingsStore((state) => state.terminalBackgroundOpacity);
   const backgroundColor = useSettingsStore((state) => state.terminalBackgroundColor);
+  const textColor = useSettingsStore((state) => state.terminalTextColor);
+  const colorScheme = useSettingsStore((state) => state.terminalColorScheme);
   const renderer = useSettingsStore((state) => state.terminalRenderer);
   const fontFamily = useSettingsStore((state) => state.terminalFontFamily);
   const fontSize = useSettingsStore((state) => state.terminalFontSize);
@@ -37,11 +40,15 @@ export function TerminalSection() {
   const setBlur = useSettingsStore((state) => state.setTerminalBackgroundBlur);
   const setOpacity = useSettingsStore((state) => state.setTerminalBackgroundOpacity);
   const setBackgroundColor = useSettingsStore((state) => state.setTerminalBackgroundColor);
+  const setTextColor = useSettingsStore((state) => state.setTerminalTextColor);
+  const setColorScheme = useSettingsStore((state) => state.setTerminalColorScheme);
   const setRenderer = useSettingsStore((state) => state.setTerminalRenderer);
   // Draft for the hex text field: typed shorthand like `#ddd` is committed on
   // blur/Enter and re-synced when the store value changes elsewhere.
   const [bgColorDraft, setBgColorDraft] = useState(backgroundColor);
   useEffect(() => { setBgColorDraft(backgroundColor); }, [backgroundColor]);
+  const [textColorDraft, setTextColorDraft] = useState(textColor);
+  useEffect(() => { setTextColorDraft(textColor); }, [textColor]);
   const setFontFamily = useSettingsStore((state) => state.setTerminalFontFamily);
   const setFontSize = useSettingsStore((state) => state.setTerminalFontSize);
   const setShellPath = useSettingsStore((state) => state.setTerminalShellPath);
@@ -150,6 +157,61 @@ export function TerminalSection() {
       </SettingRow>
 
       <SettingRow
+        label={t("toolsPage.terminal.themeLabel")}
+        sub={t("settings.terminalThemeSub")}
+      >
+        <Select
+          value={colorScheme}
+          onValueChange={(value) => setColorScheme(value as TerminalColorScheme)}
+        >
+          <SelectTrigger aria-label={t("toolsPage.terminal.themeLabel")} className="h-9 w-56">
+            <SelectValue>
+              {colorScheme === "custom" ? t("toolsPage.terminal.themeCustom") : undefined}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="tokyo-night">{t("toolsPage.terminal.themeTokyoNight")}</SelectItem>
+            <SelectItem value="dracula">{t("toolsPage.terminal.themeDracula")}</SelectItem>
+            <SelectItem value="light">{t("toolsPage.terminal.themeLight")}</SelectItem>
+            <SelectItem value="high-contrast">{t("toolsPage.terminal.themeHighContrast")}</SelectItem>
+          </SelectContent>
+        </Select>
+      </SettingRow>
+
+      <SettingRow
+        label={t("toolsPage.terminal.textColorLabel")}
+        sub={t("settings.terminalTextColorSub")}
+      >
+        <div className="flex items-center gap-2">
+          <input
+            type="color"
+            value={textColor}
+            onChange={(e) => setTextColor(e.target.value)}
+            title={t("toolsPage.terminal.textColorLabel")}
+            aria-label={t("toolsPage.terminal.textColorLabel")}
+            className="h-9 w-16 cursor-pointer rounded-md border border-input bg-transparent p-1"
+          />
+          <input
+            type="text"
+            value={textColorDraft}
+            onChange={(e) => setTextColorDraft(e.target.value)}
+            onBlur={() => setTextColor(textColorDraft)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.currentTarget.blur();
+            }}
+            spellCheck={false}
+            autoComplete="off"
+            maxLength={7}
+            placeholder="#c0caf5"
+            title={t("toolsPage.terminal.textColorLabel")}
+            aria-label={t("toolsPage.terminal.textColorLabel")}
+            className="h-9 w-24 rounded-md border border-input bg-transparent px-2 text-sm tabular-nums text-foreground outline-none focus:border-primary"
+          />
+          <span className="text-xs tabular-nums text-muted-foreground">{textColor}</span>
+        </div>
+      </SettingRow>
+
+      <SettingRow
         label={t("toolsPage.terminal.transparent")}
         sub={t("settings.terminalTransparentSub")}
       >
@@ -175,16 +237,19 @@ export function TerminalSection() {
         label={t("settings.terminalRenderer")}
         sub={t("settings.terminalRendererSub")}
       >
-        <select
+        <Select
           value={renderer}
-          onChange={(event) => setRenderer(event.target.value as "auto" | "webgl" | "dom")}
-          aria-label={t("settings.terminalRenderer")}
-          className="h-9 w-56 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+          onValueChange={(value) => setRenderer(value as "auto" | "webgl" | "dom")}
         >
-          <option value="auto">{t("settings.terminalRendererAuto")}</option>
-          <option value="webgl">{t("settings.terminalRendererWebgl")}</option>
-          <option value="dom">{t("settings.terminalRendererDom")}</option>
-        </select>
+          <SelectTrigger aria-label={t("settings.terminalRenderer")} className="h-9 w-56">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="auto">{t("settings.terminalRendererAuto")}</SelectItem>
+            <SelectItem value="webgl">{t("settings.terminalRendererWebgl")}</SelectItem>
+            <SelectItem value="dom">{t("settings.terminalRendererDom")}</SelectItem>
+          </SelectContent>
+        </Select>
       </SettingRow>
 
       <SettingRow
@@ -257,7 +322,7 @@ export function TerminalSection() {
             spellCheck={false}
             autoComplete="off"
             maxLength={7}
-            placeholder="#0d1117"
+            placeholder="#1a1b26"
             title={t("toolsPage.terminal.backgroundColorLabel")}
             aria-label={t("toolsPage.terminal.backgroundColorLabel")}
             className="h-9 w-24 rounded-md border border-input bg-transparent px-2 text-sm tabular-nums text-foreground outline-none focus:border-primary"

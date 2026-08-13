@@ -93,10 +93,10 @@ export const MAX_AUTOMATIC_RECOVERY_ATTEMPTS = 3;
 /** The terminal palette.
  *
  *  Left unset, xterm falls back to Tango — GNOME Terminal's scheme, designed
- *  against pure black. This pane paints GitHub-dark (`rgb(13,17,23)`) or a
+ *  against pure black. This pane paints Tokyo Night (`rgb(26,27,38)`) or a
  *  translucent tint behind the glyphs instead, where Tango's black `#2e3436`
  *  and bright-black `#555753` (what most CLI tools use for dimmed and comment
- *  text) nearly vanish. These are GitHub Dark's own terminal colours, so the
+ *  text) nearly vanish. These are Tokyo Night's own terminal colours, so the
  *  foreground is contrast-matched to the background it actually sits on.
  *
  *  `background` stays fully transparent on purpose: the surrounding element
@@ -104,32 +104,48 @@ export const MAX_AUTOMATIC_RECOVERY_ATTEMPTS = 3;
  *  color parser reads the CSS keyword `transparent` as opaque black, so the
  *  alpha channel has to be explicit. */
 export const TERMINAL_THEME = {
-  background: "rgba(0, 0, 0, 0)",
-  foreground: "#c9d1d9",
-  cursor: "#c9d1d9",
-  cursorAccent: "#0d1117",
-  // Selection must pass the glyphs through; xterm blends this over the text.
-  selectionBackground: "rgba(56, 139, 253, 0.40)",
-  black: "#484f58",
-  red: "#ff7b72",
-  green: "#3fb950",
-  yellow: "#d29922",
-  blue: "#58a6ff",
-  magenta: "#bc8cff",
-  cyan: "#39c5cf",
-  white: "#b1bac4",
-  brightBlack: "#6e7681",
-  brightRed: "#ffa198",
-  brightGreen: "#56d364",
-  brightYellow: "#e3b341",
-  brightBlue: "#79c0ff",
-  brightMagenta: "#d2a8ff",
-  brightCyan: "#56d4dd",
-  brightWhite: "#ffffff",
+  background: "#1a1b26", foreground: "#c0caf5", cursor: "#c0caf5", cursorAccent: "#1a1b26",
+  selectionBackground: "rgba(122, 162, 247, 0.40)", black: "#15161e", red: "#f7768e",
+  green: "#9ece6a", yellow: "#e0af68", blue: "#7aa2f7", magenta: "#bb9af7",
+  cyan: "#7dcfff", white: "#a9b1d6", brightBlack: "#414868", brightRed: "#f7768e",
+  brightGreen: "#9ece6a", brightYellow: "#e0af68", brightBlue: "#7aa2f7",
+  brightMagenta: "#bb9af7", brightCyan: "#7dcfff", brightWhite: "#c0caf5",
 } as const;
 
+export const TERMINAL_THEMES = {
+  "tokyo-night": TERMINAL_THEME,
+  dracula: {
+    background: "#282a36", foreground: "#f8f8f2", cursor: "#f8f8f2", cursorAccent: "#282a36",
+    selectionBackground: "rgba(68, 71, 90, 0.65)", black: "#21222c", red: "#ff5555",
+    green: "#50fa7b", yellow: "#f1fa8c", blue: "#bd93f9", magenta: "#ff79c6",
+    cyan: "#8be9fd", white: "#f8f8f2", brightBlack: "#6272a4", brightRed: "#ff6e6e",
+    brightGreen: "#69ff94", brightYellow: "#ffffa5", brightBlue: "#d6acff",
+    brightMagenta: "#ff92df", brightCyan: "#a4ffff", brightWhite: "#ffffff",
+  },
+  light: {
+    background: "#f4f1ea", foreground: "#202124", cursor: "#202124", cursorAccent: "#f4f1ea",
+    selectionBackground: "rgba(50, 105, 212, 0.24)", black: "#202124", red: "#b3261e",
+    green: "#137333", yellow: "#765c00", blue: "#3269d4", magenta: "#8e44d6",
+    cyan: "#007b83", white: "#4f5660", brightBlack: "#626a73", brightRed: "#c5221f",
+    brightGreen: "#188038", brightYellow: "#8d6d00", brightBlue: "#1a73e8",
+    brightMagenta: "#a142f4", brightCyan: "#008b9a", brightWhite: "#111318",
+  },
+  "high-contrast": {
+    background: "#000000", foreground: "#ffffff", cursor: "#ffffff", cursorAccent: "#000000",
+    selectionBackground: "rgba(38, 79, 120, 0.88)", black: "#000000", red: "#f48771",
+    green: "#89d185", yellow: "#cca700", blue: "#75beff", magenta: "#d670d6",
+    cyan: "#00b7c3", white: "#ffffff", brightBlack: "#808080", brightRed: "#ff8b7b",
+    brightGreen: "#b5e8b0", brightYellow: "#ffd700", brightBlue: "#9cdcfe",
+    brightMagenta: "#e89be8", brightCyan: "#4ec9b0", brightWhite: "#ffffff",
+  },
+} as const;
+
+export function terminalThemeFor(scheme: import("@/store/settings/types").TerminalColorScheme) {
+  return scheme === "custom" ? TERMINAL_THEME : TERMINAL_THEMES[scheme];
+}
+
 /** Splits a `#rrggbb` (or `#rgb`) colour into its numeric channels. Falls
- *  back to GitHub-dark if the hex is malformed, so a corrupt stored value
+ *  back to Tokyo Night if the hex is malformed, so a corrupt stored value
  *  never blanks the terminal behind the glyphs. */
 export function hexToRgb(hex: string): { r: number; g: number; b: number } {
   const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec((hex || "").trim());

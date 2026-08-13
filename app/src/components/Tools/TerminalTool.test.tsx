@@ -157,7 +157,9 @@ describe("TerminalTool clipboard controls", () => {
       terminalTransparent: false,
       terminalBackgroundBlur: 12,
       terminalBackgroundOpacity: 16,
-      terminalBackgroundColor: "#0d1117",
+      terminalBackgroundColor: "#1a1b26",
+      terminalTextColor: "#c0caf5",
+      terminalColorScheme: "tokyo-night",
       terminalRenderer: "auto",
       appBackgroundImage: "",
       appBackgroundVisible: true,
@@ -186,6 +188,12 @@ describe("TerminalTool clipboard controls", () => {
     return { ...result, shell: shell! };
   }
 
+  async function waitForConnected() {
+    await waitFor(() => {
+      expect(screen.queryByText("Starting…")).not.toBeInTheDocument();
+    });
+  }
+
   it("uses WebGL for the opaque terminal with DOM fallback", () => {
     renderTerminal();
 
@@ -193,7 +201,7 @@ describe("TerminalTool clipboard controls", () => {
       allowProposedApi: true,
       allowTransparency: true,
       scrollback: 5_000,
-      theme: { background: "#0d1117" },
+      theme: { background: "#1a1b26" },
     });
     expect(mocks.terminal.loadAddon).toHaveBeenCalledWith(mocks.webgl);
 
@@ -211,10 +219,55 @@ describe("TerminalTool clipboard controls", () => {
       expect(theme[slot]).toMatch(/^#[0-9a-f]{6}$/);
       expect(theme[`bright${slot[0].toUpperCase()}${slot.slice(1)}`]).toMatch(/^#[0-9a-f]{6}$/);
     }
-    expect(theme.foreground).toBe("#c9d1d9");
+    expect(theme.foreground).toBe("#c0caf5");
     // Tango's values must not survive anywhere in the palette.
     expect(Object.values(theme)).not.toContain("#2e3436");
-    expect(theme.background).toBe("#0d1117");
+    expect(theme.background).toBe("#1a1b26");
+  });
+
+  it("uses VS Code-style structural accents in high-contrast mode", () => {
+    useSettingsStore.setState({
+      terminalColorScheme: "high-contrast",
+      terminalBackgroundColor: "#000000",
+      terminalTextColor: "#ffffff",
+    });
+    renderTerminal();
+
+    expect(mocks.getTerminalOptions()?.theme).toMatchObject({
+      background: "#000000",
+      foreground: "#ffffff",
+      yellow: "#cca700",
+      brightYellow: "#ffd700",
+      cyan: "#00b7c3",
+      brightCyan: "#4ec9b0",
+      blue: "#75beff",
+    });
+  });
+
+  it("applies text colors and complete presets live without restarting the session", () => {
+    renderTerminal();
+
+    fireEvent.click(screen.getByRole("button", { name: "Terminal appearance" }));
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Theme" }), { key: "ArrowDown" });
+    fireEvent.click(screen.getByRole("option", { name: "Tokyo Night" }));
+
+    expect(mocks.terminal.options.theme).toMatchObject({
+      foreground: "#c0caf5",
+      background: "rgba(0, 0, 0, 0)",
+      red: "#f7768e",
+      blue: "#7aa2f7",
+    });
+    expect(useSettingsStore.getState().terminalBackgroundColor).toBe("#1a1b26");
+    expect(mocks.terminal.dispose).not.toHaveBeenCalled();
+
+    const textColorPicker = screen.getAllByLabelText("Text color")
+      .find((element) => element.getAttribute("type") === "color")!;
+    fireEvent.change(textColorPicker, {
+      target: { value: "#abcdef" },
+    });
+    expect(mocks.terminal.options.theme).toMatchObject({ foreground: "#abcdef" });
+    expect(useSettingsStore.getState().terminalColorScheme).toBe("custom");
+    expect(mocks.terminal.dispose).not.toHaveBeenCalled();
   });
 
   it("uses the built-in renderer in glass mode to avoid dark dim-text cells", () => {
@@ -256,15 +309,35 @@ describe("TerminalTool clipboard controls", () => {
     expect(mocks.terminal.open).toHaveBeenCalledWith(host);
   });
 
-  it("uses the terminal toolbar as a window drag region", () => {
-    renderTerminal();
+  it("only uses the combined tab toolbar as a window drag region in Zen mode", () => {
+    const view = renderTerminal();
+    const normalToolbar = screen.getByTestId("terminal-tab-toolbar");
 
-    expect(screen.getByText("Terminal").parentElement?.parentElement).toHaveClass("app-drag-region");
+    expect(normalToolbar).toHaveClass("app-region-no-drag");
+    expect(normalToolbar).not.toHaveClass("app-drag-region");
+
+    view.unmount();
+    render(<TerminalTool onBack={() => {}} maximized />);
+    const zenToolbar = screen.getByTestId("terminal-tab-toolbar");
+
+    expect(zenToolbar).toHaveClass("app-drag-region");
+    expect(zenToolbar).not.toHaveClass("app-region-no-drag");
   });
 
-  it("puts appearance controls on a dedicated row below the toolbar", () => {
-    renderTerminal();
-    const toolbar = screen.getByText("Terminal").parentElement?.parentElement;
+  it("combines tabs and actions, removes the title row, and keeps appearance controls below", () => {
+    render(
+      <TerminalTool
+        onBack={() => {}}
+        tabBar={<div role="tablist" aria-label="Terminal tabs"><button role="tab">Shell 1</button></div>}
+      />,
+    );
+    const toolbar = screen.getByTestId("terminal-tab-toolbar");
+
+    expect(toolbar).toContainElement(screen.getByRole("tab", { name: "Shell 1" }));
+    expect(toolbar).toContainElement(screen.getByRole("button", { name: "Search terminal" }));
+    expect(toolbar).toContainElement(screen.getByRole("button", { name: "Terminal appearance" }));
+    expect(screen.queryByText("Terminal")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "All tools" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Terminal appearance" }));
     const controls = screen.getByRole("group", { name: "Terminal appearance" });
@@ -277,7 +350,7 @@ describe("TerminalTool clipboard controls", () => {
   it("exits OS fullscreen when the maximized terminal toolbar is dragged down", () => {
     mocks.setWindowState({ maximized: false, fullScreen: true });
     render(<TerminalTool onBack={() => {}} maximized />);
-    const toolbar = screen.getByText("Terminal").parentElement?.parentElement;
+    const toolbar = screen.getByTestId("terminal-tab-toolbar");
 
     expect(toolbar).not.toHaveClass("app-drag-region");
     fireEvent.mouseDown(toolbar!, { clientY: 0 });
@@ -342,7 +415,7 @@ describe("TerminalTool clipboard controls", () => {
     const { unmount } = render(
       <TerminalTool onBack={() => {}} onShellTitleChange={onShellTitleChange} />,
     );
-    await screen.findByText("Connected");
+    await waitForConnected();
 
     act(() => { mocks.emitTitle("user@host:~/projects/demo"); });
     expect(onShellTitleChange).toHaveBeenLastCalledWith("~/projects/demo");
@@ -356,7 +429,7 @@ describe("TerminalTool clipboard controls", () => {
     mocks.setSpawnInfo({ id: "session-1", shell: "/bin/fish", cwd: "/tmp", pid: 42 });
     const onSessionExit = vi.fn();
     render(<TerminalTool onBack={() => {}} onSessionExit={onSessionExit} />);
-    await screen.findByText("Connected");
+    await waitForConnected();
     const initialSpawns = mocks.callMain.mock.calls.filter(([channel]) => channel === "pty_spawn").length;
 
     act(() => {
@@ -368,14 +441,15 @@ describe("TerminalTool clipboard controls", () => {
         .toHaveLength(initialSpawns + 1);
     }, { timeout: 1_500 });
     expect(onSessionExit).not.toHaveBeenCalled();
-    expect(screen.getByText("Connected")).toBeInTheDocument();
+    expect(screen.queryByText("Connected")).not.toBeInTheDocument();
+    expect(screen.queryByText("Starting…")).not.toBeInTheDocument();
   });
 
   it("preserves a finite TUI startup burst while xterm paints", async () => {
     mocks.setSpawnInfo({ id: "session-1", shell: "/bin/fish", cwd: "/tmp", pid: 42 });
     mocks.setDeferWrites(true);
     render(<TerminalTool onBack={() => {}} />);
-    await screen.findByText("Connected");
+    await waitForConnected();
     const data = Buffer.alloc(8192, 0x78).toString("base64");
 
     act(() => {
@@ -395,7 +469,7 @@ describe("TerminalTool clipboard controls", () => {
     mocks.setSpawnInfo({ id: "session-1", shell: "/bin/fish", cwd: "/tmp", pid: 42 });
     mocks.setDeferWrites(true);
     render(<TerminalTool onBack={() => {}} />);
-    await screen.findByText("Connected");
+    await waitForConnected();
     const data = Buffer.alloc(8192, 0x78).toString("base64");
 
     act(() => {
@@ -661,7 +735,7 @@ describe("TerminalTool clipboard controls", () => {
     const second = renderTerminal();
     expect(useSettingsStore.getState().terminalTransparent).toBe(true);
     expect(screen.getByRole("button", { name: "Terminal appearance" })).toHaveAttribute("aria-pressed", "false");
-    expect(second.shell).toHaveStyle({ background: "rgba(13,17,23,0.16)" });
+    expect(second.shell).toHaveStyle({ background: "rgba(26,27,38,0.16)" });
   });
 
   it("keeps the glass effect when its appearance controls are closed", () => {
@@ -677,7 +751,7 @@ describe("TerminalTool clipboard controls", () => {
     expect(screen.queryByRole("slider", { name: /^Background blur/ })).not.toBeInTheDocument();
     expect(useSettingsStore.getState().terminalTransparent).toBe(true);
     expect(shell).toHaveStyle({
-      background: "rgba(13,17,23,0.16)",
+      background: "rgba(26,27,38,0.16)",
       backdropFilter: "blur(1px)",
     });
   });

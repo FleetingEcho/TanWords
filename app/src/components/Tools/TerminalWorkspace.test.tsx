@@ -95,6 +95,18 @@ describe("TerminalWorkspace tabs", () => {
     expect(tabList.compareDocumentPosition(shell) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it("only lets the blank tab strip inherit native window dragging in Zen mode", () => {
+    const view = render(<TerminalWorkspace onBack={() => {}} />);
+
+    expect(screen.getByRole("tablist", { name: "Terminal tabs" }))
+      .toHaveClass("app-region-no-drag");
+
+    view.rerender(<TerminalWorkspace onBack={() => {}} maximized />);
+
+    expect(screen.getByRole("tablist", { name: "Terminal tabs" }))
+      .not.toHaveClass("app-region-no-drag");
+  });
+
   it("keeps maximize state at workspace level and restores chrome when hidden", () => {
     const onMaximizedChange = vi.fn();
     const view = render(

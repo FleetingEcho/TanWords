@@ -4,10 +4,15 @@ import {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR,
   DEFAULT_LAYOUT_MODE, AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES,
   DEFAULT_TERMINAL_BACKGROUND_BLUR, DEFAULT_TERMINAL_BACKGROUND_OPACITY, DEFAULT_TERMINAL_TRANSPARENT,
+  GLASS_LIGHT_BACKGROUND_OPACITY,
   DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE,
+  DEFAULT_TERMINAL_TEXT_COLOR,
+  DEFAULT_TERMINAL_COLOR_SCHEME,
+  TERMINAL_COLOR_SCHEME_COLORS,
+  TERMINAL_COLOR_SCHEME_IDS,
   DEFAULT_TERMINAL_RENDERER,
   DOCUMENT_TEXT_COLOR_RE, normalizeHexColor, type Theme, type RssTabSelection,
-  type LayoutMode, type TerminalRenderer,
+  type LayoutMode, type TerminalRenderer, type TerminalColorScheme,
 } from "./types";
 import {
   cacheUiLanguage, cacheSidebarTabs, cacheTopBarItems, cacheDefaultRssTab, cacheFeedsViewMode,
@@ -56,6 +61,8 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       "terminal_background_blur",
       "terminal_background_opacity",
       "terminal_background_color",
+      "terminal_text_color",
+      "terminal_color_scheme",
       "terminal_renderer",
       "terminal_font_family",
       "terminal_font_size",
@@ -150,6 +157,48 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
     const resolvedFeedsViewMode: "card" | "list" = values.feeds_view_mode === "list" ? "list" : "card";
     cacheFeedsViewMode(resolvedFeedsViewMode);
 
+    const savedTerminalColorScheme = values.terminal_color_scheme as TerminalColorScheme | undefined;
+    const savedTerminalSchemeIsSupported = Boolean(savedTerminalColorScheme
+      && (TERMINAL_COLOR_SCHEME_IDS as readonly string[]).includes(savedTerminalColorScheme));
+    const resolvedTerminalColorScheme = savedTerminalSchemeIsSupported
+      ? savedTerminalColorScheme!
+      : (!savedTerminalColorScheme && (values.terminal_background_color || values.terminal_text_color)
+        ? "custom"
+        : DEFAULT_TERMINAL_COLOR_SCHEME);
+    const presetTerminalColors = resolvedTerminalColorScheme === "custom"
+      ? null
+      : TERMINAL_COLOR_SCHEME_COLORS[resolvedTerminalColorScheme];
+    if (savedTerminalColorScheme && !savedTerminalSchemeIsSupported && presetTerminalColors) {
+      await invoke("db_set_setting", {
+        key: "terminal_color_scheme",
+        value: JSON.stringify(resolvedTerminalColorScheme),
+      });
+      await invoke("db_set_setting", {
+        key: "terminal_background_color",
+        value: JSON.stringify(presetTerminalColors.background),
+      });
+      await invoke("db_set_setting", {
+        key: "terminal_text_color",
+        value: JSON.stringify(presetTerminalColors.foreground),
+      });
+    }
+    const savedTerminalOpacity = Number(values.terminal_background_opacity);
+    // Glass Light originally shipped with an 8% tint, which remained dark over
+    // the app's dark canvas. Upgrade that exact preset value while preserving
+    // any opacity the user chose themselves.
+    const resolvedTerminalOpacity = resolvedTerminalColorScheme === "light"
+      && savedTerminalOpacity === 8
+      ? GLASS_LIGHT_BACKGROUND_OPACITY
+      : Number.isFinite(savedTerminalOpacity)
+        ? Math.min(100, Math.max(0, Math.round(savedTerminalOpacity)))
+        : DEFAULT_TERMINAL_BACKGROUND_OPACITY;
+    if (resolvedTerminalColorScheme === "light" && savedTerminalOpacity === 8) {
+      await invoke("db_set_setting", {
+        key: "terminal_background_opacity",
+        value: JSON.stringify(GLASS_LIGHT_BACKGROUND_OPACITY),
+      });
+    }
+
     set({
       theme: (values.theme as Theme) || "system",
       defaultAiProvider: values.default_ai_provider || "openai",
@@ -197,10 +246,12 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       terminalBackgroundBlur: Number.isFinite(Number(values.terminal_background_blur))
         ? Math.min(30, Math.max(0, Math.round(Number(values.terminal_background_blur))))
         : DEFAULT_TERMINAL_BACKGROUND_BLUR,
-      terminalBackgroundOpacity: Number.isFinite(Number(values.terminal_background_opacity))
-        ? Math.min(100, Math.max(0, Math.round(Number(values.terminal_background_opacity))))
-        : DEFAULT_TERMINAL_BACKGROUND_OPACITY,
-      terminalBackgroundColor: normalizeHexColor(values.terminal_background_color || ""),
+      terminalBackgroundOpacity: resolvedTerminalOpacity,
+      terminalBackgroundColor: presetTerminalColors?.background
+        ?? normalizeHexColor(values.terminal_background_color || ""),
+      terminalTextColor: presetTerminalColors?.foreground
+        ?? normalizeHexColor(values.terminal_text_color || "", DEFAULT_TERMINAL_TEXT_COLOR),
+      terminalColorScheme: resolvedTerminalColorScheme,
       terminalRenderer: (["auto", "webgl", "dom"] as TerminalRenderer[])
         .includes(values.terminal_renderer as TerminalRenderer)
         ? values.terminal_renderer as TerminalRenderer

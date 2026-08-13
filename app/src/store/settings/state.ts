@@ -1,6 +1,6 @@
 import type {
   Theme, SidebarTabId, TopBarItemId, RssTabSelection, BannerPosition, LayoutMode,
-  TerminalRenderer,
+  TerminalRenderer, TerminalColorScheme,
 } from "./types";
 
 export interface SettingsState {
@@ -71,8 +71,11 @@ export interface SettingsState {
   terminalBackgroundOpacity: number;
   /** Hex (`#rrggbb`) fill colour for the terminal pane — the solid background
    *  when glass is off, and the tint colour (at `terminalBackgroundOpacity`)
-   *  when glass is on. Defaults to GitHub-dark. */
+   *  when glass is on. Defaults to Tokyo Night. */
   terminalBackgroundColor: string;
+  /** Default foreground for terminal cells that do not specify an ANSI colour. */
+  terminalTextColor: string;
+  terminalColorScheme: TerminalColorScheme;
   /** Rendering backend. Auto avoids WebGL's transparent dim-text artifacts. */
   terminalRenderer: TerminalRenderer;
   /** Local font family name, or ui-monospace for the operating-system default. */
@@ -131,6 +134,8 @@ export interface SettingsState {
   setTerminalBackgroundBlur: (px: number) => void;
   setTerminalBackgroundOpacity: (percent: number) => void;
   setTerminalBackgroundColor: (hex: string) => void;
+  setTerminalTextColor: (hex: string) => void;
+  setTerminalColorScheme: (scheme: TerminalColorScheme) => void;
   setTerminalRenderer: (renderer: TerminalRenderer) => void;
   setTerminalFontFamily: (family: string) => void;
   setTerminalFontSize: (px: number) => void;

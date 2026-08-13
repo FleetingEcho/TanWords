@@ -15,6 +15,10 @@ export type SidebarTabId = Exclude<NavPage, "settings">;
 export type TopBarItemId = "search" | "context" | "scratch" | "db" | "mcp" | "ai" | "language" | "theme" | "updates" | "github";
 export type LayoutMode = "flexible" | "fixed";
 export type TerminalRenderer = "auto" | "webgl" | "dom";
+export const TERMINAL_COLOR_SCHEME_IDS = [
+  "tokyo-night", "dracula", "light", "high-contrast", "custom",
+] as const;
+export type TerminalColorScheme = typeof TERMINAL_COLOR_SCHEME_IDS[number];
 
 /** Feeds page tab selector: a specific RSS feed, "all" of them, or the native Hacker News browser. */
 export type RssTabSelection = number | "all" | "hackernews";
@@ -42,15 +46,27 @@ export const AUTO_LOCK_CHOICES = [0, 10, 20, 30, 60] as const;
 export const DEFAULT_AUTO_LOCK_MINUTES = 0;
 export const DEFAULT_TERMINAL_BACKGROUND_BLUR = 16;
 export const DEFAULT_TERMINAL_BACKGROUND_OPACITY = 16;
+/** Keeps Glass Light visibly light over both wallpapers and the dark app canvas. */
+export const GLASS_LIGHT_BACKGROUND_OPACITY = 76;
 export const DEFAULT_TERMINAL_TRANSPARENT = false;
 export const DEFAULT_TERMINAL_RENDERER: TerminalRenderer = "auto";
-/** GitHub-dark, matching TERMINAL_THEME's documented background and the solid
- *  fill used when glass is off. Users can override it from the toolbar. */
-export const DEFAULT_TERMINAL_BACKGROUND_COLOR = "#0d1117";
+/** Tokyo Night is the default retained dark preset. */
+export const DEFAULT_TERMINAL_BACKGROUND_COLOR = "#1a1b26";
+export const DEFAULT_TERMINAL_TEXT_COLOR = "#c0caf5";
+export const DEFAULT_TERMINAL_COLOR_SCHEME: TerminalColorScheme = "tokyo-night";
+export const TERMINAL_COLOR_SCHEME_COLORS: Record<Exclude<TerminalColorScheme, "custom">, {
+  background: string;
+  foreground: string;
+}> = {
+  "tokyo-night": { background: "#1a1b26", foreground: "#c0caf5" },
+  dracula: { background: "#282a36", foreground: "#f8f8f2" },
+  light: { background: "#f4f1ea", foreground: "#202124" },
+  "high-contrast": { background: "#000000", foreground: "#ffffff" },
+};
 
 /** Normalizes a hex colour to canonical `#rrggbb` lowercase, accepting CSS
  *  shorthand `#rgb` (and a bare `rgb`/`rrggbb` without the leading `#`). Returns
- *  the fallback (GitHub-dark by default) when the input is not a valid colour,
+ *  the fallback (Tokyo Night by default) when the input is not a valid colour,
  *  so a corrupt stored or typed value never blanks the terminal. */
 export function normalizeHexColor(
   raw: string,

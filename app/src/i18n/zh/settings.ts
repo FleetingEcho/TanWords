@@ -362,6 +362,8 @@ export const settings: Dict = {
     "settings.terminalBackgroundBlurSub": "启用透明终端模式时的背景模糊程度",
     "settings.terminalBackgroundOpacitySub": "透明模式下覆盖在终端背景上的深色遮罩",
     "settings.terminalBackgroundColorSub": "终端面板背景颜色 — 关闭玻璃效果时为纯色，开启时为所选不透明度下的色调",
+    "settings.terminalTextColorSub": "终端默认文字颜色。程序仍可使用自己的 ANSI 颜色。",
+    "settings.terminalThemeSub": "选择完整的终端配色，或在下方自定义背景和默认文字颜色。",
     "settings.terminalTransparentSub": "关闭外观调节控件后仍保持玻璃效果",
     "settings.terminalRenderer": "渲染器",
     "settings.terminalRendererSub": "自动模式在纯色背景下使用 WebGL，在玻璃背景下使用 DOM。玻璃背景强制使用 WebGL 可能会在暗色文字周围出现深色方块。",

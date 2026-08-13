@@ -18,6 +18,9 @@ describe("TerminalSection typography", () => {
       terminalFontFamily: "ui-monospace",
       terminalFontSize: 13,
       terminalRenderer: "auto",
+      terminalBackgroundColor: "#1a1b26",
+      terminalTextColor: "#c0caf5",
+      terminalColorScheme: "tokyo-night",
       terminalShellPath: "",
     });
     Object.defineProperty(window, "queryLocalFonts", {
@@ -65,11 +68,35 @@ describe("TerminalSection typography", () => {
   it("changes the terminal renderer preference", () => {
     render(<TerminalSection />);
 
-    fireEvent.change(screen.getByRole("combobox", { name: "Renderer" }), {
-      target: { value: "dom" },
-    });
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Renderer" }), { key: "ArrowDown" });
+    fireEvent.click(screen.getByRole("option", { name: "DOM (glass-safe)" }));
 
     expect(useSettingsStore.getState().terminalRenderer).toBe("dom");
+  });
+
+  it("selects a terminal palette and supports a custom text color", () => {
+    render(<TerminalSection />);
+
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Theme" }), { key: "ArrowDown" });
+    expect(screen.getByRole("option", { name: "Tokyo Night" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Dracula" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Glass Light" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "High Contrast" })).toBeInTheDocument();
+    expect(screen.getAllByRole("option")).toHaveLength(4);
+    fireEvent.click(screen.getByRole("option", { name: "Dracula" }));
+    expect(useSettingsStore.getState()).toMatchObject({
+      terminalColorScheme: "dracula",
+      terminalBackgroundColor: "#282a36",
+      terminalTextColor: "#f8f8f2",
+    });
+
+    const textColorPicker = screen.getAllByLabelText("Text color")
+      .find((element) => element.getAttribute("type") === "color")!;
+    fireEvent.change(textColorPicker, {
+      target: { value: "#aabbcc" },
+    });
+    expect(useSettingsStore.getState().terminalTextColor).toBe("#aabbcc");
+    expect(useSettingsStore.getState().terminalColorScheme).toBe("custom");
   });
 
   it("shows the shell actually used by default without persisting it as an override", async () => {

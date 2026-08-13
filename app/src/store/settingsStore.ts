@@ -4,12 +4,14 @@ import {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR, DEFAULT_BANNER_POSITION,
   DEFAULT_LAYOUT_MODE, DEFAULT_AUTO_LOCK_MINUTES,
   DEFAULT_TERMINAL_BACKGROUND_BLUR, DEFAULT_TERMINAL_BACKGROUND_OPACITY, DEFAULT_TERMINAL_TRANSPARENT,
-  DEFAULT_TERMINAL_BACKGROUND_COLOR,
+  GLASS_LIGHT_BACKGROUND_OPACITY,
+  DEFAULT_TERMINAL_BACKGROUND_COLOR, DEFAULT_TERMINAL_TEXT_COLOR,
+  DEFAULT_TERMINAL_COLOR_SCHEME, TERMINAL_COLOR_SCHEME_COLORS,
   DEFAULT_TERMINAL_RENDERER,
   DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE,
   DOCUMENT_TEXT_COLOR_RE, normalizeHexColor,
   type Theme, type SidebarTabId, type TopBarItemId, type RssTabSelection, type LayoutMode,
-  type BannerPosition, type TerminalRenderer,
+  type BannerPosition, type TerminalRenderer, type TerminalColorScheme,
 } from "./settings/types";
 import {
   cachedUiLanguage, cacheUiLanguage, cachedSidebarTabs, cacheSidebarTabs,
@@ -22,14 +24,15 @@ import { loadSettingsFromDB } from "./settings/loadFromDB";
 import type { SettingsState } from "./settings/state";
 
 export type {
-  Theme, SidebarTabId, TopBarItemId, RssTabSelection, BannerPosition, TerminalRenderer,
+  Theme, SidebarTabId, TopBarItemId, RssTabSelection, BannerPosition, TerminalRenderer, TerminalColorScheme,
 } from "./settings/types";
 export {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS,
   DEFAULT_HIGHLIGHT_COLOR, HIGHLIGHT_PRESETS, DEFAULT_BANNER_POSITION, DEFAULT_LAYOUT_MODE,
   AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES,
   DEFAULT_TERMINAL_BACKGROUND_BLUR, DEFAULT_TERMINAL_BACKGROUND_OPACITY, DEFAULT_TERMINAL_TRANSPARENT,
-  DEFAULT_TERMINAL_BACKGROUND_COLOR,
+  DEFAULT_TERMINAL_BACKGROUND_COLOR, DEFAULT_TERMINAL_TEXT_COLOR,
+  DEFAULT_TERMINAL_COLOR_SCHEME, TERMINAL_COLOR_SCHEME_COLORS,
   DEFAULT_TERMINAL_RENDERER,
   DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE,
 } from "./settings/types";
@@ -70,6 +73,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   terminalBackgroundBlur: DEFAULT_TERMINAL_BACKGROUND_BLUR,
   terminalBackgroundOpacity: DEFAULT_TERMINAL_BACKGROUND_OPACITY,
   terminalBackgroundColor: DEFAULT_TERMINAL_BACKGROUND_COLOR,
+  terminalTextColor: DEFAULT_TERMINAL_TEXT_COLOR,
+  terminalColorScheme: DEFAULT_TERMINAL_COLOR_SCHEME,
   terminalRenderer: DEFAULT_TERMINAL_RENDERER,
   terminalFontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
   terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
@@ -230,8 +235,44 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   setTerminalBackgroundColor: (hex) => {
     const value = normalizeHexColor(hex);
-    set({ terminalBackgroundColor: value });
+    set({ terminalBackgroundColor: value, terminalColorScheme: "custom" });
     saveSettingDebounced("terminal_background_color", JSON.stringify(value));
+    saveSetting("terminal_color_scheme", JSON.stringify("custom"));
+  },
+
+  setTerminalTextColor: (hex) => {
+    const value = normalizeHexColor(hex, DEFAULT_TERMINAL_TEXT_COLOR);
+    set({ terminalTextColor: value, terminalColorScheme: "custom" });
+    saveSettingDebounced("terminal_text_color", JSON.stringify(value));
+    saveSetting("terminal_color_scheme", JSON.stringify("custom"));
+  },
+
+  setTerminalColorScheme: (scheme) => {
+    if (scheme === "custom") {
+      set({ terminalColorScheme: scheme });
+      saveSetting("terminal_color_scheme", JSON.stringify(scheme));
+      return;
+    }
+    const colors = TERMINAL_COLOR_SCHEME_COLORS[scheme];
+    const glassLight = scheme === "light";
+    set({
+      terminalColorScheme: scheme,
+      terminalBackgroundColor: colors.background,
+      terminalTextColor: colors.foreground,
+      ...(glassLight ? {
+        terminalTransparent: true,
+        terminalBackgroundBlur: 0,
+        terminalBackgroundOpacity: GLASS_LIGHT_BACKGROUND_OPACITY,
+      } : {}),
+    });
+    saveSetting("terminal_color_scheme", JSON.stringify(scheme));
+    saveSetting("terminal_background_color", JSON.stringify(colors.background));
+    saveSetting("terminal_text_color", JSON.stringify(colors.foreground));
+    if (glassLight) {
+      saveSetting("terminal_transparent", JSON.stringify(true));
+      saveSetting("terminal_background_blur", JSON.stringify(0));
+      saveSetting("terminal_background_opacity", JSON.stringify(GLASS_LIGHT_BACKGROUND_OPACITY));
+    }
   },
 
   setTerminalRenderer: (renderer) => {

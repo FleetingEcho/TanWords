@@ -26,6 +26,9 @@ describe("settingsStore database hydration", () => {
       terminalBackgroundBlur: 16,
       terminalBackgroundOpacity: 16,
       terminalRenderer: "auto",
+      terminalBackgroundColor: "#1a1b26",
+      terminalTextColor: "#c0caf5",
+      terminalColorScheme: "tokyo-night",
       terminalFontFamily: "ui-monospace",
       terminalFontSize: 13,
       terminalShellPath: "",
@@ -88,6 +91,9 @@ describe("settingsStore database hydration", () => {
       if (args?.key === "terminal_background_opacity") return "42";
       if (args?.key === "terminal_transparent") return "true";
       if (args?.key === "terminal_renderer") return '"dom"';
+      if (args?.key === "terminal_color_scheme") return '"dracula"';
+      if (args?.key === "terminal_background_color") return '"#282a36"';
+      if (args?.key === "terminal_text_color") return '"#f8f8f2"';
       if (args?.key === "terminal_font_family") return '"JetBrains Mono"';
       if (args?.key === "terminal_font_size") return "17";
       return null;
@@ -97,10 +103,53 @@ describe("settingsStore database hydration", () => {
 
     expect(useSettingsStore.getState().terminalTransparent).toBe(true);
     expect(useSettingsStore.getState().terminalRenderer).toBe("dom");
+    expect(useSettingsStore.getState().terminalColorScheme).toBe("dracula");
+    expect(useSettingsStore.getState().terminalBackgroundColor).toBe("#282a36");
+    expect(useSettingsStore.getState().terminalTextColor).toBe("#f8f8f2");
     expect(useSettingsStore.getState().terminalBackgroundBlur).toBe(24);
     expect(useSettingsStore.getState().terminalBackgroundOpacity).toBe(42);
     expect(useSettingsStore.getState().terminalFontFamily).toBe("JetBrains Mono");
     expect(useSettingsStore.getState().terminalFontSize).toBe(17);
+  });
+
+  it("upgrades the original too-dark Glass Light tint", async () => {
+    invoke.mockImplementation(async (command: string, args?: { key?: string }) => {
+      if (command !== "db_get_setting") return null;
+      if (args?.key === "terminal_color_scheme") return '"light"';
+      if (args?.key === "terminal_background_opacity") return "8";
+      if (args?.key === "terminal_transparent") return "true";
+      return null;
+    });
+
+    await useSettingsStore.getState().loadFromDB();
+
+    expect(useSettingsStore.getState().terminalBackgroundOpacity).toBe(76);
+    expect(invoke).toHaveBeenCalledWith("db_set_setting", {
+      key: "terminal_background_opacity",
+      value: "76",
+    });
+  });
+
+  it("migrates a removed terminal preset to Tokyo Night", async () => {
+    invoke.mockImplementation(async (command: string, args?: { key?: string }) => {
+      if (command !== "db_get_setting") return null;
+      if (args?.key === "terminal_color_scheme") return '"github-dark"';
+      if (args?.key === "terminal_background_color") return '"#0d1117"';
+      if (args?.key === "terminal_text_color") return '"#c9d1d9"';
+      return null;
+    });
+
+    await useSettingsStore.getState().loadFromDB();
+
+    expect(useSettingsStore.getState()).toMatchObject({
+      terminalColorScheme: "tokyo-night",
+      terminalBackgroundColor: "#1a1b26",
+      terminalTextColor: "#c0caf5",
+    });
+    expect(invoke).toHaveBeenCalledWith("db_set_setting", {
+      key: "terminal_color_scheme",
+      value: '"tokyo-night"',
+    });
   });
 
   it("clamps and persists terminal appearance slider values", async () => {
@@ -145,6 +194,46 @@ describe("settingsStore database hydration", () => {
         value: '"webgl"',
       });
     });
+  });
+
+  it("applies and persists complete terminal color schemes", async () => {
+    useSettingsStore.getState().setTerminalColorScheme("tokyo-night");
+
+    expect(useSettingsStore.getState()).toMatchObject({
+      terminalColorScheme: "tokyo-night",
+      terminalBackgroundColor: "#1a1b26",
+      terminalTextColor: "#c0caf5",
+    });
+    await vi.waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("db_set_setting", {
+        key: "terminal_color_scheme",
+        value: '"tokyo-night"',
+      });
+    });
+  });
+
+  it("uses a Warp-style glass palette and supports the retained presets", () => {
+    useSettingsStore.getState().setTerminalColorScheme("light");
+    expect(useSettingsStore.getState()).toMatchObject({
+      terminalBackgroundColor: "#f4f1ea",
+      terminalTextColor: "#202124",
+      terminalTransparent: true,
+      terminalBackgroundBlur: 0,
+      terminalBackgroundOpacity: 76,
+    });
+
+    useSettingsStore.getState().setTerminalColorScheme("high-contrast");
+    expect(useSettingsStore.getState()).toMatchObject({
+      terminalBackgroundColor: "#000000",
+      terminalTextColor: "#ffffff",
+    });
+  });
+
+  it("switches to custom when a terminal color is edited", () => {
+    useSettingsStore.getState().setTerminalTextColor("#abc");
+
+    expect(useSettingsStore.getState().terminalTextColor).toBe("#aabbcc");
+    expect(useSettingsStore.getState().terminalColorScheme).toBe("custom");
   });
 
   it("sanitizes, clamps, and persists terminal typography", async () => {

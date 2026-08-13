@@ -362,6 +362,8 @@ export const settings: Dict = {
     "settings.terminalBackgroundBlurSub": "Backdrop blur when transparent terminal mode is enabled",
     "settings.terminalBackgroundOpacitySub": "Dark tint over the terminal backdrop in transparent mode",
     "settings.terminalBackgroundColorSub": "Terminal pane background color — solid when glass is off, the tint color at the chosen opacity when glass is on",
+    "settings.terminalTextColorSub": "Default terminal text color. Programs can still use their own ANSI colors.",
+    "settings.terminalThemeSub": "Choose a complete terminal palette, or customize the background and default text colors below.",
     "settings.terminalTransparentSub": "Keep the glass effect enabled when the appearance controls are closed",
     "settings.terminalRenderer": "Renderer",
     "settings.terminalRendererSub": "Automatic uses WebGL when opaque and DOM for glass. Forcing WebGL with glass may show dark blocks around dim text.",

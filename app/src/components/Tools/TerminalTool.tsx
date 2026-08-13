@@ -26,7 +26,6 @@ import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { WebglAddon } from "@xterm/addon-webgl";
 import {
-  ArrowLeft,
   ChevronDown,
   ChevronUp,
   Droplets,
@@ -45,6 +44,7 @@ import "@/styles/terminal-tool.css";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { subscribe } from "@/ipc/events";
 import { callMain } from "@/ipc/host";
 import { openExternal } from "@/ipc/shell";
@@ -56,7 +56,7 @@ import {
   MAX_AUTOMATIC_RECOVERY_ATTEMPTS,
   MAX_PENDING_OUTPUT_BYTES,
   TERMINAL_SCROLLBACK_LINES,
-  TERMINAL_THEME,
+  terminalThemeFor,
   bytesFromB64,
   b64EncodeUtf8,
   encoder,
@@ -88,7 +88,7 @@ export function TerminalTool({
   onShellTitleChange?: (title: string) => void;
   /** Natural shell termination (`exit`, EOF, crash) closes its workspace tab. */
   onSessionExit?: () => void;
-  /** Workspace-owned tabs belong below this terminal's toolbar, above xterm. */
+  /** Workspace-owned tabs share the terminal action row above xterm. */
   tabBar?: React.ReactNode;
   maximized?: boolean;
   onMaximizedChange?: (maximized: boolean) => void;
@@ -133,6 +133,10 @@ export function TerminalTool({
   const setBackgroundOpacity = useSettingsStore((state) => state.setTerminalBackgroundOpacity);
   const terminalBackgroundColor = useSettingsStore((state) => state.terminalBackgroundColor);
   const setTerminalBackgroundColor = useSettingsStore((state) => state.setTerminalBackgroundColor);
+  const terminalTextColor = useSettingsStore((state) => state.terminalTextColor);
+  const setTerminalTextColor = useSettingsStore((state) => state.setTerminalTextColor);
+  const terminalColorScheme = useSettingsStore((state) => state.terminalColorScheme);
+  const setTerminalColorScheme = useSettingsStore((state) => state.setTerminalColorScheme);
   const terminalRenderer = useSettingsStore((state) => state.terminalRenderer);
   // Draft for the hex text field: typed shorthand like `#ddd` is committed on
   // blur/Enter, and re-synced whenever the store value changes (colour picker,
@@ -140,6 +144,9 @@ export function TerminalTool({
   const [bgColorDraft, setBgColorDraft] = useState(terminalBackgroundColor);
   useEffect(() => { setBgColorDraft(terminalBackgroundColor); }, [terminalBackgroundColor]);
   const commitBgColor = useCallback(() => setTerminalBackgroundColor(bgColorDraft), [bgColorDraft, setTerminalBackgroundColor]);
+  const [textColorDraft, setTextColorDraft] = useState(terminalTextColor);
+  useEffect(() => { setTextColorDraft(terminalTextColor); }, [terminalTextColor]);
+  const commitTextColor = useCallback(() => setTerminalTextColor(textColorDraft), [textColorDraft, setTerminalTextColor]);
   const terminalFontFamily = useSettingsStore((state) => state.terminalFontFamily);
   const terminalFontSize = useSettingsStore((state) => state.terminalFontSize);
   const setTerminalFontSize = useSettingsStore((state) => state.setTerminalFontSize);
@@ -215,7 +222,8 @@ export function TerminalTool({
       allowTransparency: true,
       fontFamily: terminalFontStack(terminalFontFamily),
       theme: {
-        ...TERMINAL_THEME,
+        ...terminalThemeFor(terminalColorScheme),
+        foreground: terminalTextColor,
         // An opaque terminal can give WebGL its real backing colour. Glass
         // mode keeps the canvas clear and uses the shell tint below instead.
         background: transparent ? "rgba(0, 0, 0, 0)" : terminalBackgroundColor,
@@ -530,10 +538,11 @@ export function TerminalTool({
     const term = terminalRef.current;
     if (!term) return;
     term.options.theme = {
-      ...TERMINAL_THEME,
+      ...terminalThemeFor(terminalColorScheme),
+      foreground: terminalTextColor,
       background: transparent ? "rgba(0, 0, 0, 0)" : terminalBackgroundColor,
     };
-  }, [sessionGeneration, terminalBackgroundColor, transparent]);
+  }, [sessionGeneration, terminalBackgroundColor, terminalColorScheme, terminalTextColor, transparent]);
 
   // Search the actual xterm scrollback buffer. Incremental searches preserve a
   // matching selection while the query grows; explicit navigation starts from
@@ -654,45 +663,35 @@ export function TerminalTool({
       className="terminal-tool-outer relative h-full w-full"
     >
       <div className="flex h-full flex-col">
-        {/* toolbar */}
+        {/* One compact row for both workspace tabs and terminal actions. */}
         <div
+          data-testid="terminal-tab-toolbar"
           onMouseDown={onToolbarMouseDown}
           title={fullScreen ? t("windowControls.dragToExitFullscreen") : undefined}
-          className={`${fullScreen ? "cursor-grab" : "app-drag-region"} flex shrink-0 flex-wrap items-center gap-3 px-4 sm:px-6`}
+          className={`${
+            fullScreen
+              ? "cursor-grab"
+              : maximized
+                ? "app-drag-region"
+                : "app-region-no-drag"
+          } flex min-w-0 shrink-0 items-center border-y border-border bg-background/35`}
         >
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onBack}
-            title={t("toolsPage.back")}
-            aria-label={t("toolsPage.back")}
-            className="h-9 w-9 shrink-0 rounded-lg text-muted-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div className="min-w-0 flex-1">
-            <div className="font-serif text-lg font-bold tracking-tight">
-              {t("toolsPage.terminal.title")}
-            </div>
-          </div>
-          <span className="flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${
-                status === "connected"
-                  ? "bg-emerald-500"
-                  : status === "error"
-                    ? "bg-red-500"
-                    : "bg-amber-500"
-              }`}
-            />
-            {status === "connected"
-              ? t("toolsPage.terminal.connected")
-              : status === "error"
-                ? t("toolsPage.terminal.error")
-                : status === "closed"
-                  ? t("toolsPage.terminal.closed")
-                  : t("toolsPage.terminal.starting")}
-          </span>
+          {tabBar}
+          <div className="app-region-no-drag ml-auto flex shrink-0 items-center gap-1 px-2">
+            {status !== "connected" && (
+              <span className="flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    status === "error" ? "bg-red-500" : "bg-amber-500"
+                  }`}
+                />
+                {status === "error"
+                  ? t("toolsPage.terminal.error")
+                  : status === "closed"
+                    ? t("toolsPage.terminal.closed")
+                    : t("toolsPage.terminal.starting")}
+              </span>
+            )}
 
           <TooltipProvider delayDuration={300}>
             <Tooltip>
@@ -812,16 +811,41 @@ export function TerminalTool({
               <Maximize2 className="h-4 w-4" />
             )}
           </Button>
+          </div>
         </div>
 
         {/* Keep appearance settings on their own row. They otherwise compete
-            with the title and toolbar actions for horizontal space. */}
+            with the tabs and terminal actions for horizontal space. */}
         {appearanceControlsOpen && (
           <div
             role="group"
             aria-label={t("toolsPage.terminal.appearance")}
             className="app-region-no-drag flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/70 bg-background/55 px-4 py-2 backdrop-blur-md sm:px-6"
           >
+            <label className="flex items-center gap-2">
+              <span className="text-[11px] text-muted-foreground">
+                {t("toolsPage.terminal.themeLabel")}
+              </span>
+              <Select
+                value={terminalColorScheme}
+                onValueChange={(value) => setTerminalColorScheme(value as typeof terminalColorScheme)}
+              >
+                <SelectTrigger
+                  aria-label={t("toolsPage.terminal.themeLabel")}
+                  className="h-7 w-32 border-border bg-background/70 px-2 py-0 text-[11px] focus:ring-1 focus:ring-ring focus:ring-offset-0"
+                >
+                  <SelectValue>
+                    {terminalColorScheme === "custom" ? t("toolsPage.terminal.themeCustom") : undefined}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="tokyo-night">{t("toolsPage.terminal.themeTokyoNight")}</SelectItem>
+                  <SelectItem value="dracula">{t("toolsPage.terminal.themeDracula")}</SelectItem>
+                  <SelectItem value="light">{t("toolsPage.terminal.themeLight")}</SelectItem>
+                  <SelectItem value="high-contrast">{t("toolsPage.terminal.themeHighContrast")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </label>
             <label className="flex items-center gap-2">
                 <span className="text-[11px] text-muted-foreground">
                   {t("toolsPage.terminal.blurLabel")}
@@ -838,6 +862,35 @@ export function TerminalTool({
                 <span className="w-8 text-right text-[11px] tabular-nums text-muted-foreground">
                   {blur}px
                 </span>
+            </label>
+            <label className="flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground">
+                  {t("toolsPage.terminal.textColorLabel")}
+                </span>
+                <input
+                  type="color"
+                  value={terminalTextColor}
+                  onChange={(e) => setTerminalTextColor(e.currentTarget.value)}
+                  title={t("toolsPage.terminal.textColorLabel")}
+                  aria-label={t("toolsPage.terminal.textColorLabel")}
+                  className="h-6 w-8 cursor-pointer rounded-md border border-border bg-transparent p-0.5"
+                />
+                <input
+                  type="text"
+                  value={textColorDraft}
+                  onChange={(e) => setTextColorDraft(e.currentTarget.value)}
+                  onBlur={commitTextColor}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.currentTarget.blur();
+                  }}
+                  spellCheck={false}
+                  autoComplete="off"
+                  maxLength={7}
+                  placeholder="#c0caf5"
+                  title={t("toolsPage.terminal.textColorLabel")}
+                  aria-label={t("toolsPage.terminal.textColorLabel")}
+                  className="h-6 w-16 rounded-md border border-border bg-transparent px-1.5 text-[11px] tabular-nums text-foreground outline-none focus:border-primary"
+                />
             </label>
             <label className="flex items-center gap-2">
                 <span className="text-[11px] text-muted-foreground">
@@ -879,7 +932,7 @@ export function TerminalTool({
                   spellCheck={false}
                   autoComplete="off"
                   maxLength={7}
-                  placeholder="#0d1117"
+                  placeholder="#1a1b26"
                   title={t("toolsPage.terminal.backgroundColorLabel")}
                   aria-label={t("toolsPage.terminal.backgroundColorLabel")}
                   className="h-6 w-16 rounded-md border border-border bg-transparent px-1.5 text-[11px] tabular-nums text-foreground outline-none focus:border-primary"
@@ -887,8 +940,6 @@ export function TerminalTool({
             </label>
           </div>
         )}
-
-        {tabBar}
 
         {searchOpen && (
           <div

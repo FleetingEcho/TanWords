@@ -194,7 +194,7 @@ export function TerminalWorkspace({
     <div
       role="tablist"
       aria-label={t("toolsPage.terminal.tabs")}
-      className="flex shrink-0 items-center gap-1 overflow-x-auto border-y border-border px-2 pt-2 sm:px-2"
+      className={`${maximized ? "" : "app-region-no-drag"} flex min-w-0 flex-1 items-center gap-1 overflow-x-auto px-2 pt-2`}
     >
       {orderedTabs.map((tab) => {
         const selected = tab.id === activeId;
