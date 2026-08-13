@@ -48,6 +48,7 @@ import { subscribe } from "@/ipc/events";
 import { callMain } from "@/ipc/host";
 import { openExternal } from "@/ipc/shell";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useFullscreenDragExit } from "@/hooks/useFullscreenDragExit";
 import { DEFAULT_TERMINAL_FONT_FAMILY } from "@/store/settings/types";
 
 // ── base64 helpers ─────────────────────────────────────────────────────────
@@ -230,6 +231,7 @@ export function TerminalTool({
   onMaximizedChange?: (maximized: boolean) => void;
 }) {
   const t = useT();
+  const { fullScreen, onMouseDown: onToolbarMouseDown } = useFullscreenDragExit();
   const shellRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
@@ -741,7 +743,11 @@ export function TerminalTool({
     >
       <div className="flex h-full flex-col">
         {/* toolbar */}
-        <div className="app-drag-region flex shrink-0 flex-wrap items-center gap-3 px-4 sm:px-6">
+        <div
+          onMouseDown={onToolbarMouseDown}
+          title={fullScreen ? t("windowControls.dragToExitFullscreen") : undefined}
+          className={`${fullScreen ? "cursor-grab" : "app-drag-region"} flex shrink-0 flex-wrap items-center gap-3 px-4 sm:px-6`}
+        >
           <Button
             variant="ghost"
             size="icon"

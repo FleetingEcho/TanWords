@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => {
   let resizeHandler: (() => void) | null = null;
   let titleHandler: ((title: string) => void) | null = null;
   let spawnInfo: { id: string; shell: string; cwd: string; pid: number } | null = null;
+  let windowState = { maximized: false, fullScreen: false };
   let deferWrites = false;
   const pendingWriteCallbacks: Array<() => void> = [];
   const eventHandlers = new Map<string, (payload: any) => void>();
@@ -83,6 +84,8 @@ const mocks = vi.hoisted(() => {
     emitTitle: (title: string) => titleHandler?.(title),
     emit: (event: string, payload: unknown) => eventHandlers.get(event)?.(payload),
     setSpawnInfo: (value: typeof spawnInfo) => { spawnInfo = value; },
+    setWindowState: (value: typeof windowState) => { windowState = value; },
+    getWindowState: () => windowState,
     setDeferWrites: (value: boolean) => { deferWrites = value; },
     flushWrites: () => {
       while (pendingWriteCallbacks.length > 0) pendingWriteCallbacks.shift()!();
@@ -102,6 +105,7 @@ const mocks = vi.hoisted(() => {
       resizeHandler = null;
       titleHandler = null;
       spawnInfo = null;
+      windowState = { maximized: false, fullScreen: false };
       deferWrites = false;
       pendingWriteCallbacks.length = 0;
       eventHandlers.clear();
@@ -132,6 +136,7 @@ vi.mock("@xterm/addon-webgl", () => ({
 }));
 vi.mock("@/ipc/events", () => ({ subscribe: mocks.subscribe }));
 vi.mock("@/ipc/host", () => ({ callMain: mocks.callMain }));
+vi.mock("@/hooks/useWindowState", () => ({ useWindowState: mocks.getWindowState }));
 vi.mock("@/ipc/shell", () => ({ openExternal: mocks.openExternal }));
 vi.mock("sonner", () => ({
   toast: { success: mocks.toastSuccess, error: mocks.toastError },
@@ -229,6 +234,18 @@ describe("TerminalTool clipboard controls", () => {
     renderTerminal();
 
     expect(screen.getByText("Terminal").parentElement?.parentElement).toHaveClass("app-drag-region");
+  });
+
+  it("exits OS fullscreen when the maximized terminal toolbar is dragged down", () => {
+    mocks.setWindowState({ maximized: false, fullScreen: true });
+    render(<TerminalTool onBack={() => {}} maximized />);
+    const toolbar = screen.getByText("Terminal").parentElement?.parentElement;
+
+    expect(toolbar).not.toHaveClass("app-drag-region");
+    fireEvent.mouseDown(toolbar!, { clientY: 0 });
+    fireEvent.mouseMove(window, { clientY: 8 });
+
+    expect(mocks.callMain).toHaveBeenCalledWith("window:toggleFullScreen");
   });
 
   it("explains the 5k scrollback limit and recommends Herdr", async () => {
