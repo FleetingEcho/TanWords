@@ -173,6 +173,7 @@ describe("TerminalTool clipboard controls", () => {
       appBackgroundBlur: 20,
       terminalFontFamily: "ui-monospace",
       terminalFontSize: 13,
+      terminalFontWeight: 400,
     });
     vi.stubGlobal("ResizeObserver", class {
       constructor(handler: () => void) { mocks.setResizeHandler(handler); }
@@ -230,6 +231,20 @@ describe("TerminalTool clipboard controls", () => {
     // Tango's values must not survive anywhere in the palette.
     expect(Object.values(theme)).not.toContain("#2e3436");
     expect(theme.background).toBe("#1a1b26");
+  });
+
+  it("keeps reverse-video input legible with the transparent light preset", () => {
+    useSettingsStore.getState().setTerminalColorScheme("light");
+    renderTerminal();
+
+    expect(mocks.getTerminalOptions()).toMatchObject({
+      allowTransparency: true,
+      minimumContrastRatio: 4.5,
+      theme: {
+        foreground: "#202124",
+        background: "rgba(0, 0, 0, 0)",
+      },
+    });
   });
 
   it("uses VS Code-style structural accents in high-contrast mode", () => {
@@ -341,8 +356,11 @@ describe("TerminalTool clipboard controls", () => {
     );
     const toolbar = screen.getByTestId("terminal-tab-toolbar");
 
+    expect(toolbar).toHaveClass("bg-background/80", "text-foreground", "backdrop-blur-md");
     expect(toolbar).toContainElement(screen.getByRole("tab", { name: "Shell 1" }));
-    expect(toolbar).toContainElement(screen.getByRole("button", { name: "Search terminal" }));
+    const searchButton = screen.getByRole("button", { name: "Search terminal" });
+    expect(toolbar).toContainElement(searchButton);
+    expect(searchButton).toHaveClass("text-foreground/80");
     expect(toolbar).toContainElement(screen.getByRole("button", { name: "Terminal appearance" }));
     expect(screen.queryByText("Terminal")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "All tools" })).not.toBeInTheDocument();
@@ -521,11 +539,17 @@ describe("TerminalTool clipboard controls", () => {
     const spawnCalls = mocks.callMain.mock.calls.filter(([channel]) => channel === "pty_spawn").length;
 
     act(() => {
-      useSettingsStore.setState({ terminalFontFamily: "Fira Code", terminalFontSize: 17 });
+      useSettingsStore.setState({
+        terminalFontFamily: "Fira Code",
+        terminalFontSize: 17,
+        terminalFontWeight: 600,
+      });
     });
 
     expect(mocks.terminal.options.fontFamily).toBe(terminalFontStack("Fira Code"));
     expect(mocks.terminal.options.fontSize).toBe(17);
+    expect(mocks.terminal.options.fontWeight).toBe(600);
+    expect(mocks.terminal.options.fontWeightBold).toBe(700);
     expect(mocks.callMain.mock.calls.filter(([channel]) => channel === "pty_spawn")).toHaveLength(spawnCalls);
   });
 
@@ -539,6 +563,19 @@ describe("TerminalTool clipboard controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Decrease terminal font size" }));
     expect(useSettingsStore.getState().terminalFontSize).toBe(13);
     expect(mocks.terminal.options.fontSize).toBe(13);
+  });
+
+  it("changes the persisted font weight from the appearance strip", () => {
+    renderTerminal();
+
+    fireEvent.click(screen.getByRole("button", { name: "Terminal appearance" }));
+    fireEvent.change(screen.getByRole("slider", { name: "Font weight" }), {
+      target: { value: "600" },
+    });
+
+    expect(useSettingsStore.getState().terminalFontWeight).toBe(600);
+    expect(mocks.terminal.options.fontWeight).toBe(600);
+    expect(mocks.terminal.options.fontWeightBold).toBe(700);
   });
 
   it("opens a right-click menu and copies the xterm selection", async () => {

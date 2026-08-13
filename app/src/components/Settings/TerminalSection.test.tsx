@@ -17,6 +17,7 @@ describe("TerminalSection typography", () => {
       uiLanguage: "en",
       terminalFontFamily: "ui-monospace",
       terminalFontSize: 13,
+      terminalFontWeight: 400,
       terminalRenderer: "auto",
       terminalBackgroundColor: "#1a1b26",
       terminalTextColor: "#c0caf5",
@@ -51,6 +52,11 @@ describe("TerminalSection typography", () => {
       target: { value: "18" },
     });
     expect(useSettingsStore.getState().terminalFontSize).toBe(18);
+
+    fireEvent.change(screen.getByRole("slider", { name: "Font weight" }), {
+      target: { value: "600" },
+    });
+    expect(useSettingsStore.getState().terminalFontWeight).toBe(600);
   });
 
   it("stores a device shell override and explains the new-tab boundary", () => {

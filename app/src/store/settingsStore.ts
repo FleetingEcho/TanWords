@@ -9,8 +9,8 @@ import {
   DEFAULT_TERMINAL_COLOR_SCHEME, TERMINAL_COLOR_SCHEME_COLORS,
   DEFAULT_TERMINAL_CUSTOM_APPEARANCE,
   DEFAULT_TERMINAL_RENDERER,
-  DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE,
-  DOCUMENT_TEXT_COLOR_RE, normalizeHexColor,
+  DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE, DEFAULT_TERMINAL_FONT_WEIGHT,
+  DOCUMENT_TEXT_COLOR_RE, normalizeHexColor, normalizeTerminalFontWeight,
   type Theme, type SidebarTabId, type TopBarItemId, type RssTabSelection, type LayoutMode,
   type BannerPosition, type TerminalRenderer, type TerminalColorScheme, type TerminalCustomAppearance,
 } from "./settings/types";
@@ -36,7 +36,7 @@ export {
   DEFAULT_TERMINAL_COLOR_SCHEME, TERMINAL_COLOR_SCHEME_COLORS,
   DEFAULT_TERMINAL_CUSTOM_APPEARANCE,
   DEFAULT_TERMINAL_RENDERER,
-  DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE,
+  DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE, DEFAULT_TERMINAL_FONT_WEIGHT,
 } from "./settings/types";
 export type { SettingsState } from "./settings/state";
 
@@ -100,6 +100,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   terminalRenderer: DEFAULT_TERMINAL_RENDERER,
   terminalFontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
   terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
+  terminalFontWeight: DEFAULT_TERMINAL_FONT_WEIGHT,
   terminalShellPath: "",
   documentFontSize: 16,
   documentLineHeight: 1.9,
@@ -392,6 +393,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     const value = Math.min(32, Math.max(8, Math.round(px)));
     set({ terminalFontSize: value });
     saveSettingDebounced("terminal_font_size", JSON.stringify(value));
+  },
+
+  setTerminalFontWeight: (weight) => {
+    const value = normalizeTerminalFontWeight(weight);
+    set({ terminalFontWeight: value });
+    saveSettingDebounced("terminal_font_weight", JSON.stringify(value));
   },
 
   setTerminalShellPath: (path) => {

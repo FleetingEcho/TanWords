@@ -6,6 +6,7 @@ import {
   DEFAULT_TERMINAL_BACKGROUND_BLUR, DEFAULT_TERMINAL_BACKGROUND_OPACITY, DEFAULT_TERMINAL_TRANSPARENT,
   GLASS_LIGHT_BACKGROUND_OPACITY,
   DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE,
+  DEFAULT_TERMINAL_FONT_WEIGHT, normalizeTerminalFontWeight,
   DEFAULT_TERMINAL_TEXT_COLOR,
   DEFAULT_TERMINAL_COLOR_SCHEME,
   TERMINAL_COLOR_SCHEME_COLORS,
@@ -87,6 +88,7 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       "terminal_renderer",
       "terminal_font_family",
       "terminal_font_size",
+      "terminal_font_weight",
       "document_font_size",
       "document_line_height",
       "document_paragraph_spacing",
@@ -352,6 +354,9 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       terminalFontSize: Number.isFinite(Number(values.terminal_font_size))
         ? Math.min(32, Math.max(8, Math.round(Number(values.terminal_font_size))))
         : DEFAULT_TERMINAL_FONT_SIZE,
+      terminalFontWeight: values.terminal_font_weight === undefined
+        ? DEFAULT_TERMINAL_FONT_WEIGHT
+        : normalizeTerminalFontWeight(values.terminal_font_weight),
       terminalShellPath,
       documentFontSize: Math.min(24, Math.max(12, Number(values.document_font_size) || 16)),
       documentLineHeight: Math.min(2.2, Math.max(1.4, Number(values.document_line_height) || 1.9)),

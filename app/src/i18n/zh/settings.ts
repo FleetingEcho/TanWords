@@ -391,6 +391,8 @@ export const settings: Dict = {
     "settings.terminalFontNoResults": "没有匹配的字体",
     "settings.terminalFontSize": "字体大小",
     "settings.terminalFontSizeSub": "终端文字大小（像素）",
+    "settings.terminalFontWeight": "字体粗细",
+    "settings.terminalFontWeightSub": "终端文字粗细，从 100（细）到 900（特粗）",
     "settings.documentParagraphSpacing": "文档段落间距",
     "settings.documentParagraphSpacingSub": "调整富文本 Markdown 文档中段落及其他块之间的垂直间距",
     "settings.documentTextColor": "文档文字颜色",

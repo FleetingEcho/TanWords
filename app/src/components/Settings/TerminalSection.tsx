@@ -35,6 +35,7 @@ export function TerminalSection() {
   const renderer = useSettingsStore((state) => state.terminalRenderer);
   const fontFamily = useSettingsStore((state) => state.terminalFontFamily);
   const fontSize = useSettingsStore((state) => state.terminalFontSize);
+  const fontWeight = useSettingsStore((state) => state.terminalFontWeight);
   const shellPath = useSettingsStore((state) => state.terminalShellPath);
   const setTransparent = useSettingsStore((state) => state.setTerminalTransparent);
   const setBlur = useSettingsStore((state) => state.setTerminalBackgroundBlur);
@@ -51,6 +52,7 @@ export function TerminalSection() {
   useEffect(() => { setTextColorDraft(textColor); }, [textColor]);
   const setFontFamily = useSettingsStore((state) => state.setTerminalFontFamily);
   const setFontSize = useSettingsStore((state) => state.setTerminalFontSize);
+  const setFontWeight = useSettingsStore((state) => state.setTerminalFontWeight);
   const setShellPath = useSettingsStore((state) => state.setTerminalShellPath);
   const [shellDraft, setShellDraft] = useState(shellPath);
   const [defaultShellPath, setDefaultShellPath] = useState("");
@@ -426,6 +428,29 @@ export function TerminalSection() {
             onChange={(event) => setFontSize(Number(event.target.value))}
             className="w-full accent-primary"
             aria-label={t("settings.terminalFontSize")}
+          />
+        </div>
+      </SettingRow>
+
+      <SettingRow
+        label={t("settings.terminalFontWeight")}
+        sub={t("settings.terminalFontWeightSub")}
+      >
+        <div className="w-52 space-y-1.5">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>100</span>
+            <RangeValue>{fontWeight}</RangeValue>
+            <span>900</span>
+          </div>
+          <input
+            type="range"
+            min={100}
+            max={900}
+            step={100}
+            value={fontWeight}
+            onChange={(event) => setFontWeight(Number(event.target.value))}
+            className="w-full accent-primary"
+            aria-label={t("settings.terminalFontWeight")}
           />
         </div>
       </SettingRow>

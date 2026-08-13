@@ -209,7 +209,7 @@ export function TerminalWorkspace({
             className={`flex h-9 shrink-0 items-center rounded-t-lg border border-b-0 px-1 ${
               selected
                 ? "border-border bg-card text-foreground"
-                : "border-transparent text-muted-foreground hover:bg-muted/60"
+                : "border-transparent text-foreground/75 hover:bg-muted/60 hover:text-foreground"
             }`}
           >
             <button
@@ -234,7 +234,7 @@ export function TerminalWorkspace({
               type="button"
               onClick={() => requestClose(tab.id)}
               aria-label={t("toolsPage.terminal.closeTab", { n: tab.ordinal })}
-              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="rounded p-1 text-foreground/75 hover:bg-muted hover:text-foreground"
             >
               <X className="h-3 w-3" />
             </button>
@@ -250,7 +250,7 @@ export function TerminalWorkspace({
           ? t("toolsPage.terminal.tabLimit", { n: MAX_TERMINAL_TABS })
           : t("toolsPage.terminal.newTab")}
         aria-label={t("toolsPage.terminal.newTab")}
-        className="h-8 w-8 shrink-0 rounded-md text-muted-foreground"
+        className="h-8 w-8 shrink-0 rounded-md text-foreground/80"
       >
         <Plus className="h-4 w-4" />
       </Button>

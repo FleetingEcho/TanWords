@@ -95,6 +95,15 @@ export function normalizeHexColor(
 /** `ui-monospace` resolves to the desktop OS/browser's native monospace face. */
 export const DEFAULT_TERMINAL_FONT_FAMILY = "ui-monospace";
 export const DEFAULT_TERMINAL_FONT_SIZE = 16;
+export const DEFAULT_TERMINAL_FONT_WEIGHT = 400;
+
+/** xterm accepts the full CSS weight range. Snap arbitrary persisted or typed
+ * values to actual 100-step font weights so the UI and renderer stay aligned. */
+export function normalizeTerminalFontWeight(value: unknown): number {
+  const weight = Number(value);
+  if (!Number.isFinite(weight)) return DEFAULT_TERMINAL_FONT_WEIGHT;
+  return Math.min(900, Math.max(100, Math.round(weight / 100) * 100));
+}
 
 /** Which part of the dashboard banner survives the crop into its letterbox frame,
  *  as CSS `object-position` percentages. The image itself is stored whole, so this

@@ -74,6 +74,7 @@ export const toolsPage: Dict = {
     "toolsPage.terminal.opacityLabel": "Background opacity",
     "toolsPage.terminal.backgroundColorLabel": "Background color",
     "toolsPage.terminal.textColorLabel": "Text color",
+    "toolsPage.terminal.fontWeightLabel": "Font weight",
     "toolsPage.terminal.themeLabel": "Theme",
     "toolsPage.terminal.themeTokyoNight": "Tokyo Night",
     "toolsPage.terminal.themeDracula": "Dracula",

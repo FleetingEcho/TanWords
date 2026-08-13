@@ -391,6 +391,8 @@ export const settings: Dict = {
     "settings.terminalFontNoResults": "No matching fonts",
     "settings.terminalFontSize": "Font size",
     "settings.terminalFontSizeSub": "Terminal text size in pixels",
+    "settings.terminalFontWeight": "Font weight",
+    "settings.terminalFontWeightSub": "Terminal text thickness from 100 (thin) to 900 (black)",
     "settings.documentParagraphSpacing": "Document paragraph spacing",
     "settings.documentParagraphSpacingSub": "Vertical gap between paragraphs and other blocks in rich Markdown documents",
     "settings.documentTextColor": "Document text color",

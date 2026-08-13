@@ -39,6 +39,7 @@ describe("settingsStore database hydration", () => {
       },
       terminalFontFamily: "ui-monospace",
       terminalFontSize: 13,
+      terminalFontWeight: 400,
       terminalShellPath: "",
       userAvatar: "",
       dashboardBanner: "",
@@ -203,6 +204,7 @@ describe("settingsStore database hydration", () => {
       if (args?.key === "terminal_text_color") return '"#f8f8f2"';
       if (args?.key === "terminal_font_family") return '"JetBrains Mono"';
       if (args?.key === "terminal_font_size") return "17";
+      if (args?.key === "terminal_font_weight") return "600";
       return null;
     });
 
@@ -217,6 +219,7 @@ describe("settingsStore database hydration", () => {
     expect(useSettingsStore.getState().terminalBackgroundOpacity).toBe(42);
     expect(useSettingsStore.getState().terminalFontFamily).toBe("JetBrains Mono");
     expect(useSettingsStore.getState().terminalFontSize).toBe(17);
+    expect(useSettingsStore.getState().terminalFontWeight).toBe(600);
   });
 
   it("upgrades the original too-dark Glass Light tint", async () => {
@@ -387,9 +390,11 @@ describe("settingsStore database hydration", () => {
 
     useSettingsStore.getState().setTerminalFontFamily("  Fira Code  ");
     useSettingsStore.getState().setTerminalFontSize(99);
+    useSettingsStore.getState().setTerminalFontWeight(999);
 
     expect(useSettingsStore.getState().terminalFontFamily).toBe("Fira Code");
     expect(useSettingsStore.getState().terminalFontSize).toBe(32);
+    expect(useSettingsStore.getState().terminalFontWeight).toBe(900);
     await vi.advanceTimersByTimeAsync(300);
     expect(invoke).toHaveBeenCalledWith("db_set_setting", {
       key: "terminal_font_family",
@@ -398,6 +403,10 @@ describe("settingsStore database hydration", () => {
     expect(invoke).toHaveBeenCalledWith("db_set_setting", {
       key: "terminal_font_size",
       value: "32",
+    });
+    expect(invoke).toHaveBeenCalledWith("db_set_setting", {
+      key: "terminal_font_weight",
+      value: "900",
     });
   });
 

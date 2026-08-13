@@ -149,7 +149,9 @@ export function TerminalTool({
   const commitTextColor = useCallback(() => setTerminalTextColor(textColorDraft), [textColorDraft, setTerminalTextColor]);
   const terminalFontFamily = useSettingsStore((state) => state.terminalFontFamily);
   const terminalFontSize = useSettingsStore((state) => state.terminalFontSize);
+  const terminalFontWeight = useSettingsStore((state) => state.terminalFontWeight);
   const setTerminalFontSize = useSettingsStore((state) => state.setTerminalFontSize);
+  const setTerminalFontWeight = useSettingsStore((state) => state.setTerminalFontWeight);
 
   const copySelection = useCallback(async () => {
     const term = terminalRef.current;
@@ -220,7 +222,15 @@ export function TerminalTool({
       // WebGL paints into a canvas. Preserve its alpha channel so the terminal
       // glass controls continue to reveal the app wallpaper underneath it.
       allowTransparency: true,
+      // Full-screen TUIs commonly use inverse video for focused inputs. With a
+      // transparent light palette that swaps a dark default foreground onto a
+      // dark row while the transparent background cannot supply a light glyph
+      // colour. Let xterm correct those glyphs to accessible contrast without
+      // changing the user's palette or making the glass canvas opaque.
+      minimumContrastRatio: 4.5,
       fontFamily: terminalFontStack(terminalFontFamily),
+      fontWeight: terminalFontWeight,
+      fontWeightBold: Math.max(700, terminalFontWeight),
       theme: {
         ...terminalThemeFor(terminalColorScheme),
         foreground: terminalTextColor,
@@ -579,9 +589,11 @@ export function TerminalTool({
     if (!term) return;
     term.options.fontFamily = terminalFontStack(terminalFontFamily);
     term.options.fontSize = terminalFontSize;
+    term.options.fontWeight = terminalFontWeight;
+    term.options.fontWeightBold = Math.max(700, terminalFontWeight);
     const frame = window.requestAnimationFrame(() => refitRef.current());
     return () => window.cancelAnimationFrame(frame);
-  }, [terminalFontFamily, terminalFontSize]);
+  }, [terminalFontFamily, terminalFontSize, terminalFontWeight]);
 
   // MainLayout changes two large boxes when maximize toggles. ResizeObserver
   // normally catches that, and this scheduled fit also covers hosts where the
@@ -674,12 +686,12 @@ export function TerminalTool({
               : maximized
                 ? "app-drag-region"
                 : "app-region-no-drag"
-          } flex min-w-0 shrink-0 items-center border-y border-border bg-background/35`}
+          } flex min-w-0 shrink-0 items-center border-y border-border bg-background/80 text-foreground shadow-sm backdrop-blur-md`}
         >
           {tabBar}
           <div className="app-region-no-drag ml-auto flex shrink-0 items-center gap-1 px-2">
             {status !== "connected" && (
-              <span className="flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+              <span className="flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-foreground/80">
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${
                     status === "error" ? "bg-red-500" : "bg-amber-500"
@@ -699,7 +711,7 @@ export function TerminalTool({
                 <span
                   tabIndex={0}
                   aria-label={t("toolsPage.terminal.scrollbackTooltip")}
-                  className="app-region-no-drag flex cursor-help items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2.5 py-1 text-[11px] font-medium text-primary/90 outline-none transition-colors hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-ring"
+                  className="app-region-no-drag flex cursor-help items-center gap-1 rounded-full border border-primary/30 bg-background/70 px-2.5 py-1 text-[11px] font-medium text-foreground outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <History className="h-3 w-3" aria-hidden="true" />
                   {t("toolsPage.terminal.scrollbackBadge")}
@@ -743,11 +755,11 @@ export function TerminalTool({
               onClick={() => setTerminalFontSize(terminalFontSize - 1)}
               title={t("toolsPage.terminal.decreaseFontSize")}
               aria-label={t("toolsPage.terminal.decreaseFontSize")}
-              className="h-7 w-7 rounded-md text-muted-foreground"
+              className="h-7 w-7 rounded-md text-foreground/80"
             >
               <Minus className="h-3.5 w-3.5" />
             </Button>
-            <span className="w-9 text-center text-[11px] tabular-nums text-muted-foreground">
+            <span className="w-9 text-center text-[11px] tabular-nums text-foreground/80">
               {terminalFontSize}px
             </span>
             <Button
@@ -757,7 +769,7 @@ export function TerminalTool({
               onClick={() => setTerminalFontSize(terminalFontSize + 1)}
               title={t("toolsPage.terminal.increaseFontSize")}
               aria-label={t("toolsPage.terminal.increaseFontSize")}
-              className="h-7 w-7 rounded-md text-muted-foreground"
+              className="h-7 w-7 rounded-md text-foreground/80"
             >
               <Plus className="h-3.5 w-3.5" />
             </Button>
@@ -771,7 +783,7 @@ export function TerminalTool({
             aria-label={t("toolsPage.terminal.search")}
             aria-pressed={searchOpen}
             className={`h-9 w-9 shrink-0 rounded-lg ${
-              searchOpen ? "bg-primary/15 text-primary" : "text-muted-foreground"
+              searchOpen ? "bg-primary/15 text-primary" : "text-foreground/80"
             }`}
           >
             <Search className="h-4 w-4" />
@@ -790,7 +802,7 @@ export function TerminalTool({
                 ? "bg-primary/15 text-primary"
                 : transparent
                   ? "text-primary"
-                  : "text-muted-foreground"
+                  : "text-foreground/80"
             }`}
           >
             <Droplets className="h-4 w-4" />
@@ -803,7 +815,7 @@ export function TerminalTool({
             onClick={toggleFullscreen}
             title={maximized ? t("toolsPage.terminal.restore") : t("toolsPage.terminal.maximize")}
             aria-label={maximized ? t("toolsPage.terminal.restore") : t("toolsPage.terminal.maximize")}
-            className="h-9 w-9 shrink-0 rounded-lg text-muted-foreground"
+            className="h-9 w-9 shrink-0 rounded-lg text-foreground/80"
           >
             {maximized ? (
               <Minimize2 className="h-4 w-4" />
@@ -892,6 +904,24 @@ export function TerminalTool({
                   aria-label={t("toolsPage.terminal.textColorLabel")}
                   className="h-6 w-16 rounded-md border border-border bg-transparent px-1.5 text-[11px] tabular-nums text-foreground outline-none focus:border-primary"
                 />
+            </label>
+            <label className="flex items-center gap-2">
+              <span className="text-[11px] text-muted-foreground">
+                {t("toolsPage.terminal.fontWeightLabel")}
+              </span>
+              <input
+                type="range"
+                min={100}
+                max={900}
+                step={100}
+                value={terminalFontWeight}
+                onChange={(event) => setTerminalFontWeight(Number(event.currentTarget.value))}
+                aria-label={t("toolsPage.terminal.fontWeightLabel")}
+                className="h-6 w-20 cursor-pointer accent-primary"
+              />
+              <span className="w-7 text-right text-[11px] tabular-nums text-foreground/80">
+                {terminalFontWeight}
+              </span>
             </label>
             <label className="flex items-center gap-2">
                 <span className="text-[11px] text-muted-foreground">

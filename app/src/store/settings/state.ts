@@ -93,6 +93,8 @@ export interface SettingsState {
   /** Local font family name, or ui-monospace for the operating-system default. */
   terminalFontFamily: string;
   terminalFontSize: number;
+  /** Default xterm glyph weight, in CSS's 100–900 scale. */
+  terminalFontWeight: number;
   /** Device-local executable override. Empty lets TanWords select the platform default. */
   terminalShellPath: string;
   /** Body font size, in pixels, for full-size document editors. */
@@ -153,6 +155,7 @@ export interface SettingsState {
   setTerminalRenderer: (renderer: TerminalRenderer) => void;
   setTerminalFontFamily: (family: string) => void;
   setTerminalFontSize: (px: number) => void;
+  setTerminalFontWeight: (weight: number) => void;
   setTerminalShellPath: (path: string) => void;
   setDocumentFontSize: (px: number) => void;
   setDocumentLineHeight: (value: number) => void;
