@@ -58,6 +58,8 @@ const WordDetailModal = React.lazy(() =>
   import("@/components/WordDetailModal").then((m) => ({ default: m.WordDetailModal })));
 const ToolsModal = React.lazy(() =>
   import("@/components/ui/ToolsModal").then((m) => ({ default: m.ToolsModal })));
+const FloatingBrowserWidget = React.lazy(() =>
+  import("@/components/FloatingBrowser/FloatingBrowserWidget").then((m) => ({ default: m.FloatingBrowserWidget })));
 const PodcastPlayerBar = React.lazy(() =>
   import("@/components/ui/PodcastPlayerBar").then((m) => ({ default: m.PodcastPlayerBar })));
 const SelectionAsk = React.lazy(() =>
@@ -449,6 +451,11 @@ function App() {
     {podcastVisible && !(isTerminalRoute && terminalMaximized) && (
       <React.Suspense fallback={null}>
         <PodcastPlayerBar />
+      </React.Suspense>
+    )}
+    {hostCapabilities.browser && (
+      <React.Suspense fallback={null}>
+        <FloatingBrowserWidget />
       </React.Suspense>
     )}
     <AppToaster />

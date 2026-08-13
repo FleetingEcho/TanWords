@@ -5,7 +5,7 @@ import { callMain } from "@/ipc/host";
 import {
   BrainCircuit, Check, ChevronsLeft, ChevronsRight, ClipboardPaste, Cloud, CloudOff, Database, Lock,
   FilePlus2, Languages, MessageSquarePlus, Monitor, Moon, Palette, Quote, Search, Server, Settings, Sun,
-  Grid2x2Plus, Rss, Type, Unplug, User, X,
+  Grid2x2Plus, Rss, Smartphone, Type, Unplug, User, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,6 +30,7 @@ import { useAnalysisStore } from "@/store/analysisStore";
 import { useVocabEnrichStore } from "@/store/vocabEnrichStore";
 import { GitHubIcon } from "@/components/ui/icons";
 import { useToolsBallStore } from "@/store/toolsBallStore";
+import { useFloatingBrowserStore } from "@/store/floatingBrowserStore";
 import { hostCapabilities, isDesktopHost } from "@/platform";
 
 type McpState = { status: { running: boolean; error: string | null } };
@@ -67,6 +68,20 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   const setTheme = useSettingsStore((state) => state.setTheme);
   const visibleItems = useSettingsStore((state) => state.visibleTopBarItems);
   const toggleToolsModal = useToolsBallStore((state) => state.toggleModal);
+  const floatingBrowserStatus = useFloatingBrowserStore((state) => state.status);
+  const toggleFloatingBrowserFromIcon = useFloatingBrowserStore((state) => state.toggleFromIcon);
+  // Green dot: something's alive but not currently visible — minimized
+  // (docked, hidden) or detachedHidden (popped out, hidden). "detached"
+  // itself (popped out and visible) gets no dot, same as "open".
+  const floatingBrowserMinimized = floatingBrowserStatus === "minimized" || floatingBrowserStatus === "detachedHidden";
+  const onClickFloatingBrowserIcon = () => {
+    // Detached: the widget's content lives in its own window now — dock it
+    // back (visible popout) or show it again (hidden popout) rather than
+    // toggling the docked open/minimize state, which has nothing to act on.
+    if (floatingBrowserStatus === "detached") { void invoke("floating_browser_dock"); return; }
+    if (floatingBrowserStatus === "detachedHidden") { void invoke("floating_browser_window_show"); return; }
+    toggleFloatingBrowserFromIcon();
+  };
   const userAvatar = useSettingsStore((state) => state.userAvatar);
   const hasCustomAppBackground = useSettingsStore((state) => !!state.appBackgroundImage && state.appBackgroundVisible);
   const visible = (item: import("@/store/settingsStore").TopBarItemId) => {
@@ -321,6 +336,18 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
           >
             <Grid2x2Plus className="h-4 w-4" />
           </Button>
+          {hostCapabilities.browser && <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClickFloatingBrowserIcon}
+            title={t("floatingBrowser.toggleLabel")}
+            className="relative h-8 w-8 rounded-lg text-muted-foreground"
+          >
+            <Smartphone className="h-4 w-4" />
+            {floatingBrowserMinimized && (
+              <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            )}
+          </Button>}
           {visible("db") && <Tooltip>
             <TooltipTrigger asChild>
               <Button

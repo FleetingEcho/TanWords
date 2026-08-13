@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <script>
+      // Same last-known-theme flash prevention as index.html — this window's
+      // chrome (nav bar, address input, empty state) uses the app's Tailwind
+      // theme tokens even though the bezel itself is always dark.
+      (function () {
+        try {
+          var theme = localStorage.getItem("tanwords_theme_cache") || "system";
+          var isDark =
+            theme === "dark" || theme === "catppuccin-mocha" || theme === "dracula" ||
+            theme === "tokyo-night" || theme === "tokyo-night-storm" || theme === "dim" ||
+            (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          if (isDark) document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = isDark ? "dark" : "light";
+        } catch (e) {}
+      })();
+    </script>
+    <style>
+      /* The window itself is transparent (frameless/alwaysOnTop popout) — only
+         the bezel inside paints a background, so html/body must stay see-through.
+         This document itself never scrolls (it's a fixed-size widget frame —
+         the bezel's own screen/empty-state areas scroll internally where
+         needed); without overflow:hidden here, any sub-pixel overflow from
+         the bezel's own border box gives the outer document a scrollbar,
+         which reserves a few px of width the "screen" container's own
+         measurement doesn't account for — the native view ends up a few px
+         narrower than the window, and the transparent gap on the right edge
+         shows whatever's behind the window through it. */
+      html, body, #root { min-height: 100%; margin: 0; background: transparent; overflow: hidden; }
+    </style>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>TanWords Mobile Browser</title>
+  </head>
+  <body class="antialiased">
+    <div id="root"></div>
+    <script type="module" src="/src/floatingBrowserMain.tsx"></script>
+  </body>
+</html>

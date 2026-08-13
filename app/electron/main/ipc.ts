@@ -8,6 +8,11 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { UpdateInfoPayload } from "./updater";
 import type { BrowserPanelManager, PanelBounds } from "./browserPanel";
+import { cosmeticsForWebContents } from "./browserPanel";
+import {
+  createFloatingBrowserWindow, dockFloatingBrowserWindow,
+  hideFloatingBrowserWindow, showFloatingBrowserWindow,
+} from "./floatingBrowserWindow";
 import type { TrayManager } from "./tray";
 import { abortFetch, startFetch } from "./http";
 import { rememberWindowBackground } from "./windowBackground";
@@ -29,6 +34,7 @@ export type IpcDeps = {
     downloadAndInstall: () => Promise<void>;
   };
   browserPanel: BrowserPanelManager;
+  floatingBrowserPanel: BrowserPanelManager;
   tray: TrayManager;
 };
 
@@ -103,8 +109,7 @@ export function registerIpcHandlers(deps: IpcDeps) {
   // sidecar roundtrip — and fills a miss asynchronously with a late
   // executeJavaScript injection (fail-open: an empty answer is instant).
   ipcMain.on("adblock:cosmetics", (event, url: unknown) => {
-    const c = deps.browserPanel.cosmeticsForSync(String(url ?? ""), event.sender);
-    event.returnValue = c;
+    event.returnValue = cosmeticsForWebContents(event.sender, String(url ?? ""));
   });
 }
 
@@ -410,6 +415,102 @@ async function dispatch(
     case "browser_get_state": {
       return deps.browserPanel.getState();
     }
+
+    // Floating mobile-browser overlay — same shape as the browser_* cases
+    // above, dispatched to its own independent manager/session.
+    case "floating_browser_show": {
+      const { tabId, url, ...bounds } = (args ?? {}) as { tabId: string | null; url: string | null } & PanelBounds;
+      return deps.floatingBrowserPanel.show(tabId, bounds, url);
+    }
+    case "floating_browser_set_bounds": {
+      deps.floatingBrowserPanel.setBounds((args ?? {}) as PanelBounds);
+      return null;
+    }
+    case "floating_browser_hide": {
+      const { withSnapshot } = (args ?? {}) as { withSnapshot?: boolean };
+      return deps.floatingBrowserPanel.hide(withSnapshot === true);
+    }
+    case "floating_browser_get_state": {
+      return deps.floatingBrowserPanel.getState();
+    }
+    case "floating_browser_go_home": {
+      const { tabId } = (args ?? {}) as { tabId: string };
+      deps.floatingBrowserPanel.goHome(tabId);
+      return null;
+    }
+    case "floating_browser_close_tab": {
+      const { tabId } = (args ?? {}) as { tabId: string };
+      deps.floatingBrowserPanel.closeTab(tabId);
+      return null;
+    }
+    case "floating_browser_reload": {
+      const { tabId } = (args ?? {}) as { tabId: string };
+      deps.floatingBrowserPanel.reload(tabId);
+      return null;
+    }
+    case "floating_browser_go_back": {
+      const { tabId } = (args ?? {}) as { tabId: string };
+      deps.floatingBrowserPanel.goBack(tabId);
+      return null;
+    }
+    case "floating_browser_go_forward": {
+      const { tabId } = (args ?? {}) as { tabId: string };
+      deps.floatingBrowserPanel.goForward(tabId);
+      return null;
+    }
+    case "floating_browser_clear_data": {
+      await deps.floatingBrowserPanel.clearData();
+      return null;
+    }
+
+    // Detach-into-an-independent-window support — see floatingBrowserWindow.ts.
+    // Resolved from the calling window, not always the main one: the docked
+    // widget's renderer IS the main window (so this doubles as "get the main
+    // window's bounds" for its detach-threshold check), and the popout's own
+    // renderer gets its own window's bounds for its resize handles.
+    case "window_get_bounds": {
+      const win = BrowserWindow.fromWebContents(sender);
+      return win ? win.getBounds() : null;
+    }
+    case "floating_browser_window_set_bounds": {
+      const win = BrowserWindow.fromWebContents(sender);
+      const bounds = (args ?? {}) as { x: number; y: number; width: number; height: number };
+      win?.setBounds({
+        x: Math.round(bounds.x), y: Math.round(bounds.y),
+        width: Math.round(bounds.width), height: Math.round(bounds.height),
+      });
+      return null;
+    }
+    case "floating_browser_detach": {
+      const bounds = (args ?? {}) as { x: number; y: number; width: number; height: number };
+      createFloatingBrowserWindow({
+        floatingBrowserPanel: deps.floatingBrowserPanel,
+        bounds,
+        broadcastEvent: deps.broadcastEvent,
+        getMainWindow: deps.getMainWindow,
+      });
+      return null;
+    }
+    case "floating_browser_dock": {
+      const win = deps.getMainWindow();
+      if (win) {
+        dockFloatingBrowserWindow({
+          mainWindow: win,
+          floatingBrowserPanel: deps.floatingBrowserPanel,
+          broadcastEvent: deps.broadcastEvent,
+        });
+      }
+      return null;
+    }
+    case "floating_browser_window_hide": {
+      hideFloatingBrowserWindow(deps.broadcastEvent);
+      return null;
+    }
+    case "floating_browser_window_show": {
+      showFloatingBrowserWindow(deps.broadcastEvent);
+      return null;
+    }
+
     // The tray's labels live in the main process but its language and playback
     // state are the renderer's to know, so both are pushed in rather than
     // polled (see src/hooks/useTraySync.ts).
@@ -458,9 +559,34 @@ async function dispatch(
       await deps.browserPanel.clearData();
       return null;
     }
+    // History is shared session-wide (see PanelSessionState in
+    // browserPanel.ts) — the floating overlay calls these same two commands
+    // rather than getting its own floating_browser_* mirror, since the data
+    // is identical either way.
+    case "browser_get_history": {
+      return deps.browserPanel.getHistory();
+    }
+    case "browser_clear_history": {
+      deps.browserPanel.clearHistory();
+      return null;
+    }
     case "browser_set_adblock_enabled": {
       const { enabled } = (args ?? {}) as { enabled?: boolean };
       deps.browserPanel.setAdBlockEnabled(enabled !== false);
+      return null;
+    }
+
+    // Whole-browser private-mode toggle, shared by the full-page Browser and
+    // the floating overlay — see PRIVATE_PARTITION's doc in browserPanel.ts.
+    // Both managers' privateMode flags are set together and both are
+    // notified so either surface's UI reflects the current state regardless
+    // of which one triggered the change.
+    case "browser_set_private_mode": {
+      const { enabled } = (args ?? {}) as { enabled?: boolean };
+      const on = enabled === true;
+      deps.browserPanel.setPrivateMode(on);
+      deps.floatingBrowserPanel.setPrivateMode(on);
+      deps.broadcastEvent("browser:privateModeChanged", { enabled: on });
       return null;
     }
 

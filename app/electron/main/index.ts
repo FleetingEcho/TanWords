@@ -5,7 +5,8 @@ import path from "node:path";
 import { registerAppProtocolHandler, rendererEntryUrl, APP_SCHEME } from "./protocol";
 import { SidecarSupervisor } from "./sidecar";
 import { isExternalUrlAllowed, registerIpcHandlers } from "./ipc";
-import { BrowserPanelManager } from "./browserPanel";
+import { BrowserPanelManager, PANEL_PARTITION } from "./browserPanel";
+import { resetFloatingBrowserWindow } from "./floatingBrowserWindow";
 import { TrayManager, trayIconPath } from "./tray";
 import {
   setTerminalEventSink,
@@ -145,6 +146,11 @@ const browserPanel = new BrowserPanelManager();
 // The ad blocker's matching engine lives in the Rust sidecar; Electron main
 // only intercepts requests and asks the sidecar whether to block each one.
 browserPanel.setBackendGetter(() => sidecar.backendReady());
+// The floating mobile-browser overlay: an independent tab set, but the SAME
+// session partition as the full-page Browser — a login in one carries over
+// to the other, rather than needing two separate sign-ins.
+const floatingBrowserPanel = new BrowserPanelManager(PANEL_PARTITION, "floating");
+floatingBrowserPanel.setBackendGetter(() => sidecar.backendReady());
 const tray = new TrayManager();
 
 /** Set once the app has committed to quitting: before-quit lets the real
@@ -341,6 +347,7 @@ function createWindow() {
   });
 
   browserPanel.setWindow(win);
+  floatingBrowserPanel.setWindow(win);
   wireWindowDevTools(win);
 
   const emitWindowState = () => {
@@ -390,6 +397,8 @@ function createWindow() {
     abortAllFor(contentsId);
     mainWindow = null;
     browserPanel.reset();
+    floatingBrowserPanel.reset();
+    resetFloatingBrowserWindow();
   });
 }
 
@@ -436,6 +445,7 @@ if (gotLock) {
     sidecar.start();
 
     browserPanel.setEventSink(broadcastEvent);
+    floatingBrowserPanel.setEventSink(broadcastEvent);
 
     tray.setEventSink(broadcastEvent);
 
@@ -468,6 +478,7 @@ if (gotLock) {
       broadcastEvent,
       updater,
       browserPanel,
+      floatingBrowserPanel,
       tray,
     });
 

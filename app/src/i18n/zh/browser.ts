@@ -23,4 +23,9 @@ export const browser: Dict = {
     "browser.adBlockOff": "广告拦截已关闭",
     "browser.emptyTitle": "无需离开 TanWords 即可浏览",
     "browser.emptyBody": "在上方粘贴任意链接，或从下面几个网站开始。",
+    "browser.history": "历史记录",
+    "browser.historyEmpty": "本次会话还没有历史记录。",
+    "browser.clearHistory": "清除历史记录",
+    "browser.privateModeOn": "隐私浏览已开启——不留历史记录，重启后清除",
+    "browser.privateModeOff": "开启隐私浏览",
 };

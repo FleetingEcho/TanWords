@@ -20,6 +20,7 @@ import { tools } from "./tools";
 import { toolsPage } from "./toolsPage";
 import { music } from "./music";
 import { browser } from "./browser";
+import { floatingBrowser } from "./floatingBrowser";
 import { updater } from "./updater";
 
 export const en: Dict = {
@@ -44,5 +45,6 @@ export const en: Dict = {
     ...toolsPage,
     ...music,
     ...browser,
+    ...floatingBrowser,
     ...updater,
 };

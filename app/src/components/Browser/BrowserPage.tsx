@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, ExternalLink, Globe, Home, MessageSquareQuote, RotateCw, ShieldCheck, ShieldOff, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, ExternalLink, Globe, Home, MessageSquareQuote, RotateCw, ShieldCheck, ShieldOff, Trash2, VenetianMask } from "lucide-react";
 import { openExternal as openShell } from "@/ipc/shell";
 import { useT } from "@/hooks/useT";
 import { isDesktopHost } from "@/platform";
 import { getWebToken } from "@/platform/webClient";
 import { useSettingsStore } from "@/store/settingsStore";
+import { usePrivateBrowsingStore } from "@/store/privateBrowsingStore";
 import { invoke } from "@/ipc/backend";
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
@@ -14,6 +15,7 @@ import { useWebBrowser } from "./useWebBrowser";
 import { BrowserTabStrip } from "./BrowserTabStrip";
 import { BrowserEmptyState } from "./BrowserEmptyState";
 import { BrowserAskPane } from "./BrowserAskPane";
+import { BrowserHistoryMenu } from "./BrowserHistoryMenu";
 
 /** The Browser page: desktop uses a native `WebContentsView` (with optional
  *  ad/tracker blocking); web falls back to `<iframe>`s. The toolbar is shared —
@@ -113,6 +115,8 @@ function DesktopBrowserPage() {
 
   const adBlockEnabled = useSettingsStore((s) => s.browserAdBlockEnabled);
   const setAdBlockEnabled = useSettingsStore((s) => s.setBrowserAdBlockEnabled);
+  const privateMode = usePrivateBrowsingStore((s) => s.enabled);
+  const togglePrivateMode = usePrivateBrowsingStore((s) => s.toggle);
 
   // Keep the main-process blocker in sync with the persisted preference — on
   // mount (after settings hydrate) and on every toggle. The main process
@@ -157,6 +161,16 @@ function DesktopBrowserPage() {
         askOpen={askOpen} onToggleAsk={() => setAskOpen((v) => !v)}
         rightExtras={
           <>
+            <BrowserHistoryMenu onOpen={(u) => void open(u)} />
+            <Button
+              variant="ghost" size="icon"
+              onClick={togglePrivateMode}
+              className={`h-8 w-8 ${privateMode ? "text-primary" : "text-muted-foreground"}`}
+              title={privateMode ? t("browser.privateModeOn") : t("browser.privateModeOff")}
+              aria-label={privateMode ? t("browser.privateModeOn") : t("browser.privateModeOff")}
+            >
+              <VenetianMask className="h-4 w-4" />
+            </Button>
             <Button
               variant="ghost" size="icon"
               onClick={() => setAdBlockEnabled(!adBlockEnabled)}

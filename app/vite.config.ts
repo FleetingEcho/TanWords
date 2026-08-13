@@ -81,7 +81,15 @@ export default defineConfig({
     outDir: "out/renderer",
     emptyOutDir: true,
     rollupOptions: {
-      input: path.resolve(import.meta.dirname, "index.html"),
+      // Multi-page build: the floating-browser popout window is a second,
+      // small standalone page (own bootstrap, no app shell/router) served
+      // over the same app:// scheme — protocol.ts already resolves arbitrary
+      // pathnames under out/renderer, so no main-process change was needed
+      // for a second entry to be reachable.
+      input: {
+        main: path.resolve(import.meta.dirname, "index.html"),
+        floatingBrowser: path.resolve(import.meta.dirname, "floating-browser.html"),
+      },
     },
     chunkSizeWarningLimit: 1600,
   },

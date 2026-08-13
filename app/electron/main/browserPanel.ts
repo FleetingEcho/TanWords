@@ -23,16 +23,22 @@ export type PanelBounds = { x: number; y: number; width: number; height: number 
  *  never mix with the app UI's storage — and "clear browser data" must not be
  *  able to wipe the shell's localStorage (theme cache, UI prefs), which an
  *  unfiltered clearStorageData() on the shared session used to do. */
-const PANEL_PARTITION = "persist:browser-panel";
+export const PANEL_PARTITION = "persist:browser-panel";
+/** Private browsing's session — deliberately with no `persist:` prefix, which
+ *  makes Electron treat it as in-memory only: nothing here ever touches
+ *  disk, and it's gone on app restart. Shared by both managers (see index.ts)
+ *  for the same reason PANEL_PARTITION is — one private session across the
+ *  full-page Browser and the floating overlay, not two separate ones. */
+export const PRIVATE_PARTITION = "browser-panel-private";
 
 /** Arbitrary remote content must not acquire permissions the app itself
  *  never asks for (notifications, media devices, …). Deny by default, on the
  *  panel's session only — the app shell is untouched. */
-function hardenPanelSession() {
-  const ses = session.fromPartition(PANEL_PARTITION);
+function hardenPanelSession(partition: string) {
+  const ses = session.fromPartition(partition);
   ses.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
   ses.setPermissionCheckHandler(() => false);
-  normalizePanelIdentity(ses);
+  normalizePanelIdentity(ses, partition);
 }
 
 /** Electron's default User-Agent is Chrome's, plus two extra product tokens:
@@ -64,28 +70,85 @@ export function chromeUserAgent(): string {
     .replace(/ [^ /]+\/\d[^ ]* (?=Chrome\/)/, " ");
 }
 
-let identityNormalized = false;
-function normalizePanelIdentity(ses: Session) {
-  if (identityNormalized) return;
-  identityNormalized = true;
+/** Android Chrome UA for the floating/mobile overlay's tabs — built from the
+ *  same Chrome major version as `chromeUserAgent()` so the two never drift
+ *  apart on an Electron upgrade. A Pixel profile is used (rather than an
+ *  iPhone one) because its UA string is Chromium-only — no Safari/WebKit
+ *  version to keep separately in sync. */
+export function mobileUserAgent(): string {
+  const major = (process.versions.chrome ?? "").split(".")[0] || "0";
+  return `Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Mobile Safari/537.36`;
+}
+
+/** Client-hint pair for a mobile identity — `Sec-CH-UA-Mobile`/`Sec-CH-UA-
+ *  Platform`, rewritten alongside `Sec-CH-UA` (which is brand+version only
+ *  and identical between desktop and mobile) for tracked tabs. */
+const SEC_CH_UA_MOBILE = "?1";
+const SEC_CH_UA_PLATFORM_MOBILE = '"Android"';
+
+/** Tabs running under `enableMobileEmulation` — the floating/mobile overlay
+ *  shares its session partition with the full-page (desktop) Browser (see
+ *  `PanelSessionState`'s doc), so identity can't be forced at the session
+ *  level the way `normalizePanelIdentity` does for desktop: that would flip
+ *  the full-page Browser to a mobile UA too. Tracked per-`WebContents`
+ *  instead, so `normalizePanelIdentity`'s header rewrite can branch per tab.
+ *
+ *  This used to be done through the CDP `Emulation` domain (what Chrome
+ *  DevTools' own device toolbar uses), which covers more ground —
+ *  `navigator.userAgentData` in JS, not just headers — but attaching
+ *  `webContents.debugger` at all turned out to cost more than it bought:
+ *  Google's own sites are the most aggressive on the web about detecting an
+ *  attached debugger and served a blank page instead of a mobile one, and
+ *  closing a tab while a CDP session was still attached to it crashed the
+ *  app outright. Plain header rewriting doesn't have either problem, at the
+ *  cost of `navigator.userAgentData` still reading as the real desktop
+ *  platform in JS — immaterial here since content negotiation is a
+ *  server-side, header-driven decision. */
+const mobileWebContents = new WeakSet<WebContents>();
+
+/** Keyed by partition: two independent panel sessions (the full-page browser
+ *  and the floating overlay) each need their own UA/Sec-CH-UA hardening pass. */
+const identityNormalizedPartitions = new Set<string>();
+function normalizePanelIdentity(ses: Session, partition: string) {
+  if (identityNormalizedPartitions.has(partition)) return;
+  identityNormalizedPartitions.add(partition);
   // Resolved here rather than at import: `userAgentFallback` reflects the app
   // name, which is only final once main has configured the app object.
   const CHROME_UA = chromeUserAgent();
+  const MOBILE_UA = mobileUserAgent();
   const SEC_CH_UA = secChUa();
   ses.setUserAgent(CHROME_UA);
   // Separate from the ad-block listener on purpose: this is not part of
   // blocking and must survive `disableAdBlock()`, which drops *all*
   // onBeforeRequest listeners on this session.
   ses.webRequest.onBeforeSendHeaders({ urls: ["<all_urls>"] }, (details, callback) => {
+    const isMobile = !!details.webContents && mobileWebContents.has(details.webContents);
     const headers = details.requestHeaders;
-    headers["User-Agent"] = CHROME_UA;
-    // Only rewrite the hint when Chromium already chose to send it — adding
-    // it where Chromium withheld it (non-secure origins) would be its own
+    headers["User-Agent"] = isMobile ? MOBILE_UA : CHROME_UA;
+    // Only rewrite a hint when Chromium already chose to send it — adding one
+    // where Chromium withheld it (non-secure origins) would be its own
     // anomaly.
     if (headers["sec-ch-ua"] !== undefined) headers["sec-ch-ua"] = SEC_CH_UA;
     if (headers["Sec-CH-UA"] !== undefined) headers["Sec-CH-UA"] = SEC_CH_UA;
+    if (isMobile) {
+      if (headers["sec-ch-ua-mobile"] !== undefined) headers["sec-ch-ua-mobile"] = SEC_CH_UA_MOBILE;
+      if (headers["Sec-CH-UA-Mobile"] !== undefined) headers["Sec-CH-UA-Mobile"] = SEC_CH_UA_MOBILE;
+      if (headers["sec-ch-ua-platform"] !== undefined) headers["sec-ch-ua-platform"] = SEC_CH_UA_PLATFORM_MOBILE;
+      if (headers["Sec-CH-UA-Platform"] !== undefined) headers["Sec-CH-UA-Platform"] = SEC_CH_UA_PLATFORM_MOBILE;
+    }
     callback({ requestHeaders: headers });
   });
+}
+
+/** Makes one tab's `WebContents` identify as a phone — see `mobileWebContents`'s
+ *  doc for why this is header rewriting rather than CDP emulation. Setting
+ *  the per-`WebContents` UA (in addition to the session-level header rewrite
+ *  above) keeps `navigator.userAgent` in the page's own JS consistent with
+ *  what went out on the wire. Synchronous and immediate — unlike the old CDP
+ *  version, there's no async setup a navigation could race ahead of. */
+function enableMobileEmulation(wc: WebContents): void {
+  mobileWebContents.add(wc);
+  wc.setUserAgent(mobileUserAgent());
 }
 
 /** Ad/tracker blocking for the panel session. The matching engine lives in
@@ -95,8 +158,8 @@ function normalizePanelIdentity(ses: Session) {
  *  to block each subresource. Cosmetic hiding is a separate path — see
  *  `registerCosmeticPreload`. Fails open with a short timeout + an LRU cache,
  *  so a slow/down sidecar never stalls a page. */
-function panelSession() {
-  return session.fromPartition(PANEL_PARTITION);
+function panelSession(partition: string) {
+  return session.fromPartition(partition);
 }
 
 type TabRecord = {
@@ -110,6 +173,10 @@ type TabRecord = {
   atHome: boolean;
   /** Monotonic counter, bumped on activation — drives LRU discard. */
   usedAt: number;
+  /** Fixed at creation from the manager's privateMode flag at that moment —
+   *  toggling private mode later never changes an already-open tab's
+   *  session, only which session *new* tabs get. */
+  partition: string;
 };
 
 /** How many tabs keep a live renderer process. Every WebContentsView is a
@@ -278,7 +345,325 @@ function buildCosmeticInjectionJs(c: { stylesheet: string; script: string }): st
   return parts.join("\n");
 }
 
+/** Ad-block/cosmetics state that must be shared by every manager instance
+ *  running on the same session partition — the full-page Browser and the
+ *  floating overlay now (deliberately) share `PANEL_PARTITION` so a login on
+ *  one carries over to the other, but Electron's `webRequest.onBeforeRequest`
+ *  only accepts ONE handler per session: if this stayed per-instance, the
+ *  second manager's `enableAdBlock()`/`disableAdBlock()` would silently
+ *  clobber the first's listener. Keying by partition instead of by instance
+ *  makes registration (and the toggle) naturally idempotent/shared. */
+interface PanelSessionState {
+  /** Defaults on; the renderer pushes the persisted preference
+   *  (`browser_set_adblock_enabled`) once its settings hydrate. */
+  adBlockEnabled: boolean;
+  adBlockRegistered: boolean;
+  cosmeticPreloadId: string | null;
+  /** Returns the sidecar's localhost port + session token. Set from
+   *  index.ts once the SidecarSupervisor is created. */
+  getBackend: (() => Promise<{ port: number; token: string }>) | null;
+  /** Cap on the per-URL decision cache. Ad beacons repeat across a session;
+   *  caching avoids a roundtrip per repeat. */
+  adBlockCache: Map<string, { block: boolean; redirect?: string }>;
+  /** Per-URL cosmetic resources (CSS selectors + injected script), prewarmed
+   *  at navigation start so the preload's sync IPC never blocks on a sidecar
+   *  roundtrip. */
+  cosmeticsCache: Map<string, { stylesheet: string; script: string }>;
+  /** Session-only visited-page log, shared across every manager on this
+   *  partition for the same reason the rest of this state is partition-keyed
+   *  — a visit in the floating overlay belongs to the same browsing history
+   *  as one in the full-page Browser. Not persisted: cleared on app restart
+   *  by construction (nothing writes it to disk), and `clearHistory()` wipes
+   *  it on demand. Oldest-first; `getHistory()` reverses for display. */
+  history: HistoryEntry[];
+}
+export interface HistoryEntry {
+  url: string;
+  title: string;
+  visitedAt: number;
+}
+/** Cap on the history log — a long session shouldn't grow this unboundedly. */
+const MAX_HISTORY = 500;
+const panelSessionStates = new Map<string, PanelSessionState>();
+/** Exported for browserPanel.test.ts, which needs to seed/inspect a specific
+ *  partition's state directly — not part of the manager's public API. */
+export function stateFor(partition: string): PanelSessionState {
+  let s = panelSessionStates.get(partition);
+  if (!s) {
+    s = {
+      adBlockEnabled: true,
+      adBlockRegistered: false,
+      cosmeticPreloadId: null,
+      getBackend: null,
+      adBlockCache: new Map(),
+      cosmeticsCache: new Map(),
+      history: [],
+    };
+    panelSessionStates.set(partition, s);
+  }
+  return s;
+}
+const ADBLOCK_CACHE_MAX = 2000;
+const ADBLOCK_TIMEOUT_MS = 800;
+const COSMETICS_CACHE_MAX = 500;
+
+/** Which partition a given tab's WebContents belongs to — populated in
+ *  `buildView()`. Lets the shared `adblock:cosmetics` sync channel (one
+ *  `ipcMain.on` handler, fed by every manager's cosmetic preload) resolve the
+ *  right partition's state without needing to know which manager instance
+ *  the WebContents came from. */
+const webContentsPartition = new WeakMap<WebContents, string>();
+
+/** Answers the cosmetic preload's sync `adblock:cosmetics` query for
+ *  whichever WebContents sent it — see `registerCosmeticPreload`'s doc for
+ *  why this has to run in the isolated-preload/main-world-injection shape it
+ *  does. Exported for `ipc.ts`'s single shared `ipcMain.on` handler. */
+export function cosmeticsForWebContents(wc: WebContents, url: string): { stylesheet: string; script: string } {
+  const partition = webContentsPartition.get(wc);
+  if (!partition) return { stylesheet: "", script: "" };
+  return cosmeticsFor(partition, url, wc);
+}
+
+/** Same as `cosmeticsForWebContents`, but with the partition given directly
+ *  rather than resolved from a real tab's WebContents — what
+ *  `cosmeticsForWebContents` delegates to, and what browserPanel.test.ts
+ *  exercises directly with mock WebContents objects. */
+export function cosmeticsFor(partition: string, url: string, wc: WebContents): { stylesheet: string; script: string } {
+  const state = stateFor(partition);
+  if (!state.adBlockEnabled) return { stylesheet: "", script: "" };
+  // Scriptlets (`json-prune`/`set-constant`, per this module's CSP-stripping
+  // doc) are written and tested against `www.youtube.com`'s desktop player.
+  // Spoofing a mobile UA (see `enableMobileEmulation`) routes YouTube to the
+  // entirely different `m.youtube.com` codebase, where the same scriptlet
+  // patched the wrong target and recursed into itself (`Uncaught RangeError:
+  // Maximum call stack size exceeded` in an injected scriptlet, reported from
+  // the floating overlay specifically) — blanking the page. CSS-based
+  // cosmetic hiding is unaffected by codebase differences (just selectors),
+  // so only scriptlets are dropped for mobile tabs, not the whole feature.
+  const stripScript = mobileWebContents.has(wc);
+  const hit = state.cosmeticsCache.get(url);
+  if (hit) return stripScript ? { stylesheet: hit.stylesheet, script: "" } : hit;
+  void fetchCosmetics(partition, url).then((c) => {
+    if (!c) return;
+    // Re-check the toggle: this resolves a sidecar roundtrip later, and the
+    // user may have switched blocking off in between. Without this the late
+    // injection still fires, and it refills the cache `disableAdBlock` had
+    // just cleared.
+    if (!state.adBlockEnabled) return;
+    rememberCosmetics(state, url, c);
+    // The preload already ran and found nothing; a late executeJavaScript
+    // injection still hides elements (CSS), and scriptlets are best-effort.
+    const js = buildCosmeticInjectionJs(stripScript ? { stylesheet: c.stylesheet, script: "" } : c);
+    if (!js) return;
+    // The tab may have been closed or LRU-discarded during the roundtrip.
+    // Calling into a destroyed WebContents throws *synchronously*, so the
+    // trailing .catch() would never be attached and it would surface as an
+    // unhandled rejection in main rather than being swallowed here.
+    try {
+      if (wc.isDestroyed()) return;
+      void wc.executeJavaScript(js, true).catch(() => {});
+    } catch {
+      // Destroyed between the check and the call.
+    }
+  });
+  return { stylesheet: "", script: "" };
+}
+
+async function fetchCosmetics(partition: string, url: string): Promise<{ stylesheet: string; script: string } | null> {
+  const state = stateFor(partition);
+  if (!state.getBackend) return null;
+  try {
+    const { port, token } = await state.getBackend();
+    const res = await fetch(`http://127.0.0.1:${port}/invoke/adblock_cosmetics`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ url }),
+    });
+    if (!res.ok) return null;
+    const j = (await res.json()) as { stylesheet?: string; script?: string };
+    return { stylesheet: j.stylesheet ?? "", script: j.script ?? "" };
+  } catch {
+    return null;
+  }
+}
+
+function recordHistory(state: PanelSessionState, url: string): void {
+  if (!url || url === "about:blank") return;
+  state.history.push({ url, title: "", visitedAt: Date.now() });
+  if (state.history.length > MAX_HISTORY) state.history.splice(0, state.history.length - MAX_HISTORY);
+}
+
+function updateHistoryTitle(state: PanelSessionState, url: string, title: string): void {
+  for (let i = state.history.length - 1; i >= 0; i--) {
+    if (state.history[i].url === url) {
+      state.history[i].title = title;
+      return;
+    }
+  }
+}
+
+function rememberCosmetics(state: PanelSessionState, url: string, c: { stylesheet: string; script: string }) {
+  if (state.cosmeticsCache.size >= COSMETICS_CACHE_MAX) {
+    const oldest = state.cosmeticsCache.keys().next().value;
+    if (oldest) state.cosmeticsCache.delete(oldest);
+  }
+  state.cosmeticsCache.set(url, c);
+}
+
+/** Ad-block/cosmetics/session-hardening helpers below are module-level
+ *  functions parametrized by partition — not manager instance methods —
+ *  because private browsing means a *single* manager instance now has tabs
+ *  spanning two different partitions (its normal one and PRIVATE_PARTITION),
+ *  and every one of these operates on partition-scoped state (PanelSessionState)
+ *  regardless of which manager/tab triggered it. */
+
+async function askSidecar(partition: string, url: string, sourceUrl: string, resourceType: string): Promise<{ block: boolean; redirect?: string } | null> {
+  const state = stateFor(partition);
+  if (!state.getBackend) return null;
+  try {
+    const { port, token } = await state.getBackend();
+    const res = await fetch(`http://127.0.0.1:${port}/invoke/adblock_check`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ url, sourceUrl: sourceUrl || "", resourceType: resourceType || "other" }),
+    });
+    if (!res.ok) return null;
+    const j = (await res.json()) as { block?: boolean; redirect?: string | null };
+    return { block: !!j.block, redirect: j.redirect ?? undefined };
+  } catch {
+    return null;
+  }
+}
+
+function rememberDecision(state: PanelSessionState, key: string, dec: { block: boolean; redirect?: string }) {
+  if (state.adBlockCache.size >= ADBLOCK_CACHE_MAX) {
+    const oldest = state.adBlockCache.keys().next().value;
+    if (oldest) state.adBlockCache.delete(oldest);
+  }
+  state.adBlockCache.set(key, dec);
+}
+
+/** Writes the cosmetic-injection preload to userData and registers it on the
+ *  given partition's session — see the class's old doc (moved here) for why
+ *  the preload has to work the way it does. */
+async function registerCosmeticPreload(partition: string): Promise<void> {
+  const state = stateFor(partition);
+  if (state.cosmeticPreloadId) return;
+  // `setBackendGetter` (index.ts) calls this at module top-level, before
+  // `app.whenReady()` — both `app.getPath` and `session.fromPartition` throw
+  // if the app isn't ready yet. Waiting here (a no-op once already ready)
+  // means every caller gets a working registration on the first try instead
+  // of silently failing and relying on a later `enableAdBlock()` call (the
+  // first real tab's) to retry it.
+  await app.whenReady();
+  const preloadPath = path.join(app.getPath("userData"), "adblock-preload.cjs");
+  try {
+    await fs.writeFile(preloadPath, COSMETIC_PRELOAD_SOURCE, "utf-8");
+    const id = panelSession(partition).registerPreloadScript({ type: "frame", filePath: preloadPath });
+    state.cosmeticPreloadId = id;
+  } catch (e) {
+    console.warn("[browser] cosmetic preload registration failed:", e);
+  }
+}
+
+/** Exported for browserPanel.test.ts, which drives ad-block decisions
+ *  directly against a stub session rather than through a manager instance —
+ *  not part of the public module API otherwise. */
+export async function enableAdBlock(partition: string): Promise<void> {
+  const state = stateFor(partition);
+  if (state.adBlockRegistered) return;
+  if (!state.adBlockEnabled || !state.getBackend) return;
+  void registerCosmeticPreload(partition);
+  const ses = panelSession(partition);
+  ses.webRequest.onHeadersReceived({ urls: ["<all_urls>"] }, (details, callback) => {
+    if (!state.adBlockEnabled || details.resourceType !== "mainFrame") { callback({}); return; }
+    const headers = details.responseHeaders;
+    if (!headers) { callback({}); return; }
+    let touched = false;
+    for (const name of Object.keys(headers)) {
+      if (name.toLowerCase() !== "content-security-policy") continue;
+      const values = headers[name];
+      if (!Array.isArray(values)) continue;
+      headers[name] = values.map((v) => stripTrustedTypes(v));
+      touched = true;
+    }
+    callback(touched ? { responseHeaders: headers } : {});
+  });
+  ses.webRequest.onBeforeRequest({ urls: ["<all_urls>"] }, (details, callback) => {
+    // Never block a top-level document load — that would blank the tab.
+    if (details.resourceType === "mainFrame") { callback({}); return; }
+    if (!state.adBlockEnabled) { callback({}); return; }
+
+    const url = details.url;
+    const sourceUrl = documentUrlFor(details);
+    const key = `${details.resourceType}|${sourceOriginOf(sourceUrl)}|${url}`;
+    const cached = state.adBlockCache.get(key);
+    if (cached) {
+      if (cached.redirect) callback({ redirectURL: cached.redirect });
+      else if (cached.block) callback({ cancel: true });
+      else callback({});
+      return;
+    }
+
+    let settled = false;
+    const settle = (dec: { block: boolean; redirect?: string } | null) => {
+      if (settled) return;
+      settled = true;
+      if (dec) rememberDecision(state, key, dec);
+      if (dec?.redirect) callback({ redirectURL: dec.redirect });
+      else if (dec?.block) callback({ cancel: true });
+      else callback({});
+    };
+    // Fail-open after a short timeout: a blocker must never stall a page.
+    const timer = setTimeout(() => settle(null), ADBLOCK_TIMEOUT_MS);
+    askSidecar(partition, url, sourceUrl, details.resourceType)
+      .then((dec) => { clearTimeout(timer); settle(dec); })
+      .catch(() => { clearTimeout(timer); settle(null); });
+  });
+  state.adBlockRegistered = true;
+}
+
+function disableAdBlock(partition: string): void {
+  const state = stateFor(partition);
+  // Drop the cosmetics prewarm cache first, unconditionally — the listener
+  // below may never have been registered (e.g. a toggle before the first
+  // enable landed), but stale cosmetics must not survive a re-enable.
+  state.cosmeticsCache.clear();
+  if (!state.adBlockRegistered) return;
+  // onBeforeRequest(null) removes *all* listeners for that event on the
+  // session — fine here, the panel session has no other onBeforeRequest
+  // listener (the app shell's youtubeEmbed handler is on defaultSession).
+  panelSession(partition).webRequest.onBeforeRequest(null);
+  panelSession(partition).webRequest.onHeadersReceived(null);
+  state.adBlockRegistered = false;
+  if (state.cosmeticPreloadId) {
+    try { panelSession(partition).unregisterPreloadScript(state.cosmeticPreloadId); } catch {}
+    state.cosmeticPreloadId = null;
+  }
+}
+
+/** Prewarm cosmetics for an about-to-load URL so the preload's sync IPC
+ *  (which must never block) finds a hit. Fires on main-frame navigations. */
+function prewarmCosmetics(partition: string, url: string): void {
+  const state = stateFor(partition);
+  if (!state.adBlockEnabled || state.cosmeticsCache.has(url)) return;
+  void fetchCosmetics(partition, url).then((c) => {
+    if (c) rememberCosmetics(state, url, c);
+  });
+}
+
 export class BrowserPanelManager {
+  /** Separate instances run fully independent tab sets — used for the
+   *  full-page Browser (`persist:browser-panel`, id prefix `panel`) and the
+   *  floating mobile-browser overlay (id prefix `floating`). They now
+   *  deliberately share the same session partition (see index.ts) so a login
+   *  in one carries over to the other; only the tab lists/native views stay
+   *  independent. */
+  constructor(
+    private partition: string = PANEL_PARTITION,
+    private idPrefix: string = "panel",
+  ) {}
+
   private win: BrowserWindow | null = null;
   private tabs = new Map<string, TabRecord>();
   private activeId: string | null = null;
@@ -288,254 +673,80 @@ export class BrowserPanelManager {
   private useSeq = 1;
   private onEvent: ((name: string, payload: unknown) => void) | null = null;
   private lastInputEmit = 0;
+  /** Whole-manager toggle — set from `setPrivateMode`, read only at tab
+   *  creation. See `TabRecord.partition`'s doc: this never touches
+   *  already-open tabs. */
+  private privateMode = false;
 
-  /** Ad/tracker blocking, scoped to the panel session. Defaults on; the
-   *  renderer pushes the persisted preference (browser_set_adblock_enabled)
-   *  once its settings hydrate. The matching engine lives in the Rust
-   *  `tanwords` core sidecar (`adblock_check` RPC); this main process only
-   *  intercepts requests (an Electron-only API the sidecar can't reach) and
-   *  asks the sidecar whether to block each subresource. Fail-open with a
-   *  short timeout + an LRU cache, so a slow/down sidecar never stalls a page. */
-  private adBlockEnabled = true;
-  private adBlockRegistered = false;
-  private cosmeticPreloadId: string | null = null;
-  /** Returns the sidecar's localhost port + session token. Set from
-   *  index.ts once the SidecarSupervisor is created. */
-  private getBackend: (() => Promise<{ port: number; token: string }>) | null = null;
-  /** Cap on the per-URL decision cache. Ad beacons repeat across a session;
-   *  caching avoids a roundtrip per repeat. */
-  private adBlockCache = new Map<string, { block: boolean; redirect?: string }>();
-  private static ADBLOCK_CACHE_MAX = 2000;
-  private static ADBLOCK_TIMEOUT_MS = 800;
-  /** Per-URL cosmetic resources (CSS selectors + injected script), prewarmed
-   *  at navigation start so the preload's sync IPC never blocks on a sidecar
-   *  roundtrip. */
-  private cosmeticsCache = new Map<string, { stylesheet: string; script: string }>();
-  private static COSMETICS_CACHE_MAX = 500;
+  /** This manager's slice of the (partition-keyed, possibly shared) ad-block
+   *  state — see `PanelSessionState`'s doc for why this is shared rather than
+   *  a plain instance field. Always this manager's *normal* partition —
+   *  history in particular must resolve here even while privateMode is on,
+   *  since `getHistory`/`clearHistory` (below) must never see private tabs. */
+  private get state(): PanelSessionState {
+    return stateFor(this.partition);
+  }
+
+  setPrivateMode(on: boolean): void {
+    this.privateMode = on;
+  }
+
+  isPrivateMode(): boolean {
+    return this.privateMode;
+  }
 
   setBackendGetter(fn: () => Promise<{ port: number; token: string }>) {
-    this.getBackend = fn;
+    // Both partitions need it — the sidecar RPC itself isn't privacy-
+    // sensitive, it's just how either session reaches the ad-block engine.
+    stateFor(this.partition).getBackend = fn;
+    stateFor(PRIVATE_PARTITION).getBackend = fn;
     // Register the cosmetic preload at startup (before any WebContentsView is
     // created) so every view gets it. registerPreloadScript applies only to
     // newly-created webContents, so registering here — at app init — means the
     // first tab isn't missed.
-    void this.registerCosmeticPreload();
+    void registerCosmeticPreload(this.partition);
+    void registerCosmeticPreload(PRIVATE_PARTITION);
   }
 
   setAdBlockEnabled(enabled: boolean): void {
-    this.adBlockEnabled = enabled;
-    if (enabled) void this.enableAdBlock();
-    else this.disableAdBlock();
-  }
-
-  private async askSidecar(url: string, sourceUrl: string, resourceType: string): Promise<{ block: boolean; redirect?: string } | null> {
-    if (!this.getBackend) return null;
-    try {
-      const { port, token } = await this.getBackend();
-      const res = await fetch(`http://127.0.0.1:${port}/invoke/adblock_check`, {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-        body: JSON.stringify({ url, sourceUrl: sourceUrl || "", resourceType: resourceType || "other" }),
-      });
-      if (!res.ok) return null;
-      const j = (await res.json()) as { block?: boolean; redirect?: string | null };
-      return { block: !!j.block, redirect: j.redirect ?? undefined };
-    } catch {
-      return null;
-    }
-  }
-
-  private rememberDecision(key: string, dec: { block: boolean; redirect?: string }) {
-    if (this.adBlockCache.size >= BrowserPanelManager.ADBLOCK_CACHE_MAX) {
-      // Evict the oldest entry (Map preserves insertion order).
-      const oldest = this.adBlockCache.keys().next().value;
-      if (oldest) this.adBlockCache.delete(oldest);
-    }
-    this.adBlockCache.set(key, dec);
-  }
-
-  private async enableAdBlock(): Promise<void> {
-    if (this.adBlockRegistered) return;
-    if (!this.adBlockEnabled || !this.getBackend) return;
-    void this.registerCosmeticPreload();
-    const ses = panelSession();
-    ses.webRequest.onHeadersReceived({ urls: ["<all_urls>"] }, (details, callback) => {
-      if (!this.adBlockEnabled || details.resourceType !== "mainFrame") { callback({}); return; }
-      const headers = details.responseHeaders;
-      if (!headers) { callback({}); return; }
-      let touched = false;
-      for (const name of Object.keys(headers)) {
-        if (name.toLowerCase() !== "content-security-policy") continue;
-        const values = headers[name];
-        if (!Array.isArray(values)) continue;
-        headers[name] = values.map((v) => stripTrustedTypes(v));
-        touched = true;
-      }
-      callback(touched ? { responseHeaders: headers } : {});
-    });
-    ses.webRequest.onBeforeRequest({ urls: ["<all_urls>"] }, (details, callback) => {
-      // Never block a top-level document load — that would blank the tab.
-      if (details.resourceType === "mainFrame") { callback({}); return; }
-      if (!this.adBlockEnabled) { callback({}); return; }
-
-      const url = details.url;
-      const sourceUrl = documentUrlFor(details);
-      // The engine's answer is a function of all three inputs, not the URL
-      // alone: the same script is third-party on one page and first-party on
-      // another, and `$domain=`/`$third-party` rules turn on exactly that.
-      // Keying on the URL alone let the first page to request a resource
-      // decide it for every other page in the session.
-      const key = `${details.resourceType}|${sourceOriginOf(sourceUrl)}|${url}`;
-      const cached = this.adBlockCache.get(key);
-      if (cached) {
-        if (cached.redirect) callback({ redirectURL: cached.redirect });
-        else if (cached.block) callback({ cancel: true });
-        else callback({});
-        return;
-      }
-
-      let settled = false;
-      const settle = (dec: { block: boolean; redirect?: string } | null) => {
-        if (settled) return;
-        settled = true;
-        if (dec) this.rememberDecision(key, dec);
-        if (dec?.redirect) callback({ redirectURL: dec.redirect });
-        else if (dec?.block) callback({ cancel: true });
-        else callback({});
-      };
-      // Fail-open after a short timeout: a blocker must never stall a page.
-      const timer = setTimeout(() => settle(null), BrowserPanelManager.ADBLOCK_TIMEOUT_MS);
-      this.askSidecar(url, sourceUrl, details.resourceType)
-        .then((dec) => { clearTimeout(timer); settle(dec); })
-        .catch(() => { clearTimeout(timer); settle(null); });
-    });
-    this.adBlockRegistered = true;
-  }
-
-  private disableAdBlock(): void {
-    // Drop the cosmetics prewarm cache first, unconditionally — the listener
-    // below may never have been registered (e.g. a toggle before the first
-    // enable landed), but stale cosmetics must not survive a re-enable.
-    this.cosmeticsCache.clear();
-    if (!this.adBlockRegistered) return;
-    // onBeforeRequest(null) removes *all* listeners for that event on the
-    // session — fine here, the panel session has no other onBeforeRequest
-    // listener (the app shell's youtubeEmbed handler is on defaultSession).
-    panelSession().webRequest.onBeforeRequest(null);
-    // Same for the CSP pass: with blocking off there are no scriptlets to
-    // inject, so the site's Trusted Types enforcement goes straight back.
-    panelSession().webRequest.onHeadersReceived(null);
-    this.adBlockRegistered = false;
-    // Remove the cosmetic preload so newly-built tabs don't get it.
-    if (this.cosmeticPreloadId) {
-      try { panelSession().unregisterPreloadScript(this.cosmeticPreloadId); } catch {}
-      this.cosmeticPreloadId = null;
-    }
-  }
-
-  /** Answer the preload's sync `adblock:cosmetics` query from the prewarmed
-   *  cache. Never blocks on the sidecar: a miss returns empty immediately
-   *  (fail-open) and kicks off an async fetch + late injection. */
-  cosmeticsForSync(url: string, wc: WebContents): { stylesheet: string; script: string } {
-    if (!this.adBlockEnabled) return { stylesheet: "", script: "" };
-    const hit = this.cosmeticsCache.get(url);
-    if (hit) return hit;
-    void this.fetchCosmetics(url).then((c) => {
-      if (!c) return;
-      // Re-check the toggle: this resolves a sidecar roundtrip later, and the
-      // user may have switched blocking off in between. Without this the late
-      // injection still fires, and it refills the cache `disableAdBlock` had
-      // just cleared.
-      if (!this.adBlockEnabled) return;
-      this.rememberCosmetics(url, c);
-      // The preload already ran and found nothing; a late executeJavaScript
-      // injection still hides elements (CSS), and scriptlets are best-effort.
-      const js = buildCosmeticInjectionJs(c);
-      if (!js) return;
-      // The tab may have been closed or LRU-discarded during the roundtrip.
-      // Calling into a destroyed WebContents throws *synchronously*, so the
-      // trailing .catch() would never be attached and it would surface as an
-      // unhandled rejection in main rather than being swallowed here.
-      try {
-        if (wc.isDestroyed()) return;
-        void wc.executeJavaScript(js, true).catch(() => {});
-      } catch {
-        // Destroyed between the check and the call.
-      }
-    });
-    return { stylesheet: "", script: "" };
-  }
-
-  private async fetchCosmetics(url: string): Promise<{ stylesheet: string; script: string } | null> {
-    if (!this.getBackend) return null;
-    try {
-      const { port, token } = await this.getBackend();
-      const res = await fetch(`http://127.0.0.1:${port}/invoke/adblock_cosmetics`, {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-        body: JSON.stringify({ url }),
-      });
-      if (!res.ok) return null;
-      const j = (await res.json()) as { stylesheet?: string; script?: string };
-      return { stylesheet: j.stylesheet ?? "", script: j.script ?? "" };
-    } catch {
-      return null;
-    }
-  }
-
-  private rememberCosmetics(url: string, c: { stylesheet: string; script: string }) {
-    if (this.cosmeticsCache.size >= BrowserPanelManager.COSMETICS_CACHE_MAX) {
-      const oldest = this.cosmeticsCache.keys().next().value;
-      if (oldest) this.cosmeticsCache.delete(oldest);
-    }
-    this.cosmeticsCache.set(url, c);
-  }
-
-  /** Prewarm cosmetics for an about-to-load URL so the preload's sync IPC
-   *  (which must never block) finds a hit. Fires on main-frame navigations. */
-  private prewarmCosmetics(url: string): void {
-    if (!this.adBlockEnabled || this.cosmeticsCache.has(url)) return;
-    void this.fetchCosmetics(url).then((c) => {
-      if (c) this.rememberCosmetics(url, c);
-    });
-  }
-
-  /** Writes the cosmetic-injection preload to userData and registers it on
-   *  the panel session.
-   *
-   *  CRITICAL: the panel's WebContentsView has `contextIsolation: true` +
-   *  `sandbox: true`, so the preload runs in an ISOLATED world — its `window`
-   *  is NOT the page's `window`. Directly modifying `JSON.parse` or defining
-   *  properties on `window` would only affect the isolated world.
-   *
-   *  The fix: the preload asks main for the engine's cosmetics (sendSync —
-   *  answered from a prewarmed cache, never a sidecar roundtrip), then
-   *  creates a `<style>` (CSS is DOM-shared, applies in every world) and a
-   *  `<script>` element whose `textContent` carries the injected script. The
-   *  script element's code runs in the PAGE's MAIN world, where YouTube's
-   *  scripts live — the standard "main-world injection from an isolated
-   *  preload" pattern, executing at document-start before page scripts.
-   *
-   *  Top frame only: subframe cosmetics are a separate concern (uBO injects
-   *  per-frame), and per-frame sync IPC would get chatty. Ad iframes are
-   *  usually network-blocked anyway.
-   *
-   *  Writing to disk is required because `registerPreloadScript` takes a file
-   *  path, and the packaged app excludes node_modules. */
-  private async registerCosmeticPreload(): Promise<void> {
-    if (this.cosmeticPreloadId) return;
-    const preloadPath = path.join(app.getPath("userData"), "adblock-preload.cjs");
-    try {
-      await fs.writeFile(preloadPath, COSMETIC_PRELOAD_SOURCE, "utf-8");
-      const id = panelSession().registerPreloadScript({ type: "frame", filePath: preloadPath });
-      this.cosmeticPreloadId = id;
-    } catch (e) {
-      console.warn("[browser] cosmetic preload registration failed:", e);
+    for (const partition of [this.partition, PRIVATE_PARTITION]) {
+      stateFor(partition).adBlockEnabled = enabled;
+      if (enabled) void enableAdBlock(partition);
+      else disableAdBlock(partition);
     }
   }
 
   setWindow(win: BrowserWindow) {
     this.win = win;
+  }
+
+  /** Moves the currently-attached tab's native view to a different window —
+   *  the floating overlay's detach-into-its-own-window / re-dock transitions.
+   *  Only the active tab's view is ever attached to any window's contentView
+   *  (see the module doc), so there is at most one view to move; background
+   *  tabs need nothing done to them. Future `attach()`/`show()` calls target
+   *  the new window automatically once `this.win` is reassigned. */
+  reparentTo(win: BrowserWindow): void {
+    if (this.win && this.attachedId) {
+      const rec = this.tabs.get(this.attachedId);
+      if (rec?.view) this.win.contentView.removeChildView(rec.view);
+    }
+    this.win = win;
+    if (this.attachedId) {
+      const rec = this.tabs.get(this.attachedId);
+      if (rec?.view) {
+        win.contentView.addChildView(rec.view);
+        // `lastBounds` is relative to the *old* window's content area — wrong
+        // coordinate space here, and applying it could place the view
+        // anywhere from slightly off to entirely outside the new window's
+        // (possibly differently sized) client area. Fill the new window
+        // instead as a sane, always-visible default; the destination
+        // renderer's own container measurement (showAt, on mount) corrects
+        // this to the real "screen" rect moments later.
+        const content = win.getContentBounds();
+        rec.view.setBounds({ x: 0, y: 0, width: content.width, height: content.height });
+      }
+    }
   }
 
   setEventSink(sink: (name: string, payload: unknown) => void) {
@@ -547,8 +758,9 @@ export class BrowserPanelManager {
   }
 
   private createTab(): TabRecord {
-    const id = `panel-${this.nextId++}`;
-    const rec: TabRecord = { id, view: null, url: "", title: "", atHome: true, usedAt: 0 };
+    const id = `${this.idPrefix}-${this.nextId++}`;
+    const partition = this.privateMode ? PRIVATE_PARTITION : this.partition;
+    const rec: TabRecord = { id, view: null, url: "", title: "", atHome: true, usedAt: 0, partition };
     this.tabs.set(id, rec);
     this.buildView(rec);
     return rec;
@@ -556,16 +768,20 @@ export class BrowserPanelManager {
 
   /** Builds (or rebuilds, after a discard) the tab's renderer. Split out of
    *  createTab so a discarded tab can be brought back with its listeners and
-   *  handlers wired identically. */
+   *  handlers wired identically. Uses `rec.partition`, not `this.partition` —
+   *  a private tab's session must stay separate regardless of which manager
+   *  built it (see TabRecord.partition's doc). */
   private buildView(rec: TabRecord): WebContentsView {
     const id = rec.id;
-    hardenPanelSession();
+    const partition = rec.partition;
+    const isPrivate = partition === PRIVATE_PARTITION;
+    hardenPanelSession(partition);
     // Kick off ad blocking if it's on — the engine loads async, so this is a
     // fire-and-forget that registers the webRequest listener once ready.
-    if (this.adBlockEnabled) void this.enableAdBlock();
+    if (stateFor(partition).adBlockEnabled) void enableAdBlock(partition);
     const view = new WebContentsView({
       webPreferences: {
-        partition: PANEL_PARTITION,
+        partition,
         contextIsolation: true,
         sandbox: true,
         nodeIntegration: false,
@@ -578,13 +794,20 @@ export class BrowserPanelManager {
     rec.view = view;
 
     const wc = view.webContents;
+    // Lets the shared `adblock:cosmetics` sync channel resolve this tab's
+    // partition without needing to know which manager instance built it.
+    webContentsPartition.set(wc, partition);
+    // Only the floating/mobile overlay's tabs get phone emulation — the
+    // full-page Browser stays desktop, even on the same session partition
+    // (see `mobileWebContents`'s doc).
+    if (this.idPrefix === "floating") enableMobileEmulation(wc);
     // Prewarm cosmetics for the URL about to load so the preload's sync IPC
     // (which must never block on a sidecar roundtrip) finds a cache hit.
     wc.on("did-start-navigation", (_e, navUrl, _isInPlace, isMainFrame) => {
-      if (isMainFrame) this.prewarmCosmetics(navUrl);
+      if (isMainFrame) prewarmCosmetics(partition, navUrl);
     });
     wc.on("did-navigate", (_e, navUrl) => {
-      this.prewarmCosmetics(navUrl);
+      prewarmCosmetics(partition, navUrl);
     });
     // Its own inspector, not the app shell's — while the embedded page has
     // focus it is the thing you are trying to debug.
@@ -592,6 +815,11 @@ export class BrowserPanelManager {
     wc.on("did-navigate", (_e, url) => {
       rec.url = url;
       this.emit(id, "browser://navigated", url);
+      // Only top-level navigations count as a history entry — in-page
+      // navigations fire constantly on SPA-heavy sites (e.g. every video on
+      // YouTube) and would flood the log with noise a real browser wouldn't
+      // show either. Private tabs never record at all — that's the point.
+      if (!isPrivate) recordHistory(this.state, url);
     });
     wc.on("did-navigate-in-page", (_e, url) => {
       rec.url = url;
@@ -600,6 +828,9 @@ export class BrowserPanelManager {
     wc.on("page-title-updated", (_e, title) => {
       rec.title = title;
       this.emit(id, "browser://title-changed", title);
+      // The title usually lands just after did-navigate already recorded the
+      // entry with an empty title — backfill it once known.
+      if (!isPrivate) updateHistoryTitle(this.state, rec.url, title);
     });
     // An embedded page is a native child view, so anything typed or clicked in
     // it never reaches the app shell's own DOM listeners — without this, an
@@ -759,11 +990,21 @@ export class BrowserPanelManager {
   }
 
   async clearData(): Promise<void> {
-    // All views live on PANEL_PARTITION — clear that session directly. (The
-    // previous version collected sessions from *live* views, so it silently
-    // cleared nothing once tabs were discarded — and while views still
-    // shared the default session, it wiped the app shell's own storage too.)
-    await session.fromPartition(PANEL_PARTITION).clearStorageData();
+    // All views live on this instance's partition — clear that session
+    // directly. (The previous version collected sessions from *live* views,
+    // so it silently cleared nothing once tabs were discarded — and while
+    // views still shared the default session, it wiped the app shell's own
+    // storage too.)
+    await session.fromPartition(this.partition).clearStorageData();
+  }
+
+  /** Most-recent-first — the order a history UI wants to display it in. */
+  getHistory(): HistoryEntry[] {
+    return [...this.state.history].reverse();
+  }
+
+  clearHistory(): void {
+    this.state.history = [];
   }
 
   /** The window (and every child view still attached to it) is gone —

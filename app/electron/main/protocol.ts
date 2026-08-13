@@ -34,8 +34,8 @@ function rendererDir(): string {
   return path.join(app.getAppPath(), "out", "renderer");
 }
 
-export function rendererEntryUrl(): string {
-  return `${APP_SCHEME}://${APP_HOST}/index.html`;
+export function rendererEntryUrl(page: string = "index.html"): string {
+  return `${APP_SCHEME}://${APP_HOST}/${page}`;
 }
 
 export function registerAppProtocolHandler() {

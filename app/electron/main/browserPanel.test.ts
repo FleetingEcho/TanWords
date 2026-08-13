@@ -11,11 +11,12 @@ vi.mock("electron", () => ({
     userAgentFallback:
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) TanWords/1.11.2 Chrome/140.0.0.0 Electron/43.2.0 Safari/537.36",
     getPath: () => "/tmp",
+    whenReady: () => Promise.resolve(),
   },
   session: { fromPartition: (p: string) => (stub.session as { fromPartition(p: string): unknown }).fromPartition(p) },
 }));
 
-import { BrowserPanelManager, chromeUserAgent, COSMETIC_PRELOAD_SOURCE, documentUrlFor, stripTrustedTypes } from "./browserPanel";
+import { BrowserPanelManager, chromeUserAgent, cosmeticsFor, COSMETIC_PRELOAD_SOURCE, documentUrlFor, enableAdBlock, stateFor, stripTrustedTypes } from "./browserPanel";
 
 /** Drives the manager through its private state: `hide()` is only reachable
  *  once a tab is attached, and building that up through the public API would
@@ -136,15 +137,17 @@ describe("documentUrlFor", () => {
 type WebRequestListener = (details: Record<string, unknown>, cb: (r: unknown) => void) => void;
 
 describe("BrowserPanelManager ad blocking", () => {
+  // adBlockRegistered/getBackend now live in partition-keyed state shared
+  // across manager instances (see PanelSessionState) — each test needs its
+  // own partition, or the second test would find enableAdBlock() already a
+  // no-op from the first test's registration.
+  let blockingSeq = 0;
+
   /** Registers the real onBeforeRequest listener against a stub session and
    *  hands it back, so the decision path can be driven directly. */
   async function setupBlocking(sidecar: (body: unknown) => { block?: boolean; redirect?: string | null }) {
-    const manager = new BrowserPanelManager();
-    const internals = manager as unknown as {
-      getBackend: unknown;
-      enableAdBlock: () => Promise<void>;
-    };
-    internals.getBackend = async () => ({ port: 1, token: "t" });
+    const partition = `test-blocking-${++blockingSeq}`;
+    stateFor(partition).getBackend = async () => ({ port: 1, token: "t" });
 
     let listener: WebRequestListener | null = null;
     let headersListener: WebRequestListener | null = null;
@@ -165,7 +168,7 @@ describe("BrowserPanelManager ad blocking", () => {
       return { ok: true, json: async () => sidecar(body) };
     };
 
-    await internals.enableAdBlock();
+    await enableAdBlock(partition);
     const ask = (details: Record<string, unknown>) =>
       new Promise<Record<string, unknown>>((resolve) => listener!(details, resolve as (r: unknown) => void));
     const askHeaders = (details: Record<string, unknown>) =>
@@ -340,39 +343,42 @@ describe("cosmetic preload source", () => {
 });
 
 describe("BrowserPanelManager cosmetics", () => {
+  // Cosmetics state is keyed by session partition (shared across every
+  // manager instance on that partition — see PanelSessionState's doc) rather
+  // than living on the manager instance, so each test gets its own unique
+  // partition to stay isolated from the others.
+  let seq = 0;
   function setup() {
-    const manager = new BrowserPanelManager();
-    const internals = manager as unknown as {
-      cosmeticsCache: Map<string, { stylesheet: string; script: string }>;
-    };
-    internals.cosmeticsCache = new Map();
-    return { manager, internals };
+    const partition = `test-partition-${++seq}`;
+    const manager = new BrowserPanelManager(partition);
+    const state = stateFor(partition);
+    return { manager, partition, state };
   }
 
   it("serves a prewarmed cache hit synchronously without touching the sidecar", () => {
-    const { manager, internals } = setup();
+    const { partition, state } = setup();
     const wc = { executeJavaScript: vi.fn(async () => {}) };
     const cached = { stylesheet: ".ad{", script: "console.log(1)" };
-    internals.cosmeticsCache.set("https://site.test/", cached);
+    state.cosmeticsCache.set("https://site.test/", cached);
 
-    expect(manager.cosmeticsForSync("https://site.test/", wc as never)).toEqual(cached);
+    expect(cosmeticsFor(partition, "https://site.test/", wc as never)).toEqual(cached);
     expect(wc.executeJavaScript).not.toHaveBeenCalled();
   });
 
   it("fails open on a miss and fills the cache + late-injects asynchronously", async () => {
-    const { manager, internals } = setup();
+    const { partition, state } = setup();
     const wc = { executeJavaScript: vi.fn(async () => {}) };
     // No backend getter → fetchCosmetics returns null → nothing to inject.
-    expect(manager.cosmeticsForSync("https://site.test/", wc as never)).toEqual({ stylesheet: "", script: "" });
+    expect(cosmeticsFor(partition, "https://site.test/", wc as never)).toEqual({ stylesheet: "", script: "" });
     await new Promise((r) => setTimeout(r, 20));
     expect(wc.executeJavaScript).not.toHaveBeenCalled();
-    expect(internals.cosmeticsCache.size).toBe(0);
+    expect(state.cosmeticsCache.size).toBe(0);
   });
 
   it("late-injects when a miss resolves with cosmetics", async () => {
-    const { manager, internals } = setup();
+    const { partition, state } = setup();
     const wc = { executeJavaScript: vi.fn(async () => {}), isDestroyed: () => false };
-    (manager as unknown as { getBackend: unknown }).getBackend = async () => ({ port: 1, token: "t" });
+    state.getBackend = async () => ({ port: 1, token: "t" });
     const fetchMock = vi.fn(async () => ({
       ok: true,
       json: async () => ({ stylesheet: ".ad{", script: "console.log(1)" }),
@@ -380,11 +386,11 @@ describe("BrowserPanelManager cosmetics", () => {
     (globalThis as unknown as { fetch: unknown }).fetch = fetchMock;
 
     try {
-      const miss = manager.cosmeticsForSync("https://site.test/", wc as never);
+      const miss = cosmeticsFor(partition, "https://site.test/", wc as never);
       expect(miss).toEqual({ stylesheet: "", script: "" });
       await new Promise((r) => setTimeout(r, 30));
       expect(fetchMock).toHaveBeenCalledTimes(1);
-      expect(internals.cosmeticsCache.get("https://site.test/")).toEqual({ stylesheet: ".ad{", script: "console.log(1)" });
+      expect(state.cosmeticsCache.get("https://site.test/")).toEqual({ stylesheet: ".ad{", script: "console.log(1)" });
       expect(wc.executeJavaScript).toHaveBeenCalled();
     } finally {
       delete (globalThis as unknown as { fetch: unknown }).fetch;
@@ -392,35 +398,35 @@ describe("BrowserPanelManager cosmetics", () => {
   });
 
   it("does not inject a late result once blocking has been switched off", async () => {
-    const { manager, internals } = setup();
+    const { manager, partition, state } = setup();
     const wc = { executeJavaScript: vi.fn(async () => {}), isDestroyed: () => false };
-    (manager as unknown as { getBackend: unknown }).getBackend = async () => ({ port: 1, token: "t" });
-    (manager as unknown as { adBlockEnabled: boolean }).adBlockEnabled = true;
+    state.getBackend = async () => ({ port: 1, token: "t" });
+    state.adBlockEnabled = true;
     (globalThis as unknown as { fetch: unknown }).fetch = vi.fn(async () => ({
       ok: true,
       json: async () => ({ stylesheet: ".ad{", script: "console.log(1)" }),
     }));
 
     try {
-      manager.cosmeticsForSync("https://site.test/", wc as never);
+      cosmeticsFor(partition, "https://site.test/", wc as never);
       // The user toggles the shield off while the sidecar roundtrip is in flight.
       manager.setAdBlockEnabled(false);
       await new Promise((r) => setTimeout(r, 30));
       expect(wc.executeJavaScript).not.toHaveBeenCalled();
-      expect(internals.cosmeticsCache.size).toBe(0);
+      expect(state.cosmeticsCache.size).toBe(0);
     } finally {
       delete (globalThis as unknown as { fetch: unknown }).fetch;
     }
   });
 
   it("survives the tab being destroyed mid-roundtrip", async () => {
-    const { manager } = setup();
+    const { partition, state } = setup();
     const wc = {
       isDestroyed: () => true,
       executeJavaScript: () => { throw new Error("Object has been destroyed"); },
     };
-    (manager as unknown as { getBackend: unknown }).getBackend = async () => ({ port: 1, token: "t" });
-    (manager as unknown as { adBlockEnabled: boolean }).adBlockEnabled = true;
+    state.getBackend = async () => ({ port: 1, token: "t" });
+    state.adBlockEnabled = true;
     (globalThis as unknown as { fetch: unknown }).fetch = vi.fn(async () => ({
       ok: true,
       json: async () => ({ stylesheet: ".ad{", script: "console.log(1)" }),
@@ -428,7 +434,7 @@ describe("BrowserPanelManager cosmetics", () => {
     const onRejection = vi.fn();
     process.on("unhandledRejection", onRejection);
     try {
-      manager.cosmeticsForSync("https://site.test/", wc as never);
+      cosmeticsFor(partition, "https://site.test/", wc as never);
       await new Promise((r) => setTimeout(r, 40));
       expect(onRejection).not.toHaveBeenCalled();
     } finally {
@@ -438,17 +444,17 @@ describe("BrowserPanelManager cosmetics", () => {
   });
 
   it("returns nothing at all while blocking is off", () => {
-    const { manager, internals } = setup();
-    internals.cosmeticsCache.set("https://site.test/", { stylesheet: ".ad{", script: "x" });
-    (manager as unknown as { adBlockEnabled: boolean }).adBlockEnabled = false;
-    expect(manager.cosmeticsForSync("https://site.test/", { isDestroyed: () => false } as never))
+    const { partition, state } = setup();
+    state.cosmeticsCache.set("https://site.test/", { stylesheet: ".ad{", script: "x" });
+    state.adBlockEnabled = false;
+    expect(cosmeticsFor(partition, "https://site.test/", { isDestroyed: () => false } as never))
       .toEqual({ stylesheet: "", script: "" });
   });
 
   it("clears the cosmetics cache on disable", () => {
-    const { manager, internals } = setup();
-    internals.cosmeticsCache.set("https://site.test/", { stylesheet: ".ad{", script: "" });
+    const { manager, state } = setup();
+    state.cosmeticsCache.set("https://site.test/", { stylesheet: ".ad{", script: "" });
     manager.setAdBlockEnabled(false);
-    expect(internals.cosmeticsCache.size).toBe(0);
+    expect(state.cosmeticsCache.size).toBe(0);
   });
 });

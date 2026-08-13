@@ -23,4 +23,9 @@ export const browser: Dict = {
     "browser.adBlockOff": "Ad blocker off",
     "browser.emptyTitle": "Browse without leaving TanWords",
     "browser.emptyBody": "Paste any link above, or start from one of these.",
+    "browser.history": "History",
+    "browser.historyEmpty": "No history yet this session.",
+    "browser.clearHistory": "Clear history",
+    "browser.privateModeOn": "Private browsing on — no history, gone on restart",
+    "browser.privateModeOff": "Turn on private browsing",
 };
