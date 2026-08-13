@@ -7,7 +7,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { UpdateInfoPayload } from "./updater";
-import type { BrowserPanelManager, PanelBounds } from "./browserPanel";
+import type { BrowserPanelManager } from "./BrowserPanelManager";
+import type { PanelBounds } from "./browserPanel";
 import { cosmeticsForWebContents } from "./browserPanel";
 import {
   createFloatingBrowserWindow, dockFloatingBrowserWindow,

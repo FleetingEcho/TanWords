@@ -142,7 +142,8 @@ vi.mock("sonner", () => ({
   toast: { success: mocks.toastSuccess, error: mocks.toastError },
 }));
 
-import { quoteTerminalPath, shellTabTitle, terminalFontStack, TerminalTool } from "./TerminalTool";
+import { quoteTerminalPath, shellTabTitle, terminalFontStack } from "./terminalUtils";
+import { TerminalTool } from "./TerminalTool";
 import { useSettingsStore } from "@/store/settingsStore";
 
 describe("TerminalTool clipboard controls", () => {

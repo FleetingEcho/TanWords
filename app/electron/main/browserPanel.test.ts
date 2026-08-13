@@ -16,7 +16,8 @@ vi.mock("electron", () => ({
   session: { fromPartition: (p: string) => (stub.session as { fromPartition(p: string): unknown }).fromPartition(p) },
 }));
 
-import { BrowserPanelManager, chromeUserAgent, cosmeticsFor, COSMETIC_PRELOAD_SOURCE, documentUrlFor, enableAdBlock, stateFor, stripTrustedTypes } from "./browserPanel";
+import { BrowserPanelManager } from "./BrowserPanelManager";
+import { chromeUserAgent, cosmeticsFor, COSMETIC_PRELOAD_SOURCE, documentUrlFor, enableAdBlock, stateFor, stripTrustedTypes } from "./browserPanel";
 
 /** Drives the manager through its private state: `hide()` is only reachable
  *  once a tab is attached, and building that up through the public API would

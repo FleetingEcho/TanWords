@@ -5,7 +5,8 @@ import path from "node:path";
 import { registerAppProtocolHandler, rendererEntryUrl, APP_SCHEME } from "./protocol";
 import { SidecarSupervisor } from "./sidecar";
 import { isExternalUrlAllowed, registerIpcHandlers } from "./ipc";
-import { BrowserPanelManager, PANEL_PARTITION } from "./browserPanel";
+import { BrowserPanelManager } from "./BrowserPanelManager";
+import { PANEL_PARTITION } from "./browserPanel";
 import { resetFloatingBrowserWindow } from "./floatingBrowserWindow";
 import { TrayManager, trayIconPath } from "./tray";
 import {

@@ -8,7 +8,7 @@
 import { BrowserWindow } from "electron";
 import path from "node:path";
 import { rendererEntryUrl } from "./protocol";
-import type { BrowserPanelManager } from "./browserPanel";
+import type { BrowserPanelManager } from "./BrowserPanelManager";
 
 let popout: BrowserWindow | null = null;
 /** Set while `dock()` is closing the window itself, so the generic `closed`
