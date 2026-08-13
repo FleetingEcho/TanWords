@@ -5,12 +5,14 @@ import { useLayoutStore } from "@/store/layoutStore";
 /** Sits behind the entire app (mounted once in App.tsx, z-index below everything
  *  else) when the user's set a custom background image in Settings. The page
  *  canvas (MainLayout's root bg-background) turns transparent to reveal it —
- *  cards/sidebar stay opaque, see Sidebar.tsx. A fixed dark scrim keeps text
- *  legible regardless of how busy the source image or how little blur is applied. */
+ *  cards/sidebar stay opaque, see Sidebar.tsx. An optional user-controlled
+ *  dimming layer can improve legibility without silently changing the image. */
 export function AppBackground() {
   const image = useSettingsStore((s) => s.appBackgroundImage);
   const blur = useSettingsStore((s) => s.appBackgroundBlur);
   const visible = useSettingsStore((s) => s.appBackgroundVisible);
+  const position = useSettingsStore((s) => s.appBackgroundImagePosition);
+  const dimming = useSettingsStore((s) => s.appBackgroundDimming);
   const zenMode = useLayoutStore((s) => s.zenMode);
 
   const active = Boolean(image) && visible;
@@ -47,9 +49,16 @@ export function AppBackground() {
         style={{
           filter: `blur(${blur}px)`,
           transform: blur > 0 ? "scale(1.08)" : undefined,
+          objectPosition: `${position.x}% ${position.y}%`,
         }}
       />
-      <div className="absolute inset-0 bg-black/20 dark:bg-black/45" />
+      {dimming > 0 && (
+        <div
+          data-testid="app-background-dimming"
+          className="absolute inset-0"
+          style={{ backgroundColor: `rgb(0 0 0 / ${dimming}%)` }}
+        />
+      )}
     </div>
   );
 }

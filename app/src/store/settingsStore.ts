@@ -7,16 +7,17 @@ import {
   GLASS_LIGHT_BACKGROUND_OPACITY,
   DEFAULT_TERMINAL_BACKGROUND_COLOR, DEFAULT_TERMINAL_TEXT_COLOR,
   DEFAULT_TERMINAL_COLOR_SCHEME, TERMINAL_COLOR_SCHEME_COLORS,
+  DEFAULT_TERMINAL_CUSTOM_APPEARANCE,
   DEFAULT_TERMINAL_RENDERER,
   DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE,
   DOCUMENT_TEXT_COLOR_RE, normalizeHexColor,
   type Theme, type SidebarTabId, type TopBarItemId, type RssTabSelection, type LayoutMode,
-  type BannerPosition, type TerminalRenderer, type TerminalColorScheme,
+  type BannerPosition, type TerminalRenderer, type TerminalColorScheme, type TerminalCustomAppearance,
 } from "./settings/types";
 import {
   cachedUiLanguage, cacheUiLanguage, cachedSidebarTabs, cacheSidebarTabs,
   cachedTopBarItems, cacheTopBarItems,
-  cachedDefaultRssTab, cacheDefaultRssTab, cachedFeedsViewMode, cacheFeedsViewMode, saveSetting, saveSettingDebounced,
+  cachedDefaultRssTab, cacheDefaultRssTab, cachedFeedsViewMode, cacheFeedsViewMode, saveSetting, saveSettings, saveSettingDebounced,
   cachedLayoutMode, cacheLayoutMode,
 } from "./settings/cache";
 import { applyTheme, applyDocumentFontSize, applyDocumentLineHeight, applyDocumentParagraphSpacing, applyDocumentTextColor, applyHighlightColor } from "./settings/domEffects";
@@ -24,7 +25,7 @@ import { loadSettingsFromDB } from "./settings/loadFromDB";
 import type { SettingsState } from "./settings/state";
 
 export type {
-  Theme, SidebarTabId, TopBarItemId, RssTabSelection, BannerPosition, TerminalRenderer, TerminalColorScheme,
+  Theme, SidebarTabId, TopBarItemId, RssTabSelection, BannerPosition, TerminalRenderer, TerminalColorScheme, TerminalCustomAppearance,
 } from "./settings/types";
 export {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS,
@@ -33,10 +34,25 @@ export {
   DEFAULT_TERMINAL_BACKGROUND_BLUR, DEFAULT_TERMINAL_BACKGROUND_OPACITY, DEFAULT_TERMINAL_TRANSPARENT,
   DEFAULT_TERMINAL_BACKGROUND_COLOR, DEFAULT_TERMINAL_TEXT_COLOR,
   DEFAULT_TERMINAL_COLOR_SCHEME, TERMINAL_COLOR_SCHEME_COLORS,
+  DEFAULT_TERMINAL_CUSTOM_APPEARANCE,
   DEFAULT_TERMINAL_RENDERER,
   DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE,
 } from "./settings/types";
 export type { SettingsState } from "./settings/state";
+
+function captureTerminalAppearance(
+  state: SettingsState,
+  overrides: Partial<TerminalCustomAppearance> = {},
+): TerminalCustomAppearance {
+  return {
+    backgroundColor: state.terminalBackgroundColor,
+    textColor: state.terminalTextColor,
+    transparent: state.terminalTransparent,
+    blur: state.terminalBackgroundBlur,
+    opacity: state.terminalBackgroundOpacity,
+    ...overrides,
+  };
+}
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   theme: "system",
@@ -62,11 +78,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   dashboardBannerPosition: DEFAULT_BANNER_POSITION,
   nickname: "",
   appBackgroundImage: "",
+  appBackgroundImages: [],
+  appBackgroundImageIndex: 0,
+  appBackgroundImagePositions: [],
+  appBackgroundImagePosition: DEFAULT_BANNER_POSITION,
   lockScreenImage: "",
   lockScreenBlur: 0,
   lockScreenVisible: true,
   autoLockMinutes: DEFAULT_AUTO_LOCK_MINUTES,
   appBackgroundBlur: 20,
+  appBackgroundDimming: 0,
   appBackgroundVisible: true,
   browserAdBlockEnabled: true,
   terminalTransparent: DEFAULT_TERMINAL_TRANSPARENT,
@@ -75,6 +96,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   terminalBackgroundColor: DEFAULT_TERMINAL_BACKGROUND_COLOR,
   terminalTextColor: DEFAULT_TERMINAL_TEXT_COLOR,
   terminalColorScheme: DEFAULT_TERMINAL_COLOR_SCHEME,
+  terminalCustomAppearance: DEFAULT_TERMINAL_CUSTOM_APPEARANCE,
   terminalRenderer: DEFAULT_TERMINAL_RENDERER,
   terminalFontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
   terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
@@ -169,8 +191,51 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   setAppBackgroundImage: (dataUrl) => {
-    set({ appBackgroundImage: dataUrl });
-    saveSetting("app_background_image", JSON.stringify(dataUrl));
+    const images = dataUrl ? [dataUrl] : [];
+    const positions = dataUrl ? [DEFAULT_BANNER_POSITION] : [];
+    set({
+      appBackgroundImage: dataUrl,
+      appBackgroundImages: images,
+      appBackgroundImageIndex: 0,
+      appBackgroundImagePositions: positions,
+      appBackgroundImagePosition: DEFAULT_BANNER_POSITION,
+    });
+    void saveSettings([
+      ["app_background_image", JSON.stringify(dataUrl)],
+      ["app_background_images", JSON.stringify(images)],
+      ["app_background_image_index", "0"],
+      ["app_background_image_positions", JSON.stringify(positions)],
+    ]);
+  },
+
+  setAppBackgroundImages: (images, activeIndex, positions = []) => {
+    const nextImages = images.filter((image) => typeof image === "string" && image.length > 0).slice(0, 5);
+    const nextPositions = nextImages.map((_, index) => {
+      const position = positions[index];
+      return position && Number.isFinite(position.x) && Number.isFinite(position.y)
+        ? { x: Math.min(100, Math.max(0, position.x)), y: Math.min(100, Math.max(0, position.y)) }
+        : DEFAULT_BANNER_POSITION;
+    });
+    const nextIndex = nextImages.length === 0
+      ? 0
+      : Math.min(nextImages.length - 1, Math.max(0, Math.round(activeIndex)));
+    const activeImage = nextImages[nextIndex] || "";
+    const activePosition = nextPositions[nextIndex] || DEFAULT_BANNER_POSITION;
+    set({
+      appBackgroundImage: activeImage,
+      appBackgroundImages: nextImages,
+      appBackgroundImageIndex: nextIndex,
+      appBackgroundImagePositions: nextPositions,
+      appBackgroundImagePosition: activePosition,
+    });
+    void saveSettings([
+      ["app_background_images", JSON.stringify(nextImages)],
+      ["app_background_image_index", JSON.stringify(nextIndex)],
+      ["app_background_image_positions", JSON.stringify(nextPositions)],
+      // Retain the old key as the active image so older TanWords builds and the
+      // many read-only consumers of this field continue to behave correctly.
+      ["app_background_image", JSON.stringify(activeImage)],
+    ]);
   },
 
   setLockScreenImage: (dataUrl) => {
@@ -199,6 +264,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     saveSettingDebounced("app_background_blur", JSON.stringify(px));
   },
 
+  setAppBackgroundDimming: (percent) => {
+    const value = Math.min(80, Math.max(0, Math.round(percent)));
+    set({ appBackgroundDimming: value });
+    saveSettingDebounced("app_background_dimming", JSON.stringify(value));
+  },
+
   setAppBackgroundVisible: (visible) => {
     set({ appBackgroundVisible: visible });
     saveSetting("app_background_visible", JSON.stringify(visible));
@@ -217,40 +288,70 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   setTerminalTransparent: (enabled) => {
-    set({ terminalTransparent: enabled });
-    saveSetting("terminal_transparent", JSON.stringify(enabled));
+    const custom = captureTerminalAppearance(get(), { transparent: enabled });
+    set({ terminalTransparent: enabled, terminalColorScheme: "custom", terminalCustomAppearance: custom });
+    void saveSettings([
+      ["terminal_transparent", JSON.stringify(enabled)],
+      ["terminal_color_scheme", JSON.stringify("custom")],
+      ["terminal_custom_appearance", JSON.stringify(custom)],
+    ]);
   },
 
   setTerminalBackgroundBlur: (px) => {
     const value = Math.min(30, Math.max(0, Math.round(px)));
-    set({ terminalBackgroundBlur: value });
+    const custom = captureTerminalAppearance(get(), { blur: value });
+    set({ terminalBackgroundBlur: value, terminalColorScheme: "custom", terminalCustomAppearance: custom });
     saveSettingDebounced("terminal_background_blur", JSON.stringify(value));
+    saveSettingDebounced("terminal_custom_appearance", JSON.stringify(custom));
+    saveSetting("terminal_color_scheme", JSON.stringify("custom"));
   },
 
   setTerminalBackgroundOpacity: (percent) => {
     const value = Math.min(100, Math.max(0, Math.round(percent)));
-    set({ terminalBackgroundOpacity: value });
+    const custom = captureTerminalAppearance(get(), { opacity: value });
+    set({ terminalBackgroundOpacity: value, terminalColorScheme: "custom", terminalCustomAppearance: custom });
     saveSettingDebounced("terminal_background_opacity", JSON.stringify(value));
+    saveSettingDebounced("terminal_custom_appearance", JSON.stringify(custom));
+    saveSetting("terminal_color_scheme", JSON.stringify("custom"));
   },
 
   setTerminalBackgroundColor: (hex) => {
     const value = normalizeHexColor(hex);
-    set({ terminalBackgroundColor: value, terminalColorScheme: "custom" });
+    const custom = captureTerminalAppearance(get(), { backgroundColor: value });
+    set({ terminalBackgroundColor: value, terminalColorScheme: "custom", terminalCustomAppearance: custom });
     saveSettingDebounced("terminal_background_color", JSON.stringify(value));
+    saveSettingDebounced("terminal_custom_appearance", JSON.stringify(custom));
     saveSetting("terminal_color_scheme", JSON.stringify("custom"));
   },
 
   setTerminalTextColor: (hex) => {
     const value = normalizeHexColor(hex, DEFAULT_TERMINAL_TEXT_COLOR);
-    set({ terminalTextColor: value, terminalColorScheme: "custom" });
+    const custom = captureTerminalAppearance(get(), { textColor: value });
+    set({ terminalTextColor: value, terminalColorScheme: "custom", terminalCustomAppearance: custom });
     saveSettingDebounced("terminal_text_color", JSON.stringify(value));
+    saveSettingDebounced("terminal_custom_appearance", JSON.stringify(custom));
     saveSetting("terminal_color_scheme", JSON.stringify("custom"));
   },
 
   setTerminalColorScheme: (scheme) => {
     if (scheme === "custom") {
-      set({ terminalColorScheme: scheme });
-      saveSetting("terminal_color_scheme", JSON.stringify(scheme));
+      const custom = get().terminalCustomAppearance;
+      set({
+        terminalColorScheme: scheme,
+        terminalBackgroundColor: custom.backgroundColor,
+        terminalTextColor: custom.textColor,
+        terminalTransparent: custom.transparent,
+        terminalBackgroundBlur: custom.blur,
+        terminalBackgroundOpacity: custom.opacity,
+      });
+      void saveSettings([
+        ["terminal_color_scheme", JSON.stringify(scheme)],
+        ["terminal_background_color", JSON.stringify(custom.backgroundColor)],
+        ["terminal_text_color", JSON.stringify(custom.textColor)],
+        ["terminal_transparent", JSON.stringify(custom.transparent)],
+        ["terminal_background_blur", JSON.stringify(custom.blur)],
+        ["terminal_background_opacity", JSON.stringify(custom.opacity)],
+      ]);
       return;
     }
     const colors = TERMINAL_COLOR_SCHEME_COLORS[scheme];

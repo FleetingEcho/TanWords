@@ -48,8 +48,18 @@ export interface SettingsState {
   nickname: string;
   /** Custom full-app background image (data URL). Empty = none — just the theme's flat background. */
   appBackgroundImage: string;
+  /** Up to five saved app wallpapers. `appBackgroundImage` is always the
+   *  currently selected member, kept separately for simple rendering. */
+  appBackgroundImages: string[];
+  appBackgroundImageIndex: number;
+  /** Framing for each saved wallpaper plus the currently active framing. */
+  appBackgroundImagePositions: BannerPosition[];
+  appBackgroundImagePosition: BannerPosition;
   /** Blur radius in px applied to appBackgroundImage. */
   appBackgroundBlur: number;
+  /** Black readability layer over the wallpaper, as a percentage. Zero shows
+   *  the stored image without contrast reduction. */
+  appBackgroundDimming: number;
   /** The lock screen's own wallpaper — a separate picture from the app
    *  canvas, configured with the same controls. */
   lockScreenImage: string;
@@ -76,6 +86,8 @@ export interface SettingsState {
   /** Default foreground for terminal cells that do not specify an ANSI colour. */
   terminalTextColor: string;
   terminalColorScheme: TerminalColorScheme;
+  /** User-authored appearance retained while a built-in preset is active. */
+  terminalCustomAppearance: import("./types").TerminalCustomAppearance;
   /** Rendering backend. Auto avoids WebGL's transparent dim-text artifacts. */
   terminalRenderer: TerminalRenderer;
   /** Local font family name, or ui-monospace for the operating-system default. */
@@ -123,11 +135,13 @@ export interface SettingsState {
   setDashboardBanner: (dataUrl: string, position?: BannerPosition) => void;
   setNickname: (name: string) => void;
   setAppBackgroundImage: (dataUrl: string) => void;
+  setAppBackgroundImages: (images: string[], activeIndex: number, positions?: BannerPosition[]) => void;
   setLockScreenImage: (dataUrl: string) => void;
   setLockScreenBlur: (value: number) => void;
   setLockScreenVisible: (value: boolean) => void;
   setAutoLockMinutes: (minutes: number) => void;
   setAppBackgroundBlur: (px: number) => void;
+  setAppBackgroundDimming: (percent: number) => void;
   setAppBackgroundVisible: (visible: boolean) => void;
   setBrowserAdBlockEnabled: (enabled: boolean) => void;
   setTerminalTransparent: (enabled: boolean) => void;

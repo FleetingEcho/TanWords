@@ -19,6 +19,13 @@ export const TERMINAL_COLOR_SCHEME_IDS = [
   "tokyo-night", "dracula", "light", "high-contrast", "custom",
 ] as const;
 export type TerminalColorScheme = typeof TERMINAL_COLOR_SCHEME_IDS[number];
+export interface TerminalCustomAppearance {
+  backgroundColor: string;
+  textColor: string;
+  transparent: boolean;
+  blur: number;
+  opacity: number;
+}
 
 /** Feeds page tab selector: a specific RSS feed, "all" of them, or the native Hacker News browser. */
 export type RssTabSelection = number | "all" | "hackernews";
@@ -54,6 +61,13 @@ export const DEFAULT_TERMINAL_RENDERER: TerminalRenderer = "auto";
 export const DEFAULT_TERMINAL_BACKGROUND_COLOR = "#1a1b26";
 export const DEFAULT_TERMINAL_TEXT_COLOR = "#c0caf5";
 export const DEFAULT_TERMINAL_COLOR_SCHEME: TerminalColorScheme = "tokyo-night";
+export const DEFAULT_TERMINAL_CUSTOM_APPEARANCE: TerminalCustomAppearance = {
+  backgroundColor: DEFAULT_TERMINAL_BACKGROUND_COLOR,
+  textColor: DEFAULT_TERMINAL_TEXT_COLOR,
+  transparent: DEFAULT_TERMINAL_TRANSPARENT,
+  blur: DEFAULT_TERMINAL_BACKGROUND_BLUR,
+  opacity: DEFAULT_TERMINAL_BACKGROUND_OPACITY,
+};
 export const TERMINAL_COLOR_SCHEME_COLORS: Record<Exclude<TerminalColorScheme, "custom">, {
   background: string;
   foreground: string;

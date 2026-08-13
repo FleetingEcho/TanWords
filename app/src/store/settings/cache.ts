@@ -118,6 +118,19 @@ export async function saveSetting(key: string, value: string) {
   }
 }
 
+/** Persists a group of settings after one backend import. Useful when fields
+ * form one logical value and must all be dispatched in the same turn. */
+export async function saveSettings(entries: Array<[key: string, value: string]>) {
+  try {
+    const { invoke } = await import("@/ipc/backend");
+    await Promise.all(entries.map(([key, value]) => invoke("db_set_setting", { key, value })));
+  } catch {
+    for (const [key, value] of entries) {
+      localStorage.setItem(`tanwords_${key}`, value);
+    }
+  }
+}
+
 // One trailing-edge timer per key. Range-slider setters (background blur,
 // document font size/line height) attach to onChange, which fires per drag
 // tick — without a debounce one drag is tens of HTTP+SQLite writes.

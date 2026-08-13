@@ -22,6 +22,7 @@ describe("settingsStore database hydration", () => {
     localStorage.clear();
     useSettingsStore.setState({
       appBackgroundVisible: true,
+      appBackgroundDimming: 0,
       terminalTransparent: false,
       terminalBackgroundBlur: 16,
       terminalBackgroundOpacity: 16,
@@ -29,6 +30,13 @@ describe("settingsStore database hydration", () => {
       terminalBackgroundColor: "#1a1b26",
       terminalTextColor: "#c0caf5",
       terminalColorScheme: "tokyo-night",
+      terminalCustomAppearance: {
+        backgroundColor: "#1a1b26",
+        textColor: "#c0caf5",
+        transparent: false,
+        blur: 16,
+        opacity: 16,
+      },
       terminalFontFamily: "ui-monospace",
       terminalFontSize: 13,
       terminalShellPath: "",
@@ -36,6 +44,10 @@ describe("settingsStore database hydration", () => {
       dashboardBanner: "",
       nickname: "",
       appBackgroundImage: "",
+      appBackgroundImages: [],
+      appBackgroundImageIndex: 0,
+      appBackgroundImagePositions: [],
+      appBackgroundImagePosition: { x: 50, y: 50 },
       isLoaded: false,
     });
   });
@@ -60,6 +72,30 @@ describe("settingsStore database hydration", () => {
     expect(useSettingsStore.getState().appBackgroundVisible).toBe(false);
   });
 
+  it("restores and clamps the saved background dimming", async () => {
+    invoke.mockImplementation(async (command: string, args?: { key?: string }) => {
+      if (command === "db_get_setting" && args?.key === "app_background_dimming") return "95";
+      return null;
+    });
+
+    await useSettingsStore.getState().loadFromDB();
+
+    expect(useSettingsStore.getState().appBackgroundDimming).toBe(80);
+  });
+
+  it("persists background dimming without writing every slider tick", async () => {
+    vi.useFakeTimers();
+
+    useSettingsStore.getState().setAppBackgroundDimming(34.6);
+    expect(useSettingsStore.getState().appBackgroundDimming).toBe(35);
+
+    await vi.advanceTimersByTimeAsync(300);
+    expect(invoke).toHaveBeenCalledWith("db_set_setting", {
+      key: "app_background_dimming",
+      value: "35",
+    });
+  });
+
   it("restores synced visual settings when a device-only path cannot be read", async () => {
     invoke.mockImplementation(async (command: string, args?: { key?: string }) => {
       if (command === "db_get_device_path" && args?.key === "terminal_shell_path") {
@@ -80,7 +116,78 @@ describe("settingsStore database hydration", () => {
       userAvatar: "data:image/png;base64,avatar",
       dashboardBanner: "data:image/png;base64,banner",
       appBackgroundImage: "data:image/png;base64,background",
+      appBackgroundImages: ["data:image/png;base64,background"],
+      appBackgroundImageIndex: 0,
+      appBackgroundImagePosition: { x: 50, y: 50 },
       isLoaded: true,
+    });
+  });
+
+  it("restores a wallpaper gallery and its active image", async () => {
+    invoke.mockImplementation(async (command: string, args?: { key?: string }) => {
+      if (command !== "db_get_setting") return null;
+      if (args?.key === "app_background_images") return JSON.stringify(["first", "second", "third"]);
+      if (args?.key === "app_background_image_index") return "1";
+      if (args?.key === "app_background_image_positions") return JSON.stringify([{ x: 20, y: 30 }, { x: 70, y: 80 }]);
+      return null;
+    });
+
+    await useSettingsStore.getState().loadFromDB();
+
+    expect(useSettingsStore.getState()).toMatchObject({
+      appBackgroundImage: "second",
+      appBackgroundImages: ["first", "second", "third"],
+      appBackgroundImageIndex: 1,
+      appBackgroundImagePosition: { x: 70, y: 80 },
+    });
+  });
+
+  it("restores the complete saved custom terminal appearance", async () => {
+    const custom = {
+      backgroundColor: "#123456",
+      textColor: "#fedcba",
+      transparent: true,
+      blur: 7,
+      opacity: 23,
+    };
+    invoke.mockImplementation(async (command: string, args?: { key?: string }) => {
+      if (command !== "db_get_setting") return null;
+      if (args?.key === "terminal_color_scheme") return '"custom"';
+      if (args?.key === "terminal_custom_appearance") return JSON.stringify(custom);
+      return null;
+    });
+
+    await useSettingsStore.getState().loadFromDB();
+
+    expect(useSettingsStore.getState()).toMatchObject({
+      terminalColorScheme: "custom",
+      terminalBackgroundColor: "#123456",
+      terminalTextColor: "#fedcba",
+      terminalTransparent: true,
+      terminalBackgroundBlur: 7,
+      terminalBackgroundOpacity: 23,
+      terminalCustomAppearance: custom,
+    });
+  });
+
+  it("caps the wallpaper gallery at five and persists its active image", async () => {
+    useSettingsStore.getState().setAppBackgroundImages(
+      ["one", "two", "three", "four", "five", "six"],
+      5,
+      [{ x: 10, y: 20 }, { x: 20, y: 30 }, { x: 30, y: 40 }, { x: 40, y: 50 }, { x: 60, y: 70 }],
+    );
+
+    expect(useSettingsStore.getState()).toMatchObject({
+      appBackgroundImage: "five",
+      appBackgroundImages: ["one", "two", "three", "four", "five"],
+      appBackgroundImageIndex: 4,
+      appBackgroundImagePosition: { x: 60, y: 70 },
+    });
+    await vi.waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("db_set_setting", {
+        key: "app_background_image",
+        value: '"five"',
+      });
     });
   });
 
@@ -234,6 +341,45 @@ describe("settingsStore database hydration", () => {
 
     expect(useSettingsStore.getState().terminalTextColor).toBe("#aabbcc");
     expect(useSettingsStore.getState().terminalColorScheme).toBe("custom");
+  });
+
+  it("restores the saved custom appearance after switching through a preset", async () => {
+    vi.useFakeTimers();
+
+    useSettingsStore.getState().setTerminalBackgroundColor("#123456");
+    useSettingsStore.getState().setTerminalTextColor("#fedcba");
+    useSettingsStore.getState().setTerminalTransparent(true);
+    useSettingsStore.getState().setTerminalBackgroundBlur(7);
+    useSettingsStore.getState().setTerminalBackgroundOpacity(23);
+
+    useSettingsStore.getState().setTerminalColorScheme("dracula");
+    expect(useSettingsStore.getState()).toMatchObject({
+      terminalColorScheme: "dracula",
+      terminalBackgroundColor: "#282a36",
+      terminalTextColor: "#f8f8f2",
+    });
+
+    useSettingsStore.getState().setTerminalColorScheme("custom");
+    expect(useSettingsStore.getState()).toMatchObject({
+      terminalColorScheme: "custom",
+      terminalBackgroundColor: "#123456",
+      terminalTextColor: "#fedcba",
+      terminalTransparent: true,
+      terminalBackgroundBlur: 7,
+      terminalBackgroundOpacity: 23,
+    });
+
+    await vi.advanceTimersByTimeAsync(300);
+    expect(invoke).toHaveBeenCalledWith("db_set_setting", {
+      key: "terminal_custom_appearance",
+      value: JSON.stringify({
+        backgroundColor: "#123456",
+        textColor: "#fedcba",
+        transparent: true,
+        blur: 7,
+        opacity: 23,
+      }),
+    });
   });
 
   it("sanitizes, clamps, and persists terminal typography", async () => {

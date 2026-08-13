@@ -10,6 +10,7 @@ import { ImageSetting } from "./ImageSetting";
 export function WallpaperSetting({
   label, sub, emptyLabel, maxDimension, maxBytes, processFile,
   image, setImage, blur, setBlur, visible, setVisible,
+  gallery, objectPosition, onAdjust, dimming, setDimming,
 }: {
   label: string;
   sub: string;
@@ -23,6 +24,18 @@ export function WallpaperSetting({
   setBlur: (value: number) => void;
   visible: boolean;
   setVisible: (value: boolean) => void;
+  gallery?: {
+    items: string[];
+    activeIndex: number;
+    maxItems: number;
+    onAdd: (dataUrls: string[]) => void;
+    onSelect: (index: number) => void;
+    onRemove: (index: number) => void;
+  };
+  objectPosition?: string;
+  onAdjust?: () => void;
+  dimming?: number;
+  setDimming?: (value: number) => void;
 }) {
   const t = useT();
   // The real thing renders full-window; the thumb is roughly an eighth of
@@ -36,6 +49,8 @@ export function WallpaperSetting({
       sub={sub}
       value={image}
       onChange={setImage}
+      objectPosition={objectPosition}
+      onAdjust={onAdjust}
       processFile={(file) => processFile(file, maxDimension, 0.85)}
       maxBytes={maxBytes}
       thumbClassName="w-48 h-16 rounded-lg"
@@ -44,11 +59,26 @@ export function WallpaperSetting({
         // Mirrors the real overscan so blurred edges don't reveal gaps.
         transform: thumbBlur > 0 ? "scale(1.08)" : undefined,
       }}
-      // Same legibility scrim the real background draws over the image.
-      thumbOverlay={visible ? <div className="pointer-events-none absolute inset-0 bg-black/20 dark:bg-black/45" /> : undefined}
+      // Preview the app wallpaper's optional dimming. The lock screen keeps its
+      // existing theme-aware scrim because it has no separate dimming control.
+      thumbOverlay={visible ? (
+        dimming !== undefined
+          ? dimming > 0
+            ? <div className="pointer-events-none absolute inset-0" style={{ backgroundColor: `rgb(0 0 0 / ${dimming}%)` }} />
+            : undefined
+          : <div className="pointer-events-none absolute inset-0 bg-black/20 dark:bg-black/45" />
+      ) : undefined}
       empty={emptyLabel}
       previewClassName="w-[70vw] h-fit top-1/2 -translate-y-1/2"
       previewImgClassName="w-full h-auto rounded-2xl object-cover shadow-lg"
+      gallery={gallery ? {
+        items: gallery.items,
+        activeIndex: gallery.activeIndex,
+        maxItems: gallery.maxItems,
+        onAdd: gallery.onAdd,
+        onSelect: gallery.onSelect,
+        onRemove: gallery.onRemove,
+      } : undefined}
     >
       <div className="w-full space-y-2.5 rounded-xl border border-border/60 bg-muted/30 p-2.5">
         <div className="flex items-center justify-between">
@@ -80,6 +110,18 @@ export function WallpaperSetting({
           disabled={!active}
           onChange={setBlur}
         />
+        {dimming !== undefined && setDimming && (
+          <Slider
+            label={t("settings.appBackgroundDimming")}
+            value={dimming}
+            display={`${dimming}%`}
+            min={0}
+            max={80}
+            step={1}
+            disabled={!active}
+            onChange={setDimming}
+          />
+        )}
       </div>
     </ImageSetting>
   );

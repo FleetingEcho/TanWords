@@ -12,7 +12,7 @@ import {
   TERMINAL_COLOR_SCHEME_IDS,
   DEFAULT_TERMINAL_RENDERER,
   DOCUMENT_TEXT_COLOR_RE, normalizeHexColor, type Theme, type RssTabSelection,
-  type LayoutMode, type TerminalRenderer, type TerminalColorScheme,
+  type LayoutMode, type TerminalRenderer, type TerminalColorScheme, type TerminalCustomAppearance,
 } from "./types";
 import {
   cacheUiLanguage, cacheSidebarTabs, cacheTopBarItems, cacheDefaultRssTab, cacheFeedsViewMode,
@@ -20,6 +20,22 @@ import {
 } from "./cache";
 import { applyTheme, applyDocumentFontSize, applyDocumentLineHeight, applyDocumentParagraphSpacing, applyDocumentTextColor, applyHighlightColor, parseBannerPosition } from "./domEffects";
 import { isDesktopHost } from "@/platform";
+
+function parseTerminalCustomAppearance(
+  raw: unknown,
+  fallback: TerminalCustomAppearance,
+): TerminalCustomAppearance {
+  const value = raw && typeof raw === "object" ? raw as Partial<TerminalCustomAppearance> : {};
+  const blur = Number(value.blur);
+  const opacity = Number(value.opacity);
+  return {
+    backgroundColor: normalizeHexColor(value.backgroundColor || "", fallback.backgroundColor),
+    textColor: normalizeHexColor(value.textColor || "", fallback.textColor),
+    transparent: typeof value.transparent === "boolean" ? value.transparent : fallback.transparent,
+    blur: Number.isFinite(blur) ? Math.min(30, Math.max(0, Math.round(blur))) : fallback.blur,
+    opacity: Number.isFinite(opacity) ? Math.min(100, Math.max(0, Math.round(opacity))) : fallback.opacity,
+  };
+}
 
 /** Loads every persisted setting from the DB in one pass, resolving each with
  * its default/legacy-format fallback, then applies the DOM-visible ones
@@ -50,11 +66,15 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       "dashboard_banner_position",
       "nickname",
       "app_background_image",
+      "app_background_images",
+      "app_background_image_index",
+      "app_background_image_positions",
       "lock_screen_image",
       "lock_screen_blur",
       "lock_screen_visible",
       "auto_lock_minutes",
       "app_background_blur",
+      "app_background_dimming",
       "app_background_visible",
       "browser_adblock_enabled",
       "terminal_transparent",
@@ -63,6 +83,7 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       "terminal_background_color",
       "terminal_text_color",
       "terminal_color_scheme",
+      "terminal_custom_appearance",
       "terminal_renderer",
       "terminal_font_family",
       "terminal_font_size",
@@ -157,6 +178,45 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
     const resolvedFeedsViewMode: "card" | "list" = values.feeds_view_mode === "list" ? "list" : "card";
     cacheFeedsViewMode(resolvedFeedsViewMode);
 
+    const hasSavedBackgroundGallery = Array.isArray(values.app_background_images);
+    const savedBackgroundImages = hasSavedBackgroundGallery
+      ? (values.app_background_images as unknown as unknown[])
+        .filter((image): image is string => typeof image === "string" && image.length > 0)
+        .slice(0, 5)
+      : [];
+    const legacyBackgroundImage = typeof values.app_background_image === "string"
+      ? values.app_background_image
+      : "";
+    const resolvedBackgroundImages = hasSavedBackgroundGallery
+      ? savedBackgroundImages
+      : legacyBackgroundImage ? [legacyBackgroundImage] : [];
+    const savedBackgroundIndex = Number(values.app_background_image_index);
+    const resolvedBackgroundIndex = resolvedBackgroundImages.length === 0
+      ? 0
+      : Math.min(
+        resolvedBackgroundImages.length - 1,
+        Math.max(0, Number.isFinite(savedBackgroundIndex) ? Math.round(savedBackgroundIndex) : 0),
+      );
+    const resolvedBackgroundImage = resolvedBackgroundImages[resolvedBackgroundIndex] || "";
+    const savedBackgroundPositions = Array.isArray(values.app_background_image_positions)
+      ? values.app_background_image_positions as unknown as unknown[]
+      : [];
+    const resolvedBackgroundPositions = resolvedBackgroundImages.map((_, index) =>
+      parseBannerPosition(savedBackgroundPositions[index]));
+    const resolvedBackgroundPosition = resolvedBackgroundPositions[resolvedBackgroundIndex]
+      || parseBannerPosition(undefined);
+    if (!hasSavedBackgroundGallery && legacyBackgroundImage) {
+      await invoke("db_set_setting", {
+        key: "app_background_images",
+        value: JSON.stringify(resolvedBackgroundImages),
+      });
+      await invoke("db_set_setting", { key: "app_background_image_index", value: "0" });
+      await invoke("db_set_setting", {
+        key: "app_background_image_positions",
+        value: JSON.stringify(resolvedBackgroundPositions),
+      });
+    }
+
     const savedTerminalColorScheme = values.terminal_color_scheme as TerminalColorScheme | undefined;
     const savedTerminalSchemeIsSupported = Boolean(savedTerminalColorScheme
       && (TERMINAL_COLOR_SCHEME_IDS as readonly string[]).includes(savedTerminalColorScheme));
@@ -198,6 +258,34 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
         value: JSON.stringify(GLASS_LIGHT_BACKGROUND_OPACITY),
       });
     }
+    const resolvedTerminalTransparent = values.terminal_transparent === "true"
+      || (values.terminal_transparent as unknown) === true
+      || DEFAULT_TERMINAL_TRANSPARENT;
+    const resolvedTerminalBlur = Number.isFinite(Number(values.terminal_background_blur))
+      ? Math.min(30, Math.max(0, Math.round(Number(values.terminal_background_blur))))
+      : DEFAULT_TERMINAL_BACKGROUND_BLUR;
+    const resolvedTerminalAppearance: TerminalCustomAppearance = {
+      backgroundColor: presetTerminalColors?.background
+        ?? normalizeHexColor(values.terminal_background_color || ""),
+      textColor: presetTerminalColors?.foreground
+        ?? normalizeHexColor(values.terminal_text_color || "", DEFAULT_TERMINAL_TEXT_COLOR),
+      transparent: resolvedTerminalTransparent,
+      blur: resolvedTerminalBlur,
+      opacity: resolvedTerminalOpacity,
+    };
+    const resolvedTerminalCustomAppearance = parseTerminalCustomAppearance(
+      values.terminal_custom_appearance as unknown,
+      resolvedTerminalAppearance,
+    );
+    const activeTerminalAppearance = resolvedTerminalColorScheme === "custom"
+      ? resolvedTerminalCustomAppearance
+      : resolvedTerminalAppearance;
+    if (resolvedTerminalColorScheme === "custom" && values.terminal_custom_appearance === undefined) {
+      await invoke("db_set_setting", {
+        key: "terminal_custom_appearance",
+        value: JSON.stringify(resolvedTerminalCustomAppearance),
+      });
+    }
 
     set({
       theme: (values.theme as Theme) || "system",
@@ -228,7 +316,11 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       dashboardBanner: values.dashboard_banner || "",
       dashboardBannerPosition: parseBannerPosition(values.dashboard_banner_position),
       nickname: values.nickname || "",
-      appBackgroundImage: values.app_background_image || "",
+      appBackgroundImage: resolvedBackgroundImage,
+      appBackgroundImages: resolvedBackgroundImages,
+      appBackgroundImageIndex: resolvedBackgroundIndex,
+      appBackgroundImagePositions: resolvedBackgroundPositions,
+      appBackgroundImagePosition: resolvedBackgroundPosition,
       lockScreenImage: values.lock_screen_image || "",
       lockScreenBlur: Number(values.lock_screen_blur ?? 0),
       lockScreenVisible: (values.lock_screen_visible as unknown) !== false && values.lock_screen_visible !== "false",
@@ -238,20 +330,18 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
         ? Number(values.auto_lock_minutes)
         : DEFAULT_AUTO_LOCK_MINUTES,
       appBackgroundBlur: values.app_background_blur !== undefined ? Number(values.app_background_blur) : 20,
+      appBackgroundDimming: Number.isFinite(Number(values.app_background_dimming))
+        ? Math.min(80, Math.max(0, Math.round(Number(values.app_background_dimming))))
+        : 0,
       appBackgroundVisible: (values.app_background_visible as unknown) !== false && values.app_background_visible !== "false",
       browserAdBlockEnabled: (values.browser_adblock_enabled as unknown) !== false && values.browser_adblock_enabled !== "false",
-      terminalTransparent: values.terminal_transparent === "true"
-        || (values.terminal_transparent as unknown) === true
-        || DEFAULT_TERMINAL_TRANSPARENT,
-      terminalBackgroundBlur: Number.isFinite(Number(values.terminal_background_blur))
-        ? Math.min(30, Math.max(0, Math.round(Number(values.terminal_background_blur))))
-        : DEFAULT_TERMINAL_BACKGROUND_BLUR,
-      terminalBackgroundOpacity: resolvedTerminalOpacity,
-      terminalBackgroundColor: presetTerminalColors?.background
-        ?? normalizeHexColor(values.terminal_background_color || ""),
-      terminalTextColor: presetTerminalColors?.foreground
-        ?? normalizeHexColor(values.terminal_text_color || "", DEFAULT_TERMINAL_TEXT_COLOR),
+      terminalTransparent: activeTerminalAppearance.transparent,
+      terminalBackgroundBlur: activeTerminalAppearance.blur,
+      terminalBackgroundOpacity: activeTerminalAppearance.opacity,
+      terminalBackgroundColor: activeTerminalAppearance.backgroundColor,
+      terminalTextColor: activeTerminalAppearance.textColor,
       terminalColorScheme: resolvedTerminalColorScheme,
+      terminalCustomAppearance: resolvedTerminalCustomAppearance,
       terminalRenderer: (["auto", "webgl", "dom"] as TerminalRenderer[])
         .includes(values.terminal_renderer as TerminalRenderer)
         ? values.terminal_renderer as TerminalRenderer

@@ -1,6 +1,6 @@
 import React, { useRef, useState } from "react";
 import { toast } from "sonner";
-import { Eye, Move, Trash2, Upload } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, Move, Trash2, Upload } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
@@ -41,6 +41,15 @@ interface Props {
   previewImgClassName: string;
   /** Extra controls under the thumbnail (the app background's blur slider). */
   children?: React.ReactNode;
+  /** Optional multi-image mode used by the app wallpaper picker. */
+  gallery?: {
+    items: string[];
+    activeIndex: number;
+    maxItems: number;
+    onAdd: (dataUrls: string[]) => void;
+    onSelect: (index: number) => void;
+    onRemove: (index: number) => void;
+  };
 }
 
 /**
@@ -55,50 +64,69 @@ interface Props {
  */
 export function ImageSetting({
   label, sub, value, onChange, processFile, onPicked, onAdjust, objectPosition, maxBytes,
-  thumbClassName, thumbImgStyle, thumbOverlay, empty, previewClassName, previewImgClassName, children,
+  thumbClassName, thumbImgStyle, thumbOverlay, empty, previewClassName, previewImgClassName, children, gallery,
 }: Props) {
   const t = useT();
   const inputRef = useRef<HTMLInputElement>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
 
-  const handleFile = async (file: File | undefined) => {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      toast.error(t("settings.userAvatarInvalidType"));
-      return;
+  const handleFiles = async (files: FileList | null) => {
+    const remaining = gallery ? gallery.maxItems - gallery.items.length : 1;
+    const selected = Array.from(files || []).slice(0, remaining);
+    const processed: string[] = [];
+    for (const file of selected) {
+      if (!file.type.startsWith("image/")) {
+        toast.error(t("settings.userAvatarInvalidType"));
+        continue;
+      }
+      if (file.size > maxBytes) {
+        toast.error(t("settings.userAvatarTooLarge"));
+        continue;
+      }
+      try {
+        processed.push(await processFile(file));
+      } catch {
+        toast.error(t("settings.userAvatarInvalidType"));
+      }
     }
-    if (file.size > maxBytes) {
-      toast.error(t("settings.userAvatarTooLarge"));
-      return;
-    }
-    try {
-      const dataUrl = await processFile(file);
-      if (onPicked) onPicked(dataUrl);
-      else onChange(dataUrl);
-    } catch {
-      toast.error(t("settings.userAvatarInvalidType"));
-    }
+    if (processed.length === 0) return;
+    if (gallery) gallery.onAdd(processed);
+    else if (onPicked) onPicked(processed[0]);
+    else onChange(processed[0]);
   };
 
   return (
     <SettingRow label={label} sub={sub}>
       <div className="flex min-w-0 max-w-full flex-col items-end gap-2">
-        <div className="flex min-w-0 max-w-full items-start gap-1.5">
+        <div className="flex min-w-0 max-w-full items-center gap-1.5">
+          {gallery && (
+            <Button
+              variant="ghost"
+              onClick={() => gallery.onSelect((gallery.activeIndex - 1 + gallery.items.length) % gallery.items.length)}
+              disabled={gallery.items.length < 2}
+              title={t("settings.imagePrevious")}
+              className="h-7 w-7 shrink-0 p-0 text-muted-foreground disabled:opacity-30"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+          )}
           <div className={`group relative shrink-0 max-w-full overflow-hidden bg-muted/80 ring-1 ring-border/60 ${thumbClassName}`}>
             {value ? (
               <>
                 <img src={value} alt="" className="h-full w-full object-cover transition-[filter,opacity] duration-200" style={{ objectPosition, ...thumbImgStyle }} />
                 {thumbOverlay}
                 <div className="absolute inset-0 flex items-center justify-center gap-1.5 bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
-                  <button
-                    type="button"
-                    onClick={() => inputRef.current?.click()}
-                    title={t("settings.imageReplace")}
-                    className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25"
-                  >
-                    <Upload className="h-3.5 w-3.5" />
-                  </button>
+                  {(!gallery || gallery.items.length < gallery.maxItems) && (
+                    <button
+                      type="button"
+                      onClick={() => inputRef.current?.click()}
+                      title={t(gallery ? "settings.imageAdd" : "settings.imageReplace")}
+                      className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25"
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                   {onAdjust && (
                     <button
                       type="button"
@@ -130,6 +158,18 @@ export function ImageSetting({
             )}
           </div>
 
+          {gallery && (
+            <Button
+              variant="ghost"
+              onClick={() => gallery.onSelect((gallery.activeIndex + 1) % gallery.items.length)}
+              disabled={gallery.items.length < 2}
+              title={t("settings.imageNext")}
+              className="h-7 w-7 shrink-0 p-0 text-muted-foreground disabled:opacity-30"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          )}
+
           {/* Outside the thumbnail, so it never covers the picture and reads
             * as an action on it rather than part of it. */}
           <Button
@@ -141,7 +181,24 @@ export function ImageSetting({
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
+          {gallery && (
+            <Button
+              variant="ghost"
+              onClick={() => inputRef.current?.click()}
+              disabled={gallery.items.length >= gallery.maxItems}
+              title={t("settings.imageAdd")}
+              className="h-7 w-7 shrink-0 p-0 text-muted-foreground disabled:opacity-30"
+            >
+              <Upload className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
+
+        {gallery && (
+          <span className="pr-16 text-[10px] tabular-nums text-muted-foreground">
+            {gallery.items.length === 0 ? 0 : gallery.activeIndex + 1} / {gallery.maxItems}
+          </span>
+        )}
 
         {children}
       </div>
@@ -150,8 +207,9 @@ export function ImageSetting({
         ref={inputRef}
         type="file"
         accept="image/*"
+        multiple={Boolean(gallery)}
         className="hidden"
-        onChange={(e) => { void handleFile(e.target.files?.[0]); e.target.value = ""; }}
+        onChange={(e) => { void handleFiles(e.target.files); e.target.value = ""; }}
       />
 
       <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="max-w-none" className={previewClassName}>
@@ -172,7 +230,12 @@ export function ImageSetting({
         title={t("settings.imageRemoveConfirmTitle")}
         message={t("settings.imageRemoveConfirmMessage")}
         onCancel={() => setConfirmRemove(false)}
-        onConfirm={() => { onChange(""); setConfirmRemove(false); setPreviewOpen(false); }}
+        onConfirm={() => {
+          if (gallery) gallery.onRemove(gallery.activeIndex);
+          else onChange("");
+          setConfirmRemove(false);
+          setPreviewOpen(false);
+        }}
       />
     </SettingRow>
   );

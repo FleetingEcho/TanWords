@@ -843,6 +843,7 @@ export function TerminalTool({
                   <SelectItem value="dracula">{t("toolsPage.terminal.themeDracula")}</SelectItem>
                   <SelectItem value="light">{t("toolsPage.terminal.themeLight")}</SelectItem>
                   <SelectItem value="high-contrast">{t("toolsPage.terminal.themeHighContrast")}</SelectItem>
+                  <SelectItem value="custom">{t("toolsPage.terminal.themeCustom")}</SelectItem>
                 </SelectContent>
               </Select>
             </label>

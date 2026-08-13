@@ -160,6 +160,13 @@ describe("TerminalTool clipboard controls", () => {
       terminalBackgroundColor: "#1a1b26",
       terminalTextColor: "#c0caf5",
       terminalColorScheme: "tokyo-night",
+      terminalCustomAppearance: {
+        backgroundColor: "#1a1b26",
+        textColor: "#c0caf5",
+        transparent: false,
+        blur: 12,
+        opacity: 16,
+      },
       terminalRenderer: "auto",
       appBackgroundImage: "",
       appBackgroundVisible: true,
@@ -249,6 +256,7 @@ describe("TerminalTool clipboard controls", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Terminal appearance" }));
     fireEvent.keyDown(screen.getByRole("combobox", { name: "Theme" }), { key: "ArrowDown" });
+    expect(screen.getByRole("option", { name: "Custom" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("option", { name: "Tokyo Night" }));
 
     expect(mocks.terminal.options.theme).toMatchObject({

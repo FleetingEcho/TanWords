@@ -98,21 +98,74 @@ function fileToDownscaledDataUrl(file: File, maxDimension: number, quality: numb
 
 function AppBackgroundSetting() {
   const t = useT();
+  const images = useSettingsStore((s) => s.appBackgroundImages);
+  const activeIndex = useSettingsStore((s) => s.appBackgroundImageIndex);
+  const positions = useSettingsStore((s) => s.appBackgroundImagePositions);
+  const position = useSettingsStore((s) => s.appBackgroundImagePosition);
+  const setImages = useSettingsStore((s) => s.setAppBackgroundImages);
+  const [pending, setPending] = useState<string[]>([]);
+  const [adjusting, setAdjusting] = useState(false);
+  const editing = pending[0] ?? images[activeIndex] ?? "";
+
+  const closeFraming = () => {
+    setPending([]);
+    setAdjusting(false);
+  };
+
+  const saveFraming = (nextPosition: typeof position) => {
+    if (pending.length > 0) {
+      setImages([...images, editing], images.length, [...positions, nextPosition]);
+      setPending((queue) => queue.slice(1));
+      return;
+    }
+    const nextPositions = positions.map((saved, index) => index === activeIndex ? nextPosition : saved);
+    setImages(images, activeIndex, nextPositions);
+    setAdjusting(false);
+  };
   return (
-    <WallpaperSetting
-      label={t("settings.appBackground")}
-      sub={t("settings.appBackgroundSub")}
-      emptyLabel={t("settings.appBackgroundNone")}
-      maxDimension={APP_BG_MAX_DIMENSION}
-      maxBytes={MAX_APP_BG_UPLOAD_BYTES}
-      processFile={fileToDownscaledDataUrl}
-      image={useSettingsStore((s) => s.appBackgroundImage)}
-      setImage={useSettingsStore((s) => s.setAppBackgroundImage)}
-      blur={useSettingsStore((s) => s.appBackgroundBlur)}
-      setBlur={useSettingsStore((s) => s.setAppBackgroundBlur)}
-      visible={useSettingsStore((s) => s.appBackgroundVisible)}
-      setVisible={useSettingsStore((s) => s.setAppBackgroundVisible)}
-    />
+    <>
+      <WallpaperSetting
+        label={t("settings.appBackground")}
+        sub={t("settings.appBackgroundSub")}
+        emptyLabel={t("settings.appBackgroundNone")}
+        maxDimension={APP_BG_MAX_DIMENSION}
+        maxBytes={MAX_APP_BG_UPLOAD_BYTES}
+        processFile={fileToDownscaledDataUrl}
+        image={useSettingsStore((s) => s.appBackgroundImage)}
+        setImage={useSettingsStore((s) => s.setAppBackgroundImage)}
+        blur={useSettingsStore((s) => s.appBackgroundBlur)}
+        setBlur={useSettingsStore((s) => s.setAppBackgroundBlur)}
+        dimming={useSettingsStore((s) => s.appBackgroundDimming)}
+        setDimming={useSettingsStore((s) => s.setAppBackgroundDimming)}
+        visible={useSettingsStore((s) => s.appBackgroundVisible)}
+        setVisible={useSettingsStore((s) => s.setAppBackgroundVisible)}
+        objectPosition={`${position.x}% ${position.y}%`}
+        onAdjust={() => setAdjusting(true)}
+        gallery={{
+          items: images,
+          activeIndex,
+          maxItems: 5,
+          onAdd: setPending,
+          onSelect: (index) => setImages(images, index, positions),
+          onRemove: (index) => {
+            const nextImages = images.filter((_, itemIndex) => itemIndex !== index);
+            const nextPositions = positions.filter((_, itemIndex) => itemIndex !== index);
+            setImages(nextImages, Math.min(index, nextImages.length - 1), nextPositions);
+          },
+        }}
+      />
+      <BannerPositionModal
+        open={pending.length > 0 || adjusting}
+        src={editing}
+        initial={pending.length > 0 ? DEFAULT_BANNER_POSITION : position}
+        frameAspect={16 / 9}
+        title={t("settings.backgroundPositionTitle")}
+        hint={t("settings.backgroundPositionHint")}
+        fitsHint={t("settings.backgroundPositionFits")}
+        onCancel={closeFraming}
+        onConfirm={saveFraming}
+      />
+    </>
   );
 }
 

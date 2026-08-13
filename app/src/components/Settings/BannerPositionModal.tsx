@@ -9,7 +9,7 @@ import { coverOverflow, dragToPosition, Size } from "./bannerFraming";
  *  typical window. The frame below uses that shape so the band the user drags into view
  *  is the band the dashboard shows — exactness doesn't matter much, since the stored
  *  percentages are relative to whatever overflow the real banner ends up having. */
-const FRAME_ASPECT = 6;
+const BANNER_FRAME_ASPECT = 6;
 
 /** Arrow-key nudge, in object-position percentage points (×5 with Shift). */
 const KEY_STEP = 2;
@@ -22,6 +22,11 @@ interface Props {
   initial: BannerPosition;
   onCancel: () => void;
   onConfirm: (position: BannerPosition) => void;
+  /** Defaults to the Dashboard banner's wide frame; wallpapers use 16:9. */
+  frameAspect?: number;
+  title?: string;
+  hint?: string;
+  fitsHint?: string;
 }
 
 /**
@@ -37,7 +42,11 @@ interface Props {
  * measuring below comes up empty. Measurements only decide how far a drag moves and
  * whether there is anything to drag at all.
  */
-export function BannerPositionModal({ open, src, initial, onCancel, onConfirm }: Props) {
+export function BannerPositionModal({
+  open, src, initial, onCancel, onConfirm,
+  frameAspect = BANNER_FRAME_ASPECT,
+  title, hint, fitsHint,
+}: Props) {
   const t = useT();
   const [pos, setPos] = useState(initial);
   const [frame, setFrame] = useState<Size | null>(null);
@@ -123,9 +132,11 @@ export function BannerPositionModal({ open, src, initial, onCancel, onConfirm }:
   return (
     <Dialog open={open} onClose={onCancel} maxWidth="max-w-3xl">
       <div className="space-y-3 p-5">
-        <DialogTitle className="text-sm font-semibold">{t("settings.bannerPositionTitle")}</DialogTitle>
+        <DialogTitle className="text-sm font-semibold">{title ?? t("settings.bannerPositionTitle")}</DialogTitle>
         <p className="text-xs leading-relaxed text-muted-foreground">
-          {measured && !draggable ? t("settings.bannerPositionFits") : t("settings.bannerPositionHint")}
+          {measured && !draggable
+            ? fitsHint ?? t("settings.bannerPositionFits")
+            : hint ?? t("settings.bannerPositionHint")}
         </p>
 
         <div
@@ -136,7 +147,7 @@ export function BannerPositionModal({ open, src, initial, onCancel, onConfirm }:
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
-          style={{ aspectRatio: `${FRAME_ASPECT} / 1` }}
+          style={{ aspectRatio: `${frameAspect} / 1` }}
           className={`relative w-full touch-none select-none overflow-hidden rounded-xl bg-muted ring-1 ring-border focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary ${
             draggable ? "cursor-grab active:cursor-grabbing" : ""
           }`}
