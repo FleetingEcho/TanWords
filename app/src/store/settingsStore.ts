@@ -4,10 +4,12 @@ import {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR, DEFAULT_BANNER_POSITION,
   DEFAULT_LAYOUT_MODE, DEFAULT_AUTO_LOCK_MINUTES,
   DEFAULT_TERMINAL_BACKGROUND_BLUR, DEFAULT_TERMINAL_BACKGROUND_OPACITY, DEFAULT_TERMINAL_TRANSPARENT,
+  DEFAULT_TERMINAL_BACKGROUND_COLOR,
+  DEFAULT_TERMINAL_RENDERER,
   DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE,
-  DOCUMENT_TEXT_COLOR_RE,
+  DOCUMENT_TEXT_COLOR_RE, normalizeHexColor,
   type Theme, type SidebarTabId, type TopBarItemId, type RssTabSelection, type LayoutMode,
-  type BannerPosition,
+  type BannerPosition, type TerminalRenderer,
 } from "./settings/types";
 import {
   cachedUiLanguage, cacheUiLanguage, cachedSidebarTabs, cacheSidebarTabs,
@@ -20,13 +22,15 @@ import { loadSettingsFromDB } from "./settings/loadFromDB";
 import type { SettingsState } from "./settings/state";
 
 export type {
-  Theme, SidebarTabId, TopBarItemId, RssTabSelection, BannerPosition,
+  Theme, SidebarTabId, TopBarItemId, RssTabSelection, BannerPosition, TerminalRenderer,
 } from "./settings/types";
 export {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS,
   DEFAULT_HIGHLIGHT_COLOR, HIGHLIGHT_PRESETS, DEFAULT_BANNER_POSITION, DEFAULT_LAYOUT_MODE,
   AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES,
   DEFAULT_TERMINAL_BACKGROUND_BLUR, DEFAULT_TERMINAL_BACKGROUND_OPACITY, DEFAULT_TERMINAL_TRANSPARENT,
+  DEFAULT_TERMINAL_BACKGROUND_COLOR,
+  DEFAULT_TERMINAL_RENDERER,
   DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE,
 } from "./settings/types";
 export type { SettingsState } from "./settings/state";
@@ -65,6 +69,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   terminalTransparent: DEFAULT_TERMINAL_TRANSPARENT,
   terminalBackgroundBlur: DEFAULT_TERMINAL_BACKGROUND_BLUR,
   terminalBackgroundOpacity: DEFAULT_TERMINAL_BACKGROUND_OPACITY,
+  terminalBackgroundColor: DEFAULT_TERMINAL_BACKGROUND_COLOR,
+  terminalRenderer: DEFAULT_TERMINAL_RENDERER,
   terminalFontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
   terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
   terminalShellPath: "",
@@ -220,6 +226,17 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     const value = Math.min(100, Math.max(0, Math.round(percent)));
     set({ terminalBackgroundOpacity: value });
     saveSettingDebounced("terminal_background_opacity", JSON.stringify(value));
+  },
+
+  setTerminalBackgroundColor: (hex) => {
+    const value = normalizeHexColor(hex);
+    set({ terminalBackgroundColor: value });
+    saveSettingDebounced("terminal_background_color", JSON.stringify(value));
+  },
+
+  setTerminalRenderer: (renderer) => {
+    set({ terminalRenderer: renderer });
+    saveSetting("terminal_renderer", JSON.stringify(renderer));
   },
 
   setTerminalFontFamily: (family) => {

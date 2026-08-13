@@ -62,6 +62,7 @@ import {
   encoder,
   quoteTerminalPath,
   shellTabTitle,
+  terminalBackgroundRgba,
   terminalFontStack,
   terminalSearchOptions,
 } from "./terminalUtils";
@@ -99,6 +100,8 @@ export function TerminalTool({
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const refitRef = useRef<() => void>(() => {});
+  const webglAddonRef = useRef<WebglAddon | null>(null);
+  const webglContextLossSubscriptionRef = useRef<{ dispose: () => void } | null>(null);
   const onSessionExitRef = useRef(onSessionExit);
   onSessionExitRef.current = onSessionExit;
   const onSessionReadyRef = useRef(onSessionReady);
@@ -128,6 +131,15 @@ export function TerminalTool({
   const setBlur = useSettingsStore((state) => state.setTerminalBackgroundBlur);
   const backgroundOpacity = useSettingsStore((state) => state.terminalBackgroundOpacity);
   const setBackgroundOpacity = useSettingsStore((state) => state.setTerminalBackgroundOpacity);
+  const terminalBackgroundColor = useSettingsStore((state) => state.terminalBackgroundColor);
+  const setTerminalBackgroundColor = useSettingsStore((state) => state.setTerminalBackgroundColor);
+  const terminalRenderer = useSettingsStore((state) => state.terminalRenderer);
+  // Draft for the hex text field: typed shorthand like `#ddd` is committed on
+  // blur/Enter, and re-synced whenever the store value changes (colour picker,
+  // Settings page, or another tab).
+  const [bgColorDraft, setBgColorDraft] = useState(terminalBackgroundColor);
+  useEffect(() => { setBgColorDraft(terminalBackgroundColor); }, [terminalBackgroundColor]);
+  const commitBgColor = useCallback(() => setTerminalBackgroundColor(bgColorDraft), [bgColorDraft, setTerminalBackgroundColor]);
   const terminalFontFamily = useSettingsStore((state) => state.terminalFontFamily);
   const terminalFontSize = useSettingsStore((state) => state.terminalFontSize);
   const setTerminalFontSize = useSettingsStore((state) => state.setTerminalFontSize);
@@ -202,7 +214,12 @@ export function TerminalTool({
       // glass controls continue to reveal the app wallpaper underneath it.
       allowTransparency: true,
       fontFamily: terminalFontStack(terminalFontFamily),
-      theme: TERMINAL_THEME,
+      theme: {
+        ...TERMINAL_THEME,
+        // An opaque terminal can give WebGL its real backing colour. Glass
+        // mode keeps the canvas clear and uses the shell tint below instead.
+        background: transparent ? "rgba(0, 0, 0, 0)" : terminalBackgroundColor,
+      },
       // Scrollback lives in xterm's JS buffer, independently of the WebGL
       // canvas renderer. Keep a generous daily-development history without the
       // excessive aggregate memory exposure across two persistent tabs. The
@@ -276,24 +293,6 @@ export function TerminalTool({
       pumpOutput();
     };
 
-    // Prefer xterm's GPU-backed canvas renderer. Unsupported/blocked WebGL2
-    // contexts throw here, in which case xterm's built-in DOM renderer remains
-    // active. Context loss later follows the same safe fallback path.
-    let webgl: WebglAddon | null = null;
-    let contextLossSubscription: { dispose: () => void } | null = null;
-    try {
-      const webglAddon = new WebglAddon();
-      webgl = webglAddon;
-      contextLossSubscription = webglAddon.onContextLoss(() => {
-        // xterm falls back to its built-in renderer after the GPU context is
-        // lost. Dispose promptly so a dead canvas cannot retain GPU memory.
-        webglAddon.dispose();
-      });
-      term.loadAddon(webglAddon);
-    } catch {
-      webgl?.dispose();
-      // DOM rendering is already active; no recovery work is required.
-    }
     fit.fit();
 
     const state = { sessionId: null as string | null };
@@ -465,7 +464,10 @@ export function TerminalTool({
       if (retryTimer) clearTimeout(retryTimer);
       if (stabilityTimer) clearTimeout(stabilityTimer);
       if (fitFrame !== null) window.cancelAnimationFrame(fitFrame);
-      contextLossSubscription?.dispose();
+      webglContextLossSubscriptionRef.current?.dispose();
+      webglContextLossSubscriptionRef.current = null;
+      webglAddonRef.current?.dispose();
+      webglAddonRef.current = null;
       searchResultsSubscription.dispose();
       onData.dispose();
       onResize.dispose();
@@ -484,6 +486,54 @@ export function TerminalTool({
       if (searchAddonRef.current === searchAddon) searchAddonRef.current = null;
     };
   }, [sessionGeneration]);
+
+  // WebGL is fast for an opaque terminal, but its dim-text glyph atlas can
+  // reveal opaque black cell rectangles when composited onto a transparent
+  // canvas (notably around Vite/Rollup's subdued file-size output). Use xterm's
+  // built-in renderer for the glass mode so ANSI foreground styles remain
+  // transparent; explicit ANSI backgrounds used by full-screen TUIs still
+  // render normally. Auto selects that safe combination; Settings can override
+  // it for users who prefer consistent performance or rendering behaviour.
+  useEffect(() => {
+    const term = terminalRef.current;
+    if (!term) return;
+
+    const disposeWebgl = () => {
+      webglContextLossSubscriptionRef.current?.dispose();
+      webglContextLossSubscriptionRef.current = null;
+      webglAddonRef.current?.dispose();
+      webglAddonRef.current = null;
+    };
+
+    disposeWebgl();
+    const useWebgl = terminalRenderer === "webgl"
+      || (terminalRenderer === "auto" && !transparent);
+    if (!useWebgl) return;
+
+    try {
+      const webglAddon = new WebglAddon();
+      webglAddonRef.current = webglAddon;
+      webglContextLossSubscriptionRef.current = webglAddon.onContextLoss(disposeWebgl);
+      term.loadAddon(webglAddon);
+    } catch {
+      disposeWebgl();
+      // xterm's built-in renderer is already active.
+    }
+
+    return disposeWebgl;
+  }, [sessionGeneration, terminalRenderer, transparent]);
+
+  // Keep xterm's idea of the default cell background aligned with the shell.
+  // In particular, reverse-video cells should resolve against the selected
+  // solid colour instead of xterm's transparent-background fallback.
+  useEffect(() => {
+    const term = terminalRef.current;
+    if (!term) return;
+    term.options.theme = {
+      ...TERMINAL_THEME,
+      background: transparent ? "rgba(0, 0, 0, 0)" : terminalBackgroundColor,
+    };
+  }, [sessionGeneration, terminalBackgroundColor, transparent]);
 
   // Search the actual xterm scrollback buffer. Incremental searches preserve a
   // matching selection while the query grows; explicit navigation starts from
@@ -728,45 +778,7 @@ export function TerminalTool({
             <Search className="h-4 w-4" />
           </Button>
 
-          {/* glass / transparency toggle + appearance controls */}
-          {appearanceControlsOpen && (
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <label className="flex items-center gap-2">
-                <span className="text-[11px] text-muted-foreground">
-                  {t("toolsPage.terminal.blurLabel")}
-                </span>
-                <input
-                  type="range"
-                  min={0}
-                  max={30}
-                  step={1}
-                  value={blur}
-                  onChange={(e) => setBlur(Number(e.currentTarget.value))}
-                  className="h-6 w-20 cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-[3px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-muted-foreground/30 [&::-webkit-slider-thumb]:mt-[-4px] [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-card [&::-webkit-slider-thumb]:bg-primary [&::-moz-range-track]:h-[3px] [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-muted-foreground/30 [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-card [&::-moz-range-thumb]:bg-primary"
-                />
-                <span className="w-8 text-right text-[11px] tabular-nums text-muted-foreground">
-                  {blur}px
-                </span>
-              </label>
-              <label className="flex items-center gap-2">
-                <span className="text-[11px] text-muted-foreground">
-                  {t("toolsPage.terminal.opacityLabel")}
-                </span>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={backgroundOpacity}
-                  onChange={(e) => setBackgroundOpacity(Number(e.currentTarget.value))}
-                  className="h-6 w-20 cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-[3px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-muted-foreground/30 [&::-webkit-slider-thumb]:mt-[-4px] [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-card [&::-webkit-slider-thumb]:bg-primary [&::-moz-range-track]:h-[3px] [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-muted-foreground/30 [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-card [&::-moz-range-thumb]:bg-primary"
-                />
-                <span className="w-8 text-right text-[11px] tabular-nums text-muted-foreground">
-                  {backgroundOpacity}%
-                </span>
-              </label>
-            </div>
-          )}
+          {/* glass / transparency controls toggle */}
           <Button
             variant="ghost"
             size="icon"
@@ -801,6 +813,80 @@ export function TerminalTool({
             )}
           </Button>
         </div>
+
+        {/* Keep appearance settings on their own row. They otherwise compete
+            with the title and toolbar actions for horizontal space. */}
+        {appearanceControlsOpen && (
+          <div
+            role="group"
+            aria-label={t("toolsPage.terminal.appearance")}
+            className="app-region-no-drag flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/70 bg-background/55 px-4 py-2 backdrop-blur-md sm:px-6"
+          >
+            <label className="flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground">
+                  {t("toolsPage.terminal.blurLabel")}
+                </span>
+                <input
+                  type="range"
+                  min={0}
+                  max={30}
+                  step={1}
+                  value={blur}
+                  onChange={(e) => setBlur(Number(e.currentTarget.value))}
+                  className="h-6 w-20 cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-[3px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-muted-foreground/30 [&::-webkit-slider-thumb]:mt-[-4px] [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-card [&::-webkit-slider-thumb]:bg-primary [&::-moz-range-track]:h-[3px] [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-muted-foreground/30 [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-card [&::-moz-range-thumb]:bg-primary"
+                />
+                <span className="w-8 text-right text-[11px] tabular-nums text-muted-foreground">
+                  {blur}px
+                </span>
+            </label>
+            <label className="flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground">
+                  {t("toolsPage.terminal.opacityLabel")}
+                </span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={backgroundOpacity}
+                  onChange={(e) => setBackgroundOpacity(Number(e.currentTarget.value))}
+                  className="h-6 w-20 cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-[3px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-muted-foreground/30 [&::-webkit-slider-thumb]:mt-[-4px] [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-card [&::-webkit-slider-thumb]:bg-primary [&::-moz-range-track]:h-[3px] [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-muted-foreground/30 [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-card [&::-moz-range-thumb]:bg-primary"
+                />
+                <span className="w-8 text-right text-[11px] tabular-nums text-muted-foreground">
+                  {backgroundOpacity}%
+                </span>
+            </label>
+            <label className="flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground">
+                  {t("toolsPage.terminal.backgroundColorLabel")}
+                </span>
+                <input
+                  type="color"
+                  value={terminalBackgroundColor}
+                  onChange={(e) => setTerminalBackgroundColor(e.currentTarget.value)}
+                  title={t("toolsPage.terminal.backgroundColorLabel")}
+                  aria-label={t("toolsPage.terminal.backgroundColorLabel")}
+                  className="h-6 w-8 cursor-pointer rounded-md border border-border bg-transparent p-0.5"
+                />
+                <input
+                  type="text"
+                  value={bgColorDraft}
+                  onChange={(e) => setBgColorDraft(e.currentTarget.value)}
+                  onBlur={commitBgColor}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.currentTarget.blur();
+                  }}
+                  spellCheck={false}
+                  autoComplete="off"
+                  maxLength={7}
+                  placeholder="#0d1117"
+                  title={t("toolsPage.terminal.backgroundColorLabel")}
+                  aria-label={t("toolsPage.terminal.backgroundColorLabel")}
+                  className="h-6 w-16 rounded-md border border-border bg-transparent px-1.5 text-[11px] tabular-nums text-foreground outline-none focus:border-primary"
+                />
+            </label>
+          </div>
+        )}
 
         {tabBar}
 
@@ -904,15 +990,16 @@ export function TerminalTool({
           style={
             transparent
               ? {
-                  // Near-transparent tint: the app's own background map already
-                  // dims the wallpaper (bg-black/45 dark / 20 light), so a light
-                  // scrim here keeps text legible without reading as opaque. The
-                  // backdrop-blur does the real work of frosting the image.
-                  background: `rgba(8,10,14,${backgroundOpacity / 100})`,
+                  // The user-chosen background colour as a translucent tint
+                  // over the wallpaper; backdrop-blur does the real frosting.
+                  // The app's own background map already dims the wallpaper
+                  // (bg-black/45 dark / 20 light), so this scrim keeps text
+                  // legible without reading as opaque.
+                  background: terminalBackgroundRgba(terminalBackgroundColor, backgroundOpacity),
                   backdropFilter: `blur(${blur}px)`,
                   WebkitBackdropFilter: `blur(${blur}px)`,
                 }
-              : { background: "rgb(13,17,23)" }
+              : { background: terminalBackgroundColor }
           }
         >
           <div

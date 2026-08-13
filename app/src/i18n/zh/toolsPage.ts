@@ -72,6 +72,7 @@ export const toolsPage: Dict = {
     "toolsPage.terminal.appearance": "终端外观",
     "toolsPage.terminal.blurLabel": "背景模糊",
     "toolsPage.terminal.opacityLabel": "背景不透明度",
+    "toolsPage.terminal.backgroundColorLabel": "背景颜色",
     "toolsPage.terminal.fontSize": "终端字体大小",
     "toolsPage.terminal.decreaseFontSize": "减小终端字体",
     "toolsPage.terminal.increaseFontSize": "增大终端字体",

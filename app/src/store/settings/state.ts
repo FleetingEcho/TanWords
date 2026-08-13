@@ -1,5 +1,6 @@
 import type {
   Theme, SidebarTabId, TopBarItemId, RssTabSelection, BannerPosition, LayoutMode,
+  TerminalRenderer,
 } from "./types";
 
 export interface SettingsState {
@@ -68,6 +69,12 @@ export interface SettingsState {
   terminalTransparent: boolean;
   terminalBackgroundBlur: number;
   terminalBackgroundOpacity: number;
+  /** Hex (`#rrggbb`) fill colour for the terminal pane — the solid background
+   *  when glass is off, and the tint colour (at `terminalBackgroundOpacity`)
+   *  when glass is on. Defaults to GitHub-dark. */
+  terminalBackgroundColor: string;
+  /** Rendering backend. Auto avoids WebGL's transparent dim-text artifacts. */
+  terminalRenderer: TerminalRenderer;
   /** Local font family name, or ui-monospace for the operating-system default. */
   terminalFontFamily: string;
   terminalFontSize: number;
@@ -123,6 +130,8 @@ export interface SettingsState {
   setTerminalTransparent: (enabled: boolean) => void;
   setTerminalBackgroundBlur: (px: number) => void;
   setTerminalBackgroundOpacity: (percent: number) => void;
+  setTerminalBackgroundColor: (hex: string) => void;
+  setTerminalRenderer: (renderer: TerminalRenderer) => void;
   setTerminalFontFamily: (family: string) => void;
   setTerminalFontSize: (px: number) => void;
   setTerminalShellPath: (path: string) => void;

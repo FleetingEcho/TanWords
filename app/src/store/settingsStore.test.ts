@@ -25,6 +25,7 @@ describe("settingsStore database hydration", () => {
       terminalTransparent: false,
       terminalBackgroundBlur: 16,
       terminalBackgroundOpacity: 16,
+      terminalRenderer: "auto",
       terminalFontFamily: "ui-monospace",
       terminalFontSize: 13,
       terminalShellPath: "",
@@ -86,6 +87,7 @@ describe("settingsStore database hydration", () => {
       if (args?.key === "terminal_background_blur") return "24";
       if (args?.key === "terminal_background_opacity") return "42";
       if (args?.key === "terminal_transparent") return "true";
+      if (args?.key === "terminal_renderer") return '"dom"';
       if (args?.key === "terminal_font_family") return '"JetBrains Mono"';
       if (args?.key === "terminal_font_size") return "17";
       return null;
@@ -94,6 +96,7 @@ describe("settingsStore database hydration", () => {
     await useSettingsStore.getState().loadFromDB();
 
     expect(useSettingsStore.getState().terminalTransparent).toBe(true);
+    expect(useSettingsStore.getState().terminalRenderer).toBe("dom");
     expect(useSettingsStore.getState().terminalBackgroundBlur).toBe(24);
     expect(useSettingsStore.getState().terminalBackgroundOpacity).toBe(42);
     expect(useSettingsStore.getState().terminalFontFamily).toBe("JetBrains Mono");
@@ -128,6 +131,18 @@ describe("settingsStore database hydration", () => {
       expect(invoke).toHaveBeenCalledWith("db_set_setting", {
         key: "terminal_transparent",
         value: "true",
+      });
+    });
+  });
+
+  it("persists the terminal renderer", async () => {
+    useSettingsStore.getState().setTerminalRenderer("webgl");
+
+    expect(useSettingsStore.getState().terminalRenderer).toBe("webgl");
+    await vi.waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("db_set_setting", {
+        key: "terminal_renderer",
+        value: '"webgl"',
       });
     });
   });

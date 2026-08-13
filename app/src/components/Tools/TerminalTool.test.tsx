@@ -155,6 +155,10 @@ describe("TerminalTool clipboard controls", () => {
     mocks.terminal.getSelection.mockReturnValue("");
     useSettingsStore.setState({
       terminalTransparent: false,
+      terminalBackgroundBlur: 12,
+      terminalBackgroundOpacity: 16,
+      terminalBackgroundColor: "#0d1117",
+      terminalRenderer: "auto",
       appBackgroundImage: "",
       appBackgroundVisible: true,
       appBackgroundBlur: 20,
@@ -182,14 +186,14 @@ describe("TerminalTool clipboard controls", () => {
     return { ...result, shell: shell! };
   }
 
-  it("uses the transparent WebGL canvas renderer with DOM fallback", () => {
+  it("uses WebGL for the opaque terminal with DOM fallback", () => {
     renderTerminal();
 
     expect(mocks.getTerminalOptions()).toMatchObject({
       allowProposedApi: true,
       allowTransparency: true,
       scrollback: 5_000,
-      theme: { background: "rgba(0, 0, 0, 0)" },
+      theme: { background: "#0d1117" },
     });
     expect(mocks.terminal.loadAddon).toHaveBeenCalledWith(mocks.webgl);
 
@@ -210,8 +214,29 @@ describe("TerminalTool clipboard controls", () => {
     expect(theme.foreground).toBe("#c9d1d9");
     // Tango's values must not survive anywhere in the palette.
     expect(Object.values(theme)).not.toContain("#2e3436");
-    // The pane behind xterm owns the fill, so the canvas stays clear.
-    expect(theme.background).toBe("rgba(0, 0, 0, 0)");
+    expect(theme.background).toBe("#0d1117");
+  });
+
+  it("uses the built-in renderer in glass mode to avoid dark dim-text cells", () => {
+    renderTerminal();
+
+    fireEvent.click(screen.getByRole("button", { name: "Terminal appearance" }));
+
+    expect(mocks.webgl.dispose).toHaveBeenCalledOnce();
+    expect((mocks.terminal.options.theme as Record<string, string>).background)
+      .toBe("rgba(0, 0, 0, 0)");
+  });
+
+  it("honors explicit DOM and WebGL renderer choices", () => {
+    useSettingsStore.setState({ terminalRenderer: "dom", terminalTransparent: false });
+    const domView = renderTerminal();
+    expect(mocks.terminal.loadAddon).not.toHaveBeenCalledWith(mocks.webgl);
+    domView.unmount();
+
+    vi.clearAllMocks();
+    useSettingsStore.setState({ terminalRenderer: "webgl", terminalTransparent: true });
+    renderTerminal();
+    expect(mocks.terminal.loadAddon).toHaveBeenCalledWith(mocks.webgl);
   });
 
   it("keeps the terminal shell flush with its tab strip without page margins", () => {
@@ -235,6 +260,18 @@ describe("TerminalTool clipboard controls", () => {
     renderTerminal();
 
     expect(screen.getByText("Terminal").parentElement?.parentElement).toHaveClass("app-drag-region");
+  });
+
+  it("puts appearance controls on a dedicated row below the toolbar", () => {
+    renderTerminal();
+    const toolbar = screen.getByText("Terminal").parentElement?.parentElement;
+
+    fireEvent.click(screen.getByRole("button", { name: "Terminal appearance" }));
+    const controls = screen.getByRole("group", { name: "Terminal appearance" });
+
+    expect(toolbar).not.toContainElement(controls);
+    expect(toolbar?.nextElementSibling).toBe(controls);
+    expect(controls).toHaveClass("shrink-0", "border-t");
   });
 
   it("exits OS fullscreen when the maximized terminal toolbar is dragged down", () => {
@@ -624,7 +661,7 @@ describe("TerminalTool clipboard controls", () => {
     const second = renderTerminal();
     expect(useSettingsStore.getState().terminalTransparent).toBe(true);
     expect(screen.getByRole("button", { name: "Terminal appearance" })).toHaveAttribute("aria-pressed", "false");
-    expect(second.shell).toHaveStyle({ background: "rgba(8,10,14,0.16)" });
+    expect(second.shell).toHaveStyle({ background: "rgba(13,17,23,0.16)" });
   });
 
   it("keeps the glass effect when its appearance controls are closed", () => {
@@ -640,7 +677,7 @@ describe("TerminalTool clipboard controls", () => {
     expect(screen.queryByRole("slider", { name: /^Background blur/ })).not.toBeInTheDocument();
     expect(useSettingsStore.getState().terminalTransparent).toBe(true);
     expect(shell).toHaveStyle({
-      background: "rgba(8,10,14,0.16)",
+      background: "rgba(13,17,23,0.16)",
       backdropFilter: "blur(1px)",
     });
   });

@@ -128,6 +128,27 @@ export const TERMINAL_THEME = {
   brightWhite: "#ffffff",
 } as const;
 
+/** Splits a `#rrggbb` (or `#rgb`) colour into its numeric channels. Falls
+ *  back to GitHub-dark if the hex is malformed, so a corrupt stored value
+ *  never blanks the terminal behind the glyphs. */
+export function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec((hex || "").trim());
+  if (!m) return { r: 13, g: 17, b: 23 };
+  let h = m[1];
+  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+  const n = parseInt(h, 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+/** CSS colour for the terminal pane's glass tint: the user-chosen background
+ *  colour at the given opacity percent (0–100). Used when transparent mode is
+ *  on; solid mode applies the hex directly. */
+export function terminalBackgroundRgba(hex: string, opacityPercent: number): string {
+  const { r, g, b } = hexToRgb(hex);
+  const a = Math.min(100, Math.max(0, opacityPercent)) / 100;
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
 const SEARCH_DECORATIONS: NonNullable<ISearchOptions["decorations"]> = {
   matchBackground: "#5f4a18",
   matchBorder: "#c99b26",

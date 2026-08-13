@@ -17,6 +17,7 @@ describe("TerminalSection typography", () => {
       uiLanguage: "en",
       terminalFontFamily: "ui-monospace",
       terminalFontSize: 13,
+      terminalRenderer: "auto",
       terminalShellPath: "",
     });
     Object.defineProperty(window, "queryLocalFonts", {
@@ -59,6 +60,16 @@ describe("TerminalSection typography", () => {
     expect(useSettingsStore.getState().terminalShellPath)
       .toBe("C:\\Program Files\\Git\\bin\\bash.exe");
     expect(screen.getByText(/Changes apply only to new terminal tabs/i)).toBeInTheDocument();
+  });
+
+  it("changes the terminal renderer preference", () => {
+    render(<TerminalSection />);
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Renderer" }), {
+      target: { value: "dom" },
+    });
+
+    expect(useSettingsStore.getState().terminalRenderer).toBe("dom");
   });
 
   it("shows the shell actually used by default without persisting it as an override", async () => {

@@ -5,8 +5,9 @@ import {
   DEFAULT_LAYOUT_MODE, AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES,
   DEFAULT_TERMINAL_BACKGROUND_BLUR, DEFAULT_TERMINAL_BACKGROUND_OPACITY, DEFAULT_TERMINAL_TRANSPARENT,
   DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE,
-  DOCUMENT_TEXT_COLOR_RE, type Theme, type RssTabSelection,
-  type LayoutMode,
+  DEFAULT_TERMINAL_RENDERER,
+  DOCUMENT_TEXT_COLOR_RE, normalizeHexColor, type Theme, type RssTabSelection,
+  type LayoutMode, type TerminalRenderer,
 } from "./types";
 import {
   cacheUiLanguage, cacheSidebarTabs, cacheTopBarItems, cacheDefaultRssTab, cacheFeedsViewMode,
@@ -54,6 +55,8 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       "terminal_transparent",
       "terminal_background_blur",
       "terminal_background_opacity",
+      "terminal_background_color",
+      "terminal_renderer",
       "terminal_font_family",
       "terminal_font_size",
       "document_font_size",
@@ -197,6 +200,11 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       terminalBackgroundOpacity: Number.isFinite(Number(values.terminal_background_opacity))
         ? Math.min(100, Math.max(0, Math.round(Number(values.terminal_background_opacity))))
         : DEFAULT_TERMINAL_BACKGROUND_OPACITY,
+      terminalBackgroundColor: normalizeHexColor(values.terminal_background_color || ""),
+      terminalRenderer: (["auto", "webgl", "dom"] as TerminalRenderer[])
+        .includes(values.terminal_renderer as TerminalRenderer)
+        ? values.terminal_renderer as TerminalRenderer
+        : DEFAULT_TERMINAL_RENDERER,
       terminalFontFamily: typeof values.terminal_font_family === "string" && values.terminal_font_family.trim()
         ? values.terminal_font_family.trim().slice(0, 120)
         : DEFAULT_TERMINAL_FONT_FAMILY,

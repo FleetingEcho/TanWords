@@ -14,6 +14,7 @@ export type Theme =
 export type SidebarTabId = Exclude<NavPage, "settings">;
 export type TopBarItemId = "search" | "context" | "scratch" | "db" | "mcp" | "ai" | "language" | "theme" | "updates" | "github";
 export type LayoutMode = "flexible" | "fixed";
+export type TerminalRenderer = "auto" | "webgl" | "dom";
 
 /** Feeds page tab selector: a specific RSS feed, "all" of them, or the native Hacker News browser. */
 export type RssTabSelection = number | "all" | "hackernews";
@@ -42,6 +43,25 @@ export const DEFAULT_AUTO_LOCK_MINUTES = 0;
 export const DEFAULT_TERMINAL_BACKGROUND_BLUR = 16;
 export const DEFAULT_TERMINAL_BACKGROUND_OPACITY = 16;
 export const DEFAULT_TERMINAL_TRANSPARENT = false;
+export const DEFAULT_TERMINAL_RENDERER: TerminalRenderer = "auto";
+/** GitHub-dark, matching TERMINAL_THEME's documented background and the solid
+ *  fill used when glass is off. Users can override it from the toolbar. */
+export const DEFAULT_TERMINAL_BACKGROUND_COLOR = "#0d1117";
+
+/** Normalizes a hex colour to canonical `#rrggbb` lowercase, accepting CSS
+ *  shorthand `#rgb` (and a bare `rgb`/`rrggbb` without the leading `#`). Returns
+ *  the fallback (GitHub-dark by default) when the input is not a valid colour,
+ *  so a corrupt stored or typed value never blanks the terminal. */
+export function normalizeHexColor(
+  raw: string,
+  fallback: string = DEFAULT_TERMINAL_BACKGROUND_COLOR,
+): string {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec((raw ?? "").trim());
+  if (!m) return fallback;
+  let h = m[1].toLowerCase();
+  if (h.length === 3) h = h.split("").map((c) => c + c).join("");
+  return `#${h}`;
+}
 /** `ui-monospace` resolves to the desktop OS/browser's native monospace face. */
 export const DEFAULT_TERMINAL_FONT_FAMILY = "ui-monospace";
 export const DEFAULT_TERMINAL_FONT_SIZE = 16;

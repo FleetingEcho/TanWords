@@ -72,6 +72,7 @@ export const toolsPage: Dict = {
     "toolsPage.terminal.appearance": "Terminal appearance",
     "toolsPage.terminal.blurLabel": "Background blur",
     "toolsPage.terminal.opacityLabel": "Background opacity",
+    "toolsPage.terminal.backgroundColorLabel": "Background color",
     "toolsPage.terminal.fontSize": "Terminal font size",
     "toolsPage.terminal.decreaseFontSize": "Decrease terminal font size",
     "toolsPage.terminal.increaseFontSize": "Increase terminal font size",

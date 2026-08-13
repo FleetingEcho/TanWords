@@ -28,12 +28,20 @@ export function TerminalSection() {
   const transparent = useSettingsStore((state) => state.terminalTransparent);
   const blur = useSettingsStore((state) => state.terminalBackgroundBlur);
   const opacity = useSettingsStore((state) => state.terminalBackgroundOpacity);
+  const backgroundColor = useSettingsStore((state) => state.terminalBackgroundColor);
+  const renderer = useSettingsStore((state) => state.terminalRenderer);
   const fontFamily = useSettingsStore((state) => state.terminalFontFamily);
   const fontSize = useSettingsStore((state) => state.terminalFontSize);
   const shellPath = useSettingsStore((state) => state.terminalShellPath);
   const setTransparent = useSettingsStore((state) => state.setTerminalTransparent);
   const setBlur = useSettingsStore((state) => state.setTerminalBackgroundBlur);
   const setOpacity = useSettingsStore((state) => state.setTerminalBackgroundOpacity);
+  const setBackgroundColor = useSettingsStore((state) => state.setTerminalBackgroundColor);
+  const setRenderer = useSettingsStore((state) => state.setTerminalRenderer);
+  // Draft for the hex text field: typed shorthand like `#ddd` is committed on
+  // blur/Enter and re-synced when the store value changes elsewhere.
+  const [bgColorDraft, setBgColorDraft] = useState(backgroundColor);
+  useEffect(() => { setBgColorDraft(backgroundColor); }, [backgroundColor]);
   const setFontFamily = useSettingsStore((state) => state.setTerminalFontFamily);
   const setFontSize = useSettingsStore((state) => state.setTerminalFontSize);
   const setShellPath = useSettingsStore((state) => state.setTerminalShellPath);
@@ -164,6 +172,22 @@ export function TerminalSection() {
       </SettingRow>
 
       <SettingRow
+        label={t("settings.terminalRenderer")}
+        sub={t("settings.terminalRendererSub")}
+      >
+        <select
+          value={renderer}
+          onChange={(event) => setRenderer(event.target.value as "auto" | "webgl" | "dom")}
+          aria-label={t("settings.terminalRenderer")}
+          className="h-9 w-56 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
+        >
+          <option value="auto">{t("settings.terminalRendererAuto")}</option>
+          <option value="webgl">{t("settings.terminalRendererWebgl")}</option>
+          <option value="dom">{t("settings.terminalRendererDom")}</option>
+        </select>
+      </SettingRow>
+
+      <SettingRow
         label={t("toolsPage.terminal.blurLabel")}
         sub={t("settings.terminalBackgroundBlurSub")}
       >
@@ -206,6 +230,39 @@ export function TerminalSection() {
             className="w-full accent-primary"
             aria-label={t("toolsPage.terminal.opacityLabel")}
           />
+        </div>
+      </SettingRow>
+
+      <SettingRow
+        label={t("toolsPage.terminal.backgroundColorLabel")}
+        sub={t("settings.terminalBackgroundColorSub")}
+      >
+        <div className="flex items-center gap-2">
+          <input
+            type="color"
+            value={backgroundColor}
+            onChange={(e) => setBackgroundColor(e.target.value)}
+            title={t("toolsPage.terminal.backgroundColorLabel")}
+            aria-label={t("toolsPage.terminal.backgroundColorLabel")}
+            className="h-9 w-16 cursor-pointer rounded-md border border-input bg-transparent p-1"
+          />
+          <input
+            type="text"
+            value={bgColorDraft}
+            onChange={(e) => setBgColorDraft(e.target.value)}
+            onBlur={() => setBackgroundColor(bgColorDraft)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.currentTarget.blur();
+            }}
+            spellCheck={false}
+            autoComplete="off"
+            maxLength={7}
+            placeholder="#0d1117"
+            title={t("toolsPage.terminal.backgroundColorLabel")}
+            aria-label={t("toolsPage.terminal.backgroundColorLabel")}
+            className="h-9 w-24 rounded-md border border-input bg-transparent px-2 text-sm tabular-nums text-foreground outline-none focus:border-primary"
+          />
+          <span className="text-xs tabular-nums text-muted-foreground">{backgroundColor}</span>
         </div>
       </SettingRow>
 
