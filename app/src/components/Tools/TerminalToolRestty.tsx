@@ -219,13 +219,32 @@ function createElectronPtyTransport(shellPath: string, hooks: PtySessionHooks): 
   };
 }
 
+/** restty's own built-in fallback chain (what leaving `fonts` unset would
+ *  use) covers CJK glyphs with exactly one entry — a `Noto Sans CJK SC` OTF
+ *  fetched from `cdn.jsdelivr.net` at first render, with no Local Font
+ *  Access attempt before it (confirmed in
+ *  `node_modules/restty/dist/chunk-mnhegx4k.js`'s `DEFAULT_FONT_INPUTS`).
+ *  jsdelivr is commonly slow or blocked outright in mainland China, so
+ *  Chinese/Japanese/Korean text renders as tofu boxes until — or unless —
+ *  that fetch succeeds. Every OS ships a CJK-capable font already, so ask
+ *  Local Font Access for one first; it costs nothing if unavailable ("prefer"
+ *  falls through to the next entry rather than erroring). */
+const LOCAL_CJK_FALLBACK_FONTS: ResttyFontInput[] = [
+  { family: "PingFang SC", local: "prefer" }, // macOS
+  { family: "Microsoft YaHei", local: "prefer" }, // Windows
+  { family: "Noto Sans CJK SC", local: "prefer" }, // Linux, if installed
+  { family: "Noto Sans SC", local: "prefer" },
+];
+
 /** restty resolves fonts via Local Font Access (`family` + optional
- *  `weight`), not a CSS font-stack string — `undefined` lets it use its own
- *  built-in local-first fallback chain, matching the "System monospace"
- *  default xterm gets via `terminalFontStack`. */
-function resttyFontsFor(family: string, weight: number): ResttyFontInput[] | undefined {
-  if (!family || family === DEFAULT_TERMINAL_FONT_FAMILY) return undefined;
-  return [{ family, weight, local: "prefer" }];
+ *  `weight`), not a CSS font-stack string. Always returns an explicit list
+ *  — including for the "System monospace" default — so the local CJK
+ *  fallback above is used instead of restty's own network-dependent one. */
+function resttyFontsFor(family: string, weight: number): ResttyFontInput[] {
+  const primary: ResttyFontInput[] = family && family !== DEFAULT_TERMINAL_FONT_FAMILY
+    ? [{ family, weight, local: "prefer" }]
+    : [];
+  return [...primary, ...LOCAL_CJK_FALLBACK_FONTS];
 }
 
 /** Parses either `#rrggbb`/`#rgb` or a literal `rgba(r, g, b, a)` string (the
@@ -482,8 +501,7 @@ export function TerminalToolRestty({
     // (confirmed against `restty/xterm`'s source). Live updates go through
     // the underlying pane API instead.
     restty.setFontSize(terminalFontSize);
-    const fonts = resttyFontsFor(terminalFontFamily, terminalFontWeight);
-    if (fonts) void restty.setFonts(fonts).catch(() => {});
+    void restty.setFonts(resttyFontsFor(terminalFontFamily, terminalFontWeight)).catch(() => {});
     // A changed cell size still fits the same container to a different
     // grid — force the recompute rather than waiting for the pane's own
     // ResizeObserver, which only fires on a container *size* change.
