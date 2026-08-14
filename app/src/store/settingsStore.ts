@@ -4,9 +4,8 @@ import {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR, DEFAULT_BANNER_POSITION,
   DEFAULT_LAYOUT_MODE, DEFAULT_AUTO_LOCK_MINUTES,
   DEFAULT_TERMINAL_BACKGROUND_BLUR, DEFAULT_TERMINAL_BACKGROUND_OPACITY, DEFAULT_TERMINAL_TRANSPARENT,
-  GLASS_LIGHT_BACKGROUND_OPACITY,
   DEFAULT_TERMINAL_BACKGROUND_COLOR, DEFAULT_TERMINAL_TEXT_COLOR,
-  DEFAULT_TERMINAL_COLOR_SCHEME, TERMINAL_COLOR_SCHEME_COLORS,
+  DEFAULT_TERMINAL_COLOR_SCHEME, TERMINAL_COLOR_SCHEME_COLORS, TERMINAL_COLOR_SCHEME_EFFECTS,
   DEFAULT_TERMINAL_CUSTOM_APPEARANCE,
   DEFAULT_TERMINAL_RENDERER,
   DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE, DEFAULT_TERMINAL_FONT_WEIGHT,
@@ -33,7 +32,7 @@ export {
   AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES,
   DEFAULT_TERMINAL_BACKGROUND_BLUR, DEFAULT_TERMINAL_BACKGROUND_OPACITY, DEFAULT_TERMINAL_TRANSPARENT,
   DEFAULT_TERMINAL_BACKGROUND_COLOR, DEFAULT_TERMINAL_TEXT_COLOR,
-  DEFAULT_TERMINAL_COLOR_SCHEME, TERMINAL_COLOR_SCHEME_COLORS,
+  DEFAULT_TERMINAL_COLOR_SCHEME, TERMINAL_COLOR_SCHEME_COLORS, TERMINAL_COLOR_SCHEME_EFFECTS,
   DEFAULT_TERMINAL_CUSTOM_APPEARANCE,
   DEFAULT_TERMINAL_RENDERER,
   DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE, DEFAULT_TERMINAL_FONT_WEIGHT,
@@ -356,25 +355,23 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       return;
     }
     const colors = TERMINAL_COLOR_SCHEME_COLORS[scheme];
-    const glassLight = scheme === "light";
+    const effects = TERMINAL_COLOR_SCHEME_EFFECTS[scheme];
     set({
       terminalColorScheme: scheme,
       terminalBackgroundColor: colors.background,
       terminalTextColor: colors.foreground,
-      ...(glassLight ? {
-        terminalTransparent: true,
-        terminalBackgroundBlur: 0,
-        terminalBackgroundOpacity: GLASS_LIGHT_BACKGROUND_OPACITY,
-      } : {}),
+      terminalTransparent: effects.transparent,
+      terminalBackgroundBlur: effects.blur,
+      terminalBackgroundOpacity: effects.opacity,
     });
-    saveSetting("terminal_color_scheme", JSON.stringify(scheme));
-    saveSetting("terminal_background_color", JSON.stringify(colors.background));
-    saveSetting("terminal_text_color", JSON.stringify(colors.foreground));
-    if (glassLight) {
-      saveSetting("terminal_transparent", JSON.stringify(true));
-      saveSetting("terminal_background_blur", JSON.stringify(0));
-      saveSetting("terminal_background_opacity", JSON.stringify(GLASS_LIGHT_BACKGROUND_OPACITY));
-    }
+    void saveSettings([
+      ["terminal_color_scheme", JSON.stringify(scheme)],
+      ["terminal_background_color", JSON.stringify(colors.background)],
+      ["terminal_text_color", JSON.stringify(colors.foreground)],
+      ["terminal_transparent", JSON.stringify(effects.transparent)],
+      ["terminal_background_blur", JSON.stringify(effects.blur)],
+      ["terminal_background_opacity", JSON.stringify(effects.opacity)],
+    ]);
   },
 
   setTerminalRenderer: (renderer) => {

@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
-import { Check, ChevronsUpDown } from "lucide-react";
+import { Check, ChevronsUpDown, ExternalLink } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { invoke } from "@/ipc/backend";
+import { openExternal } from "@/ipc/shell";
 import { useSettingsStore } from "@/store/settingsStore";
 import { DEFAULT_TERMINAL_FONT_FAMILY, type TerminalColorScheme } from "@/store/settings/types";
+import { HERDR_URL } from "@/components/Tools/terminalUtils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SettingRow } from "./SettingsShared";
@@ -155,6 +157,30 @@ export function TerminalSection() {
           <p className="text-[11px] text-muted-foreground">
             {t("settings.terminalShellPathNewTabs")}
           </p>
+        </div>
+      </SettingRow>
+
+      <SettingRow
+        label={t("settings.terminalScrollback")}
+        sub={t("settings.terminalScrollbackSub")}
+      >
+        <div className="max-w-sm space-y-2 text-xs text-muted-foreground">
+          <p>{t("settings.terminalScrollbackHerdrRecommendation")}</p>
+          <a
+            href={HERDR_URL}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(event) => {
+              event.preventDefault();
+              void openExternal(HERDR_URL).catch(() => {
+                window.open(HERDR_URL, "_blank", "noopener,noreferrer");
+              });
+            }}
+            className="inline-flex items-center gap-1 font-medium text-primary underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {t("settings.terminalOpenHerdr")}
+            <ExternalLink className="h-3 w-3" aria-hidden="true" />
+          </a>
         </div>
       </SettingRow>
 

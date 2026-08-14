@@ -78,6 +78,34 @@ export const TERMINAL_COLOR_SCHEME_COLORS: Record<Exclude<TerminalColorScheme, "
   "high-contrast": { background: "#000000", foreground: "#ffffff" },
 };
 
+/** Built-in schemes own their complete glass treatment. Custom appearance
+ * values are restored only when the explicit Custom scheme is selected. */
+export const TERMINAL_COLOR_SCHEME_EFFECTS: Record<Exclude<TerminalColorScheme, "custom">, Pick<
+  TerminalCustomAppearance,
+  "transparent" | "blur" | "opacity"
+>> = {
+  "tokyo-night": {
+    transparent: DEFAULT_TERMINAL_TRANSPARENT,
+    blur: DEFAULT_TERMINAL_BACKGROUND_BLUR,
+    opacity: DEFAULT_TERMINAL_BACKGROUND_OPACITY,
+  },
+  dracula: {
+    transparent: DEFAULT_TERMINAL_TRANSPARENT,
+    blur: DEFAULT_TERMINAL_BACKGROUND_BLUR,
+    opacity: DEFAULT_TERMINAL_BACKGROUND_OPACITY,
+  },
+  light: {
+    transparent: true,
+    blur: 0,
+    opacity: GLASS_LIGHT_BACKGROUND_OPACITY,
+  },
+  "high-contrast": {
+    transparent: DEFAULT_TERMINAL_TRANSPARENT,
+    blur: DEFAULT_TERMINAL_BACKGROUND_BLUR,
+    opacity: DEFAULT_TERMINAL_BACKGROUND_OPACITY,
+  },
+};
+
 /** Normalizes a hex colour to canonical `#rrggbb` lowercase, accepting CSS
  *  shorthand `#rgb` (and a bare `rgb`/`rrggbb` without the leading `#`). Returns
  *  the fallback (Tokyo Night by default) when the input is not a valid colour,

@@ -1,8 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
+const { invoke, openExternal } = vi.hoisted(() => ({ invoke: vi.fn(), openExternal: vi.fn() }));
 vi.mock("@/ipc/backend", () => ({ invoke }));
+vi.mock("@/ipc/shell", () => ({ openExternal }));
 
 import { TerminalSection } from "./TerminalSection";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -11,6 +12,8 @@ describe("TerminalSection typography", () => {
   beforeEach(() => {
     Element.prototype.scrollIntoView = vi.fn();
     invoke.mockReset();
+    openExternal.mockReset();
+    openExternal.mockResolvedValue(undefined);
     invoke.mockImplementation(async (command: string) =>
       command === "pty_default_shell" ? "/usr/bin/fish" : null);
     useSettingsStore.setState({
@@ -69,6 +72,20 @@ describe("TerminalSection typography", () => {
     expect(useSettingsStore.getState().terminalShellPath)
       .toBe("C:\\Program Files\\Git\\bin\\bash.exe");
     expect(screen.getByText(/Changes apply only to new terminal tabs/i)).toBeInTheDocument();
+  });
+
+  it("shows the scrollback limit and Herdr recommendation in settings", () => {
+    render(<TerminalSection />);
+
+    expect(screen.getByText("Scrollback history")).toBeInTheDocument();
+    expect(screen.getByText("Each terminal tab retains up to 5,000 scrollback lines."))
+      .toBeInTheDocument();
+    expect(screen.getByText(/recommend managing your sessions with Herdr/)).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: "Open Herdr on GitHub" });
+    expect(link).toHaveAttribute("href", "https://github.com/herdrdev/herdr");
+
+    fireEvent.click(link);
+    expect(openExternal).toHaveBeenCalledWith("https://github.com/herdrdev/herdr");
   });
 
   it("changes the terminal renderer preference", () => {

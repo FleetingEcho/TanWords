@@ -192,7 +192,7 @@ describe("settingsStore database hydration", () => {
     });
   });
 
-  it("restores saved terminal appearance values", async () => {
+  it("keeps a saved preset independent from custom terminal effects", async () => {
     invoke.mockImplementation(async (command: string, args?: { key?: string }) => {
       if (command !== "db_get_setting") return null;
       if (args?.key === "terminal_background_blur") return "24";
@@ -210,13 +210,13 @@ describe("settingsStore database hydration", () => {
 
     await useSettingsStore.getState().loadFromDB();
 
-    expect(useSettingsStore.getState().terminalTransparent).toBe(true);
+    expect(useSettingsStore.getState().terminalTransparent).toBe(false);
     expect(useSettingsStore.getState().terminalRenderer).toBe("dom");
     expect(useSettingsStore.getState().terminalColorScheme).toBe("dracula");
     expect(useSettingsStore.getState().terminalBackgroundColor).toBe("#282a36");
     expect(useSettingsStore.getState().terminalTextColor).toBe("#f8f8f2");
-    expect(useSettingsStore.getState().terminalBackgroundBlur).toBe(24);
-    expect(useSettingsStore.getState().terminalBackgroundOpacity).toBe(42);
+    expect(useSettingsStore.getState().terminalBackgroundBlur).toBe(16);
+    expect(useSettingsStore.getState().terminalBackgroundOpacity).toBe(16);
     expect(useSettingsStore.getState().terminalFontFamily).toBe("JetBrains Mono");
     expect(useSettingsStore.getState().terminalFontSize).toBe(17);
     expect(useSettingsStore.getState().terminalFontWeight).toBe(600);
@@ -360,6 +360,9 @@ describe("settingsStore database hydration", () => {
       terminalColorScheme: "dracula",
       terminalBackgroundColor: "#282a36",
       terminalTextColor: "#f8f8f2",
+      terminalTransparent: false,
+      terminalBackgroundBlur: 16,
+      terminalBackgroundOpacity: 16,
     });
 
     useSettingsStore.getState().setTerminalColorScheme("custom");

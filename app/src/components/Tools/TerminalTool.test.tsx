@@ -272,15 +272,20 @@ describe("TerminalTool clipboard controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Terminal appearance" }));
     fireEvent.keyDown(screen.getByRole("combobox", { name: "Theme" }), { key: "ArrowDown" });
     expect(screen.getByRole("option", { name: "Custom" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("option", { name: "Tokyo Night" }));
+    fireEvent.click(screen.getByRole("option", { name: "Dracula" }));
 
     expect(mocks.terminal.options.theme).toMatchObject({
-      foreground: "#c0caf5",
-      background: "rgba(0, 0, 0, 0)",
-      red: "#f7768e",
-      blue: "#7aa2f7",
+      foreground: "#f8f8f2",
+      background: "#282a36",
+      red: "#ff5555",
+      blue: "#bd93f9",
     });
-    expect(useSettingsStore.getState().terminalBackgroundColor).toBe("#1a1b26");
+    expect(useSettingsStore.getState()).toMatchObject({
+      terminalBackgroundColor: "#282a36",
+      terminalTransparent: false,
+      terminalBackgroundBlur: 16,
+      terminalBackgroundOpacity: 16,
+    });
     expect(mocks.terminal.dispose).not.toHaveBeenCalled();
 
     const textColorPicker = screen.getAllByLabelText("Text color")
@@ -295,8 +300,7 @@ describe("TerminalTool clipboard controls", () => {
 
   it("uses the built-in renderer in glass mode to avoid dark dim-text cells", () => {
     renderTerminal();
-
-    fireEvent.click(screen.getByRole("button", { name: "Terminal appearance" }));
+    act(() => useSettingsStore.getState().setTerminalTransparent(true));
 
     expect(mocks.webgl.dispose).toHaveBeenCalledOnce();
     expect((mocks.terminal.options.theme as Record<string, string>).background)
@@ -383,24 +387,6 @@ describe("TerminalTool clipboard controls", () => {
     fireEvent.mouseMove(window, { clientY: 8 });
 
     expect(mocks.callMain).toHaveBeenCalledWith("window:toggleFullScreen");
-  });
-
-  it("explains the 5k scrollback limit and recommends Herdr", async () => {
-    renderTerminal();
-    const badge = screen.getByLabelText("Scrollback limit and Herdr recommendation");
-
-    expect(badge).toHaveTextContent("5k scrollback");
-    expect(badge).toHaveClass("app-region-no-drag");
-    fireEvent.focus(badge);
-
-    expect(await screen.findByText("Each terminal tab retains up to 5,000 scrollback lines."))
-      .toBeInTheDocument();
-    expect(screen.getByText(/recommend managing your sessions with Herdr/)).toBeInTheDocument();
-    const link = screen.getByRole("link", { name: "Open Herdr on GitHub" });
-    expect(link).toHaveAttribute("href", "https://github.com/herdrdev/herdr");
-
-    fireEvent.click(link);
-    expect(mocks.openExternal).toHaveBeenCalledWith("https://github.com/herdrdev/herdr");
   });
 
   it("fits only once when a hidden terminal tab becomes visible", () => {
@@ -768,7 +754,7 @@ describe("TerminalTool clipboard controls", () => {
     expect(mocks.terminal.selectAll).toHaveBeenCalledOnce();
   });
 
-  it("keeps transparent mode enabled when the terminal is reopened", () => {
+  it("does not change transparency when the appearance controls are opened", () => {
     const first = renderTerminal();
     fireEvent.click(screen.getByRole("button", { name: "Terminal appearance" }));
     expect(screen.getByRole("button", { name: "Terminal appearance" })).toHaveAttribute(
@@ -778,12 +764,13 @@ describe("TerminalTool clipboard controls", () => {
     first.unmount();
 
     const second = renderTerminal();
-    expect(useSettingsStore.getState().terminalTransparent).toBe(true);
+    expect(useSettingsStore.getState().terminalTransparent).toBe(false);
     expect(screen.getByRole("button", { name: "Terminal appearance" })).toHaveAttribute("aria-pressed", "false");
-    expect(second.shell).toHaveStyle({ background: "rgba(26,27,38,0.16)" });
+    expect(second.shell).toHaveStyle({ background: "#1a1b26" });
   });
 
   it("keeps the glass effect when its appearance controls are closed", () => {
+    useSettingsStore.getState().setTerminalTransparent(true);
     const { shell } = renderTerminal();
     const appearanceButton = screen.getByRole("button", { name: "Terminal appearance" });
 
@@ -799,6 +786,62 @@ describe("TerminalTool clipboard controls", () => {
       background: "rgba(26,27,38,0.16)",
       backdropFilter: "blur(1px)",
     });
+  });
+
+  it("keeps the selected preset when its appearance controls are closed", () => {
+    renderTerminal();
+    const appearanceButton = screen.getByRole("button", { name: "Terminal appearance" });
+
+    fireEvent.click(appearanceButton);
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Theme" }), { key: "ArrowDown" });
+    fireEvent.click(screen.getByRole("option", { name: "High Contrast" }));
+    fireEvent.click(appearanceButton);
+
+    expect(screen.queryByRole("combobox", { name: "Theme" })).not.toBeInTheDocument();
+    expect(useSettingsStore.getState()).toMatchObject({
+      terminalColorScheme: "high-contrast",
+      terminalBackgroundColor: "#000000",
+      terminalTextColor: "#ffffff",
+      terminalTransparent: false,
+      terminalBackgroundBlur: 16,
+      terminalBackgroundOpacity: 16,
+    });
+
+    fireEvent.click(appearanceButton);
+    expect(screen.getByRole("combobox", { name: "Theme" })).toBeInTheDocument();
+    expect(useSettingsStore.getState()).toMatchObject({
+      terminalColorScheme: "high-contrast",
+      terminalTransparent: false,
+      terminalBackgroundBlur: 16,
+      terminalBackgroundOpacity: 16,
+    });
+  });
+
+  it("reveals the app background when Custom uses zero background opacity", () => {
+    useSettingsStore.setState({
+      terminalColorScheme: "high-contrast",
+      terminalBackgroundColor: "#000000",
+      terminalTextColor: "#ffffff",
+      terminalTransparent: false,
+      terminalBackgroundBlur: 16,
+      terminalBackgroundOpacity: 16,
+      terminalCustomAppearance: {
+        backgroundColor: "#000000",
+        textColor: "#ffffff",
+        transparent: false,
+        blur: 0,
+        opacity: 0,
+      },
+    });
+    const { shell } = renderTerminal();
+
+    fireEvent.click(screen.getByRole("button", { name: "Terminal appearance" }));
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Theme" }), { key: "ArrowDown" });
+    fireEvent.click(screen.getByRole("option", { name: "Custom" }));
+
+    expect(shell).toHaveStyle({ background: "rgba(0,0,0,0)" });
+    expect((mocks.terminal.options.theme as Record<string, string>).background)
+      .toBe("rgba(0, 0, 0, 0)");
   });
 });
 

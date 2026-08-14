@@ -29,8 +29,6 @@ import {
   ChevronDown,
   ChevronUp,
   Droplets,
-  ExternalLink,
-  History,
   Maximize2,
   Minimize2,
   Minus,
@@ -43,16 +41,13 @@ import "@xterm/xterm/css/xterm.css";
 import "@/styles/terminal-tool.css";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { subscribe } from "@/ipc/events";
 import { callMain } from "@/ipc/host";
-import { openExternal } from "@/ipc/shell";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useFullscreenDragExit } from "@/hooks/useFullscreenDragExit";
 import type { ContextMenuPosition, TerminalClipboard } from "./terminalUtils";
 import {
-  HERDR_URL,
   MAX_AUTOMATIC_RECOVERY_ATTEMPTS,
   MAX_PENDING_OUTPUT_BYTES,
   TERMINAL_SCROLLBACK_LINES,
@@ -126,7 +121,6 @@ export function TerminalTool({
   // controls only the dark tint over it. Keeping them independent lets the
   // wallpaper remain sharp-but-dim or heavily frosted-but-clear.
   const transparent = useSettingsStore((state) => state.terminalTransparent);
-  const setTransparent = useSettingsStore((state) => state.setTerminalTransparent);
   const blur = useSettingsStore((state) => state.terminalBackgroundBlur);
   const setBlur = useSettingsStore((state) => state.setTerminalBackgroundBlur);
   const backgroundOpacity = useSettingsStore((state) => state.terminalBackgroundOpacity);
@@ -137,6 +131,11 @@ export function TerminalTool({
   const setTerminalTextColor = useSettingsStore((state) => state.setTerminalTextColor);
   const terminalColorScheme = useSettingsStore((state) => state.terminalColorScheme);
   const setTerminalColorScheme = useSettingsStore((state) => state.setTerminalColorScheme);
+  // Custom exposes opacity directly in this toolbar, so a value below 100%
+  // must use the glass rendering path even for older saved appearances whose
+  // separate `transparent` flag was false.
+  const effectiveTransparent = transparent
+    || (terminalColorScheme === "custom" && backgroundOpacity < 100);
   const terminalRenderer = useSettingsStore((state) => state.terminalRenderer);
   // Draft for the hex text field: typed shorthand like `#ddd` is committed on
   // blur/Enter, and re-synced whenever the store value changes (colour picker,
@@ -236,7 +235,7 @@ export function TerminalTool({
         foreground: terminalTextColor,
         // An opaque terminal can give WebGL its real backing colour. Glass
         // mode keeps the canvas clear and uses the shell tint below instead.
-        background: transparent ? "rgba(0, 0, 0, 0)" : terminalBackgroundColor,
+        background: effectiveTransparent ? "rgba(0, 0, 0, 0)" : terminalBackgroundColor,
       },
       // Scrollback lives in xterm's JS buffer, independently of the WebGL
       // canvas renderer. Keep a generous daily-development history without the
@@ -525,7 +524,7 @@ export function TerminalTool({
 
     disposeWebgl();
     const useWebgl = terminalRenderer === "webgl"
-      || (terminalRenderer === "auto" && !transparent);
+      || (terminalRenderer === "auto" && !effectiveTransparent);
     if (!useWebgl) return;
 
     try {
@@ -539,7 +538,7 @@ export function TerminalTool({
     }
 
     return disposeWebgl;
-  }, [sessionGeneration, terminalRenderer, transparent]);
+  }, [effectiveTransparent, sessionGeneration, terminalRenderer]);
 
   // Keep xterm's idea of the default cell background aligned with the shell.
   // In particular, reverse-video cells should resolve against the selected
@@ -550,9 +549,9 @@ export function TerminalTool({
     term.options.theme = {
       ...terminalThemeFor(terminalColorScheme),
       foreground: terminalTextColor,
-      background: transparent ? "rgba(0, 0, 0, 0)" : terminalBackgroundColor,
+      background: effectiveTransparent ? "rgba(0, 0, 0, 0)" : terminalBackgroundColor,
     };
-  }, [sessionGeneration, terminalBackgroundColor, terminalColorScheme, terminalTextColor, transparent]);
+  }, [effectiveTransparent, sessionGeneration, terminalBackgroundColor, terminalColorScheme, terminalTextColor]);
 
   // Search the actual xterm scrollback buffer. Incremental searches preserve a
   // matching selection while the query grows; explicit navigation starts from
@@ -609,9 +608,8 @@ export function TerminalTool({
   };
 
   const toggleAppearanceControls = () => {
-    // The first time someone opens the glass controls, preview and keep the
-    // effect. Subsequent clicks only collapse/expand the controls.
-    if (!transparent) setTransparent(true);
+    // This button only reveals the controls. Appearance changes belong to the
+    // controls themselves, so opening or closing cannot rewrite a preset.
     setAppearanceControlsOpen((open) => !open);
   };
 
@@ -705,44 +703,6 @@ export function TerminalTool({
               </span>
             )}
 
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span
-                  tabIndex={0}
-                  aria-label={t("toolsPage.terminal.scrollbackTooltip")}
-                  className="app-region-no-drag flex cursor-help items-center gap-1 rounded-full border border-primary/30 bg-background/70 px-2.5 py-1 text-[11px] font-medium text-foreground outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <History className="h-3 w-3" aria-hidden="true" />
-                  {t("toolsPage.terminal.scrollbackBadge")}
-                </span>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" align="end" className="max-w-72 leading-relaxed">
-                <p className="font-medium text-popover-foreground">
-                  {t("toolsPage.terminal.scrollbackLimit")}
-                </p>
-                <p className="mt-1 text-muted-foreground">
-                  {t("toolsPage.terminal.scrollbackHerdrRecommendation")}
-                </p>
-                <a
-                  href={HERDR_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    void openExternal(HERDR_URL).catch(() => {
-                      window.open(HERDR_URL, "_blank", "noopener,noreferrer");
-                    });
-                  }}
-                  className="app-region-no-drag mt-2 inline-flex items-center gap-1 font-medium text-primary underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  {t("toolsPage.terminal.openHerdr")}
-                  <ExternalLink className="h-3 w-3" aria-hidden="true" />
-                </a>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
           <div
             role="group"
             aria-label={t("toolsPage.terminal.fontSize")}
@@ -800,7 +760,7 @@ export function TerminalTool({
             className={`h-9 w-9 shrink-0 rounded-lg ${
               appearanceControlsOpen
                 ? "bg-primary/15 text-primary"
-                : transparent
+                : effectiveTransparent
                   ? "text-primary"
                   : "text-foreground/80"
             }`}
@@ -1070,7 +1030,7 @@ export function TerminalTool({
           onContextMenu={openContextMenu}
           className="terminal-tool-shell relative min-h-0 flex-1 overflow-hidden rounded-none border-x-0 border-b-0 border-t border-border p-2"
           style={
-            transparent
+            effectiveTransparent
               ? {
                   // The user-chosen background colour as a translucent tint
                   // over the wallpaper; backdrop-blur does the real frosting.

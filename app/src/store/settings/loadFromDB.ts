@@ -10,6 +10,7 @@ import {
   DEFAULT_TERMINAL_TEXT_COLOR,
   DEFAULT_TERMINAL_COLOR_SCHEME,
   TERMINAL_COLOR_SCHEME_COLORS,
+  TERMINAL_COLOR_SCHEME_EFFECTS,
   TERMINAL_COLOR_SCHEME_IDS,
   DEFAULT_TERMINAL_RENDERER,
   DOCUMENT_TEXT_COLOR_RE, normalizeHexColor, type Theme, type RssTabSelection,
@@ -266,22 +267,24 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
     const resolvedTerminalBlur = Number.isFinite(Number(values.terminal_background_blur))
       ? Math.min(30, Math.max(0, Math.round(Number(values.terminal_background_blur))))
       : DEFAULT_TERMINAL_BACKGROUND_BLUR;
-    const resolvedTerminalAppearance: TerminalCustomAppearance = {
-      backgroundColor: presetTerminalColors?.background
-        ?? normalizeHexColor(values.terminal_background_color || ""),
-      textColor: presetTerminalColors?.foreground
-        ?? normalizeHexColor(values.terminal_text_color || "", DEFAULT_TERMINAL_TEXT_COLOR),
+    const storedTerminalAppearance: TerminalCustomAppearance = {
+      backgroundColor: normalizeHexColor(values.terminal_background_color || ""),
+      textColor: normalizeHexColor(values.terminal_text_color || "", DEFAULT_TERMINAL_TEXT_COLOR),
       transparent: resolvedTerminalTransparent,
       blur: resolvedTerminalBlur,
       opacity: resolvedTerminalOpacity,
     };
     const resolvedTerminalCustomAppearance = parseTerminalCustomAppearance(
       values.terminal_custom_appearance as unknown,
-      resolvedTerminalAppearance,
+      storedTerminalAppearance,
     );
-    const activeTerminalAppearance = resolvedTerminalColorScheme === "custom"
+    const activeTerminalAppearance: TerminalCustomAppearance = resolvedTerminalColorScheme === "custom"
       ? resolvedTerminalCustomAppearance
-      : resolvedTerminalAppearance;
+      : {
+          backgroundColor: presetTerminalColors!.background,
+          textColor: presetTerminalColors!.foreground,
+          ...TERMINAL_COLOR_SCHEME_EFFECTS[resolvedTerminalColorScheme],
+        };
     if (resolvedTerminalColorScheme === "custom" && values.terminal_custom_appearance === undefined) {
       await invoke("db_set_setting", {
         key: "terminal_custom_appearance",
