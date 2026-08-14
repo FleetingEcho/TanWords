@@ -1,5 +1,6 @@
 import type { TerminalEngine } from "@/store/settings/types";
 import { useT } from "@/hooks/useT";
+import { isDesktopHost } from "@/platform";
 
 /** Per-tab engine switch, shown in both engines' inline appearance panel
  *  (mirrors the segmented control in Settings → Terminal). Picking a
@@ -15,6 +16,11 @@ export function TerminalEngineSwitch({
   onChange: (engine: TerminalEngine) => void;
 }) {
   const t = useT();
+  // The web build has no local shell to talk to (see `WEB_CAPABILITIES.terminal`
+  // in `platform/types.ts`), so "xterm" is never a real choice there — every
+  // tab is forced to "restty" (`TerminalWorkspace.tsx`'s `newTab`) and this
+  // switch would offer a tab that can't actually connect.
+  if (!isDesktopHost) return null;
   return (
     // Not a <label>: it wraps two buttons, and a <label>'s text becomes part
     // of *every* focusable descendant's accessible name (each tab would read

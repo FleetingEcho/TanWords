@@ -5,6 +5,7 @@ import { invoke } from "@/ipc/backend";
 import { openExternal } from "@/ipc/shell";
 import { useSettingsStore } from "@/store/settingsStore";
 import { DEFAULT_TERMINAL_FONT_FAMILY, type TerminalColorScheme, type TerminalEngine } from "@/store/settings/types";
+import { isDesktopHost } from "@/platform";
 import { HERDR_URL } from "@/components/Tools/terminalUtils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -66,6 +67,7 @@ export function TerminalSection() {
   const [fontSearch, setFontSearch] = useState("");
 
   useEffect(() => {
+    if (!isDesktopHost) return;
     let cancelled = false;
     void invoke<string>("pty_default_shell").then((path) => {
       if (cancelled || !path) return;
@@ -124,91 +126,97 @@ export function TerminalSection() {
 
   return (
     <div className="divide-y divide-border rounded-xl border border-border bg-card px-5">
-      <SettingRow
-        label={t("settings.terminalEngine")}
-        sub={t("settings.terminalEngineSub")}
-      >
-        <div role="tablist" aria-label={t("settings.terminalEngine")} className="inline-flex rounded-lg border border-border bg-muted/40 p-0.5">
-          {(["xterm", "restty"] as TerminalEngine[]).map((option) => (
-            <button
-              key={option}
-              type="button"
-              role="tab"
-              aria-selected={engine === option}
-              onClick={() => setEngine(option)}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                engine === option
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {option === "xterm" ? t("settings.terminalEngineXterm") : t("settings.terminalEngineRestty")}
-            </button>
-          ))}
-        </div>
-      </SettingRow>
-
-      <SettingRow
-        label={t("settings.terminalShellPath")}
-        sub={t("settings.terminalShellPathSub")}
-      >
-        <div className="w-80 max-w-full space-y-1.5">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={shellDraft}
-              placeholder={t("settings.terminalShellPathAuto")}
-              onChange={(event) => setShellDraft(event.target.value)}
-              onBlur={commitShellPath}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  commitShellPath();
-                  event.currentTarget.blur();
-                }
-              }}
-              aria-label={t("settings.terminalShellPath")}
-              className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 font-mono text-xs text-foreground outline-none focus:ring-2 focus:ring-ring"
-            />
-            <button
-              type="button"
-              onClick={() => {
-                setShellDraft(defaultShellPath);
-                setShellPath("");
-              }}
-              className="h-9 shrink-0 rounded-lg border border-border px-3 text-xs text-muted-foreground hover:bg-muted"
-            >
-              {t("settings.terminalShellPathReset")}
-            </button>
+      {isDesktopHost && (
+        <SettingRow
+          label={t("settings.terminalEngine")}
+          sub={t("settings.terminalEngineSub")}
+        >
+          <div role="tablist" aria-label={t("settings.terminalEngine")} className="inline-flex rounded-lg border border-border bg-muted/40 p-0.5">
+            {(["xterm", "restty"] as TerminalEngine[]).map((option) => (
+              <button
+                key={option}
+                type="button"
+                role="tab"
+                aria-selected={engine === option}
+                onClick={() => setEngine(option)}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  engine === option
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {option === "xterm" ? t("settings.terminalEngineXterm") : t("settings.terminalEngineRestty")}
+              </button>
+            ))}
           </div>
-          <p className="text-[11px] text-muted-foreground">
-            {t("settings.terminalShellPathNewTabs")}
-          </p>
-        </div>
-      </SettingRow>
+        </SettingRow>
+      )}
 
-      <SettingRow
-        label={t("settings.terminalScrollback")}
-        sub={t("settings.terminalScrollbackSub")}
-      >
-        <div className="max-w-sm space-y-2 text-xs text-muted-foreground">
-          <p>{t("settings.terminalScrollbackHerdrRecommendation")}</p>
-          <a
-            href={HERDR_URL}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(event) => {
-              event.preventDefault();
-              void openExternal(HERDR_URL).catch(() => {
-                window.open(HERDR_URL, "_blank", "noopener,noreferrer");
-              });
-            }}
-            className="inline-flex items-center gap-1 font-medium text-primary underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            {t("settings.terminalOpenHerdr")}
-            <ExternalLink className="h-3 w-3" aria-hidden="true" />
-          </a>
-        </div>
-      </SettingRow>
+      {isDesktopHost && (
+        <SettingRow
+          label={t("settings.terminalShellPath")}
+          sub={t("settings.terminalShellPathSub")}
+        >
+          <div className="w-80 max-w-full space-y-1.5">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={shellDraft}
+                placeholder={t("settings.terminalShellPathAuto")}
+                onChange={(event) => setShellDraft(event.target.value)}
+                onBlur={commitShellPath}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    commitShellPath();
+                    event.currentTarget.blur();
+                  }
+                }}
+                aria-label={t("settings.terminalShellPath")}
+                className="h-9 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 font-mono text-xs text-foreground outline-none focus:ring-2 focus:ring-ring"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setShellDraft(defaultShellPath);
+                  setShellPath("");
+                }}
+                className="h-9 shrink-0 rounded-lg border border-border px-3 text-xs text-muted-foreground hover:bg-muted"
+              >
+                {t("settings.terminalShellPathReset")}
+              </button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              {t("settings.terminalShellPathNewTabs")}
+            </p>
+          </div>
+        </SettingRow>
+      )}
+
+      {isDesktopHost && (
+        <SettingRow
+          label={t("settings.terminalScrollback")}
+          sub={t("settings.terminalScrollbackSub")}
+        >
+          <div className="max-w-sm space-y-2 text-xs text-muted-foreground">
+            <p>{t("settings.terminalScrollbackHerdrRecommendation")}</p>
+            <a
+              href={HERDR_URL}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(event) => {
+                event.preventDefault();
+                void openExternal(HERDR_URL).catch(() => {
+                  window.open(HERDR_URL, "_blank", "noopener,noreferrer");
+                });
+              }}
+              className="inline-flex items-center gap-1 font-medium text-primary underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {t("settings.terminalOpenHerdr")}
+              <ExternalLink className="h-3 w-3" aria-hidden="true" />
+            </a>
+          </div>
+        </SettingRow>
+      )}
 
       <SettingRow
         label={t("toolsPage.terminal.themeLabel")}

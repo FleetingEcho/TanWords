@@ -148,6 +148,10 @@ const mocks = vi.hoisted(() => {
   };
 });
 
+// The engine switch is desktop-only (web forces every tab onto restty — see
+// `TerminalWorkspace.tsx`'s `newTab`), so pin the host to desktop here.
+vi.mock("@/platform", () => ({ isDesktopHost: true }));
+
 vi.mock("@xterm/xterm", () => ({
   Terminal: class {
     constructor(options: Record<string, unknown>) {

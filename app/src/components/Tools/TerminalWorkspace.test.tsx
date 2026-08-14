@@ -2,6 +2,14 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// This suite is about tab chrome, not host-specific engine forcing — pin it to
+// desktop so `newTab()` respects the `terminalEngine` store value set below
+// instead of forcing every tab onto restty (the web build's behavior, see
+// `TerminalWorkspace.tsx`'s `newTab`).
+vi.mock("@/platform", () => ({
+  isDesktopHost: true,
+}));
+
 vi.mock("./TerminalTool", () => ({
   TerminalTool: ({
     visible,

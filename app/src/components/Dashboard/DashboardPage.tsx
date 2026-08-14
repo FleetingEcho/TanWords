@@ -64,6 +64,7 @@ export function DashboardPage() {
   const lang = useSettingsStore((s) => s.uiLanguage);
   const dashboardBanner = useSettingsStore((s) => s.dashboardBanner);
   const bannerPosition = useSettingsStore((s) => s.dashboardBannerPosition);
+  const dashboardBannerVisible = useSettingsStore((s) => s.dashboardBannerVisible);
   const nickname = useSettingsStore((s) => s.nickname);
   const settingsLoaded = useSettingsStore((s) => s.isLoaded);
   const hasCustomAppBackground = useSettingsStore(
@@ -119,7 +120,7 @@ export function DashboardPage() {
 
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 animate-fade-in w-full">
-      {dashboardBanner && (
+      {dashboardBanner && dashboardBannerVisible && (
         <div className="w-full h-[200px] rounded-2xl overflow-hidden border border-border">
           {/* The banner is far wider than most photos, so `cover` always discards
             * part of the image — which part is the user's choice, made in Settings. */}

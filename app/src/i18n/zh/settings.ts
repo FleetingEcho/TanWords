@@ -327,6 +327,7 @@ export const settings: Dict = {
     "settings.dashboardBanner": "首页横幅",
     "settings.dashboardBannerSub": "显示在首页顶部，建议使用宽幅图片；可拖动选择要显示的部分",
     "settings.dashboardBannerNone": "无横幅",
+    "settings.dashboardBannerVisible": "显示横幅",
     "settings.dashboardBannerReview": "预览",
     "settings.bannerPositionTitle": "调整横幅显示区域",
     "settings.bannerPositionHint": "拖动图片，选择首页横幅中要显示的部分；也可用方向键微调，按住 Shift 可加大步进。",

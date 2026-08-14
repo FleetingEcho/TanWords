@@ -12,8 +12,10 @@ export interface HostCapabilities {
   auth: boolean;
   browser: boolean;
   music: boolean;
-  /** Local shell / PTY terminal (desktop only — the web build has no local
-   *  process to talk to). Gates the Tools-page Terminal tool. */
+  /** Local shell / PTY terminal. Desktop connects to a real local process;
+   *  the web build has none, so it runs a sandboxed in-browser shell instead
+   *  (`sandboxPtyTransport.ts`, restty engine only — see `TerminalWorkspace.tsx`
+   *  and `TerminalEngineSwitch.tsx`). Gates the Tools-page Terminal tool. */
   terminal: boolean;
   /** Optional UI lock. Desktop stores it per installation; Web stores a
    *  separate verifier on each authenticated account. */
@@ -52,7 +54,7 @@ export const WEB_CAPABILITIES: HostCapabilities = {
   // connection.
   browser: false,
   music: false,
-  terminal: false,
+  terminal: true,
   appLock: true,
   localDocs: false,
   mcp: false,

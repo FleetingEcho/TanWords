@@ -62,6 +62,11 @@ const mocks = vi.hoisted(() => {
   };
 });
 
+// This suite exercises the Electron PTY transport (pty_spawn/pty_write/etc via
+// callMain) — pin the host to desktop, since the web build now runs a
+// sandboxed just-bash transport instead (see `sandboxPtyTransport.ts`).
+vi.mock("@/platform", () => ({ isDesktopHost: true }));
+
 vi.mock("restty/xterm", () => ({
   Terminal: class {
     constructor(options: { services?: { ptyTransport?: unknown } }) {

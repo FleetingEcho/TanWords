@@ -75,6 +75,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   userAvatar: "",
   dashboardBanner: "",
   dashboardBannerPosition: DEFAULT_BANNER_POSITION,
+  dashboardBannerVisible: true,
   nickname: "",
   appBackgroundImage: "",
   appBackgroundImages: [],
@@ -184,6 +185,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ dashboardBanner: dataUrl, dashboardBannerPosition: pos });
     saveSetting("dashboard_banner", JSON.stringify(dataUrl));
     saveSetting("dashboard_banner_position", JSON.stringify(pos));
+  },
+
+  setDashboardBannerVisible: (visible) => {
+    set({ dashboardBannerVisible: visible });
+    saveSetting("dashboard_banner_visible", JSON.stringify(visible));
   },
 
   setNickname: (name) => {

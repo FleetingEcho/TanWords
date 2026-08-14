@@ -1,6 +1,10 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// Not the real web build's value anymore (the web build now runs a sandboxed
+// terminal — see `WEB_CAPABILITIES.terminal` in `platform/types.ts`). This
+// forces the "unsupported" case to verify ToolsPage still respects the
+// capability gate for any host that lacks it.
 vi.mock("@/platform", () => ({
   hostCapabilities: { terminal: false },
 }));

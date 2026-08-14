@@ -4,6 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { invoke, openExternal } = vi.hoisted(() => ({ invoke: vi.fn(), openExternal: vi.fn() }));
 vi.mock("@/ipc/backend", () => ({ invoke }));
 vi.mock("@/ipc/shell", () => ({ openExternal }));
+// The engine switch, shell path override, and scrollback/Herdr rows are
+// desktop-only (see `TerminalSection.tsx`) — pin the host to desktop so this
+// suite still exercises them.
+vi.mock("@/platform", () => ({ isDesktopHost: true }));
 
 import { TerminalSection } from "./TerminalSection";
 import { useSettingsStore } from "@/store/settingsStore";

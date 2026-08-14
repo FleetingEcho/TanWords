@@ -327,6 +327,7 @@ export const settings: Dict = {
     "settings.dashboardBanner": "Dashboard banner",
     "settings.dashboardBannerSub": "Shown across the top of the Dashboard page. Wide images look best — drag to choose which part shows.",
     "settings.dashboardBannerNone": "No banner",
+    "settings.dashboardBannerVisible": "Show banner",
     "settings.dashboardBannerReview": "Preview",
     "settings.bannerPositionTitle": "Position the banner",
     "settings.bannerPositionHint": "Drag the image to choose which part of it shows on the Dashboard. Arrow keys nudge; hold Shift for bigger steps.",

@@ -3,6 +3,7 @@ import { Pencil, Pin, PinOff, Plus, Star, StarOff, TerminalSquare, X } from "luc
 import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
 import type { TerminalEngine } from "@/store/settings/types";
+import { isDesktopHost } from "@/platform";
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
@@ -45,7 +46,10 @@ function newTab(id: number): TerminalTab {
     id,
     ordinal: id,
     shellPath: useSettingsStore.getState().terminalShellPath,
-    engine: useSettingsStore.getState().terminalEngine,
+    // The web build has no local shell (see `WEB_CAPABILITIES.terminal`) —
+    // "xterm" would have nothing to connect to, so every tab is forced onto
+    // restty's sandboxed transport regardless of a synced device preference.
+    engine: isDesktopHost ? useSettingsStore.getState().terminalEngine : "restty",
     shellName: "",
     shellTitle: "",
     customName: "",

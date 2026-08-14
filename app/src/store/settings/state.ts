@@ -44,6 +44,9 @@ export interface SettingsState {
   dashboardBanner: string;
   /** Which band of `dashboardBanner` the user dragged into view. */
   dashboardBannerPosition: BannerPosition;
+  /** Whether dashboardBanner is currently shown. False hides it without
+   *  discarding the stored image, so it can be turned back on unchanged. */
+  dashboardBannerVisible: boolean;
   /** Shown in the Dashboard greeting ("Good evening, {nickname}"). Empty = just "Good evening". */
   nickname: string;
   /** Custom full-app background image (data URL). Empty = none — just the theme's flat background. */
@@ -139,6 +142,7 @@ export interface SettingsState {
   /** Omitting `position` re-centres — a new image arrives without a framing, and
    *  clearing the banner should not leave a stale one behind. */
   setDashboardBanner: (dataUrl: string, position?: BannerPosition) => void;
+  setDashboardBannerVisible: (visible: boolean) => void;
   setNickname: (name: string) => void;
   setAppBackgroundImage: (dataUrl: string) => void;
   setAppBackgroundImages: (images: string[], activeIndex: number, positions?: BannerPosition[]) => void;

@@ -61,7 +61,9 @@ import { subscribe } from "@/ipc/events";
 import { callMain } from "@/ipc/host";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useFullscreenDragExit } from "@/hooks/useFullscreenDragExit";
+import { isDesktopHost } from "@/platform";
 import { TerminalEngineSwitch } from "./TerminalEngineSwitch";
+import { createSandboxPtyTransport } from "./sandboxPtyTransport";
 import type { ContextMenuPosition } from "./terminalUtils";
 import {
   MAX_AUTOMATIC_RECOVERY_ATTEMPTS,
@@ -77,7 +79,7 @@ import { DEFAULT_TERMINAL_FONT_FAMILY } from "@/store/settings/types";
  *  (which the transport must also satisfy so restty's runtime knows a session
  *  is live). `onReady` fires once the shell has actually spawned; `onExit`
  *  fires on both a clean exit (`code === 0`) and a crash/spawn failure. */
-type PtySessionHooks = {
+export type PtySessionHooks = {
   onReady: (shell: string) => void;
   onExit: (code: number, error?: string) => void;
 };
@@ -426,7 +428,7 @@ export function TerminalToolRestty({
       }, Math.min(250 * (2 ** (attempt - 1)), 1_000));
     };
 
-    const transport = createElectronPtyTransport(shellPath, {
+    const sessionHooks: PtySessionHooks = {
       onReady: (shell) => {
         if (!alive) return;
         setStatus("connected");
@@ -444,7 +446,14 @@ export function TerminalToolRestty({
         }
         recoverAfterFailure(error || t("toolsPage.terminal.recovering"));
       },
-    });
+    };
+
+    // Desktop talks to a real local shell over IPC; the web build has none,
+    // so it runs a sandboxed in-browser shell instead (see
+    // `sandboxPtyTransport.ts` and `WEB_CAPABILITIES.terminal`).
+    const transport = isDesktopHost
+      ? createElectronPtyTransport(shellPath, sessionHooks)
+      : createSandboxPtyTransport(sessionHooks);
 
     // `services.ptyTransport` must be supplied at construction — the xterm
     // compat layer captures it once in its constructor and forwards it

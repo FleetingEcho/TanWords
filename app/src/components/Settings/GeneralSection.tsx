@@ -231,6 +231,8 @@ function DashboardBannerSetting() {
   const dashboardBanner = useSettingsStore((s) => s.dashboardBanner);
   const position = useSettingsStore((s) => s.dashboardBannerPosition);
   const setDashboardBanner = useSettingsStore((s) => s.setDashboardBanner);
+  const visible = useSettingsStore((s) => s.dashboardBannerVisible);
+  const setVisible = useSettingsStore((s) => s.setDashboardBannerVisible);
   /** A freshly picked image, held here until the user confirms its framing — replacing
    *  the banner shouldn't take effect halfway, with the old framing still applied. */
   const [pending, setPending] = useState<string | null>(null);
@@ -251,10 +253,31 @@ function DashboardBannerSetting() {
         processFile={(file) => fileToDownscaledDataUrl(file, BANNER_MAX_DIMENSION, 0.86)}
         maxBytes={MAX_BANNER_UPLOAD_BYTES}
         thumbClassName="w-64 h-16 rounded-lg"
+        thumbImgStyle={visible ? undefined : { opacity: 0.4 }}
         empty={t("settings.dashboardBannerNone")}
         previewClassName="w-[70vw] h-fit top-1/2 -translate-y-1/2"
         previewImgClassName="w-full h-auto rounded-2xl object-cover shadow-lg"
-      />
+      >
+        <div className="flex w-full items-center justify-between rounded-xl border border-border/60 bg-muted/30 px-2.5 py-2">
+          <span className="text-xs font-medium text-foreground/80">{t("settings.dashboardBannerVisible")}</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={visible}
+            disabled={!dashboardBanner}
+            onClick={() => setVisible(!visible)}
+            className={`relative h-[18px] w-8 shrink-0 rounded-full transition-colors disabled:opacity-40 ${
+              visible ? "bg-primary" : "bg-muted-foreground/30"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white shadow-xs transition-all ${
+                visible ? "left-[calc(100%-1rem)]" : "left-0.5"
+              }`}
+            />
+          </button>
+        </div>
+      </ImageSetting>
       <BannerPositionModal
         open={framing}
         src={editing}

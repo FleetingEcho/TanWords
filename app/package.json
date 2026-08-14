@@ -64,6 +64,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "jsonrepair": "^3.15.0",
+    "just-bash": "^2.14.4",
     "lucide-react": "^1.28.0",
     "mdast-util-to-string": "^4.0.0",
     "mermaid": "^11.16.0",

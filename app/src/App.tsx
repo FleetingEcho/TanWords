@@ -389,8 +389,9 @@ function App() {
         // reset during ordinary navigation.
         return null;
       case "terminal":
-        // Terminal owns a persistent host below. Web cannot launch a local
-        // shell, so a stale/deep-linked route safely falls back to Dashboard.
+        // Terminal owns a persistent host below. A build/host that lacks the
+        // capability (none, currently — web runs a sandboxed shell instead of
+        // a real one) still safely falls back to Dashboard on a stale route.
         return hostCapabilities.terminal ? null : <DashboardPage />;
       case "feeds":
       default:
