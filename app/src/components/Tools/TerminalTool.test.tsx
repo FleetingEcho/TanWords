@@ -4,17 +4,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   let keyHandler: ((event: KeyboardEvent) => boolean) | null = null;
   let terminalOptions: Record<string, unknown> | null = null;
+  let imageOptions: Record<string, unknown> | null = null;
   let clipboardValue: unknown = null;
   let contextLossHandler: (() => void) | null = null;
   let searchResultsHandler: ((result: { resultIndex: number; resultCount: number }) => void) | null = null;
   let resizeHandler: (() => void) | null = null;
   let titleHandler: ((title: string) => void) | null = null;
+  let csiHandler: ((params: (number | number[])[]) => boolean | Promise<boolean>) | null = null;
   let spawnInfo: { id: string; shell: string; cwd: string; pid: number } | null = null;
   let windowState = { maximized: false, fullScreen: false };
   let deferWrites = false;
   const pendingWriteCallbacks: Array<() => void> = [];
   const eventHandlers = new Map<string, (payload: any) => void>();
   const fit = vi.fn();
+  const image = { dispose: vi.fn() };
   const webgl = {
     dispose: vi.fn(),
     onContextLoss: vi.fn((handler: () => void) => {
@@ -55,6 +58,15 @@ const mocks = vi.hoisted(() => {
       titleHandler = handler;
       return { dispose: vi.fn() };
     }),
+    parser: {
+      registerCsiHandler: vi.fn((
+        _id: { final: string },
+        handler: (params: (number | number[])[]) => boolean | Promise<boolean>,
+      ) => {
+        csiHandler = handler;
+        return { dispose: vi.fn() };
+      }),
+    },
     input: vi.fn(),
     _core: {
       _renderService: {
@@ -85,6 +97,7 @@ const mocks = vi.hoisted(() => {
   const toastError = vi.fn();
   return {
     terminal,
+    image,
     webgl,
     search,
     callMain,
@@ -93,10 +106,12 @@ const mocks = vi.hoisted(() => {
     toastError,
     getKeyHandler: () => keyHandler,
     getTerminalOptions: () => terminalOptions,
+    getImageOptions: () => imageOptions,
     triggerContextLoss: () => contextLossHandler?.(),
     emitSearchResults: (result: { resultIndex: number; resultCount: number }) => searchResultsHandler?.(result),
     triggerResize: () => resizeHandler?.(),
     emitTitle: (title: string) => titleHandler?.(title),
+    emitCsi: (params: (number | number[])[]) => csiHandler?.(params),
     emit: (event: string, payload: unknown) => eventHandlers.get(event)?.(payload),
     setSpawnInfo: (value: typeof spawnInfo) => { spawnInfo = value; },
     setWindowState: (value: typeof windowState) => { windowState = value; },
@@ -115,10 +130,12 @@ const mocks = vi.hoisted(() => {
     reset: () => {
       keyHandler = null;
       terminalOptions = null;
+      imageOptions = null;
       contextLossHandler = null;
       searchResultsHandler = null;
       resizeHandler = null;
       titleHandler = null;
+      csiHandler = null;
       spawnInfo = null;
       windowState = { maximized: false, fullScreen: false };
       deferWrites = false;
@@ -127,6 +144,7 @@ const mocks = vi.hoisted(() => {
       terminal.options = {};
     },
     setTerminalOptions: (options: Record<string, unknown>) => { terminalOptions = options; },
+    setImageOptions: (options: Record<string, unknown>) => { imageOptions = options; },
   };
 });
 
@@ -139,6 +157,14 @@ vi.mock("@xterm/xterm", () => ({
   },
 }));
 vi.mock("@xterm/addon-fit", () => ({ FitAddon: class { fit = mocks.fit; } }));
+vi.mock("@xterm/addon-image", () => ({
+  ImageAddon: class {
+    constructor(options: Record<string, unknown>) {
+      mocks.setImageOptions(options);
+      return mocks.image;
+    }
+  },
+}));
 vi.mock("@xterm/addon-search", () => ({
   SearchAddon: class {
     constructor() { return mocks.search; }
@@ -164,6 +190,7 @@ import {
   shellTabTitle,
   terminalFontStack,
   terminalOutputBytes,
+  terminalPixelSizeReport,
 } from "./terminalUtils";
 import { TerminalTool } from "./TerminalTool";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -243,9 +270,38 @@ describe("TerminalTool clipboard controls", () => {
     expect(mocks.webgl.dispose).toHaveBeenCalledOnce();
   });
 
-  it("bounds output backpressure water marks sanely", () => {
+  it("renders bounded SIXEL and iTerm inline images", () => {
+    renderTerminal();
+
+    expect(mocks.getImageOptions()).toMatchObject({
+      enableSizeReports: true,
+      pixelLimit: 4096 * 4096,
+      storageLimit: 64,
+      showPlaceholder: true,
+      sixelSupport: true,
+      sixelScrolling: true,
+      sixelSizeLimit: 25_000_000,
+      iipSupport: true,
+      iipSizeLimit: 20_000_000,
+    });
+    expect(mocks.terminal.loadAddon).toHaveBeenCalledWith(mocks.image);
     expect(TERMINAL_OUTPUT_HIGH_WATER_BYTES).toBeLessThanOrEqual(500 * 1024);
     expect(TERMINAL_OUTPUT_LOW_WATER_BYTES).toBeLessThan(TERMINAL_OUTPUT_HIGH_WATER_BYTES);
+  });
+
+  it("reports logical pixels so Retina DPR does not halve image layout", () => {
+    renderTerminal();
+
+    expect(mocks.terminal.parser.registerCsiHandler).toHaveBeenCalledWith(
+      { final: "t" },
+      expect.any(Function),
+    );
+    expect(mocks.emitCsi([16])).toBe(true);
+    expect(mocks.terminal.input).toHaveBeenLastCalledWith("\x1b[6;16;8t", false);
+
+    expect(mocks.emitCsi([14])).toBe(true);
+    expect(mocks.terminal.input).toHaveBeenLastCalledWith("\x1b[4;500;800t", false);
+    expect(mocks.emitCsi([18])).toBe(false);
   });
 
   it("accepts binary PTY output without a Base64 round trip", () => {
@@ -254,6 +310,20 @@ describe("TerminalTool clipboard controls", () => {
     expect(terminalOutputBytes(bytes.buffer)).toEqual(bytes);
     expect(terminalOutputBytes(Buffer.from(bytes).toString("base64"))).toEqual(bytes);
     expect(terminalOutputBytes({ data: [...bytes] })).toBeNull();
+  });
+
+  it("falls back to xterm's built-in pixel report when device metrics are unavailable", () => {
+    expect(terminalPixelSizeReport([16], undefined)).toBeNull();
+    expect(terminalPixelSizeReport([16], {
+      css: {
+        canvas: { width: 0, height: 0 },
+        cell: { width: 0, height: 16 },
+      },
+      device: {
+        canvas: { width: 0, height: 0 },
+        cell: { width: 0, height: 32 },
+      },
+    })).toBeNull();
   });
 
   it("paints an explicit palette contrast-matched to its own backdrop", () => {

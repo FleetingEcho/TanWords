@@ -23,6 +23,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { ImageAddon } from "@xterm/addon-image";
 import { SearchAddon } from "@xterm/addon-search";
 import { WebglAddon } from "@xterm/addon-webgl";
 import {
@@ -49,8 +50,12 @@ import { useFullscreenDragExit } from "@/hooks/useFullscreenDragExit";
 import type { ContextMenuPosition, TerminalClipboard } from "./terminalUtils";
 import {
   MAX_AUTOMATIC_RECOVERY_ATTEMPTS,
+  TERMINAL_IIP_SIZE_LIMIT_BYTES,
+  TERMINAL_IMAGE_PIXEL_LIMIT,
+  TERMINAL_IMAGE_STORAGE_MB,
   TERMINAL_OUTPUT_HIGH_WATER_BYTES,
   TERMINAL_OUTPUT_LOW_WATER_BYTES,
+  TERMINAL_SIXEL_SIZE_LIMIT_BYTES,
   TERMINAL_SCROLLBACK_LINES,
   terminalThemeFor,
   b64EncodeUtf8,
@@ -59,6 +64,7 @@ import {
   terminalBackgroundRgba,
   terminalFontStack,
   terminalOutputBytes,
+  terminalPixelSizeReport,
   terminalSearchOptions,
   type TerminalRenderDimensions,
 } from "./terminalUtils";
@@ -251,14 +257,41 @@ export function TerminalTool({
     });
     terminalRef.current = term;
     const fit = new FitAddon();
+    const imageAddon = new ImageAddon({
+      enableSizeReports: true,
+      pixelLimit: TERMINAL_IMAGE_PIXEL_LIMIT,
+      storageLimit: TERMINAL_IMAGE_STORAGE_MB,
+      showPlaceholder: true,
+      sixelSupport: true,
+      sixelScrolling: true,
+      sixelSizeLimit: TERMINAL_SIXEL_SIZE_LIMIT_BYTES,
+      iipSupport: true,
+      iipSizeLimit: TERMINAL_IIP_SIZE_LIMIT_BYTES,
+    });
     const searchAddon = new SearchAddon({ highlightLimit: 1000 });
     searchAddonRef.current = searchAddon;
     term.loadAddon(fit);
+    term.loadAddon(imageAddon);
     term.loadAddon(searchAddon);
     const searchResultsSubscription = searchAddon.onDidChangeResults((result) => {
       setSearchResult(result);
     });
     term.open(el);
+    // Image-aware terminal programs use these logical pixel dimensions to map
+    // image pixels to terminal cells. The image layer handles Retina resolution
+    // independently so DPR never changes the image's on-screen size.
+    const pixelSizeReportSubscription = term.parser.registerCsiHandler(
+      { final: "t" },
+      (params) => {
+        const dimensions = (term as unknown as {
+          _core?: { _renderService?: { dimensions?: TerminalRenderDimensions } };
+        })._core?._renderService?.dimensions;
+        const response = terminalPixelSizeReport(params, dimensions);
+        if (!response) return false;
+        term.input(response, false);
+        return true;
+      },
+    );
     setStatus("starting");
     setMessage("");
 
@@ -517,6 +550,7 @@ export function TerminalTool({
       webglAddonRef.current?.dispose();
       webglAddonRef.current = null;
       searchResultsSubscription.dispose();
+      pixelSizeReportSubscription.dispose();
       onData.dispose();
       onResize.dispose();
       onTitleChange.dispose();
