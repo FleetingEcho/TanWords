@@ -43,7 +43,10 @@ import { useSettingsStore } from "@/store/settingsStore";
 
 describe("TerminalWorkspace tabs", () => {
   beforeEach(() => {
-    useSettingsStore.setState({ uiLanguage: "en", terminalShellPath: "/bin/fish" });
+    // This suite is about tab chrome (open/close/rename/pin/star), not engine
+    // behavior — pin it to xterm so tabs render the lightweight mock above
+    // instead of the real, lazily-loaded restty engine.
+    useSettingsStore.setState({ uiLanguage: "en", terminalShellPath: "/bin/fish", terminalEngine: "xterm" });
   });
 
   it("keeps switched tabs mounted and captures shell settings only for new tabs", () => {

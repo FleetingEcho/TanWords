@@ -27,7 +27,7 @@ describe("settingsStore database hydration", () => {
       terminalBackgroundBlur: 16,
       terminalBackgroundOpacity: 16,
       terminalRenderer: "auto",
-      terminalEngine: "xterm",
+      terminalEngine: "restty",
       terminalBackgroundColor: "#1a1b26",
       terminalTextColor: "#c0caf5",
       terminalColorScheme: "tokyo-night",
@@ -307,21 +307,21 @@ describe("settingsStore database hydration", () => {
     });
   });
 
-  it("defaults the terminal engine to xterm and loads a persisted restty choice", async () => {
-    expect(useSettingsStore.getState().terminalEngine).toBe("xterm");
+  it("defaults the terminal engine to restty and loads a persisted xterm choice", async () => {
+    expect(useSettingsStore.getState().terminalEngine).toBe("restty");
 
     invoke.mockImplementation(async (command: string, args?: { key?: string }) => {
       if (command !== "db_get_setting") return null;
-      if (args?.key === "terminal_engine") return '"restty"';
+      if (args?.key === "terminal_engine") return '"xterm"';
       return null;
     });
 
     await useSettingsStore.getState().loadFromDB();
 
-    expect(useSettingsStore.getState().terminalEngine).toBe("restty");
+    expect(useSettingsStore.getState().terminalEngine).toBe("xterm");
   });
 
-  it("falls back to xterm for an invalid stored terminal engine", async () => {
+  it("falls back to restty for an invalid stored terminal engine", async () => {
     invoke.mockImplementation(async (command: string, args?: { key?: string }) => {
       if (command !== "db_get_setting") return null;
       if (args?.key === "terminal_engine") return '"ghostty"';
@@ -330,17 +330,17 @@ describe("settingsStore database hydration", () => {
 
     await useSettingsStore.getState().loadFromDB();
 
-    expect(useSettingsStore.getState().terminalEngine).toBe("xterm");
+    expect(useSettingsStore.getState().terminalEngine).toBe("restty");
   });
 
   it("persists the terminal engine", async () => {
-    useSettingsStore.getState().setTerminalEngine("restty");
+    useSettingsStore.getState().setTerminalEngine("xterm");
 
-    expect(useSettingsStore.getState().terminalEngine).toBe("restty");
+    expect(useSettingsStore.getState().terminalEngine).toBe("xterm");
     await vi.waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("db_set_setting", {
         key: "terminal_engine",
-        value: '"restty"',
+        value: '"xterm"',
       });
     });
   });
