@@ -27,6 +27,7 @@ describe("settingsStore database hydration", () => {
       terminalBackgroundBlur: 16,
       terminalBackgroundOpacity: 16,
       terminalRenderer: "auto",
+      terminalEngine: "xterm",
       terminalBackgroundColor: "#1a1b26",
       terminalTextColor: "#c0caf5",
       terminalColorScheme: "tokyo-night",
@@ -302,6 +303,44 @@ describe("settingsStore database hydration", () => {
       expect(invoke).toHaveBeenCalledWith("db_set_setting", {
         key: "terminal_renderer",
         value: '"webgl"',
+      });
+    });
+  });
+
+  it("defaults the terminal engine to xterm and loads a persisted restty choice", async () => {
+    expect(useSettingsStore.getState().terminalEngine).toBe("xterm");
+
+    invoke.mockImplementation(async (command: string, args?: { key?: string }) => {
+      if (command !== "db_get_setting") return null;
+      if (args?.key === "terminal_engine") return '"restty"';
+      return null;
+    });
+
+    await useSettingsStore.getState().loadFromDB();
+
+    expect(useSettingsStore.getState().terminalEngine).toBe("restty");
+  });
+
+  it("falls back to xterm for an invalid stored terminal engine", async () => {
+    invoke.mockImplementation(async (command: string, args?: { key?: string }) => {
+      if (command !== "db_get_setting") return null;
+      if (args?.key === "terminal_engine") return '"ghostty"';
+      return null;
+    });
+
+    await useSettingsStore.getState().loadFromDB();
+
+    expect(useSettingsStore.getState().terminalEngine).toBe("xterm");
+  });
+
+  it("persists the terminal engine", async () => {
+    useSettingsStore.getState().setTerminalEngine("restty");
+
+    expect(useSettingsStore.getState().terminalEngine).toBe("restty");
+    await vi.waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("db_set_setting", {
+        key: "terminal_engine",
+        value: '"restty"',
       });
     });
   });

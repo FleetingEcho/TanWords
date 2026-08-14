@@ -22,6 +22,7 @@ describe("TerminalSection typography", () => {
       terminalFontSize: 13,
       terminalFontWeight: 400,
       terminalRenderer: "auto",
+      terminalEngine: "xterm",
       terminalBackgroundColor: "#1a1b26",
       terminalTextColor: "#c0caf5",
       terminalColorScheme: "tokyo-night",
@@ -86,6 +87,21 @@ describe("TerminalSection typography", () => {
 
     fireEvent.click(link);
     expect(openExternal).toHaveBeenCalledWith("https://github.com/herdrdev/herdr");
+  });
+
+  it("switches the terminal engine and hides the xterm-only renderer row for restty", () => {
+    render(<TerminalSection />);
+
+    expect(screen.getByRole("combobox", { name: "Renderer" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "restty · Experimental" }));
+
+    expect(useSettingsStore.getState().terminalEngine).toBe("restty");
+    expect(screen.queryByRole("combobox", { name: "Renderer" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "xterm" }));
+    expect(useSettingsStore.getState().terminalEngine).toBe("xterm");
+    expect(screen.getByRole("combobox", { name: "Renderer" })).toBeInTheDocument();
   });
 
   it("changes the terminal renderer preference", () => {

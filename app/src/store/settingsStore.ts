@@ -7,11 +7,11 @@ import {
   DEFAULT_TERMINAL_BACKGROUND_COLOR, DEFAULT_TERMINAL_TEXT_COLOR,
   DEFAULT_TERMINAL_COLOR_SCHEME, TERMINAL_COLOR_SCHEME_COLORS, TERMINAL_COLOR_SCHEME_EFFECTS,
   DEFAULT_TERMINAL_CUSTOM_APPEARANCE,
-  DEFAULT_TERMINAL_RENDERER,
+  DEFAULT_TERMINAL_RENDERER, DEFAULT_TERMINAL_ENGINE,
   DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE, DEFAULT_TERMINAL_FONT_WEIGHT,
   DOCUMENT_TEXT_COLOR_RE, normalizeHexColor, normalizeTerminalFontWeight,
   type Theme, type SidebarTabId, type TopBarItemId, type RssTabSelection, type LayoutMode,
-  type BannerPosition, type TerminalRenderer, type TerminalColorScheme, type TerminalCustomAppearance,
+  type BannerPosition, type TerminalRenderer, type TerminalEngine, type TerminalColorScheme, type TerminalCustomAppearance,
 } from "./settings/types";
 import {
   cachedUiLanguage, cacheUiLanguage, cachedSidebarTabs, cacheSidebarTabs,
@@ -24,7 +24,7 @@ import { loadSettingsFromDB } from "./settings/loadFromDB";
 import type { SettingsState } from "./settings/state";
 
 export type {
-  Theme, SidebarTabId, TopBarItemId, RssTabSelection, BannerPosition, TerminalRenderer, TerminalColorScheme, TerminalCustomAppearance,
+  Theme, SidebarTabId, TopBarItemId, RssTabSelection, BannerPosition, TerminalRenderer, TerminalEngine, TerminalColorScheme, TerminalCustomAppearance,
 } from "./settings/types";
 export {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS,
@@ -97,6 +97,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   terminalColorScheme: DEFAULT_TERMINAL_COLOR_SCHEME,
   terminalCustomAppearance: DEFAULT_TERMINAL_CUSTOM_APPEARANCE,
   terminalRenderer: DEFAULT_TERMINAL_RENDERER,
+  terminalEngine: DEFAULT_TERMINAL_ENGINE,
   terminalFontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
   terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
   terminalFontWeight: DEFAULT_TERMINAL_FONT_WEIGHT,
@@ -377,6 +378,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setTerminalRenderer: (renderer) => {
     set({ terminalRenderer: renderer });
     saveSetting("terminal_renderer", JSON.stringify(renderer));
+  },
+
+  setTerminalEngine: (engine) => {
+    set({ terminalEngine: engine });
+    saveSetting("terminal_engine", JSON.stringify(engine));
   },
 
   setTerminalFontFamily: (family) => {

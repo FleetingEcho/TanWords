@@ -2,16 +2,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Pencil, Pin, PinOff, Plus, Star, StarOff, TerminalSquare, X } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
+import type { TerminalEngine } from "@/store/settings/types";
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
 import { TerminalTool } from "./TerminalTool";
+import { TerminalToolRestty } from "./TerminalToolRestty";
 
 interface TerminalTab {
   id: number;
   ordinal: number;
   /** Snapshot of the device setting. It intentionally never changes in place. */
   shellPath: string;
+  /** Snapshot of the device setting, same as `shellPath` — switching engines
+   *  in Settings only affects tabs opened afterward. */
+  engine: TerminalEngine;
   shellName: string;
   /** Live OSC 0/2 title from the running shell (cwd or foreground command). */
   shellTitle: string;
@@ -27,6 +32,7 @@ function newTab(id: number): TerminalTab {
     id,
     ordinal: id,
     shellPath: useSettingsStore.getState().terminalShellPath,
+    engine: useSettingsStore.getState().terminalEngine,
     shellName: "",
     shellTitle: "",
     customName: "",
@@ -168,6 +174,15 @@ export function TerminalWorkspace({
     setTabMenu(null);
   };
 
+  // Switching engines swaps this tab's component (`TerminalTool` ↔
+  // `TerminalToolRestty`) below, which unmounts the running PTY session and
+  // starts a fresh one — the same cost as the existing "Restart" action.
+  const setTabEngine = (id: number, engine: TerminalEngine) => {
+    setTabs((current) => current.map((tab) => (
+      tab.id === id ? { ...tab, engine } : tab
+    )));
+  };
+
   const recordShell = (id: number, shell: string) => {
     const shellName = shell.split(/[\\/]/).filter(Boolean).pop() ?? shell;
     setTabs((current) => current.map((tab) => (
@@ -269,17 +284,35 @@ export function TerminalWorkspace({
               aria-hidden={!selected}
               className={selected ? "absolute inset-0" : "hidden"}
             >
-              <TerminalTool
-                onBack={closeWorkspace}
-                visible={visible && selected}
-                maximized={maximized && selected}
-                onMaximizedChange={onMaximizedChange}
-                shellPath={tab.shellPath}
-                onSessionReady={(shell) => recordShell(tab.id, shell)}
-                onShellTitleChange={(shellTitle) => recordShellTitle(tab.id, shellTitle)}
-                onSessionExit={() => closeTabNow(tab.id)}
-                tabBar={selected ? tabBar : undefined}
-              />
+              {tab.engine === "restty" ? (
+                <TerminalToolRestty
+                  onBack={closeWorkspace}
+                  visible={visible && selected}
+                  maximized={maximized && selected}
+                  onMaximizedChange={onMaximizedChange}
+                  shellPath={tab.shellPath}
+                  engine={tab.engine}
+                  onEngineChange={(engine) => setTabEngine(tab.id, engine)}
+                  onSessionReady={(shell) => recordShell(tab.id, shell)}
+                  onShellTitleChange={(shellTitle) => recordShellTitle(tab.id, shellTitle)}
+                  onSessionExit={() => closeTabNow(tab.id)}
+                  tabBar={selected ? tabBar : undefined}
+                />
+              ) : (
+                <TerminalTool
+                  onBack={closeWorkspace}
+                  visible={visible && selected}
+                  maximized={maximized && selected}
+                  onMaximizedChange={onMaximizedChange}
+                  shellPath={tab.shellPath}
+                  engine={tab.engine}
+                  onEngineChange={(engine) => setTabEngine(tab.id, engine)}
+                  onSessionReady={(shell) => recordShell(tab.id, shell)}
+                  onShellTitleChange={(shellTitle) => recordShellTitle(tab.id, shellTitle)}
+                  onSessionExit={() => closeTabNow(tab.id)}
+                  tabBar={selected ? tabBar : undefined}
+                />
+              )}
             </div>
           );
         })}

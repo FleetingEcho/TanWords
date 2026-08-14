@@ -15,6 +15,10 @@ export type SidebarTabId = Exclude<NavPage, "settings">;
 export type TopBarItemId = "search" | "context" | "scratch" | "db" | "mcp" | "ai" | "language" | "theme" | "updates" | "github";
 export type LayoutMode = "flexible" | "fixed";
 export type TerminalRenderer = "auto" | "webgl" | "dom";
+/** Which terminal library renders a tab's screen. `restty` is an experimental
+ *  WASM/WebGPU-WebGL2 alternative to the default xterm.js engine — see
+ *  TerminalToolRestty.tsx for its (reduced) feature set. */
+export type TerminalEngine = "xterm" | "restty";
 export const TERMINAL_COLOR_SCHEME_IDS = [
   "tokyo-night", "dracula", "light", "high-contrast", "custom",
 ] as const;
@@ -63,6 +67,7 @@ export const DEFAULT_TERMINAL_BACKGROUND_OPACITY = 100;
 export const GLASS_LIGHT_BACKGROUND_OPACITY = 70;
 export const DEFAULT_TERMINAL_TRANSPARENT = false;
 export const DEFAULT_TERMINAL_RENDERER: TerminalRenderer = "auto";
+export const DEFAULT_TERMINAL_ENGINE: TerminalEngine = "xterm";
 /** Tokyo Night is the default retained dark preset. */
 export const DEFAULT_TERMINAL_BACKGROUND_COLOR = "#1a1b26";
 export const DEFAULT_TERMINAL_TEXT_COLOR = "#c0caf5";

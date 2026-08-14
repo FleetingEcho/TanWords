@@ -4,7 +4,7 @@ import { useT } from "@/hooks/useT";
 import { invoke } from "@/ipc/backend";
 import { openExternal } from "@/ipc/shell";
 import { useSettingsStore } from "@/store/settingsStore";
-import { DEFAULT_TERMINAL_FONT_FAMILY, type TerminalColorScheme } from "@/store/settings/types";
+import { DEFAULT_TERMINAL_FONT_FAMILY, type TerminalColorScheme, type TerminalEngine } from "@/store/settings/types";
 import { HERDR_URL } from "@/components/Tools/terminalUtils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -28,6 +28,8 @@ function RangeValue({ children }: { children: React.ReactNode }) {
 
 export function TerminalSection() {
   const t = useT();
+  const engine = useSettingsStore((state) => state.terminalEngine);
+  const setEngine = useSettingsStore((state) => state.setTerminalEngine);
   const transparent = useSettingsStore((state) => state.terminalTransparent);
   const blur = useSettingsStore((state) => state.terminalBackgroundBlur);
   const opacity = useSettingsStore((state) => state.terminalBackgroundOpacity);
@@ -122,6 +124,30 @@ export function TerminalSection() {
 
   return (
     <div className="divide-y divide-border rounded-xl border border-border bg-card px-5">
+      <SettingRow
+        label={t("settings.terminalEngine")}
+        sub={t("settings.terminalEngineSub")}
+      >
+        <div role="tablist" aria-label={t("settings.terminalEngine")} className="inline-flex rounded-lg border border-border bg-muted/40 p-0.5">
+          {(["xterm", "restty"] as TerminalEngine[]).map((option) => (
+            <button
+              key={option}
+              type="button"
+              role="tab"
+              aria-selected={engine === option}
+              onClick={() => setEngine(option)}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                engine === option
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {option === "xterm" ? t("settings.terminalEngineXterm") : t("settings.terminalEngineRestty")}
+            </button>
+          ))}
+        </div>
+      </SettingRow>
+
       <SettingRow
         label={t("settings.terminalShellPath")}
         sub={t("settings.terminalShellPathSub")}
@@ -239,92 +265,100 @@ export function TerminalSection() {
         </div>
       </SettingRow>
 
-      <SettingRow
-        label={t("toolsPage.terminal.transparent")}
-        sub={t("settings.terminalTransparentSub")}
-      >
-        <button
-          type="button"
-          role="switch"
-          aria-checked={transparent}
-          aria-label={t("toolsPage.terminal.transparent")}
-          onClick={() => setTransparent(!transparent)}
-          className={`relative h-6 w-11 rounded-full transition-colors ${
-            transparent ? "bg-primary" : "bg-muted"
-          }`}
+      {engine === "xterm" && (
+        <SettingRow
+          label={t("toolsPage.terminal.transparent")}
+          sub={t("settings.terminalTransparentSub")}
         >
-          <span
-            className={`absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
-              transparent ? "translate-x-5" : "translate-x-0"
+          <button
+            type="button"
+            role="switch"
+            aria-checked={transparent}
+            aria-label={t("toolsPage.terminal.transparent")}
+            onClick={() => setTransparent(!transparent)}
+            className={`relative h-6 w-11 rounded-full transition-colors ${
+              transparent ? "bg-primary" : "bg-muted"
             }`}
-          />
-        </button>
-      </SettingRow>
+          >
+            <span
+              className={`absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                transparent ? "translate-x-5" : "translate-x-0"
+              }`}
+            />
+          </button>
+        </SettingRow>
+      )}
 
-      <SettingRow
-        label={t("settings.terminalRenderer")}
-        sub={t("settings.terminalRendererSub")}
-      >
-        <Select
-          value={renderer}
-          onValueChange={(value) => setRenderer(value as "auto" | "webgl" | "dom")}
+      {engine === "xterm" && (
+        <SettingRow
+          label={t("settings.terminalRenderer")}
+          sub={t("settings.terminalRendererSub")}
         >
-          <SelectTrigger aria-label={t("settings.terminalRenderer")} className="h-9 w-56">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="auto">{t("settings.terminalRendererAuto")}</SelectItem>
-            <SelectItem value="webgl">{t("settings.terminalRendererWebgl")}</SelectItem>
-            <SelectItem value="dom">{t("settings.terminalRendererDom")}</SelectItem>
-          </SelectContent>
-        </Select>
-      </SettingRow>
+          <Select
+            value={renderer}
+            onValueChange={(value) => setRenderer(value as "auto" | "webgl" | "dom")}
+          >
+            <SelectTrigger aria-label={t("settings.terminalRenderer")} className="h-9 w-56">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="auto">{t("settings.terminalRendererAuto")}</SelectItem>
+              <SelectItem value="webgl">{t("settings.terminalRendererWebgl")}</SelectItem>
+              <SelectItem value="dom">{t("settings.terminalRendererDom")}</SelectItem>
+            </SelectContent>
+          </Select>
+        </SettingRow>
+      )}
 
-      <SettingRow
-        label={t("toolsPage.terminal.blurLabel")}
-        sub={t("settings.terminalBackgroundBlurSub")}
-      >
-        <div className="w-52 space-y-1.5">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>0px</span>
-            <RangeValue>{blur}px</RangeValue>
-            <span>30px</span>
+      {engine === "xterm" && (
+        <SettingRow
+          label={t("toolsPage.terminal.blurLabel")}
+          sub={t("settings.terminalBackgroundBlurSub")}
+        >
+          <div className="w-52 space-y-1.5">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>0px</span>
+              <RangeValue>{blur}px</RangeValue>
+              <span>30px</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={30}
+              step={1}
+              value={blur}
+              onChange={(event) => setBlur(Number(event.target.value))}
+              className="w-full accent-primary"
+              aria-label={t("toolsPage.terminal.blurLabel")}
+            />
           </div>
-          <input
-            type="range"
-            min={0}
-            max={30}
-            step={1}
-            value={blur}
-            onChange={(event) => setBlur(Number(event.target.value))}
-            className="w-full accent-primary"
-            aria-label={t("toolsPage.terminal.blurLabel")}
-          />
-        </div>
-      </SettingRow>
+        </SettingRow>
+      )}
 
-      <SettingRow
-        label={t("toolsPage.terminal.opacityLabel")}
-        sub={t("settings.terminalBackgroundOpacitySub")}
-      >
-        <div className="w-52 space-y-1.5">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>0%</span>
-            <RangeValue>{opacity}%</RangeValue>
-            <span>100%</span>
+      {engine === "xterm" && (
+        <SettingRow
+          label={t("toolsPage.terminal.opacityLabel")}
+          sub={t("settings.terminalBackgroundOpacitySub")}
+        >
+          <div className="w-52 space-y-1.5">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>0%</span>
+              <RangeValue>{opacity}%</RangeValue>
+              <span>100%</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={opacity}
+              onChange={(event) => setOpacity(Number(event.target.value))}
+              className="w-full accent-primary"
+              aria-label={t("toolsPage.terminal.opacityLabel")}
+            />
           </div>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            step={1}
-            value={opacity}
-            onChange={(event) => setOpacity(Number(event.target.value))}
-            className="w-full accent-primary"
-            aria-label={t("toolsPage.terminal.opacityLabel")}
-          />
-        </div>
-      </SettingRow>
+        </SettingRow>
+      )}
 
       <SettingRow
         label={t("toolsPage.terminal.backgroundColorLabel")}

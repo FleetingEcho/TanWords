@@ -70,6 +70,7 @@ export const toolsPage: Dict = {
     "toolsPage.terminal.backgroundColorLabel": "背景颜色",
     "toolsPage.terminal.textColorLabel": "文字颜色",
     "toolsPage.terminal.fontWeightLabel": "字体粗细",
+    "toolsPage.terminal.engineLabel": "引擎",
     "toolsPage.terminal.themeLabel": "主题",
     "toolsPage.terminal.themeTokyoNight": "Tokyo Night",
     "toolsPage.terminal.themeDracula": "Dracula",

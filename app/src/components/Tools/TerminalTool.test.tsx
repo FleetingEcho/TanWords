@@ -410,6 +410,24 @@ describe("TerminalTool clipboard controls", () => {
     expect(mocks.terminal.dispose).not.toHaveBeenCalled();
   });
 
+  it("shows an engine switch in the appearance panel when the tab supplies one", () => {
+    const onEngineChange = vi.fn();
+    render(<TerminalTool onBack={() => {}} engine="xterm" onEngineChange={onEngineChange} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Terminal appearance" }));
+    expect(screen.getByRole("tab", { name: "xterm" })).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.click(screen.getByRole("tab", { name: "restty · Experimental" }));
+    expect(onEngineChange).toHaveBeenCalledWith("restty");
+  });
+
+  it("omits the engine switch when the tab does not supply one", () => {
+    renderTerminal();
+
+    fireEvent.click(screen.getByRole("button", { name: "Terminal appearance" }));
+    expect(screen.queryByRole("tab", { name: "xterm" })).not.toBeInTheDocument();
+  });
+
   it("uses the built-in renderer in glass mode to avoid dark dim-text cells", () => {
     renderTerminal();
     act(() => useSettingsStore.getState().setTerminalTransparent(true));

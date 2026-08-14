@@ -1,0 +1,183 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => {
+  let capturedServices: { ptyTransport?: any } | null = null;
+  let capturedCallbacks: Record<string, ReturnType<typeof vi.fn>> | null = null;
+  let spawnInfo: { id: string; shell: string; cwd: string; pid: number } | null = null;
+  const eventHandlers = new Map<string, (payload: any) => void>();
+  const resttyPane = {
+    applyTheme: vi.fn(),
+    setFontSize: vi.fn(),
+    setFonts: vi.fn(() => Promise.resolve()),
+    copySelectionToClipboard: vi.fn(() => Promise.resolve(true)),
+    pasteFromClipboard: vi.fn(() => Promise.resolve(true)),
+    updateSize: vi.fn(),
+    // Mirrors what restty's real runtime does: build its own callbacks
+    // object and pass it to the transport's `connect()`.
+    connectPty: vi.fn((url?: string) => {
+      capturedCallbacks = {
+        onConnect: vi.fn(), onDisconnect: vi.fn(), onData: vi.fn(),
+        onStatus: vi.fn(), onError: vi.fn(), onExit: vi.fn(),
+      };
+      capturedServices?.ptyTransport?.connect({ url: url ?? "", cols: 80, rows: 24, callbacks: capturedCallbacks });
+    }),
+  };
+  const terminal = {
+    cols: 80,
+    rows: 24,
+    restty: resttyPane,
+    open: vi.fn(),
+    focus: vi.fn(),
+    // Mirrors restty's real `destroy()`, which cascades into
+    // `ptyInputRuntime.disconnectPty()` + `ptyTransport.destroy?.()`
+    // (confirmed in `node_modules/restty/dist/chunk-mnhegx4k.js`).
+    dispose: vi.fn(() => {
+      void capturedServices?.ptyTransport?.destroy?.();
+    }),
+  };
+  const callMain = vi.fn((channel: string) => {
+    if (channel === "pty_spawn") return spawnInfo ? Promise.resolve(spawnInfo) : new Promise(() => {});
+    return Promise.resolve(null);
+  });
+  return {
+    terminal,
+    resttyPane,
+    callMain,
+    emit: (event: string, payload: unknown) => eventHandlers.get(event)?.(payload),
+    subscribe: (event: string, handler: (payload: any) => void) => {
+      eventHandlers.set(event, handler);
+      return () => { eventHandlers.delete(event); };
+    },
+    setSpawnInfo: (value: typeof spawnInfo) => { spawnInfo = value; },
+    getTransport: () => capturedServices?.ptyTransport,
+    getCallbacks: () => capturedCallbacks,
+    setServices: (services: { ptyTransport?: any } | null) => { capturedServices = services; },
+    reset: () => {
+      spawnInfo = null;
+      capturedServices = null;
+      capturedCallbacks = null;
+      eventHandlers.clear();
+    },
+  };
+});
+
+vi.mock("restty/xterm", () => ({
+  Terminal: class {
+    constructor(options: { services?: { ptyTransport?: unknown } }) {
+      mocks.setServices(options.services ?? null);
+      return mocks.terminal;
+    }
+  },
+}));
+vi.mock("@/ipc/events", () => ({ subscribe: mocks.subscribe }));
+vi.mock("@/ipc/host", () => ({ callMain: mocks.callMain }));
+vi.mock("@/hooks/useWindowState", () => ({ useWindowState: () => ({ maximized: false, fullScreen: false }) }));
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
+import { TerminalToolRestty } from "./TerminalToolRestty";
+import { useSettingsStore } from "@/store/settingsStore";
+
+describe("TerminalToolRestty", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.reset();
+    useSettingsStore.setState({
+      terminalTransparent: false,
+      terminalBackgroundBlur: 12,
+      terminalBackgroundOpacity: 16,
+      terminalBackgroundColor: "#1a1b26",
+      terminalTextColor: "#c0caf5",
+      terminalColorScheme: "tokyo-night",
+      terminalCustomAppearance: {
+        backgroundColor: "#1a1b26",
+        textColor: "#c0caf5",
+        transparent: false,
+        blur: 12,
+        opacity: 16,
+      },
+      terminalFontFamily: "ui-monospace",
+      terminalFontSize: 13,
+      terminalFontWeight: 400,
+    });
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      callback(0);
+      return 1;
+    });
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+  });
+
+  it("connects through a ptyTransport (not manual write/onData) and reports connected", async () => {
+    mocks.setSpawnInfo({ id: "s1", shell: "/bin/zsh", cwd: "/home", pid: 1 });
+    const onSessionReady = vi.fn();
+
+    render(<TerminalToolRestty onBack={() => {}} onSessionReady={onSessionReady} />);
+
+    expect(mocks.terminal.open).toHaveBeenCalled();
+    expect(mocks.resttyPane.applyTheme).toHaveBeenCalled();
+    expect(mocks.resttyPane.connectPty).toHaveBeenCalled();
+    await waitFor(() => expect(onSessionReady).toHaveBeenCalledWith("/bin/zsh"));
+    expect(mocks.callMain).toHaveBeenCalledWith("pty_spawn", expect.objectContaining({ shellPath: "" }));
+  });
+
+  it("feeds decoded PTY output through the transport's onData callback", async () => {
+    mocks.setSpawnInfo({ id: "s1", shell: "/bin/zsh", cwd: "/home", pid: 1 });
+    render(<TerminalToolRestty onBack={() => {}} />);
+    await waitFor(() => expect(mocks.callMain).toHaveBeenCalledWith("pty_spawn", expect.anything()));
+
+    mocks.emit("pty:data", { id: "s1", data: new TextEncoder().encode("hello") });
+    expect(mocks.getCallbacks()?.onData).toHaveBeenCalledWith("hello");
+  });
+
+  it("forwards keystrokes through transport.sendInput to pty_write", async () => {
+    mocks.setSpawnInfo({ id: "s1", shell: "/bin/zsh", cwd: "/home", pid: 1 });
+    render(<TerminalToolRestty onBack={() => {}} />);
+    await waitFor(() => expect(mocks.callMain).toHaveBeenCalledWith("pty_spawn", expect.anything()));
+
+    const sent = mocks.getTransport().sendInput("ls\n");
+    expect(sent).toBe(true);
+    expect(mocks.callMain).toHaveBeenCalledWith("pty_write", expect.objectContaining({ id: "s1" }));
+  });
+
+  it("relays transport.resize to pty_resize", async () => {
+    mocks.setSpawnInfo({ id: "s1", shell: "/bin/zsh", cwd: "/home", pid: 1 });
+    render(<TerminalToolRestty onBack={() => {}} />);
+    await waitFor(() => expect(mocks.callMain).toHaveBeenCalledWith("pty_spawn", expect.anything()));
+    mocks.callMain.mockClear();
+
+    const resized = mocks.getTransport().resize(120, 40, { widthPx: 900, heightPx: 600 });
+    expect(resized).toBe(true);
+    expect(mocks.callMain).toHaveBeenCalledWith("pty_resize", expect.objectContaining({
+      id: "s1", cols: 120, rows: 40, pixelWidth: 900, pixelHeight: 600,
+    }));
+  });
+
+  it("closes the PTY session and disposes the terminal on unmount", async () => {
+    mocks.setSpawnInfo({ id: "s1", shell: "/bin/zsh", cwd: "/home", pid: 1 });
+    const { unmount } = render(<TerminalToolRestty onBack={() => {}} />);
+    await waitFor(() => expect(mocks.callMain).toHaveBeenCalledWith("pty_spawn", expect.anything()));
+
+    unmount();
+
+    expect(mocks.callMain).toHaveBeenCalledWith("pty_close", { id: "s1" });
+    expect(mocks.terminal.dispose).toHaveBeenCalled();
+  });
+
+  it("shows an engine switch in the appearance panel when the tab supplies one", () => {
+    mocks.setSpawnInfo(null);
+    const onEngineChange = vi.fn();
+    render(<TerminalToolRestty onBack={() => {}} engine="restty" onEngineChange={onEngineChange} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Terminal appearance" }));
+    expect(screen.getByRole("tab", { name: "restty · Experimental" })).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.click(screen.getByRole("tab", { name: "xterm" }));
+    expect(onEngineChange).toHaveBeenCalledWith("xterm");
+  });
+
+  it("shows a starting status while no session is connected yet", () => {
+    mocks.setSpawnInfo(null);
+    render(<TerminalToolRestty onBack={() => {}} />);
+    expect(screen.getByText("Starting…")).toBeInTheDocument();
+  });
+});

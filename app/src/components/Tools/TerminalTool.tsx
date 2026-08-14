@@ -47,6 +47,7 @@ import { subscribe } from "@/ipc/events";
 import { callMain } from "@/ipc/host";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useFullscreenDragExit } from "@/hooks/useFullscreenDragExit";
+import { TerminalEngineSwitch } from "./TerminalEngineSwitch";
 import type { ContextMenuPosition, TerminalClipboard } from "./terminalUtils";
 import {
   MAX_AUTOMATIC_RECOVERY_ATTEMPTS,
@@ -73,6 +74,8 @@ export function TerminalTool({
   onBack,
   visible = true,
   shellPath = "",
+  engine,
+  onEngineChange,
   onSessionReady,
   onSessionExit,
   onShellTitleChange,
@@ -84,6 +87,11 @@ export function TerminalTool({
   visible?: boolean;
   /** Captured by the tab at creation time; changing Settings won't restart it. */
   shellPath?: string;
+  /** This tab's current terminal engine ("xterm", since this is `TerminalTool`)
+   *  and its setter, shown as a switch in the appearance panel — see
+   *  `TerminalEngineSwitch`. Omitted only in tests that don't exercise it. */
+  engine?: import("@/store/settings/types").TerminalEngine;
+  onEngineChange?: (engine: import("@/store/settings/types").TerminalEngine) => void;
   onSessionReady?: (shell: string) => void;
   /** OSC 0/2 title from the shell, normalised for display; "" when the session
    *  ends or restarts, so a tab never keeps a title from a dead shell. */
@@ -895,6 +903,9 @@ export function TerminalTool({
             aria-label={t("toolsPage.terminal.appearance")}
             className="app-region-no-drag flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/70 bg-transparent px-4 py-2 sm:px-6"
           >
+            {engine && onEngineChange && (
+              <TerminalEngineSwitch engine={engine} onChange={onEngineChange} />
+            )}
             <label className="flex items-center gap-2">
               <span className="text-[11px] text-muted-foreground">
                 {t("toolsPage.terminal.themeLabel")}
