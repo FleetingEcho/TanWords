@@ -21,18 +21,22 @@ function StatTile({
   value,
   label,
   accent,
+  transparent,
   onClick,
 }: {
   value: number | null;
   label: string;
   accent?: boolean;
+  transparent: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="group rounded-2xl border border-border bg-card px-5 py-4 text-left transition-[transform,border-color,background-color,box-shadow] hover:-translate-y-0.5 hover:border-primary/35 hover:bg-muted/20 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:translate-y-0"
+      className={`group rounded-2xl border border-border px-5 py-4 text-left transition-[transform,border-color,background-color,box-shadow] hover:-translate-y-0.5 hover:border-primary/35 hover:bg-muted/20 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:translate-y-0 ${
+        transparent ? "bg-transparent" : "bg-card"
+      }`}
     >
       {value === null ? (
         <div className="h-[30px] flex items-center" aria-hidden>
@@ -62,6 +66,9 @@ export function DashboardPage() {
   const bannerPosition = useSettingsStore((s) => s.dashboardBannerPosition);
   const nickname = useSettingsStore((s) => s.nickname);
   const settingsLoaded = useSettingsStore((s) => s.isLoaded);
+  const hasCustomAppBackground = useSettingsStore(
+    (s) => !!s.appBackgroundImage && s.appBackgroundVisible,
+  );
   const navigate = useNavStore((s) => s.navigate);
   const openVocabularyPatterns = useNavStore((s) => s.openVocabularyPatterns);
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -134,10 +141,10 @@ export function DashboardPage() {
       {/* Stat tiles: how much of each thing the app collects, not how
         * diligently — one tile per kind of thing you accumulate. */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatTile value={statsSettled ? stats?.word_count ?? 0 : null} label={t("dash.stat.words")} onClick={() => navigate("vocabulary")} />
-        <StatTile value={statsSettled ? stats?.pattern_count ?? 0 : null} label={t("dash.stat.sentences")} accent onClick={openVocabularyPatterns} />
-        <StatTile value={statsSettled ? stats?.chat_count ?? 0 : null} label={t("dash.stat.chats")} onClick={() => navigate("chat")} />
-        <StatTile value={statsSettled ? stats?.doc_count ?? 0 : null} label={t("dash.stat.docs")} onClick={() => navigate("documents")} />
+        <StatTile transparent={hasCustomAppBackground} value={statsSettled ? stats?.word_count ?? 0 : null} label={t("dash.stat.words")} onClick={() => navigate("vocabulary")} />
+        <StatTile transparent={hasCustomAppBackground} value={statsSettled ? stats?.pattern_count ?? 0 : null} label={t("dash.stat.sentences")} accent onClick={openVocabularyPatterns} />
+        <StatTile transparent={hasCustomAppBackground} value={statsSettled ? stats?.chat_count ?? 0 : null} label={t("dash.stat.chats")} onClick={() => navigate("chat")} />
+        <StatTile transparent={hasCustomAppBackground} value={statsSettled ? stats?.doc_count ?? 0 : null} label={t("dash.stat.docs")} onClick={() => navigate("documents")} />
       </div>
 
       {/* Navigation, not a "recent" anything — hence outside the grid below */}

@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
     dashboardBannerPosition: { x: 50, y: 50 },
     nickname: "",
     isLoaded: true,
+    appBackgroundImage: "",
+    appBackgroundVisible: true,
   },
 }));
 
@@ -59,11 +61,24 @@ beforeEach(() => {
   delete document.documentElement.dataset.tanwordsShellReady;
   mocks.getDashboardStats.mockReset();
   mocks.settings.isLoaded = true;
+  mocks.settings.appBackgroundImage = "";
+  mocks.settings.appBackgroundVisible = true;
 });
 
 afterEach(() => cleanup());
 
 describe("DashboardPage startup readiness", () => {
+  it("makes stat surfaces transparent when the app background image is visible", async () => {
+    mocks.settings.appBackgroundImage = "data:image/jpeg;base64,wallpaper";
+    mocks.getDashboardStats.mockResolvedValue(stats);
+
+    render(<DashboardPage />);
+
+    const wordsTile = await screen.findByRole("button", { name: /dash\.stat\.words/ });
+    expect(wordsTile).toHaveClass("bg-transparent");
+    expect(wordsTile).not.toHaveClass("bg-card");
+  });
+
   it("keeps Splash waiting until the first real database result has committed", async () => {
     let resolveStats!: (value: DashboardStats | null) => void;
     mocks.getDashboardStats.mockReturnValue(new Promise((resolve) => {

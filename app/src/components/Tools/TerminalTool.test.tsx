@@ -4,17 +4,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   let keyHandler: ((event: KeyboardEvent) => boolean) | null = null;
   let terminalOptions: Record<string, unknown> | null = null;
+  let imageOptions: Record<string, unknown> | null = null;
   let clipboardValue: unknown = null;
   let contextLossHandler: (() => void) | null = null;
   let searchResultsHandler: ((result: { resultIndex: number; resultCount: number }) => void) | null = null;
   let resizeHandler: (() => void) | null = null;
   let titleHandler: ((title: string) => void) | null = null;
+  let csiHandler: ((params: (number | number[])[]) => boolean | Promise<boolean>) | null = null;
   let spawnInfo: { id: string; shell: string; cwd: string; pid: number } | null = null;
   let windowState = { maximized: false, fullScreen: false };
   let deferWrites = false;
   const pendingWriteCallbacks: Array<() => void> = [];
   const eventHandlers = new Map<string, (payload: any) => void>();
   const fit = vi.fn();
+  const image = { dispose: vi.fn() };
   const webgl = {
     dispose: vi.fn(),
     onContextLoss: vi.fn((handler: () => void) => {
@@ -55,6 +58,30 @@ const mocks = vi.hoisted(() => {
       titleHandler = handler;
       return { dispose: vi.fn() };
     }),
+    parser: {
+      registerCsiHandler: vi.fn((
+        _id: { final: string },
+        handler: (params: (number | number[])[]) => boolean | Promise<boolean>,
+      ) => {
+        csiHandler = handler;
+        return { dispose: vi.fn() };
+      }),
+    },
+    input: vi.fn(),
+    _core: {
+      _renderService: {
+        dimensions: {
+          css: {
+            canvas: { width: 800, height: 500 },
+            cell: { width: 8, height: 16 },
+          },
+          device: {
+            canvas: { width: 1600, height: 1000 },
+            cell: { width: 16, height: 32 },
+          },
+        },
+      },
+    },
     attachCustomKeyEventHandler: vi.fn((handler: (event: KeyboardEvent) => boolean) => {
       keyHandler = handler;
     }),
@@ -70,6 +97,7 @@ const mocks = vi.hoisted(() => {
   const toastError = vi.fn();
   return {
     terminal,
+    image,
     webgl,
     search,
     callMain,
@@ -78,10 +106,12 @@ const mocks = vi.hoisted(() => {
     toastError,
     getKeyHandler: () => keyHandler,
     getTerminalOptions: () => terminalOptions,
+    getImageOptions: () => imageOptions,
     triggerContextLoss: () => contextLossHandler?.(),
     emitSearchResults: (result: { resultIndex: number; resultCount: number }) => searchResultsHandler?.(result),
     triggerResize: () => resizeHandler?.(),
     emitTitle: (title: string) => titleHandler?.(title),
+    emitCsi: (params: (number | number[])[]) => csiHandler?.(params),
     emit: (event: string, payload: unknown) => eventHandlers.get(event)?.(payload),
     setSpawnInfo: (value: typeof spawnInfo) => { spawnInfo = value; },
     setWindowState: (value: typeof windowState) => { windowState = value; },
@@ -100,10 +130,12 @@ const mocks = vi.hoisted(() => {
     reset: () => {
       keyHandler = null;
       terminalOptions = null;
+      imageOptions = null;
       contextLossHandler = null;
       searchResultsHandler = null;
       resizeHandler = null;
       titleHandler = null;
+      csiHandler = null;
       spawnInfo = null;
       windowState = { maximized: false, fullScreen: false };
       deferWrites = false;
@@ -112,6 +144,7 @@ const mocks = vi.hoisted(() => {
       terminal.options = {};
     },
     setTerminalOptions: (options: Record<string, unknown>) => { terminalOptions = options; },
+    setImageOptions: (options: Record<string, unknown>) => { imageOptions = options; },
   };
 });
 
@@ -124,6 +157,14 @@ vi.mock("@xterm/xterm", () => ({
   },
 }));
 vi.mock("@xterm/addon-fit", () => ({ FitAddon: class { fit = mocks.fit; } }));
+vi.mock("@xterm/addon-image", () => ({
+  ImageAddon: class {
+    constructor(options: Record<string, unknown>) {
+      mocks.setImageOptions(options);
+      return mocks.image;
+    }
+  },
+}));
 vi.mock("@xterm/addon-search", () => ({
   SearchAddon: class {
     constructor() { return mocks.search; }
@@ -142,7 +183,14 @@ vi.mock("sonner", () => ({
   toast: { success: mocks.toastSuccess, error: mocks.toastError },
 }));
 
-import { quoteTerminalPath, shellTabTitle, terminalFontStack } from "./terminalUtils";
+import {
+  MAX_PENDING_OUTPUT_BYTES,
+  TERMINAL_SIXEL_SIZE_LIMIT_BYTES,
+  quoteTerminalPath,
+  shellTabTitle,
+  terminalFontStack,
+  terminalPixelSizeReport,
+} from "./terminalUtils";
 import { TerminalTool } from "./TerminalTool";
 import { useSettingsStore } from "@/store/settingsStore";
 
@@ -208,6 +256,10 @@ describe("TerminalTool clipboard controls", () => {
     expect(mocks.getTerminalOptions()).toMatchObject({
       allowProposedApi: true,
       allowTransparency: true,
+      cursorStyle: "block",
+      cursorInactiveStyle: "outline",
+      smoothScrollDuration: 80,
+      rescaleOverlappingGlyphs: true,
       scrollback: 5_000,
       theme: { background: "#1a1b26" },
     });
@@ -215,6 +267,53 @@ describe("TerminalTool clipboard controls", () => {
 
     mocks.triggerContextLoss();
     expect(mocks.webgl.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("renders bounded SIXEL and iTerm inline images", () => {
+    renderTerminal();
+
+    expect(mocks.getImageOptions()).toMatchObject({
+      enableSizeReports: true,
+      pixelLimit: 4096 * 4096,
+      storageLimit: 64,
+      showPlaceholder: true,
+      sixelSupport: true,
+      sixelScrolling: true,
+      sixelSizeLimit: 25_000_000,
+      iipSupport: true,
+      iipSizeLimit: 20_000_000,
+    });
+    expect(mocks.terminal.loadAddon).toHaveBeenCalledWith(mocks.image);
+    expect(MAX_PENDING_OUTPUT_BYTES).toBeGreaterThan(TERMINAL_SIXEL_SIZE_LIMIT_BYTES);
+  });
+
+  it("reports logical pixels so Retina DPR does not halve image layout", () => {
+    renderTerminal();
+
+    expect(mocks.terminal.parser.registerCsiHandler).toHaveBeenCalledWith(
+      { final: "t" },
+      expect.any(Function),
+    );
+    expect(mocks.emitCsi([16])).toBe(true);
+    expect(mocks.terminal.input).toHaveBeenLastCalledWith("\x1b[6;16;8t", false);
+
+    expect(mocks.emitCsi([14])).toBe(true);
+    expect(mocks.terminal.input).toHaveBeenLastCalledWith("\x1b[4;500;800t", false);
+    expect(mocks.emitCsi([18])).toBe(false);
+  });
+
+  it("falls back to xterm's built-in pixel report when device metrics are unavailable", () => {
+    expect(terminalPixelSizeReport([16], undefined)).toBeNull();
+    expect(terminalPixelSizeReport([16], {
+      css: {
+        canvas: { width: 0, height: 0 },
+        cell: { width: 0, height: 16 },
+      },
+      device: {
+        canvas: { width: 0, height: 0 },
+        cell: { width: 0, height: 32 },
+      },
+    })).toBeNull();
   });
 
   it("paints an explicit palette contrast-matched to its own backdrop", () => {
@@ -360,11 +459,16 @@ describe("TerminalTool clipboard controls", () => {
     );
     const toolbar = screen.getByTestId("terminal-tab-toolbar");
 
-    expect(toolbar).toHaveClass("bg-background/80", "text-foreground", "backdrop-blur-md");
+    expect(toolbar).toHaveClass("bg-transparent", "text-foreground");
+    expect(toolbar).not.toHaveClass("bg-background/80");
+    expect(toolbar).not.toHaveClass("backdrop-blur-md");
     expect(toolbar).toContainElement(screen.getByRole("tab", { name: "Shell 1" }));
     const searchButton = screen.getByRole("button", { name: "Search terminal" });
     expect(toolbar).toContainElement(searchButton);
     expect(searchButton).toHaveClass("text-foreground/80");
+    const fontSizeControl = screen.getByRole("group", { name: "Terminal font size" });
+    expect(fontSizeControl).toHaveClass("bg-transparent");
+    expect(fontSizeControl).not.toHaveClass("bg-background/40", "backdrop-blur-md");
     expect(toolbar).toContainElement(screen.getByRole("button", { name: "Terminal appearance" }));
     expect(screen.queryByText("Terminal")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "All tools" })).not.toBeInTheDocument();
@@ -374,7 +478,11 @@ describe("TerminalTool clipboard controls", () => {
 
     expect(toolbar).not.toContainElement(controls);
     expect(toolbar?.nextElementSibling).toBe(controls);
-    expect(controls).toHaveClass("shrink-0", "border-t");
+    expect(controls).toHaveClass("shrink-0", "border-t", "bg-transparent");
+    expect(controls).not.toHaveClass("bg-background/55", "backdrop-blur-md");
+    const themeSelector = screen.getByRole("combobox", { name: "Theme" });
+    expect(themeSelector).toHaveClass("bg-transparent");
+    expect(themeSelector).not.toHaveClass("bg-background/70", "backdrop-blur-md");
   });
 
   it("exits OS fullscreen when the maximized terminal toolbar is dragged down", () => {
@@ -405,6 +513,8 @@ describe("TerminalTool clipboard controls", () => {
     expect(mocks.callMain).toHaveBeenCalledWith("pty_spawn", {
       cols: 80,
       rows: 24,
+      pixelWidth: 800,
+      pixelHeight: 500,
       shellPath: "/bin/fish",
     });
   });
@@ -482,10 +592,10 @@ describe("TerminalTool clipboard controls", () => {
     mocks.setDeferWrites(true);
     render(<TerminalTool onBack={() => {}} />);
     await waitForConnected();
-    const data = Buffer.alloc(8192, 0x78).toString("base64");
+    const data = Buffer.alloc(1024 * 1024, 0x78).toString("base64");
 
     act(() => {
-      for (let index = 0; index < 640; index += 1) {
+      for (let index = 0; index < 40; index += 1) {
         mocks.emit("pty:data", { id: "session-1", data });
       }
     });
@@ -672,7 +782,10 @@ describe("TerminalTool clipboard controls", () => {
     mocks.terminal.options.allowProposedApi = false;
 
     fireEvent.click(screen.getByRole("button", { name: "Search terminal" }));
+    const searchBar = screen.getByRole("search");
     const input = await screen.findByRole("searchbox", { name: "Terminal search query" });
+    expect(searchBar).toHaveClass("bg-transparent");
+    expect(searchBar).not.toHaveClass("bg-background/75", "backdrop-blur-md");
     fireEvent.change(input, { target: { value: "build complete" } });
     expect(mocks.terminal.options.allowProposedApi).toBe(true);
     expect(mocks.search.findNext).toHaveBeenCalledWith(
@@ -769,23 +882,19 @@ describe("TerminalTool clipboard controls", () => {
     expect(second.shell).toHaveStyle({ background: "#1a1b26" });
   });
 
-  it("keeps the glass effect when its appearance controls are closed", () => {
+  it("keeps a sharp transparent background when its appearance controls are closed", () => {
     useSettingsStore.getState().setTerminalTransparent(true);
     const { shell } = renderTerminal();
     const appearanceButton = screen.getByRole("button", { name: "Terminal appearance" });
 
     fireEvent.click(appearanceButton);
-    fireEvent.change(screen.getByRole("slider", { name: /^Background blur/ }), {
-      target: { value: "1" },
-    });
+    expect(screen.queryByRole("slider", { name: /^Background blur/ })).not.toBeInTheDocument();
     fireEvent.click(appearanceButton);
 
-    expect(screen.queryByRole("slider", { name: /^Background blur/ })).not.toBeInTheDocument();
     expect(useSettingsStore.getState().terminalTransparent).toBe(true);
-    expect(shell).toHaveStyle({
-      background: "rgba(26,27,38,0.16)",
-      backdropFilter: "blur(1px)",
-    });
+    expect(shell).toHaveStyle({ background: "rgba(26,27,38,0.16)" });
+    expect((shell as HTMLElement).style.backdropFilter).toBe("");
+    expect((shell as HTMLElement).style.getPropertyValue("-webkit-backdrop-filter")).toBe("");
   });
 
   it("keeps the selected preset when its appearance controls are closed", () => {

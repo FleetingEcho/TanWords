@@ -30,4 +30,13 @@ describe("AppBackground", () => {
 
     expect(container.querySelector(".absolute.inset-0")).not.toBeInTheDocument();
   });
+
+  it("keeps the wallpaper sharp when a foreground surface disables blur", () => {
+    useSettingsStore.setState({ appBackgroundBlur: 18 });
+    const { container } = render(<AppBackground disableBlur />);
+    const image = container.querySelector("img");
+
+    expect(image).toHaveStyle({ filter: "none" });
+    expect(image).not.toHaveStyle({ transform: "scale(1.08)" });
+  });
 });

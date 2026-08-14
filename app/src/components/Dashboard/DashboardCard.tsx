@@ -1,6 +1,7 @@
 import React from "react";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
+import { useSettingsStore } from "@/store/settingsStore";
 
 /** A card is a 40px header over a body of 48px rows. Two rules decide height,
  *  and between them they cover the two ways this can look wrong:
@@ -42,8 +43,11 @@ export function DashboardCard({
   children: React.ReactNode;
 }) {
   const t = useT();
+  const hasCustomAppBackground = useSettingsStore(
+    (s) => !!s.appBackgroundImage && s.appBackgroundVisible,
+  );
   return (
-    <div className="bg-card border border-border rounded-2xl overflow-hidden flex flex-col h-full">
+    <div className={`${hasCustomAppBackground ? "bg-transparent" : "bg-card"} border border-border rounded-2xl overflow-hidden flex flex-col h-full`}>
       <div className="h-10 shrink-0 flex items-center gap-2 px-4 border-b border-border">
         <h2 className="text-sm font-semibold inline-flex items-center gap-1.5 shrink-0">
           {icon}

@@ -1,5 +1,5 @@
 import { render, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.hoisted(() => {
   Object.defineProperty(window, "matchMedia", {
@@ -24,8 +24,27 @@ vi.mock("@/hooks/useDB", () => ({
 }));
 
 import { DashboardWidgetGrid } from "./DashboardWidgetGrid";
+import { DashboardCard } from "./DashboardCard";
+import { useSettingsStore } from "@/store/settingsStore";
 
 describe("DashboardWidgetGrid", () => {
+  beforeEach(() => {
+    useSettingsStore.setState({ appBackgroundImage: "", appBackgroundVisible: true });
+  });
+
+  it("makes shared widget cards transparent when the app background image is visible", () => {
+    useSettingsStore.setState({
+      appBackgroundImage: "data:image/jpeg;base64,wallpaper",
+      appBackgroundVisible: true,
+    });
+    const { container } = render(
+      <DashboardCard title="Recent items"><span>Item</span></DashboardCard>,
+    );
+
+    expect(container.firstElementChild).toHaveClass("bg-transparent");
+    expect(container.firstElementChild).not.toHaveClass("bg-card");
+  });
+
   it("keeps skeletons while stats are still loading", () => {
     const { container } = render(<DashboardWidgetGrid stats={null} />);
     expect(container.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);

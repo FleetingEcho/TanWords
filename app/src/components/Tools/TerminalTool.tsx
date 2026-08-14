@@ -23,6 +23,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { ImageAddon } from "@xterm/addon-image";
 import { SearchAddon } from "@xterm/addon-search";
 import { WebglAddon } from "@xterm/addon-webgl";
 import {
@@ -50,6 +51,10 @@ import type { ContextMenuPosition, TerminalClipboard } from "./terminalUtils";
 import {
   MAX_AUTOMATIC_RECOVERY_ATTEMPTS,
   MAX_PENDING_OUTPUT_BYTES,
+  TERMINAL_IIP_SIZE_LIMIT_BYTES,
+  TERMINAL_IMAGE_PIXEL_LIMIT,
+  TERMINAL_IMAGE_STORAGE_MB,
+  TERMINAL_SIXEL_SIZE_LIMIT_BYTES,
   TERMINAL_SCROLLBACK_LINES,
   terminalThemeFor,
   bytesFromB64,
@@ -59,7 +64,9 @@ import {
   shellTabTitle,
   terminalBackgroundRgba,
   terminalFontStack,
+  terminalPixelSizeReport,
   terminalSearchOptions,
+  type TerminalRenderDimensions,
 } from "./terminalUtils";
 
 export function TerminalTool({
@@ -115,14 +122,9 @@ export function TerminalTool({
   const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
   const [searchResult, setSearchResult] = useState({ resultIndex: -1, resultCount: 0 });
   // Opening/closing the adjustment controls must not also enable/disable the
-  // glass effect. That persisted preference is intentionally separate below.
+  // transparent background. That persisted preference is intentionally separate below.
   const [appearanceControlsOpen, setAppearanceControlsOpen] = useState(false);
-  // Glass look: blur controls the backdrop radius while backgroundOpacity
-  // controls only the dark tint over it. Keeping them independent lets the
-  // wallpaper remain sharp-but-dim or heavily frosted-but-clear.
   const transparent = useSettingsStore((state) => state.terminalTransparent);
-  const blur = useSettingsStore((state) => state.terminalBackgroundBlur);
-  const setBlur = useSettingsStore((state) => state.setTerminalBackgroundBlur);
   const backgroundOpacity = useSettingsStore((state) => state.terminalBackgroundOpacity);
   const setBackgroundOpacity = useSettingsStore((state) => state.setTerminalBackgroundOpacity);
   const terminalBackgroundColor = useSettingsStore((state) => state.terminalBackgroundColor);
@@ -214,6 +216,16 @@ export function TerminalTool({
       fontSize: terminalFontSize,
       lineHeight: 1.15,
       cursorBlink: true,
+      cursorStyle: "block",
+      cursorInactiveStyle: "outline",
+      // Keep wheel/trackpad movement fluid without the long easing tail that
+      // makes interactive terminal output feel detached from the user's hand.
+      smoothScrollDuration: 80,
+      scrollSensitivity: 1,
+      fastScrollSensitivity: 5,
+      // Prevent wide CJK/ambiguous glyphs from bleeding into the next cell when
+      // the selected local font does not provide a perfectly monospace face.
+      rescaleOverlappingGlyphs: true,
       // SearchAddon uses xterm's decoration and overview-ruler APIs to paint
       // all matches. xterm 6 still marks those APIs as proposed and throws at
       // the first search unless the embedding terminal opts in explicitly.
@@ -245,14 +257,41 @@ export function TerminalTool({
     });
     terminalRef.current = term;
     const fit = new FitAddon();
+    const imageAddon = new ImageAddon({
+      enableSizeReports: true,
+      pixelLimit: TERMINAL_IMAGE_PIXEL_LIMIT,
+      storageLimit: TERMINAL_IMAGE_STORAGE_MB,
+      showPlaceholder: true,
+      sixelSupport: true,
+      sixelScrolling: true,
+      sixelSizeLimit: TERMINAL_SIXEL_SIZE_LIMIT_BYTES,
+      iipSupport: true,
+      iipSizeLimit: TERMINAL_IIP_SIZE_LIMIT_BYTES,
+    });
     const searchAddon = new SearchAddon({ highlightLimit: 1000 });
     searchAddonRef.current = searchAddon;
     term.loadAddon(fit);
+    term.loadAddon(imageAddon);
     term.loadAddon(searchAddon);
     const searchResultsSubscription = searchAddon.onDidChangeResults((result) => {
       setSearchResult(result);
     });
     term.open(el);
+    // Image-aware terminal programs use these logical pixel dimensions to map
+    // image pixels to terminal cells. The image layer handles Retina resolution
+    // independently so DPR never changes the image's on-screen size.
+    const pixelSizeReportSubscription = term.parser.registerCsiHandler(
+      { final: "t" },
+      (params) => {
+        const dimensions = (term as unknown as {
+          _core?: { _renderService?: { dimensions?: TerminalRenderDimensions } };
+        })._core?._renderService?.dimensions;
+        const response = terminalPixelSizeReport(params, dimensions);
+        if (!response) return false;
+        term.input(response, false);
+        return true;
+      },
+    );
     setStatus("starting");
     setMessage("");
 
@@ -314,6 +353,16 @@ export function TerminalTool({
 
     const state = { sessionId: null as string | null };
 
+    const logicalCanvasSize = () => {
+      const dimensions = (term as unknown as {
+        _core?: { _renderService?: { dimensions?: TerminalRenderDimensions } };
+      })._core?._renderService?.dimensions;
+      return {
+        pixelWidth: Math.max(0, Math.round(dimensions?.css.canvas.width ?? 0)),
+        pixelHeight: Math.max(0, Math.round(dimensions?.css.canvas.height ?? 0)),
+      };
+    };
+
     // Do not assign application shortcuts while xterm has focus: every key
     // belongs to the foreground terminal program. xterm 6 collapses all
     // modified Enter keys to plain CR, however, so preserve that browser input
@@ -363,20 +412,33 @@ export function TerminalTool({
     let fitFrame: number | null = null;
     let lastPtyCols = 0;
     let lastPtyRows = 0;
+    let lastPtyPixelWidth = -1;
+    let lastPtyPixelHeight = -1;
     const syncPtySize = () => {
-      if (!state.sessionId || (term.cols === lastPtyCols && term.rows === lastPtyRows)) return;
+      if (!state.sessionId) return;
+      const { pixelWidth, pixelHeight } = logicalCanvasSize();
+      if (
+        term.cols === lastPtyCols
+        && term.rows === lastPtyRows
+        && pixelWidth === lastPtyPixelWidth
+        && pixelHeight === lastPtyPixelHeight
+      ) return;
       lastPtyCols = term.cols;
       lastPtyRows = term.rows;
+      lastPtyPixelWidth = pixelWidth;
+      lastPtyPixelHeight = pixelHeight;
       void callMain("pty_resize", {
         id: state.sessionId,
         cols: term.cols,
         rows: term.rows,
+        pixelWidth,
+        pixelHeight,
       }).catch(() => {});
     };
 
     // Layout transitions and window drags can deliver many ResizeObserver
     // callbacks in one paint. Fit at most once per animation frame and only
-    // send the PTY a resize when its rows or columns actually changed.
+    // send the PTY a resize when its grid or logical viewport actually changed.
     const refit = () => {
       // A persistent Terminal page is `display: none` while another route is in
       // front. Do not collapse the live PTY to xterm's minimum dimensions.
@@ -424,7 +486,7 @@ export function TerminalTool({
       try {
         const info = await callMain<{ id: string; shell: string; cwd: string; pid: number }>(
           "pty_spawn",
-          { cols: term.cols, rows: term.rows, shellPath },
+          { cols: term.cols, rows: term.rows, ...logicalCanvasSize(), shellPath },
         );
         if (!alive) {
           // Unmount can win the race with a slow spawn handshake. Close the
@@ -435,6 +497,7 @@ export function TerminalTool({
         state.sessionId = info.id;
         lastPtyCols = term.cols;
         lastPtyRows = term.rows;
+        ({ pixelWidth: lastPtyPixelWidth, pixelHeight: lastPtyPixelHeight } = logicalCanvasSize());
         setStatus("connected");
         onSessionReadyRef.current?.(info.shell);
         // A session that remains healthy for a while earns a fresh recovery
@@ -470,6 +533,10 @@ export function TerminalTool({
     // its box is what xterm sizes to.
     const ro = new ResizeObserver(refit);
     ro.observe(el);
+    // Chromium updates device metrics when a window crosses displays even when
+    // its CSS box stays the same, so ResizeObserver alone cannot cover DPR-only
+    // changes.
+    window.addEventListener("resize", refit);
 
     const onFocus = () => term.focus();
     el.addEventListener("focus", onFocus);
@@ -486,6 +553,7 @@ export function TerminalTool({
       webglAddonRef.current?.dispose();
       webglAddonRef.current = null;
       searchResultsSubscription.dispose();
+      pixelSizeReportSubscription.dispose();
       onData.dispose();
       onResize.dispose();
       onTitleChange.dispose();
@@ -493,6 +561,7 @@ export function TerminalTool({
       // the session keeps the tab from advertising a directory nothing is in.
       onShellTitleChangeRef.current?.("");
       ro.disconnect();
+      window.removeEventListener("resize", refit);
       el.removeEventListener("focus", onFocus);
       offs.forEach((off) => off());
       term.dispose();
@@ -684,7 +753,7 @@ export function TerminalTool({
               : maximized
                 ? "app-drag-region"
                 : "app-region-no-drag"
-          } flex min-w-0 shrink-0 items-center border-y border-border bg-background/80 text-foreground shadow-sm backdrop-blur-md`}
+          } flex min-w-0 shrink-0 items-center border-y border-border bg-transparent text-foreground shadow-sm`}
         >
           {tabBar}
           <div className="app-region-no-drag ml-auto flex shrink-0 items-center gap-1 px-2">
@@ -706,7 +775,7 @@ export function TerminalTool({
           <div
             role="group"
             aria-label={t("toolsPage.terminal.fontSize")}
-            className="flex h-8 items-center rounded-lg border border-border bg-background/40 px-0.5"
+            className="flex h-8 items-center rounded-lg border border-border bg-transparent px-0.5"
           >
             <Button
               variant="ghost"
@@ -792,7 +861,7 @@ export function TerminalTool({
           <div
             role="group"
             aria-label={t("toolsPage.terminal.appearance")}
-            className="app-region-no-drag flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/70 bg-background/55 px-4 py-2 backdrop-blur-md sm:px-6"
+            className="app-region-no-drag flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-t border-border/70 bg-transparent px-4 py-2 sm:px-6"
           >
             <label className="flex items-center gap-2">
               <span className="text-[11px] text-muted-foreground">
@@ -804,7 +873,7 @@ export function TerminalTool({
               >
                 <SelectTrigger
                   aria-label={t("toolsPage.terminal.themeLabel")}
-                  className="h-7 w-32 border-border bg-background/70 px-2 py-0 text-[11px] focus:ring-1 focus:ring-ring focus:ring-offset-0"
+                  className="h-7 w-32 border-border bg-transparent px-2 py-0 text-[11px] focus:ring-1 focus:ring-ring focus:ring-offset-0"
                 >
                   <SelectValue>
                     {terminalColorScheme === "custom" ? t("toolsPage.terminal.themeCustom") : undefined}
@@ -818,23 +887,6 @@ export function TerminalTool({
                   <SelectItem value="custom">{t("toolsPage.terminal.themeCustom")}</SelectItem>
                 </SelectContent>
               </Select>
-            </label>
-            <label className="flex items-center gap-2">
-                <span className="text-[11px] text-muted-foreground">
-                  {t("toolsPage.terminal.blurLabel")}
-                </span>
-                <input
-                  type="range"
-                  min={0}
-                  max={30}
-                  step={1}
-                  value={blur}
-                  onChange={(e) => setBlur(Number(e.currentTarget.value))}
-                  className="h-6 w-20 cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-[3px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-muted-foreground/30 [&::-webkit-slider-thumb]:mt-[-4px] [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-card [&::-webkit-slider-thumb]:bg-primary [&::-moz-range-track]:h-[3px] [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-muted-foreground/30 [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-card [&::-moz-range-thumb]:bg-primary"
-                />
-                <span className="w-8 text-right text-[11px] tabular-nums text-muted-foreground">
-                  {blur}px
-                </span>
             </label>
             <label className="flex items-center gap-2">
                 <span className="text-[11px] text-muted-foreground">
@@ -935,7 +987,7 @@ export function TerminalTool({
         {searchOpen && (
           <div
             role="search"
-            className="terminal-search-bar flex shrink-0 items-center gap-1.5 border-t border-border/70 bg-background/75 px-3 py-1.5 shadow-sm backdrop-blur-md sm:px-6"
+            className="terminal-search-bar flex shrink-0 items-center gap-1.5 border-t border-border/70 bg-transparent px-3 py-1.5 shadow-sm sm:px-6"
           >
             <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
             <input
@@ -1032,14 +1084,12 @@ export function TerminalTool({
           style={
             effectiveTransparent
               ? {
-                  // The user-chosen background colour as a translucent tint
-                  // over the wallpaper; backdrop-blur does the real frosting.
+                  // The user-chosen background colour remains a translucent tint
+                  // while the wallpaper itself stays sharp.
                   // The app's own background map already dims the wallpaper
                   // (bg-black/45 dark / 20 light), so this scrim keeps text
                   // legible without reading as opaque.
                   background: terminalBackgroundRgba(terminalBackgroundColor, backgroundOpacity),
-                  backdropFilter: `blur(${blur}px)`,
-                  WebkitBackdropFilter: `blur(${blur}px)`,
                 }
               : { background: terminalBackgroundColor }
           }

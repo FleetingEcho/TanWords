@@ -139,12 +139,14 @@ async function dispatch(
     case "pty_default_shell":
       return terminalDefaultShell();
     case "pty_spawn": {
-      const { cols, rows, shellPath } = (args ?? {}) as {
+      const { cols, rows, pixelWidth, pixelHeight, shellPath } = (args ?? {}) as {
         cols?: number;
         rows?: number;
+        pixelWidth?: number;
+        pixelHeight?: number;
         shellPath?: string;
       };
-      return terminalSpawn({ cols, rows, shellPath });
+      return terminalSpawn({ cols, rows, pixelWidth, pixelHeight, shellPath });
     }
     case "pty_write": {
       const { id, data } = (args ?? {}) as { id: string; data?: string };
@@ -152,8 +154,14 @@ async function dispatch(
       return null;
     }
     case "pty_resize": {
-      const { id, cols, rows } = (args ?? {}) as { id: string; cols?: number; rows?: number };
-      if (id) terminalResize(id, cols ?? 0, rows ?? 0);
+      const { id, cols, rows, pixelWidth, pixelHeight } = (args ?? {}) as {
+        id: string;
+        cols?: number;
+        rows?: number;
+        pixelWidth?: number;
+        pixelHeight?: number;
+      };
+      if (id) terminalResize(id, cols ?? 0, rows ?? 0, pixelWidth ?? 0, pixelHeight ?? 0);
       return null;
     }
     case "pty_close": {

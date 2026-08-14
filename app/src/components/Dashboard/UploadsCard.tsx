@@ -7,6 +7,7 @@ import { CloseIcon } from "@/components/ui/icons";
 import { AssetDropzone } from "@/components/shared/AssetDropzone";
 import { DocumentImageManager } from "@/components/Documents/DocumentImageManager";
 import { useStandaloneUpload } from "@/hooks/useStandaloneUpload";
+import { useSettingsStore } from "@/store/settingsStore";
 
 /** Drop files straight from the dashboard, and open the same asset manager the
  *  Documents page uses to manage them — in place, rather than navigating to
@@ -15,6 +16,9 @@ export function UploadsCard() {
   const t = useT();
   const [managerOpen, setManagerOpen] = useState(false);
   const { uploading, progress, uploadFiles } = useStandaloneUpload();
+  const hasCustomAppBackground = useSettingsStore(
+    (s) => !!s.appBackgroundImage && s.appBackgroundVisible,
+  );
 
   return (
     <>
@@ -29,7 +33,9 @@ export function UploadsCard() {
         <Button
           variant="ghost"
           onClick={() => setManagerOpen(true)}
-          className="flex h-auto shrink-0 flex-col items-center justify-center gap-1.5 rounded-2xl border border-border bg-card px-5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary max-sm:w-full max-sm:flex-row max-sm:py-3"
+          className={`flex h-auto shrink-0 flex-col items-center justify-center gap-1.5 rounded-2xl border border-border px-5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary max-sm:w-full max-sm:flex-row max-sm:py-3 ${
+            hasCustomAppBackground ? "bg-transparent" : "bg-card"
+          }`}
         >
           <FolderOpen className="h-5 w-5" />
           {t("dash.uploads.manage")}

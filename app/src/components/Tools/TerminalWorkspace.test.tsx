@@ -137,7 +137,10 @@ describe("TerminalWorkspace tabs", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
 
     expect(screen.getAllByTestId("terminal-session")).toHaveLength(1);
-    expect(screen.getByRole("tab", { name: "Terminal 1" })).toHaveAttribute("aria-selected", "true");
+    const activeTab = screen.getByRole("tab", { name: "Terminal 1" });
+    expect(activeTab).toHaveAttribute("aria-selected", "true");
+    expect(activeTab.parentElement).toHaveClass("bg-transparent");
+    expect(activeTab.parentElement).not.toHaveClass("bg-card", "backdrop-blur-md");
   });
 
   it("closes a tab immediately when its shell exits naturally", () => {

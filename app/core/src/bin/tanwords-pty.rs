@@ -9,8 +9,8 @@
 //!   main → daemon  `I` input bytes · `R` resize · `C` close
 //!
 //! Frame layout (both directions): `[opcode: u8][len: u32 LE][payload…]`.
-//! `I`/`D` payloads are raw bytes, `R` is two `u32 LE` (cols, rows), and
-//! `H`/`X` payloads are JSON.
+//! `I`/`D` payloads are raw bytes, `R` is four `u32 LE` values (cols, rows,
+//! pixel width, pixel height), and `H`/`X` payloads are JSON.
 //!
 //! A real PTY (rather than a plain pipe) is what makes the tool feel like a
 //! terminal: the shell gets a full tty line discipline, so Ctrl-C sends
@@ -44,13 +44,15 @@ fn main() {
 
     let initial_cols = env_u16("PTY_COLS", 80);
     let initial_rows = env_u16("PTY_ROWS", 24);
+    let initial_pixel_width = env_u16("PTY_PIXEL_WIDTH", 0);
+    let initial_pixel_height = env_u16("PTY_PIXEL_HEIGHT", 0);
 
     let pty_system = native_pty_system();
     let pair = match pty_system.openpty(PtySize {
         rows: initial_rows,
         cols: initial_cols,
-        pixel_width: 0,
-        pixel_height: 0,
+        pixel_width: initial_pixel_width,
+        pixel_height: initial_pixel_height,
     }) {
         Ok(pair) => pair,
         Err(e) => {
@@ -64,9 +66,9 @@ fn main() {
     let (mut cmd, shell) = shell_command();
     // A genuine xterm-compatible terminal: colour programmes key off TERM to
     // decide whether to emit ANSI colour/box-drawing sequences. Honour the
-    // ambient TERM if set (the Electron host sets none and lands on the
-    // default; a test/alternate host can choose e.g. `dumb` to get a quiet,
-    // non-querying shell).
+    // ambient TERM if set (the Electron host deliberately supplies
+    // `xterm-256color`; a test/alternate host can choose e.g. `dumb` to get a
+    // quiet, non-querying shell).
     let term = std::env::var("TERM").unwrap_or_else(|_| "xterm-256color".to_string());
     cmd.env("TERM", &term);
     // TERM only advertises 256 colours. Tools that can emit 24-bit colour
@@ -144,11 +146,21 @@ fn main() {
                 b'R' if frame.payload.len() >= 8 => {
                     let cols = u32::from_le_bytes(frame.payload[0..4].try_into().unwrap()) as u16;
                     let rows = u32::from_le_bytes(frame.payload[4..8].try_into().unwrap()) as u16;
+                    let pixel_width = frame
+                        .payload
+                        .get(8..12)
+                        .map(|bytes| u32::from_le_bytes(bytes.try_into().unwrap()) as u16)
+                        .unwrap_or(0);
+                    let pixel_height = frame
+                        .payload
+                        .get(12..16)
+                        .map(|bytes| u32::from_le_bytes(bytes.try_into().unwrap()) as u16)
+                        .unwrap_or(0);
                     let _ = master.resize(PtySize {
                         rows,
                         cols,
-                        pixel_width: 0,
-                        pixel_height: 0,
+                        pixel_width,
+                        pixel_height,
                     });
                 }
                 b'C' => running = false,

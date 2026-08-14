@@ -7,7 +7,7 @@ import { useLayoutStore } from "@/store/layoutStore";
  *  canvas (MainLayout's root bg-background) turns transparent to reveal it —
  *  cards/sidebar stay opaque, see Sidebar.tsx. An optional user-controlled
  *  dimming layer can improve legibility without silently changing the image. */
-export function AppBackground() {
+export function AppBackground({ disableBlur = false }: { disableBlur?: boolean }) {
   const image = useSettingsStore((s) => s.appBackgroundImage);
   const blur = useSettingsStore((s) => s.appBackgroundBlur);
   const visible = useSettingsStore((s) => s.appBackgroundVisible);
@@ -16,6 +16,7 @@ export function AppBackground() {
   const zenMode = useLayoutStore((s) => s.zenMode);
 
   const active = Boolean(image) && visible;
+  const effectiveBlur = disableBlur ? 0 : blur;
 
   // The image sits at z-index -10, behind the app's page canvas, and can only
   // show through if that canvas — the <body> background — is transparent.
@@ -46,9 +47,11 @@ export function AppBackground() {
         aria-hidden="true"
         className="w-full h-full object-cover"
         // Scaled up so a blurred edge never reveals empty space at the image boundary.
+        // Terminal can opt out because a backdrop that has already been blurred
+        // here cannot be made sharp again by its transparent foreground shell.
         style={{
-          filter: `blur(${blur}px)`,
-          transform: blur > 0 ? "scale(1.08)" : undefined,
+          filter: effectiveBlur > 0 ? `blur(${effectiveBlur}px)` : "none",
+          transform: effectiveBlur > 0 ? "scale(1.08)" : undefined,
           objectPosition: `${position.x}% ${position.y}%`,
         }}
       />

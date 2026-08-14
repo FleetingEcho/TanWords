@@ -7,7 +7,8 @@
  *    main → daemon   `I` input · `R` resize · `C` close
  *
  *  Frame layout, both directions: `[opcode: u8][len u32 LE][payload…]`. `I`/`D`
- *  payloads are raw bytes; `R` is two `u32 LE` (cols, rows).
+ *  payloads are raw bytes; `R` is four `u32 LE` values (cols, rows and the
+ *  device-pixel viewport width/height).
  *
  *  The renderer never talks to this daemon directly — the window is sandboxed
  *  (contextIsolation + sandbox), and the daemon speaks stdio, not HTTP. So main
@@ -39,6 +40,37 @@ const HANDSHAKE_TIMEOUT_MS = 5_000;
 const MAX_FRAME_BYTES = 1024 * 1024;
 const MAX_INPUT_BASE64_CHARS = 2 * 1024 * 1024;
 const MAX_PTY_DIMENSION = 65_535;
+// A TanWords PTY is a new terminal boundary, not a child pane of whichever
+// terminal happened to launch Electron during development. Leaking these
+// markers makes capability-driven apps (notably Yazi) select Apple Terminal,
+// tmux, Kitty, etc. and emit the wrong graphics protocol.
+const INHERITED_TERMINAL_MARKERS = [
+  "ITERM_SESSION_ID",
+  "KITTY_LISTEN_ON",
+  "KITTY_PUBLIC_KEY",
+  "KITTY_WINDOW_ID",
+  "KONSOLE_DBUS_SERVICE",
+  "KONSOLE_DBUS_SESSION",
+  "KONSOLE_VERSION",
+  "LC_TERMINAL",
+  "LC_TERMINAL_VERSION",
+  "STY",
+  "TABBY_CONFIG_DIRECTORY",
+  "TERM_SESSION_ID",
+  "TMUX",
+  "TMUX_PANE",
+  "VSCODE_INJECTION",
+  "WARP_HONOR_PS1",
+  "WEZTERM_EXECUTABLE",
+  "WEZTERM_PANE",
+  "WT_PROFILE_ID",
+  "WT_SESSION",
+  "WT_Session",
+  "ZELLIJ",
+  "ZELLIJ_PANE_ID",
+  "ZELLIJ_SESSION_NAME",
+  "GHOSTTY_RESOURCES_DIR",
+] as const;
 const sessions = new Map<string, PtySession>();
 let nextId = 1;
 let sink: SessionSink | null = null;
@@ -141,6 +173,29 @@ function clampPtyDimension(value: number, minimum: number) {
   return Math.min(MAX_PTY_DIMENSION, Math.max(minimum, Math.floor(value)));
 }
 
+function terminalEnvironment(
+  cols: number,
+  rows: number,
+  pixelWidth: number,
+  pixelHeight: number,
+  shellPath: string,
+): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  for (const marker of INHERITED_TERMINAL_MARKERS) delete env[marker];
+  return {
+    ...env,
+    TERM: "xterm-256color",
+    COLORTERM: "truecolor",
+    TERM_PROGRAM: "TanWords",
+    TERM_PROGRAM_VERSION: app.getVersion(),
+    PTY_COLS: String(cols),
+    PTY_ROWS: String(rows),
+    PTY_PIXEL_WIDTH: String(pixelWidth),
+    PTY_PIXEL_HEIGHT: String(pixelHeight),
+    ...(shellPath ? { PTY_SHELL: shellPath } : {}),
+  };
+}
+
 /** Encode one outbound frame: `[op][len u32 LE][payload]`. */
 function encodeFrame(op: number, payload: Buffer): Buffer {
   const h = Buffer.alloc(5);
@@ -171,10 +226,18 @@ export function terminalDefaultShell(): string {
  *  has landed, so callers (and the renderer) know the shell is ready to type
  *  into. Throws if the daemon can't be found or dies before handshaking. */
 export async function terminalSpawn(
-  opts: { cols?: number; rows?: number; shellPath?: string },
+  opts: {
+    cols?: number;
+    rows?: number;
+    pixelWidth?: number;
+    pixelHeight?: number;
+    shellPath?: string;
+  },
 ): Promise<TerminalSessionInfo> {
   const cols = clampPtyDimension(opts.cols ?? 80, 2);
   const rows = clampPtyDimension(opts.rows ?? 24, 1);
+  const pixelWidth = clampPtyDimension(opts.pixelWidth ?? 0, 0);
+  const pixelHeight = clampPtyDimension(opts.pixelHeight ?? 0, 0);
   const bin = resolvePtyBinary();
   if (!fs.existsSync(bin)) {
     throw new Error(
@@ -192,12 +255,7 @@ export async function terminalSpawn(
   const child = spawn(bin, [], {
     stdio: ["pipe", "pipe", "pipe"],
     windowsHide: true,
-    env: {
-      ...process.env,
-      PTY_COLS: String(cols),
-      PTY_ROWS: String(rows),
-      ...(shellPath ? { PTY_SHELL: shellPath } : {}),
-    },
+    env: terminalEnvironment(cols, rows, pixelWidth, pixelHeight, shellPath),
   });
 
   const id = String(nextId++);
@@ -329,12 +387,20 @@ export function terminalWrite(id: string, b64: string): void {
 }
 
 /** Tell the pty the viewport resized. */
-export function terminalResize(id: string, cols: number, rows: number): void {
+export function terminalResize(
+  id: string,
+  cols: number,
+  rows: number,
+  pixelWidth = 0,
+  pixelHeight = 0,
+): void {
   const s = sessions.get(id);
   if (!s || s.closing) return;
-  const p = Buffer.alloc(8);
+  const p = Buffer.alloc(16);
   p.writeUInt32LE(clampPtyDimension(cols, 2), 0);
   p.writeUInt32LE(clampPtyDimension(rows, 1), 4);
+  p.writeUInt32LE(clampPtyDimension(pixelWidth, 0), 8);
+  p.writeUInt32LE(clampPtyDimension(pixelHeight, 0), 12);
   writeSessionFrame(s, encodeFrame(0x52, p));
 }
 

@@ -208,7 +208,7 @@ export function TerminalWorkspace({
             }}
             className={`flex h-9 shrink-0 items-center rounded-t-lg border border-b-0 px-1 ${
               selected
-                ? "border-border bg-card text-foreground"
+                ? "border-border bg-transparent text-foreground"
                 : "border-transparent text-foreground/75 hover:bg-muted/60 hover:text-foreground"
             }`}
           >

@@ -1,6 +1,7 @@
 import React from "react";
 import { useT } from "@/hooks/useT";
 import { useNavStore } from "@/store/navStore";
+import { useSettingsStore } from "@/store/settingsStore";
 import { ChatIcon, MusicIcon, BookIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { hostCapabilities } from "@/platform";
@@ -18,6 +19,9 @@ import { hostCapabilities } from "@/platform";
 export function QuickActionsBar() {
   const t = useT();
   const navigate = useNavStore((s) => s.navigate);
+  const hasCustomAppBackground = useSettingsStore(
+    (s) => !!s.appBackgroundImage && s.appBackgroundVisible,
+  );
 
   const actions = [
     {
@@ -40,7 +44,9 @@ export function QuickActionsBar() {
           key={a.label}
           variant="ghost"
           onClick={a.go}
-          className="h-auto group flex flex-row items-center justify-center gap-2.5 py-3.5 rounded-xl bg-card border border-border hover:bg-muted/60 hover:border-primary/30 transition-colors"
+          className={`h-auto group flex flex-row items-center justify-center gap-2.5 py-3.5 rounded-xl border border-border hover:bg-muted/60 hover:border-primary/30 transition-colors ${
+            hasCustomAppBackground ? "bg-transparent" : "bg-card"
+          }`}
         >
           <a.icon className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
           <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors">

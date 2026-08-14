@@ -84,12 +84,57 @@ export function shellTabTitle(raw: string): string {
 const SYSTEM_MONOSPACE_STACK =
   'ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace';
 export const TERMINAL_SCROLLBACK_LINES = 5_000;
+// Inline images are kept as RGBA canvases. Two terminal tabs can stay mounted
+// at once, so use a per-terminal FIFO cap instead of ImageAddon's 128 MB
+// default. This still leaves room for several full-screen screenshots while
+// bounding the steady-state renderer footprint at 128 MB across both tabs.
+export const TERMINAL_IMAGE_STORAGE_MB = 64;
+export const TERMINAL_IMAGE_PIXEL_LIMIT = 4096 * 4096;
+export const TERMINAL_SIXEL_SIZE_LIMIT_BYTES = 25_000_000;
+export const TERMINAL_IIP_SIZE_LIMIT_BYTES = 20_000_000;
 export const HERDR_URL = "https://github.com/herdrdev/herdr";
-// Full-screen TUIs such as Herdr can legitimately repaint several MiB while
-// xterm is still completing its first asynchronous write. Keep that finite
-// startup intact while retaining a hard bound for genuinely runaway output.
-export const MAX_PENDING_OUTPUT_BYTES = 4 * 1024 * 1024;
+// Never truncate inside an accepted inline-image control sequence: losing its
+// DCS/OSC prefix makes the remaining SIXEL/IIP payload render as terminal text.
+// 32 MiB covers the addon's 25 MB SIXEL maximum plus framing, while retaining a
+// finite bound for genuinely runaway output.
+export const MAX_PENDING_OUTPUT_BYTES = 32 * 1024 * 1024;
 export const MAX_AUTOMATIC_RECOVERY_ATTEMPTS = 3;
+
+export type TerminalRenderDimensions = {
+  css: {
+    canvas: { width: number; height: number };
+    cell: { width: number; height: number };
+  };
+  device: {
+    canvas: { width: number; height: number };
+    cell: { width: number; height: number };
+  };
+};
+
+/** Answer terminal pixel-size queries in logical pixels. Terminal graphics
+ * protocols use these values to decide how many character cells an image
+ * occupies; Retina scaling belongs solely to the renderer's backing store. */
+export function terminalPixelSizeReport(
+  params: readonly (number | number[])[],
+  dimensions: TerminalRenderDimensions | undefined,
+): string | null {
+  if (!dimensions || typeof params[0] !== "number") return null;
+
+  const request = params[0];
+  const size = request === 14
+    ? dimensions.css.canvas
+    : request === 16
+      ? dimensions.css.cell
+      : null;
+  if (!size || !Number.isFinite(size.width) || !Number.isFinite(size.height)) return null;
+
+  const width = Math.round(size.width);
+  const height = Math.round(size.height);
+  if (width <= 0 || height <= 0) return null;
+  return request === 14
+    ? `\x1b[4;${height};${width}t`
+    : `\x1b[6;${height};${width}t`;
+}
 /** The terminal palette.
  *
  *  Left unset, xterm falls back to Tango — GNOME Terminal's scheme, designed

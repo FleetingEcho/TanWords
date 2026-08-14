@@ -400,7 +400,7 @@ function App() {
 
   return (
     <>
-    <AppBackground />
+    <AppBackground disableBlur={isTerminalRoute} />
     <MainLayout
       activeNav={page}
       onNavigate={(id) => navigate(id as any)}
