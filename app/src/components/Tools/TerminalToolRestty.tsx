@@ -230,7 +230,18 @@ function createElectronPtyTransport(shellPath: string, hooks: PtySessionHooks): 
  *  Chinese/Japanese/Korean text renders as tofu boxes until — or unless —
  *  that fetch succeeds. Every OS ships a CJK-capable font already, so ask
  *  Local Font Access for one first; it costs nothing if unavailable ("prefer"
- *  falls through to the next entry rather than erroring). */
+ *  falls through to the next entry rather than erroring) — on desktop.
+ *
+ *  On the web, `local: "prefer"` is a hazard rather than a shortcut: it calls
+ *  `window.queryLocalFonts()`, which — confirmed by hand — never settles
+ *  (neither resolves nor rejects) when the `local-fonts` permission is still
+ *  `"prompt"` and there was no user gesture to let Chromium show the prompt.
+ *  restty awaits font loading before its runtime reaches "ready", so that
+ *  hang blocks `connectPty()` forever: the terminal sits on a blank canvas
+ *  with the tab stuck on "Starting…", no console error, nothing to catch.
+ *  Electron never hits this (no Local Font Access API in its renderer, so
+ *  restty's loader finds it absent and moves on immediately) — only the web
+ *  build needs the `local` field dropped entirely. */
 const LOCAL_CJK_FALLBACK_FONTS: ResttyFontInput[] = [
   { family: "PingFang SC", local: "prefer" }, // macOS
   { family: "Microsoft YaHei", local: "prefer" }, // Windows
@@ -238,14 +249,41 @@ const LOCAL_CJK_FALLBACK_FONTS: ResttyFontInput[] = [
   { family: "Noto Sans SC", local: "prefer" },
 ];
 
+/** Web substitute for the block above: plain URL fetches (no `family`/`local`
+ *  at all, so no Local Font Access call of any kind), covering the same two
+ *  jobs — a crisp monospace face for ASCII, and full Latin+CJK glyph coverage
+ *  as the fallback. Same URLs restty's own unset-`fonts` default uses
+ *  internally (`FONT_URL_JETBRAINS_MONO`/`FONT_URL_NOTO_CJK_SC` in
+ *  `node_modules/restty/dist/chunk-mnhegx4k.js`) — supplying a custom `fonts`
+ *  array replaces that default wholesale rather than extending it, so a
+ *  custom family selection with nothing else would otherwise leave web with
+ *  zero working font source. */
+const NETWORK_FALLBACK_FONTS: ResttyFontInput[] = [
+  {
+    url: "https://cdn.jsdelivr.net/gh/ryanoasis/nerd-fonts@v3.4.0/patched-fonts/JetBrainsMono/NoLigatures/Regular/JetBrainsMonoNLNerdFontMono-Regular.ttf",
+    name: "JetBrains Mono",
+  },
+  {
+    url: "https://cdn.jsdelivr.net/gh/notofonts/noto-cjk@main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf",
+    name: "Noto Sans CJK SC",
+  },
+];
+
 /** restty resolves fonts via Local Font Access (`family` + optional
  *  `weight`), not a CSS font-stack string. Always returns an explicit list
  *  — including for the "System monospace" default — so the local CJK
  *  fallback above is used instead of restty's own network-dependent one. */
 function resttyFontsFor(family: string, weight: number): ResttyFontInput[] {
-  const primary: ResttyFontInput[] = family && family !== DEFAULT_TERMINAL_FONT_FAMILY
-    ? [{ family, weight, local: "prefer" }]
-    : [];
+  const hasCustomFamily = family && family !== DEFAULT_TERMINAL_FONT_FAMILY;
+  if (!isDesktopHost) {
+    // `local: "prefer"` is unsafe on the web build — see the comment above —
+    // so a custom pick is tried as a fast, non-blocking family match (no
+    // network fetch exists for an arbitrary local font name) ahead of the
+    // guaranteed-to-load network fonts.
+    const primary: ResttyFontInput[] = hasCustomFamily ? [{ family, weight }] : [];
+    return [...primary, ...NETWORK_FALLBACK_FONTS];
+  }
+  const primary: ResttyFontInput[] = hasCustomFamily ? [{ family, weight, local: "prefer" }] : [];
   return [...primary, ...LOCAL_CJK_FALLBACK_FONTS];
 }
 
