@@ -417,7 +417,7 @@ describe("TerminalTool clipboard controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Terminal appearance" }));
     expect(screen.getByRole("tab", { name: "xterm" })).toHaveAttribute("aria-selected", "true");
 
-    fireEvent.click(screen.getByRole("tab", { name: "restty · Experimental" }));
+    fireEvent.click(screen.getByRole("tab", { name: "restty" }));
     expect(onEngineChange).toHaveBeenCalledWith("restty");
   });
 

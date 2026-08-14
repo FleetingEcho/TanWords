@@ -94,7 +94,7 @@ describe("TerminalSection typography", () => {
 
     expect(screen.getByRole("combobox", { name: "Renderer" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("tab", { name: "restty · Experimental" }));
+    fireEvent.click(screen.getByRole("tab", { name: "restty" }));
 
     expect(useSettingsStore.getState().terminalEngine).toBe("restty");
     expect(screen.queryByRole("combobox", { name: "Renderer" })).not.toBeInTheDocument();

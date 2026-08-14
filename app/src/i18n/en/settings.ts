@@ -372,7 +372,7 @@ export const settings: Dict = {
     "settings.terminalEngine": "Terminal engine",
     "settings.terminalEngineSub": "xterm.js is the default, well-tested engine. restty is an experimental WASM/WebGPU renderer with a reduced feature set — no in-terminal search, inline images, or background blur/transparency yet (its canvas always renders opaque).",
     "settings.terminalEngineXterm": "xterm",
-    "settings.terminalEngineRestty": "restty · Experimental",
+    "settings.terminalEngineRestty": "restty",
     "settings.terminalRenderer": "Renderer",
     "settings.terminalRendererSub": "Automatic uses WebGL when opaque and DOM for glass. Forcing WebGL with glass may show dark blocks around dim text.",
     "settings.terminalRendererAuto": "Automatic (recommended)",

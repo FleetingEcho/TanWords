@@ -169,7 +169,7 @@ describe("TerminalToolRestty", () => {
     render(<TerminalToolRestty onBack={() => {}} engine="restty" onEngineChange={onEngineChange} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Terminal appearance" }));
-    expect(screen.getByRole("tab", { name: "restty · Experimental" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "restty" })).toHaveAttribute("aria-selected", "true");
 
     fireEvent.click(screen.getByRole("tab", { name: "xterm" }));
     expect(onEngineChange).toHaveBeenCalledWith("xterm");
