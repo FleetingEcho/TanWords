@@ -80,6 +80,19 @@
   background-color: transparent !important;
 }
 
+/* xterm halves the default foreground's *alpha* for dim text (SGR 2) rather
+ * than mixing toward a shade. That compounds with this pane's own translucent
+ * background in glass mode, washing dim text out to near-invisible on light
+ * themes. Only the bare `.xterm-dim` rule is overridden — cells with an
+ * explicit ANSI/RGB colour also carry an `.xterm-fg-N` class, whose selector
+ * is more specific and wins on its own, so coloured dim text is untouched.
+ * TerminalTool.tsx sets --terminal-dim-color from the live text colour at a
+ * milder, still-legible alpha; it's unset in opaque mode, so `inherit` there
+ * leaves xterm's own (already-fine-against-a-solid-background) behaviour. */
+.terminal-tool-shell .xterm-dim:not([class*="xterm-fg-"]) {
+  color: var(--terminal-dim-color, inherit) !important;
+}
+
 /* Fullscreen mode: the wrapper is the requestFullscreen() target. The shell is
    `flex-1 min-h-0`, so once the wrapper fills the screen everything else just
    follows; harden the fill here in case the flex chain loses its definite

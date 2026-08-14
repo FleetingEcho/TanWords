@@ -127,6 +127,8 @@ export function TerminalTool({
   const transparent = useSettingsStore((state) => state.terminalTransparent);
   const backgroundOpacity = useSettingsStore((state) => state.terminalBackgroundOpacity);
   const setBackgroundOpacity = useSettingsStore((state) => state.setTerminalBackgroundOpacity);
+  const backgroundBlur = useSettingsStore((state) => state.terminalBackgroundBlur);
+  const setBackgroundBlur = useSettingsStore((state) => state.setTerminalBackgroundBlur);
   const terminalBackgroundColor = useSettingsStore((state) => state.terminalBackgroundColor);
   const setTerminalBackgroundColor = useSettingsStore((state) => state.setTerminalBackgroundColor);
   const terminalTextColor = useSettingsStore((state) => state.terminalTextColor);
@@ -246,8 +248,15 @@ export function TerminalTool({
         ...terminalThemeFor(terminalColorScheme),
         foreground: terminalTextColor,
         // An opaque terminal can give WebGL its real backing colour. Glass
-        // mode keeps the canvas clear and uses the shell tint below instead.
-        background: effectiveTransparent ? "rgba(0, 0, 0, 0)" : terminalBackgroundColor,
+        // mode keeps the canvas clear and uses the shell tint below instead —
+        // but minimumContrastRatio below reads this color's RGB channels
+        // (ignoring alpha) to decide how to correct dim/default-foreground
+        // glyphs. Passing the chosen tint at alpha 0 keeps the canvas exactly
+        // as transparent as literal black would, while giving the corrector
+        // the real backdrop lightness — literal black would make it brighten
+        // text for a black backdrop that a light glass theme never has,
+        // washing dark text out against the actual light background.
+        background: effectiveTransparent ? terminalBackgroundRgba(terminalBackgroundColor, 0) : terminalBackgroundColor,
       },
       // Scrollback lives in xterm's JS buffer, independently of the WebGL
       // canvas renderer. Keep a generous daily-development history without the
@@ -410,7 +419,7 @@ export function TerminalTool({
     let lastPtyRows = 0;
     let lastPtyPixelWidth = -1;
     let lastPtyPixelHeight = -1;
-    const syncPtySize = () => {
+    const sendPtyResizeNow = () => {
       if (!state.sessionId) return;
       const { pixelWidth, pixelHeight } = logicalCanvasSize();
       if (
@@ -423,6 +432,7 @@ export function TerminalTool({
       lastPtyRows = term.rows;
       lastPtyPixelWidth = pixelWidth;
       lastPtyPixelHeight = pixelHeight;
+      lastPtyResizeSentAt = Date.now();
       void callMain("pty_resize", {
         id: state.sessionId,
         cols: term.cols,
@@ -430,6 +440,29 @@ export function TerminalTool({
         pixelWidth,
         pixelHeight,
       }).catch(() => {});
+    };
+    // A window drag can call this dozens of times a second. Sending every one
+    // straight through resizes the PTY, which delivers SIGWINCH to whatever is
+    // running — a full-screen TUI (Herdr, htop, vim) repaints its entire screen
+    // on each one and writes that burst back over the PTY. At 60Hz that burst
+    // competes with the next frame's own resize work and visibly stutters.
+    // Bound how often the PTY actually hears about a resize (xterm's own local
+    // fit() below still runs every frame, so the grid still tracks the drag);
+    // a trailing call guarantees the final size lands once the drag settles.
+    let ptyResizeThrottleTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastPtyResizeSentAt = 0;
+    const PTY_RESIZE_THROTTLE_MS = 100;
+    const syncPtySize = () => {
+      if (!state.sessionId || ptyResizeThrottleTimer) return;
+      const elapsed = Date.now() - lastPtyResizeSentAt;
+      if (elapsed >= PTY_RESIZE_THROTTLE_MS) {
+        sendPtyResizeNow();
+        return;
+      }
+      ptyResizeThrottleTimer = setTimeout(() => {
+        ptyResizeThrottleTimer = null;
+        sendPtyResizeNow();
+      }, PTY_RESIZE_THROTTLE_MS - elapsed);
     };
 
     // Layout transitions and window drags can deliver many ResizeObserver
@@ -544,6 +577,7 @@ export function TerminalTool({
       if (state.sessionId) callMain("pty_close", { id: state.sessionId }).catch(() => {});
       if (retryTimer) clearTimeout(retryTimer);
       if (stabilityTimer) clearTimeout(stabilityTimer);
+      if (ptyResizeThrottleTimer) clearTimeout(ptyResizeThrottleTimer);
       if (fitFrame !== null) window.cancelAnimationFrame(fitFrame);
       webglContextLossSubscriptionRef.current?.dispose();
       webglContextLossSubscriptionRef.current = null;
@@ -616,7 +650,7 @@ export function TerminalTool({
     term.options.theme = {
       ...terminalThemeFor(terminalColorScheme),
       foreground: terminalTextColor,
-      background: effectiveTransparent ? "rgba(0, 0, 0, 0)" : terminalBackgroundColor,
+      background: effectiveTransparent ? terminalBackgroundRgba(terminalBackgroundColor, 0) : terminalBackgroundColor,
     };
   }, [effectiveTransparent, sessionGeneration, terminalBackgroundColor, terminalColorScheme, terminalTextColor]);
 
@@ -935,6 +969,24 @@ export function TerminalTool({
             </label>
             <label className="flex items-center gap-2">
                 <span className="text-[11px] text-muted-foreground">
+                  {t("toolsPage.terminal.blurLabel")}
+                </span>
+                <input
+                  type="range"
+                  min={0}
+                  max={30}
+                  step={1}
+                  value={backgroundBlur}
+                  onChange={(e) => setBackgroundBlur(Number(e.currentTarget.value))}
+                  aria-label={t("toolsPage.terminal.blurLabel")}
+                  className="h-6 w-20 cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-[3px] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-muted-foreground/30 [&::-webkit-slider-thumb]:mt-[-4px] [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-card [&::-webkit-slider-thumb]:bg-primary [&::-moz-range-track]:h-[3px] [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-muted-foreground/30 [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-card [&::-moz-range-thumb]:bg-primary"
+                />
+                <span className="w-8 text-right text-[11px] tabular-nums text-muted-foreground">
+                  {backgroundBlur}px
+                </span>
+            </label>
+            <label className="flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground">
                   {t("toolsPage.terminal.opacityLabel")}
                 </span>
                 <input
@@ -1088,7 +1140,28 @@ export function TerminalTool({
                   // (bg-black/45 dark / 20 light), so this scrim keeps text
                   // legible without reading as opaque.
                   background: terminalBackgroundRgba(terminalBackgroundColor, backgroundOpacity),
-                }
+                  // xterm's DOM renderer draws default-foreground dim text
+                  // (SGR 2 — most CLIs' secondary/description lines) by
+                  // halving the *foreground*'s alpha, not by mixing toward a
+                  // shade. Stacked on top of this pane's own translucent
+                  // background, that second alpha layer can wash dim text
+                  // out to near-invisible on a light glass theme (dark text
+                  // at 50% alpha over a light backdrop reads as light-on-
+                  // light). terminal-tool.css's `.xterm-dim` override reads
+                  // this custom property for a milder, still-legible alpha;
+                  // terminalBackgroundRgba is just a hex+opacity→rgba
+                  // converter despite the name, reused here for text colour.
+                  "--terminal-dim-color": terminalBackgroundRgba(terminalTextColor, 78),
+                  // Blurs whatever sits behind this pane (app wallpaper, other
+                  // windows) — not the terminal's own text, which paints in a
+                  // layer above this backdrop-filter's effect.
+                  ...(backgroundBlur > 0
+                    ? {
+                        backdropFilter: `blur(${backgroundBlur}px)`,
+                        WebkitBackdropFilter: `blur(${backgroundBlur}px)`,
+                      }
+                    : {}),
+                } as React.CSSProperties
               : { background: terminalBackgroundColor }
           }
         >

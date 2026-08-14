@@ -216,7 +216,7 @@ describe("settingsStore database hydration", () => {
     expect(useSettingsStore.getState().terminalBackgroundColor).toBe("#282a36");
     expect(useSettingsStore.getState().terminalTextColor).toBe("#f8f8f2");
     expect(useSettingsStore.getState().terminalBackgroundBlur).toBe(16);
-    expect(useSettingsStore.getState().terminalBackgroundOpacity).toBe(16);
+    expect(useSettingsStore.getState().terminalBackgroundOpacity).toBe(100);
     expect(useSettingsStore.getState().terminalFontFamily).toBe("JetBrains Mono");
     expect(useSettingsStore.getState().terminalFontSize).toBe(17);
     expect(useSettingsStore.getState().terminalFontWeight).toBe(600);
@@ -233,10 +233,10 @@ describe("settingsStore database hydration", () => {
 
     await useSettingsStore.getState().loadFromDB();
 
-    expect(useSettingsStore.getState().terminalBackgroundOpacity).toBe(76);
+    expect(useSettingsStore.getState().terminalBackgroundOpacity).toBe(70);
     expect(invoke).toHaveBeenCalledWith("db_set_setting", {
       key: "terminal_background_opacity",
-      value: "76",
+      value: "70",
     });
   });
 
@@ -325,11 +325,11 @@ describe("settingsStore database hydration", () => {
   it("uses a Warp-style glass palette and supports the retained presets", () => {
     useSettingsStore.getState().setTerminalColorScheme("light");
     expect(useSettingsStore.getState()).toMatchObject({
-      terminalBackgroundColor: "#f4f1ea",
-      terminalTextColor: "#202124",
+      terminalBackgroundColor: "#dedede",
+      terminalTextColor: "#000000",
       terminalTransparent: true,
       terminalBackgroundBlur: 0,
-      terminalBackgroundOpacity: 76,
+      terminalBackgroundOpacity: 70,
     });
 
     useSettingsStore.getState().setTerminalColorScheme("high-contrast");
@@ -362,7 +362,7 @@ describe("settingsStore database hydration", () => {
       terminalTextColor: "#f8f8f2",
       terminalTransparent: false,
       terminalBackgroundBlur: 16,
-      terminalBackgroundOpacity: 16,
+      terminalBackgroundOpacity: 100,
     });
 
     useSettingsStore.getState().setTerminalColorScheme("custom");

@@ -350,8 +350,11 @@ describe("TerminalTool clipboard controls", () => {
       allowTransparency: true,
       minimumContrastRatio: 4.5,
       theme: {
-        foreground: "#202124",
-        background: "rgba(0, 0, 0, 0)",
+        foreground: "#000000",
+        // Alpha 0 keeps the canvas transparent; the RGB channels still carry
+        // the real (light) backdrop so minimumContrastRatio corrects glyphs
+        // against it instead of an assumed black background.
+        background: "rgba(222, 222, 222, 0)",
       },
     });
   });
@@ -393,7 +396,7 @@ describe("TerminalTool clipboard controls", () => {
       terminalBackgroundColor: "#282a36",
       terminalTransparent: false,
       terminalBackgroundBlur: 16,
-      terminalBackgroundOpacity: 16,
+      terminalBackgroundOpacity: 100,
     });
     expect(mocks.terminal.dispose).not.toHaveBeenCalled();
 
@@ -412,8 +415,11 @@ describe("TerminalTool clipboard controls", () => {
     act(() => useSettingsStore.getState().setTerminalTransparent(true));
 
     expect(mocks.webgl.dispose).toHaveBeenCalledOnce();
+    // Alpha 0 keeps the canvas transparent; the RGB channels still carry the
+    // chosen background so minimumContrastRatio corrects against the real
+    // backdrop instead of an assumed black one.
     expect((mocks.terminal.options.theme as Record<string, string>).background)
-      .toBe("rgba(0, 0, 0, 0)");
+      .toBe("rgba(26, 27, 38, 0)");
   });
 
   it("honors explicit DOM and WebGL renderer choices", () => {
@@ -893,17 +899,26 @@ describe("TerminalTool clipboard controls", () => {
     expect(second.shell).toHaveStyle({ background: "#1a1b26" });
   });
 
-  it("keeps a sharp transparent background when its appearance controls are closed", () => {
+  it("keeps the transparent background's blur when its appearance controls are closed", () => {
     useSettingsStore.getState().setTerminalTransparent(true);
     const { shell } = renderTerminal();
     const appearanceButton = screen.getByRole("button", { name: "Terminal appearance" });
 
     fireEvent.click(appearanceButton);
-    expect(screen.queryByRole("slider", { name: /^Background blur/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: /^Background blur/ })).toBeInTheDocument();
     fireEvent.click(appearanceButton);
 
     expect(useSettingsStore.getState().terminalTransparent).toBe(true);
     expect(shell).toHaveStyle({ background: "rgba(26,27,38,0.16)" });
+    // jsdom's CSSOM doesn't recognize the vendor-prefixed property, so only
+    // the standard one is checked here; TerminalTool still sets both inline.
+    expect((shell as HTMLElement).style.backdropFilter).toBe("blur(12px)");
+  });
+
+  it("applies no backdrop-filter when background blur is zero", () => {
+    useSettingsStore.setState({ terminalTransparent: true, terminalBackgroundBlur: 0 });
+    const { shell } = renderTerminal();
+
     expect((shell as HTMLElement).style.backdropFilter).toBe("");
     expect((shell as HTMLElement).style.getPropertyValue("-webkit-backdrop-filter")).toBe("");
   });
@@ -924,7 +939,7 @@ describe("TerminalTool clipboard controls", () => {
       terminalTextColor: "#ffffff",
       terminalTransparent: false,
       terminalBackgroundBlur: 16,
-      terminalBackgroundOpacity: 16,
+      terminalBackgroundOpacity: 100,
     });
 
     fireEvent.click(appearanceButton);
@@ -933,7 +948,7 @@ describe("TerminalTool clipboard controls", () => {
       terminalColorScheme: "high-contrast",
       terminalTransparent: false,
       terminalBackgroundBlur: 16,
-      terminalBackgroundOpacity: 16,
+      terminalBackgroundOpacity: 100,
     });
   });
 

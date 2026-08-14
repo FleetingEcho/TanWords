@@ -52,9 +52,15 @@ export const HIGHLIGHT_PRESETS = ["#d97706", "#eab308", "#22c55e", "#0ea5e9", "#
 export const AUTO_LOCK_CHOICES = [0, 10, 20, 30, 60] as const;
 export const DEFAULT_AUTO_LOCK_MINUTES = 0;
 export const DEFAULT_TERMINAL_BACKGROUND_BLUR = 16;
-export const DEFAULT_TERMINAL_BACKGROUND_OPACITY = 16;
+// Only "custom" and "light" (Glass Light) ever render translucent — see
+// `effectiveTransparent` in TerminalTool.tsx, which ignores opacity entirely
+// for every other preset. This default backs those opaque presets (and a
+// fresh, not-yet-transparent Custom), so the number shown next to the slider
+// matches what's actually on screen instead of implying a glass effect that
+// isn't there.
+export const DEFAULT_TERMINAL_BACKGROUND_OPACITY = 100;
 /** Keeps Glass Light visibly light over both wallpapers and the dark app canvas. */
-export const GLASS_LIGHT_BACKGROUND_OPACITY = 76;
+export const GLASS_LIGHT_BACKGROUND_OPACITY = 70;
 export const DEFAULT_TERMINAL_TRANSPARENT = false;
 export const DEFAULT_TERMINAL_RENDERER: TerminalRenderer = "auto";
 /** Tokyo Night is the default retained dark preset. */
@@ -74,7 +80,7 @@ export const TERMINAL_COLOR_SCHEME_COLORS: Record<Exclude<TerminalColorScheme, "
 }> = {
   "tokyo-night": { background: "#1a1b26", foreground: "#c0caf5" },
   dracula: { background: "#282a36", foreground: "#f8f8f2" },
-  light: { background: "#f4f1ea", foreground: "#202124" },
+  light: { background: "#dedede", foreground: "#000000" },
   "high-contrast": { background: "#000000", foreground: "#ffffff" },
 };
 

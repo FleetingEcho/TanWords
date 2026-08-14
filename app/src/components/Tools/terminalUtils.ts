@@ -183,8 +183,8 @@ export const TERMINAL_THEMES = {
     brightMagenta: "#ff92df", brightCyan: "#a4ffff", brightWhite: "#ffffff",
   },
   light: {
-    background: "#f4f1ea", foreground: "#202124", cursor: "#202124", cursorAccent: "#f4f1ea",
-    selectionBackground: "rgba(50, 105, 212, 0.24)", black: "#202124", red: "#b3261e",
+    background: "#dedede", foreground: "#000000", cursor: "#000000", cursorAccent: "#dedede",
+    selectionBackground: "rgba(50, 105, 212, 0.24)", black: "#000000", red: "#b3261e",
     green: "#137333", yellow: "#765c00", blue: "#3269d4", magenta: "#8e44d6",
     cyan: "#007b83", white: "#4f5660", brightBlack: "#626a73", brightRed: "#c5221f",
     brightGreen: "#188038", brightYellow: "#8d6d00", brightBlue: "#1a73e8",
