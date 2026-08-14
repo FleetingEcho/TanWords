@@ -194,8 +194,15 @@ function terminalEnvironment(
 ): NodeJS.ProcessEnv {
   const env = { ...process.env };
   for (const marker of INHERITED_TERMINAL_MARKERS) delete env[marker];
+  // A GUI launch (Finder/Dock/LaunchServices) never sources the shell profile
+  // that normally sets LANG, so Electron's own env is usually locale-less.
+  // Without a UTF-8 locale, readline/ncurses-based programs in the shell can
+  // fall back to single-byte decoding and mangle any multi-byte text they
+  // handle internally (including their own clipboard yank/copy).
+  const hasUtf8Locale = /\.UTF-8$/i.test(env.LC_ALL ?? "") || /\.UTF-8$/i.test(env.LANG ?? "");
   return {
     ...env,
+    ...(hasUtf8Locale ? {} : { LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8" }),
     TERM: "xterm-256color",
     COLORTERM: "truecolor",
     TERM_PROGRAM: "TanWords",
