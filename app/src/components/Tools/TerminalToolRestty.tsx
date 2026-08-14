@@ -65,6 +65,7 @@ import { TerminalEngineSwitch } from "./TerminalEngineSwitch";
 import type { ContextMenuPosition } from "./terminalUtils";
 import {
   MAX_AUTOMATIC_RECOVERY_ATTEMPTS,
+  TERMINAL_OUTPUT_HIGH_WATER_BYTES,
   b64EncodeUtf8,
   hexToRgb,
   terminalOutputBytes,
@@ -92,9 +93,49 @@ function createElectronPtyTransport(shellPath: string, hooks: PtySessionHooks): 
   let offs: Array<() => void> = [];
   const decoder = new TextDecoder("utf-8");
 
+  // restty/xterm's `write()` is synchronous with no completion signal (see
+  // the file header comment), so unlike the xterm engine there is nothing to
+  // await between chunks. But a busy shell (`npm install`, a full-screen TUI
+  // redraw, `cat` on a big file) can still deliver many `pty:data` IPC events
+  // within a single frame; calling `callbacks.onData` — and therefore
+  // restty's parser — once per event instead of once per frame adds
+  // per-event overhead for no visual benefit, since only the *last* rendered
+  // frame is ever seen. Coalesce into one decode + one `onData` call per
+  // animation frame, and pause the daemon's stdout (mirroring the xterm
+  // engine's high-water mark) if a frame's backlog balloons — e.g. because
+  // the tab is backgrounded and not getting rAF ticks at all.
+  const outputQueue: Uint8Array[] = [];
+  let outputPendingBytes = 0;
+  let flushFrame: number | null = null;
+  let outputBackpressured = false;
+
+  const setOutputBackpressure = (paused: boolean) => {
+    if (!sessionId || outputBackpressured === paused) return;
+    outputBackpressured = paused;
+    void callMain("pty_set_output_backpressure", { id: sessionId, paused }).catch(() => {});
+  };
+
+  const flushOutput = (callbacks: PtyCallbacks) => {
+    flushFrame = null;
+    if (outputQueue.length === 0) return;
+    let text = "";
+    for (const bytes of outputQueue) text += decoder.decode(bytes, { stream: true });
+    outputQueue.length = 0;
+    outputPendingBytes = 0;
+    setOutputBackpressure(false);
+    callbacks.onData?.(text);
+  };
+
   const teardownSubscriptions = () => {
     offs.forEach((off) => off());
     offs = [];
+  };
+
+  const cancelFlush = () => {
+    if (flushFrame !== null) window.cancelAnimationFrame(flushFrame);
+    flushFrame = null;
+    outputQueue.length = 0;
+    outputPendingBytes = 0;
   };
 
   return {
@@ -113,7 +154,12 @@ function createElectronPtyTransport(shellPath: string, hooks: PtySessionHooks): 
             try {
               const bytes = terminalOutputBytes(data);
               if (!bytes?.byteLength) return;
-              callbacks.onData?.(decoder.decode(bytes, { stream: true }));
+              outputQueue.push(bytes);
+              outputPendingBytes += bytes.byteLength;
+              if (outputPendingBytes >= TERMINAL_OUTPUT_HIGH_WATER_BYTES) setOutputBackpressure(true);
+              if (flushFrame === null) {
+                flushFrame = window.requestAnimationFrame(() => flushOutput(callbacks));
+              }
             } catch {
               // A malformed/late transport event must not take down the React tree.
             }
@@ -121,6 +167,7 @@ function createElectronPtyTransport(shellPath: string, hooks: PtySessionHooks): 
           offs.push(subscribe<{ id: string; code?: number; error?: string }>("pty:exit", ({ id, code, error }) => {
             if (sessionId !== id) return;
             connected = false;
+            cancelFlush();
             callbacks.onExit?.(code ?? 1);
             callbacks.onDisconnect?.();
             hooks.onExit(code ?? 1, error);
@@ -140,6 +187,7 @@ function createElectronPtyTransport(shellPath: string, hooks: PtySessionHooks): 
       if (sessionId) void callMain("pty_close", { id: sessionId }).catch(() => {});
       connected = false;
       sessionId = null;
+      cancelFlush();
       teardownSubscriptions();
     },
     sendInput(data: string) {
@@ -165,6 +213,7 @@ function createElectronPtyTransport(shellPath: string, hooks: PtySessionHooks): 
       if (sessionId) void callMain("pty_close", { id: sessionId }).catch(() => {});
       connected = false;
       sessionId = null;
+      cancelFlush();
       teardownSubscriptions();
     },
   };

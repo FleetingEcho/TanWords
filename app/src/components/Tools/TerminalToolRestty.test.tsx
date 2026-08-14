@@ -76,6 +76,7 @@ vi.mock("@/hooks/useWindowState", () => ({ useWindowState: () => ({ maximized: f
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import { TerminalToolRestty } from "./TerminalToolRestty";
+import { TERMINAL_OUTPUT_HIGH_WATER_BYTES } from "./terminalUtils";
 import { useSettingsStore } from "@/store/settingsStore";
 
 describe("TerminalToolRestty", () => {
@@ -127,6 +128,37 @@ describe("TerminalToolRestty", () => {
 
     mocks.emit("pty:data", { id: "s1", data: new TextEncoder().encode("hello") });
     expect(mocks.getCallbacks()?.onData).toHaveBeenCalledWith("hello");
+  });
+
+  it("coalesces multiple pty:data events into a single onData call per frame", async () => {
+    const pending: { flush: FrameRequestCallback | null } = { flush: null };
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => { pending.flush = cb; return 1; });
+    mocks.setSpawnInfo({ id: "s1", shell: "/bin/zsh", cwd: "/home", pid: 1 });
+    render(<TerminalToolRestty onBack={() => {}} />);
+    await waitFor(() => expect(mocks.callMain).toHaveBeenCalledWith("pty_spawn", expect.anything()));
+
+    mocks.emit("pty:data", { id: "s1", data: new TextEncoder().encode("foo") });
+    mocks.emit("pty:data", { id: "s1", data: new TextEncoder().encode("bar") });
+    expect(mocks.getCallbacks()?.onData).not.toHaveBeenCalled();
+
+    pending.flush?.(0);
+    expect(mocks.getCallbacks()?.onData).toHaveBeenCalledTimes(1);
+    expect(mocks.getCallbacks()?.onData).toHaveBeenCalledWith("foobar");
+  });
+
+  it("pauses the PTY once queued output crosses the high-water mark and resumes after the next flush", async () => {
+    const pending: { flush: FrameRequestCallback | null } = { flush: null };
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => { pending.flush = cb; return 1; });
+    mocks.setSpawnInfo({ id: "s1", shell: "/bin/zsh", cwd: "/home", pid: 1 });
+    render(<TerminalToolRestty onBack={() => {}} />);
+    await waitFor(() => expect(mocks.callMain).toHaveBeenCalledWith("pty_spawn", expect.anything()));
+    mocks.callMain.mockClear();
+
+    mocks.emit("pty:data", { id: "s1", data: new Uint8Array(TERMINAL_OUTPUT_HIGH_WATER_BYTES) });
+    expect(mocks.callMain).toHaveBeenCalledWith("pty_set_output_backpressure", { id: "s1", paused: true });
+
+    pending.flush?.(0);
+    expect(mocks.callMain).toHaveBeenCalledWith("pty_set_output_backpressure", { id: "s1", paused: false });
   });
 
   it("forwards keystrokes through transport.sendInput to pty_write", async () => {

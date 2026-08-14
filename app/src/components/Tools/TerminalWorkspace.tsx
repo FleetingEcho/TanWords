@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { Pencil, Pin, PinOff, Plus, Star, StarOff, TerminalSquare, X } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -7,7 +7,20 @@ import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
 import { TerminalTool } from "./TerminalTool";
-import { TerminalToolRestty } from "./TerminalToolRestty";
+
+// restty embeds its full WASM binary in this chunk (~780KB gzipped) — code
+// split it so an xterm-only session (the default, and the well-tested path)
+// never downloads or parses it. Only a tab whose engine is actually "restty"
+// pays this cost, and only once (the module stays cached after first load).
+const TerminalToolRestty = lazy(() => import("./TerminalToolRestty").then((m) => ({ default: m.TerminalToolRestty })));
+
+function TerminalEngineLoadingFallback() {
+  return (
+    <div className="flex h-full items-center justify-center">
+      <span className="h-5 w-5 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+    </div>
+  );
+}
 
 interface TerminalTab {
   id: number;
@@ -285,19 +298,21 @@ export function TerminalWorkspace({
               className={selected ? "absolute inset-0" : "hidden"}
             >
               {tab.engine === "restty" ? (
-                <TerminalToolRestty
-                  onBack={closeWorkspace}
-                  visible={visible && selected}
-                  maximized={maximized && selected}
-                  onMaximizedChange={onMaximizedChange}
-                  shellPath={tab.shellPath}
-                  engine={tab.engine}
-                  onEngineChange={(engine) => setTabEngine(tab.id, engine)}
-                  onSessionReady={(shell) => recordShell(tab.id, shell)}
-                  onShellTitleChange={(shellTitle) => recordShellTitle(tab.id, shellTitle)}
-                  onSessionExit={() => closeTabNow(tab.id)}
-                  tabBar={selected ? tabBar : undefined}
-                />
+                <Suspense fallback={<TerminalEngineLoadingFallback />}>
+                  <TerminalToolRestty
+                    onBack={closeWorkspace}
+                    visible={visible && selected}
+                    maximized={maximized && selected}
+                    onMaximizedChange={onMaximizedChange}
+                    shellPath={tab.shellPath}
+                    engine={tab.engine}
+                    onEngineChange={(engine) => setTabEngine(tab.id, engine)}
+                    onSessionReady={(shell) => recordShell(tab.id, shell)}
+                    onShellTitleChange={(shellTitle) => recordShellTitle(tab.id, shellTitle)}
+                    onSessionExit={() => closeTabNow(tab.id)}
+                    tabBar={selected ? tabBar : undefined}
+                  />
+                </Suspense>
               ) : (
                 <TerminalTool
                   onBack={closeWorkspace}
