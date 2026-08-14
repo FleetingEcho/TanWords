@@ -194,6 +194,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setAppBackgroundImage: (dataUrl) => {
     const images = dataUrl ? [dataUrl] : [];
     const positions = dataUrl ? [DEFAULT_BANNER_POSITION] : [];
+    // Capture the previous gallery before set() so unchanged slots are skipped.
+    const prev = get().appBackgroundImages;
     set({
       appBackgroundImage: dataUrl,
       appBackgroundImages: images,
@@ -201,12 +203,21 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       appBackgroundImagePositions: positions,
       appBackgroundImagePosition: DEFAULT_BANNER_POSITION,
     });
-    void saveSettings([
+    // One image per settings row so a last-writer-wins sync (Turso) clobbers
+    // only the changed slot instead of the whole gallery — see loadFromDB.
+    const fixedPositions = Array.from({ length: 5 }, () => DEFAULT_BANNER_POSITION);
+    const entries: Array<[string, string]> = [
       ["app_background_image", JSON.stringify(dataUrl)],
       ["app_background_images", JSON.stringify(images)],
       ["app_background_image_index", "0"],
-      ["app_background_image_positions", JSON.stringify(positions)],
-    ]);
+      ["app_background_image_positions", JSON.stringify(fixedPositions)],
+    ];
+    for (let i = 0; i < 5; i++) {
+      const newVal = i < images.length ? images[i] : "";
+      const oldVal = i < prev.length ? prev[i] : "";
+      if (newVal !== oldVal) entries.push([`app_background_image_${i}`, JSON.stringify(newVal)]);
+    }
+    void saveSettings(entries);
   },
 
   setAppBackgroundImages: (images, activeIndex, positions = []) => {
@@ -222,6 +233,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       : Math.min(nextImages.length - 1, Math.max(0, Math.round(activeIndex)));
     const activeImage = nextImages[nextIndex] || "";
     const activePosition = nextPositions[nextIndex] || DEFAULT_BANNER_POSITION;
+    // Capture the previous gallery before set() so unchanged slots are skipped.
+    const prev = get().appBackgroundImages;
     set({
       appBackgroundImage: activeImage,
       appBackgroundImages: nextImages,
@@ -229,14 +242,28 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       appBackgroundImagePositions: nextPositions,
       appBackgroundImagePosition: activePosition,
     });
-    void saveSettings([
+    // Persist each wallpaper in its own settings row keyed by slot. Adding or
+    // replacing one image writes only that slot, so a concurrent last-writer
+    // sync (Turso) can no longer overwrite the other images — the bug where a
+    // one-image device clobbered a five-image device's whole gallery. Empty
+    // slots are stored as "" so a shrink clears the trailing rows. Positions
+    // are kept slot-aligned in a fixed-length row so load can re-map them even
+    // after a partial sync leaves a gap. The legacy single-array and active
+    // rows are still written for back-compat with older builds.
+    const fixedPositions = Array.from({ length: 5 }, (_, i) =>
+      i < nextPositions.length ? nextPositions[i] : DEFAULT_BANNER_POSITION);
+    const entries: Array<[string, string]> = [
+      ["app_background_image", JSON.stringify(activeImage)],
       ["app_background_images", JSON.stringify(nextImages)],
       ["app_background_image_index", JSON.stringify(nextIndex)],
-      ["app_background_image_positions", JSON.stringify(nextPositions)],
-      // Retain the old key as the active image so older TanWords builds and the
-      // many read-only consumers of this field continue to behave correctly.
-      ["app_background_image", JSON.stringify(activeImage)],
-    ]);
+      ["app_background_image_positions", JSON.stringify(fixedPositions)],
+    ];
+    for (let i = 0; i < 5; i++) {
+      const newVal = i < nextImages.length ? nextImages[i] : "";
+      const oldVal = i < prev.length ? prev[i] : "";
+      if (newVal !== oldVal) entries.push([`app_background_image_${i}`, JSON.stringify(newVal)]);
+    }
+    void saveSettings(entries);
   },
 
   setLockScreenImage: (dataUrl) => {

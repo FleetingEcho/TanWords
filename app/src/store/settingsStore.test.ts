@@ -193,6 +193,73 @@ describe("settingsStore database hydration", () => {
     });
   });
 
+  it("restores a wallpaper gallery from per-slot rows", async () => {
+    invoke.mockImplementation(async (command: string, args?: { key?: string }) => {
+      if (command !== "db_get_setting") return null;
+      if (args?.key === "app_background_image_0") return JSON.stringify("first");
+      if (args?.key === "app_background_image_1") return JSON.stringify("");
+      if (args?.key === "app_background_image_2") return JSON.stringify("third");
+      if (args?.key === "app_background_image_3") return JSON.stringify("fourth");
+      if (args?.key === "app_background_image_4") return JSON.stringify("");
+      if (args?.key === "app_background_image_index") return "3";
+      // Slot-aligned fixed-length positions: the empty slot 1 still maps by slot.
+      if (args?.key === "app_background_image_positions") {
+        return JSON.stringify([
+          { x: 10, y: 20 }, { x: 50, y: 50 }, { x: 30, y: 40 }, { x: 80, y: 90 }, { x: 50, y: 50 },
+        ]);
+      }
+      return null;
+    });
+
+    await useSettingsStore.getState().loadFromDB();
+
+    expect(useSettingsStore.getState()).toMatchObject({
+      // Slot 1 is empty, so the compact list skips it but positions stay paired.
+      appBackgroundImage: "fourth",
+      appBackgroundImages: ["first", "third", "fourth"],
+      appBackgroundImageIndex: 2,
+      appBackgroundImagePosition: { x: 80, y: 90 },
+    });
+  });
+
+  it("persists only the changed wallpaper slot, not the whole gallery", async () => {
+    useSettingsStore.setState({ appBackgroundImages: ["one", "two", "three", "four"] });
+
+    useSettingsStore.getState().setAppBackgroundImages(
+      ["one", "two", "three", "four", "five"],
+      4,
+      [
+        { x: 10, y: 20 }, { x: 20, y: 30 }, { x: 30, y: 40 },
+        { x: 40, y: 50 }, { x: 60, y: 70 },
+      ],
+    );
+
+    await vi.waitFor(() => {
+      // Slot 4 is new; slots 0-3 are unchanged and must NOT be written.
+      expect(invoke).toHaveBeenCalledWith("db_set_setting", {
+        key: "app_background_image_4",
+        value: JSON.stringify("five"),
+      });
+    });
+    expect(invoke).not.toHaveBeenCalledWith("db_set_setting", { key: "app_background_image_0", value: expect.anything() });
+    expect(invoke).not.toHaveBeenCalledWith("db_set_setting", { key: "app_background_image_1", value: expect.anything() });
+    expect(invoke).not.toHaveBeenCalledWith("db_set_setting", { key: "app_background_image_2", value: expect.anything() });
+    expect(invoke).not.toHaveBeenCalledWith("db_set_setting", { key: "app_background_image_3", value: expect.anything() });
+  });
+
+  it("writes only slot 0 when setting a single app background image", async () => {
+    useSettingsStore.getState().setAppBackgroundImage("data:image/png;base64,only");
+
+    await vi.waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("db_set_setting", {
+        key: "app_background_image_0",
+        value: JSON.stringify("data:image/png;base64,only"),
+      });
+    });
+    expect(invoke).not.toHaveBeenCalledWith("db_set_setting", { key: "app_background_image_1", value: expect.anything() });
+    expect(invoke).not.toHaveBeenCalledWith("db_set_setting", { key: "app_background_image_4", value: expect.anything() });
+  });
+
   it("keeps a saved preset independent from custom terminal effects", async () => {
     invoke.mockImplementation(async (command: string, args?: { key?: string }) => {
       if (command !== "db_get_setting") return null;

@@ -67,6 +67,11 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       "dashboard_banner_position",
       "nickname",
       "app_background_image",
+      "app_background_image_0",
+      "app_background_image_1",
+      "app_background_image_2",
+      "app_background_image_3",
+      "app_background_image_4",
       "app_background_images",
       "app_background_image_index",
       "app_background_image_positions",
@@ -181,6 +186,18 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
     const resolvedFeedsViewMode: "card" | "list" = values.feeds_view_mode === "list" ? "list" : "card";
     cacheFeedsViewMode(resolvedFeedsViewMode);
 
+    // Per-slot wallpaper rows: one settings row per image
+    // (`app_background_image_0` .. `_4`) so a last-writer-wins sync (Turso)
+    // clobbers only the changed slot instead of the whole gallery. Slot 0
+    // being present — even as an empty string — marks the new format; older
+    // installs fall back to the legacy single-array row, then the single-image
+    // row. Migration to the slot format happens lazily on the next save.
+    const backgroundSlots: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      const slotValue = values[`app_background_image_${i}`];
+      if (typeof slotValue === "string" && slotValue.length > 0) backgroundSlots.push(i);
+    }
+    const hasSlotRows = "app_background_image_0" in values;
     const hasSavedBackgroundGallery = Array.isArray(values.app_background_images);
     const savedBackgroundImages = hasSavedBackgroundGallery
       ? (values.app_background_images as unknown as unknown[])
@@ -190,9 +207,11 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
     const legacyBackgroundImage = typeof values.app_background_image === "string"
       ? values.app_background_image
       : "";
-    const resolvedBackgroundImages = hasSavedBackgroundGallery
-      ? savedBackgroundImages
-      : legacyBackgroundImage ? [legacyBackgroundImage] : [];
+    const resolvedBackgroundImages = hasSlotRows
+      ? backgroundSlots.map((slot) => values[`app_background_image_${slot}`] as string)
+      : hasSavedBackgroundGallery
+        ? savedBackgroundImages
+        : legacyBackgroundImage ? [legacyBackgroundImage] : [];
     const savedBackgroundIndex = Number(values.app_background_image_index);
     const resolvedBackgroundIndex = resolvedBackgroundImages.length === 0
       ? 0
@@ -204,21 +223,14 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
     const savedBackgroundPositions = Array.isArray(values.app_background_image_positions)
       ? values.app_background_image_positions as unknown as unknown[]
       : [];
-    const resolvedBackgroundPositions = resolvedBackgroundImages.map((_, index) =>
-      parseBannerPosition(savedBackgroundPositions[index]));
+    // Slot rows store positions slot-aligned (fixed length 5); the legacy
+    // array is compact-index-aligned. Map each way so a partial sync that
+    // leaves a gap still pairs every image with its own position.
+    const resolvedBackgroundPositions = hasSlotRows
+      ? backgroundSlots.map((slot) => parseBannerPosition(savedBackgroundPositions[slot]))
+      : resolvedBackgroundImages.map((_, index) => parseBannerPosition(savedBackgroundPositions[index]));
     const resolvedBackgroundPosition = resolvedBackgroundPositions[resolvedBackgroundIndex]
       || parseBannerPosition(undefined);
-    if (!hasSavedBackgroundGallery && legacyBackgroundImage) {
-      await invoke("db_set_setting", {
-        key: "app_background_images",
-        value: JSON.stringify(resolvedBackgroundImages),
-      });
-      await invoke("db_set_setting", { key: "app_background_image_index", value: "0" });
-      await invoke("db_set_setting", {
-        key: "app_background_image_positions",
-        value: JSON.stringify(resolvedBackgroundPositions),
-      });
-    }
 
     const savedTerminalColorScheme = values.terminal_color_scheme as TerminalColorScheme | undefined;
     const savedTerminalSchemeIsSupported = Boolean(savedTerminalColorScheme
