@@ -21,6 +21,7 @@ describe("TerminalSection typography", () => {
       terminalFontFamily: "ui-monospace",
       terminalFontSize: 13,
       terminalFontWeight: 400,
+      terminalEngine: "xterm",
       terminalRenderer: "auto",
       terminalBackgroundColor: "#1a1b26",
       terminalTextColor: "#c0caf5",
@@ -95,6 +96,16 @@ describe("TerminalSection typography", () => {
     fireEvent.click(screen.getByRole("option", { name: "DOM (glass-safe)" }));
 
     expect(useSettingsStore.getState().terminalRenderer).toBe("dom");
+  });
+
+  it("offers Ghostty as an experimental engine for new tabs", () => {
+    render(<TerminalSection />);
+
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Terminal engine" }), { key: "ArrowDown" });
+    fireEvent.click(screen.getByRole("option", { name: "Ghostty Canvas (experimental)" }));
+
+    expect(useSettingsStore.getState().terminalEngine).toBe("ghostty");
+    expect(screen.queryByRole("combobox", { name: "Renderer" })).not.toBeInTheDocument();
   });
 
   it("selects a terminal palette and supports a custom text color", () => {

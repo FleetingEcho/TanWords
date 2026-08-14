@@ -1,6 +1,6 @@
 import type {
   Theme, SidebarTabId, TopBarItemId, RssTabSelection, BannerPosition, LayoutMode,
-  TerminalRenderer, TerminalColorScheme,
+  TerminalEngine, TerminalRenderer, TerminalColorScheme,
 } from "./types";
 
 export interface SettingsState {
@@ -88,6 +88,8 @@ export interface SettingsState {
   terminalColorScheme: TerminalColorScheme;
   /** User-authored appearance retained while a built-in preset is active. */
   terminalCustomAppearance: import("./types").TerminalCustomAppearance;
+  /** Parser/renderer implementation captured by each new terminal tab. */
+  terminalEngine: TerminalEngine;
   /** Rendering backend. Auto avoids WebGL's transparent dim-text artifacts. */
   terminalRenderer: TerminalRenderer;
   /** Local font family name, or ui-monospace for the operating-system default. */
@@ -152,6 +154,7 @@ export interface SettingsState {
   setTerminalBackgroundColor: (hex: string) => void;
   setTerminalTextColor: (hex: string) => void;
   setTerminalColorScheme: (scheme: TerminalColorScheme) => void;
+  setTerminalEngine: (engine: TerminalEngine) => void;
   setTerminalRenderer: (renderer: TerminalRenderer) => void;
   setTerminalFontFamily: (family: string) => void;
   setTerminalFontSize: (px: number) => void;

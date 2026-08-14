@@ -6,6 +6,7 @@ vi.mock("./TerminalTool", () => ({
   TerminalTool: ({
     visible,
     shellPath,
+    engine,
     tabBar,
     onSessionExit,
     onShellTitleChange,
@@ -14,13 +15,14 @@ vi.mock("./TerminalTool", () => ({
   }: {
     visible?: boolean;
     shellPath?: string;
+    engine?: string;
     tabBar?: ReactNode;
     onSessionExit?: () => void;
     onShellTitleChange?: (title: string) => void;
     maximized?: boolean;
     onMaximizedChange?: (maximized: boolean) => void;
   }) => (
-    <div data-testid="terminal-session" data-visible={String(visible)} data-shell={shellPath}>
+    <div data-testid="terminal-session" data-visible={String(visible)} data-shell={shellPath} data-engine={engine}>
       <div data-testid="terminal-toolbar">terminal toolbar</div>
       {tabBar}
       <div data-testid="terminal-shell">terminal session</div>
@@ -43,7 +45,7 @@ import { useSettingsStore } from "@/store/settingsStore";
 
 describe("TerminalWorkspace tabs", () => {
   beforeEach(() => {
-    useSettingsStore.setState({ uiLanguage: "en", terminalShellPath: "/bin/fish" });
+    useSettingsStore.setState({ uiLanguage: "en", terminalShellPath: "/bin/fish", terminalEngine: "xterm" });
   });
 
   it("keeps switched tabs mounted and captures shell settings only for new tabs", () => {
@@ -51,15 +53,18 @@ describe("TerminalWorkspace tabs", () => {
 
     expect(screen.getAllByTestId("terminal-session")).toHaveLength(1);
     expect(screen.getByTestId("terminal-session")).toHaveAttribute("data-shell", "/bin/fish");
+    expect(screen.getByTestId("terminal-session")).toHaveAttribute("data-engine", "xterm");
 
-    useSettingsStore.setState({ terminalShellPath: "/bin/zsh" });
+    useSettingsStore.setState({ terminalShellPath: "/bin/zsh", terminalEngine: "ghostty" });
     fireEvent.click(screen.getByRole("button", { name: "New terminal tab" }));
 
     const sessions = screen.getAllByTestId("terminal-session");
     expect(sessions).toHaveLength(2);
     expect(sessions[0]).toHaveAttribute("data-shell", "/bin/fish");
+    expect(sessions[0]).toHaveAttribute("data-engine", "xterm");
     expect(sessions[0]).toHaveAttribute("data-visible", "false");
     expect(sessions[1]).toHaveAttribute("data-shell", "/bin/zsh");
+    expect(sessions[1]).toHaveAttribute("data-engine", "ghostty");
     expect(sessions[1]).toHaveAttribute("data-visible", "true");
 
     fireEvent.click(screen.getByRole("tab", { name: "Terminal 1" }));

@@ -26,6 +26,7 @@ describe("settingsStore database hydration", () => {
       terminalTransparent: false,
       terminalBackgroundBlur: 16,
       terminalBackgroundOpacity: 16,
+      terminalEngine: "xterm",
       terminalRenderer: "auto",
       terminalBackgroundColor: "#1a1b26",
       terminalTextColor: "#c0caf5",
@@ -198,6 +199,7 @@ describe("settingsStore database hydration", () => {
       if (args?.key === "terminal_background_blur") return "24";
       if (args?.key === "terminal_background_opacity") return "42";
       if (args?.key === "terminal_transparent") return "true";
+      if (args?.key === "terminal_engine") return '"ghostty"';
       if (args?.key === "terminal_renderer") return '"dom"';
       if (args?.key === "terminal_color_scheme") return '"dracula"';
       if (args?.key === "terminal_background_color") return '"#282a36"';
@@ -211,6 +213,7 @@ describe("settingsStore database hydration", () => {
     await useSettingsStore.getState().loadFromDB();
 
     expect(useSettingsStore.getState().terminalTransparent).toBe(false);
+    expect(useSettingsStore.getState().terminalEngine).toBe("ghostty");
     expect(useSettingsStore.getState().terminalRenderer).toBe("dom");
     expect(useSettingsStore.getState().terminalColorScheme).toBe("dracula");
     expect(useSettingsStore.getState().terminalBackgroundColor).toBe("#282a36");
@@ -302,6 +305,18 @@ describe("settingsStore database hydration", () => {
       expect(invoke).toHaveBeenCalledWith("db_set_setting", {
         key: "terminal_renderer",
         value: '"webgl"',
+      });
+    });
+  });
+
+  it("persists the terminal engine", async () => {
+    useSettingsStore.getState().setTerminalEngine("ghostty");
+
+    expect(useSettingsStore.getState().terminalEngine).toBe("ghostty");
+    await vi.waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("db_set_setting", {
+        key: "terminal_engine",
+        value: '"ghostty"',
       });
     });
   });

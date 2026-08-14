@@ -6,12 +6,15 @@ import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
 import { TerminalTool } from "./TerminalTool";
+import type { TerminalEngine } from "@/store/settings/types";
 
 interface TerminalTab {
   id: number;
   ordinal: number;
   /** Snapshot of the device setting. It intentionally never changes in place. */
   shellPath: string;
+  /** Engine changes apply only to tabs created after the setting changes. */
+  engine: TerminalEngine;
   shellName: string;
   /** Live OSC 0/2 title from the running shell (cwd or foreground command). */
   shellTitle: string;
@@ -27,6 +30,7 @@ function newTab(id: number): TerminalTab {
     id,
     ordinal: id,
     shellPath: useSettingsStore.getState().terminalShellPath,
+    engine: useSettingsStore.getState().terminalEngine,
     shellName: "",
     shellTitle: "",
     customName: "",
@@ -275,6 +279,7 @@ export function TerminalWorkspace({
                 maximized={maximized && selected}
                 onMaximizedChange={onMaximizedChange}
                 shellPath={tab.shellPath}
+                engine={tab.engine}
                 onSessionReady={(shell) => recordShell(tab.id, shell)}
                 onShellTitleChange={(shellTitle) => recordShellTitle(tab.id, shellTitle)}
                 onSessionExit={() => closeTabNow(tab.id)}

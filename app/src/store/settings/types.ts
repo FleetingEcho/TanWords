@@ -14,6 +14,7 @@ export type Theme =
 export type SidebarTabId = Exclude<NavPage, "settings">;
 export type TopBarItemId = "search" | "context" | "scratch" | "db" | "mcp" | "ai" | "language" | "theme" | "updates" | "github";
 export type LayoutMode = "flexible" | "fixed";
+export type TerminalEngine = "xterm" | "ghostty";
 export type TerminalRenderer = "auto" | "webgl" | "dom";
 export const TERMINAL_COLOR_SCHEME_IDS = [
   "tokyo-night", "dracula", "light", "high-contrast", "custom",
@@ -56,6 +57,7 @@ export const DEFAULT_TERMINAL_BACKGROUND_OPACITY = 16;
 /** Keeps Glass Light visibly light over both wallpapers and the dark app canvas. */
 export const GLASS_LIGHT_BACKGROUND_OPACITY = 76;
 export const DEFAULT_TERMINAL_TRANSPARENT = false;
+export const DEFAULT_TERMINAL_ENGINE: TerminalEngine = "xterm";
 export const DEFAULT_TERMINAL_RENDERER: TerminalRenderer = "auto";
 /** Tokyo Night is the default retained dark preset. */
 export const DEFAULT_TERMINAL_BACKGROUND_COLOR = "#1a1b26";

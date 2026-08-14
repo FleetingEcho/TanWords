@@ -7,11 +7,11 @@ import {
   DEFAULT_TERMINAL_BACKGROUND_COLOR, DEFAULT_TERMINAL_TEXT_COLOR,
   DEFAULT_TERMINAL_COLOR_SCHEME, TERMINAL_COLOR_SCHEME_COLORS, TERMINAL_COLOR_SCHEME_EFFECTS,
   DEFAULT_TERMINAL_CUSTOM_APPEARANCE,
-  DEFAULT_TERMINAL_RENDERER,
+  DEFAULT_TERMINAL_ENGINE, DEFAULT_TERMINAL_RENDERER,
   DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE, DEFAULT_TERMINAL_FONT_WEIGHT,
   DOCUMENT_TEXT_COLOR_RE, normalizeHexColor, normalizeTerminalFontWeight,
   type Theme, type SidebarTabId, type TopBarItemId, type RssTabSelection, type LayoutMode,
-  type BannerPosition, type TerminalRenderer, type TerminalColorScheme, type TerminalCustomAppearance,
+  type BannerPosition, type TerminalEngine, type TerminalRenderer, type TerminalColorScheme, type TerminalCustomAppearance,
 } from "./settings/types";
 import {
   cachedUiLanguage, cacheUiLanguage, cachedSidebarTabs, cacheSidebarTabs,
@@ -24,7 +24,7 @@ import { loadSettingsFromDB } from "./settings/loadFromDB";
 import type { SettingsState } from "./settings/state";
 
 export type {
-  Theme, SidebarTabId, TopBarItemId, RssTabSelection, BannerPosition, TerminalRenderer, TerminalColorScheme, TerminalCustomAppearance,
+  Theme, SidebarTabId, TopBarItemId, RssTabSelection, BannerPosition, TerminalEngine, TerminalRenderer, TerminalColorScheme, TerminalCustomAppearance,
 } from "./settings/types";
 export {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS,
@@ -34,7 +34,7 @@ export {
   DEFAULT_TERMINAL_BACKGROUND_COLOR, DEFAULT_TERMINAL_TEXT_COLOR,
   DEFAULT_TERMINAL_COLOR_SCHEME, TERMINAL_COLOR_SCHEME_COLORS, TERMINAL_COLOR_SCHEME_EFFECTS,
   DEFAULT_TERMINAL_CUSTOM_APPEARANCE,
-  DEFAULT_TERMINAL_RENDERER,
+  DEFAULT_TERMINAL_ENGINE, DEFAULT_TERMINAL_RENDERER,
   DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE, DEFAULT_TERMINAL_FONT_WEIGHT,
 } from "./settings/types";
 export type { SettingsState } from "./settings/state";
@@ -96,6 +96,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   terminalTextColor: DEFAULT_TERMINAL_TEXT_COLOR,
   terminalColorScheme: DEFAULT_TERMINAL_COLOR_SCHEME,
   terminalCustomAppearance: DEFAULT_TERMINAL_CUSTOM_APPEARANCE,
+  terminalEngine: DEFAULT_TERMINAL_ENGINE,
   terminalRenderer: DEFAULT_TERMINAL_RENDERER,
   terminalFontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
   terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
@@ -372,6 +373,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       ["terminal_background_blur", JSON.stringify(effects.blur)],
       ["terminal_background_opacity", JSON.stringify(effects.opacity)],
     ]);
+  },
+
+  setTerminalEngine: (engine) => {
+    set({ terminalEngine: engine });
+    saveSetting("terminal_engine", JSON.stringify(engine));
   },
 
   setTerminalRenderer: (renderer) => {

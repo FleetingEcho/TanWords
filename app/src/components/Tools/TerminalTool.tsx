@@ -1,13 +1,13 @@
-/** Desktop Terminal page: a local shell over xterm.js.
+/** Desktop Terminal page: a local shell over xterm.js or Ghostty's WASM VT core.
  *
  *  The renderer is sandboxed (contextIsolation + sandbox), so there is no
  *  Node in here — the shell lives behind `tanwords-pty`, a Rust daemon Electron
  *  main spawns (see electron/main/terminal.ts). This component is only the
- *  front half of the terminal: it renders xterm.js, sends keystrokes/resizes,
+ *  front half of the terminal: it renders the selected surface, sends keystrokes/resizes,
  *  and paints the daemon's output. It is hidden on the web build, where no
  *  local process exists to back a shell.
  *
- *  Byte handling is explicit. xterm hands us a UTF-8 *string* on data; the
+ *  Byte handling is explicit. The terminal surface hands us a UTF-8 *string* on data; the
  *  bridge moves it as base64 so a JSON/structured-clone hop can't mangle a
  *  multi-byte character; and daemon output comes back the same way, decoded
  *  back to bytes and written straight to the buffer (xterm joins split UTF-8
@@ -21,11 +21,6 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Terminal } from "@xterm/xterm";
-import { FitAddon } from "@xterm/addon-fit";
-import { ImageAddon } from "@xterm/addon-image";
-import { SearchAddon } from "@xterm/addon-search";
-import { WebglAddon } from "@xterm/addon-webgl";
 import {
   ChevronDown,
   ChevronUp,
@@ -46,17 +41,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { subscribe } from "@/ipc/events";
 import { callMain } from "@/ipc/host";
 import { useSettingsStore } from "@/store/settingsStore";
+import type { TerminalEngine } from "@/store/settings/types";
 import { useFullscreenDragExit } from "@/hooks/useFullscreenDragExit";
 import type { ContextMenuPosition, TerminalClipboard } from "./terminalUtils";
 import {
   MAX_AUTOMATIC_RECOVERY_ATTEMPTS,
-  TERMINAL_IIP_SIZE_LIMIT_BYTES,
-  TERMINAL_IMAGE_PIXEL_LIMIT,
-  TERMINAL_IMAGE_STORAGE_MB,
   TERMINAL_OUTPUT_HIGH_WATER_BYTES,
   TERMINAL_OUTPUT_LOW_WATER_BYTES,
-  TERMINAL_SIXEL_SIZE_LIMIT_BYTES,
-  TERMINAL_SCROLLBACK_LINES,
   terminalThemeFor,
   b64EncodeUtf8,
   quoteTerminalPath,
@@ -64,15 +55,14 @@ import {
   terminalBackgroundRgba,
   terminalFontStack,
   terminalOutputBytes,
-  terminalPixelSizeReport,
-  terminalSearchOptions,
-  type TerminalRenderDimensions,
 } from "./terminalUtils";
+import { createXtermSurface, type TerminalSurface } from "./terminalSurface";
 
 export function TerminalTool({
   onBack,
   visible = true,
   shellPath = "",
+  engine = "xterm",
   onSessionReady,
   onSessionExit,
   onShellTitleChange,
@@ -84,6 +74,8 @@ export function TerminalTool({
   visible?: boolean;
   /** Captured by the tab at creation time; changing Settings won't restart it. */
   shellPath?: string;
+  /** Captured by the tab at creation time; changing Settings affects new tabs. */
+  engine?: TerminalEngine;
   onSessionReady?: (shell: string) => void;
   /** OSC 0/2 title from the shell, normalised for display; "" when the session
    *  ends or restarts, so a tab never keeps a title from a dead shell. */
@@ -98,12 +90,9 @@ export function TerminalTool({
   const t = useT();
   const { fullScreen, onMouseDown: onToolbarMouseDown } = useFullscreenDragExit();
   const shellRef = useRef<HTMLDivElement>(null);
-  const terminalRef = useRef<Terminal | null>(null);
-  const searchAddonRef = useRef<SearchAddon | null>(null);
+  const terminalRef = useRef<TerminalSurface | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const refitRef = useRef<() => void>(() => {});
-  const webglAddonRef = useRef<WebglAddon | null>(null);
-  const webglContextLossSubscriptionRef = useRef<{ dispose: () => void } | null>(null);
   const onSessionExitRef = useRef(onSessionExit);
   onSessionExitRef.current = onSessionExit;
   const onSessionReadyRef = useRef(onSessionReady);
@@ -212,90 +201,33 @@ export function TerminalTool({
     const el = shellRef.current;
     if (!el) return;
 
-    const term = new Terminal({
-      fontSize: terminalFontSize,
-      lineHeight: 1.15,
-      cursorBlink: true,
-      cursorStyle: "block",
-      cursorInactiveStyle: "outline",
-      // Keep wheel/trackpad movement fluid without the long easing tail that
-      // makes interactive terminal output feel detached from the user's hand.
-      smoothScrollDuration: 80,
-      scrollSensitivity: 1,
-      fastScrollSensitivity: 5,
-      // Prevent wide CJK/ambiguous glyphs from bleeding into the next cell when
-      // the selected local font does not provide a perfectly monospace face.
-      rescaleOverlappingGlyphs: true,
-      // SearchAddon uses xterm's decoration and overview-ruler APIs to paint
-      // all matches. xterm 6 still marks those APIs as proposed and throws at
-      // the first search unless the embedding terminal opts in explicitly.
-      allowProposedApi: true,
-      // WebGL paints into a canvas. Preserve its alpha channel so the terminal
-      // glass controls continue to reveal the app wallpaper underneath it.
-      allowTransparency: true,
-      // Full-screen TUIs commonly use inverse video for focused inputs. With a
-      // transparent light palette that swaps a dark default foreground onto a
-      // dark row while the transparent background cannot supply a light glyph
-      // colour. Let xterm correct those glyphs to accessible contrast without
-      // changing the user's palette or making the glass canvas opaque.
-      minimumContrastRatio: 4.5,
+    let cancelled = false;
+    let unmountSurface: (() => void) | null = null;
+    const surfaceOptions = {
+      host: el,
       fontFamily: terminalFontStack(terminalFontFamily),
+      fontSize: terminalFontSize,
       fontWeight: terminalFontWeight,
-      fontWeightBold: Math.max(700, terminalFontWeight),
       theme: {
         ...terminalThemeFor(terminalColorScheme),
         foreground: terminalTextColor,
-        // An opaque terminal can give WebGL its real backing colour. Glass
-        // mode keeps the canvas clear and uses the shell tint below instead.
         background: effectiveTransparent ? "rgba(0, 0, 0, 0)" : terminalBackgroundColor,
       },
-      // Scrollback lives in xterm's JS buffer, independently of the WebGL
-      // canvas renderer. Keep a generous daily-development history without the
-      // excessive aggregate memory exposure across two persistent tabs. The
-      // usual Herdr workflow owns its larger pane history outside this buffer.
-      scrollback: TERMINAL_SCROLLBACK_LINES,
-    });
-    terminalRef.current = term;
-    const fit = new FitAddon();
-    const imageAddon = new ImageAddon({
-      enableSizeReports: true,
-      pixelLimit: TERMINAL_IMAGE_PIXEL_LIMIT,
-      storageLimit: TERMINAL_IMAGE_STORAGE_MB,
-      showPlaceholder: true,
-      sixelSupport: true,
-      sixelScrolling: true,
-      sixelSizeLimit: TERMINAL_SIXEL_SIZE_LIMIT_BYTES,
-      iipSupport: true,
-      iipSizeLimit: TERMINAL_IIP_SIZE_LIMIT_BYTES,
-    });
-    const searchAddon = new SearchAddon({ highlightLimit: 1000 });
-    searchAddonRef.current = searchAddon;
-    term.loadAddon(fit);
-    term.loadAddon(imageAddon);
-    term.loadAddon(searchAddon);
-    const searchResultsSubscription = searchAddon.onDidChangeResults((result) => {
-      setSearchResult(result);
-    });
-    term.open(el);
-    // Image-aware terminal programs use these logical pixel dimensions to map
-    // image pixels to terminal cells. The image layer handles Retina resolution
-    // independently so DPR never changes the image's on-screen size.
-    const pixelSizeReportSubscription = term.parser.registerCsiHandler(
-      { final: "t" },
-      (params) => {
-        const dimensions = (term as unknown as {
-          _core?: { _renderService?: { dimensions?: TerminalRenderDimensions } };
-        })._core?._renderService?.dimensions;
-        const response = terminalPixelSizeReport(params, dimensions);
-        if (!response) return false;
-        term.input(response, false);
-        return true;
-      },
-    );
-    setStatus("starting");
-    setMessage("");
+      transparent: effectiveTransparent,
+      renderer: terminalRenderer,
+      onSearchResults: setSearchResult,
+    };
 
-    // xterm's writes are asynchronous. Feed it one chunk at a time and apply
+    const mountSurface = (term: TerminalSurface) => {
+      if (cancelled) {
+        term.dispose();
+        return;
+      }
+      terminalRef.current = term;
+      setStatus("starting");
+      setMessage("");
+
+    // Renderer writes are asynchronous. Feed one chunk at a time and apply
     // high/low-water backpressure to the helper while Chromium catches up.
     // Unlike truncation, pausing preserves every byte of an inline-image escape
     // sequence and keeps the parser in a valid state.
@@ -345,19 +277,11 @@ export function TerminalTool({
       pumpOutput();
     };
 
-    fit.fit();
+    term.fit();
 
     const state = { sessionId: null as string | null };
 
-    const logicalCanvasSize = () => {
-      const dimensions = (term as unknown as {
-        _core?: { _renderService?: { dimensions?: TerminalRenderDimensions } };
-      })._core?._renderService?.dimensions;
-      return {
-        pixelWidth: Math.max(0, Math.round(dimensions?.css.canvas.width ?? 0)),
-        pixelHeight: Math.max(0, Math.round(dimensions?.css.canvas.height ?? 0)),
-      };
-    };
+    const logicalCanvasSize = () => term.logicalCanvasSize();
 
     // Do not assign application shortcuts while xterm has focus: every key
     // belongs to the foreground terminal program. xterm 6 collapses all
@@ -446,7 +370,7 @@ export function TerminalTool({
       const scheduledFrame = window.requestAnimationFrame(() => {
         fitFrame = null;
         if (!alive || el.clientWidth === 0 || el.clientHeight === 0) return;
-        fit.fit();
+        term.fit();
         syncPtySize();
       });
       if (fitFrame !== null) fitFrame = scheduledFrame;
@@ -545,12 +469,6 @@ export function TerminalTool({
       if (retryTimer) clearTimeout(retryTimer);
       if (stabilityTimer) clearTimeout(stabilityTimer);
       if (fitFrame !== null) window.cancelAnimationFrame(fitFrame);
-      webglContextLossSubscriptionRef.current?.dispose();
-      webglContextLossSubscriptionRef.current = null;
-      webglAddonRef.current?.dispose();
-      webglAddonRef.current = null;
-      searchResultsSubscription.dispose();
-      pixelSizeReportSubscription.dispose();
       onData.dispose();
       onResize.dispose();
       onTitleChange.dispose();
@@ -567,9 +485,29 @@ export function TerminalTool({
       outputPendingBytes = 0;
       refitRef.current = () => {};
       if (terminalRef.current === term) terminalRef.current = null;
-      if (searchAddonRef.current === searchAddon) searchAddonRef.current = null;
     };
-  }, [sessionGeneration]);
+    };
+
+    if (engine === "xterm") {
+      unmountSurface = mountSurface(createXtermSurface(surfaceOptions)) ?? null;
+    } else {
+      void import("./ghosttySurface")
+        .then(({ createGhosttySurface }) => createGhosttySurface(surfaceOptions))
+        .then((surface) => {
+          unmountSurface = mountSurface(surface) ?? null;
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          setStatus("error");
+          setMessage(error instanceof Error ? error.message : String(error));
+        });
+    }
+
+    return () => {
+      cancelled = true;
+      unmountSurface?.();
+    };
+  }, [engine, sessionGeneration]);
 
   // WebGL is fast for an opaque terminal, but its dim-text glyph atlas can
   // reveal opaque black cell rectangles when composited onto a transparent
@@ -581,30 +519,7 @@ export function TerminalTool({
   useEffect(() => {
     const term = terminalRef.current;
     if (!term) return;
-
-    const disposeWebgl = () => {
-      webglContextLossSubscriptionRef.current?.dispose();
-      webglContextLossSubscriptionRef.current = null;
-      webglAddonRef.current?.dispose();
-      webglAddonRef.current = null;
-    };
-
-    disposeWebgl();
-    const useWebgl = terminalRenderer === "webgl"
-      || (terminalRenderer === "auto" && !effectiveTransparent);
-    if (!useWebgl) return;
-
-    try {
-      const webglAddon = new WebglAddon();
-      webglAddonRef.current = webglAddon;
-      webglContextLossSubscriptionRef.current = webglAddon.onContextLoss(disposeWebgl);
-      term.loadAddon(webglAddon);
-    } catch {
-      disposeWebgl();
-      // xterm's built-in renderer is already active.
-    }
-
-    return disposeWebgl;
+    term.applyRenderer(terminalRenderer, effectiveTransparent);
   }, [effectiveTransparent, sessionGeneration, terminalRenderer]);
 
   // Keep xterm's idea of the default cell background aligned with the shell.
@@ -613,30 +528,25 @@ export function TerminalTool({
   useEffect(() => {
     const term = terminalRef.current;
     if (!term) return;
-    term.options.theme = {
+    term.applyTheme({
       ...terminalThemeFor(terminalColorScheme),
       foreground: terminalTextColor,
       background: effectiveTransparent ? "rgba(0, 0, 0, 0)" : terminalBackgroundColor,
-    };
+    });
   }, [effectiveTransparent, sessionGeneration, terminalBackgroundColor, terminalColorScheme, terminalTextColor]);
 
   // Search the actual xterm scrollback buffer. Incremental searches preserve a
   // matching selection while the query grows; explicit navigation starts from
   // the current match instead.
   useEffect(() => {
-    const addon = searchAddonRef.current;
-    if (!addon) return;
+    const term = terminalRef.current;
+    if (!term?.supportsSearch) return;
     if (!searchOpen || !searchQuery) {
-      addon.clearDecorations();
+      term.clearSearchDecorations();
       setSearchResult({ resultIndex: -1, resultCount: 0 });
       return;
     }
-    // Vite Fast Refresh can preserve an xterm instance that was constructed
-    // before decorated search was enabled. Update the live option immediately
-    // before using SearchAddon's proposed decoration API as well as setting the
-    // constructor default above.
-    if (terminalRef.current) terminalRef.current.options.allowProposedApi = true;
-    addon.findNext(searchQuery, terminalSearchOptions(searchCaseSensitive, true));
+    term.findNext(searchQuery, searchCaseSensitive, true);
   }, [searchCaseSensitive, searchOpen, searchQuery, sessionGeneration]);
 
   useEffect(() => {
@@ -653,10 +563,7 @@ export function TerminalTool({
   useEffect(() => {
     const term = terminalRef.current;
     if (!term) return;
-    term.options.fontFamily = terminalFontStack(terminalFontFamily);
-    term.options.fontSize = terminalFontSize;
-    term.options.fontWeight = terminalFontWeight;
-    term.options.fontWeightBold = Math.max(700, terminalFontWeight);
+    term.applyTypography(terminalFontStack(terminalFontFamily), terminalFontSize, terminalFontWeight);
     const frame = window.requestAnimationFrame(() => refitRef.current());
     return () => window.cancelAnimationFrame(frame);
   }, [terminalFontFamily, terminalFontSize, terminalFontWeight]);
@@ -686,7 +593,7 @@ export function TerminalTool({
   };
 
   const closeSearch = () => {
-    searchAddonRef.current?.clearDecorations();
+    terminalRef.current?.clearSearchDecorations();
     setSearchResult({ resultIndex: -1, resultCount: 0 });
     setSearchOpen(false);
     window.requestAnimationFrame(() => terminalRef.current?.focus());
@@ -694,20 +601,12 @@ export function TerminalTool({
 
   const findNext = () => {
     if (!searchQuery) return;
-    if (terminalRef.current) terminalRef.current.options.allowProposedApi = true;
-    searchAddonRef.current?.findNext(
-      searchQuery,
-      terminalSearchOptions(searchCaseSensitive),
-    );
+    terminalRef.current?.findNext(searchQuery, searchCaseSensitive);
   };
 
   const findPrevious = () => {
     if (!searchQuery) return;
-    if (terminalRef.current) terminalRef.current.options.allowProposedApi = true;
-    searchAddonRef.current?.findPrevious(
-      searchQuery,
-      terminalSearchOptions(searchCaseSensitive),
-    );
+    terminalRef.current?.findPrevious(searchQuery, searchCaseSensitive);
   };
 
   const openContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -802,7 +701,7 @@ export function TerminalTool({
             </Button>
           </div>
 
-          <Button
+          {engine === "xterm" && <Button
             variant="ghost"
             size="icon"
             onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
@@ -814,7 +713,7 @@ export function TerminalTool({
             }`}
           >
             <Search className="h-4 w-4" />
-          </Button>
+          </Button>}
 
           {/* glass / transparency controls toggle */}
           <Button
@@ -982,7 +881,7 @@ export function TerminalTool({
           </div>
         )}
 
-        {searchOpen && (
+        {engine === "xterm" && searchOpen && (
           <div
             role="search"
             className="terminal-search-bar flex shrink-0 items-center gap-1.5 border-t border-border/70 bg-transparent px-3 py-1.5 shadow-sm sm:px-6"

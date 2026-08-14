@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => {
   const pendingWriteCallbacks: Array<() => void> = [];
   const eventHandlers = new Map<string, (payload: any) => void>();
   const fit = vi.fn();
+  const ghosttyInit = vi.fn(() => Promise.resolve());
   const image = { dispose: vi.fn() };
   const webgl = {
     dispose: vi.fn(),
@@ -126,6 +127,7 @@ const mocks = vi.hoisted(() => {
     },
     setResizeHandler: (handler: () => void) => { resizeHandler = handler; },
     fit,
+    ghosttyInit,
     setClipboardValue: (value: unknown) => { clipboardValue = value; },
     reset: () => {
       keyHandler = null;
@@ -175,6 +177,22 @@ vi.mock("@xterm/addon-webgl", () => ({
     constructor() { return mocks.webgl; }
   },
 }));
+vi.mock("ghostty-web", () => ({
+  init: mocks.ghosttyInit,
+  CellFlags: {
+    INVERSE: 16,
+    INVISIBLE: 32,
+    FAINT: 128,
+  },
+  CanvasRenderer: class { renderLine() {} renderCellText() {} },
+  FitAddon: class { fit = mocks.fit; dispose = vi.fn(); },
+  Terminal: class {
+    constructor(options: Record<string, unknown>) {
+      mocks.setTerminalOptions(options);
+      return mocks.terminal;
+    }
+  },
+}));
 vi.mock("@/ipc/events", () => ({ subscribe: mocks.subscribe }));
 vi.mock("@/ipc/host", () => ({ callMain: mocks.callMain }));
 vi.mock("@/hooks/useWindowState", () => ({ useWindowState: mocks.getWindowState }));
@@ -186,6 +204,7 @@ vi.mock("sonner", () => ({
 import {
   TERMINAL_OUTPUT_HIGH_WATER_BYTES,
   TERMINAL_OUTPUT_LOW_WATER_BYTES,
+  b64EncodeUtf8,
   quoteTerminalPath,
   shellTabTitle,
   terminalFontStack,
@@ -216,6 +235,7 @@ describe("TerminalTool clipboard controls", () => {
         blur: 12,
         opacity: 16,
       },
+      terminalEngine: "xterm",
       terminalRenderer: "auto",
       appBackgroundImage: "",
       appBackgroundVisible: true,
@@ -244,6 +264,45 @@ describe("TerminalTool clipboard controls", () => {
     expect(shell).not.toBeNull();
     return { ...result, shell: shell! };
   }
+
+  it("starts a text-only Ghostty Canvas surface on the existing PTY transport", async () => {
+    mocks.setSpawnInfo({ id: "ghostty-1", shell: "/bin/fish", cwd: "/tmp", pid: 17 });
+
+    render(<TerminalTool onBack={() => {}} engine="ghostty" />);
+
+    await waitFor(() => expect(mocks.ghosttyInit).toHaveBeenCalledOnce());
+    await waitFor(() => expect(mocks.callMain).toHaveBeenCalledWith(
+      "pty_spawn",
+      expect.objectContaining({ cols: 80, rows: 24, shellPath: "" }),
+    ));
+    expect(mocks.getImageOptions()).toBeNull();
+    expect(screen.queryByRole("button", { name: "Search terminal" })).not.toBeInTheDocument();
+
+    act(() => mocks.emit("pty:data", { id: "ghostty-1", data: new Uint8Array([111, 107]) }));
+    expect(mocks.terminal.write).toHaveBeenCalledWith(new Uint8Array([111, 107]), expect.any(Function));
+
+    act(() => mocks.emit("pty:data", {
+      id: "ghostty-1",
+      data: new TextEncoder().encode("\x1b[c\x1b]11;?\x1b\\"),
+    }));
+    expect(mocks.callMain).toHaveBeenCalledWith("pty_write", {
+      id: "ghostty-1",
+      data: b64EncodeUtf8("\x1b[?1;2c"),
+    });
+    expect(mocks.callMain).toHaveBeenCalledWith("pty_write", {
+      id: "ghostty-1",
+      data: b64EncodeUtf8("\x1b]11;rgb:1a1a/1b1b/2626\x1b\\"),
+    });
+
+    const handler = mocks.getKeyHandler();
+    expect(handler).not.toBeNull();
+    expect(handler!(new KeyboardEvent("keydown", { key: "a" }))).toBe(false);
+    expect(handler!(new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true }))).toBe(true);
+    expect(mocks.callMain).toHaveBeenCalledWith("pty_write", {
+      id: "ghostty-1",
+      data: "G1sxMzs1dQ==",
+    });
+  });
 
   async function waitForConnected() {
     await waitFor(() => {

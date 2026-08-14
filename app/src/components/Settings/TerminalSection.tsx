@@ -34,6 +34,7 @@ export function TerminalSection() {
   const backgroundColor = useSettingsStore((state) => state.terminalBackgroundColor);
   const textColor = useSettingsStore((state) => state.terminalTextColor);
   const colorScheme = useSettingsStore((state) => state.terminalColorScheme);
+  const engine = useSettingsStore((state) => state.terminalEngine);
   const renderer = useSettingsStore((state) => state.terminalRenderer);
   const fontFamily = useSettingsStore((state) => state.terminalFontFamily);
   const fontSize = useSettingsStore((state) => state.terminalFontSize);
@@ -45,6 +46,7 @@ export function TerminalSection() {
   const setBackgroundColor = useSettingsStore((state) => state.setTerminalBackgroundColor);
   const setTextColor = useSettingsStore((state) => state.setTerminalTextColor);
   const setColorScheme = useSettingsStore((state) => state.setTerminalColorScheme);
+  const setEngine = useSettingsStore((state) => state.setTerminalEngine);
   const setRenderer = useSettingsStore((state) => state.setTerminalRenderer);
   // Draft for the hex text field: typed shorthand like `#ddd` is committed on
   // blur/Enter and re-synced when the store value changes elsewhere.
@@ -262,6 +264,24 @@ export function TerminalSection() {
       </SettingRow>
 
       <SettingRow
+        label={t("settings.terminalEngine")}
+        sub={t("settings.terminalEngineSub")}
+      >
+        <Select
+          value={engine}
+          onValueChange={(value) => setEngine(value as "xterm" | "ghostty")}
+        >
+          <SelectTrigger aria-label={t("settings.terminalEngine")} className="h-9 w-56">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="xterm">{t("settings.terminalEngineXterm")}</SelectItem>
+            <SelectItem value="ghostty">{t("settings.terminalEngineGhostty")}</SelectItem>
+          </SelectContent>
+        </Select>
+      </SettingRow>
+
+      {engine === "xterm" && <SettingRow
         label={t("settings.terminalRenderer")}
         sub={t("settings.terminalRendererSub")}
       >
@@ -278,7 +298,7 @@ export function TerminalSection() {
             <SelectItem value="dom">{t("settings.terminalRendererDom")}</SelectItem>
           </SelectContent>
         </Select>
-      </SettingRow>
+      </SettingRow>}
 
       <SettingRow
         label={t("toolsPage.terminal.blurLabel")}

@@ -12,9 +12,9 @@ import {
   TERMINAL_COLOR_SCHEME_COLORS,
   TERMINAL_COLOR_SCHEME_EFFECTS,
   TERMINAL_COLOR_SCHEME_IDS,
-  DEFAULT_TERMINAL_RENDERER,
+  DEFAULT_TERMINAL_ENGINE, DEFAULT_TERMINAL_RENDERER,
   DOCUMENT_TEXT_COLOR_RE, normalizeHexColor, type Theme, type RssTabSelection,
-  type LayoutMode, type TerminalRenderer, type TerminalColorScheme, type TerminalCustomAppearance,
+  type LayoutMode, type TerminalEngine, type TerminalRenderer, type TerminalColorScheme, type TerminalCustomAppearance,
 } from "./types";
 import {
   cacheUiLanguage, cacheSidebarTabs, cacheTopBarItems, cacheDefaultRssTab, cacheFeedsViewMode,
@@ -86,6 +86,7 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       "terminal_text_color",
       "terminal_color_scheme",
       "terminal_custom_appearance",
+      "terminal_engine",
       "terminal_renderer",
       "terminal_font_family",
       "terminal_font_size",
@@ -347,6 +348,10 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       terminalTextColor: activeTerminalAppearance.textColor,
       terminalColorScheme: resolvedTerminalColorScheme,
       terminalCustomAppearance: resolvedTerminalCustomAppearance,
+      terminalEngine: (["xterm", "ghostty"] as TerminalEngine[])
+        .includes(values.terminal_engine as TerminalEngine)
+        ? values.terminal_engine as TerminalEngine
+        : DEFAULT_TERMINAL_ENGINE,
       terminalRenderer: (["auto", "webgl", "dom"] as TerminalRenderer[])
         .includes(values.terminal_renderer as TerminalRenderer)
         ? values.terminal_renderer as TerminalRenderer
