@@ -22,7 +22,7 @@ import {
   terminalClose,
   terminalDefaultShell,
   terminalResize,
-  terminalSetOutputSuppressed,
+  terminalSetOutputBackpressure,
   terminalSpawn,
   terminalWrite,
 } from "./terminal";
@@ -169,9 +169,9 @@ async function dispatch(
       if (id) terminalClose(id);
       return null;
     }
-    case "pty_set_output_suppressed": {
-      const { id, suppressed } = (args ?? {}) as { id: string; suppressed?: boolean };
-      if (id) terminalSetOutputSuppressed(id, suppressed === true);
+    case "pty_set_output_backpressure": {
+      const { id, paused } = (args ?? {}) as { id: string; paused?: boolean };
+      if (id) terminalSetOutputBackpressure(id, paused === true);
       return null;
     }
 

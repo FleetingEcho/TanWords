@@ -8,7 +8,7 @@
  *
  *  Frame layout, both directions: `[opcode: u8][len u32 LE][payload…]`. `I`/`D`
  *  payloads are raw bytes; `R` is four `u32 LE` values (cols, rows and the
- *  device-pixel viewport width/height).
+ *  logical-pixel viewport width/height).
  *
  *  The renderer never talks to this daemon directly — the window is sandboxed
  *  (contextIsolation + sandbox), and the daemon speaks stdio, not HTTP. So main
@@ -33,7 +33,8 @@ interface PtySession {
   closing: boolean;
   exitEmitted: boolean;
   readyTimer: ReturnType<typeof setTimeout> | null;
-  outputSuppressed: boolean;
+  outputBackpressured: boolean;
+  stdoutPaused: boolean;
 }
 
 const HANDSHAKE_TIMEOUT_MS = 5_000;
@@ -168,6 +169,17 @@ function writeSessionFrame(session: PtySession, frame: Buffer) {
   }
 }
 
+/** Keep global window suspension and per-terminal renderer backpressure from
+ * fighting over the same Readable. Node's pause/resume calls are idempotent,
+ * but tracking the state avoids needless stream churn during rapid drains. */
+function syncSessionOutputPause(session: PtySession) {
+  const paused = outputPaused || session.outputBackpressured;
+  if (paused === session.stdoutPaused) return;
+  session.stdoutPaused = paused;
+  if (paused) session.child.stdout.pause();
+  else session.child.stdout.resume();
+}
+
 function clampPtyDimension(value: number, minimum: number) {
   if (!Number.isFinite(value)) return minimum;
   return Math.min(MAX_PTY_DIMENSION, Math.max(minimum, Math.floor(value)));
@@ -277,7 +289,8 @@ export async function terminalSpawn(
     closing: false,
     exitEmitted: false,
     readyTimer: null,
-    outputSuppressed: false,
+    outputBackpressured: false,
+    stdoutPaused: false,
   };
   sessions.set(id, session);
 
@@ -295,7 +308,7 @@ export async function terminalSpawn(
       failSession(session, error instanceof Error ? error : new Error(String(error)));
     }
   });
-  if (outputPaused) child.stdout.pause();
+  syncSessionOutputPause(session);
 
   // Every piped stream needs an error listener. In particular, writing after a
   // helper crash can raise EPIPE on stdin; without this listener Node treats it
@@ -348,9 +361,13 @@ export async function terminalSpawn(
         );
       }
     } else if (op === 0x44) {
-      // D — raw terminal output. Base64 for the sandboxed window.
-      if (!s.closing && !s.outputSuppressed) {
-        emit("pty:data", { id: s.id, data: payload.toString("base64") });
+      // D — raw terminal output. Electron's structured clone transports typed
+      // arrays directly, avoiding Base64 expansion and renderer-side decoding.
+      if (!s.closing) {
+        emit("pty:data", {
+          id: s.id,
+          data: new Uint8Array(payload.buffer, payload.byteOffset, payload.byteLength),
+        });
       }
     } else if (op === 0x58) {
       // X — shell exited.
@@ -432,16 +449,15 @@ export function terminalShutdownAll(): void {
  * events. OS pipe pressure plus the helper's bounded queue then cap memory. */
 export function terminalSetOutputPaused(paused: boolean): void {
   outputPaused = paused;
-  for (const session of sessions.values()) {
-    if (paused) session.child.stdout.pause();
-    else session.child.stdout.resume();
-  }
+  for (const session of sessions.values()) syncSessionOutputPause(session);
 }
 
-/** Drain but temporarily stop forwarding one flood of shell output. Unlike
- * pausing stdout, this keeps the helper reading the PTY, so Ctrl-C/input and the
- * shell itself cannot deadlock behind a full pipe while the renderer catches up. */
-export function terminalSetOutputSuppressed(id: string, suppressed: boolean): void {
+/** Apply xterm's high/low-water flow control to one session. Pausing this pipe
+ * propagates bounded pressure through the helper queue to the PTY while its
+ * independent stdin reader remains available for Ctrl-C and other input. */
+export function terminalSetOutputBackpressure(id: string, paused: boolean): void {
   const session = sessions.get(id);
-  if (session && !session.closing) session.outputSuppressed = suppressed;
+  if (!session || session.closing || session.outputBackpressured === paused) return;
+  session.outputBackpressured = paused;
+  syncSessionOutputPause(session);
 }

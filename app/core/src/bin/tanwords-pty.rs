@@ -24,6 +24,10 @@ use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use std::io::{self, Read, Write};
 use std::sync::mpsc;
 
+const PTY_READ_CHUNK_BYTES: usize = 64 * 1024;
+const PTY_EVENT_QUEUE_SLOTS: usize = 16;
+const MAX_HOST_FRAME_BYTES: usize = 2 * 1024 * 1024;
+
 enum Event {
     HostFrame(Frame),
     HostClosed,
@@ -128,8 +132,10 @@ fn main() {
     // Bound the reader-to-writer queue. When Electron or its renderer cannot
     // consume output quickly enough, backpressure now reaches the PTY instead of
     // allowing an unbounded Vec queue to grow until the helper is OOM-killed.
-    // 128 × 8 KiB reader chunks caps queued payload near 1 MiB per terminal.
-    let (tx, rx) = mpsc::sync_channel(128);
+    // 16 × 64 KiB reader chunks caps queued payload near 1 MiB per terminal.
+    // A larger read buffer still returns interactive output immediately, while
+    // reducing framing, pipe and Electron IPC overhead for sustained output.
+    let (tx, rx) = mpsc::sync_channel(PTY_EVENT_QUEUE_SLOTS);
     spawn_host_reader(tx.clone());
     spawn_pty_reader(reader, tx);
 
@@ -196,13 +202,19 @@ fn spawn_host_reader(tx: mpsc::SyncSender<Event>) {
         loop {
             match input.read(&mut buf) {
                 Ok(0) | Err(_) => break,
-                Ok(n) => {
-                    for frame in decoder.ingest(&buf[..n]) {
-                        if tx.send(Event::HostFrame(frame)).is_err() {
-                            return;
+                Ok(n) => match decoder.ingest(&buf[..n]) {
+                    Ok(frames) => {
+                        for frame in frames {
+                            if tx.send(Event::HostFrame(frame)).is_err() {
+                                return;
+                            }
                         }
                     }
-                }
+                    Err(error) => {
+                        eprintln!("[tanwords-pty] {error}");
+                        break;
+                    }
+                },
             }
         }
         let _ = tx.send(Event::HostClosed);
@@ -211,7 +223,7 @@ fn spawn_host_reader(tx: mpsc::SyncSender<Event>) {
 
 fn spawn_pty_reader(mut reader: Box<dyn Read + Send>, tx: mpsc::SyncSender<Event>) {
     std::thread::spawn(move || {
-        let mut buf = [0u8; 8192];
+        let mut buf = vec![0u8; PTY_READ_CHUNK_BYTES];
         loop {
             match reader.read(&mut buf) {
                 Ok(0) | Err(_) => break,
@@ -346,11 +358,11 @@ impl FramedDecoder {
         }
     }
 
-    /// Feed bytes; returns any whole frames they complete. Incomplete frames
-    /// are buffered until the next call. Never returns an error — on EOF the
-    /// caller decides whether to stop (this decoder has no EOF signal apart
-    /// from the upstream byte stream itself).
-    fn ingest(&mut self, chunk: &[u8]) -> Vec<Frame> {
+    /// Feed bytes and return any whole frames they complete. Incomplete frames
+    /// are buffered until the next call. Reject an oversized declared payload
+    /// before retaining it so a malformed host cannot grow this process without
+    /// bound while waiting for bytes that should never be accepted.
+    fn ingest(&mut self, chunk: &[u8]) -> Result<Vec<Frame>, String> {
         self.payload.extend_from_slice(chunk);
         let mut frames = Vec::new();
         loop {
@@ -367,6 +379,11 @@ impl FramedDecoder {
                     self.payload[4],
                 ]) as usize;
                 self.payload.drain(..5);
+                if self.payload_len > MAX_HOST_FRAME_BYTES {
+                    self.op = None;
+                    self.payload.clear();
+                    return Err(format!("host frame exceeds {MAX_HOST_FRAME_BYTES} bytes"));
+                }
             }
             if self.payload.len() < self.payload_len {
                 break;
@@ -379,7 +396,45 @@ impl FramedDecoder {
             };
             frames.push(frame);
         }
-        frames
+        Ok(frames)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn framed_decoder_rejects_oversized_host_frames_before_buffering_payload() {
+        let mut decoder = FramedDecoder::new();
+        let mut header = [0u8; 5];
+        header[0] = b'I';
+        header[1..].copy_from_slice(&((MAX_HOST_FRAME_BYTES + 1) as u32).to_le_bytes());
+
+        let error = decoder
+            .ingest(&header)
+            .err()
+            .expect("oversized frame must fail");
+
+        assert!(error.contains("host frame exceeds"));
+        assert!(decoder.payload.is_empty());
+        assert!(decoder.op.is_none());
+    }
+
+    #[test]
+    fn framed_decoder_keeps_split_valid_frames() {
+        let mut decoder = FramedDecoder::new();
+        let payload = b"hello";
+        let mut encoded = vec![b'I'];
+        encoded.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+        encoded.extend_from_slice(payload);
+
+        assert!(decoder.ingest(&encoded[..7]).unwrap().is_empty());
+        let frames = decoder.ingest(&encoded[7..]).unwrap();
+
+        assert_eq!(frames.len(), 1);
+        assert_eq!(frames[0].op, b'I');
+        assert_eq!(frames[0].payload, payload);
     }
 }
 

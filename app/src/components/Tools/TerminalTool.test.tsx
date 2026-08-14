@@ -184,11 +184,12 @@ vi.mock("sonner", () => ({
 }));
 
 import {
-  MAX_PENDING_OUTPUT_BYTES,
-  TERMINAL_SIXEL_SIZE_LIMIT_BYTES,
+  TERMINAL_OUTPUT_HIGH_WATER_BYTES,
+  TERMINAL_OUTPUT_LOW_WATER_BYTES,
   quoteTerminalPath,
   shellTabTitle,
   terminalFontStack,
+  terminalOutputBytes,
   terminalPixelSizeReport,
 } from "./terminalUtils";
 import { TerminalTool } from "./TerminalTool";
@@ -284,7 +285,8 @@ describe("TerminalTool clipboard controls", () => {
       iipSizeLimit: 20_000_000,
     });
     expect(mocks.terminal.loadAddon).toHaveBeenCalledWith(mocks.image);
-    expect(MAX_PENDING_OUTPUT_BYTES).toBeGreaterThan(TERMINAL_SIXEL_SIZE_LIMIT_BYTES);
+    expect(TERMINAL_OUTPUT_HIGH_WATER_BYTES).toBeLessThanOrEqual(500 * 1024);
+    expect(TERMINAL_OUTPUT_LOW_WATER_BYTES).toBeLessThan(TERMINAL_OUTPUT_HIGH_WATER_BYTES);
   });
 
   it("reports logical pixels so Retina DPR does not halve image layout", () => {
@@ -300,6 +302,14 @@ describe("TerminalTool clipboard controls", () => {
     expect(mocks.emitCsi([14])).toBe(true);
     expect(mocks.terminal.input).toHaveBeenLastCalledWith("\x1b[4;500;800t", false);
     expect(mocks.emitCsi([18])).toBe(false);
+  });
+
+  it("accepts binary PTY output without a Base64 round trip", () => {
+    const bytes = new Uint8Array([0, 27, 91, 109, 255]);
+    expect(terminalOutputBytes(bytes)).toEqual(bytes);
+    expect(terminalOutputBytes(bytes.buffer)).toEqual(bytes);
+    expect(terminalOutputBytes(Buffer.from(bytes).toString("base64"))).toEqual(bytes);
+    expect(terminalOutputBytes({ data: [...bytes] })).toBeNull();
   });
 
   it("falls back to xterm's built-in pixel report when device metrics are unavailable", () => {
@@ -572,7 +582,7 @@ describe("TerminalTool clipboard controls", () => {
     mocks.setDeferWrites(true);
     render(<TerminalTool onBack={() => {}} />);
     await waitForConnected();
-    const data = Buffer.alloc(8192, 0x78).toString("base64");
+    const data = new Uint8Array(8192).fill(0x78);
 
     act(() => {
       for (let index = 0; index < 40; index += 1) {
@@ -580,38 +590,39 @@ describe("TerminalTool clipboard controls", () => {
       }
     });
 
-    expect(mocks.callMain).not.toHaveBeenCalledWith("pty_set_output_suppressed", expect.anything());
+    expect(mocks.callMain).not.toHaveBeenCalledWith("pty_set_output_backpressure", expect.anything());
     act(() => mocks.flushWrites());
     expect(mocks.terminal.write.mock.calls.some(([chunk]) => (
       new TextDecoder().decode(chunk).includes("Output truncated")
     ))).toBe(false);
   });
 
-  it("truncates an unbounded output flood and resumes forwarding after xterm catches up", async () => {
+  it("backpressures an output flood and preserves it while xterm catches up", async () => {
     mocks.setSpawnInfo({ id: "session-1", shell: "/bin/fish", cwd: "/tmp", pid: 42 });
     mocks.setDeferWrites(true);
     render(<TerminalTool onBack={() => {}} />);
     await waitForConnected();
-    const data = Buffer.alloc(1024 * 1024, 0x78).toString("base64");
+    const data = new Uint8Array(64 * 1024).fill(0x78);
 
     act(() => {
-      for (let index = 0; index < 40; index += 1) {
+      for (let index = 0; index < 100; index += 1) {
         mocks.emit("pty:data", { id: "session-1", data });
       }
     });
 
-    expect(mocks.callMain).toHaveBeenCalledWith("pty_set_output_suppressed", {
+    expect(mocks.callMain).toHaveBeenCalledWith("pty_set_output_backpressure", {
       id: "session-1",
-      suppressed: true,
+      paused: true,
     });
     act(() => mocks.flushWrites());
-    expect(mocks.callMain).toHaveBeenCalledWith("pty_set_output_suppressed", {
+    expect(mocks.callMain).toHaveBeenCalledWith("pty_set_output_backpressure", {
       id: "session-1",
-      suppressed: false,
+      paused: false,
     });
+    expect(mocks.terminal.write).toHaveBeenCalledTimes(100);
     expect(mocks.terminal.write.mock.calls.some(([chunk]) => (
       new TextDecoder().decode(chunk).includes("Output truncated")
-    ))).toBe(true);
+    ))).toBe(false);
   });
 
   it("delegates maximize and restore to the standalone page shell", () => {

@@ -41,6 +41,19 @@ export function bytesFromB64(b64: string): Uint8Array {
   return out;
 }
 
+/** Normalise terminal output crossing Electron's structured-clone boundary.
+ * Current desktop builds send a Uint8Array directly, avoiding Base64's 33%
+ * expansion and encode/decode allocations. Keep the string branch so a stale
+ * preload/main process can finish an in-flight event during a hot reload. */
+export function terminalOutputBytes(data: unknown): Uint8Array | null {
+  if (typeof data === "string") return bytesFromB64(data);
+  if (data instanceof ArrayBuffer) return new Uint8Array(data);
+  if (ArrayBuffer.isView(data)) {
+    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  }
+  return null;
+}
+
 export function b64EncodeUtf8(s: string): string {
   return b64FromBytes(encoder.encode(s));
 }
@@ -93,11 +106,12 @@ export const TERMINAL_IMAGE_PIXEL_LIMIT = 4096 * 4096;
 export const TERMINAL_SIXEL_SIZE_LIMIT_BYTES = 25_000_000;
 export const TERMINAL_IIP_SIZE_LIMIT_BYTES = 20_000_000;
 export const HERDR_URL = "https://github.com/herdrdev/herdr";
-// Never truncate inside an accepted inline-image control sequence: losing its
-// DCS/OSC prefix makes the remaining SIXEL/IIP payload render as terminal text.
-// 32 MiB covers the addon's 25 MB SIXEL maximum plus framing, while retaining a
-// finite bound for genuinely runaway output.
-export const MAX_PENDING_OUTPUT_BYTES = 32 * 1024 * 1024;
+// xterm parses writes asynchronously. Pause the PTY before its pending writes
+// grow large enough to hurt input latency, then resume only after a meaningful
+// amount has drained. Backpressure preserves every byte, including multi-MiB
+// SIXEL/IIP sequences, without requiring the entire image to sit in JS memory.
+export const TERMINAL_OUTPUT_HIGH_WATER_BYTES = 384 * 1024;
+export const TERMINAL_OUTPUT_LOW_WATER_BYTES = 128 * 1024;
 export const MAX_AUTOMATIC_RECOVERY_ATTEMPTS = 3;
 
 export type TerminalRenderDimensions = {

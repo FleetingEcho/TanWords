@@ -73,8 +73,8 @@ vi.mock("node:fs", () => ({
 
 import {
   setTerminalEventSink,
+  terminalSetOutputBackpressure,
   terminalSetOutputPaused,
-  terminalSetOutputSuppressed,
   terminalShutdownAll,
   terminalSpawn,
   terminalResize,
@@ -231,18 +231,35 @@ describe("terminal main-process failure isolation", () => {
     expect(child.stdout.resume).toHaveBeenCalledOnce();
   });
 
-  it("drains but does not forward output while one flooded session catches up", async () => {
+  it("pauses one flooded session without discarding its output", async () => {
     const events: Array<{ name: string; payload: any }> = [];
     setTerminalEventSink((name, payload) => events.push({ name, payload }));
     const { child, info } = await spawnReady();
 
-    terminalSetOutputSuppressed(info.id, true);
-    child.stdout.emit("data", frame(0x44, Buffer.from("discarded flood")));
-    terminalSetOutputSuppressed(info.id, false);
-    child.stdout.emit("data", frame(0x44, Buffer.from("visible output")));
+    terminalSetOutputBackpressure(info.id, true);
+    expect(child.stdout.pause).toHaveBeenCalledOnce();
+
+    terminalSetOutputBackpressure(info.id, false);
+    expect(child.stdout.resume).toHaveBeenCalledOnce();
+
+    child.stdout.emit("data", frame(0x44, Buffer.from("preserved output")));
 
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ name: "pty:data", payload: { id: info.id } });
-    expect(Buffer.from(events[0].payload.data, "base64").toString()).toBe("visible output");
+    expect(events[0].payload.data).toBeInstanceOf(Uint8Array);
+    expect(Buffer.from(events[0].payload.data).toString()).toBe("preserved output");
+  });
+
+  it("does not resume a backpressured session while the whole window is paused", async () => {
+    const { child, info } = await spawnReady();
+
+    terminalSetOutputBackpressure(info.id, true);
+    terminalSetOutputPaused(true);
+    terminalSetOutputBackpressure(info.id, false);
+
+    expect(child.stdout.resume).not.toHaveBeenCalled();
+
+    terminalSetOutputPaused(false);
+    expect(child.stdout.resume).toHaveBeenCalledOnce();
   });
 });

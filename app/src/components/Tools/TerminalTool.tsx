@@ -50,20 +50,20 @@ import { useFullscreenDragExit } from "@/hooks/useFullscreenDragExit";
 import type { ContextMenuPosition, TerminalClipboard } from "./terminalUtils";
 import {
   MAX_AUTOMATIC_RECOVERY_ATTEMPTS,
-  MAX_PENDING_OUTPUT_BYTES,
   TERMINAL_IIP_SIZE_LIMIT_BYTES,
   TERMINAL_IMAGE_PIXEL_LIMIT,
   TERMINAL_IMAGE_STORAGE_MB,
+  TERMINAL_OUTPUT_HIGH_WATER_BYTES,
+  TERMINAL_OUTPUT_LOW_WATER_BYTES,
   TERMINAL_SIXEL_SIZE_LIMIT_BYTES,
   TERMINAL_SCROLLBACK_LINES,
   terminalThemeFor,
-  bytesFromB64,
   b64EncodeUtf8,
-  encoder,
   quoteTerminalPath,
   shellTabTitle,
   terminalBackgroundRgba,
   terminalFontStack,
+  terminalOutputBytes,
   terminalPixelSizeReport,
   terminalSearchOptions,
   type TerminalRenderDimensions,
@@ -295,57 +295,53 @@ export function TerminalTool({
     setStatus("starting");
     setMessage("");
 
-    // xterm's writes are asynchronous. Feed it one chunk at a time and cap the
-    // waiting queue so a command that prints indefinitely cannot retain
-    // unlimited decoded output in the renderer while Chromium is busy painting.
+    // xterm's writes are asynchronous. Feed it one chunk at a time and apply
+    // high/low-water backpressure to the helper while Chromium catches up.
+    // Unlike truncation, pausing preserves every byte of an inline-image escape
+    // sequence and keeps the parser in a valid state.
     const outputQueue: Uint8Array[] = [];
-    let outputQueueBytes = 0;
+    let outputQueueHead = 0;
+    let outputPendingBytes = 0;
     let outputWriting = false;
-    let droppedOutput = false;
-    let outputSuppressed = false;
-    const setOutputSuppressed = (suppressed: boolean) => {
-      if (!state.sessionId || outputSuppressed === suppressed) return;
-      outputSuppressed = suppressed;
-      void callMain("pty_set_output_suppressed", { id: state.sessionId, suppressed }).catch(() => {});
+    let outputBackpressured = false;
+    const setOutputBackpressure = (paused: boolean) => {
+      if (!state.sessionId || outputBackpressured === paused) return;
+      outputBackpressured = paused;
+      void callMain("pty_set_output_backpressure", { id: state.sessionId, paused }).catch(() => {});
     };
     const pumpOutput = () => {
       if (!alive || outputWriting) return;
-      const data = outputQueue.shift();
-      if (!data) {
-        if (!droppedOutput) return;
-        droppedOutput = false;
-        outputWriting = true;
-        const notice = encoder.encode(`\r\n[TanWords] ${t("toolsPage.terminal.outputTruncated")}\r\n`);
-        term.write(notice, () => {
-          outputWriting = false;
-          setOutputSuppressed(false);
-          pumpOutput();
-        });
-        return;
-      }
-      outputQueueBytes -= data.byteLength;
+      const data = outputQueue[outputQueueHead];
+      if (!data) return;
+      outputQueueHead += 1;
       outputWriting = true;
       term.write(data, () => {
+        outputPendingBytes -= data.byteLength;
         outputWriting = false;
+        if (outputQueueHead === outputQueue.length) {
+          // Reset in O(1) after the queue drains. Avoid Array.shift(), whose
+          // repeated element moves turn a large output burst into O(n²) work.
+          outputQueue.length = 0;
+          outputQueueHead = 0;
+        } else if (outputQueueHead >= 64 && outputQueueHead * 2 >= outputQueue.length) {
+          // A continuously chatty session may never reach an empty queue. Drop
+          // consumed references occasionally with one amortised compaction so
+          // old chunks do not remain retained for the lifetime of the shell.
+          outputQueue.splice(0, outputQueueHead);
+          outputQueueHead = 0;
+        }
+        if (outputPendingBytes <= TERMINAL_OUTPUT_LOW_WATER_BYTES) {
+          setOutputBackpressure(false);
+        }
         pumpOutput();
       });
     };
     const enqueueOutput = (data: Uint8Array) => {
-      let discarded = false;
-      while (outputQueue.length > 0 && outputQueueBytes + data.byteLength > MAX_PENDING_OUTPUT_BYTES) {
-        outputQueueBytes -= outputQueue.shift()!.byteLength;
-        discarded = true;
+      outputQueue.push(data);
+      outputPendingBytes += data.byteLength;
+      if (outputPendingBytes >= TERMINAL_OUTPUT_HIGH_WATER_BYTES) {
+        setOutputBackpressure(true);
       }
-      const bounded = data.byteLength > MAX_PENDING_OUTPUT_BYTES
-        ? data.slice(data.byteLength - MAX_PENDING_OUTPUT_BYTES)
-        : data;
-      if (bounded.byteLength !== data.byteLength) discarded = true;
-      if (discarded) {
-        droppedOutput = true;
-        setOutputSuppressed(true);
-      }
-      outputQueue.push(bounded);
-      outputQueueBytes += bounded.byteLength;
       pumpOutput();
     };
 
@@ -459,11 +455,12 @@ export function TerminalTool({
 
     // ── events ────────────────────────────────────────────────────────
     const offs = [
-      subscribe<{ id: string; data?: string }>("pty:data", ({ id, data }) => {
+      subscribe<{ id: string; data?: unknown }>("pty:data", ({ id, data }) => {
         if (state.sessionId !== id || !alive) return;
-        if (!data) return;
         try {
-          enqueueOutput(bytesFromB64(data));
+          const bytes = terminalOutputBytes(data);
+          if (!bytes?.byteLength) return;
+          enqueueOutput(bytes);
         } catch {
           // A malformed/late transport event must not take down the React tree
           // or the other terminal tabs. The live session can keep streaming.
@@ -566,7 +563,8 @@ export function TerminalTool({
       offs.forEach((off) => off());
       term.dispose();
       outputQueue.length = 0;
-      outputQueueBytes = 0;
+      outputQueueHead = 0;
+      outputPendingBytes = 0;
       refitRef.current = () => {};
       if (terminalRef.current === term) terminalRef.current = null;
       if (searchAddonRef.current === searchAddon) searchAddonRef.current = null;
