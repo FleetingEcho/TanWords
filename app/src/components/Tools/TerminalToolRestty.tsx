@@ -672,6 +672,8 @@ export function TerminalToolRestty({
                 <SelectContent>
                   <SelectItem value="tokyo-night">{t("toolsPage.terminal.themeTokyoNight")}</SelectItem>
                   <SelectItem value="dracula">{t("toolsPage.terminal.themeDracula")}</SelectItem>
+                  <SelectItem value="nord">{t("toolsPage.terminal.themeNord")}</SelectItem>
+                  <SelectItem value="catppuccin-mocha">{t("toolsPage.terminal.themeCatppuccinMocha")}</SelectItem>
                   <SelectItem value="high-contrast">{t("toolsPage.terminal.themeHighContrast")}</SelectItem>
                   <SelectItem value="custom">{t("toolsPage.terminal.themeCustom")}</SelectItem>
                 </SelectContent>

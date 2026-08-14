@@ -22,7 +22,7 @@ export type TerminalRenderer = "auto" | "webgl" | "dom";
  *  kept selectable as a fallback for anyone who needs those. */
 export type TerminalEngine = "xterm" | "restty";
 export const TERMINAL_COLOR_SCHEME_IDS = [
-  "tokyo-night", "dracula", "high-contrast", "custom",
+  "tokyo-night", "dracula", "nord", "catppuccin-mocha", "high-contrast", "custom",
 ] as const;
 export type TerminalColorScheme = typeof TERMINAL_COLOR_SCHEME_IDS[number];
 export interface TerminalCustomAppearance {
@@ -84,6 +84,8 @@ export const TERMINAL_COLOR_SCHEME_COLORS: Record<Exclude<TerminalColorScheme, "
 }> = {
   "tokyo-night": { background: "#1a1b26", foreground: "#c0caf5" },
   dracula: { background: "#282a36", foreground: "#f8f8f2" },
+  nord: { background: "#2e3440", foreground: "#d8dee9" },
+  "catppuccin-mocha": { background: "#1e1e2e", foreground: "#cdd6f4" },
   "high-contrast": { background: "#000000", foreground: "#ffffff" },
 };
 
@@ -99,6 +101,16 @@ export const TERMINAL_COLOR_SCHEME_EFFECTS: Record<Exclude<TerminalColorScheme, 
     opacity: DEFAULT_TERMINAL_BACKGROUND_OPACITY,
   },
   dracula: {
+    transparent: DEFAULT_TERMINAL_TRANSPARENT,
+    blur: DEFAULT_TERMINAL_BACKGROUND_BLUR,
+    opacity: DEFAULT_TERMINAL_BACKGROUND_OPACITY,
+  },
+  nord: {
+    transparent: DEFAULT_TERMINAL_TRANSPARENT,
+    blur: DEFAULT_TERMINAL_BACKGROUND_BLUR,
+    opacity: DEFAULT_TERMINAL_BACKGROUND_OPACITY,
+  },
+  "catppuccin-mocha": {
     transparent: DEFAULT_TERMINAL_TRANSPARENT,
     blur: DEFAULT_TERMINAL_BACKGROUND_BLUR,
     opacity: DEFAULT_TERMINAL_BACKGROUND_OPACITY,

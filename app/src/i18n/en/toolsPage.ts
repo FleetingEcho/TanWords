@@ -74,6 +74,8 @@ export const toolsPage: Dict = {
     "toolsPage.terminal.themeLabel": "Theme",
     "toolsPage.terminal.themeTokyoNight": "Tokyo Night",
     "toolsPage.terminal.themeDracula": "Dracula",
+    "toolsPage.terminal.themeNord": "Nord",
+    "toolsPage.terminal.themeCatppuccinMocha": "Catppuccin Mocha",
     "toolsPage.terminal.themeHighContrast": "High Contrast",
     "toolsPage.terminal.themeCustom": "Custom",
     "toolsPage.terminal.fontSize": "Terminal font size",

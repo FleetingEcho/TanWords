@@ -119,8 +119,10 @@ describe("TerminalSection typography", () => {
     fireEvent.keyDown(screen.getByRole("combobox", { name: "Theme" }), { key: "ArrowDown" });
     expect(screen.getByRole("option", { name: "Tokyo Night" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Dracula" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Nord" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Catppuccin Mocha" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "High Contrast" })).toBeInTheDocument();
-    expect(screen.getAllByRole("option")).toHaveLength(3);
+    expect(screen.getAllByRole("option")).toHaveLength(5);
     fireEvent.click(screen.getByRole("option", { name: "Dracula" }));
     expect(useSettingsStore.getState()).toMatchObject({
       terminalColorScheme: "dracula",
