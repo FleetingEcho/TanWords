@@ -22,7 +22,7 @@ export type TerminalRenderer = "auto" | "webgl" | "dom";
  *  kept selectable as a fallback for anyone who needs those. */
 export type TerminalEngine = "xterm" | "restty";
 export const TERMINAL_COLOR_SCHEME_IDS = [
-  "tokyo-night", "dracula", "light", "high-contrast", "custom",
+  "tokyo-night", "dracula", "high-contrast", "custom",
 ] as const;
 export type TerminalColorScheme = typeof TERMINAL_COLOR_SCHEME_IDS[number];
 export interface TerminalCustomAppearance {
@@ -58,15 +58,12 @@ export const HIGHLIGHT_PRESETS = ["#d97706", "#eab308", "#22c55e", "#0ea5e9", "#
 export const AUTO_LOCK_CHOICES = [0, 10, 20, 30, 60] as const;
 export const DEFAULT_AUTO_LOCK_MINUTES = 0;
 export const DEFAULT_TERMINAL_BACKGROUND_BLUR = 16;
-// Only "custom" and "light" (Glass Light) ever render translucent — see
-// `effectiveTransparent` in TerminalTool.tsx, which ignores opacity entirely
-// for every other preset. This default backs those opaque presets (and a
-// fresh, not-yet-transparent Custom), so the number shown next to the slider
-// matches what's actually on screen instead of implying a glass effect that
-// isn't there.
+// Only "custom" ever renders translucent — see `effectiveTransparent` in
+// TerminalTool.tsx, which ignores opacity entirely for every other preset.
+// This default backs those opaque presets (and a fresh, not-yet-transparent
+// Custom), so the number shown next to the slider matches what's actually on
+// screen instead of implying a glass effect that isn't there.
 export const DEFAULT_TERMINAL_BACKGROUND_OPACITY = 100;
-/** Keeps Glass Light visibly light over both wallpapers and the dark app canvas. */
-export const GLASS_LIGHT_BACKGROUND_OPACITY = 70;
 export const DEFAULT_TERMINAL_TRANSPARENT = false;
 export const DEFAULT_TERMINAL_RENDERER: TerminalRenderer = "auto";
 export const DEFAULT_TERMINAL_ENGINE: TerminalEngine = "restty";
@@ -87,7 +84,6 @@ export const TERMINAL_COLOR_SCHEME_COLORS: Record<Exclude<TerminalColorScheme, "
 }> = {
   "tokyo-night": { background: "#1a1b26", foreground: "#c0caf5" },
   dracula: { background: "#282a36", foreground: "#f8f8f2" },
-  light: { background: "#dedede", foreground: "#000000" },
   "high-contrast": { background: "#000000", foreground: "#ffffff" },
 };
 
@@ -106,11 +102,6 @@ export const TERMINAL_COLOR_SCHEME_EFFECTS: Record<Exclude<TerminalColorScheme, 
     transparent: DEFAULT_TERMINAL_TRANSPARENT,
     blur: DEFAULT_TERMINAL_BACKGROUND_BLUR,
     opacity: DEFAULT_TERMINAL_BACKGROUND_OPACITY,
-  },
-  light: {
-    transparent: true,
-    blur: 0,
-    opacity: GLASS_LIGHT_BACKGROUND_OPACITY,
   },
   "high-contrast": {
     transparent: DEFAULT_TERMINAL_TRANSPARENT,

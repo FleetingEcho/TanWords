@@ -4,7 +4,6 @@ import {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR,
   DEFAULT_LAYOUT_MODE, AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES,
   DEFAULT_TERMINAL_BACKGROUND_BLUR, DEFAULT_TERMINAL_BACKGROUND_OPACITY, DEFAULT_TERMINAL_TRANSPARENT,
-  GLASS_LIGHT_BACKGROUND_OPACITY,
   DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE,
   DEFAULT_TERMINAL_FONT_WEIGHT, normalizeTerminalFontWeight,
   DEFAULT_TERMINAL_TEXT_COLOR,
@@ -247,21 +246,9 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       });
     }
     const savedTerminalOpacity = Number(values.terminal_background_opacity);
-    // Glass Light originally shipped with an 8% tint, which remained dark over
-    // the app's dark canvas. Upgrade that exact preset value while preserving
-    // any opacity the user chose themselves.
-    const resolvedTerminalOpacity = resolvedTerminalColorScheme === "light"
-      && savedTerminalOpacity === 8
-      ? GLASS_LIGHT_BACKGROUND_OPACITY
-      : Number.isFinite(savedTerminalOpacity)
-        ? Math.min(100, Math.max(0, Math.round(savedTerminalOpacity)))
-        : DEFAULT_TERMINAL_BACKGROUND_OPACITY;
-    if (resolvedTerminalColorScheme === "light" && savedTerminalOpacity === 8) {
-      await invoke("db_set_setting", {
-        key: "terminal_background_opacity",
-        value: JSON.stringify(GLASS_LIGHT_BACKGROUND_OPACITY),
-      });
-    }
+    const resolvedTerminalOpacity = Number.isFinite(savedTerminalOpacity)
+      ? Math.min(100, Math.max(0, Math.round(savedTerminalOpacity)))
+      : DEFAULT_TERMINAL_BACKGROUND_OPACITY;
     const resolvedTerminalTransparent = values.terminal_transparent === "true"
       || (values.terminal_transparent as unknown) === true
       || DEFAULT_TERMINAL_TRANSPARENT;

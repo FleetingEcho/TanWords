@@ -342,23 +342,6 @@ describe("TerminalTool clipboard controls", () => {
     expect(theme.background).toBe("#1a1b26");
   });
 
-  it("keeps reverse-video input legible with the transparent light preset", () => {
-    useSettingsStore.getState().setTerminalColorScheme("light");
-    renderTerminal();
-
-    expect(mocks.getTerminalOptions()).toMatchObject({
-      allowTransparency: true,
-      minimumContrastRatio: 4.5,
-      theme: {
-        foreground: "#000000",
-        // Alpha 0 keeps the canvas transparent; the RGB channels still carry
-        // the real (light) backdrop so minimumContrastRatio corrects glyphs
-        // against it instead of an assumed black background.
-        background: "rgba(222, 222, 222, 0)",
-      },
-    });
-  });
-
   it("uses VS Code-style structural accents in high-contrast mode", () => {
     useSettingsStore.setState({
       terminalColorScheme: "high-contrast",

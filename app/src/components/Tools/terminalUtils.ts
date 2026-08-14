@@ -182,14 +182,6 @@ export const TERMINAL_THEMES = {
     brightGreen: "#69ff94", brightYellow: "#ffffa5", brightBlue: "#d6acff",
     brightMagenta: "#ff92df", brightCyan: "#a4ffff", brightWhite: "#ffffff",
   },
-  light: {
-    background: "#dedede", foreground: "#000000", cursor: "#000000", cursorAccent: "#dedede",
-    selectionBackground: "rgba(50, 105, 212, 0.24)", black: "#000000", red: "#b3261e",
-    green: "#137333", yellow: "#765c00", blue: "#3269d4", magenta: "#8e44d6",
-    cyan: "#007b83", white: "#4f5660", brightBlack: "#626a73", brightRed: "#c5221f",
-    brightGreen: "#188038", brightYellow: "#8d6d00", brightBlue: "#1a73e8",
-    brightMagenta: "#a142f4", brightCyan: "#008b9a", brightWhite: "#111318",
-  },
   "high-contrast": {
     background: "#000000", foreground: "#ffffff", cursor: "#ffffff", cursorAccent: "#000000",
     selectionBackground: "rgba(38, 79, 120, 0.88)", black: "#000000", red: "#f48771",

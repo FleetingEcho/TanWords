@@ -223,21 +223,24 @@ describe("settingsStore database hydration", () => {
     expect(useSettingsStore.getState().terminalFontWeight).toBe(600);
   });
 
-  it("upgrades the original too-dark Glass Light tint", async () => {
+  it("migrates a removed Glass Light preset to Tokyo Night", async () => {
     invoke.mockImplementation(async (command: string, args?: { key?: string }) => {
       if (command !== "db_get_setting") return null;
       if (args?.key === "terminal_color_scheme") return '"light"';
-      if (args?.key === "terminal_background_opacity") return "8";
       if (args?.key === "terminal_transparent") return "true";
       return null;
     });
 
     await useSettingsStore.getState().loadFromDB();
 
-    expect(useSettingsStore.getState().terminalBackgroundOpacity).toBe(70);
+    expect(useSettingsStore.getState()).toMatchObject({
+      terminalColorScheme: "tokyo-night",
+      terminalBackgroundColor: "#1a1b26",
+      terminalTextColor: "#c0caf5",
+    });
     expect(invoke).toHaveBeenCalledWith("db_set_setting", {
-      key: "terminal_background_opacity",
-      value: "70",
+      key: "terminal_color_scheme",
+      value: '"tokyo-night"',
     });
   });
 
@@ -361,16 +364,7 @@ describe("settingsStore database hydration", () => {
     });
   });
 
-  it("uses a Warp-style glass palette and supports the retained presets", () => {
-    useSettingsStore.getState().setTerminalColorScheme("light");
-    expect(useSettingsStore.getState()).toMatchObject({
-      terminalBackgroundColor: "#dedede",
-      terminalTextColor: "#000000",
-      terminalTransparent: true,
-      terminalBackgroundBlur: 0,
-      terminalBackgroundOpacity: 70,
-    });
-
+  it("supports the retained high-contrast preset", () => {
     useSettingsStore.getState().setTerminalColorScheme("high-contrast");
     expect(useSettingsStore.getState()).toMatchObject({
       terminalBackgroundColor: "#000000",

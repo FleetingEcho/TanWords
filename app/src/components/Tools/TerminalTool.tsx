@@ -925,7 +925,6 @@ export function TerminalTool({
                 <SelectContent>
                   <SelectItem value="tokyo-night">{t("toolsPage.terminal.themeTokyoNight")}</SelectItem>
                   <SelectItem value="dracula">{t("toolsPage.terminal.themeDracula")}</SelectItem>
-                  <SelectItem value="light">{t("toolsPage.terminal.themeLight")}</SelectItem>
                   <SelectItem value="high-contrast">{t("toolsPage.terminal.themeHighContrast")}</SelectItem>
                   <SelectItem value="custom">{t("toolsPage.terminal.themeCustom")}</SelectItem>
                 </SelectContent>

@@ -74,7 +74,6 @@ export const toolsPage: Dict = {
     "toolsPage.terminal.themeLabel": "主题",
     "toolsPage.terminal.themeTokyoNight": "Tokyo Night",
     "toolsPage.terminal.themeDracula": "Dracula",
-    "toolsPage.terminal.themeLight": "玻璃浅色",
     "toolsPage.terminal.themeHighContrast": "高对比度",
     "toolsPage.terminal.themeCustom": "自定义",
     "toolsPage.terminal.fontSize": "终端字体大小",
