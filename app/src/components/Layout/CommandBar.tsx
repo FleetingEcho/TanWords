@@ -29,17 +29,18 @@ import { useSettingsStore } from "@/store/settingsStore";
 import { useLayoutStore } from "@/store/layoutStore";
 import { useAnalysisStore } from "@/store/analysisStore";
 import { useVocabEnrichStore } from "@/store/vocabEnrichStore";
-import { GitHubIcon } from "@/components/ui/icons";
+import { DshIcon, GitHubIcon } from "@/components/ui/icons";
 import { useToolsBallStore } from "@/store/toolsBallStore";
 import { useFloatingBrowserStore } from "@/store/floatingBrowserStore";
 import { hostCapabilities, isDesktopHost } from "@/platform";
 
 type McpState = { status: { running: boolean; error: string | null } };
 
-const PAGE_IDS: NavPage[] = (["feeds", "vocabulary", "documents", "chat", "dashboard", "music", "terminal", "settings", "tools"] as NavPage[])
+const PAGE_IDS: NavPage[] = (["feeds", "vocabulary", "documents", "chat", "dashboard", "music", "terminal", "dsh", "settings", "tools"] as NavPage[])
   .filter((id) => {
     if (id === "music") return hostCapabilities.music;
     if (id === "terminal") return hostCapabilities.terminal;
+    if (id === "dsh") return hostCapabilities.dsh;
     return true;
   });
 
@@ -92,6 +93,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   const visible = (item: import("@/store/settingsStore").TopBarItemId) => {
     if (!visibleItems.includes(item)) return false;
     if (item === "mcp") return hostCapabilities.mcp;
+    if (item === "dsh") return hostCapabilities.dsh;
     if (item === "updates") return hostCapabilities.updater;
     return true;
   };
@@ -370,6 +372,17 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
             {floatingBrowserMinimized && (
               <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-emerald-500" />
             )}
+          </Button>}
+          {hostCapabilities.dsh && visible("dsh") && <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate("dsh")}
+            title={t("nav.dsh")}
+            aria-label={t("nav.dsh")}
+            aria-current={activePage === "dsh" ? "page" : undefined}
+            className={`h-8 w-8 rounded-lg ${activePage === "dsh" ? "text-primary" : "text-muted-foreground"}`}
+          >
+            <DshIcon className="h-4 w-4" />
           </Button>}
           {visible("db") && <Tooltip>
             <TooltipTrigger asChild>

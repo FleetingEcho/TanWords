@@ -11,17 +11,19 @@ import { McpSection } from "./McpSection";
 import { DocumentsSection } from "./DocumentsSection";
 import { TerminalSection } from "./TerminalSection";
 import { DataSection } from "./DataSection";
+import { DshSection } from "./DshSection";
 import { hostCapabilities } from "@/platform";
 
 export { SettingRow } from "./SettingsShared";
 
-const ALL_SECTIONS = ["general", "lock", "providers", "learning", "tts", "mcp", "documents", "terminal", "data"] as const;
+const ALL_SECTIONS = ["general", "lock", "providers", "learning", "tts", "mcp", "documents", "terminal", "dsh", "data"] as const;
 type SectionId = (typeof ALL_SECTIONS)[number];
 const SECTIONS = ALL_SECTIONS.filter((id) => {
   if (id === "lock") return hostCapabilities.appLock;
   if (id === "tts") return hostCapabilities.nativeTts;
   if (id === "mcp") return hostCapabilities.mcp;
   if (id === "terminal") return hostCapabilities.terminal;
+  if (id === "dsh") return hostCapabilities.dsh;
   return true;
 });
 
@@ -30,7 +32,7 @@ export function SettingsPage() {
   const db = useDB();
 
   const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
-    general: null, lock: null, providers: null, learning: null, tts: null, mcp: null, documents: null, terminal: null, data: null,
+    general: null, lock: null, providers: null, learning: null, tts: null, mcp: null, documents: null, terminal: null, dsh: null, data: null,
   });
   const scrollRef = useRef<HTMLDivElement>(null);
   const [activeSection, setActiveSection] = useState<SectionId>("general");
@@ -172,6 +174,10 @@ export function SettingsPage() {
               {t("settings.section.terminal")}
             </p>
             <TerminalSection />
+          </section>}
+
+          {hostCapabilities.dsh && <section ref={(el) => { sectionRefs.current.dsh = el; }} data-section="dsh" className="scroll-mt-6">
+            <DshSection />
           </section>}
 
           <section ref={(el) => { sectionRefs.current.data = el; }} data-section="data" className="scroll-mt-6">

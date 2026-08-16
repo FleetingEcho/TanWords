@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { isDesktopHost } from "@/platform";
 import {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR, DEFAULT_BANNER_POSITION,
-  DEFAULT_LAYOUT_MODE, DEFAULT_AUTO_LOCK_MINUTES, DEFAULT_DSH_PORT, DEFAULT_DSH_TOOLBAR_VISIBLE,
+  DEFAULT_LAYOUT_MODE, DEFAULT_AUTO_LOCK_MINUTES, DEFAULT_DSH_PORT, DEFAULT_DSH_BACKGROUND_OPACITY, DEFAULT_DSH_BACKGROUND_BLUR, DEFAULT_DSH_TOOLBAR_VISIBLE,
   DEFAULT_TERMINAL_BACKGROUND_BLUR, DEFAULT_TERMINAL_BACKGROUND_OPACITY, DEFAULT_TERMINAL_TRANSPARENT,
   DEFAULT_TERMINAL_BACKGROUND_COLOR, DEFAULT_TERMINAL_TEXT_COLOR,
   DEFAULT_TERMINAL_COLOR_SCHEME, TERMINAL_COLOR_SCHEME_COLORS, TERMINAL_COLOR_SCHEME_EFFECTS,
@@ -29,7 +29,7 @@ export type {
 export {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS,
   DEFAULT_HIGHLIGHT_COLOR, HIGHLIGHT_PRESETS, DEFAULT_BANNER_POSITION, DEFAULT_LAYOUT_MODE,
-  AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES, DEFAULT_DSH_PORT, DEFAULT_DSH_TOOLBAR_VISIBLE,
+  AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES, DEFAULT_DSH_PORT, DEFAULT_DSH_BACKGROUND_OPACITY, DEFAULT_DSH_BACKGROUND_BLUR, DEFAULT_DSH_TOOLBAR_VISIBLE,
   DEFAULT_TERMINAL_BACKGROUND_BLUR, DEFAULT_TERMINAL_BACKGROUND_OPACITY, DEFAULT_TERMINAL_TRANSPARENT,
   DEFAULT_TERMINAL_BACKGROUND_COLOR, DEFAULT_TERMINAL_TEXT_COLOR,
   DEFAULT_TERMINAL_COLOR_SCHEME, TERMINAL_COLOR_SCHEME_COLORS, TERMINAL_COLOR_SCHEME_EFFECTS,
@@ -91,6 +91,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   appBackgroundVisible: true,
   browserAdBlockEnabled: true,
   dshPort: DEFAULT_DSH_PORT,
+  dshBackgroundOpacity: DEFAULT_DSH_BACKGROUND_OPACITY,
+  dshBackgroundBlur: DEFAULT_DSH_BACKGROUND_BLUR,
   dshToolbarVisible: DEFAULT_DSH_TOOLBAR_VISIBLE,
   terminalTransparent: DEFAULT_TERMINAL_TRANSPARENT,
   terminalBackgroundBlur: DEFAULT_TERMINAL_BACKGROUND_BLUR,
@@ -332,6 +334,18 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       : 0;
     set({ dshPort: p });
     saveSetting("dsh_port", JSON.stringify(p));
+  },
+
+  setDshBackgroundOpacity: (percent) => {
+    const value = Math.min(100, Math.max(0, Math.round(percent)));
+    set({ dshBackgroundOpacity: value });
+    saveSettingDebounced("dsh_background_opacity", JSON.stringify(value));
+  },
+
+  setDshBackgroundBlur: (strength) => {
+    const value = Math.min(100, Math.max(0, Math.round(strength)));
+    set({ dshBackgroundBlur: value });
+    saveSettingDebounced("dsh_background_blur", JSON.stringify(value));
   },
 
   setDshToolbarVisible: (visible) => {

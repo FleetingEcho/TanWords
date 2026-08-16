@@ -22,6 +22,22 @@ export interface DshBounds {
 }
 
 const DSH_PARTITION = "persist:dsh";
+/** Adjust DSH's two full-page background surfaces without fading its text,
+ * controls, menus, or code blocks. DSH re-declares these variables on nested
+ * theme roots, so every scope must receive the override. */
+export function dshBackgroundCss(opacity: number): string {
+  const percent = Math.min(100, Math.max(0, Math.round(opacity)));
+  return `
+:root, :root * {
+  --dsw-alias-bg-base: color-mix(in srgb, var(--dsw-static-neutral-bluish-950) ${percent}%, transparent) !important;
+  --dsw-specific-sidebar-fill: color-mix(in srgb, var(--dsw-static-neutral-bluish-900) ${percent}%, transparent) !important;
+}
+html, body, #root {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+`;
+}
 
 export class DshPanel {
   private win: BrowserWindow | null = null;
@@ -34,6 +50,10 @@ export class DshPanel {
   private attached = false;
   private lastBounds: DshBounds | null = null;
   private onEvent: ((name: string, payload: unknown) => void) | null = null;
+  private backgroundOpacity = 100;
+  private pageReady = false;
+  private transparencyCssKey: string | null = null;
+  private transparencyRevision = 0;
 
   setWindow(win: BrowserWindow) {
     this.win = win;
@@ -41,6 +61,44 @@ export class DshPanel {
 
   setEventSink(sink: (name: string, payload: unknown) => void) {
     this.onEvent = sink;
+  }
+
+  /** Adjust the native backing layer and DSH's own background surfaces. The
+   *  preference can change while the view is detached; it is remembered and
+   *  applied as soon as the current/new document becomes ready. */
+  setBackgroundOpacity(opacity: number): void {
+    this.backgroundOpacity = Math.min(100, Math.max(0, Math.round(opacity)));
+    this.applyBackgroundTransparency();
+  }
+
+  private applyBackgroundTransparency(): void {
+    const view = this.view;
+    if (!view) return;
+    view.setBackgroundColor(this.backgroundOpacity < 100 ? "#00000000" : "#FFFFFFFF");
+
+    const revision = ++this.transparencyRevision;
+    const wc = view.webContents;
+    const previous = this.transparencyCssKey;
+    this.transparencyCssKey = null;
+    if (previous) void wc.removeInsertedCSS(previous).catch(() => {});
+    if (this.backgroundOpacity >= 100 || !this.pageReady) return;
+
+    const css = dshBackgroundCss(this.backgroundOpacity);
+    void wc.insertCSS(css).then((key) => {
+      // A quick on→off toggle or a navigation may finish this insertion after
+      // a newer state has won. Remove the stale sheet instead of letting it
+      // resurrect transparency.
+      if (
+        revision !== this.transparencyRevision ||
+        this.backgroundOpacity >= 100 ||
+        this.view !== view ||
+        !this.pageReady
+      ) {
+        void wc.removeInsertedCSS(key).catch(() => {});
+        return;
+      }
+      this.transparencyCssKey = key;
+    }).catch(() => {});
   }
 
   /** Reveal the view at `bounds`, loading `url` on first use or when the host
@@ -98,6 +156,7 @@ export class DshPanel {
     this.url = url;
 
     const wc = view.webContents;
+    view.setBackgroundColor(this.backgroundOpacity < 100 ? "#00000000" : "#FFFFFFFF");
     // Its own inspector while the DSH surface has focus — same convention as the
     // browser panel.
     wireDevToolsShortcut(wc);
@@ -113,6 +172,16 @@ export class DshPanel {
     wc.on("page-title-updated", (_e, title) => this.onEvent?.("dsh://title-changed", title));
     wc.on("did-start-loading", () => this.onEvent?.("dsh://loading", true));
     wc.on("did-stop-loading", () => this.onEvent?.("dsh://loading", false));
+    wc.on("did-start-navigation", (_e, _url, isInPlace, isMainFrame) => {
+      if (isInPlace || !isMainFrame) return;
+      this.pageReady = false;
+      this.transparencyCssKey = null;
+      this.transparencyRevision += 1;
+    });
+    wc.on("dom-ready", () => {
+      this.pageReady = true;
+      this.applyBackgroundTransparency();
+    });
 
     // DSH may open auth/model-provider popups; with no second window to
     // manage, navigate this view there (the browser panel's approach). An
@@ -188,5 +257,8 @@ export class DshPanel {
     this.view = null;
     this.win = null;
     this.url = null;
+    this.pageReady = false;
+    this.transparencyCssKey = null;
+    this.transparencyRevision += 1;
   }
 }

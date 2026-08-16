@@ -64,7 +64,7 @@ export function PodcastPlayerBar() {
       // Compact widths have no sidebar to clear, so the bar spans the full
       // screen and sits on the bottom edge; the nav dock floats above it. Wide
       // widths dock it beside the sidebar instead — `left: SIDEBAR_WIDTH` at
-      // compact width would hang 210px of the bar past the left edge.
+      // compact width would hang the sidebar-sized offset past the left edge.
       className={`fixed right-0 bottom-0 z-40 flex animate-fade-in cursor-pointer flex-col items-stretch gap-0.5 border-t border-border bg-card/95 px-2 pb-[calc(0.375rem+env(safe-area-inset-bottom))] pt-1 backdrop-blur-xs transition-[left] duration-200 lg:flex-row lg:items-center lg:px-4 lg:py-2.5 ${
         compact ? "left-0" : ""
       }`}

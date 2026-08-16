@@ -67,7 +67,10 @@ export async function deleteProvider(id: string): Promise<void> {
 /** Every configured provider with its key, keyed by id. The key fetches are
  *  one round-trip each, so they overlap rather than run in sequence. */
 export async function loadProviderConfigs(): Promise<Record<string, ProviderConfig>> {
-  const rows = await listProviders();
+  // TanWords exposes one provider shape: user-defined OpenAI-compatible
+  // endpoints. Legacy builtin/preset rows remain stored for safe rollback,
+  // but are deliberately inactive and invisible throughout the app.
+  const rows = (await listProviders()).filter((row) => row.kind === "custom");
   if (!isDesktopHost) {
     const out: Record<string, ProviderConfig> = {};
     for (const row of rows) {

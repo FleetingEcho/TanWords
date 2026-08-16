@@ -1,5 +1,4 @@
-import { registerBuiltInProviders, registerCustomProvider, markProvidersReady } from "@/providers";
-import { DEFAULT_PROVIDER_MODELS } from "@/providers/modelPreferences";
+import { registerCustomProvider, markProvidersReady } from "@/providers";
 import { importLegacyProviderConfig, loadProviderConfigs } from "@/providers/providerStore";
 import { listProviders } from "@/providers/providerStore";
 import { isDesktopHost } from "@/platform";
@@ -14,14 +13,8 @@ import { isDesktopHost } from "@/platform";
 export async function initProviders(): Promise<void> {
   try {
     if (!isDesktopHost) {
-      const rows = await listProviders();
-      const byId = new Map(rows.map((row) => [row.id, row]));
-      registerBuiltInProviders("", "", {
-        openai: byId.get("openai")?.modelId || DEFAULT_PROVIDER_MODELS.openai,
-        claude: byId.get("claude")?.modelId || DEFAULT_PROVIDER_MODELS.claude,
-      });
+      const rows = (await listProviders()).filter((row) => row.kind === "custom");
       for (const row of rows) {
-        if (row.kind === "builtin") continue;
         registerCustomProvider(row.id, row.name, row.apiBase, "", row.modelId);
       }
       return;
@@ -33,23 +26,10 @@ export async function initProviders(): Promise<void> {
 
     const configs = await loadProviderConfigs();
 
-    // Built-ins are always registered, keyed or not: the settings UI lists
-    // them unconditionally, and an unkeyed one simply fails its calls with
-    // the API's own error rather than being silently absent.
-    registerBuiltInProviders(configs.openai?.apiKey || "", configs.claude?.apiKey || "", {
-      openai: configs.openai?.modelId || DEFAULT_PROVIDER_MODELS.openai,
-      claude: configs.claude?.modelId || DEFAULT_PROVIDER_MODELS.claude,
-    });
-
     for (const config of Object.values(configs)) {
-      // Presets are hosted APIs — nothing to call until a key is saved, so
-      // they stay out of the registry. Customs are usually self-hosted
-      // (Ollama, LM Studio) and take keyless requests: register them whether
-      // or not they carry a key, or they'd stay invisible everywhere despite
-      // being fully configured.
-      if (config.kind === "builtin") continue;
-      if (config.kind === "preset" && !config.apiKey) continue;
-      registerCustomProvider(config.id, config.name, config.apiBase, config.apiKey, config.modelId, config.kind === "preset");
+      // Custom endpoints may be keyless (Ollama, LM Studio), so every stored
+      // custom is registered regardless of whether it carries a credential.
+      registerCustomProvider(config.id, config.name, config.apiBase, config.apiKey, config.modelId, false);
     }
   } catch (error) {
     // Startup must not hang on a provider problem — surface it and carry on

@@ -3,7 +3,7 @@ import { netFetch } from "@/ipc/net";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { registerBuiltInProviders, registerCustomProvider, removeProvider } from "@/providers";
+import { registerCustomProvider, removeProvider } from "@/providers";
 import {
   ProviderConfig,
   deleteProvider,
@@ -12,26 +12,20 @@ import {
 } from "@/providers/providerStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useT } from "@/hooks/useT";
-import { DEFAULT_PROVIDER_MODELS } from "@/providers/modelPreferences";
-import { BUILT_IN_API_BASE, BUILT_IN_PROVIDERS, PRESET_PROVIDERS, ProviderDef } from "./providerConstants";
+import { ProviderDef } from "./providerConstants";
 import { ProviderRow } from "./ProviderList";
-import { ProviderKeyModelPanel } from "./ProviderKeyModelPanel";
 import { CustomProviderPanel } from "./CustomProviderPanel";
 import { CustomProviderAddForm } from "./CustomProviderAddForm";
 import { isDesktopHost } from "@/platform";
 
-/** The row a provider starts from before it has ever been saved. Built-ins and
- *  presets are always listed by the UI, so they need a config object well
- *  before a row for them exists in the database. */
+/** Initial state for a user-created OpenAI-compatible endpoint. */
 function blankConfig(id: string): ProviderConfig {
-  const builtIn = BUILT_IN_PROVIDERS.find((p) => p.id === id);
-  const preset = PRESET_PROVIDERS.find((p) => p.id === id);
   return {
     id,
-    name: builtIn?.name ?? preset?.name ?? "",
-    kind: builtIn ? "builtin" : preset ? "preset" : "custom",
-    apiBase: BUILT_IN_API_BASE[id] ?? preset?.apiBase ?? "",
-    modelId: DEFAULT_PROVIDER_MODELS[id] ?? builtIn?.model ?? preset?.model ?? "",
+    name: "",
+    kind: "custom",
+    apiBase: "",
+    modelId: "",
     hasKey: false,
     apiKey: "",
   };
@@ -127,13 +121,8 @@ export function ProviderSection() {
       // Repair a default that points at a provider with no key — otherwise
       // every AI call silently falls back to whichever one happens to work.
       const currentDefault = useSettingsStore.getState().defaultAiProvider;
-      // A custom provider counts as configured even keyless: it's typically a
-      // self-hosted server that takes keyless requests. Treating it as empty
-      // here would "repair" a freshly added Ollama away from the default slot.
       const isConfigured = (config: ProviderConfig | undefined): boolean => {
-        if (!config) return false;
-        if (config.kind === "custom") return true;
-        return isDesktopHost ? Boolean(config.apiKey) : config.hasKey;
+        return config?.kind === "custom";
       };
       if (!isConfigured(loadedConfigs[currentDefault])) {
         const firstConfigured = Object.values(loadedConfigs).find(isConfigured)?.id;
@@ -144,42 +133,21 @@ export function ProviderSection() {
     })();
   }, []);
 
-  // Keep the in-memory provider registry in step with the edits above, so a
-  // key typed here works everywhere else without a restart.
-  useEffect(() => {
-    if (!loaded) return;
-    registerBuiltInProviders(
-      configs.openai?.apiKey || "",
-      configs.claude?.apiKey || "",
-      {
-        openai: configs.openai?.modelId || DEFAULT_PROVIDER_MODELS.openai,
-        claude: configs.claude?.modelId || DEFAULT_PROVIDER_MODELS.claude,
-      },
-    );
-  }, [loaded, configs.openai?.apiKey, configs.claude?.apiKey, configs.openai?.modelId, configs.claude?.modelId]);
-
+  // Keep the in-memory provider registry in step with edits, so a custom
+  // endpoint works everywhere else without a restart.
   useEffect(() => {
     if (!loaded) return;
     for (const config of Object.values(configs)) {
-      if (config.kind === "builtin") continue;
       if (!isDesktopHost) {
         registerCustomProvider(config.id, config.name, config.apiBase, "", config.modelId);
-      } else if (config.kind === "custom" || config.apiKey) {
-        // Customs register keyless (self-hosted servers typically need no
-        // key) — without this, adding an Ollama instance changed nothing
-        // anywhere in the app, and even a restart couldn't help because
-        // initProviders applied the same key requirement. Presets remain
-        // key-gated: they're hosted APIs with nothing to call keyless.
-        registerCustomProvider(config.id, config.name, config.apiBase, config.apiKey, config.modelId, config.kind === "preset");
       } else {
-        removeProvider(config.id);
+        registerCustomProvider(config.id, config.name, config.apiBase, config.apiKey, config.modelId, false);
       }
     }
   }, [loaded, configs]);
 
   const configFor = (id: string): ProviderConfig => configs[id] ?? blankConfig(id);
   const keyFor = (id: string): string => configs[id]?.apiKey || "";
-  const modelFor = (id: string): string => configs[id]?.modelId ?? blankConfig(id).modelId;
 
   const testConnection = async (providerId: string, apiBase: string, apiKey: string, modelId?: string) => {
     setTestStatus({ ok: null, text: t("settings.testing") });
@@ -188,50 +156,22 @@ export function ProviderSection() {
     try {
       if (!isDesktopHost) {
         const base = `/api/ai-proxy/${encodeURIComponent(providerId)}`;
-        let res: Response;
-        if (providerId === "claude") {
-          res = await netFetch(`${base}/v1/messages`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "anthropic-version": "2023-06-01" },
-            body: JSON.stringify({ model, max_tokens: 3, messages: [{ role: "user", content: "Hi" }] }),
-          });
-        } else {
-          res = await netFetch(`${base}/chat/completions`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ model, messages: [{ role: "user", content: "Hi" }], max_tokens: 3 }),
-          });
-        }
+        const res = await netFetch(`${base}/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model, messages: [{ role: "user", content: "Hi" }], max_tokens: 3 }),
+        });
         setTestStatus(res.ok ? { ok: true, text: t("settings.testOk") } : { ok: false, text: String(res.status) });
         setTimeout(() => setTestStatus(null), 3000);
         return;
       }
 
-      let res: Response;
-      if (providerId === "claude") {
-        // Claude uses the Anthropic Messages API, not OpenAI-compatible chat/completions
-        const base = apiBase.replace(/\/$/, "");
-        res = await netFetch(`${base}/v1/messages`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": apiKey,
-            "anthropic-version": "2023-06-01",
-          },
-          body: JSON.stringify({
-            model,
-            max_tokens: 3,
-            messages: [{ role: "user", content: "Hi" }],
-          }),
-        });
-      } else {
-        const base = apiBase.replace(/\/chat\/completions\/?$/, "").replace(/\/$/, "");
-        res = await netFetch(`${base}/chat/completions`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-          body: JSON.stringify({ model, messages: [{ role: "user", content: "Hi" }], max_tokens: 3 }),
-        });
-      }
+      const base = apiBase.replace(/\/chat\/completions\/?$/, "").replace(/\/$/, "");
+      const res = await netFetch(`${base}/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({ model, messages: [{ role: "user", content: "Hi" }], max_tokens: 3 }),
+      });
       setTestStatus(res.ok ? { ok: true, text: t("settings.testOk") } : { ok: false, text: String(res.status) });
     } catch (e: any) {
       setTestStatus({ ok: false, text: e.message });
@@ -245,7 +185,7 @@ export function ProviderSection() {
     try {
       if (!isDesktopHost) {
         const base = `/api/ai-proxy/${encodeURIComponent(providerId)}`;
-        const modelsUrl = providerId === "claude" ? `${base}/v1/models` : `${base}/models`;
+        const modelsUrl = `${base}/models`;
         const response = await netFetch(modelsUrl, { headers: { Accept: "application/json" } });
         if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
         const body = await response.json();
@@ -264,14 +204,9 @@ export function ProviderSection() {
       const base = apiBase.trim().replace(/\/chat\/completions\/?$/, "").replace(/\/$/, "");
       const headers: Record<string, string> = { Accept: "application/json" };
       if (apiKey.trim()) {
-        if (providerId === "claude") {
-          headers["x-api-key"] = apiKey.trim();
-          headers["anthropic-version"] = "2023-06-01";
-        } else {
-          headers.Authorization = `Bearer ${apiKey.trim()}`;
-        }
+        headers.Authorization = `Bearer ${apiKey.trim()}`;
       }
-      const modelsUrl = providerId === "claude" ? `${base}/v1/models` : `${base}/models`;
+      const modelsUrl = `${base}/models`;
       const response = await netFetch(modelsUrl, { headers });
       if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
       const body = await response.json();
@@ -351,38 +286,13 @@ export function ProviderSection() {
   };
 
   const allCards: ProviderDef[] = [
-    ...BUILT_IN_PROVIDERS.map((provider) => ({ ...provider, model: modelFor(provider.id) })),
-    ...PRESET_PROVIDERS.map((provider) => ({ ...provider, model: modelFor(provider.id) })),
     ...Object.values(configs)
       .filter((c) => c.kind === "custom")
       .map((c) => ({ id: c.id, name: c.name, model: c.modelId, dot: "#6366f1", isCustom: true, apiBase: c.apiBase })),
   ];
 
-  /** The config form for one provider — built-ins and presets share the same
-   *  key/model panel; custom providers get the editable one. */
   const panelFor = (id: string) => {
     const config = configFor(id);
-
-    if (config.kind === "builtin" || config.kind === "preset") {
-      const placeholder = id === "openai" ? "sk-..." : id === "claude" ? "sk-ant-..." : "API Key";
-      return (
-        <ProviderKeyModelPanel
-          apiKeyValue={config.apiKey}
-          onApiKeyChange={(value) => updateConfig(id, { apiKey: value, hasKey: Boolean(value) })}
-          apiKeyPlaceholder={placeholder}
-          modelValue={config.modelId}
-          onModelChange={(model) => updateConfig(id, { modelId: model })}
-          modelOptions={fetchedModels}
-          fetchingModels={fetchingModels}
-          onFetchModels={() => void fetchModels(id, config.apiBase, config.apiKey, (model) => updateConfig(id, { modelId: model }), config.modelId)}
-          onTest={() => testConnection(id, config.apiBase, config.apiKey, config.modelId)}
-          onClear={() => updateConfig(id, { apiKey: "", hasKey: false, modelId: "" }, true)}
-          testStatus={testStatus}
-          t={t}
-        />
-      );
-    }
-
     if (!configs[id]) return null;
     return (
       <CustomProviderPanel

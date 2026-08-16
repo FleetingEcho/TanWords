@@ -12,7 +12,7 @@ export type Theme =
   | "dim"
   | "system";
 export type SidebarTabId = Exclude<NavPage, "settings">;
-export type TopBarItemId = "search" | "context" | "scratch" | "db" | "mcp" | "ai" | "language" | "theme" | "updates" | "github";
+export type TopBarItemId = "search" | "context" | "scratch" | "dsh" | "db" | "mcp" | "ai" | "language" | "theme" | "updates" | "github";
 export type LayoutMode = "flexible" | "fixed";
 export type TerminalRenderer = "auto" | "webgl" | "dom";
 /** Which terminal library renders a tab's screen. `restty` (the default) is
@@ -40,7 +40,7 @@ export const DEFAULT_SIDEBAR_TABS: SidebarTabId[] = [
   "dashboard", "feeds", "reading", "documents", "vocabulary", "chat", "music", "browser", "terminal", "dsh", "tools",
 ];
 export const DEFAULT_TOPBAR_ITEMS: TopBarItemId[] = [
-  "search", "context", "scratch", "db", "mcp", "ai", "language", "theme", "updates", "github",
+  "search", "context", "scratch", "dsh", "db", "mcp", "ai", "language", "theme", "updates", "github",
 ];
 export const DEFAULT_LAYOUT_MODE: LayoutMode = "flexible";
 
@@ -61,6 +61,10 @@ export const DEFAULT_AUTO_LOCK_MINUTES = 0;
  *  and reuses an existing host there; a non-zero value pins the supervised
  *  host to a custom port for external tools or firewall rules. */
 export const DEFAULT_DSH_PORT = 0;
+/** DSH background appearance. Opacity is a percentage; blur is a 0–100
+ *  strength that the renderer maps to a safe backdrop-blur radius. */
+export const DEFAULT_DSH_BACKGROUND_OPACITY = 100;
+export const DEFAULT_DSH_BACKGROUND_BLUR = 0;
 /** Whether the DSH page shows its own toolbar (DSH label, Restart, Reload,
  *  Open-external). Hidden by default so the embedded agent UI gets the full
  *  height; the Restart/Reload/Open-external actions are rarely needed day to

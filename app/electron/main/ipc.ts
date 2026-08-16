@@ -613,7 +613,11 @@ async function dispatch(
     // host on a fixed loopback port; `dsh_restart` stops and respawns to apply
     // a port change to a live host (the renderer's "Restart" button).
     case "dsh_show": {
-      const { port, ...bounds } = (args ?? {}) as { port?: number } & DshBounds;
+      const { port, backgroundOpacity, ...bounds } = (args ?? {}) as {
+        port?: number;
+        backgroundOpacity?: number;
+      } & DshBounds;
+      deps.dshPanel.setBackgroundOpacity(Number(backgroundOpacity ?? 100));
       let url: string;
       try {
         url = await deps.dshSupervisor.start(port);
@@ -635,6 +639,11 @@ async function dispatch(
     }
     case "dsh_set_bounds": {
       deps.dshPanel.setBounds((args ?? {}) as DshBounds);
+      return null;
+    }
+    case "dsh_set_background_opacity": {
+      const { opacity } = (args ?? {}) as { opacity?: number };
+      deps.dshPanel.setBackgroundOpacity(Number(opacity ?? 100));
       return null;
     }
     case "dsh_reload": {

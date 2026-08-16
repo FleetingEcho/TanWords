@@ -321,62 +321,6 @@ function DefaultRssTabSetting() {
   );
 }
 
-/** Loopback port for the supervised DSH Web host (desktop only). 0 means the
- *  standard/reusable port 3080; a fixed number overrides it. A local draft is
- *  committed on blur/Enter so typing a multi-digit port isn't clamped
- *  mid-keystroke, and 0 renders as the default placeholder rather than a
- *  literal 0. Applies on the next host start. */
-function DshPortSetting() {
-  const t = useT();
-  const dshPort = useSettingsStore((s) => s.dshPort);
-  const setDshPort = useSettingsStore((s) => s.setDshPort);
-  const [draft, setDraft] = useState(dshPort === 0 ? "" : String(dshPort));
-
-  // Re-sync when the store value changes externally (DB load, another window).
-  useEffect(() => {
-    setDraft(dshPort === 0 ? "" : String(dshPort));
-  }, [dshPort]);
-
-  const commit = (value: string) => {
-    const n = Number(value);
-    setDshPort(Number.isFinite(n) && n > 0 ? n : 0);
-  };
-
-  return (
-    <SettingRow label={t("settings.dshPort")} sub={t("settings.dshPortSub")}>
-      <input
-        type="number"
-        min={0}
-        max={65535}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => commit(draft)}
-        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-        placeholder={t("settings.dshPortAuto")}
-        className="w-24 h-8 px-2 rounded-lg border border-input bg-background text-sm text-center focus:outline-hidden focus:ring-2 focus:ring-primary/30"
-      />
-    </SettingRow>
-  );
-}
-
-function DshToolbarSetting() {
-  const t = useT();
-  const visible = useSettingsStore((s) => s.dshToolbarVisible);
-  const setVisible = useSettingsStore((s) => s.setDshToolbarVisible);
-  return (
-    <SettingRow label={t("settings.dshToolbar")} sub={t("settings.dshToolbarSub")}>
-      <ToggleGroup
-        options={[
-          { id: "off", label: t("settings.off") },
-          { id: "on", label: t("settings.on") },
-        ]}
-        value={visible ? "on" : "off"}
-        onChange={(v) => setVisible(v === "on")}
-      />
-    </SettingRow>
-  );
-}
-
 export function GeneralSection() {
   const [accountEmail, setAccountEmail] = useState<string | null>(null);
   useEffect(() => {
@@ -389,130 +333,131 @@ export function GeneralSection() {
   const t = useT();
 
   return (
-    <div className="bg-card border border-border rounded-xl px-5 divide-y divide-border">
-      <NicknameSetting />
-      <UserAvatarSetting />
-      <DashboardBannerSetting />
-      <AppBackgroundSetting />
-      <SettingRow label={t("settings.uiLanguage")} sub={t("settings.uiLanguageSub")}>
-        <ToggleGroup
-          options={[{ id: "en", label: "English" }, { id: "zh", label: "中文" }]}
-          value={settings.uiLanguage}
-          onChange={(v) => settings.setUiLanguage(v)}
-        />
-      </SettingRow>
-      <SettingRow label={t("settings.layoutMode")} sub={t("settings.layoutModeSub")}>
-        <ToggleGroup
-          options={[
-            { id: "on", label: t("settings.on") },
-            { id: "off", label: t("settings.off") },
-          ]}
-          value={settings.layoutMode === "flexible" ? "on" : "off"}
-          onChange={(v) => settings.setLayoutMode(v === "on" ? "flexible" : "fixed")}
-        />
-      </SettingRow>
-      <SettingRow label={t("settings.theme")} sub={t("settings.themeSub")}>
-        <Select value={settings.theme} onValueChange={(value) => settings.setTheme(value as Theme)}>
-          <SelectTrigger className="h-9 w-52">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="light">{t("settings.light")}</SelectItem>
-            <SelectItem value="dark">{t("settings.dark")}</SelectItem>
-            <SelectItem value="catppuccin-latte">{t("settings.catppuccinLatte")}</SelectItem>
-            <SelectItem value="catppuccin-mocha">{t("settings.catppuccinMocha")}</SelectItem>
-            <SelectItem value="dracula">{t("settings.dracula")}</SelectItem>
-            <SelectItem value="tokyo-night">{t("settings.tokyoNight")}</SelectItem>
-            <SelectItem value="tokyo-night-day">{t("settings.tokyoNightDay")}</SelectItem>
-            <SelectItem value="tokyo-night-storm">{t("settings.tokyoNightStorm")}</SelectItem>
-            <SelectItem value="dim">{t("settings.dim")}</SelectItem>
-            <SelectItem value="system">{t("settings.system")}</SelectItem>
-          </SelectContent>
-        </Select>
-      </SettingRow>
-      <DefaultRssTabSetting />
-      <SettingRow label={t("settings.selectionActions")} sub={t("settings.selectionActionsSub")}>
-        <ToggleGroup
-          options={[
-            { id: "on", label: t("settings.on") },
-            { id: "off", label: t("settings.off") },
-          ]}
-          value={settings.selectionActions ? "on" : "off"}
-          onChange={(v) => settings.setSelectionActions(v === "on")}
-        />
-      </SettingRow>
-      {hostCapabilities.dsh && <DshPortSetting />}
-      {hostCapabilities.dsh && <DshToolbarSetting />}
-      <div className="py-4">
-        <div className="mb-3">
-          <div className="flex items-center gap-2.5">
-            <p className="text-sm font-medium">{t("settings.topBarItems")}</p>
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">{t("settings.topBarItemsSelected", { n: settings.visibleTopBarItems.length })}</span>
-          </div>
-          <p className="mt-0.5 text-xs text-muted-foreground">{t("settings.topBarItemsSub")}</p>
-        </div>
-        <div className="flex max-w-4xl flex-wrap gap-2">
-          {DEFAULT_TOPBAR_ITEMS.filter((item) => {
-            if (item === "mcp") return hostCapabilities.mcp;
-            if (item === "updates") return hostCapabilities.updater;
-            return true;
-          }).map((item) => {
-            const visible = settings.visibleTopBarItems.includes(item);
-            return (
-              <label key={item} className={`flex h-8 w-32 cursor-pointer items-center gap-2 rounded-full border px-3 text-xs font-medium transition-colors ${visible ? "border-primary/30 bg-primary/[0.07] text-foreground" : "border-transparent bg-muted/50 text-muted-foreground hover:bg-muted"}`}>
-                <Checkbox className="h-3.5 w-3.5 rounded-full shadow-none" checked={visible} onCheckedChange={(checked) => settings.setTopBarItemVisible(item, checked === true)} />
-                <span className="truncate">{t(`settings.topBar.${item}`)}</span>
-              </label>
-            );
-          })}
-        </div>
-      </div>
-      <div className="py-4">
-        <div className="mb-3">
-          <div className="flex items-center gap-2.5">
-            <p className="text-sm font-medium">{t("settings.sidebarTabs")}</p>
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-              {t("settings.sidebarTabsSelected", { n: settings.visibleSidebarTabs.length })}
-            </span>
-          </div>
-          <p className="mt-0.5 text-xs text-muted-foreground">{t("settings.sidebarTabsSub")}</p>
-        </div>
-        <div className="flex max-w-3xl flex-wrap gap-2">
-          {DEFAULT_SIDEBAR_TABS.filter((tab) => {
-            if (tab === "music") return hostCapabilities.music;
-            if (tab === "browser") return hostCapabilities.browser;
-            if (tab === "terminal") return hostCapabilities.terminal;
-            return true;
-          }).map((tab) => {
-            const visible = settings.visibleSidebarTabs.includes(tab);
-            return (
-              <label
-                key={tab}
-                className={`flex h-8 w-32 cursor-pointer items-center gap-2 rounded-full border px-3 text-xs font-medium transition-colors ${
-                  visible
-                    ? "border-primary/30 bg-primary/[0.07] text-foreground"
-                    : "border-transparent bg-muted/50 text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                <Checkbox className="h-3.5 w-3.5 rounded-full shadow-none" checked={visible} onCheckedChange={(checked) => settings.setSidebarTabVisible(tab, checked === true)} />
-                <span className="truncate">{t(`nav.${tab}`)}</span>
-              </label>
-            );
-          })}
-        </div>
-      </div>
-
-      {hostCapabilities.auth && (
-        <div className="mt-4 border-t border-border/60 py-4">
+    <div className="space-y-4">
+      <div className="bg-card border border-border rounded-xl px-5 divide-y divide-border">
+        <NicknameSetting />
+        <UserAvatarSetting />
+        <DashboardBannerSetting />
+        <AppBackgroundSetting />
+        <SettingRow label={t("settings.uiLanguage")} sub={t("settings.uiLanguageSub")}>
+          <ToggleGroup
+            options={[{ id: "en", label: "English" }, { id: "zh", label: "中文" }]}
+            value={settings.uiLanguage}
+            onChange={(v) => settings.setUiLanguage(v)}
+          />
+        </SettingRow>
+        <SettingRow label={t("settings.layoutMode")} sub={t("settings.layoutModeSub")}>
+          <ToggleGroup
+            options={[
+              { id: "on", label: t("settings.on") },
+              { id: "off", label: t("settings.off") },
+            ]}
+            value={settings.layoutMode === "flexible" ? "on" : "off"}
+            onChange={(v) => settings.setLayoutMode(v === "on" ? "flexible" : "fixed")}
+          />
+        </SettingRow>
+        <SettingRow label={t("settings.theme")} sub={t("settings.themeSub")}>
+          <Select value={settings.theme} onValueChange={(value) => settings.setTheme(value as Theme)}>
+            <SelectTrigger className="h-9 w-52">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="light">{t("settings.light")}</SelectItem>
+              <SelectItem value="dark">{t("settings.dark")}</SelectItem>
+              <SelectItem value="catppuccin-latte">{t("settings.catppuccinLatte")}</SelectItem>
+              <SelectItem value="catppuccin-mocha">{t("settings.catppuccinMocha")}</SelectItem>
+              <SelectItem value="dracula">{t("settings.dracula")}</SelectItem>
+              <SelectItem value="tokyo-night">{t("settings.tokyoNight")}</SelectItem>
+              <SelectItem value="tokyo-night-day">{t("settings.tokyoNightDay")}</SelectItem>
+              <SelectItem value="tokyo-night-storm">{t("settings.tokyoNightStorm")}</SelectItem>
+              <SelectItem value="dim">{t("settings.dim")}</SelectItem>
+              <SelectItem value="system">{t("settings.system")}</SelectItem>
+            </SelectContent>
+          </Select>
+        </SettingRow>
+        <DefaultRssTabSetting />
+        <SettingRow label={t("settings.selectionActions")} sub={t("settings.selectionActionsSub")}>
+          <ToggleGroup
+            options={[
+              { id: "on", label: t("settings.on") },
+              { id: "off", label: t("settings.off") },
+            ]}
+            value={settings.selectionActions ? "on" : "off"}
+            onChange={(v) => settings.setSelectionActions(v === "on")}
+          />
+        </SettingRow>
+        <div className="py-4">
           <div className="mb-3">
-            <p className="text-sm font-medium">{t("auth.account")}</p>
-            {accountEmail && <p className="mt-0.5 text-xs text-muted-foreground">{accountEmail}</p>}
+            <div className="flex items-center gap-2.5">
+              <p className="text-sm font-medium">{t("settings.topBarItems")}</p>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">{t("settings.topBarItemsSelected", { n: settings.visibleTopBarItems.length })}</span>
+            </div>
+            <p className="mt-0.5 text-xs text-muted-foreground">{t("settings.topBarItemsSub")}</p>
           </div>
-          <Button variant="outline" className="h-8 text-xs" onClick={() => void logout()}>
-            {t("auth.logout")}
-          </Button>
+          <div className="flex max-w-4xl flex-wrap gap-2">
+            {DEFAULT_TOPBAR_ITEMS.filter((item) => {
+            if (item === "mcp") return hostCapabilities.mcp;
+            if (item === "dsh") return hostCapabilities.dsh;
+            if (item === "updates") return hostCapabilities.updater;
+              return true;
+            }).map((item) => {
+              const visible = settings.visibleTopBarItems.includes(item);
+              return (
+                <label key={item} className={`flex h-8 w-32 cursor-pointer items-center gap-2 rounded-full border px-3 text-xs font-medium transition-colors ${visible ? "border-primary/30 bg-primary/[0.07] text-foreground" : "border-transparent bg-muted/50 text-muted-foreground hover:bg-muted"}`}>
+                  <Checkbox className="h-3.5 w-3.5 rounded-full shadow-none" checked={visible} onCheckedChange={(checked) => settings.setTopBarItemVisible(item, checked === true)} />
+                  <span className="truncate">{t(`settings.topBar.${item}`)}</span>
+                </label>
+              );
+            })}
+          </div>
         </div>
-      )}
+        <div className="py-4">
+          <div className="mb-3">
+            <div className="flex items-center gap-2.5">
+              <p className="text-sm font-medium">{t("settings.sidebarTabs")}</p>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                {t("settings.sidebarTabsSelected", { n: settings.visibleSidebarTabs.length })}
+              </span>
+            </div>
+            <p className="mt-0.5 text-xs text-muted-foreground">{t("settings.sidebarTabsSub")}</p>
+          </div>
+          <div className="flex max-w-3xl flex-wrap gap-2">
+            {DEFAULT_SIDEBAR_TABS.filter((tab) => {
+              if (tab === "music") return hostCapabilities.music;
+              if (tab === "browser") return hostCapabilities.browser;
+              if (tab === "terminal") return hostCapabilities.terminal;
+              return true;
+            }).map((tab) => {
+              const visible = settings.visibleSidebarTabs.includes(tab);
+              return (
+                <label
+                  key={tab}
+                  className={`flex h-8 w-32 cursor-pointer items-center gap-2 rounded-full border px-3 text-xs font-medium transition-colors ${
+                    visible
+                      ? "border-primary/30 bg-primary/[0.07] text-foreground"
+                      : "border-transparent bg-muted/50 text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  <Checkbox className="h-3.5 w-3.5 rounded-full shadow-none" checked={visible} onCheckedChange={(checked) => settings.setSidebarTabVisible(tab, checked === true)} />
+                  <span className="truncate">{t(`nav.${tab}`)}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        {hostCapabilities.auth && (
+          <div className="mt-4 border-t border-border/60 py-4">
+            <div className="mb-3">
+              <p className="text-sm font-medium">{t("auth.account")}</p>
+              {accountEmail && <p className="mt-0.5 text-xs text-muted-foreground">{accountEmail}</p>}
+            </div>
+            <Button variant="outline" className="h-8 text-xs" onClick={() => void logout()}>
+              {t("auth.logout")}
+            </Button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

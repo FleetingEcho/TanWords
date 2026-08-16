@@ -43,6 +43,12 @@ export const dsh: Dict = {
     "settings.dshPortSub":
         "DSH Web 服务的本地回环端口。填 0 使用 3080，并复用该端口上已有的 `dsh web` 进程，以避免多个进程同时写入会话。仅在需要时填写自定义固定端口，修改后请重启 DSH。",
     "settings.dshPortAuto": "默认（3080）",
+    "settings.dshBackgroundOpacity": "DSH 背景不透明度",
+    "settings.dshBackgroundOpacitySub":
+        "调整 DSH 主画布和侧边栏的背景。0% 完全透明，100% 保留 DSH 原始背景。",
+    "settings.dshBackgroundBlur": "DSH 背景模糊",
+    "settings.dshBackgroundBlurSub":
+        "模糊透过 DSH 显示的 TanWords 壁纸，调节范围为 0 到 100。",
     "settings.dshToolbar": "显示 DSH 工具栏",
     "settings.dshToolbarSub":
         "显示 DSH 页面自带的工具栏（DeepSeek Harness 标签、重启、重新加载、在浏览器中打开）。默认隐藏，让嵌入的智能体界面占据完整高度。",

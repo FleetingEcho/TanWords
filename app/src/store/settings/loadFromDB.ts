@@ -3,6 +3,7 @@ import type { SettingsState } from "./state";
 import {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR,
   DEFAULT_LAYOUT_MODE, AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES,
+  DEFAULT_DSH_BACKGROUND_OPACITY, DEFAULT_DSH_BACKGROUND_BLUR,
   DEFAULT_TERMINAL_BACKGROUND_BLUR, DEFAULT_TERMINAL_BACKGROUND_OPACITY, DEFAULT_TERMINAL_TRANSPARENT,
   DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE,
   DEFAULT_TERMINAL_FONT_WEIGHT, normalizeTerminalFontWeight,
@@ -14,6 +15,7 @@ import {
   DEFAULT_TERMINAL_RENDERER, DEFAULT_TERMINAL_ENGINE,
   DOCUMENT_TEXT_COLOR_RE, normalizeHexColor, type Theme, type RssTabSelection,
   type LayoutMode, type TerminalRenderer, type TerminalEngine, type TerminalColorScheme, type TerminalCustomAppearance,
+  type TopBarItemId,
 } from "./types";
 import {
   cacheUiLanguage, cacheSidebarTabs, cacheTopBarItems, cacheDefaultRssTab, cacheFeedsViewMode,
@@ -36,6 +38,12 @@ function parseTerminalCustomAppearance(
     blur: Number.isFinite(blur) ? Math.min(30, Math.max(0, Math.round(blur))) : fallback.blur,
     opacity: Number.isFinite(opacity) ? Math.min(100, Math.max(0, Math.round(opacity))) : fallback.opacity,
   };
+}
+
+/** Add the DSH shortcut in canonical top-bar order without re-enabling any
+ * other control the user previously hid. */
+export function includeDshTopBarItem(items: TopBarItemId[]): TopBarItemId[] {
+  return DEFAULT_TOPBAR_ITEMS.filter((id) => id === "dsh" || items.includes(id));
 }
 
 /** DB keys (other than `terminal_engine`) whose presence proves the user
@@ -104,6 +112,9 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       "app_background_visible",
       "browser_adblock_enabled",
       "dsh_port",
+      "dsh_background_opacity",
+      "dsh_background_blur",
+      "dsh_background_transparent",
       "dsh_toolbar_visible",
       "terminal_transparent",
       "terminal_background_blur",
@@ -191,9 +202,17 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
     }
     cacheSidebarTabs(resolvedSidebarTabs);
 
-    const resolvedTopBarItems = Array.isArray(values.visible_topbar_items)
+    let resolvedTopBarItems = Array.isArray(values.visible_topbar_items)
       ? DEFAULT_TOPBAR_ITEMS.filter((id) => (values.visible_topbar_items as unknown as string[]).includes(id))
       : DEFAULT_TOPBAR_ITEMS;
+    // DSH gained a top-bar shortcut after customizable top-bar lists already
+    // existed. Seed it exactly once for desktop users; after this flag is set,
+    // hiding it in Settings remains respected.
+    if (isDesktopHost && !localStorage.getItem("tanwords_dsh_topbar_migrated")) {
+      resolvedTopBarItems = includeDshTopBarItem(resolvedTopBarItems);
+      localStorage.setItem("tanwords_dsh_topbar_migrated", "1");
+      await invoke("db_set_setting", { key: "visible_topbar_items", value: JSON.stringify(resolvedTopBarItems) });
+    }
     cacheTopBarItems(resolvedTopBarItems);
     const resolvedLayoutMode: LayoutMode = values.layout_mode === "fixed" ? "fixed" : DEFAULT_LAYOUT_MODE;
     cacheLayoutMode(resolvedLayoutMode);
@@ -393,6 +412,16 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       browserAdBlockEnabled: (values.browser_adblock_enabled as unknown) !== false && values.browser_adblock_enabled !== "false",
       // 0 (or missing/invalid) = standard 3080; non-zero pins a custom port.
       dshPort: Number(values.dsh_port) > 0 ? Math.min(65535, Math.floor(Number(values.dsh_port))) : 0,
+      // The former boolean setting maps true→0% and false→100%, preserving
+      // existing users' appearance while moving to continuous controls.
+      dshBackgroundOpacity: Number.isFinite(Number(values.dsh_background_opacity))
+        ? Math.min(100, Math.max(0, Math.round(Number(values.dsh_background_opacity))))
+        : values.dsh_background_transparent === "true" || (values.dsh_background_transparent as unknown) === true
+          ? 0
+          : DEFAULT_DSH_BACKGROUND_OPACITY,
+      dshBackgroundBlur: Number.isFinite(Number(values.dsh_background_blur))
+        ? Math.min(100, Math.max(0, Math.round(Number(values.dsh_background_blur))))
+        : DEFAULT_DSH_BACKGROUND_BLUR,
       // Missing/false = hidden (the default); only an explicit stored `"true"`
       // restores the DSH page toolbar. Stored as JSON, so the value is the
       // string "true" or "false".

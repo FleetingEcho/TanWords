@@ -83,6 +83,10 @@ export interface SettingsState {
    *  non-zero value pins it. Applied on the next host start — change it in
    *  Settings, then use the DSH page's Restart button to take effect. */
   dshPort: number;
+  /** Opacity of DSH's page and sidebar background layers, as a percentage. */
+  dshBackgroundOpacity: number;
+  /** Blur strength for the TanWords canvas visible behind DSH, from 0–100. */
+  dshBackgroundBlur: number;
   /** Whether the DSH page shows its own toolbar (DSH label, Restart, Reload,
    *  Open-external). Hidden by default so the embedded agent UI gets the full
    *  height; enabling it restores the controls. */
@@ -164,6 +168,8 @@ export interface SettingsState {
   setAppBackgroundVisible: (visible: boolean) => void;
   setBrowserAdBlockEnabled: (enabled: boolean) => void;
   setDshPort: (port: number) => void;
+  setDshBackgroundOpacity: (percent: number) => void;
+  setDshBackgroundBlur: (strength: number) => void;
   setDshToolbarVisible: (visible: boolean) => void;
   setTerminalTransparent: (enabled: boolean) => void;
   setTerminalBackgroundBlur: (px: number) => void;

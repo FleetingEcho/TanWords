@@ -54,6 +54,8 @@ export function DshPage({ visible }: { visible: boolean }) {
   // keeps its old port until the Restart button re-applies it.
   const dshPort = useSettingsStore((s) => s.dshPort);
   const setDshPort = useSettingsStore((s) => s.setDshPort);
+  const dshBackgroundOpacity = useSettingsStore((s) => s.dshBackgroundOpacity);
+  const dshBackgroundBlur = useSettingsStore((s) => s.dshBackgroundBlur);
   // Whether the DSH page shows its own toolbar (DSH label, Restart, Reload,
   // Open-external). Hidden by default so the embedded agent UI gets the full
   // height; the user can re-enable it in Settings. Read live so a Settings
@@ -129,7 +131,11 @@ export function DshPage({ visible }: { visible: boolean }) {
       const rect = await currentBounds();
       if (!rect) return;
       try {
-        const url = await invoke<string>("dsh_show", { ...rect, port: dshPort });
+        const url = await invoke<string>("dsh_show", {
+          ...rect,
+          port: dshPort,
+          backgroundOpacity: dshBackgroundOpacity,
+        });
         urlRef.current = url;
         setStatus("ready");
         setError(null);
@@ -165,6 +171,14 @@ export function DshPage({ visible }: { visible: boolean }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, blocked]);
+
+  // This is a visual-only preference: apply it immediately to the retained
+  // native view without restarting DSH or losing the open conversation.
+  useEffect(() => {
+    invoke("dsh_set_background_opacity", {
+      opacity: dshBackgroundOpacity,
+    }).catch(() => {});
+  }, [dshBackgroundOpacity]);
 
   // Keep the native view sized to the placeholder as the window resizes.
   useEffect(() => {
@@ -235,7 +249,11 @@ export function DshPage({ visible }: { visible: boolean }) {
         if (unmountedRef.current) return;
         const rect = await currentBounds();
         if (!rect) return;
-        const url = await invoke<string>("dsh_show", { ...rect, port: dshPort });
+        const url = await invoke<string>("dsh_show", {
+          ...rect,
+          port: dshPort,
+          backgroundOpacity: dshBackgroundOpacity,
+        });
         urlRef.current = url;
         setStatus("ready");
       } catch (e) {
@@ -303,7 +321,17 @@ export function DshPage({ visible }: { visible: boolean }) {
       </div>
       )}
 
-      <div ref={setContainer} className="relative min-h-0 flex-1 bg-muted/20">
+      <div ref={setContainer} className="relative min-h-0 flex-1">
+        {dshBackgroundOpacity < 100 && dshBackgroundBlur > 0 && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0"
+            style={{
+              backdropFilter: `blur(${dshBackgroundBlur * 0.4}px)`,
+              WebkitBackdropFilter: `blur(${dshBackgroundBlur * 0.4}px)`,
+            }}
+          />
+        )}
         {showStartingOverlay && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/80 p-6 text-center">
             <Loader2 className="h-7 w-7 animate-spin text-primary" />
@@ -357,7 +385,11 @@ export function DshPage({ visible }: { visible: boolean }) {
         if (unmountedRef.current) return;
         const rect = await currentBounds();
         if (!rect) return;
-        const url = await invoke<string>("dsh_show", { ...rect, port });
+        const url = await invoke<string>("dsh_show", {
+          ...rect,
+          port,
+          backgroundOpacity: dshBackgroundOpacity,
+        });
         urlRef.current = url;
         setStatus("ready");
       } catch (e) {

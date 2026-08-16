@@ -50,6 +50,12 @@ export const dsh: Dict = {
     "settings.dshPortSub":
         "Loopback port for the DSH Web host. 0 uses port 3080 and reuses an existing `dsh web` process there, preventing concurrent session writers. Enter a custom fixed port only when needed, then restart DSH to apply.",
     "settings.dshPortAuto": "Default (3080)",
+    "settings.dshBackgroundOpacity": "DSH background opacity",
+    "settings.dshBackgroundOpacitySub":
+        "Adjust the background of both the DSH canvas and sidebar. 0% is fully transparent; 100% preserves DSH's original background.",
+    "settings.dshBackgroundBlur": "DSH background blur",
+    "settings.dshBackgroundBlurSub":
+        "Blur the TanWords wallpaper visible behind DSH. The scale runs from 0 to 100.",
     "settings.dshToolbar": "Show DSH toolbar",
     "settings.dshToolbarSub":
         "Show the DSH page's own toolbar (DeepSeek Harness label, Restart, Reload, Open in browser). Hidden by default so the embedded agent UI gets the full height.",

@@ -1,6 +1,6 @@
 import React from "react";
 import { ClipboardPaste, Globe, PanelLeft, Settings, TerminalSquare, Wrench } from "lucide-react";
-import { useLayoutStore } from "@/store/layoutStore";
+import { SIDEBAR_WIDTH, useLayoutStore } from "@/store/layoutStore";
 import { useT } from "@/hooks/useT";
 import {
   GridIcon, BookIcon, DocIcon, ChatIcon,
@@ -146,7 +146,7 @@ export function MainLayout({
   // in charge so a phone never gets a fixed desktop layout.
   const effectiveMode = layoutMode === "fixed" && !isNarrow ? "fixed" : "flexible";
   // Phone and tablet both hand navigation to the floating dock. A tablet is
-  // wide enough for a sidebar but spending 210px of a 768px-wide reading app on
+  // wide enough for a sidebar but spending desktop-sidebar width on
   // a list of nine links is a poor trade, and the dock costs nothing at rest.
   const isTablet = useMediaQuery("(min-width: 768px) and (max-width: 1023px)");
   const compact = effectiveMode === "flexible" && (isNarrow || isTablet);
@@ -167,13 +167,14 @@ export function MainLayout({
     >
       <aside
         aria-hidden={immersive || undefined}
+        style={collapsed ? undefined : { width: SIDEBAR_WIDTH }}
         // Collapsed animates to `w-0` + `overflow-hidden` (truly zero width,
         // contents clipped) rather than the old 60px icon strip. The expand
         // control lives in the CommandBar so it stays reachable when the
         // sidebar is fully gone. `border-r` only when expanded so no 1px line
         // remains at width 0.
         className={`${compact || immersive ? "hidden" : "flex"} h-full shrink-0 flex-col select-none transition-[width] duration-200 overflow-hidden ${
-          collapsed ? "w-0 border-r-0" : "w-[210px] border-r border-[hsl(var(--sidebar-border))]"
+          collapsed ? "w-0 border-r-0" : "border-r border-[hsl(var(--sidebar-border))]"
         } ${hasCustomAppBackground ? "bg-transparent" : "bg-[hsl(var(--sidebar))]"}`}
       >
         <div className={`app-drag-region flex items-center pt-5 pb-3 ${collapsed ? "px-2 justify-center" : "px-4 justify-between"}`}>

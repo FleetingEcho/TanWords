@@ -17,7 +17,7 @@ export type NavPage =
 /** Section ids the Settings page can be jumped to directly, e.g. from the
  *  cloud-DB status icon (-> "data"). Kept as plain strings here rather than
  *  importing SettingsPage's SectionId, so navStore doesn't depend on it. */
-export type SettingsSection = "general" | "providers" | "learning" | "tts" | "mcp" | "documents" | "data";
+export type SettingsSection = "general" | "providers" | "learning" | "tts" | "mcp" | "documents" | "terminal" | "dsh" | "data";
 
 interface NavState {
   page: NavPage;

@@ -15,6 +15,7 @@ vi.mock("@/components/Vocabulary/hooks/useMediaQuery", () => ({
 import { MainLayout } from "./Sidebar";
 import { useSettingsStore } from "@/store/settingsStore";
 import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
+import { SIDEBAR_WIDTH, useLayoutStore } from "@/store/layoutStore";
 
 describe("MainLayout immersive mode", () => {
   beforeEach(() => {
@@ -25,6 +26,7 @@ describe("MainLayout immersive mode", () => {
       visibleSidebarTabs: ["terminal", "tools"],
     });
     usePodcastPlayerStore.setState({ status: "idle", track: null });
+    useLayoutStore.setState({ sidebarCollapsed: false });
   });
 
   it("hides both navigation surfaces until terminal minimize", () => {
@@ -46,5 +48,16 @@ describe("MainLayout immersive mode", () => {
 
     expect(screen.getByTestId("command-bar")).toBeInTheDocument();
     expect(document.querySelector("aside")).toHaveClass("flex");
+  });
+
+  it("uses the compact shared width for the expanded desktop sidebar", () => {
+    render(
+      <MainLayout activeNav="terminal" onNavigate={() => {}}>
+        <div>content</div>
+      </MainLayout>,
+    );
+
+    expect(SIDEBAR_WIDTH).toBe(180);
+    expect(document.querySelector("aside")).toHaveStyle({ width: "180px" });
   });
 });

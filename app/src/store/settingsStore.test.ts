@@ -15,6 +15,7 @@ const { invoke } = vi.hoisted(() => {
 vi.mock("@/ipc/backend", () => ({ invoke }));
 
 import { useSettingsStore } from "./settingsStore";
+import { includeDshTopBarItem } from "./settings/loadFromDB";
 
 describe("settingsStore database hydration", () => {
   beforeEach(() => {
@@ -23,6 +24,8 @@ describe("settingsStore database hydration", () => {
     useSettingsStore.setState({
       appBackgroundVisible: true,
       appBackgroundDimming: 0,
+      dshBackgroundOpacity: 100,
+      dshBackgroundBlur: 0,
       terminalTransparent: false,
       terminalBackgroundBlur: 16,
       terminalBackgroundOpacity: 16,
@@ -74,6 +77,34 @@ describe("settingsStore database hydration", () => {
     expect(useSettingsStore.getState().appBackgroundVisible).toBe(false);
   });
 
+  it("migrates the former DSH transparency toggle to zero opacity", async () => {
+    invoke.mockImplementation(async (command: string, args?: { key?: string }) => {
+      if (command === "db_get_setting" && args?.key === "dsh_background_transparent") {
+        return "true";
+      }
+      return null;
+    });
+
+    await useSettingsStore.getState().loadFromDB();
+
+    expect(useSettingsStore.getState().dshBackgroundOpacity).toBe(0);
+  });
+
+  it("restores and clamps the saved DSH background appearance", async () => {
+    invoke.mockImplementation(async (command: string, args?: { key?: string }) => {
+      if (command === "db_get_setting" && args?.key === "dsh_background_opacity") return "135";
+      if (command === "db_get_setting" && args?.key === "dsh_background_blur") return "-8";
+      return null;
+    });
+
+    await useSettingsStore.getState().loadFromDB();
+
+    expect(useSettingsStore.getState()).toMatchObject({
+      dshBackgroundOpacity: 100,
+      dshBackgroundBlur: 0,
+    });
+  });
+
   it("restores and clamps the saved background dimming", async () => {
     invoke.mockImplementation(async (command: string, args?: { key?: string }) => {
       if (command === "db_get_setting" && args?.key === "app_background_dimming") return "95";
@@ -123,6 +154,24 @@ describe("settingsStore database hydration", () => {
       appBackgroundImagePosition: { x: 50, y: 50 },
       isLoaded: true,
     });
+  });
+
+  it("adds DSH in canonical order without re-enabling hidden top-bar items", () => {
+    expect(includeDshTopBarItem(["search", "ai"])).toEqual(["search", "dsh", "ai"]);
+  });
+
+  it("respects a user hiding the DSH top-bar shortcut after migration", async () => {
+    localStorage.setItem("tanwords_dsh_topbar_migrated", "1");
+    invoke.mockImplementation(async (command: string, args?: { key?: string }) => {
+      if (command === "db_get_setting" && args?.key === "visible_topbar_items") {
+        return JSON.stringify(["search", "ai"]);
+      }
+      return null;
+    });
+
+    await useSettingsStore.getState().loadFromDB();
+
+    expect(useSettingsStore.getState().visibleTopBarItems).toEqual(["search", "ai"]);
   });
 
   it("restores a wallpaper gallery and its active image", async () => {
@@ -362,6 +411,26 @@ describe("settingsStore database hydration", () => {
         key: "terminal_transparent",
         value: "true",
       });
+    });
+  });
+
+  it("persists and clamps DSH background opacity and blur", async () => {
+    vi.useFakeTimers();
+    useSettingsStore.getState().setDshBackgroundOpacity(36.7);
+    useSettingsStore.getState().setDshBackgroundBlur(140);
+
+    expect(useSettingsStore.getState()).toMatchObject({
+      dshBackgroundOpacity: 37,
+      dshBackgroundBlur: 100,
+    });
+    await vi.advanceTimersByTimeAsync(300);
+    expect(invoke).toHaveBeenCalledWith("db_set_setting", {
+      key: "dsh_background_opacity",
+      value: "37",
+    });
+    expect(invoke).toHaveBeenCalledWith("db_set_setting", {
+      key: "dsh_background_blur",
+      value: "100",
     });
   });
 
