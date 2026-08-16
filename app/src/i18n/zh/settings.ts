@@ -371,7 +371,7 @@ export const settings: Dict = {
     "settings.terminalThemeSub": "选择完整的终端配色，或在下方自定义背景和默认文字颜色。",
     "settings.terminalTransparentSub": "关闭外观调节控件后仍保持玻璃效果",
     "settings.terminalEngine": "终端引擎",
-    "settings.terminalEngineSub": "xterm.js 是默认的成熟引擎。restty 是实验性的 WASM/WebGPU 渲染器，功能有所精简——暂不支持终端内搜索、内联图片，也不支持背景模糊/透明（画布始终不透明）。",
+    "settings.terminalEngineSub": "restty 是默认引擎——实验性的 WASM/WebGPU 渲染器，功能有所精简：暂不支持终端内搜索、内联图片，也不支持背景模糊/透明（画布始终不透明）。xterm.js 是较早的成熟引擎，保留为可选项作为回退。",
     "settings.terminalEngineXterm": "xterm",
     "settings.terminalEngineRestty": "restty · 实验性",
     "settings.terminalRenderer": "渲染器",

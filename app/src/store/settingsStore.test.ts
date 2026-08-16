@@ -415,6 +415,65 @@ describe("settingsStore database hydration", () => {
     });
   });
 
+  it("seeds xterm for an upgrader with prior terminal customizations and no engine row", async () => {
+    // A pre-restty install (<=1.18.11, when xterm was the only engine) has
+    // terminal customizations but no `terminal_engine` row. The one-time
+    // migration preserves its xterm experience instead of flipping it onto
+    // the experimental restty default, and persists the seed so it survives
+    // reloads and syncs to other devices.
+    localStorage.removeItem("tanwords_terminal_engine_migrated");
+    invoke.mockImplementation(async (command: string, args?: { key?: string }) => {
+      if (command !== "db_get_setting") return null;
+      if (args?.key === "terminal_font_size") return "17";
+      if (args?.key === "terminal_color_scheme") return '"dracula"';
+      return null;
+    });
+
+    await useSettingsStore.getState().loadFromDB();
+
+    expect(useSettingsStore.getState().terminalEngine).toBe("xterm");
+    expect(invoke).toHaveBeenCalledWith("db_set_setting", {
+      key: "terminal_engine",
+      value: '"xterm"',
+    });
+    expect(localStorage.getItem("tanwords_terminal_engine_migrated")).toBe("1");
+  });
+
+  it("keeps restty for a fresh install with no terminal customizations", async () => {
+    localStorage.removeItem("tanwords_terminal_engine_migrated");
+    invoke.mockImplementation(async () => null);
+
+    await useSettingsStore.getState().loadFromDB();
+
+    expect(useSettingsStore.getState().terminalEngine).toBe("restty");
+    expect(invoke).not.toHaveBeenCalledWith(
+      "db_set_setting",
+      expect.objectContaining({ key: "terminal_engine" }),
+    );
+    expect(localStorage.getItem("tanwords_terminal_engine_migrated")).toBe("1");
+  });
+
+  it("does not re-seed once the one-time engine migration has run", async () => {
+    // After the migration ran (flag set), a later load with terminal
+    // customizations but no engine row falls back to the restty default
+    // rather than re-seeding xterm — so clearing the engine row keeps the
+    // fresh default instead of perpetually flipping back to xterm.
+    localStorage.setItem("tanwords_terminal_engine_migrated", "1");
+    invoke.mockImplementation(async (command: string, args?: { key?: string }) => {
+      if (command !== "db_get_setting") return null;
+      if (args?.key === "terminal_font_size") return "17";
+      return null;
+    });
+
+    await useSettingsStore.getState().loadFromDB();
+
+    expect(useSettingsStore.getState().terminalEngine).toBe("restty");
+    expect(invoke).not.toHaveBeenCalledWith(
+      "db_set_setting",
+      expect.objectContaining({ key: "terminal_engine" }),
+    );
+  });
+
   it("applies and persists complete terminal color schemes", async () => {
     useSettingsStore.getState().setTerminalColorScheme("tokyo-night");
 

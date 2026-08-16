@@ -1,6 +1,7 @@
-/** Desktop Terminal page: a local shell over restty, an experimental
- *  WASM/WebGPU-WebGL2 terminal renderer, offered as an alternative to the
- *  default xterm.js engine (`TerminalTool.tsx`). Selected per-tab in
+/** Desktop Terminal page: a local shell over restty, the experimental
+ *  WASM/WebGPU-WebGL2 terminal renderer that is the fresh-install default
+ *  (`DEFAULT_TERMINAL_ENGINE`); xterm.js (`TerminalTool.tsx`) remains a
+ *  selectable, fully-featured fallback. Selected per-tab in
  *  Settings → Terminal → "Terminal engine"; see `TerminalWorkspace.tsx`
  *  for how a tab's engine choice is captured at creation.
  *

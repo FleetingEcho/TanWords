@@ -371,7 +371,7 @@ export const settings: Dict = {
     "settings.terminalThemeSub": "Choose a complete terminal palette, or customize the background and default text colors below.",
     "settings.terminalTransparentSub": "Keep the glass effect enabled when the appearance controls are closed",
     "settings.terminalEngine": "Terminal engine",
-    "settings.terminalEngineSub": "xterm.js is the default, well-tested engine. restty is an experimental WASM/WebGPU renderer with a reduced feature set — no in-terminal search, inline images, or background blur/transparency yet (its canvas always renders opaque).",
+    "settings.terminalEngineSub": "restty is the default engine — an experimental WASM/WebGPU renderer with a reduced feature set: no in-terminal search, inline images, or background blur/transparency (its canvas always renders opaque). xterm.js is the older, fully-featured engine, kept as a selectable fallback.",
     "settings.terminalEngineXterm": "xterm",
     "settings.terminalEngineRestty": "restty",
     "settings.terminalRenderer": "Renderer",

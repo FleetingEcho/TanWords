@@ -38,6 +38,25 @@ function parseTerminalCustomAppearance(
   };
 }
 
+/** DB keys (other than `terminal_engine`) whose presence proves the user
+ *  customized the Terminal before this load — i.e. on a version where xterm
+ *  was the only engine (<=1.18.11). Used by the one-time engine migration in
+ *  `loadSettingsFromDB` to keep such an upgrader on xterm instead of silently
+ *  flipping them onto the experimental restty default. */
+const TERMINAL_CUSTOMIZATION_WITNESS_KEYS = [
+  "terminal_transparent",
+  "terminal_background_blur",
+  "terminal_background_opacity",
+  "terminal_background_color",
+  "terminal_text_color",
+  "terminal_color_scheme",
+  "terminal_custom_appearance",
+  "terminal_renderer",
+  "terminal_font_family",
+  "terminal_font_size",
+  "terminal_font_weight",
+] as const;
+
 /** Loads every persisted setting from the DB in one pass, resolving each with
  * its default/legacy-format fallback, then applies the DOM-visible ones
  * (theme, document typography, highlight colour). Split out of the store
@@ -293,6 +312,34 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       });
     }
 
+    // One-time upgrade: installs that predate the terminal-engine setting
+    // (<=1.18.11, when xterm was the only engine) have no `terminal_engine`
+    // row. restty is the fresh-install default, but silently flipping a
+    // long-time user onto the experimental restty engine — reduced feature
+    // set: no in-terminal search, inline images, shell-title tabs, or
+    // background blur — would feel like a regression they never asked for.
+    // On the first load that knows about engines, seed `xterm` for any
+    // install that already customized the terminal (proof it was used before
+    // restty existed); a fresh install with no terminal rows keeps restty.
+    // Like the sidebar-tab migrations above, a localStorage flag runs this
+    // exactly once per device. Persisting the seed to the DB (not just the
+    // in-memory state) makes it survive reloads and sync to other devices,
+    // the same way an explicit engine pick does.
+    const savedTerminalEngine = values.terminal_engine;
+    let resolvedTerminalEngine: TerminalEngine;
+    if (savedTerminalEngine === "xterm" || savedTerminalEngine === "restty") {
+      resolvedTerminalEngine = savedTerminalEngine;
+    } else if (savedTerminalEngine === undefined && !localStorage.getItem("tanwords_terminal_engine_migrated")) {
+      const hadPriorTerminalCustomization = TERMINAL_CUSTOMIZATION_WITNESS_KEYS.some((key) => values[key] !== undefined);
+      resolvedTerminalEngine = hadPriorTerminalCustomization ? "xterm" : DEFAULT_TERMINAL_ENGINE;
+      localStorage.setItem("tanwords_terminal_engine_migrated", "1");
+      if (hadPriorTerminalCustomization) {
+        await invoke("db_set_setting", { key: "terminal_engine", value: JSON.stringify("xterm") });
+      }
+    } else {
+      resolvedTerminalEngine = DEFAULT_TERMINAL_ENGINE;
+    }
+
     set({
       theme: (values.theme as Theme) || "system",
       defaultAiProvider: values.default_ai_provider || "openai",
@@ -353,10 +400,7 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
         .includes(values.terminal_renderer as TerminalRenderer)
         ? values.terminal_renderer as TerminalRenderer
         : DEFAULT_TERMINAL_RENDERER,
-      terminalEngine: (["xterm", "restty"] as TerminalEngine[])
-        .includes(values.terminal_engine as TerminalEngine)
-        ? values.terminal_engine as TerminalEngine
-        : DEFAULT_TERMINAL_ENGINE,
+      terminalEngine: resolvedTerminalEngine,
       terminalFontFamily: typeof values.terminal_font_family === "string" && values.terminal_font_family.trim()
         ? values.terminal_font_family.trim().slice(0, 120)
         : DEFAULT_TERMINAL_FONT_FAMILY,
