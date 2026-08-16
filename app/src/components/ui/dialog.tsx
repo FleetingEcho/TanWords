@@ -2,6 +2,7 @@ import React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { cn } from "@/lib/utils";
 import { BrowserPanelBlocker } from "@/store/browserPanelStore";
+import { DshPanelBlocker } from "@/store/dshPanelBlockStore";
 
 interface DialogProps {
   open: boolean;
@@ -30,9 +31,14 @@ export function Dialog({ open, onClose, children, className, maxWidth = "max-w-2
         >
           {/* Native browser panel is composited above all our HTML, so it has
             * to hide itself rather than lose a z-index fight — see
-            * browserPanelStore. Inside Content, not Portal: Radix wraps each
-            * Portal child in Presence+Slot, which needs a ref-able element. */}
+            * browserPanelStore. The DSH panel is the same kind of native
+            * WebContentsView, so it needs the same treatment — see
+            * dshPanelBlockStore. Both are no-ops when their panel isn't
+            * attached, so mounting them in every Dialog is safe. Inside
+            * Content, not Portal: Radix wraps each Portal child in
+            * Presence+Slot, which needs a ref-able element. */}
           <BrowserPanelBlocker />
+          <DshPanelBlocker />
           {children}
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>

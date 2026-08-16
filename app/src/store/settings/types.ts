@@ -37,7 +37,7 @@ export interface TerminalCustomAppearance {
 export type RssTabSelection = number | "all" | "hackernews";
 
 export const DEFAULT_SIDEBAR_TABS: SidebarTabId[] = [
-  "dashboard", "feeds", "reading", "documents", "vocabulary", "chat", "music", "browser", "terminal", "tools",
+  "dashboard", "feeds", "reading", "documents", "vocabulary", "chat", "music", "browser", "terminal", "dsh", "tools",
 ];
 export const DEFAULT_TOPBAR_ITEMS: TopBarItemId[] = [
   "search", "context", "scratch", "db", "mcp", "ai", "language", "theme", "updates", "github",
@@ -57,6 +57,15 @@ export const HIGHLIGHT_PRESETS = ["#d97706", "#eab308", "#22c55e", "#0ea5e9", "#
  *  coffee" and "when I leave for the day", and both are coarse. */
 export const AUTO_LOCK_CHOICES = [0, 10, 20, 30, 60] as const;
 export const DEFAULT_AUTO_LOCK_MINUTES = 0;
+/** DSH Web host port. `0` uses DSH's standard loopback port 3080 (the default)
+ *  and reuses an existing host there; a non-zero value pins the supervised
+ *  host to a custom port for external tools or firewall rules. */
+export const DEFAULT_DSH_PORT = 0;
+/** Whether the DSH page shows its own toolbar (DSH label, Restart, Reload,
+ *  Open-external). Hidden by default so the embedded agent UI gets the full
+ *  height; the Restart/Reload/Open-external actions are rarely needed day to
+ *  day, and the toolbar reappears when the user enables it in Settings. */
+export const DEFAULT_DSH_TOOLBAR_VISIBLE = false;
 export const DEFAULT_TERMINAL_BACKGROUND_BLUR = 16;
 // Only "custom" ever renders translucent — see `effectiveTransparent` in
 // TerminalTool.tsx, which ignores opacity entirely for every other preset.

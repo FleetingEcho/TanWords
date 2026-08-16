@@ -17,6 +17,7 @@ import { useNavStore } from "@/store/navStore";
 import { filterSentencePatterns } from "./sentenceSearch";
 import { useDismissOnOutside } from "@/hooks/useDismissOnOutside";
 import { BrowserPanelBlocker } from "@/store/browserPanelStore";
+import { DshPanelBlocker } from "@/store/dshPanelBlockStore";
 
 /** Global sentence-library box, the Sentences-mode sibling of WordSearchBox:
  *  fuzzy-search the saved sentence library (pattern, translation, note, or
@@ -323,10 +324,11 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
                 }}
               >
                 {/* Only in the floating variant: the inline one renders in
-                  * normal flow and is not an overlay. On the Browser page the
-                  * native panel is composited above this document, so `z-100`
-                  * loses to it — the panel has to step aside instead. */}
+                  * normal flow and is not an overlay. The Browser and DSH pages
+                  * each host a native panel composited above this document, so
+                  * `z-100` loses to either — both panels step aside instead. */}
                 <BrowserPanelBlocker />
+                <DshPanelBlocker />
                 {resultsPanel}
               </div>,
               document.body

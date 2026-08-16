@@ -40,4 +40,5 @@ export const nav: Dict = {
     "nav.tools": "工具",
     "nav.browser": "浏览",
     "nav.terminal": "终端",
+    "nav.dsh": "DSH",
 };

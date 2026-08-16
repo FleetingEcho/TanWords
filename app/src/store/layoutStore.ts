@@ -3,7 +3,10 @@ import { create } from "zustand";
 const COLLAPSE_KEY = "tanwords_sidebar_collapsed";
 
 export const SIDEBAR_WIDTH = 210;
-export const SIDEBAR_WIDTH_COLLAPSED = 60;
+/** Collapsed sidebar takes zero width — the aside animates to `w-0` and is
+ *  fully clipped, so the page gets the full width. The expand control moves
+ *  to the CommandBar (see CommandBar.tsx) so it stays reachable. */
+export const SIDEBAR_WIDTH_COLLAPSED = 0;
 
 interface LayoutState {
   sidebarCollapsed: boolean;

@@ -78,6 +78,15 @@ export interface SettingsState {
    *  web-mode iframes can't be intercepted). Defaults on. The toggle button
    *  lives in the Browser page toolbar. */
   browserAdBlockEnabled: boolean;
+  /** Loopback port the supervised `dsh --profile web` host binds on the DSH
+   *  page (desktop only). `0` uses/reuses DSH's standard port 3080; a
+   *  non-zero value pins it. Applied on the next host start — change it in
+   *  Settings, then use the DSH page's Restart button to take effect. */
+  dshPort: number;
+  /** Whether the DSH page shows its own toolbar (DSH label, Restart, Reload,
+   *  Open-external). Hidden by default so the embedded agent UI gets the full
+   *  height; enabling it restores the controls. */
+  dshToolbarVisible: boolean;
   /** Glass appearance used when the Terminal transparency toggle is enabled. */
   terminalTransparent: boolean;
   terminalBackgroundBlur: number;
@@ -154,6 +163,8 @@ export interface SettingsState {
   setAppBackgroundDimming: (percent: number) => void;
   setAppBackgroundVisible: (visible: boolean) => void;
   setBrowserAdBlockEnabled: (enabled: boolean) => void;
+  setDshPort: (port: number) => void;
+  setDshToolbarVisible: (visible: boolean) => void;
   setTerminalTransparent: (enabled: boolean) => void;
   setTerminalBackgroundBlur: (px: number) => void;
   setTerminalBackgroundOpacity: (percent: number) => void;

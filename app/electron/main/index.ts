@@ -7,6 +7,8 @@ import { SidecarSupervisor } from "./sidecar";
 import { isExternalUrlAllowed, registerIpcHandlers } from "./ipc";
 import { BrowserPanelManager } from "./BrowserPanelManager";
 import { PANEL_PARTITION } from "./browserPanel";
+import { DshSupervisor } from "./dshSupervisor";
+import { DshPanel } from "./dshPanel";
 import { resetFloatingBrowserWindow } from "./floatingBrowserWindow";
 import { TrayManager, trayIconPath } from "./tray";
 import {
@@ -153,6 +155,11 @@ browserPanel.setBackendGetter(() => sidecar.backendReady());
 const floatingBrowserPanel = new BrowserPanelManager(PANEL_PARTITION, "floating");
 floatingBrowserPanel.setBackendGetter(() => sidecar.backendReady());
 const tray = new TrayManager();
+// The DeepSeek Harness Web host is spawned lazily on the user's first visit to
+// the DSH page (see dshSupervisor.ts) — not at launch, since it is a heavier
+// Node/pnpm runtime than the Rust sidecar and most sessions never open it.
+const dshSupervisor = new DshSupervisor();
+const dshPanel = new DshPanel();
 
 /** Set once the app has committed to quitting: before-quit lets the real
  *  quit pass through instead of preventDefault-ing it again. The updater's
@@ -349,6 +356,7 @@ function createWindow() {
 
   browserPanel.setWindow(win);
   floatingBrowserPanel.setWindow(win);
+  dshPanel.setWindow(win);
   wireWindowDevTools(win);
 
   const emitWindowState = () => {
@@ -399,6 +407,7 @@ function createWindow() {
     mainWindow = null;
     browserPanel.reset();
     floatingBrowserPanel.reset();
+    dshPanel.reset();
     resetFloatingBrowserWindow();
   });
 }
@@ -447,6 +456,8 @@ if (gotLock) {
 
     browserPanel.setEventSink(broadcastEvent);
     floatingBrowserPanel.setEventSink(broadcastEvent);
+    dshPanel.setEventSink(broadcastEvent);
+    dshSupervisor.setEventSink(broadcastEvent);
 
     tray.setEventSink(broadcastEvent);
 
@@ -481,6 +492,8 @@ if (gotLock) {
       browserPanel,
       floatingBrowserPanel,
       tray,
+      dshSupervisor,
+      dshPanel,
     });
 
     createWindow();
@@ -511,7 +524,12 @@ if (gotLock) {
     quitting = true;
     terminalShutdownAll();
     void sidecar.shutdown().finally(() => {
-      app.exit();
+      // The DSH host has no stdin-EOF shutdown path; the supervisor SIGTERMs
+      // it (then SIGKILLs after a timeout) so an ungraceful app exit can't
+      // orphan the loopback `dsh --profile web` process.
+      void dshSupervisor.shutdown().finally(() => {
+        app.exit();
+      });
     });
   });
 }

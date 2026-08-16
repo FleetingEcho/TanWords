@@ -14,11 +14,11 @@ import {
  *  in sync with SKIP_MODULES in core/build.rs (generate_dispatch_table()) —
  *  a name in one list and not the other is a silent routing bug.
  *
- *  `floating_browser_*` has no Rust counterpart at all (unlike `browser_*`,
- *  which SKIP_MODULES excludes from the sidecar's generated dispatch table)
- *  — it's handled entirely in browserPanel.ts/ipc.ts, so nothing needs
- *  adding on the build.rs side for it. */
-const MAIN_PROCESS_COMMANDS = /^(browser|floating_browser|window|tray|pty)_/;
+ *  `floating_browser_*` and `dsh_*` have no Rust counterpart at all (unlike
+ *  `browser_*`, which SKIP_MODULES excludes from the sidecar's generated
+ *  dispatch table) — they're handled entirely in BrowserPanelManager /
+ *  dshPanel + ipc.ts, so nothing needs adding on the build.rs side for them. */
+const MAIN_PROCESS_COMMANDS = /^(browser|floating_browser|window|tray|pty|dsh)_/;
 
 let cached: { port: number; token: string } | null = null;
 let cachedPromise: Promise<{ port: number; token: string }> | null = null;

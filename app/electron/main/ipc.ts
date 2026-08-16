@@ -10,6 +10,8 @@ import type { UpdateInfoPayload } from "./updater";
 import type { BrowserPanelManager } from "./BrowserPanelManager";
 import type { PanelBounds } from "./browserPanel";
 import { cosmeticsForWebContents } from "./browserPanel";
+import type { DshSupervisor } from "./dshSupervisor";
+import type { DshBounds } from "./dshPanel";
 import {
   createFloatingBrowserWindow, dockFloatingBrowserWindow,
   hideFloatingBrowserWindow, showFloatingBrowserWindow,
@@ -37,6 +39,8 @@ export type IpcDeps = {
   browserPanel: BrowserPanelManager;
   floatingBrowserPanel: BrowserPanelManager;
   tray: TrayManager;
+  dshSupervisor: DshSupervisor;
+  dshPanel: import("./dshPanel").DshPanel;
 };
 
 /** Schemes `shell:open` will actually hand to `shell.openExternal` — an
@@ -597,6 +601,63 @@ async function dispatch(
       deps.floatingBrowserPanel.setPrivateMode(on);
       deps.broadcastEvent("browser:privateModeChanged", { enabled: on });
       return null;
+    }
+
+    // ── DeepSeek Harness page ────────────────────────────────────────────────
+    // The DSH Web host is spawned lazily on first show; `dsh_show` resolves
+    // with the ready URL (and starts the supervisor if it hasn't been started
+    // yet), then attaches the native WebContentsView at the measured bounds.
+    // `dsh_hide` detaches the view without destroying it, so a revisit is
+    // instant. `dsh_status` lets the renderer render the "starting / failed"
+    // state before the host is ready. `port` (optional, 0 = standard 3080) pins the
+    // host on a fixed loopback port; `dsh_restart` stops and respawns to apply
+    // a port change to a live host (the renderer's "Restart" button).
+    case "dsh_show": {
+      const { port, ...bounds } = (args ?? {}) as { port?: number } & DshBounds;
+      let url: string;
+      try {
+        url = await deps.dshSupervisor.start(port);
+      } catch (error) {
+        // The host couldn't start (e.g. `dsh` not installed, port in use). A
+        // *previous* successful run may have left a native view attached over
+        // the DOM, which would hide the renderer's failure/guidance UI.
+        // Detach it so the failure overlay is visible — never leave a stale
+        // view up when there is no live host behind it.
+        deps.dshPanel.hide();
+        throw error;
+      }
+      deps.dshPanel.show(url, bounds);
+      return url;
+    }
+    case "dsh_hide": {
+      deps.dshPanel.hide();
+      return null;
+    }
+    case "dsh_set_bounds": {
+      deps.dshPanel.setBounds((args ?? {}) as DshBounds);
+      return null;
+    }
+    case "dsh_reload": {
+      const { url } = (args ?? {}) as { url?: string };
+      deps.dshPanel.reload(url);
+      return null;
+    }
+    case "dsh_restart": {
+      const { port } = (args ?? {}) as { port?: number };
+      try {
+        return await deps.dshSupervisor.restart(port);
+      } catch (error) {
+        // Same reason as dsh_show: detach any stale view so the failure UI is
+        // not buried under a dead native view.
+        deps.dshPanel.hide();
+        throw error;
+      }
+    }
+    case "dsh_get_url": {
+      return deps.dshSupervisor.currentUrl();
+    }
+    case "dsh_get_port": {
+      return deps.dshSupervisor.currentPort();
     }
 
     default: {

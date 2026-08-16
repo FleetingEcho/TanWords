@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { isDesktopHost } from "@/platform";
 import {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR, DEFAULT_BANNER_POSITION,
-  DEFAULT_LAYOUT_MODE, DEFAULT_AUTO_LOCK_MINUTES,
+  DEFAULT_LAYOUT_MODE, DEFAULT_AUTO_LOCK_MINUTES, DEFAULT_DSH_PORT, DEFAULT_DSH_TOOLBAR_VISIBLE,
   DEFAULT_TERMINAL_BACKGROUND_BLUR, DEFAULT_TERMINAL_BACKGROUND_OPACITY, DEFAULT_TERMINAL_TRANSPARENT,
   DEFAULT_TERMINAL_BACKGROUND_COLOR, DEFAULT_TERMINAL_TEXT_COLOR,
   DEFAULT_TERMINAL_COLOR_SCHEME, TERMINAL_COLOR_SCHEME_COLORS, TERMINAL_COLOR_SCHEME_EFFECTS,
@@ -29,7 +29,7 @@ export type {
 export {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS,
   DEFAULT_HIGHLIGHT_COLOR, HIGHLIGHT_PRESETS, DEFAULT_BANNER_POSITION, DEFAULT_LAYOUT_MODE,
-  AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES,
+  AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES, DEFAULT_DSH_PORT, DEFAULT_DSH_TOOLBAR_VISIBLE,
   DEFAULT_TERMINAL_BACKGROUND_BLUR, DEFAULT_TERMINAL_BACKGROUND_OPACITY, DEFAULT_TERMINAL_TRANSPARENT,
   DEFAULT_TERMINAL_BACKGROUND_COLOR, DEFAULT_TERMINAL_TEXT_COLOR,
   DEFAULT_TERMINAL_COLOR_SCHEME, TERMINAL_COLOR_SCHEME_COLORS, TERMINAL_COLOR_SCHEME_EFFECTS,
@@ -90,6 +90,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   appBackgroundDimming: 0,
   appBackgroundVisible: true,
   browserAdBlockEnabled: true,
+  dshPort: DEFAULT_DSH_PORT,
+  dshToolbarVisible: DEFAULT_DSH_TOOLBAR_VISIBLE,
   terminalTransparent: DEFAULT_TERMINAL_TRANSPARENT,
   terminalBackgroundBlur: DEFAULT_TERMINAL_BACKGROUND_BLUR,
   terminalBackgroundOpacity: DEFAULT_TERMINAL_BACKGROUND_OPACITY,
@@ -319,6 +321,22 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       void import("@/ipc/backend").then(({ invoke }) =>
         invoke("browser_set_adblock_enabled", { enabled }));
     }
+  },
+
+  setDshPort: (port) => {
+    // 0 is the standard-port sentinel (3080), so it stays valid; any
+    // other value is clamped to a real TCP port. A bad stored value can never
+    // reach `dsh --port` this way.
+    const p = Number.isFinite(port) && port > 0
+      ? Math.min(65535, Math.floor(port))
+      : 0;
+    set({ dshPort: p });
+    saveSetting("dsh_port", JSON.stringify(p));
+  },
+
+  setDshToolbarVisible: (visible) => {
+    set({ dshToolbarVisible: visible });
+    saveSetting("dsh_toolbar_visible", JSON.stringify(visible));
   },
 
   setTerminalTransparent: (enabled) => {

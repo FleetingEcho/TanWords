@@ -21,6 +21,7 @@ import { toolsPage } from "./toolsPage";
 import { music } from "./music";
 import { browser } from "./browser";
 import { floatingBrowser } from "./floatingBrowser";
+import { dsh } from "./dsh";
 import { updater } from "./updater";
 
 export const en: Dict = {
@@ -46,5 +47,6 @@ export const en: Dict = {
     ...music,
     ...browser,
     ...floatingBrowser,
+    ...dsh,
     ...updater,
 };

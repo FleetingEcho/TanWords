@@ -4,7 +4,7 @@ import { openExternal as openUrl } from "@/ipc/shell";
 import { callMain } from "@/ipc/host";
 import {
   BrainCircuit, Check, ChevronsLeft, ChevronsRight, ClipboardPaste, Cloud, CloudOff, Database, Lock,
-  FilePlus2, Languages, MessageSquarePlus, Monitor, Moon, Palette, Quote, Search, Server, Settings, Sun,
+  FilePlus2, Languages, MessageSquarePlus, Monitor, Moon, Palette, PanelLeft, Quote, Search, Server, Settings, Sun,
   Grid2x2Plus, Rss, Smartphone, Type, Unplug, User, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,7 @@ import { useProviderStatus } from "@/hooks/useProviderStatus";
 import { NavPage, useNavStore } from "@/store/navStore";
 import { UpdateButton } from "@/components/Layout/UpdateButton";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useLayoutStore } from "@/store/layoutStore";
 import { useAnalysisStore } from "@/store/analysisStore";
 import { useVocabEnrichStore } from "@/store/vocabEnrichStore";
 import { GitHubIcon } from "@/components/ui/icons";
@@ -67,6 +68,10 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   const theme = useSettingsStore((state) => state.theme);
   const setTheme = useSettingsStore((state) => state.setTheme);
   const visibleItems = useSettingsStore((state) => state.visibleTopBarItems);
+  // The sidebar collapses to zero width; its expand control moves here so it
+  // is always reachable. Desktop-only (mobile/tablet use the floating dock).
+  const sidebarCollapsed = useLayoutStore((state) => state.sidebarCollapsed);
+  const toggleSidebar = useLayoutStore((state) => state.toggleSidebar);
   const toggleToolsModal = useToolsBallStore((state) => state.toggleModal);
   const floatingBrowserStatus = useFloatingBrowserStore((state) => state.status);
   const toggleFloatingBrowserFromIcon = useFloatingBrowserStore((state) => state.toggleFromIcon);
@@ -216,6 +221,24 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
         className={`${fullScreen ? "cursor-grab " : "app-drag-region "}relative z-30 flex min-h-12 shrink-0 select-none flex-col lg:flex-row lg:items-center gap-x-1.5 gap-y-2 border-b border-border/80 px-3 py-2 ${
           hasCustomAppBackground ? "bg-transparent" : "bg-background/90 backdrop-blur-xl"
         }`}>
+        {/* Expand-sidebar control: always the first item on the left. Shown
+          * only when the sidebar is fully collapsed (zero width) — the sidebar's
+          * own toggle is clipped at w-0, so this is the only way back. Desktop-
+          * only; on mobile the floating dock owns navigation. It is the first
+          * child of the header, so it lands left of the search box without any
+          * `order` trick (the header is `lg:flex-row`, so source order wins). */}
+        {sidebarCollapsed && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleSidebar}
+            title={t("nav.expand")}
+            aria-label={t("nav.expand")}
+            className="hidden h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground lg:flex"
+          >
+            <PanelLeft className="h-4 w-4" />
+          </Button>
+        )}
         {visible("search") && (
           <div className="flex min-w-0 order-2 w-full lg:order-none lg:w-auto lg:max-w-2xl lg:flex-1 lg:shrink items-center gap-1">
             <div className="min-w-0 flex-1">

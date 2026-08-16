@@ -18,6 +18,11 @@ export interface HostCapabilities {
    *  hidden behind this flag — no ssh/real network, not useful enough to
    *  surface. Gates the Tools-page Terminal tool. */
   terminal: boolean;
+  /** DeepSeek Harness page (desktop only): spawns the local `dsh --profile
+   *  web` host and embeds its Web UI in a native WebContentsView. The web
+   *  build can't spawn a local process, so the nav entry is hidden there and
+   *  the route falls back to Dashboard. */
+  dsh: boolean;
   /** Optional UI lock. Desktop stores it per installation; Web stores a
    *  separate verifier on each authenticated account. */
   appLock: boolean;
@@ -34,6 +39,7 @@ export const DESKTOP_CAPABILITIES: HostCapabilities = {
   browser: true,
   music: true,
   terminal: true,
+  dsh: true,
   appLock: true,
   localDocs: true,
   mcp: true,
@@ -56,6 +62,7 @@ export const WEB_CAPABILITIES: HostCapabilities = {
   browser: false,
   music: false,
   terminal: false,
+  dsh: false,
   appLock: true,
   localDocs: false,
   mcp: false,

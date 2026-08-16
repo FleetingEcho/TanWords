@@ -321,6 +321,62 @@ function DefaultRssTabSetting() {
   );
 }
 
+/** Loopback port for the supervised DSH Web host (desktop only). 0 means the
+ *  standard/reusable port 3080; a fixed number overrides it. A local draft is
+ *  committed on blur/Enter so typing a multi-digit port isn't clamped
+ *  mid-keystroke, and 0 renders as the default placeholder rather than a
+ *  literal 0. Applies on the next host start. */
+function DshPortSetting() {
+  const t = useT();
+  const dshPort = useSettingsStore((s) => s.dshPort);
+  const setDshPort = useSettingsStore((s) => s.setDshPort);
+  const [draft, setDraft] = useState(dshPort === 0 ? "" : String(dshPort));
+
+  // Re-sync when the store value changes externally (DB load, another window).
+  useEffect(() => {
+    setDraft(dshPort === 0 ? "" : String(dshPort));
+  }, [dshPort]);
+
+  const commit = (value: string) => {
+    const n = Number(value);
+    setDshPort(Number.isFinite(n) && n > 0 ? n : 0);
+  };
+
+  return (
+    <SettingRow label={t("settings.dshPort")} sub={t("settings.dshPortSub")}>
+      <input
+        type="number"
+        min={0}
+        max={65535}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => commit(draft)}
+        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+        placeholder={t("settings.dshPortAuto")}
+        className="w-24 h-8 px-2 rounded-lg border border-input bg-background text-sm text-center focus:outline-hidden focus:ring-2 focus:ring-primary/30"
+      />
+    </SettingRow>
+  );
+}
+
+function DshToolbarSetting() {
+  const t = useT();
+  const visible = useSettingsStore((s) => s.dshToolbarVisible);
+  const setVisible = useSettingsStore((s) => s.setDshToolbarVisible);
+  return (
+    <SettingRow label={t("settings.dshToolbar")} sub={t("settings.dshToolbarSub")}>
+      <ToggleGroup
+        options={[
+          { id: "off", label: t("settings.off") },
+          { id: "on", label: t("settings.on") },
+        ]}
+        value={visible ? "on" : "off"}
+        onChange={(v) => setVisible(v === "on")}
+      />
+    </SettingRow>
+  );
+}
+
 export function GeneralSection() {
   const [accountEmail, setAccountEmail] = useState<string | null>(null);
   useEffect(() => {
@@ -385,6 +441,8 @@ export function GeneralSection() {
           onChange={(v) => settings.setSelectionActions(v === "on")}
         />
       </SettingRow>
+      {hostCapabilities.dsh && <DshPortSetting />}
+      {hostCapabilities.dsh && <DshToolbarSetting />}
       <div className="py-4">
         <div className="mb-3">
           <div className="flex items-center gap-2.5">

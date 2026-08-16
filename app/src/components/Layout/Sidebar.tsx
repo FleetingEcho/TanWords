@@ -4,7 +4,7 @@ import { useLayoutStore } from "@/store/layoutStore";
 import { useT } from "@/hooks/useT";
 import {
   GridIcon, BookIcon, DocIcon, ChatIcon,
-  FeedIcon, MusicIcon,
+  FeedIcon, MusicIcon, DshIcon,
 } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { useSettingsStore, type SidebarTabId } from "@/store/settingsStore";
@@ -33,6 +33,7 @@ const BASE_NAV_ITEM_DEFS: Omit<NavItemDef, "label">[] = [
   { id: "chat", icon: ChatIcon },
   { id: "music", icon: MusicIcon },
   { id: "terminal", icon: TerminalSquare },
+  { id: "dsh", icon: DshIcon },
   { id: "tools", icon: Wrench },
 ];
 
@@ -40,6 +41,7 @@ const NAV_ITEM_DEFS = BASE_NAV_ITEM_DEFS.filter((item) => {
   if (item.id === "browser") return hostCapabilities.browser;
   if (item.id === "music") return hostCapabilities.music;
   if (item.id === "terminal") return hostCapabilities.terminal;
+  if (item.id === "dsh") return hostCapabilities.dsh;
   return true;
 });
 
@@ -165,8 +167,13 @@ export function MainLayout({
     >
       <aside
         aria-hidden={immersive || undefined}
-        className={`${compact || immersive ? "hidden" : "flex"} h-full shrink-0 flex-col border-r border-[hsl(var(--sidebar-border))] select-none transition-[width] duration-200 ${
-          collapsed ? "w-[60px]" : "w-[210px]"
+        // Collapsed animates to `w-0` + `overflow-hidden` (truly zero width,
+        // contents clipped) rather than the old 60px icon strip. The expand
+        // control lives in the CommandBar so it stays reachable when the
+        // sidebar is fully gone. `border-r` only when expanded so no 1px line
+        // remains at width 0.
+        className={`${compact || immersive ? "hidden" : "flex"} h-full shrink-0 flex-col select-none transition-[width] duration-200 overflow-hidden ${
+          collapsed ? "w-0 border-r-0" : "w-[210px] border-r border-[hsl(var(--sidebar-border))]"
         } ${hasCustomAppBackground ? "bg-transparent" : "bg-[hsl(var(--sidebar))]"}`}
       >
         <div className={`app-drag-region flex items-center pt-5 pb-3 ${collapsed ? "px-2 justify-center" : "px-4 justify-between"}`}>

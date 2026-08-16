@@ -54,6 +54,8 @@ const ToolsPage = React.lazy(() =>
   import("@/components/Tools/ToolsPage").then((m) => ({ default: m.ToolsPage })));
 const TerminalPage = React.lazy(() =>
   import("@/components/Terminal/TerminalPage").then((m) => ({ default: m.TerminalPage })));
+const DshPage = React.lazy(() =>
+  import("@/components/Dsh/DshPage").then((m) => ({ default: m.DshPage })));
 const WordDetailModal = React.lazy(() =>
   import("@/components/WordDetailModal").then((m) => ({ default: m.WordDetailModal })));
 const ToolsModal = React.lazy(() =>
@@ -121,6 +123,10 @@ function App() {
     setTerminalMaximized(false);
     navigate("dashboard");
   }, [navigate]);
+  // The DSH page is likewise retained once visited: its supervised Web host
+  // stays running and its embedded view is merely hidden while the user is
+  // on another page, so DSH's in-memory session state survives navigation.
+  const dshVisited = React.useRef(false);
 
   // Selection/Ask pulls in gesture handling, AI actions and its answer panel,
   // but renders nothing until the user selects text. Keep it out of the first
@@ -355,6 +361,8 @@ function App() {
   if (page === "tools") toolsVisited.current = true;
   const isTerminalRoute = page === "terminal" && hostCapabilities.terminal;
   if (isTerminalRoute) terminalVisited.current = true;
+  const isDshRoute = page === "dsh" && hostCapabilities.dsh;
+  if (isDshRoute) dshVisited.current = true;
   const wordId = currentWordId();
   // Dashboard owns startup readiness because its first useful paint depends on
   // a real DB query (including Turso initialization/sync when configured). Web
@@ -362,7 +370,8 @@ function App() {
   const dashboardOwnsStartupReadiness = page === "dashboard"
     || (!isDesktopHost && page === "music")
     || (!hostCapabilities.browser && page === "browser")
-    || (!hostCapabilities.terminal && page === "terminal");
+    || (!hostCapabilities.terminal && page === "terminal")
+    || (!hostCapabilities.dsh && page === "dsh");
 
   const renderPage = () => {
     switch (page) {
@@ -393,6 +402,10 @@ function App() {
         // capability (none, currently — web runs a sandboxed shell instead of
         // a real one) still safely falls back to Dashboard on a stale route.
         return hostCapabilities.terminal ? null : <DashboardPage />;
+      case "dsh":
+        // DSH owns a persistent host below. Web builds can't spawn the local
+        // `dsh` host, so a stale route falls back to Dashboard.
+        return hostCapabilities.dsh ? null : <DashboardPage />;
       case "feeds":
       default:
         return <FeedsPage />;
@@ -425,7 +438,13 @@ function App() {
           {page === "tools" && <StartupReadySignal />}
         </React.Suspense>
       )}
-      {page !== "tools" && !isTerminalRoute && (
+      {dshVisited.current && hostCapabilities.dsh && (
+        <React.Suspense fallback={isDshRoute ? <PageFallback /> : null}>
+          <DshPage visible={isDshRoute} />
+          {isDshRoute && <StartupReadySignal />}
+        </React.Suspense>
+      )}
+      {page !== "tools" && !isTerminalRoute && !isDshRoute && (
         /* Keyed on the page so switching ordinary pages shows the spinner.
            Retained workspaces are hosted separately above. */
         <React.Suspense key={page} fallback={<PageFallback />}>

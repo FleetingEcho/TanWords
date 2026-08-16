@@ -103,6 +103,8 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       "app_background_dimming",
       "app_background_visible",
       "browser_adblock_enabled",
+      "dsh_port",
+      "dsh_toolbar_visible",
       "terminal_transparent",
       "terminal_background_blur",
       "terminal_background_opacity",
@@ -389,6 +391,12 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
         : 0,
       appBackgroundVisible: (values.app_background_visible as unknown) !== false && values.app_background_visible !== "false",
       browserAdBlockEnabled: (values.browser_adblock_enabled as unknown) !== false && values.browser_adblock_enabled !== "false",
+      // 0 (or missing/invalid) = standard 3080; non-zero pins a custom port.
+      dshPort: Number(values.dsh_port) > 0 ? Math.min(65535, Math.floor(Number(values.dsh_port))) : 0,
+      // Missing/false = hidden (the default); only an explicit stored `"true"`
+      // restores the DSH page toolbar. Stored as JSON, so the value is the
+      // string "true" or "false".
+      dshToolbarVisible: values.dsh_toolbar_visible === "true",
       terminalTransparent: activeTerminalAppearance.transparent,
       terminalBackgroundBlur: activeTerminalAppearance.blur,
       terminalBackgroundOpacity: activeTerminalAppearance.opacity,
