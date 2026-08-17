@@ -399,6 +399,7 @@ export function GeneralSection() {
             if (item === "mcp") return hostCapabilities.mcp;
             if (item === "dsh") return hostCapabilities.dsh;
             if (item === "updates") return hostCapabilities.updater;
+            if (item === "browser") return hostCapabilities.browser;
               return true;
             }).map((item) => {
               const visible = settings.visibleTopBarItems.includes(item);

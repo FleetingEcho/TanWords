@@ -20,6 +20,8 @@ export const common: Dict = {
     "lock.setUp": "设置密码",
     "lock.change": "修改",
     "lock.turnOff": "关闭",
+    "lock.turnOffTitle": "关闭应用锁",
+    "lock.turnOffHint": "输入当前密码以确认。",
     "lock.currentPassword": "当前密码",
     "lock.newPassword": "新密码",
     "lock.confirmPassword": "确认新密码",

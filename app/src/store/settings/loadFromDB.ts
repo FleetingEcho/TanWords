@@ -47,6 +47,14 @@ export function includeDshTopBarItem(items: TopBarItemId[]): TopBarItemId[] {
   return DEFAULT_TOPBAR_ITEMS.filter((id) => id === "dsh" || items.includes(id));
 }
 
+/** Add newly-toggleable top-bar controls (in canonical order) without
+ * re-enabling any other control the user previously hid — same one-time
+ * seeding pattern as {@link includeDshTopBarItem}, generalized for ids that
+ * used to render unconditionally and only later gained a visibility toggle. */
+export function includeTopBarItems(items: TopBarItemId[], ids: TopBarItemId[]): TopBarItemId[] {
+  return DEFAULT_TOPBAR_ITEMS.filter((id) => ids.includes(id) || items.includes(id));
+}
+
 /** DB keys (other than `terminal_engine`) whose presence proves the user
  *  customized the Terminal before this load — i.e. on a version where xterm
  *  was the only engine (<=1.18.11). Used by the one-time engine migration in
@@ -217,6 +225,15 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
     if (isDesktopHost && !localStorage.getItem("tanwords_dsh_topbar_migrated")) {
       resolvedTopBarItems = includeDshTopBarItem(resolvedTopBarItems);
       localStorage.setItem("tanwords_dsh_topbar_migrated", "1");
+      await invoke("db_set_setting", { key: "visible_topbar_items", value: JSON.stringify(resolvedTopBarItems) });
+    }
+    // The "open tools" and "mobile browser" icons rendered unconditionally
+    // (no visibility toggle at all) before they gained one — seed them
+    // present exactly once so existing installs don't lose an icon they
+    // never chose to hide.
+    if (!localStorage.getItem("tanwords_tools_browser_topbar_migrated")) {
+      resolvedTopBarItems = includeTopBarItems(resolvedTopBarItems, ["tools", "browser"]);
+      localStorage.setItem("tanwords_tools_browser_topbar_migrated", "1");
       await invoke("db_set_setting", { key: "visible_topbar_items", value: JSON.stringify(resolvedTopBarItems) });
     }
     cacheTopBarItems(resolvedTopBarItems);

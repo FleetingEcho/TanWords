@@ -20,6 +20,8 @@ export const common: Dict = {
     "lock.setUp": "Set password",
     "lock.change": "Change",
     "lock.turnOff": "Turn off",
+    "lock.turnOffTitle": "Turn off app lock",
+    "lock.turnOffHint": "Enter your current password to confirm.",
     "lock.currentPassword": "Current password",
     "lock.newPassword": "New password",
     "lock.confirmPassword": "Confirm new password",

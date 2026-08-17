@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Lock, Unlock } from "lucide-react";
+import { Lock, Trash2, Unlock } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogTitle } from "@/components/ui/dialog";
 import { disableAppLock, setAppLockPassword, useAppLockStore } from "@/store/appLockStore";
 import { AUTO_LOCK_CHOICES, DEFAULT_BANNER_POSITION, useSettingsStore } from "@/store/settingsStore";
 import { WallpaperSetting } from "./WallpaperSetting";
@@ -18,7 +19,11 @@ const FIELD =
  *
  *  Changing or removing always asks for the current password: without that,
  *  anyone sitting at an already-unlocked window could quietly take the lock
- *  off, which makes the lock pointless the moment you step away. */
+ *  off, which makes the lock pointless the moment you step away. Turning off
+ *  is its own confirm modal (just the current password) rather than living
+ *  inside the change-password panel, which otherwise forced you through
+ *  New/Confirm fields you have no intention of filling in just to turn the
+ *  lock off. */
 export function AppLockSection() {
   const t = useT();
   const enabled = useAppLockStore((s) => s.enabled);
@@ -31,6 +36,7 @@ export function AppLockSection() {
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
+  const [turnOffOpen, setTurnOffOpen] = useState(false);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
@@ -45,24 +51,6 @@ export function AppLockSection() {
     try {
       await setAppLockPassword(enabled ? current : null, next);
       toast.success(enabled ? t("lock.changed") : t("lock.enabled"));
-      reset();
-      await refresh();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const remove = async () => {
-    if (!current) {
-      toast.error(t("lock.needCurrent"));
-      return;
-    }
-    setBusy(true);
-    try {
-      await disableAppLock(current);
-      toast.success(t("lock.disabled"));
       reset();
       await refresh();
     } catch (error) {
@@ -87,14 +75,29 @@ export function AppLockSection() {
             {t("lock.settingsCaveat")}
           </p>
         </div>
-        <Button
-          variant="outline"
-          disabled={busy}
-          onClick={() => (open ? reset() : setOpen(true))}
-          className="h-8 shrink-0 rounded-lg px-3 text-xs"
-        >
-          {open ? t("common.cancel") : enabled ? t("lock.change") : t("lock.setUp")}
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            variant="outline"
+            disabled={busy}
+            onClick={() => (open ? reset() : setOpen(true))}
+            className="h-8 rounded-lg px-3 text-xs"
+          >
+            {open ? t("common.cancel") : enabled ? t("lock.change") : t("lock.setUp")}
+          </Button>
+          {enabled && !open && (
+            <Button
+              variant="outline"
+              size="icon"
+              disabled={busy}
+              onClick={() => setTurnOffOpen(true)}
+              title={t("lock.turnOff")}
+              aria-label={t("lock.turnOff")}
+              className="h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
       </div>
 
       {open && (
@@ -114,16 +117,6 @@ export function AppLockSection() {
             <input {...maskedPasswordProps("app-lock-confirm")} value={confirm} onChange={(e) => setConfirm(e.target.value)} className={FIELD} />
           </label>
           <div className="flex items-center justify-end gap-2">
-            {enabled && (
-              <Button
-                variant="ghost"
-                disabled={busy}
-                onClick={() => void remove()}
-                className="h-8 rounded-lg px-3 text-xs text-destructive hover:bg-destructive/10"
-              >
-                {t("lock.turnOff")}
-              </Button>
-            )}
             <Button
               disabled={busy || next.length < 4 || (enabled === true && !current)}
               onClick={() => void save()}
@@ -166,7 +159,84 @@ export function AppLockSection() {
         * so the two look and behave alike without sharing a setting. */}
       <LockScreenWallpaperSetting />
 
+      <TurnOffLockModal
+        open={turnOffOpen}
+        onClose={() => setTurnOffOpen(false)}
+        onDisabled={() => void refresh()}
+      />
     </div>
+  );
+}
+
+/** Confirm-and-disable modal: just the current password, nothing else. Kept
+ *  separate from the change-password panel above so turning the lock off
+ *  doesn't force you through New/Confirm fields you have no intention of
+ *  filling in. */
+function TurnOffLockModal({ open, onClose, onDisabled }: {
+  open: boolean;
+  onClose: () => void;
+  onDisabled: () => void;
+}) {
+  const t = useT();
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const close = () => { setPassword(""); onClose(); };
+
+  const confirm = async () => {
+    if (!password) {
+      toast.error(t("lock.needCurrent"));
+      return;
+    }
+    setBusy(true);
+    try {
+      await disableAppLock(password);
+      toast.success(t("lock.disabled"));
+      setPassword("");
+      onClose();
+      onDisabled();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onClose={close} maxWidth="max-w-sm">
+      <div className="space-y-4 p-5">
+        <DialogTitle className="text-sm font-semibold">{t("lock.turnOffTitle")}</DialogTitle>
+        <p className="text-xs text-muted-foreground">{t("lock.turnOffHint")}</p>
+        <label className="block text-xs">
+          <span className="mb-1 block text-muted-foreground">{t("lock.currentPassword")}</span>
+          <input
+            {...maskedPasswordProps("app-lock-turnoff")}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") void confirm(); }}
+            className={FIELD}
+            autoFocus
+          />
+        </label>
+        <div className="flex items-center justify-end gap-2 pt-1">
+          <Button
+            variant="ghost"
+            disabled={busy}
+            onClick={close}
+            className="h-8 rounded-lg px-3 text-xs"
+          >
+            {t("common.cancel")}
+          </Button>
+          <Button
+            disabled={busy || !password}
+            onClick={() => void confirm()}
+            className="h-8 rounded-lg bg-destructive px-4 text-xs font-semibold text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+          >
+            {busy ? t("lock.saving") : t("lock.turnOff")}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
   );
 }
 

@@ -205,10 +205,6 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
     ? "text-muted-foreground"
     : providerConnected ? "text-foreground" : "text-amber-500";
 
-  const context = activePage === "documents"
-    ? { label: t("command.newDocument"), icon: FilePlus2, run: newDocument }
-    : null;
-
   return (
     <>
       {/* `z-30` is load-bearing, not decoration. `backdrop-blur-sm` makes this
@@ -269,7 +265,6 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
           * row of their own. `lg:contents` dissolves it above that. */}
         <div className="flex w-full min-w-0 items-center gap-1.5 lg:contents">
         <div className="rss-tabs-scroll flex min-w-0 w-full items-center gap-1.5 overflow-x-auto lg:w-auto lg:flex-1">
-        {visible("context") && context && <><div className="mx-1 hidden h-5 w-px bg-border sm:block" /><Button variant="ghost" onClick={context.run} className="h-8 gap-2 rounded-lg px-2.5 text-xs font-medium text-foreground"><context.icon className="h-4 w-4 text-primary" /><span className="hidden lg:inline">{context.label}</span></Button></>}
 
         {/* Any speech in the app — the reader's article playback and the
           * selection toolbar's speak button both drive ttsPlayerStore — shows
@@ -353,7 +348,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
             {iconsCollapsed ? <ChevronsLeft className="h-4 w-4" /> : <ChevronsRight className="h-4 w-4" />}
           </Button>
           {!iconsCollapsed && <>
-          <Button
+          {visible("tools") && <Button
             variant="ghost"
             size="icon"
             onClick={toggleToolsModal}
@@ -361,8 +356,8 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
             className="h-8 w-8 rounded-lg text-muted-foreground"
           >
             <Grid2x2Plus className="h-4 w-4" />
-          </Button>
-          {hostCapabilities.browser && <Button
+          </Button>}
+          {hostCapabilities.browser && visible("browser") && <Button
             variant="ghost"
             size="icon"
             onClick={onClickFloatingBrowserIcon}

@@ -15,7 +15,7 @@ const { invoke } = vi.hoisted(() => {
 vi.mock("@/ipc/backend", () => ({ invoke }));
 
 import { useSettingsStore } from "./settingsStore";
-import { includeDshTopBarItem } from "./settings/loadFromDB";
+import { includeDshTopBarItem, includeTopBarItems } from "./settings/loadFromDB";
 
 describe("settingsStore database hydration", () => {
   beforeEach(() => {
@@ -162,6 +162,7 @@ describe("settingsStore database hydration", () => {
 
   it("respects a user hiding the DSH top-bar shortcut after migration", async () => {
     localStorage.setItem("tanwords_dsh_topbar_migrated", "1");
+    localStorage.setItem("tanwords_tools_browser_topbar_migrated", "1");
     invoke.mockImplementation(async (command: string, args?: { key?: string }) => {
       if (command === "db_get_setting" && args?.key === "visible_topbar_items") {
         return JSON.stringify(["search", "ai"]);
@@ -172,6 +173,10 @@ describe("settingsStore database hydration", () => {
     await useSettingsStore.getState().loadFromDB();
 
     expect(useSettingsStore.getState().visibleTopBarItems).toEqual(["search", "ai"]);
+  });
+
+  it("adds the tools/browser top-bar icons in canonical order without re-enabling hidden items", () => {
+    expect(includeTopBarItems(["search", "ai"], ["tools", "browser"])).toEqual(["search", "tools", "browser", "ai"]);
   });
 
   it("restores a wallpaper gallery and its active image", async () => {
