@@ -216,24 +216,34 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
     }
     cacheSidebarTabs(resolvedSidebarTabs);
 
-    let resolvedTopBarItems = Array.isArray(values.visible_topbar_items)
+    const hadSavedTopBar = Array.isArray(values.visible_topbar_items);
+    let resolvedTopBarItems = hadSavedTopBar
       ? DEFAULT_TOPBAR_ITEMS.filter((id) => (values.visible_topbar_items as unknown as string[]).includes(id))
       : DEFAULT_TOPBAR_ITEMS;
-    // DSH gained a top-bar shortcut after customizable top-bar lists already
-    // existed. Seed it exactly once for desktop users; after this flag is set,
-    // hiding it in Settings remains respected.
-    if (isDesktopHost && !localStorage.getItem("tanwords_dsh_topbar_migrated")) {
-      resolvedTopBarItems = includeDshTopBarItem(resolvedTopBarItems);
-      localStorage.setItem("tanwords_dsh_topbar_migrated", "1");
-      await invoke("db_set_setting", { key: "visible_topbar_items", value: JSON.stringify(resolvedTopBarItems) });
-    }
-    // The "open tools" and "mobile browser" icons rendered unconditionally
-    // (no visibility toggle at all) before they gained one — seed them
-    // present exactly once so existing installs don't lose an icon they
-    // never chose to hide.
-    if (!localStorage.getItem("tanwords_tools_browser_topbar_migrated")) {
+    // Seed the DSH and "tools"/"browser" top-bar icons ONLY when the user has
+    // no saved top-bar list yet (first run, or upgrading from a build before
+    // the top bar was customizable). The previous one-time migrations keyed
+    // off localStorage flags to seed these "exactly once" into *existing*
+    // lists that predated them — but if that flag ever failed to persist
+    // (cleared app data, a fresh profile, a wiped localStorage), the
+    // migration re-ran on EVERY load and re-added icons the user had
+    // explicitly hidden, overwriting their saved list in memory and
+    // clobbering the DB. That was the "toggle mobile browser / tool use
+    // never persists, icons reappear on restart" bug.
+    //
+    // Gating on "no saved DB list" instead makes the seeding truly one-time
+    // AND robust to localStorage loss: any saved list was created by a build
+    // where these ids were already in DEFAULT_TOPBAR_ITEMS, so a list that
+    // lacks them means the user hid them — and we respect that. (When there
+    // is no saved list, `resolvedTopBarItems` is already DEFAULT_TOPBAR_ITEMS,
+    // which includes dsh/tools/browser, so the `include*` calls below are
+    // no-ops; the only real effect is persisting the default list to the DB
+    // so the next load is a normal "saved list" load.)
+    if (!hadSavedTopBar) {
+      if (isDesktopHost) {
+        resolvedTopBarItems = includeDshTopBarItem(resolvedTopBarItems);
+      }
       resolvedTopBarItems = includeTopBarItems(resolvedTopBarItems, ["tools", "browser"]);
-      localStorage.setItem("tanwords_tools_browser_topbar_migrated", "1");
       await invoke("db_set_setting", { key: "visible_topbar_items", value: JSON.stringify(resolvedTopBarItems) });
     }
     cacheTopBarItems(resolvedTopBarItems);

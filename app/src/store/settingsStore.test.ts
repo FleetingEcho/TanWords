@@ -160,9 +160,12 @@ describe("settingsStore database hydration", () => {
     expect(includeDshTopBarItem(["search", "ai"])).toEqual(["search", "dsh", "ai"]);
   });
 
-  it("respects a user hiding the DSH top-bar shortcut after migration", async () => {
-    localStorage.setItem("tanwords_dsh_topbar_migrated", "1");
-    localStorage.setItem("tanwords_tools_browser_topbar_migrated", "1");
+  it("respects a saved top-bar list that hides the DSH/tools/browser shortcuts", async () => {
+    // Seeding is gated on "no saved DB list" (see loadFromDB), not a localStorage
+    // flag, so a user who has customized their top bar — e.g. hidden the DSH,
+    // tools and browser shortcuts, keeping only search + ai — must not have
+    // those icons re-added on every load. This is the regression behind
+    // "toggle mobile browser / tool use never persists, icons reappear".
     invoke.mockImplementation(async (command: string, args?: { key?: string }) => {
       if (command === "db_get_setting" && args?.key === "visible_topbar_items") {
         return JSON.stringify(["search", "ai"]);
@@ -173,6 +176,23 @@ describe("settingsStore database hydration", () => {
     await useSettingsStore.getState().loadFromDB();
 
     expect(useSettingsStore.getState().visibleTopBarItems).toEqual(["search", "ai"]);
+  });
+
+  it("does not re-add hidden shortcuts when localStorage migration flags are absent", async () => {
+    // The old migrations keyed off localStorage flags; if those were ever
+    // cleared the icons reappeared. The fix gates seeding on the DB list
+    // instead, so even with no localStorage flags a saved list is respected.
+    invoke.mockImplementation(async (command: string, args?: { key?: string }) => {
+      if (command === "db_get_setting" && args?.key === "visible_topbar_items") {
+        return JSON.stringify(["search", "dsh", "theme", "updates"]);
+      }
+      return null;
+    });
+
+    await useSettingsStore.getState().loadFromDB();
+
+    // tools + browser were hidden; they must stay hidden with no flag set.
+    expect(useSettingsStore.getState().visibleTopBarItems).toEqual(["search", "dsh", "theme", "updates"]);
   });
 
   it("adds the tools/browser top-bar icons in canonical order without re-enabling hidden items", () => {
