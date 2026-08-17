@@ -208,6 +208,24 @@ const DSH_NOTIFY_STRINGS = {
   zh: { title: "DeepSeek Harness", body: "会话已完成 — 点击查看。" },
 } as const;
 
+/** Outstanding "session finished" notifications, tracked so they can be closed
+ *  explicitly. Linux notification daemons (KDE/GNOME/dash-to-dock) render a
+ *  count badge on the app's launcher icon equal to the number of unread
+ *  notifications from that app, and those notifications OUTLIVE the process
+ *  that spawned them — so without closing them, the badge grows with every
+ *  finished task and never clears, even across app restarts. Closing on
+ *  click / focus / quit is what dismisses the badge. */
+const dshNotifications = new Set<Notification>();
+
+/** Closes every outstanding DSH notification and drops the references, so the
+ *  launcher badge clears. Safe to call when there are none. */
+function closeAllDshNotifications() {
+  for (const n of dshNotifications) {
+    try { n.close(); } catch { /* already gone */ }
+  }
+  dshNotifications.clear();
+}
+
 /** A session went running→idle while the window wasn't focused (`dsh:task-
  *  finished`, emitted by dshSupervisor's `session.list` poll — see its own
  *  doc). Skipped while focused: the user is already looking at the app, a
@@ -218,7 +236,12 @@ function notifyDshTaskFinished() {
   if (!Notification.isSupported()) return;
   const strings = DSH_NOTIFY_STRINGS[tray.getLanguage()];
   const notification = new Notification({ title: strings.title, body: strings.body, silent: false });
-  notification.on("click", revealDshPage);
+  dshNotifications.add(notification);
+  notification.on("close", () => { dshNotifications.delete(notification); });
+  notification.on("click", () => {
+    revealDshPage();
+    notification.close(); // the user has acknowledged it — drop the badge
+  });
   notification.show();
 }
 
@@ -446,6 +469,11 @@ function createWindow() {
 
   mainWindow = win;
   tray.setWindow(win);
+  // Focusing the window means the user has returned to the app and can see
+  // its state directly — close any outstanding "session finished"
+  // notifications so the launcher badge clears (Linux daemons badge the icon
+  // by unread-notification count). See notifyDshTaskFinished.
+  win.on("focus", () => closeAllDshNotifications());
   // Parity with the Tauri-era tray (core's CloseRequested handler): clicking
   // the title-bar X hides the app into the tray, it does not quit — playback
   // and the tray menu keep working behind it. Only the tray's Quit (or an
@@ -599,6 +627,10 @@ if (gotLock) {
     if (quitting) return;
     event.preventDefault();
     quitting = true;
+    // Close outstanding DSH notifications before exit: Linux notification
+    // daemons keep notifications from exited processes, so without this the
+    // launcher badge would survive a restart.
+    closeAllDshNotifications();
     terminalShutdownAll();
     void sidecar.shutdown().finally(() => {
       // The DSH host has no stdin-EOF shutdown path; the supervisor SIGTERMs
