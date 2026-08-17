@@ -29,10 +29,20 @@ interface AppLockState {
    *  rather than guessing, which is what avoids the flash. */
   enabled: boolean | null;
   locked: boolean;
+  /** True from the moment `verify()` succeeds until the lock screen's exit
+   *  animation finishes and `setLocked(false)` lands. While true, the app
+   *  underneath is mounted (hidden behind the still-animating lock screen)
+   *  instead of only starting to mount once `locked` goes false — otherwise
+   *  the destination page's whole tree (images, first layout, …) has to do
+   *  its first paint in the instant the lock screen disappears, which reads
+   *  as a flash. Authorization already happened at this point, so mounting
+   *  the app early here is not an early content leak. */
+  unlocking: boolean;
   refresh: () => Promise<void>;
   lock: () => void;
-  /** Checks the password without dismissing the screen — the lock screen plays
-   *  its exit animation first and calls `setLocked(false)` when that ends. */
+  /** Checks the password. On success, marks `unlocking` so the app underneath
+   *  starts mounting while the lock screen plays its exit animation; the lock
+   *  screen calls `setLocked(false)` when that animation ends. */
   verify: (password: string) => Promise<boolean>;
   setLocked: (locked: boolean) => void;
 }
@@ -40,6 +50,7 @@ interface AppLockState {
 export const useAppLockStore = create<AppLockState>((set, get) => ({
   enabled: null,
   locked: false,
+  unlocking: false,
 
   refresh: async () => {
     if (!hostCapabilities.appLock) {
@@ -64,14 +75,18 @@ export const useAppLockStore = create<AppLockState>((set, get) => ({
   },
 
   lock: () => {
-    if (get().enabled) set({ locked: true });
+    if (get().enabled) set({ locked: true, unlocking: false });
   },
 
-  verify: (password) => isDesktopHost
-    ? invoke<boolean>("app_lock_verify", { password })
-    : webAppLock<boolean>("verify", "POST", { password }),
+  verify: async (password) => {
+    const ok = isDesktopHost
+      ? await invoke<boolean>("app_lock_verify", { password })
+      : await webAppLock<boolean>("verify", "POST", { password });
+    if (ok) set({ unlocking: true });
+    return ok;
+  },
 
-  setLocked: (locked) => set({ locked }),
+  setLocked: (locked) => set({ locked, unlocking: locked ? get().unlocking : false }),
 }));
 
 export function setAppLockPassword(current: string | null, next: string): Promise<void> {

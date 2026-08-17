@@ -20,6 +20,11 @@ export function LockScreen({ pending = false }: { pending?: boolean }) {
   const t = useT();
   const verify = useAppLockStore((s) => s.verify);
   const setLocked = useAppLockStore((s) => s.setLocked);
+  // Sourced from the store (not local state): a successful unlock swaps this
+  // component out for a fresh instance overlaying the now-mounted app (see
+  // App.tsx), so "we're leaving" has to survive that remount instead of
+  // resetting to false.
+  const leaving = useAppLockStore((s) => s.unlocking);
   // Its own wallpaper, separate from the app canvas — same controls, set up
   // under App lock in Settings.
   const wallpaper = useSettingsStore((s) => s.lockScreenImage);
@@ -31,9 +36,6 @@ export function LockScreen({ pending = false }: { pending?: boolean }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState(false);
   const [busy, setBusy] = useState(false);
-  // Held on screen while the exit animation runs. Unmounting on the spot would
-  // cut it off — the app would just pop in.
-  const [leaving, setLeaving] = useState(false);
   const [shake, setShake] = useState(false);
 
   const submit = async (event: React.FormEvent) => {
@@ -43,7 +45,8 @@ export function LockScreen({ pending = false }: { pending?: boolean }) {
     setError(false);
     try {
       if (await verify(password)) {
-        setLeaving(true);
+        // verify() already flipped `unlocking` (→ this component's `leaving`)
+        // in the store on success.
         return;
       }
       setError(true);

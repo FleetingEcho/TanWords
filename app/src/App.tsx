@@ -303,6 +303,12 @@ function App() {
   // back yet — render nothing rather than a frame of unlocked content.
   const lockEnabled = useAppLockStore((s) => s.enabled);
   const locked = useAppLockStore((s) => s.locked);
+  // True while the lock screen is playing its exit animation after a
+  // successful unlock — see appLockStore. During this window the app
+  // underneath mounts and gets its first paint done while still hidden
+  // behind the (still on top, still opaque) animating-out lock screen,
+  // instead of only starting to mount once it's gone.
+  const unlocking = useAppLockStore((s) => s.unlocking);
   React.useEffect(() => {
     // Web bootstrap already resolved the lock in the same authenticated
     // request. Desktop still asks its sidecar once at startup.
@@ -322,7 +328,7 @@ function App() {
     );
   }
 
-  if (locked) {
+  if (locked && !unlocking) {
     return (
       <>
         <LockScreen />
@@ -478,6 +484,12 @@ function App() {
         <FloatingBrowserWidget />
       </React.Suspense>
     )}
+    {/* Still mounted during `unlocking`: the app underneath has now had a
+      * frame to do its first paint, and this plays its own exit animation
+      * on top before calling `setLocked(false)` — a real cross-fade instead
+      * of the destination page's first paint happening the instant the lock
+      * screen disappears. */}
+    {locked && <LockScreen />}
     <AppToaster />
     </>
   );
