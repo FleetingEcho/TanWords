@@ -1,3 +1,5 @@
+use std::sync::Mutex;
+
 /// All keychain keys reachable from `secret_get`/`secret_set` must start with
 /// this prefix — prevents the webview from reading arbitrary keychain entries,
 /// including the ones below, which are written by name from Rust only.
@@ -16,6 +18,25 @@ const DEVICE_KEY: &str = "device_provider_key";
 /// R2 secret access key. Same reasoning as the Turso token: the UI can set it
 /// but has no way to read it back.
 const R2_SECRET_KEY: &str = "r2_secret_access_key";
+
+/** Keychain reads can display a macOS authorization dialog. Provider keys are
+ *  fetched concurrently at startup, and every decrypt used to read the same
+ *  device key independently — four providers could therefore produce four
+ *  simultaneous prompts for one Keychain item. Hold each cache lock across its
+ *  first load so concurrent callers share one authorization and one value. */
+static TURSO_TOKEN_CACHE: Mutex<Option<String>> = Mutex::new(None);
+static DEVICE_KEY_CACHE: Mutex<Option<[u8; 32]>> = Mutex::new(None);
+static R2_SECRET_CACHE: Mutex<Option<String>> = Mutex::new(None);
+
+fn cached_value<T: Clone>(cache: &Mutex<Option<T>>, load: impl FnOnce() -> Option<T>) -> Option<T> {
+    let mut cached = cache.lock().ok()?;
+    if let Some(value) = cached.as_ref() {
+        return Some(value.clone());
+    }
+    let value = load()?;
+    *cached = Some(value.clone());
+    Some(value)
+}
 
 fn entry(key: &str) -> Result<keyring::Entry, String> {
     keyring::Entry::new("tanwords", key).map_err(|e| e.to_string())
@@ -110,38 +131,91 @@ fn decode_32(encoded: &str) -> Option<[u8; 32]> {
 }
 
 pub fn turso_token_get() -> Option<String> {
-    if let Some(path) = secret_file("tanwords_turso_token") {
-        if let Some(value) = read_secret_file(&path) {
+    cached_value(&TURSO_TOKEN_CACHE, || {
+        if let Some(path) = secret_file("tanwords_turso_token") {
+            if let Some(value) = read_secret_file(&path) {
+                return Some(value);
+            }
+            // Fall back to the keychain and copy the value across. Without this a
+            // dev build silently loses every secret a release build stored — the
+            // UI reports "Missing Turso auth token" for a connection that is in
+            // fact fine. One prompt on the first dev run, none after that.
+            let value = entry(TURSO_TOKEN_KEY).ok()?.get_password().ok()?;
+            let _ = write_secret_file(&path, &value);
             return Some(value);
         }
-        // Fall back to the keychain and copy the value across. Without this a
-        // dev build silently loses every secret a release build stored — the
-        // UI reports "Missing Turso auth token" for a connection that is in
-        // fact fine. One prompt on the first dev run, none after that.
-        let value = entry(TURSO_TOKEN_KEY).ok()?.get_password().ok()?;
-        let _ = write_secret_file(&path, &value);
-        return Some(value);
-    }
-    entry(TURSO_TOKEN_KEY).ok()?.get_password().ok()
+        entry(TURSO_TOKEN_KEY).ok()?.get_password().ok()
+    })
 }
 
 pub fn turso_token_set(token: &str) -> Result<(), String> {
+    // Serialize mutation with the first-read path above so a concurrent getter
+    // can never repopulate the cache with the value being replaced.
+    let mut cached = TURSO_TOKEN_CACHE
+        .lock()
+        .map_err(|_| "Turso token cache is unavailable".to_string())?;
     if let Some(path) = secret_file("tanwords_turso_token") {
-        return write_secret_file(&path, token);
+        write_secret_file(&path, token)?;
+    } else {
+        entry(TURSO_TOKEN_KEY)?
+            .set_password(token)
+            .map_err(|e| e.to_string())?;
     }
-    entry(TURSO_TOKEN_KEY)?
-        .set_password(token)
-        .map_err(|e| e.to_string())
+    *cached = Some(token.to_string());
+    Ok(())
 }
 
 pub fn turso_token_clear() {
+    let Ok(mut cached) = TURSO_TOKEN_CACHE.lock() else {
+        return;
+    };
     if let Some(path) = secret_file("tanwords_turso_token") {
         let _ = std::fs::remove_file(path);
-        return;
-    }
-    if let Ok(entry) = entry(TURSO_TOKEN_KEY) {
+    } else if let Ok(entry) = entry(TURSO_TOKEN_KEY) {
         let _ = entry.delete_credential();
     }
+    *cached = None;
+}
+
+pub fn r2_secret_get() -> Option<String> {
+    cached_value(&R2_SECRET_CACHE, || {
+        if let Some(path) = secret_file("tanwords_r2_secret") {
+            if let Some(value) = read_secret_file(&path) {
+                return Some(value);
+            }
+            let value = entry(R2_SECRET_KEY).ok()?.get_password().ok()?;
+            let _ = write_secret_file(&path, &value);
+            return Some(value);
+        }
+        entry(R2_SECRET_KEY).ok()?.get_password().ok()
+    })
+}
+
+pub fn r2_secret_set(secret: &str) -> Result<(), String> {
+    let mut cached = R2_SECRET_CACHE
+        .lock()
+        .map_err(|_| "R2 secret cache is unavailable".to_string())?;
+    if let Some(path) = secret_file("tanwords_r2_secret") {
+        write_secret_file(&path, secret)?;
+    } else {
+        entry(R2_SECRET_KEY)?
+            .set_password(secret)
+            .map_err(|e| e.to_string())?;
+    }
+    *cached = Some(secret.to_string());
+    Ok(())
+}
+
+pub fn r2_secret_clear() {
+    let Ok(mut cached) = R2_SECRET_CACHE.lock() else {
+        return;
+    };
+    if let Some(path) = secret_file("tanwords_r2_secret") {
+        let _ = std::fs::remove_file(path);
+    } else if let Ok(entry) = entry(R2_SECRET_KEY) {
+        let _ = entry.delete_credential();
+    }
+    *cached = None;
 }
 
 /// The device's provider-encryption key, creating one on first use.
@@ -156,38 +230,11 @@ pub fn turso_token_clear() {
 /// a headless Linux box with no Secret Service and no override). Callers
 /// treat that as "this device cannot hold secrets" and refuse to store a key
 /// rather than falling back to plaintext.
-pub fn r2_secret_get() -> Option<String> {
-    if let Some(path) = secret_file("tanwords_r2_secret") {
-        if let Some(value) = read_secret_file(&path) {
-            return Some(value);
-        }
-        let value = entry(R2_SECRET_KEY).ok()?.get_password().ok()?;
-        let _ = write_secret_file(&path, &value);
-        return Some(value);
-    }
-    entry(R2_SECRET_KEY).ok()?.get_password().ok()
-}
-
-pub fn r2_secret_set(secret: &str) -> Result<(), String> {
-    if let Some(path) = secret_file("tanwords_r2_secret") {
-        return write_secret_file(&path, secret);
-    }
-    entry(R2_SECRET_KEY)?
-        .set_password(secret)
-        .map_err(|e| e.to_string())
-}
-
-pub fn r2_secret_clear() {
-    if let Some(path) = secret_file("tanwords_r2_secret") {
-        let _ = std::fs::remove_file(path);
-        return;
-    }
-    if let Ok(entry) = entry(R2_SECRET_KEY) {
-        let _ = entry.delete_credential();
-    }
-}
-
 pub fn device_key() -> Option<[u8; 32]> {
+    cached_value(&DEVICE_KEY_CACHE, load_device_key)
+}
+
+fn load_device_key() -> Option<[u8; 32]> {
     if let Ok(encoded) = std::env::var("TANWORDS_MASTER_KEY") {
         match decode_32(&encoded) {
             Some(key) => return Some(key),
@@ -310,5 +357,41 @@ pub fn secret_delete(key: String) -> Result<(), String> {
         Ok(()) => Ok(()),
         Err(keyring::Error::NoEntry) => Ok(()), // idempotent
         Err(e) => Err(e.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cached_value;
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Barrier, Mutex,
+    };
+
+    #[test]
+    fn concurrent_secret_reads_share_one_load() {
+        let cache = Arc::new(Mutex::new(None));
+        let loads = Arc::new(AtomicUsize::new(0));
+        let start = Arc::new(Barrier::new(5));
+        let threads = (0..4)
+            .map(|_| {
+                let cache = Arc::clone(&cache);
+                let loads = Arc::clone(&loads);
+                let start = Arc::clone(&start);
+                std::thread::spawn(move || {
+                    start.wait();
+                    cached_value(&cache, || {
+                        loads.fetch_add(1, Ordering::SeqCst);
+                        Some("secret".to_string())
+                    })
+                })
+            })
+            .collect::<Vec<_>>();
+
+        start.wait();
+        for thread in threads {
+            assert_eq!(thread.join().unwrap().as_deref(), Some("secret"));
+        }
+        assert_eq!(loads.load(Ordering::SeqCst), 1);
     }
 }
