@@ -57,22 +57,43 @@ export interface DshStatusEvent {
   kind?: DshFailKind;
 }
 
+/** Executable locations a GUI-launched app cannot rely on macOS putting on
+ *  PATH. Keep this list shared by launcher discovery and the spawned process:
+ *  npm's `dsh` is a `#!/usr/bin/env node` script, so finding the launcher but
+ *  then omitting the directory containing its Node runtime makes it exit 127. */
+function executableSearchDirs(extra: string[] = []): string[] {
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
+  const platformDirs = process.platform === "win32"
+    ? [process.env.APPDATA ? path.join(process.env.APPDATA, "npm") : ""]
+    : [
+        home ? path.join(home, ".local", "bin") : "",
+        home ? path.join(home, ".bun", "bin") : "",
+        home ? path.join(home, ".volta", "bin") : "",
+        ...(process.platform === "darwin" ? ["/opt/homebrew/bin"] : []),
+        "/usr/local/bin",
+        "/usr/bin",
+      ];
+
+  return [...new Set([
+    ...extra,
+    ...(process.env.PATH ?? "").split(path.delimiter),
+    ...platformDirs,
+  ].filter(Boolean))];
+}
+
 /** Locate the `dsh` launcher. Packaged TanWords builds do not bundle the DSH
  *  CLI, so this is best-effort: an explicit `DSH_BIN` override wins, otherwise
- *  we search PATH plus a couple of well-known prefixes. A miss returns null and
- *  the supervisor reports a "failed" status the renderer can surface. */
+ *  we search PATH plus well-known package-manager prefixes. A miss returns null
+ *  and the supervisor reports a "failed" status the renderer can surface. */
 function resolveDshBinary(): string | null {
   const explicit = process.env.DSH_BIN;
   if (explicit && fs.existsSync(explicit)) return explicit;
 
   const ext = process.platform === "win32" ? ["", ".exe", ".cmd"] : [""];
   const candidates: string[] = [];
-  for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
-    if (!dir) continue;
+  for (const dir of executableSearchDirs()) {
     for (const e of ext) candidates.push(path.join(dir, `dsh${e}`));
   }
-  candidates.push(path.join(process.env.HOME ?? "", ".local", "bin", "dsh"));
-  candidates.push("/usr/local/bin/dsh", "/usr/bin/dsh");
 
   for (const candidate of candidates) {
     try {
@@ -82,6 +103,17 @@ function resolveDshBinary(): string | null {
     }
   }
   return null;
+}
+
+/** Preserve the app environment while ensuring an `env node`/`env bun`
+ *  launcher can find a runtime beside the resolved CLI. Finder-launched macOS
+ *  apps commonly inherit only `/usr/bin:/bin:/usr/sbin:/sbin`, even when `dsh`
+ *  itself lives under `~/.local/bin` or Homebrew. */
+function dshChildEnv(bin: string): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    PATH: executableSearchDirs([path.dirname(bin)]).join(path.delimiter),
+  };
 }
 
 export class DshSupervisor {
@@ -316,7 +348,7 @@ export class DshSupervisor {
         {
           stdio: ["pipe", "pipe", "pipe"],
           windowsHide: true,
-          env: process.env,
+          env: dshChildEnv(bin),
           // Detach `dsh` into its own process group so a Ctrl-C in the dev
           // terminal does not signal it directly. Without this, Ctrl-C under
           // `bun run dev` sends SIGINT to the whole foreground group — vite,

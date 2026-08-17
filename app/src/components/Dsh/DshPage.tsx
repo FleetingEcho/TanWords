@@ -168,9 +168,12 @@ export function DshPage({ visible }: { visible: boolean }) {
   // AND nothing is blocking it (a modal), hide otherwise so the view never
   // renders over the next page or over a dialog. Like the browser panel, a
   // re-show after a blocker clears is just `setHidden(false)` natively, so the
-  // page keeps its scroll position and in-page state.
+  // page keeps its scroll position and in-page state. A failed host is the one
+  // exception: dismissing its modal clears the blocker, but must not immediately
+  // call `dsh_show` again and reopen the same modal in an unclosable loop. Retry
+  // and Apply & Restart invoke the start path explicitly.
   useEffect(() => {
-    if (visible && !blocked) {
+    if (visible && !blocked && status !== "failed") {
       void show();
     } else {
       invoke("dsh_hide").catch(() => {});
@@ -277,8 +280,8 @@ export function DshPage({ visible }: { visible: boolean }) {
   const starting = status === "starting";
   const failed = status === "failed";
   // The starting spinner is an inline overlay (no modal needed). The failed
-  // state is a modal; while it's dismissed, a small "Configure" button stays
-  // so the user can reopen it.
+  // state is a modal; while it's dismissed, the complete error stays inline
+  // with Retry and Configure actions so the page remains useful.
   const showStartingOverlay = starting && !failedModalOpen;
 
   return (
@@ -366,12 +369,30 @@ export function DshPage({ visible }: { visible: boolean }) {
           <DshNotInstalledGuide onRetry={retry} />
         )}
         {failed && failKind === "other" && !failedModalOpen && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/80 p-6 text-center">
-            <p className="text-sm font-medium text-destructive">{t("dsh.failed")}</p>
-            <Button onClick={() => setFailedModalOpen(true)} className="mt-1">
-              <RefreshCw className="mr-2 h-4 w-4" />
-              {t("dsh.configure")}
-            </Button>
+          <div
+            role="alert"
+            className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 p-6 text-center"
+          >
+            <div className="w-full max-w-xl space-y-4 rounded-xl border border-border bg-background/95 p-5 shadow-sm">
+              <div className="space-y-1.5">
+                <p className="text-sm font-semibold text-destructive">{t("dsh.failed")}</p>
+                {error && (
+                  <p className="break-words text-xs leading-relaxed text-muted-foreground">
+                    {error}
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button variant="outline" size="sm" onClick={retry}>
+                  <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                  {t("dsh.retry")}
+                </Button>
+                <Button size="sm" onClick={() => setFailedModalOpen(true)}>
+                  <TerminalSquare className="mr-1.5 h-3.5 w-3.5" />
+                  {t("dsh.configure")}
+                </Button>
+              </div>
+            </div>
           </div>
         )}
       </div>

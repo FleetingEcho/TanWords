@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
+import path from "node:path";
 
 const spawn = vi.hoisted(() => vi.fn());
 
@@ -16,6 +17,7 @@ import { DshSupervisor } from "./dshSupervisor";
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.clearAllMocks();
 });
 
@@ -67,6 +69,37 @@ describe("DshSupervisor", () => {
     expect(spawn.mock.calls[0]?.[1]).toEqual([
       "--profile", "web", "--host", "127.0.0.1", "--port", "3080",
     ]);
+
+    child.stdout.write("dsh web: http://127.0.0.1:3080\n");
+    await expect(ready).resolves.toBe("http://127.0.0.1:3080");
+    child.stdout.destroy();
+    child.stderr.destroy();
+    child.stdin.destroy();
+  });
+
+  it("adds the dsh launcher's directory to PATH so env can find its Node runtime", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("connection refused"); }));
+    vi.stubEnv("DSH_BIN", path.join(path.sep, "opt", "dsh-node", "bin", "dsh"));
+    vi.stubEnv("PATH", [path.join(path.sep, "usr", "bin"), path.join(path.sep, "bin")].join(path.delimiter));
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      exitCode: null,
+      signalCode: null,
+      kill: vi.fn(() => true),
+    });
+    spawn.mockReturnValueOnce(child);
+
+    const supervisor = new DshSupervisor();
+    const ready = supervisor.start(0);
+    await vi.waitFor(() => expect(spawn).toHaveBeenCalledOnce());
+
+    const spawnOptions = spawn.mock.calls[0]?.[2] as { env?: NodeJS.ProcessEnv };
+    expect(spawnOptions.env?.PATH?.split(path.delimiter)[0]).toBe(
+      path.join(path.sep, "opt", "dsh-node", "bin"),
+    );
+    expect(spawnOptions.env?.PATH).toContain(path.join(path.sep, "usr", "bin"));
 
     child.stdout.write("dsh web: http://127.0.0.1:3080\n");
     await expect(ready).resolves.toBe("http://127.0.0.1:3080");
