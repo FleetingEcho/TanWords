@@ -45,6 +45,16 @@ publish:
   provider: github
   owner: FleetingEcho
   repo: TanWords
+
+# node_modules is NOT shipped (see the "!node_modules/**/*" exclusion under
+# `files` below), and the main-process bundle is fully inlined by
+# vite-plugin-electron (verified: zero native-addon references in out/main).
+# So the default @electron/rebuild pass is pure waste AND a release blocker:
+# bun does not run dependency lifecycle scripts, so just-bash's optional
+# @mongodb-js/zstd never fetches its zstd.h source and electron-builder fails
+# recompiling it for the Electron ABI. Nothing native exists at runtime to
+# rebuild for.
+npmRebuild: false
 # version is NOT set here — electron-builder reads it from package.json's
 # "version" (already 1.0.0); duplicating it here would be a second source of truth.
 
