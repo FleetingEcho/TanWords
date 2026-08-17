@@ -25,6 +25,8 @@ export function LockScreen({ pending = false }: { pending?: boolean }) {
   const wallpaper = useSettingsStore((s) => s.lockScreenImage);
   const visible = useSettingsStore((s) => s.lockScreenVisible);
   const blur = useSettingsStore((s) => s.lockScreenBlur);
+  const dimming = useSettingsStore((s) => s.lockScreenDimming);
+  const position = useSettingsStore((s) => s.lockScreenImagePosition);
   const showWallpaper = Boolean(wallpaper) && visible;
   const [password, setPassword] = useState("");
   const [error, setError] = useState(false);
@@ -66,18 +68,40 @@ export function LockScreen({ pending = false }: { pending?: boolean }) {
     >
       {showWallpaper ? (
         <>
-          <img
-            src={wallpaper}
-            alt=""
-            aria-hidden="true"
-            className={`absolute inset-0 h-full w-full object-cover ${leaving ? "" : "animate-in fade-in zoom-in-105 duration-700"}`}
-            // Scaled up so a blurred edge never reveals empty space.
-            style={{ filter: `blur(${blur}px)`, transform: blur > 0 ? "scale(1.08)" : undefined }}
-          />
-          {/* Only over a photo: the wordmark and card have to stay readable
-            * whatever the user picked. Without a photo the background is the
-            * app's own canvas and needs no scrim. */}
-          <div className="absolute inset-0 bg-black/55" />
+          {/* Entrance animation (its own transform, via Tailwind's animate-in/
+            * zoom-in-105 utility classes) lives on this outer wrapper; the crop's
+            * zoom (position.scale) on the one inside that; the blur-overscan
+            * transform stays on the img itself. Three separate elements because
+            * each needs its own transform-origin/timing and an inline
+            * `style.transform` would otherwise clobber the class-driven one. */}
+          <div className={`absolute inset-0 ${leaving ? "" : "animate-in fade-in zoom-in-105 duration-700"}`}>
+            <div
+              className="h-full w-full"
+              style={position.scale && position.scale !== 1
+                ? { transform: `scale(${position.scale})`, transformOrigin: `${position.x}% ${position.y}%` }
+                : undefined}
+            >
+              <img
+                src={wallpaper}
+                alt=""
+                aria-hidden="true"
+                className="h-full w-full object-cover"
+                // Scaled up so a blurred edge never reveals empty space.
+                style={{
+                  filter: `blur(${blur}px)`,
+                  transform: blur > 0 ? "scale(1.08)" : undefined,
+                  objectPosition: `${position.x}% ${position.y}%`,
+                }}
+              />
+            </div>
+          </div>
+          {/* Off by default — the photo shows exactly as picked, no forced
+            * darkening. Same opt-in pattern as `appBackgroundDimming`: only
+            * dims when the user sets it in Settings, for whichever photo
+            * turns out to need the legibility help. */}
+          {dimming > 0 && (
+            <div className="absolute inset-0" style={{ backgroundColor: `rgb(0 0 0 / ${dimming}%)` }} />
+          )}
         </>
       ) : (
         <SpecimenBackdrop />

@@ -5,8 +5,7 @@ export const dsh: Dict = {
     "dsh.startingHint": "正在启动本地 DSH Web 服务，首次启动需要几秒钟。",
     "dsh.failed": "无法启动 DeepSeek Harness",
     "dsh.reconnecting": "DSH 服务已停止，重新打开本页面即可重启。",
-    "dsh.notInstalled":
-        "本机尚未安装 DeepSeek Harness（`dsh`）。请使用 `npm i -g @deepseek-ai/dsh` 安装后再打开本页面。",
+    "dsh.viewReconnecting": "正在重新连接 DSH 界面——你的会话和正在运行的任务不受影响。",
     "dsh.retry": "重试",
     "dsh.reload": "重新加载",
     "dsh.restart": "重启服务",
@@ -24,13 +23,14 @@ export const dsh: Dict = {
     "dsh.notInstalledLead":
         "本页面运行 DeepSeek Harness（DSH）智能体工作台。TanWords 嵌入的是 DSH 的官方 Web UI，但需要本机已安装 `dsh` 命令——TanWords 并不内置它。",
     "dsh.notInstalledSteps": "安装",
-    "dsh.notInstalledStep1": "打开终端，安装官方 DSH 命令行（需 Node.js 22 或以上）：",
+    "dsh.notInstalledStep1": "打开终端，安装官方 DSH 命令行：",
     "dsh.notInstalledStep2": "验证安装：",
     "dsh.notInstalledStep3": "重新打开本页面——TanWords 会自动找到 `dsh`。",
     "dsh.notInstalledUpgrade": "升级",
     "dsh.notInstalledUpgradeText": "已经装过？更新到最新版以匹配本界面：",
     "dsh.notInstalledPrereq": "前置条件",
-    "dsh.notInstalledPrereqText": "Node.js 22 或以上。可用 `node --version` 检查；如缺失请到 nodejs.org 下载。",
+    "dsh.notInstalledPrereqText":
+        "Node.js 22.19 及以上，或 24 及以上（不支持 23.x）。可用 `node --version` 检查；如缺失请到 nodejs.org 下载。",
     "dsh.notInstalledOfficial": "官方项目",
     "dsh.notInstalledOfficialText":
         "源码、发布与文档都在 GitHub。本页面嵌入的是官方 Web UI，并非修改或捆绑版本。",
@@ -38,6 +38,8 @@ export const dsh: Dict = {
     "dsh.notInstalledCopy": "复制",
     "dsh.notInstalledCopied": "已复制",
     "dsh.notInstalledRetry": "我已安装 — 重试",
+    "dsh.notInstalledPathHint":
+        "装完还是不行？如果你用 nvm 等版本管理工具，请确认 `dsh` 装在终端默认使用的 Node 版本下——TanWords 查找 `dsh` 用的是你终端的同一个 PATH。",
 
     "settings.dshPort": "DeepSeek Harness 端口",
     "settings.dshPortSub":
@@ -52,4 +54,14 @@ export const dsh: Dict = {
     "settings.dshToolbar": "显示 DSH 工具栏",
     "settings.dshToolbarSub":
         "显示 DSH 页面自带的工具栏（DeepSeek Harness 标签、重启、重新加载、在浏览器中打开）。默认隐藏，让嵌入的智能体界面占据完整高度。",
+    "settings.dshIdleStop": "空闲自动停止",
+    "settings.dshIdleStopSub":
+        "DSH 页面隐藏且没有任务在跑超过这个时长后，自动停掉 DSH 服务，释放它占用的 Node/pnpm 进程；下次打开页面会立即重新拉起。只要有会话在运行就绝不会停止。",
+    "settings.dshIdleStopNever": "从不",
+    "settings.dshIdleStopAfter": "{minutes} 分钟后",
+    "settings.dshGlobalShortcut": "全局快捷键",
+    "settings.dshGlobalShortcutSub": "无论在哪个页面，甚至 TanWords 在后台，按下快捷键直接跳到 DSH 页面。",
+    "settings.dshGlobalShortcutNotSet": "未设置",
+    "settings.dshGlobalShortcutRecording": "请按下按键组合…",
+    "settings.dshGlobalShortcutClear": "清除",
 };

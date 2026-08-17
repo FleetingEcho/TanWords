@@ -4,8 +4,9 @@ import { Lock, Unlock } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 import { disableAppLock, setAppLockPassword, useAppLockStore } from "@/store/appLockStore";
-import { AUTO_LOCK_CHOICES, useSettingsStore } from "@/store/settingsStore";
+import { AUTO_LOCK_CHOICES, DEFAULT_BANNER_POSITION, useSettingsStore } from "@/store/settingsStore";
 import { WallpaperSetting } from "./WallpaperSetting";
+import { BannerPositionModal } from "./BannerPositionModal";
 import { APP_BG_MAX_DIMENSION, MAX_APP_BG_UPLOAD_BYTES, fileToDownscaledDataUrl } from "./GeneralSection";
 import { maskedPasswordProps } from "@/lib/maskedInput";
 
@@ -163,23 +164,58 @@ export function AppLockSection() {
 
       {/* Its own picture and sliders — same component the app background uses,
         * so the two look and behave alike without sharing a setting. */}
-      <div className="border-t border-border pt-1">
-        <WallpaperSetting
-          label={t("lock.wallpaper")}
-          sub={t("lock.wallpaperSub")}
-          emptyLabel={t("settings.appBackgroundNone")}
-          maxDimension={APP_BG_MAX_DIMENSION}
-          maxBytes={MAX_APP_BG_UPLOAD_BYTES}
-          processFile={fileToDownscaledDataUrl}
-          image={useSettingsStore((s) => s.lockScreenImage)}
-          setImage={useSettingsStore((s) => s.setLockScreenImage)}
-          blur={useSettingsStore((s) => s.lockScreenBlur)}
-          setBlur={useSettingsStore((s) => s.setLockScreenBlur)}
-          visible={useSettingsStore((s) => s.lockScreenVisible)}
-          setVisible={useSettingsStore((s) => s.setLockScreenVisible)}
-        />
-      </div>
+      <LockScreenWallpaperSetting />
 
+    </div>
+  );
+}
+
+/** Split out (rather than inlined like the old direct `WallpaperSetting` call)
+ *  because framing needs its own pending/adjusting state — same shape as
+ *  `DashboardBannerSetting` in GeneralSection.tsx: a freshly picked image is
+ *  held here until the user confirms its crop, so replacing the wallpaper
+ *  never takes effect with the old (or default) framing still applied. */
+function LockScreenWallpaperSetting() {
+  const t = useT();
+  const image = useSettingsStore((s) => s.lockScreenImage);
+  const position = useSettingsStore((s) => s.lockScreenImagePosition);
+  const setImage = useSettingsStore((s) => s.setLockScreenImage);
+  const [pending, setPending] = useState<string | null>(null);
+  const [framing, setFraming] = useState(false);
+
+  const editing = pending ?? image;
+
+  return (
+    <div className="border-t border-border pt-1">
+      <WallpaperSetting
+        label={t("lock.wallpaper")}
+        sub={t("lock.wallpaperSub")}
+        emptyLabel={t("settings.appBackgroundNone")}
+        maxDimension={APP_BG_MAX_DIMENSION}
+        maxBytes={MAX_APP_BG_UPLOAD_BYTES}
+        processFile={fileToDownscaledDataUrl}
+        image={image}
+        setImage={setImage}
+        objectPosition={`${position.x}% ${position.y}%`}
+        imageScale={position.scale}
+        onPicked={(dataUrl) => { setPending(dataUrl); setFraming(true); }}
+        onAdjust={() => { setPending(null); setFraming(true); }}
+        blur={useSettingsStore((s) => s.lockScreenBlur)}
+        setBlur={useSettingsStore((s) => s.setLockScreenBlur)}
+        dimming={useSettingsStore((s) => s.lockScreenDimming)}
+        setDimming={useSettingsStore((s) => s.setLockScreenDimming)}
+        visible={useSettingsStore((s) => s.lockScreenVisible)}
+        setVisible={useSettingsStore((s) => s.setLockScreenVisible)}
+      />
+      <BannerPositionModal
+        open={framing}
+        src={editing}
+        initial={pending ? DEFAULT_BANNER_POSITION : position}
+        frameAspect={16 / 9}
+        allowZoom
+        onCancel={() => setFraming(false)}
+        onConfirm={(pos) => { setImage(editing, pos); setFraming(false); }}
+      />
     </div>
   );
 }

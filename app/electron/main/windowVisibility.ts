@@ -30,3 +30,15 @@ export function showWindow(win: BrowserWindow): void {
   pendingFullscreenHides.delete(win);
   win.show();
 }
+
+/** Bring a possibly-hidden/minimized/background window fully to the front —
+ *  the "make it visible right now" used by the tray's "Open main window" row,
+ *  a task-finished notification click, and the global DSH shortcut. Restore
+ *  before show(): showing a still-minimized window on some platforms just
+ *  un-minimizes in place behind other windows rather than raising it. */
+export function restoreAndFocusWindow(win: BrowserWindow): void {
+  if (win.isDestroyed()) return;
+  if (win.isMinimized()) win.restore();
+  showWindow(win);
+  win.focus();
+}

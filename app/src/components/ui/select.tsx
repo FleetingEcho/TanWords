@@ -4,6 +4,7 @@ import { Check, ChevronDown, ChevronUp } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { BrowserPanelBlocker } from "@/store/browserPanelStore";
+import { DshPanelBlocker } from "@/store/dshPanelBlockStore";
 
 const Select = SelectPrimitive.Root;
 
@@ -83,6 +84,7 @@ const SelectContent = React.forwardRef<
       {...props}
     >
       <BrowserPanelBlocker />
+      <DshPanelBlocker />
       <SelectScrollUpButton />
       <SelectPrimitive.Viewport
         className={cn(

@@ -34,6 +34,10 @@ const HOST_PROBE_TIMEOUT_MS = 500;
  *  treats a second signal during pending shutdown as "force-exit now", which
  *  is exactly the truncation we're avoiding. */
 const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 9000;
+/** How often to poll `session.list` while the host is up — cheap (loopback
+ *  HTTP) and drives both the task-finished notification and the idle-stop
+ *  timer below. */
+const SESSION_POLL_INTERVAL_MS = 4000;
 
 export type DshStatus = "starting" | "ready" | "failed";
 
@@ -98,9 +102,36 @@ export class DshSupervisor {
    *  unblock an awaiter if the host was killed before it came up. */
   private pendingReject: ((error: Error) => void) | null = null;
   private onEvent: ((name: string, payload: unknown) => void) | null = null;
+  /** Polls `session.list` while the host is up. Shared by two features that
+   *  both need "is anything running right now": the task-finished
+   *  notification (a session going running→idle) and the idle-stop timer
+   *  (never auto-stop out from under a live task). */
+  private sessionPollTimer: ReturnType<typeof setInterval> | null = null;
+  private sessionRunning = new Map<string, boolean>();
+  /** Whether the DSH page is currently the visible, unblocked page — set by
+   *  `noteVisibility()`, called from the same `dsh_show`/`dsh_hide` IPC path
+   *  that already drives the native view. */
+  private pageVisible = false;
+  private hiddenSince: number | null = null;
+  /** `0` disables idle-stop. Set from the renderer's Settings page. */
+  private idleStopMinutes = 0;
 
   setEventSink(sink: (name: string, payload: unknown) => void) {
     this.onEvent = sink;
+  }
+
+  /** Told by `dsh_show`/`dsh_hide` whenever the page's visibility changes —
+   *  starts (or clears) the idle clock the idle-stop timer reads. */
+  noteVisibility(visible: boolean): void {
+    this.pageVisible = visible;
+    this.hiddenSince = visible ? null : Date.now();
+  }
+
+  /** `0` disables idle-stop. The Settings page enforces its own 10-minute
+   *  floor on non-zero values before calling this; this setter only guards
+   *  against a malformed/negative number reaching the timer math below. */
+  setIdleStopMinutes(minutes: number): void {
+    this.idleStopMinutes = Number.isFinite(minutes) && minutes > 0 ? Math.floor(minutes) : 0;
   }
 
   /** The ready URL, or null if the host has not (yet) come up. */
@@ -217,6 +248,7 @@ export class DshSupervisor {
       this.attachedExternal = true;
       this.url = existing;
       this.emit({ status: "ready", url: existing });
+      this.startSessionPoll(existing);
       return existing;
     }
 
@@ -230,6 +262,7 @@ export class DshSupervisor {
    *  ready URL. */
   async restart(port?: number): Promise<string> {
     if (port !== undefined) this.desiredPort = this.clampPort(port);
+    this.stopSessionPoll();
 
     const child = this.child;
     if (child && child.exitCode === null && child.signalCode === null) {
@@ -319,6 +352,7 @@ export class DshSupervisor {
       this.pendingReject = null;
       this.url = match[1];
       this.emit({ status: "ready", url: this.url });
+      this.startSessionPoll(this.url);
       resolve(this.url);
     };
 
@@ -355,6 +389,7 @@ export class DshSupervisor {
       // Died after it was ready: clear the cached URL/state so a later visit
       // re-attempts. We do NOT auto-respawn — a broken host in a tight loop is
       // worse than a one-time "reconnecting" state the user can retry.
+      this.stopSessionPoll();
       this.url = null;
       this.startPromise = null;
       this.emit({
@@ -367,6 +402,91 @@ export class DshSupervisor {
 
   private emit(event: DshStatusEvent) {
     this.onEvent?.("dsh:status", event);
+  }
+
+  private startSessionPoll(url: string): void {
+    this.stopSessionPoll();
+    const timer = setInterval(() => { void this.pollSessionStatus(url); }, SESSION_POLL_INTERVAL_MS);
+    timer.unref?.();
+    this.sessionPollTimer = timer;
+  }
+
+  private stopSessionPoll(): void {
+    if (this.sessionPollTimer) clearInterval(this.sessionPollTimer);
+    this.sessionPollTimer = null;
+    this.sessionRunning.clear();
+  }
+
+  /** Polls the same `session.list` RPC the Web UI itself lists sessions with
+   *  (`packages/host/apiproxy` — a documented, path-routed method, not an
+   *  internal implementation detail). Each item carries `running: boolean`;
+   *  a session going true→false between two polls is a turn finishing, which
+   *  fires `dsh:task-finished` for main (see index.ts) to notify on. The
+   *  same pass also feeds the idle-stop check below — both need "is anything
+   *  running right now", so one poll serves both features. */
+  private async pollSessionStatus(url: string): Promise<void> {
+    let items: Array<{ sessionId?: unknown; running?: unknown }>;
+    try {
+      const response = await fetch(`${url}/api/session.list`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          type: "client-request",
+          rpcId: "tanwords-dsh-poll",
+          method: "session.list",
+          payload: {},
+        }),
+      });
+      if (!response.ok) return;
+      const body = await response.json() as {
+        result?: { ok?: unknown; value?: { items?: unknown } };
+      };
+      if (body.result?.ok !== true || !Array.isArray(body.result.value?.items)) return;
+      items = body.result.value.items;
+    } catch {
+      // Transient (host briefly unreachable, a request mid-flight during
+      // restart, …) — the next poll retries. Never treated as "nothing
+      // running": a failed poll must not accidentally green-light idle-stop.
+      return;
+    }
+
+    let anyRunning = false;
+    for (const item of items) {
+      if (typeof item.sessionId !== "string" || typeof item.running !== "boolean") continue;
+      if (item.running) anyRunning = true;
+      const was = this.sessionRunning.get(item.sessionId);
+      this.sessionRunning.set(item.sessionId, item.running);
+      if (was === true && !item.running) {
+        this.onEvent?.("dsh:task-finished", { sessionId: item.sessionId });
+      }
+    }
+    this.checkIdleStop(anyRunning);
+  }
+
+  /** Auto-stops the host after it's sat hidden (see `noteVisibility`) and
+   *  idle (no session running) past the configured threshold — set from
+   *  Settings, 0 disables this entirely. Never fires while any session is
+   *  running, no matter how long the page has been hidden: this must not be
+   *  able to interrupt a task the same way navigating away never does. */
+  private checkIdleStop(anyRunning: boolean): void {
+    if (this.idleStopMinutes <= 0) return;
+    if (this.pageVisible || anyRunning) return;
+    if (this.hiddenSince === null) return;
+    if (Date.now() - this.hiddenSince < this.idleStopMinutes * 60_000) return;
+    void this.idleStop();
+  }
+
+  /** Kills the child the same way an unexpected crash would, deliberately
+   *  without `restarting`/`shuttingDown` set: the child's own `exit` handler
+   *  then takes its normal "died after ready" branch, clearing state and
+   *  emitting `failed` — harmless since the page is hidden (that's the
+   *  precondition to get here), and a later `start()` respawns fresh exactly
+   *  like any other post-crash reopen. An externally-attached host (no owned
+   *  child) is never touched — TanWords doesn't own its lifetime. */
+  private async idleStop(): Promise<void> {
+    const child = this.child;
+    if (!child || child.exitCode !== null || child.signalCode !== null) return;
+    await this.killChild(child);
   }
 
   /** Stop the child: send SIGTERM **once** to trigger `dsh`'s graceful
@@ -409,6 +529,7 @@ export class DshSupervisor {
    *  then SIGKILL after a timeout so a hung host can't hang app quit. */
   async shutdown(): Promise<void> {
     this.shuttingDown = true;
+    this.stopSessionPoll();
     const child = this.child;
     if (!child || child.exitCode !== null || child.signalCode !== null) return;
     await this.killChild(child);

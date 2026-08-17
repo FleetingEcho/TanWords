@@ -123,13 +123,22 @@ export function DashboardPage() {
       {dashboardBanner && dashboardBannerVisible && (
         <div className="w-full h-[200px] rounded-2xl overflow-hidden border border-border">
           {/* The banner is far wider than most photos, so `cover` always discards
-            * part of the image — which part is the user's choice, made in Settings. */}
-          <img
-            src={dashboardBanner}
-            alt=""
-            className="w-full h-full object-cover"
-            style={{ objectPosition: `${bannerPosition.x}% ${bannerPosition.y}%` }}
-          />
+            * part of the image — which part (and how zoomed in), the user's choice,
+            * made in Settings. Zoom lives on this wrapper, pan on the img itself —
+            * see BannerPositionModal's doc for why they're kept separate. */}
+          <div
+            className="h-full w-full"
+            style={bannerPosition.scale && bannerPosition.scale !== 1
+              ? { transform: `scale(${bannerPosition.scale})`, transformOrigin: `${bannerPosition.x}% ${bannerPosition.y}%` }
+              : undefined}
+          >
+            <img
+              src={dashboardBanner}
+              alt=""
+              className="w-full h-full object-cover"
+              style={{ objectPosition: `${bannerPosition.x}% ${bannerPosition.y}%` }}
+            />
+          </div>
         </div>
       )}
 

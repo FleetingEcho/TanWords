@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { BrowserPanelBlocker, useBrowserPanelBlockStore } from "@/store/browserPanelStore";
 import { useFloatingBrowserStore } from "@/store/floatingBrowserStore";
+import { useNavStore } from "@/store/navStore";
 import { usePrivateBrowsingStore } from "@/store/privateBrowsingStore";
 import { useFloatingBrowserPanel } from "@/hooks/useFloatingBrowserPanel";
 import { BrowserTabStrip } from "@/components/Browser/BrowserTabStrip";
@@ -87,6 +88,14 @@ export function FloatingBrowserWidget() {
   const close = useFloatingBrowserStore((s) => s.close);
   const privateMode = usePrivateBrowsingStore((s) => s.enabled);
   const togglePrivateMode = usePrivateBrowsingStore((s) => s.toggle);
+  // useFloatingBrowserPanel already hides the native "screen" content while
+  // DSH is active (see its own doc) — but that leaves this bezel's own DOM
+  // chrome (drag handle, address bar, tab strip) still drawn wherever it
+  // isn't covered by DSH's native view, showing an empty frame. Unmount the
+  // whole widget instead, same as the existing minimize/close paths — safe
+  // per this component's own doc: the native tabs live in the main process
+  // and get re-adopted via floating_browser_get_state on remount.
+  const dshActive = useNavStore((s) => s.page === "dsh");
 
   const {
     setContainer, tabs, active, error,
@@ -232,7 +241,7 @@ export function FloatingBrowserWidget() {
     endNativeBlock();
   };
 
-  if (status !== "open") return null;
+  if (status !== "open" || dshActive) return null;
 
   const go = () => { editingRef.current = false; void openUrl(addressInput); };
   const confirmDestroy = () => {

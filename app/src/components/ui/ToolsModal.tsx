@@ -6,6 +6,7 @@ import { ToolsModalTitleBar, type ToolsModalTab } from "@/components/ui/ToolsMod
 import { ToolsModalWordTab } from "@/components/ui/ToolsModalWordTab";
 import { ToolsModalResizeHandle } from "@/components/ui/ToolsModalResizeHandle";
 import { BrowserPanelBlocker } from "@/store/browserPanelStore";
+import { DshPanelBlocker } from "@/store/dshPanelBlockStore";
 
 const DocumentsPage = React.lazy(() =>
   import("@/components/Documents/DocumentsPage").then((m) => ({ default: m.DocumentsPage })));
@@ -205,8 +206,9 @@ export function ToolsModal() {
 
   return (
     <div className="fixed inset-0 z-10">
-      {/* Native browser panel must step aside — see browserPanelStore. */}
+      {/* Native browser/DSH panels must step aside — see browserPanelStore / dshPanelBlockStore. */}
       <BrowserPanelBlocker />
+      <DshPanelBlocker />
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/20" onClick={closeModal} />
 

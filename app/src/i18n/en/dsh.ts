@@ -5,8 +5,7 @@ export const dsh: Dict = {
     "dsh.startingHint": "Booting the local DSH Web host. This takes a few seconds on first launch.",
     "dsh.failed": "Couldn't start DeepSeek Harness",
     "dsh.reconnecting": "The DSH host stopped. Reopen the page to restart it.",
-    "dsh.notInstalled":
-        "DeepSeek Harness (`dsh`) isn't installed on this machine. Install it with `npm i -g @deepseek-ai/dsh`, then reopen this page.",
+    "dsh.viewReconnecting": "Reconnecting the DSH view — your session and any running task are unaffected.",
     "dsh.retry": "Retry",
     "dsh.reload": "Reload",
     "dsh.restart": "Restart host",
@@ -28,8 +27,7 @@ export const dsh: Dict = {
     "dsh.notInstalledLead":
         "This page runs the DeepSeek Harness (DSH) agent workspace. TanWords embeds DSH's official Web UI, but it needs the `dsh` command on this machine — TanWords does not bundle it.",
     "dsh.notInstalledSteps": "Install",
-    "dsh.notInstalledStep1":
-        "Open a terminal and install the official DSH CLI (requires Node.js 22+):",
+    "dsh.notInstalledStep1": "Open a terminal and install the official DSH CLI:",
     "dsh.notInstalledStep2": "Verify the install:",
     "dsh.notInstalledStep3": "Reopen this page — TanWords will find `dsh` automatically.",
     "dsh.notInstalledUpgrade": "Upgrade",
@@ -37,7 +35,7 @@ export const dsh: Dict = {
         "Already installed? Update to the latest release to match this UI:",
     "dsh.notInstalledPrereq": "Prerequisites",
     "dsh.notInstalledPrereqText":
-        "Node.js 22 or newer. Check with `node --version`. Get it from nodejs.org if missing.",
+        "Node.js 22.19+ or 24+ (23.x is not supported). Check with `node --version`. Get it from nodejs.org if missing.",
     "dsh.notInstalledOfficial": "Official project",
     "dsh.notInstalledOfficialText":
         "Source, releases, and docs live on GitHub. This page embeds the official Web UI — it is not a modified or bundled copy.",
@@ -45,6 +43,8 @@ export const dsh: Dict = {
     "dsh.notInstalledCopy": "Copy",
     "dsh.notInstalledCopied": "Copied",
     "dsh.notInstalledRetry": "I've installed it — retry",
+    "dsh.notInstalledPathHint":
+        "Still failing after install? If you use nvm or another version manager, make sure `dsh` was installed under the Node version your terminal defaults to — TanWords looks for it on the same PATH your shell uses.",
 
     "settings.dshPort": "DeepSeek Harness port",
     "settings.dshPortSub":
@@ -59,4 +59,15 @@ export const dsh: Dict = {
     "settings.dshToolbar": "Show DSH toolbar",
     "settings.dshToolbarSub":
         "Show the DSH page's own toolbar (DeepSeek Harness label, Restart, Reload, Open in browser). Hidden by default so the embedded agent UI gets the full height.",
+    "settings.dshIdleStop": "Auto-stop when idle",
+    "settings.dshIdleStopSub":
+        "Stop the DSH host after it's sat hidden with nothing running for this long, to free the Node/pnpm process it runs as. It respawns instantly next time you open the page. Never stops while a session is running.",
+    "settings.dshIdleStopNever": "Never",
+    "settings.dshIdleStopAfter": "After {minutes} min",
+    "settings.dshGlobalShortcut": "Global shortcut",
+    "settings.dshGlobalShortcutSub":
+        "Jump straight to the DSH page from anywhere, even with TanWords in the background.",
+    "settings.dshGlobalShortcutNotSet": "Not set",
+    "settings.dshGlobalShortcutRecording": "Press a key combo…",
+    "settings.dshGlobalShortcutClear": "Clear",
 };

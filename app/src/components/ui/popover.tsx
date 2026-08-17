@@ -3,6 +3,7 @@ import * as PopoverPrimitive from "@radix-ui/react-popover"
 
 import { cn } from "@/lib/utils"
 import { BrowserPanelBlocker } from "@/store/browserPanelStore";
+import { DshPanelBlocker } from "@/store/dshPanelBlockStore";
 
 const Popover = PopoverPrimitive.Root
 
@@ -24,6 +25,7 @@ const PopoverContent = React.forwardRef<
       {...props}
     >
       <BrowserPanelBlocker />
+      <DshPanelBlocker />
       {children}
     </PopoverPrimitive.Content>
   </PopoverPrimitive.Portal>

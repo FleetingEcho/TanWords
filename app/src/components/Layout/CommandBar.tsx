@@ -12,8 +12,8 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { WordSearchBox } from "@/components/shared/WordSearchBox";
+import { UserAvatarImage } from "@/components/shared/UserAvatarImage";
 import { TtsControl } from "@/components/ui/TtsControl";
 import { SentenceSearchBox } from "@/components/shared/SentenceSearchBox";
 import { WindowControls } from "@/components/Layout/WindowControls";
@@ -122,6 +122,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   }, [analysisJobs, cancelAnalyzing, vocabBulk, vocabSingleJobs, t]);
   const isAnalyzing = runningJobs.length > 0;
   const [analyzingOpen, setAnalyzingOpen] = React.useState(false);
+  const [dbOpen, setDbOpen] = React.useState(false);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [searchMode, setSearchMode] = React.useState<"word" | "sentence">(
@@ -384,12 +385,11 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
           >
             <DshIcon className="h-4 w-4" />
           </Button>}
-          {visible("db") && <Tooltip>
-            <TooltipTrigger asChild>
+          {visible("db") && <Popover open={dbOpen} onOpenChange={setDbOpen}>
+            <PopoverTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => navigate("settings", undefined, "data")}
                 className={`relative h-8 w-8 rounded-lg ${connection?.kind === "turso" && connection.offline ? "text-amber-500" : "text-muted-foreground"}`}
               >
                 {connection?.kind === "turso"
@@ -397,15 +397,24 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
                   : <Database className="h-4 w-4" />}
                 {connection?.kind === "turso" && !connection.offline && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />}
               </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" align="end" className="max-w-64">
-              <p className="font-medium">{connection?.kind === "turso" ? t("command.dbCloud") : t("command.dbLocal")}</p>
+            </PopoverTrigger>
+            <PopoverContent side="bottom" align="end" className="w-72 p-3">
+              <p className="font-medium text-sm">{connection?.kind === "turso" ? t("command.dbCloud") : t("command.dbLocal")}</p>
               <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
                 {connection?.kind === "turso" ? connection.remoteUrl : connection?.path}
               </p>
-              {connection?.kind === "turso" && connection.offline && <p className="mt-1 text-amber-500">{t("settings.remoteDBOffline")}</p>}
-            </TooltipContent>
-          </Tooltip>}
+              {connection?.kind === "turso" && connection.offline && <p className="mt-1 text-xs text-amber-500">{t("settings.remoteDBOffline")}</p>}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { setDbOpen(false); navigate("settings", undefined, "data"); }}
+                className="mt-2 h-7 w-full justify-start rounded-md px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <Settings className="h-3.5 w-3.5" />
+                {t("nav.settings")}
+              </Button>
+            </PopoverContent>
+          </Popover>}
           {hostCapabilities.mcp && visible("mcp") && <Button variant="ghost" size="icon" onClick={() => navigate("settings", undefined, "mcp")} title={mcp.error || (mcp.running ? t("command.mcpRunning") : t("command.mcpStopped"))} className={`relative h-8 w-8 rounded-lg ${mcp.error ? "text-amber-500" : mcp.running ? "text-foreground" : "text-muted-foreground"}`}><Server className="h-4 w-4" />{mcp.running && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />}</Button>}
           {visible("ai") && <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -455,7 +464,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
           {visible("github") && <Button variant="ghost" size="icon" onClick={() => void openGitHub()} title="GitHub" className="h-8 w-8 rounded-lg text-muted-foreground"><GitHubIcon className="h-4 w-4" /></Button>}
           </>}
           <Button variant="ghost" size="icon" onClick={() => navigate("settings")} title={t("command.profile")} className="h-8 w-8 rounded-full p-0 overflow-hidden ring-1 ring-border/60 text-muted-foreground">
-            {userAvatar ? <img src={userAvatar} alt="" className="h-full w-full object-cover" /> : <User className="h-4 w-4" />}
+            {userAvatar ? <UserAvatarImage /> : <User className="h-4 w-4" />}
           </Button>
         </div>
         {visible("theme") && (
@@ -489,7 +498,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
           <Rss className="h-4 w-4" />
         </Button>
         <Button variant="ghost" size="icon" onClick={() => navigate("settings")} title={t("command.profile")} className="lg:hidden order-first h-8 w-8 shrink-0 rounded-full p-0 overflow-hidden ring-1 ring-border/60 text-muted-foreground">
-          {userAvatar ? <img src={userAvatar} alt="" className="h-full w-full object-cover" /> : <User className="h-4 w-4" />}
+          {userAvatar ? <UserAvatarImage /> : <User className="h-4 w-4" />}
         </Button>
         </div>
 

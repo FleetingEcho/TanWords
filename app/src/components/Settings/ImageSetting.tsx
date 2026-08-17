@@ -24,6 +24,11 @@ interface Props {
   /** CSS `object-position` for the stored image, when the caller lets the user
    *  choose which part of it shows. */
   objectPosition?: string;
+  /** Zoom past `object-fit: cover`'s minimum, from the same `BannerPosition` the
+   *  caller's `onAdjust` modal produces — applied as an outer `transform: scale()`
+   *  anchored at `objectPosition`, same as the modal's own preview (see
+   *  BannerPositionModal's doc). `1` or absent is a no-op. */
+  imageScale?: number;
   maxBytes: number;
   /** Size and radius of the thumbnail, e.g. "w-16 h-16 rounded-xl". */
   thumbClassName: string;
@@ -63,7 +68,7 @@ interface Props {
  * cropped and positioned, with no undo.
  */
 export function ImageSetting({
-  label, sub, value, onChange, processFile, onPicked, onAdjust, objectPosition, maxBytes,
+  label, sub, value, onChange, processFile, onPicked, onAdjust, objectPosition, imageScale, maxBytes,
   thumbClassName, thumbImgStyle, thumbOverlay, empty, previewClassName, previewImgClassName, children, gallery,
 }: Props) {
   const t = useT();
@@ -114,7 +119,16 @@ export function ImageSetting({
           <div className={`group relative shrink-0 max-w-full overflow-hidden bg-muted/80 ring-1 ring-border/60 ${thumbClassName}`}>
             {value ? (
               <>
-                <img src={value} alt="" className="h-full w-full object-cover transition-[filter,opacity] duration-200" style={{ objectPosition, ...thumbImgStyle }} />
+                {/* Zoom lives on this wrapper, pan (object-position) on the img itself —
+                  * kept separate so an unrelated transform a caller passes via
+                  * thumbImgStyle (the wallpaper's blur-overscan) never has to compose
+                  * with this one. */}
+                <div
+                  className="h-full w-full"
+                  style={imageScale && imageScale !== 1 ? { transform: `scale(${imageScale})`, transformOrigin: objectPosition } : undefined}
+                >
+                  <img src={value} alt="" className="h-full w-full object-cover transition-[filter,opacity] duration-200" style={{ objectPosition, ...thumbImgStyle }} />
+                </div>
                 {thumbOverlay}
                 <div className="absolute inset-0 flex items-center justify-center gap-1.5 bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
                   {(!gallery || gallery.items.length < gallery.maxItems) && (

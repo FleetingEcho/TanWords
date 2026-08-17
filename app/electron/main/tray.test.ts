@@ -70,7 +70,7 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe("TrayManager menu", () => {
-  it("opens the window directly on a macOS left-click and keeps the menu on right-click", () => {
+  it("opens the dropdown menu on a macOS click of either button, never the window", () => {
     vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
     const manager = new TrayManager();
     const win = {
@@ -83,13 +83,13 @@ describe("TrayManager menu", () => {
     manager.create("/icons/tray-template.png");
     const nativeTray = trayInstances[0];
 
-    nativeTray.handlers.get("click")?.();
-    expect(win.show).toHaveBeenCalledOnce();
-    expect(win.focus).toHaveBeenCalledOnce();
-    expect(nativeTray.setContextMenu).not.toHaveBeenCalled();
-
-    nativeTray.handlers.get("right-click")?.();
-    expect(nativeTray.popUpContextMenu).toHaveBeenCalledOnce();
+    // `setContextMenu` alone makes macOS treat both mouse buttons as "open
+    // the menu" — no separate click/right-click handler needed, and none
+    // should be installed (one would only race the built-in behavior).
+    expect(nativeTray.setContextMenu).toHaveBeenCalledOnce();
+    expect(nativeTray.handlers.has("click")).toBe(false);
+    expect(nativeTray.handlers.has("right-click")).toBe(false);
+    expect(win.show).not.toHaveBeenCalled();
   });
 
   it("keeps the native context menu on Windows and Linux", () => {
@@ -105,6 +105,7 @@ describe("TrayManager menu", () => {
 
     expect(labels()).toEqual([
       "Open main window",
+      "DeepSeek Harness",
       "Music Control",
       undefined, // separator
       "Refresh RSS",
@@ -120,6 +121,7 @@ describe("TrayManager menu", () => {
 
     expect(labels()).toEqual([
       "打开主窗口",
+      "DeepSeek Harness",
       "音乐控制",
       undefined,
       "刷新 RSS",
@@ -200,10 +202,17 @@ describe("TrayManager menu", () => {
   it("emits the events useTraySync listens for", () => {
     const { events } = makeTray();
 
+    latest().find((i) => i.label === "DeepSeek Harness")!.click?.();
     musicRows().forEach((row) => row.click?.());
     latest().find((i) => i.label?.includes("Refresh RSS"))!.click?.();
 
-    expect(events).toEqual(["tray://toggle-play", "tray://prev", "tray://next", "tray://refresh-rss"]);
+    expect(events).toEqual([
+      "tray://open-dsh",
+      "tray://toggle-play",
+      "tray://prev",
+      "tray://next",
+      "tray://refresh-rss",
+    ]);
   });
 });
 

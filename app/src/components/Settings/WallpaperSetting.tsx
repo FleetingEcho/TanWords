@@ -10,7 +10,7 @@ import { ImageSetting } from "./ImageSetting";
 export function WallpaperSetting({
   label, sub, emptyLabel, maxDimension, maxBytes, processFile,
   image, setImage, blur, setBlur, visible, setVisible,
-  gallery, objectPosition, onAdjust, dimming, setDimming,
+  gallery, objectPosition, imageScale, onAdjust, onPicked, dimming, setDimming,
 }: {
   label: string;
   sub: string;
@@ -33,7 +33,13 @@ export function WallpaperSetting({
     onRemove: (index: number) => void;
   };
   objectPosition?: string;
+  imageScale?: number;
   onAdjust?: () => void;
+  /** Routes a freshly picked file here instead of straight to `setImage` —
+   *  for callers that want the user to confirm framing (crop position, and
+   *  with `onAdjust`'s modal set up for zoom, scale too) before it's stored.
+   *  Omit to store on pick with the default centred, unzoomed framing. */
+  onPicked?: (dataUrl: string) => void;
   dimming?: number;
   setDimming?: (value: number) => void;
 }) {
@@ -50,7 +56,9 @@ export function WallpaperSetting({
       value={image}
       onChange={setImage}
       objectPosition={objectPosition}
+      imageScale={imageScale}
       onAdjust={onAdjust}
+      onPicked={onPicked}
       processFile={(file) => processFile(file, maxDimension, 0.85)}
       maxBytes={maxBytes}
       thumbClassName="w-48 h-16 rounded-lg"
@@ -69,7 +77,7 @@ export function WallpaperSetting({
           : <div className="pointer-events-none absolute inset-0 bg-black/20 dark:bg-black/45" />
       ) : undefined}
       empty={emptyLabel}
-      previewClassName="w-[70vw] h-fit top-1/2 -translate-y-1/2"
+      previewClassName="w-[70vw] h-fit"
       previewImgClassName="w-full h-auto rounded-2xl object-cover shadow-lg"
       gallery={gallery ? {
         items: gallery.items,

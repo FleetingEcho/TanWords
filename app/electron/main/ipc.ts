@@ -41,6 +41,12 @@ export type IpcDeps = {
   tray: TrayManager;
   dshSupervisor: DshSupervisor;
   dshPanel: import("./dshPanel").DshPanel;
+  /** Registers (or, given `""`, clears) the global "jump to DSH" shortcut.
+   *  Lives in index.ts because `globalShortcut` is an OS-wide singleton the
+   *  whole app shares — not something a per-feature manager should own.
+   *  Returns whether registration succeeded (an accelerator already claimed
+   *  by the OS or another app fails). */
+  setDshShortcut: (accelerator: string) => boolean;
 };
 
 /** Schemes `shell:open` will actually hand to `shell.openExternal` — an
@@ -628,13 +634,16 @@ async function dispatch(
         // Detach it so the failure overlay is visible — never leave a stale
         // view up when there is no live host behind it.
         deps.dshPanel.hide();
+        deps.dshSupervisor.noteVisibility(false);
         throw error;
       }
-      deps.dshPanel.show(url, bounds);
+      await deps.dshPanel.show(url, bounds);
+      deps.dshSupervisor.noteVisibility(true);
       return url;
     }
     case "dsh_hide": {
       deps.dshPanel.hide();
+      deps.dshSupervisor.noteVisibility(false);
       return null;
     }
     case "dsh_set_bounds": {
@@ -667,6 +676,15 @@ async function dispatch(
     }
     case "dsh_get_port": {
       return deps.dshSupervisor.currentPort();
+    }
+    case "dsh_set_idle_stop_minutes": {
+      const { minutes } = (args ?? {}) as { minutes?: number };
+      deps.dshSupervisor.setIdleStopMinutes(Number(minutes ?? 0));
+      return null;
+    }
+    case "dsh_set_global_shortcut": {
+      const { accelerator } = (args ?? {}) as { accelerator?: string };
+      return deps.setDshShortcut(String(accelerator ?? ""));
     }
 
     default: {

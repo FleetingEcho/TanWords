@@ -70,6 +70,19 @@ export const DEFAULT_DSH_BACKGROUND_BLUR = 0;
  *  height; the Restart/Reload/Open-external actions are rarely needed day to
  *  day, and the toolbar reappears when the user enables it in Settings. */
 export const DEFAULT_DSH_TOOLBAR_VISIBLE = false;
+/** Minutes the DSH page must sit hidden (and idle — no session running) before
+ *  the host auto-stops to free the Node/pnpm process it's running as. `0`
+ *  disables this. 10 is the floor, not just the smallest offered choice: below
+ *  that, a quick tab-away-and-back would keep respawning the host, which costs
+ *  more (a fresh Node/pnpm boot) than the idle process it was meant to save. */
+export const DSH_IDLE_STOP_CHOICES = [0, 10, 20, 30, 60, 120] as const;
+export const DEFAULT_DSH_IDLE_STOP_MINUTES = 0;
+/** Global (OS-wide) shortcut that jumps straight to the DSH page, in Electron
+ *  accelerator syntax (e.g. `CommandOrControl+Shift+D`). Empty disables it —
+ *  there is no default binding, since claiming a system-wide combo without
+ *  the user asking for one risks colliding with something they already use
+ *  elsewhere. */
+export const DEFAULT_DSH_GLOBAL_SHORTCUT = "";
 export const DEFAULT_TERMINAL_BACKGROUND_BLUR = 16;
 // Only "custom" ever renders translucent — see `effectiveTransparent` in
 // TerminalTool.tsx, which ignores opacity entirely for every other preset.
@@ -162,13 +175,29 @@ export function normalizeTerminalFontWeight(value: unknown): number {
   return Math.min(900, Math.max(100, Math.round(weight / 100) * 100));
 }
 
-/** Which part of the dashboard banner survives the crop into its letterbox frame,
- *  as CSS `object-position` percentages. The image itself is stored whole, so this
- *  is the user's answer to "the banner is wider than my photo — show me *this* band". */
+/** Which part of an image survives the crop into its frame, as CSS
+ *  `object-position` percentages, plus how far zoomed in past the frame's own
+ *  `object-fit: cover` minimum. The image itself is always stored whole —
+ *  `scale` and position are applied live as CSS (`transform: scale(scale)`
+ *  anchored at `x%,y%`, layered outside the existing object-position pan),
+ *  never baked into pixels, so the crop is lossless and freely re-adjustable:
+ *  there is no "quality loss from cropping" to guard against because no
+ *  cropping ever actually happens to the stored bytes. `scale` is optional on
+ *  the wire (older stored positions predate zoom) and always defaults to `1`
+ *  — "just cover, no extra zoom" — when absent. */
 export interface BannerPosition {
   x: number;
   y: number;
+  scale?: number;
 }
 
-/** What a plain `object-fit: cover` does on its own: dead centre. */
-export const DEFAULT_BANNER_POSITION: BannerPosition = { x: 50, y: 50 };
+/** Minimum (`1`, i.e. plain `object-fit: cover`, the historical default) and
+ *  maximum zoom offered by the position picker. The ceiling is deliberately
+ *  modest — well past it, the frame is showing more magnified pixels than
+ *  the source image has, which reads as soft/blurry rather than "zoomed in",
+ *  the same tradeoff any raster image hits past 1:1. */
+export const BANNER_ZOOM_MIN = 1;
+export const BANNER_ZOOM_MAX = 3;
+
+/** What a plain `object-fit: cover` does on its own: dead centre, no zoom. */
+export const DEFAULT_BANNER_POSITION: BannerPosition = { x: 50, y: 50, scale: 1 };

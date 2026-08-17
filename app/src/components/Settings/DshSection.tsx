@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useT } from "@/hooks/useT";
-import { useSettingsStore } from "@/store/settingsStore";
+import { useSettingsStore, DSH_IDLE_STOP_CHOICES } from "@/store/settingsStore";
 import { SettingRow, ToggleGroup } from "./SettingsShared";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 /** Loopback port for the supervised DSH Web host. A local draft is committed
  * on blur/Enter so typing a multi-digit port is never clamped mid-keystroke. */
@@ -107,6 +108,110 @@ function DshToolbarSetting() {
   );
 }
 
+/** Minutes the host may sit hidden-and-idle before auto-stopping. A curated
+ *  list rather than a free number — same reasoning as AppLockSection's
+ *  auto-lock picker: the useful answers are coarse, and the list keeps every
+ *  offered value at or above the 10-minute floor by construction. */
+function DshIdleStopSetting() {
+  const t = useT();
+  const minutes = useSettingsStore((state) => state.dshIdleStopMinutes);
+  const setMinutes = useSettingsStore((state) => state.setDshIdleStopMinutes);
+  return (
+    <SettingRow label={t("settings.dshIdleStop")} sub={t("settings.dshIdleStopSub")}>
+      <Select value={String(minutes)} onValueChange={(v) => setMinutes(Number(v))}>
+        <SelectTrigger className="h-8 w-40 rounded-lg border-border bg-background text-xs focus:outline-hidden">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {DSH_IDLE_STOP_CHOICES.map((value) => (
+            <SelectItem key={value} value={String(value)}>
+              {value === 0 ? t("settings.dshIdleStopNever") : t("settings.dshIdleStopAfter", { minutes: value })}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </SettingRow>
+  );
+}
+
+/** Maps a keydown to Electron accelerator syntax, capturing whichever
+ *  physical modifier the user actually pressed (Command on a Mac keyboard,
+ *  Control elsewhere) rather than the platform-generic `CommandOrControl` —
+ *  so recording on Windows/Linux never produces a combo that silently only
+ *  works on a Mac. Returns null while only a modifier has been pressed so
+ *  far (still waiting for the actual key), or for a bare key with no
+ *  modifier at all (reserved for the OS/other shortcuts, not offered here). */
+const SPECIAL_KEY_NAMES: Record<string, string> = {
+  " ": "Space", ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right",
+  Escape: "Esc", Enter: "Return", Tab: "Tab", Backspace: "Backspace", Delete: "Delete",
+};
+function acceleratorFromKeyEvent(e: KeyboardEvent): string | null {
+  if (["Meta", "Control", "Alt", "Shift"].includes(e.key)) return null;
+  const parts: string[] = [];
+  if (e.metaKey) parts.push("Command");
+  if (e.ctrlKey) parts.push("Control");
+  if (e.altKey) parts.push("Alt");
+  if (e.shiftKey) parts.push("Shift");
+  if (parts.length === 0) return null;
+  const key = e.key;
+  const name = SPECIAL_KEY_NAMES[key]
+    ?? (/^[a-zA-Z0-9]$/.test(key) ? key.toUpperCase() : /^F[1-9][0-9]?$/.test(key) ? key : null);
+  if (!name) return null;
+  parts.push(name);
+  return parts.join("+");
+}
+
+/** Records a global (OS-wide) shortcut: click to arm, press the combo, done —
+ *  same interaction as most apps' shortcut pickers. Escape while armed cancels
+ *  without changing the stored value. Actual `globalShortcut` registration
+ *  happens in main (see useTraySync, which reacts to this same setting) —
+ *  this component only captures and stores the accelerator string. */
+function DshGlobalShortcutSetting() {
+  const t = useT();
+  const accelerator = useSettingsStore((state) => state.dshGlobalShortcut);
+  const setAccelerator = useSettingsStore((state) => state.setDshGlobalShortcut);
+  const [recording, setRecording] = useState(false);
+
+  useEffect(() => {
+    if (!recording) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      e.preventDefault();
+      if (e.key === "Escape") { setRecording(false); return; }
+      const next = acceleratorFromKeyEvent(e);
+      if (!next) return;
+      setAccelerator(next);
+      setRecording(false);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [recording, setAccelerator]);
+
+  return (
+    <SettingRow label={t("settings.dshGlobalShortcut")} sub={t("settings.dshGlobalShortcutSub")}>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setRecording(true)}
+          className="h-8 min-w-32 rounded-lg border border-input bg-background px-3 text-xs font-mono focus:outline-hidden focus:ring-2 focus:ring-primary/30"
+        >
+          {recording
+            ? t("settings.dshGlobalShortcutRecording")
+            : accelerator || t("settings.dshGlobalShortcutNotSet")}
+        </button>
+        {accelerator && !recording && (
+          <button
+            type="button"
+            onClick={() => setAccelerator("")}
+            className="h-8 rounded-lg px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            {t("settings.dshGlobalShortcutClear")}
+          </button>
+        )}
+      </div>
+    </SettingRow>
+  );
+}
+
 export function DshSection() {
   const t = useT();
 
@@ -121,6 +226,8 @@ export function DshSection() {
           <DshBackgroundOpacitySetting />
           <DshBackgroundBlurSetting />
           <DshToolbarSetting />
+          <DshIdleStopSetting />
+          <DshGlobalShortcutSetting />
         </div>
       </div>
     </>

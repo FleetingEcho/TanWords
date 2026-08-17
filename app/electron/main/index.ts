@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, session, shell } from "electron";
+import { app, BrowserWindow, globalShortcut, ipcMain, Menu, Notification, session, shell } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -18,7 +18,7 @@ import {
 } from "./terminal";
 import { wireWindowDevTools } from "./devtools";
 import { rememberedWindowBackground } from "./windowBackground";
-import { requestWindowHide, showWindow } from "./windowVisibility";
+import { requestWindowHide, restoreAndFocusWindow, showWindow } from "./windowVisibility";
 import { abortAllFor } from "./http";
 import { registerYouTubeEmbedIdentity } from "./youtubeEmbed";
 
@@ -193,6 +193,52 @@ function broadcastEvent(name: string, payload: unknown) {
   }
 }
 
+/** Reveal the window and hand the renderer's already-mounted `tray://open-dsh`
+ *  listener (see useTraySync.ts) the job of navigating — shared by the tray's
+ *  "DeepSeek Harness" row, this notification's click, and the global
+ *  shortcut, so all three agree on exactly what "open DSH" means. */
+function revealDshPage() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  restoreAndFocusWindow(mainWindow);
+  broadcastEvent("tray://open-dsh", null);
+}
+
+const DSH_NOTIFY_STRINGS = {
+  en: { title: "DeepSeek Harness", body: "A session finished — click to open it." },
+  zh: { title: "DeepSeek Harness", body: "会话已完成 — 点击查看。" },
+} as const;
+
+/** A session went running→idle while the window wasn't focused (`dsh:task-
+ *  finished`, emitted by dshSupervisor's `session.list` poll — see its own
+ *  doc). Skipped while focused: the user is already looking at the app, a
+ *  system notification would just be noise on top of whatever's already
+ *  visible in it. */
+function notifyDshTaskFinished() {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isFocused()) return;
+  if (!Notification.isSupported()) return;
+  const strings = DSH_NOTIFY_STRINGS[tray.getLanguage()];
+  const notification = new Notification({ title: strings.title, body: strings.body, silent: false });
+  notification.on("click", revealDshPage);
+  notification.show();
+}
+
+/** The one global shortcut TanWords registers: jump straight to the DSH page
+ *  from anywhere, even with the window unfocused/hidden/minimized. Configured
+ *  in Settings (renderer) and pushed here over `dsh_set_global_shortcut`;
+ *  empty string disables it. Re-registering always unregisters the previous
+ *  accelerator first — `globalShortcut.register` on a second accelerator
+ *  does not release the first, it would just leak a stale binding no UI
+ *  offers a way to clear. */
+let dshShortcutAccelerator: string | null = null;
+function registerDshShortcut(accelerator: string): boolean {
+  if (dshShortcutAccelerator) globalShortcut.unregister(dshShortcutAccelerator);
+  dshShortcutAccelerator = null;
+  if (!accelerator) return true;
+  const ok = globalShortcut.register(accelerator, revealDshPage);
+  if (ok) dshShortcutAccelerator = accelerator;
+  return ok;
+}
+
 function createWindow() {
   startupMark("create-window");
   // A plain BrowserWindow is fine as the browser panel's host — its
@@ -275,6 +321,14 @@ function createWindow() {
     rendererUnresponsiveTimer = null;
     terminalSetOutputPaused(true);
     terminalShutdownAll();
+    // The DSH native view lives in this window's contentView independently of
+    // the renderer's React tree. The recovery reload below boots a fresh page
+    // (route resets to the default), so `DshPage` won't remount to detach it —
+    // without this, the still-attached view would float over whichever page
+    // loads next. The underlying `dsh` host (and any task it's running) is a
+    // separate OS process untouched by this; hide() only detaches the display,
+    // so revisiting the DSH page after recovery reattaches it instantly.
+    dshPanel.hide();
     if (quitting || win.isDestroyed()) return;
     if (rendererStableTimer) clearTimeout(rendererStableTimer);
     rendererRecoveryAttempts += 1;
@@ -457,7 +511,10 @@ if (gotLock) {
     browserPanel.setEventSink(broadcastEvent);
     floatingBrowserPanel.setEventSink(broadcastEvent);
     dshPanel.setEventSink(broadcastEvent);
-    dshSupervisor.setEventSink(broadcastEvent);
+    dshSupervisor.setEventSink((name, payload) => {
+      broadcastEvent(name, payload);
+      if (name === "dsh:task-finished") notifyDshTaskFinished();
+    });
 
     tray.setEventSink(broadcastEvent);
 
@@ -494,6 +551,7 @@ if (gotLock) {
       tray,
       dshSupervisor,
       dshPanel,
+      setDshShortcut: registerDshShortcut,
     });
 
     createWindow();
@@ -510,6 +568,13 @@ if (gotLock) {
       }
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
+
+    // Global shortcuts are OS-wide registrations outliving any window; leaving
+    // one bound after quit would eat a key combo system-wide until the OS
+    // reaps the process. `will-quit` (not `before-quit`, which this app
+    // preventDefaults for the hide-to-tray dance) is Electron's documented
+    // point for this cleanup.
+    app.on("will-quit", () => globalShortcut.unregisterAll());
   });
 
   // This only fires during a real quit now: close-means-hide keeps the

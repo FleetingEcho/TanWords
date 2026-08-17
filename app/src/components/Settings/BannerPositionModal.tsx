@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/hooks/useT";
-import { BannerPosition, DEFAULT_BANNER_POSITION } from "@/store/settingsStore";
-import { coverOverflow, dragToPosition, Size } from "./bannerFraming";
+import { BannerPosition, DEFAULT_BANNER_POSITION, BANNER_ZOOM_MIN, BANNER_ZOOM_MAX } from "@/store/settingsStore";
+import { coverOverflow, dragToPosition, zoomedOverflow, Size } from "./bannerFraming";
 
 /** The dashboard banner is a full-width strip 200px tall, which lands around 6:1 on a
  *  typical window. The frame below uses that shape so the band the user drags into view
@@ -13,6 +13,8 @@ const BANNER_FRAME_ASPECT = 6;
 
 /** Arrow-key nudge, in object-position percentage points (×5 with Shift). */
 const KEY_STEP = 2;
+/** Wheel-to-zoom step per notch; the slider uses the same granularity. */
+const ZOOM_STEP = 0.05;
 
 interface Props {
   open: boolean;
@@ -27,25 +29,37 @@ interface Props {
   title?: string;
   hint?: string;
   fitsHint?: string;
+  /** Offers the zoom slider/wheel-zoom on top of the existing drag-to-pan.
+   *  Off by default — the dashboard banner usage doesn't pass this, so its
+   *  behavior (and every stored `BannerPosition` it already has, which
+   *  predates `scale`) is completely unchanged. The app background wallpaper
+   *  passes `true`. */
+  allowZoom?: boolean;
 }
 
 /**
- * Drag-to-choose-the-visible-band dialog for the dashboard banner.
+ * Drag-to-choose-the-visible-band dialog, optionally with zoom.
  *
- * The banner is a wide letterbox and photos rarely are, so `object-fit: cover` has to
- * throw away a lot of the image — previously always the top and bottom, which is how you
- * end up with a banner of someone's forehead. This hands that decision to the user.
+ * The frame is rarely the same shape as the photo, so `object-fit: cover` has to throw
+ * away part of the image — previously always the top and bottom, which is how you end up
+ * with a banner of someone's forehead. This hands that decision to the user, and (when
+ * `allowZoom`) lets them additionally zoom in past cover's minimum to pick a tighter crop.
  *
  * The preview is rendered with the very same `object-fit: cover` + `object-position` the
- * dashboard uses, rather than by positioning a scaled image by hand: it is WYSIWYG by
+ * real surface uses, rather than by positioning a scaled image by hand: it is WYSIWYG by
  * construction, and — the reason it works this way — the picture still shows even if the
  * measuring below comes up empty. Measurements only decide how far a drag moves and
- * whether there is anything to drag at all.
+ * whether there is anything to drag at all. Zoom is layered on as a *second*, outer
+ * `transform: scale()` anchored at the same `x%,y%` as the pan — see the render below —
+ * so it composes with the existing WYSIWYG object-position approach instead of replacing
+ * it, and stays lossless: nothing here ever re-encodes the image, only how much of it (and
+ * how magnified) the frame currently shows.
  */
 export function BannerPositionModal({
   open, src, initial, onCancel, onConfirm,
   frameAspect = BANNER_FRAME_ASPECT,
   title, hint, fitsHint,
+  allowZoom = false,
 }: Props) {
   const t = useT();
   const [pos, setPos] = useState(initial);
@@ -93,10 +107,21 @@ export function BannerPositionModal({
 
   useEffect(() => () => observer.current?.disconnect(), []);
 
-  const overflow = coverOverflow(frame, natural);
+  const zoom = allowZoom ? pos.scale ?? BANNER_ZOOM_MIN : BANNER_ZOOM_MIN;
+  const baseOverflow = coverOverflow(frame, natural);
+  // Panning at the current zoom can reach further than the base cover overflow — the
+  // magnified image has more of itself pushed past the frame's edges. Drag/nudge math
+  // below uses this, not baseOverflow, so a screen-pixel drag tracks the cursor 1:1
+  // regardless of zoom (see dragToPosition's doc).
+  const overflow = zoomedOverflow(baseOverflow, zoom);
   // Sub-pixel overflow isn't worth a grab cursor and a "drag me" hint.
   const draggable = overflow.x > 1 || overflow.y > 1;
   const measured = !!(frame && natural);
+  const canReset = draggable || zoom > BANNER_ZOOM_MIN;
+
+  const setZoom = (next: number) => {
+    setPos((p) => ({ ...p, scale: Math.min(BANNER_ZOOM_MAX, Math.max(BANNER_ZOOM_MIN, next)) }));
+  };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!draggable) return;
@@ -129,6 +154,16 @@ export function BannerPositionModal({
     else if (e.key === "ArrowRight") nudge(1, 0);
   };
 
+  // Trackpad pinch reaches this as a wheel event with ctrlKey set (Chromium's
+  // synthesis of the native gesture) — treated the same as a plain scroll so
+  // pinch-to-zoom and mouse-wheel-to-zoom both just work, no separate gesture
+  // handling needed.
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (!allowZoom) return;
+    e.preventDefault();
+    setZoom(zoom - Math.sign(e.deltaY) * ZOOM_STEP);
+  };
+
   return (
     <Dialog open={open} onClose={onCancel} maxWidth="max-w-3xl">
       <div className="space-y-3 p-5">
@@ -147,26 +182,53 @@ export function BannerPositionModal({
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
+          onWheel={allowZoom ? handleWheel : undefined}
           style={{ aspectRatio: `${frameAspect} / 1` }}
           className={`relative w-full touch-none select-none overflow-hidden rounded-xl bg-muted ring-1 ring-border focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary ${
             draggable ? "cursor-grab active:cursor-grabbing" : ""
           }`}
         >
-          <img
-            src={src}
-            alt=""
-            draggable={false}
-            className="absolute inset-0 h-full w-full object-cover"
-            style={{ objectPosition: `${pos.x}% ${pos.y}%` }}
-          />
+          {/* Zoom is a second, outer transform anchored at the same x%,y% the pan
+            * already uses — scaling from that point keeps whatever the user panned to
+            * fixed on screen as they zoom in around it, rather than re-centering on
+            * every zoom step. At zoom 1 this is a no-op wrapper. */}
+          <div
+            className="absolute inset-0"
+            style={zoom > BANNER_ZOOM_MIN ? { transform: `scale(${zoom})`, transformOrigin: `${pos.x}% ${pos.y}%` } : undefined}
+          >
+            <img
+              src={src}
+              alt=""
+              draggable={false}
+              className="absolute inset-0 h-full w-full object-cover"
+              style={{ objectPosition: `${pos.x}% ${pos.y}%` }}
+            />
+          </div>
         </div>
+
+        {allowZoom && (
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground">{t("settings.bannerPositionZoomOut")}</span>
+            <input
+              type="range"
+              min={BANNER_ZOOM_MIN}
+              max={BANNER_ZOOM_MAX}
+              step={ZOOM_STEP}
+              value={zoom}
+              onChange={(e) => setZoom(Number(e.target.value))}
+              className="w-full accent-primary"
+              aria-label={t("settings.bannerPositionZoom")}
+            />
+            <span className="text-xs text-muted-foreground">{t("settings.bannerPositionZoomIn")}</span>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">
         <Button
           variant="ghost"
           onClick={() => setPos(DEFAULT_BANNER_POSITION)}
-          disabled={!draggable}
+          disabled={!canReset}
           className="mr-auto h-8 rounded-lg px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted disabled:opacity-40"
         >
           {t("settings.bannerPositionCenter")}

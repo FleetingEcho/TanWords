@@ -1,8 +1,8 @@
 import { create } from "zustand";
 import { isDesktopHost } from "@/platform";
 import {
-  DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR, DEFAULT_BANNER_POSITION,
-  DEFAULT_LAYOUT_MODE, DEFAULT_AUTO_LOCK_MINUTES, DEFAULT_DSH_PORT, DEFAULT_DSH_BACKGROUND_OPACITY, DEFAULT_DSH_BACKGROUND_BLUR, DEFAULT_DSH_TOOLBAR_VISIBLE,
+  DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR, DEFAULT_BANNER_POSITION, BANNER_ZOOM_MIN, BANNER_ZOOM_MAX,
+  DEFAULT_LAYOUT_MODE, DEFAULT_AUTO_LOCK_MINUTES, DEFAULT_DSH_PORT, DEFAULT_DSH_BACKGROUND_OPACITY, DEFAULT_DSH_BACKGROUND_BLUR, DEFAULT_DSH_TOOLBAR_VISIBLE, DSH_IDLE_STOP_CHOICES, DEFAULT_DSH_IDLE_STOP_MINUTES, DEFAULT_DSH_GLOBAL_SHORTCUT,
   DEFAULT_TERMINAL_BACKGROUND_BLUR, DEFAULT_TERMINAL_BACKGROUND_OPACITY, DEFAULT_TERMINAL_TRANSPARENT,
   DEFAULT_TERMINAL_BACKGROUND_COLOR, DEFAULT_TERMINAL_TEXT_COLOR,
   DEFAULT_TERMINAL_COLOR_SCHEME, TERMINAL_COLOR_SCHEME_COLORS, TERMINAL_COLOR_SCHEME_EFFECTS,
@@ -28,8 +28,8 @@ export type {
 } from "./settings/types";
 export {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS,
-  DEFAULT_HIGHLIGHT_COLOR, HIGHLIGHT_PRESETS, DEFAULT_BANNER_POSITION, DEFAULT_LAYOUT_MODE,
-  AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES, DEFAULT_DSH_PORT, DEFAULT_DSH_BACKGROUND_OPACITY, DEFAULT_DSH_BACKGROUND_BLUR, DEFAULT_DSH_TOOLBAR_VISIBLE,
+  DEFAULT_HIGHLIGHT_COLOR, HIGHLIGHT_PRESETS, DEFAULT_BANNER_POSITION, BANNER_ZOOM_MIN, BANNER_ZOOM_MAX, DEFAULT_LAYOUT_MODE,
+  AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES, DEFAULT_DSH_PORT, DEFAULT_DSH_BACKGROUND_OPACITY, DEFAULT_DSH_BACKGROUND_BLUR, DEFAULT_DSH_TOOLBAR_VISIBLE, DSH_IDLE_STOP_CHOICES, DEFAULT_DSH_IDLE_STOP_MINUTES, DEFAULT_DSH_GLOBAL_SHORTCUT,
   DEFAULT_TERMINAL_BACKGROUND_BLUR, DEFAULT_TERMINAL_BACKGROUND_OPACITY, DEFAULT_TERMINAL_TRANSPARENT,
   DEFAULT_TERMINAL_BACKGROUND_COLOR, DEFAULT_TERMINAL_TEXT_COLOR,
   DEFAULT_TERMINAL_COLOR_SCHEME, TERMINAL_COLOR_SCHEME_COLORS, TERMINAL_COLOR_SCHEME_EFFECTS,
@@ -73,6 +73,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   defaultRssTab: cachedDefaultRssTab(),
   feedsViewMode: cachedFeedsViewMode(),
   userAvatar: "",
+  userAvatarPosition: DEFAULT_BANNER_POSITION,
   dashboardBanner: "",
   dashboardBannerPosition: DEFAULT_BANNER_POSITION,
   dashboardBannerVisible: true,
@@ -83,7 +84,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   appBackgroundImagePositions: [],
   appBackgroundImagePosition: DEFAULT_BANNER_POSITION,
   lockScreenImage: "",
+  lockScreenImagePosition: DEFAULT_BANNER_POSITION,
   lockScreenBlur: 0,
+  lockScreenDimming: 0,
   lockScreenVisible: true,
   autoLockMinutes: DEFAULT_AUTO_LOCK_MINUTES,
   appBackgroundBlur: 20,
@@ -94,6 +97,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   dshBackgroundOpacity: DEFAULT_DSH_BACKGROUND_OPACITY,
   dshBackgroundBlur: DEFAULT_DSH_BACKGROUND_BLUR,
   dshToolbarVisible: DEFAULT_DSH_TOOLBAR_VISIBLE,
+  dshIdleStopMinutes: DEFAULT_DSH_IDLE_STOP_MINUTES,
+  dshGlobalShortcut: DEFAULT_DSH_GLOBAL_SHORTCUT,
   terminalTransparent: DEFAULT_TERMINAL_TRANSPARENT,
   terminalBackgroundBlur: DEFAULT_TERMINAL_BACKGROUND_BLUR,
   terminalBackgroundOpacity: DEFAULT_TERMINAL_BACKGROUND_OPACITY,
@@ -179,9 +184,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     saveSetting("feeds_view_mode", JSON.stringify(mode));
   },
 
-  setUserAvatar: (dataUrl) => {
-    set({ userAvatar: dataUrl });
+  setUserAvatar: (dataUrl, position) => {
+    const pos = position ?? DEFAULT_BANNER_POSITION;
+    set({ userAvatar: dataUrl, userAvatarPosition: pos });
     saveSetting("user_avatar", JSON.stringify(dataUrl));
+    saveSetting("user_avatar_position", JSON.stringify(pos));
   },
 
   setDashboardBanner: (dataUrl, position) => {
@@ -234,9 +241,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     const nextImages = images.filter((image) => typeof image === "string" && image.length > 0).slice(0, 5);
     const nextPositions = nextImages.map((_, index) => {
       const position = positions[index];
-      return position && Number.isFinite(position.x) && Number.isFinite(position.y)
-        ? { x: Math.min(100, Math.max(0, position.x)), y: Math.min(100, Math.max(0, position.y)) }
-        : DEFAULT_BANNER_POSITION;
+      if (!position || !Number.isFinite(position.x) || !Number.isFinite(position.y)) return DEFAULT_BANNER_POSITION;
+      return {
+        x: Math.min(100, Math.max(0, position.x)),
+        y: Math.min(100, Math.max(0, position.y)),
+        // Absent/invalid = pre-zoom stored position or a fresh default — both
+        // mean "no extra zoom".
+        scale: Number.isFinite(position.scale)
+          ? Math.min(BANNER_ZOOM_MAX, Math.max(BANNER_ZOOM_MIN, position.scale as number))
+          : BANNER_ZOOM_MIN,
+      };
     });
     const nextIndex = nextImages.length === 0
       ? 0
@@ -276,14 +290,22 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     void saveSettings(entries);
   },
 
-  setLockScreenImage: (dataUrl) => {
-    set({ lockScreenImage: dataUrl });
+  setLockScreenImage: (dataUrl, position) => {
+    const pos = position ?? DEFAULT_BANNER_POSITION;
+    set({ lockScreenImage: dataUrl, lockScreenImagePosition: pos });
     saveSetting("lock_screen_image", JSON.stringify(dataUrl));
+    saveSetting("lock_screen_image_position", JSON.stringify(pos));
   },
 
   setLockScreenBlur: (value) => {
     set({ lockScreenBlur: value });
     saveSettingDebounced("lock_screen_blur", JSON.stringify(value));
+  },
+
+  setLockScreenDimming: (percent) => {
+    const value = Math.min(80, Math.max(0, Math.round(percent)));
+    set({ lockScreenDimming: value });
+    saveSettingDebounced("lock_screen_dimming", JSON.stringify(value));
   },
 
   setLockScreenVisible: (value) => {
@@ -351,6 +373,27 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setDshToolbarVisible: (visible) => {
     set({ dshToolbarVisible: visible });
     saveSetting("dsh_toolbar_visible", JSON.stringify(visible));
+  },
+
+  setDshIdleStopMinutes: (minutes) => {
+    // Anything not on the offered list (a hand-edited DB, a future build's
+    // removed choice) falls back to off rather than a value under the
+    // 10-minute floor the picker enforces.
+    const value = (DSH_IDLE_STOP_CHOICES as readonly number[]).includes(minutes)
+      ? minutes
+      : DEFAULT_DSH_IDLE_STOP_MINUTES;
+    set({ dshIdleStopMinutes: value });
+    saveSetting("dsh_idle_stop_minutes", JSON.stringify(value));
+    // Pushed to main by useTraySync, which reacts to this same field (both
+    // on mount and on every change) — no IPC call needed here.
+  },
+
+  setDshGlobalShortcut: (accelerator) => {
+    set({ dshGlobalShortcut: accelerator });
+    saveSetting("dsh_global_shortcut", JSON.stringify(accelerator));
+    // Registration itself (and re-registering on every app boot) happens in
+    // useTraySync — it reacts to this same field, so this setter doesn't
+    // need its own IPC round-trip.
   },
 
   setTerminalTransparent: (enabled) => {

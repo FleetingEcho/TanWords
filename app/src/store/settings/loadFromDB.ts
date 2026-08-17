@@ -4,6 +4,7 @@ import {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR,
   DEFAULT_LAYOUT_MODE, AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES,
   DEFAULT_DSH_BACKGROUND_OPACITY, DEFAULT_DSH_BACKGROUND_BLUR,
+  DSH_IDLE_STOP_CHOICES, DEFAULT_DSH_IDLE_STOP_MINUTES, DEFAULT_DSH_GLOBAL_SHORTCUT,
   DEFAULT_TERMINAL_BACKGROUND_BLUR, DEFAULT_TERMINAL_BACKGROUND_OPACITY, DEFAULT_TERMINAL_TRANSPARENT,
   DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE,
   DEFAULT_TERMINAL_FONT_WEIGHT, normalizeTerminalFontWeight,
@@ -90,6 +91,7 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       "default_rss_tab",
       "feeds_view_mode",
       "user_avatar",
+      "user_avatar_position",
       "dashboard_banner",
       "dashboard_banner_position",
       "dashboard_banner_visible",
@@ -104,7 +106,9 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       "app_background_image_index",
       "app_background_image_positions",
       "lock_screen_image",
+      "lock_screen_image_position",
       "lock_screen_blur",
+      "lock_screen_dimming",
       "lock_screen_visible",
       "auto_lock_minutes",
       "app_background_blur",
@@ -116,6 +120,8 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       "dsh_background_blur",
       "dsh_background_transparent",
       "dsh_toolbar_visible",
+      "dsh_idle_stop_minutes",
+      "dsh_global_shortcut",
       "terminal_transparent",
       "terminal_background_blur",
       "terminal_background_opacity",
@@ -387,6 +393,7 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       defaultRssTab: resolvedDefaultRssTab,
       feedsViewMode: resolvedFeedsViewMode,
       userAvatar: values.user_avatar || "",
+      userAvatarPosition: parseBannerPosition(values.user_avatar_position),
       dashboardBanner: values.dashboard_banner || "",
       dashboardBannerPosition: parseBannerPosition(values.dashboard_banner_position),
       dashboardBannerVisible: (values.dashboard_banner_visible as unknown) !== false && values.dashboard_banner_visible !== "false",
@@ -397,7 +404,11 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       appBackgroundImagePositions: resolvedBackgroundPositions,
       appBackgroundImagePosition: resolvedBackgroundPosition,
       lockScreenImage: values.lock_screen_image || "",
+      lockScreenImagePosition: parseBannerPosition(values.lock_screen_image_position),
       lockScreenBlur: Number(values.lock_screen_blur ?? 0),
+      lockScreenDimming: Number.isFinite(Number(values.lock_screen_dimming))
+        ? Math.min(80, Math.max(0, Math.round(Number(values.lock_screen_dimming))))
+        : 0,
       lockScreenVisible: (values.lock_screen_visible as unknown) !== false && values.lock_screen_visible !== "false",
       // Anything not on the offered list (a hand-edited DB, a value from a
       // future build) falls back to off rather than to a surprise interval.
@@ -426,6 +437,15 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       // restores the DSH page toolbar. Stored as JSON, so the value is the
       // string "true" or "false".
       dshToolbarVisible: values.dsh_toolbar_visible === "true",
+      // Anything not on the offered list (a hand-edited DB, a future build's
+      // removed choice) falls back to off rather than a value under the
+      // 10-minute floor the picker enforces.
+      dshIdleStopMinutes: (DSH_IDLE_STOP_CHOICES as readonly number[]).includes(Number(values.dsh_idle_stop_minutes))
+        ? Number(values.dsh_idle_stop_minutes)
+        : DEFAULT_DSH_IDLE_STOP_MINUTES,
+      dshGlobalShortcut: typeof values.dsh_global_shortcut === "string"
+        ? values.dsh_global_shortcut
+        : DEFAULT_DSH_GLOBAL_SHORTCUT,
       terminalTransparent: activeTerminalAppearance.transparent,
       terminalBackgroundBlur: activeTerminalAppearance.blur,
       terminalBackgroundOpacity: activeTerminalAppearance.opacity,

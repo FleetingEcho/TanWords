@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { PlaybackSpeedSelector } from "@/components/ui/PlaybackSpeedSelector";
 import { AudioSeekSlider } from "@/components/ui/AudioSeekSlider";
 import { BrowserPanelBlocker } from "@/store/browserPanelStore";
+import { DshPanelBlocker } from "@/store/dshPanelBlockStore";
 
 function formatTime(sec: number): string {
   if (!isFinite(sec) || sec <= 0) return "0:00";
@@ -60,8 +61,9 @@ export function NowPlayingOverlay({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 app-region-no-drag animate-fade-in overflow-hidden" style={{ backgroundImage: cover.css }}>
-      {/* Native browser panel must step aside — see browserPanelStore. */}
+      {/* Native browser/DSH panels must step aside — see browserPanelStore / dshPanelBlockStore. */}
       <BrowserPanelBlocker />
+      <DshPanelBlocker />
       {/* Darken toward the bottom so white text always reads */}
       <div className="absolute inset-0 bg-linear-to-b from-black/30 via-black/45 to-black/75" />
 

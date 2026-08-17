@@ -1,13 +1,18 @@
-import { DEFAULT_BANNER_POSITION, DEFAULT_HIGHLIGHT_COLOR, DOCUMENT_TEXT_COLOR_RE, type BannerPosition, type Theme } from "./types";
+import { BANNER_ZOOM_MAX, BANNER_ZOOM_MIN, DEFAULT_BANNER_POSITION, DEFAULT_HIGHLIGHT_COLOR, DOCUMENT_TEXT_COLOR_RE, type BannerPosition, type Theme } from "./types";
 import { callMain } from "@/ipc/host";
 
 /** Installs that predate the drag-to-position banner have no stored framing — and
- *  their banners were baked as centre crops, so centre is also the honest fallback. */
+ *  their banners were baked as centre crops, so centre is also the honest fallback.
+ *  `scale` predates zoom entirely on older installs, so its absence falls back to
+ *  `BANNER_ZOOM_MIN` (no extra zoom) rather than the whole position. */
 export function parseBannerPosition(raw: unknown): BannerPosition {
   const pos = raw as Partial<BannerPosition> | undefined;
   if (!pos || typeof pos.x !== "number" || typeof pos.y !== "number") return DEFAULT_BANNER_POSITION;
   const clamp = (v: number) => Math.min(100, Math.max(0, v));
-  return { x: clamp(pos.x), y: clamp(pos.y) };
+  const scale = typeof pos.scale === "number" && Number.isFinite(pos.scale)
+    ? Math.min(BANNER_ZOOM_MAX, Math.max(BANNER_ZOOM_MIN, pos.scale))
+    : BANNER_ZOOM_MIN;
+  return { x: clamp(pos.x), y: clamp(pos.y), scale };
 }
 
 /** Pushes the chosen colour into the two custom properties <mark> reads (see

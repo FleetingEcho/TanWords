@@ -20,8 +20,11 @@ import { me as fetchMe, logout } from "@/platform/auth";
 const MAX_AVATAR_UPLOAD_BYTES = 5 * 1024 * 1024;
 const MAX_BANNER_UPLOAD_BYTES = 8 * 1024 * 1024;
 const MAX_APP_BG_UPLOAD_BYTES = 12 * 1024 * 1024;
-/** Stored well above the largest on-screen size (the 256px preview modal) so it's always downscaled, never upscaled. */
-const AVATAR_OUTPUT_SIZE = 512;
+/** The avatar is stored whole (like the banner/background) and framed at render time via
+ *  object-position + scale, chosen in AvatarPositionModal — no longer baked to a fixed
+ *  square at upload. Capped well above the largest on-screen avatar size so zooming in
+ *  the framing modal never upscales past the source's own resolution. */
+const AVATAR_MAX_DIMENSION = 1024;
 /** The banner is stored whole and cropped at render time via object-position, so this
  *  only has to be wide enough to cover a full-width banner without upscaling — the user
  *  picks which band of it shows (see BannerPositionModal). */
@@ -30,41 +33,6 @@ const BANNER_MAX_DIMENSION = 1920;
  *  render time, so unlike the avatar/banner this is downscaled only — never center-cropped —
  *  preserving the source aspect ratio. Capped comfortably above typical desktop resolutions. */
 const APP_BG_MAX_DIMENSION = 2400;
-
-/** Center-crops (object-fit: cover semantics) an arbitrary image file down to a target size and re-encodes it as a compact JPEG data URL. */
-function fileToCroppedDataUrl(file: File, targetW: number, targetH: number, quality: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(reader.error);
-    reader.onload = () => {
-      const img = new Image();
-      img.onerror = () => reject(new Error("invalid image"));
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = targetW;
-        canvas.height = targetH;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return reject(new Error("no canvas context"));
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = "high";
-        const targetRatio = targetW / targetH;
-        const srcRatio = img.width / img.height;
-        let sw = img.width, sh = img.height, sx = 0, sy = 0;
-        if (srcRatio > targetRatio) {
-          sw = img.height * targetRatio;
-          sx = (img.width - sw) / 2;
-        } else {
-          sh = img.width / targetRatio;
-          sy = (img.height - sh) / 2;
-        }
-        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, targetW, targetH);
-        resolve(canvas.toDataURL("image/jpeg", quality));
-      };
-      img.src = reader.result as string;
-    };
-    reader.readAsDataURL(file);
-  });
-}
 
 /** Downscales (never crops) an arbitrary image file so its longer edge is at most
  *  `maxDimension`, re-encoded as a compact JPEG data URL. Images already smaller are
@@ -140,6 +108,7 @@ function AppBackgroundSetting() {
         visible={useSettingsStore((s) => s.appBackgroundVisible)}
         setVisible={useSettingsStore((s) => s.setAppBackgroundVisible)}
         objectPosition={`${position.x}% ${position.y}%`}
+        imageScale={position.scale}
         onAdjust={() => setAdjusting(true)}
         gallery={{
           items: images,
@@ -162,6 +131,7 @@ function AppBackgroundSetting() {
         title={t("settings.backgroundPositionTitle")}
         hint={t("settings.backgroundPositionHint")}
         fitsHint={t("settings.backgroundPositionFits")}
+        allowZoom
         onCancel={closeFraming}
         onConfirm={saveFraming}
       />
@@ -204,25 +174,53 @@ function NicknameSetting() {
 function UserAvatarSetting() {
   const t = useT();
   const userAvatar = useSettingsStore((s) => s.userAvatar);
+  const position = useSettingsStore((s) => s.userAvatarPosition);
   const setUserAvatar = useSettingsStore((s) => s.setUserAvatar);
+  // Same pending/framing shape as the banner/background/lock-screen pickers —
+  // see DashboardBannerSetting's doc.
+  const [pending, setPending] = useState<string | null>(null);
+  const [framing, setFraming] = useState(false);
+
+  const editing = pending ?? userAvatar;
 
   return (
-    <ImageSetting
-      label={t("settings.userAvatar")}
-      sub={t("settings.userAvatarSub")}
-      value={userAvatar}
-      onChange={setUserAvatar}
-      processFile={(file) => fileToCroppedDataUrl(file, AVATAR_OUTPUT_SIZE, AVATAR_OUTPUT_SIZE, 0.94)}
-      maxBytes={MAX_AVATAR_UPLOAD_BYTES}
-      thumbClassName="w-16 h-16 rounded-xl"
-      empty={
-        <svg viewBox="0 0 16 16" fill="currentColor" className="h-6 w-6 text-muted-foreground">
-          <path fillRule="evenodd" d="M8 8a3 3 0 100-6 3 3 0 000 6zm-4.5 8a4.5 4.5 0 019 0H3.5z" />
-        </svg>
-      }
-      previewClassName="w-[50vw] h-[50vh] top-1/2 -translate-y-1/2"
-      previewImgClassName="max-h-[40vh] aspect-square rounded-2xl object-cover shadow-lg"
-    />
+    <>
+      <ImageSetting
+        label={t("settings.userAvatar")}
+        sub={t("settings.userAvatarSub")}
+        value={userAvatar}
+        onChange={setUserAvatar}
+        objectPosition={`${position.x}% ${position.y}%`}
+        imageScale={position.scale}
+        onPicked={(dataUrl) => { setPending(dataUrl); setFraming(true); }}
+        onAdjust={() => { setPending(null); setFraming(true); }}
+        // Stored whole (like the banner/background/lock screen) — downscale
+        // only, no baked crop. Which part shows, and how zoomed, is the
+        // framing modal below, not a blind upload-time center-crop.
+        processFile={(file) => fileToDownscaledDataUrl(file, AVATAR_MAX_DIMENSION, 0.9)}
+        maxBytes={MAX_AVATAR_UPLOAD_BYTES}
+        thumbClassName="w-16 h-16 rounded-xl"
+        empty={
+          <svg viewBox="0 0 16 16" fill="currentColor" className="h-6 w-6 text-muted-foreground">
+            <path fillRule="evenodd" d="M8 8a3 3 0 100-6 3 3 0 000 6zm-4.5 8a4.5 4.5 0 019 0H3.5z" />
+          </svg>
+        }
+        previewClassName="w-[50vw] h-[50vh]"
+        previewImgClassName="max-h-[40vh] aspect-square rounded-2xl object-cover shadow-lg"
+      />
+      <BannerPositionModal
+        open={framing}
+        src={editing}
+        initial={pending ? DEFAULT_BANNER_POSITION : position}
+        frameAspect={1}
+        allowZoom
+        title={t("settings.avatarPositionTitle")}
+        hint={t("settings.avatarPositionHint")}
+        fitsHint={t("settings.avatarPositionFits")}
+        onCancel={() => { setPending(null); setFraming(false); }}
+        onConfirm={(pos) => { setUserAvatar(editing, pos); setPending(null); setFraming(false); }}
+      />
+    </>
   );
 }
 
@@ -247,6 +245,7 @@ function DashboardBannerSetting() {
         sub={t("settings.dashboardBannerSub")}
         value={dashboardBanner}
         objectPosition={`${position.x}% ${position.y}%`}
+        imageScale={position.scale}
         onChange={setDashboardBanner}
         onPicked={(dataUrl) => { setPending(dataUrl); setFraming(true); }}
         onAdjust={() => { setPending(null); setFraming(true); }}
@@ -255,7 +254,7 @@ function DashboardBannerSetting() {
         thumbClassName="w-64 h-16 rounded-lg"
         thumbImgStyle={visible ? undefined : { opacity: 0.4 }}
         empty={t("settings.dashboardBannerNone")}
-        previewClassName="w-[70vw] h-fit top-1/2 -translate-y-1/2"
+        previewClassName="w-[70vw] h-fit"
         previewImgClassName="w-full h-auto rounded-2xl object-cover shadow-lg"
       >
         <div className="flex w-full items-center justify-between rounded-xl border border-border/60 bg-muted/30 px-2.5 py-2">
@@ -282,6 +281,7 @@ function DashboardBannerSetting() {
         open={framing}
         src={editing}
         initial={pending ? DEFAULT_BANNER_POSITION : position}
+        allowZoom
         onCancel={() => setFraming(false)}
         onConfirm={(pos) => { setDashboardBanner(editing, pos); setFraming(false); }}
       />

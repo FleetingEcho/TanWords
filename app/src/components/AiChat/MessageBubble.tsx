@@ -6,6 +6,7 @@ import { Markdown } from "./Markdown";
 import { Button } from "@/components/ui/button";
 import { Pencil, RotateCw } from "lucide-react";
 import { AI_MESSAGE_ATTR } from "@/components/shared/SelectionAsk";
+import { UserAvatarImage } from "@/components/shared/UserAvatarImage";
 
 export interface AiMessage {
   role: "user" | "assistant";
@@ -172,7 +173,7 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, compact = 
           className={`${avatarSize} rounded-xl bg-muted ring-1 ring-border flex items-center justify-center shrink-0 mt-1 overflow-hidden shadow-md`}
         >
           {userAvatar ? (
-            <img src={userAvatar} alt="" className="w-full h-full object-cover" />
+            <UserAvatarImage className="w-full h-full object-cover" />
           ) : (
             <svg viewBox="0 0 16 16" fill="currentColor" className="w-5 h-5 text-muted-foreground">
               <path fillRule="evenodd" d="M8 8a3 3 0 100-6 3 3 0 000 6zm-4.5 8a4.5 4.5 0 019 0H3.5z" />

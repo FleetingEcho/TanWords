@@ -38,6 +38,10 @@ export interface SettingsState {
   feedsViewMode: "card" | "list";
   /** User's custom avatar as a data URL, shown in place of the default icon in chat bubbles etc. Empty = default icon. */
   userAvatar: string;
+  /** Which part of the avatar photo shows, and how zoomed in — same
+   *  `BannerPosition` mechanism as the dashboard banner/app background/lock
+   *  screen. Square frame (see UserAvatarSetting's `frameAspect={1}`). */
+  userAvatarPosition: BannerPosition;
   /** Custom banner image (data URL) shown at the top of the Dashboard page. Empty = no banner.
    *  Stored whole rather than pre-cropped, so its framing stays adjustable and stays
    *  correct however wide the window makes the banner. */
@@ -66,7 +70,15 @@ export interface SettingsState {
   /** The lock screen's own wallpaper — a separate picture from the app
    *  canvas, configured with the same controls. */
   lockScreenImage: string;
+  /** Which part of the lock screen photo shows, and how zoomed in — same
+   *  `BannerPosition` mechanism as the dashboard banner/app background. */
+  lockScreenImagePosition: BannerPosition;
   lockScreenBlur: number;
+  /** Darkening scrim over the lock screen wallpaper, as a percentage. `0`
+   *  (the default) shows the photo untouched — no forced dimming for
+   *  legibility unless the user opts into it here, mirroring
+   *  `appBackgroundDimming`. */
+  lockScreenDimming: number;
   lockScreenVisible: boolean;
   /** Minutes of no input before the app locks itself; `0` disables it. Only
    *  has any effect while a lock password is set. */
@@ -91,6 +103,13 @@ export interface SettingsState {
    *  Open-external). Hidden by default so the embedded agent UI gets the full
    *  height; enabling it restores the controls. */
   dshToolbarVisible: boolean;
+  /** Minutes the DSH page must sit hidden and idle before its host auto-stops.
+   *  `0` disables it; the floor on any other value is 10 (see
+   *  DSH_IDLE_STOP_CHOICES). */
+  dshIdleStopMinutes: number;
+  /** OS-wide shortcut (Electron accelerator syntax) that jumps to the DSH
+   *  page from anywhere. Empty disables it. */
+  dshGlobalShortcut: string;
   /** Glass appearance used when the Terminal transparency toggle is enabled. */
   terminalTransparent: boolean;
   terminalBackgroundBlur: number;
@@ -151,7 +170,7 @@ export interface SettingsState {
   setLayoutMode: (mode: LayoutMode) => void;
   setDefaultRssTab: (tab: RssTabSelection) => void;
   setFeedsViewMode: (mode: "card" | "list") => void;
-  setUserAvatar: (dataUrl: string) => void;
+  setUserAvatar: (dataUrl: string, position?: BannerPosition) => void;
   /** Omitting `position` re-centres — a new image arrives without a framing, and
    *  clearing the banner should not leave a stale one behind. */
   setDashboardBanner: (dataUrl: string, position?: BannerPosition) => void;
@@ -159,8 +178,9 @@ export interface SettingsState {
   setNickname: (name: string) => void;
   setAppBackgroundImage: (dataUrl: string) => void;
   setAppBackgroundImages: (images: string[], activeIndex: number, positions?: BannerPosition[]) => void;
-  setLockScreenImage: (dataUrl: string) => void;
+  setLockScreenImage: (dataUrl: string, position?: BannerPosition) => void;
   setLockScreenBlur: (value: number) => void;
+  setLockScreenDimming: (value: number) => void;
   setLockScreenVisible: (value: boolean) => void;
   setAutoLockMinutes: (minutes: number) => void;
   setAppBackgroundBlur: (px: number) => void;
@@ -171,6 +191,8 @@ export interface SettingsState {
   setDshBackgroundOpacity: (percent: number) => void;
   setDshBackgroundBlur: (strength: number) => void;
   setDshToolbarVisible: (visible: boolean) => void;
+  setDshIdleStopMinutes: (minutes: number) => void;
+  setDshGlobalShortcut: (accelerator: string) => void;
   setTerminalTransparent: (enabled: boolean) => void;
   setTerminalBackgroundBlur: (px: number) => void;
   setTerminalBackgroundOpacity: (percent: number) => void;

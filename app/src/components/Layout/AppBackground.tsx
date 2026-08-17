@@ -41,20 +41,32 @@ export function AppBackground({ disableBlur = false }: { disableBlur?: boolean }
 
   return (
     <div className={`fixed inset-0 ${zClass} overflow-hidden bg-background`}>
-      <img
-        src={image}
-        alt=""
-        aria-hidden="true"
-        className="w-full h-full object-cover"
-        // Scaled up so a blurred edge never reveals empty space at the image boundary.
-        // Terminal can opt out because a backdrop that has already been blurred
-        // here cannot be made sharp again by its transparent foreground shell.
-        style={{
-          filter: effectiveBlur > 0 ? `blur(${effectiveBlur}px)` : "none",
-          transform: effectiveBlur > 0 ? "scale(1.08)" : undefined,
-          objectPosition: `${position.x}% ${position.y}%`,
-        }}
-      />
+      {/* The crop's zoom (position.scale) lives on this wrapper, anchored at the
+        * same x%,y% the pan uses — kept separate from the blur-overscan transform
+        * on the img itself below, since the two need different transform-origins
+        * (this one at the user's chosen focus point, that one at dead centre) and
+        * CSS only has one `transform-origin` per element. */}
+      <div
+        className="h-full w-full"
+        style={position.scale && position.scale !== 1
+          ? { transform: `scale(${position.scale})`, transformOrigin: `${position.x}% ${position.y}%` }
+          : undefined}
+      >
+        <img
+          src={image}
+          alt=""
+          aria-hidden="true"
+          className="w-full h-full object-cover"
+          // Scaled up so a blurred edge never reveals empty space at the image boundary.
+          // Terminal can opt out because a backdrop that has already been blurred
+          // here cannot be made sharp again by its transparent foreground shell.
+          style={{
+            filter: effectiveBlur > 0 ? `blur(${effectiveBlur}px)` : "none",
+            transform: effectiveBlur > 0 ? "scale(1.08)" : undefined,
+            objectPosition: `${position.x}% ${position.y}%`,
+          }}
+        />
+      </div>
       {dimming > 0 && (
         <div
           data-testid="app-background-dimming"

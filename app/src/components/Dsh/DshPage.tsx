@@ -79,6 +79,12 @@ export function DshPage({ visible }: { visible: boolean }) {
   // small "Configure" button reopens it.
   const [failedModalOpen, setFailedModalOpen] = useState(false);
 
+  // True while the native view's renderer is reloading after crashing on its
+  // own (the `dsh` host — and any task it's mid-way through — is unaffected;
+  // only the display needs to reconnect). See dshPanel.ts's
+  // `render-process-gone` handler.
+  const [viewReconnecting, setViewReconnecting] = useState(false);
+
   // Any app-wide Dialog opening over this page increments this; the native DSH
   // view is composited above all HTML, so it has to step aside for the modal.
   const blocked = useDshPanelBlockStore((s) => s.blockers > 0);
@@ -218,6 +224,13 @@ export function DshPage({ visible }: { visible: boolean }) {
           setFailedModalOpen(kind === "other");
         }
       },
+      // The native view's renderer can die on its own (OOM, GPU fault) without
+      // the `dsh` host process going down — the main process reloads the view
+      // against the same host and fires this so the UI explains the blank
+      // flash instead of looking broken. `dsh://loading` (already emitted
+      // around every navigation) clears it once the reload lands.
+      "dsh://crashed": () => setViewReconnecting(true),
+      "dsh://loading": (loading: boolean) => { if (!loading) setViewReconnecting(false); },
     });
   }, []);
 
@@ -338,6 +351,14 @@ export function DshPage({ visible }: { visible: boolean }) {
             <div>
               <p className="text-sm font-medium">{t("dsh.starting")}</p>
               <p className="mt-1 text-xs text-muted-foreground">{t("dsh.startingHint")}</p>
+            </div>
+          </div>
+        )}
+        {status === "ready" && viewReconnecting && (
+          <div className="absolute inset-x-0 top-2 z-10 flex justify-center">
+            <div className="flex items-center gap-2 rounded-full border border-border bg-background/95 px-3 py-1.5 text-xs text-muted-foreground shadow-md">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+              {t("dsh.viewReconnecting")}
             </div>
           </div>
         )}
@@ -556,6 +577,13 @@ function DshNotInstalledGuide({ onRetry }: { onRetry: () => void }) {
           </div>
         </div>
 
+        <div className="space-y-1.5">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {t("dsh.notInstalledPrereq")}
+          </h3>
+          <p className="text-xs text-muted-foreground">{t("dsh.notInstalledPrereqText")}</p>
+        </div>
+
         <div className="space-y-2">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {t("dsh.notInstalledSteps")}
@@ -583,13 +611,6 @@ function DshNotInstalledGuide({ onRetry }: { onRetry: () => void }) {
           <CommandBlock text={DSH_UPGRADE_CMD} copyLabel={copyLabel} />
         </div>
 
-        <div className="space-y-1.5">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            {t("dsh.notInstalledPrereq")}
-          </h3>
-          <p className="text-xs text-muted-foreground">{t("dsh.notInstalledPrereqText")}</p>
-        </div>
-
         <div className="space-y-2 border-t border-border pt-4">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {t("dsh.notInstalledOfficial")}
@@ -610,6 +631,9 @@ function DshNotInstalledGuide({ onRetry }: { onRetry: () => void }) {
               {t("dsh.notInstalledRetry")}
             </Button>
           </div>
+          <p className="text-[11px] leading-relaxed text-muted-foreground/80">
+            {t("dsh.notInstalledPathHint")}
+          </p>
         </div>
       </div>
     </div>

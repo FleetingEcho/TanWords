@@ -3,6 +3,7 @@ import { invoke } from "@/ipc/backend";
 import { subscribeAll } from "@/ipc/events";
 import { useBrowserPanelBlockStore } from "@/store/browserPanelStore";
 import { useFloatingBrowserStore } from "@/store/floatingBrowserStore";
+import { useNavStore } from "@/store/navStore";
 import { normalizeAddress } from "@/components/Browser/useBrowserPanel";
 
 /** Same tab shape as the full-page Browser's hook — see useBrowserPanel.ts
@@ -82,7 +83,19 @@ export function useFloatingBrowserPanel(opts: { forceVisible?: boolean } = {}) {
   // unused default — forceVisible skips that check there, since the popout
   // window existing at all already means "show it".
   const storeOpen = useFloatingBrowserStore((s) => s.status === "open");
-  const visible = forceVisible || storeOpen;
+  // The DSH page is its OWN native `WebContentsView`, layered independently
+  // of this one — neither has a way to lose a z-index fight against the
+  // other (native views don't respect each other's stacking any more than
+  // they respect HTML z-index), so whichever's `show` IPC lands last just
+  // paints over the other. Force this one to yield while DSH is the active
+  // page, same as it already yields to a blocking dialog below. Read
+  // straight off navStore rather than threading a prop through: the popout
+  // window (see this hook's module doc) has its own separate `navStore`
+  // instance that never leaves its default page, so this is always false
+  // there — exactly the "popout always visible" behavior `forceVisible`
+  // already carves out.
+  const dshActive = useNavStore((s) => s.page === "dsh");
+  const visible = (forceVisible || storeOpen) && !dshActive;
   // A modal/dropdown is up — same registry the full-page Browser panel uses,
   // since this is also a native view that can't lose a z-index fight.
   const blocked = useBrowserPanelBlockStore((s) => s.blockers > 0);

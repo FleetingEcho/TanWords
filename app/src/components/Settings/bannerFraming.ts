@@ -30,6 +30,11 @@ export function coverOverflow(frame: Size | null, natural: Size | null): { x: nu
  * Applies a drag to a position. Dragging the image down reveals more of its top edge,
  * which is a *smaller* object-position percentage — hence the subtraction. An axis with
  * no overflow has nothing to choose, so it stays centred.
+ *
+ * `overflow` here should already be zoom-adjusted (see `zoomedOverflow`) when the image
+ * is zoomed in past its base cover — otherwise a screen-pixel drag would move the
+ * (visually magnified) image faster than the cursor, since the same `overflow.x` denominator
+ * would represent a smaller fraction of what's actually now on screen.
  */
 export function dragToPosition(
   from: BannerPosition,
@@ -38,7 +43,18 @@ export function dragToPosition(
   overflow: { x: number; y: number }
 ): BannerPosition {
   return {
+    ...from,
     x: overflow.x > 0 ? clamp(from.x - (dx / overflow.x) * 100) : 50,
     y: overflow.y > 0 ? clamp(from.y - (dy / overflow.y) * 100) : 50,
   };
+}
+
+/**
+ * `coverOverflow` scaled up by the current zoom level — the pannable range once the
+ * image is magnified past its base `object-fit: cover` minimum. At `zoom === 1` (no
+ * extra zoom) this is identical to `coverOverflow`'s own output; passing it through
+ * `dragToPosition` either way keeps drag math correct at any zoom level, including 1.
+ */
+export function zoomedOverflow(overflow: { x: number; y: number }, zoom: number): { x: number; y: number } {
+  return { x: overflow.x * zoom, y: overflow.y * zoom };
 }

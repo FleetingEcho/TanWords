@@ -4,6 +4,7 @@
  *  dropped. Same menu, same behaviour:
  *
  *    Open main window
+ *    DeepSeek Harness
  *    Music Control  ▸  ⏸ <track>  /  ⏮ Previous  /  ⏭ Next
  *    ─────────────
  *    Refresh RSS
@@ -13,10 +14,13 @@
  *  Only "open main window" and "quit" can be served from here. Playback lives
  *  in the renderer's podcastPlayerStore and RSS syncing goes through the
  *  sidecar, so those rows emit `tray://*` events for `useTraySync` to act on,
- *  and the renderer pushes playback state back so the labels stay honest. */
+ *  and the renderer pushes playback state back so the labels stay honest.
+ *  "DeepSeek Harness" is the same pattern: it surfaces the window here (the
+ *  only thing this process can do directly) and leaves the actual page
+ *  navigation to the renderer via `tray://open-dsh`. */
 import { app, BrowserWindow, Menu, Tray, nativeImage } from "electron";
 import path from "node:path";
-import { showWindow } from "./windowVisibility";
+import { restoreAndFocusWindow } from "./windowVisibility";
 
 export type TrayLang = "en" | "zh";
 
@@ -36,6 +40,7 @@ const GLYPH_PAUSE = "⏸";
 const STRINGS = {
   en: {
     showWindow: "Open main window",
+    openDsh: "DeepSeek Harness",
     musicControl: "Music Control",
     play: "Play",
     prev: "Previous",
@@ -45,6 +50,7 @@ const STRINGS = {
   },
   zh: {
     showWindow: "打开主窗口",
+    openDsh: "DeepSeek Harness",
     musicControl: "音乐控制",
     play: "播放",
     prev: "上一首",
@@ -89,14 +95,14 @@ export class TrayManager {
     image.setTemplateImage(process.platform === "darwin");
     this.tray = new Tray(image);
     this.tray.setToolTip(app.getName());
-    // Clicking the icon itself is the fastest path back to the app. On macOS
-    // setContextMenu() takes over the ordinary left-click, so its menu is kept
-    // manual and opened only from the distinct right-click event below.
-    this.tray.on("click", () => this.showMainWindow());
-    if (process.platform === "darwin") {
-      this.tray.on("right-click", () => {
-        if (this.menu) this.tray?.popUpContextMenu(this.menu);
-      });
+    // Windows/Linux: left-click is the fastest path back to the app;
+    // `setContextMenu` below already gives right-click its native
+    // context-menu behavior there, no separate handler needed. macOS wants
+    // both clicks to open the same dropdown menu instead — `setContextMenu()`
+    // already does exactly that there by default, so no click handler is
+    // installed at all; adding one would have to fight it.
+    if (process.platform !== "darwin") {
+      this.tray.on("click", () => this.showMainWindow());
     }
     this.buildMenu();
   }
@@ -105,6 +111,13 @@ export class TrayManager {
     if (this.lang === lang) return;
     this.lang = lang;
     this.buildMenu();
+  }
+
+  /** Read by other main-process rows (the task-finished notification) that
+   *  want to match the tray's language without each tracking their own copy
+   *  of the `tray_set_language` IPC the renderer already pushes here. */
+  getLanguage(): TrayLang {
+    return this.lang;
   }
 
   setNowPlaying(now: NowPlaying) {
@@ -136,9 +149,7 @@ export class TrayManager {
   private showMainWindow() {
     const win = this.win;
     if (!win || win.isDestroyed()) return;
-    if (win.isMinimized()) win.restore();
-    showWindow(win);
-    win.focus();
+    restoreAndFocusWindow(win);
   }
 
   /** Builds and installs the menu. Only the static labels come from here, so
@@ -151,6 +162,13 @@ export class TrayManager {
 
     this.menu = Menu.buildFromTemplate([
       { label: s.showWindow, click: () => this.showMainWindow() },
+      {
+        label: s.openDsh,
+        click: () => {
+          this.showMainWindow();
+          emit("tray://open-dsh");
+        },
+      },
       {
         id: "music",
         label: s.musicControl,
@@ -166,7 +184,17 @@ export class TrayManager {
       { label: s.quit, click: () => app.quit() },
     ]);
     this.syncPlaybackItems();
-    if (process.platform !== "darwin") this.tray.setContextMenu(this.menu);
+    // On every platform this both installs the right-click menu and (macOS
+    // only — see create()) makes left-click open the same menu instead of
+    // the window.
+    this.tray.setContextMenu(this.menu);
+    // macOS Dock icon: a plain left-click on a running app's Dock icon always
+    // activates/restores its windows — that's Dock behavior the OS owns, not
+    // something an app can redirect into showing a menu instead (there is no
+    // Electron/macOS API for it). Right-click (or Control-click / long-press)
+    // is the one Dock interaction apps DO get to customize, via this same
+    // menu — same items as the tray's, so both entry points agree.
+    if (process.platform === "darwin") app.dock?.setMenu(this.menu);
   }
 
   /** Applies the current playback state to the already-installed menu.

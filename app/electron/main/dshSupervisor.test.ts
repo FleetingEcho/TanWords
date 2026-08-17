@@ -103,3 +103,98 @@ describe("DshSupervisor", () => {
     expect(spawn).not.toHaveBeenCalled();
   });
 });
+
+describe("DshSupervisor session polling", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("emits dsh:task-finished when a session goes running → idle between polls", async () => {
+    let sessions: Array<{ sessionId: string; running: boolean }> = [{ sessionId: "s1", running: true }];
+    vi.stubGlobal("fetch", vi.fn(async (_input: unknown, init?: RequestInit) => {
+      const bodyStr = String(init?.body ?? "");
+      if (bodyStr.includes("\"host.describe\"")) {
+        return new Response(JSON.stringify({
+          type: "server-response",
+          rpcId: "tanwords-dsh-probe",
+          result: {
+            ok: true,
+            value: { version: "0.0.1", cwd: "/workspace", attachedSessions: 1, canOpenPath: true },
+          },
+        }));
+      }
+      return new Response(JSON.stringify({ result: { ok: true, value: { items: sessions } } }));
+    }));
+
+    const events: Array<[string, unknown]> = [];
+    const supervisor = new DshSupervisor();
+    supervisor.setEventSink((name, payload) => events.push([name, payload]));
+    // Fake timers must be active *before* the poll's setInterval is created
+    // (inside start(), on reaching "ready") — installed after the fact,
+    // vitest's fake clock never sees a timer that's already running for real.
+    vi.useFakeTimers();
+    await expect(supervisor.start(0)).resolves.toBe("http://127.0.0.1:3080");
+
+    // First poll only seeds the map — the session was already running, not a
+    // transition, so nothing fires yet.
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(events.some(([name]) => name === "dsh:task-finished")).toBe(false);
+
+    sessions = [{ sessionId: "s1", running: false }];
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(events).toContainEqual(["dsh:task-finished", { sessionId: "s1" }]);
+  });
+
+  it("idle-stops the host past the configured threshold once hidden with nothing running, never while something is running", async () => {
+    let sessions: Array<{ sessionId: string; running: boolean }> = [{ sessionId: "s1", running: true }];
+    vi.stubGlobal("fetch", vi.fn(async (_input: unknown, init?: RequestInit) => {
+      const bodyStr = String(init?.body ?? "");
+      if (bodyStr.includes("\"host.describe\"")) throw new Error("no reusable host");
+      return new Response(JSON.stringify({ result: { ok: true, value: { items: sessions } } }));
+    }));
+
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      exitCode: null,
+      signalCode: null,
+      kill: vi.fn(() => true),
+    });
+    spawn.mockReturnValueOnce(child);
+
+    const supervisor = new DshSupervisor();
+    // Fake timers must be active before the poll's setInterval is created
+    // (on reaching "ready") — see the previous test's note. `vi.waitFor`
+    // polls with real timers, so spawn detection here uses a microtask
+    // flush instead.
+    vi.useFakeTimers();
+    const readyPromise = supervisor.start(0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(spawn).toHaveBeenCalledOnce();
+    child.stdout.write("dsh web: http://127.0.0.1:3080\n");
+    await expect(readyPromise).resolves.toBe("http://127.0.0.1:3080");
+
+    supervisor.setIdleStopMinutes(10);
+    supervisor.noteVisibility(false);
+
+    // Hidden well past the threshold, but a session is still running — must
+    // never idle-stop out from under a live task, no matter how long.
+    await vi.advanceTimersByTimeAsync(20 * 60_000);
+    expect(child.kill).not.toHaveBeenCalled();
+
+    // Reset the idle clock to "just went idle now" and let the session finish.
+    supervisor.noteVisibility(true);
+    supervisor.noteVisibility(false);
+    sessions = [{ sessionId: "s1", running: false }];
+
+    await vi.advanceTimersByTimeAsync(9 * 60_000);
+    expect(child.kill).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
+    expect(child.kill).toHaveBeenCalledWith("SIGTERM");
+
+    child.stdout.destroy();
+    child.stderr.destroy();
+    child.stdin.destroy();
+  });
+});
