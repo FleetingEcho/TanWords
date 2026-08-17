@@ -66,4 +66,13 @@ export const dsh: Dict = {
     "settings.dshGlobalShortcutNotSet": "未设置",
     "settings.dshGlobalShortcutRecording": "请按下按键组合…",
     "settings.dshGlobalShortcutClear": "清除",
+    "settings.dshRestart": "重启 DSH 服务",
+    "settings.dshRestartSub":
+        "停止并重新启动受监管的 DSH Web 服务。用于恢复卡住的服务，或应用更改后的端口。",
+    "dsh.restartConfirmTitle": "要重启 DSH 服务吗？",
+    "dsh.restartConfirmHint":
+        "当前服务将被停止并启动新的实例。DSH 上的进行中任务由外部服务承载时不受影响；仅 TanWords 启动的服务受影响。",
+    "dsh.restarting": "正在重启…",
+    "dsh.restarted": "DSH 服务已重启。",
+    "dsh.restartFailed": "重启 DSH 服务失败。",
 };

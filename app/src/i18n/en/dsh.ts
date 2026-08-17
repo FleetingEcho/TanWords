@@ -72,4 +72,13 @@ export const dsh: Dict = {
     "settings.dshGlobalShortcutNotSet": "Not set",
     "settings.dshGlobalShortcutRecording": "Press a key combo…",
     "settings.dshGlobalShortcutClear": "Clear",
+    "settings.dshRestart": "Restart DSH host",
+    "settings.dshRestartSub":
+        "Stop and relaunch the supervised DSH Web host. Use this to recover a stuck host, or to apply a changed port.",
+    "dsh.restartConfirmTitle": "Restart the DSH host?",
+    "dsh.restartConfirmHint":
+        "The current host will be stopped and a fresh one started. Any in-flight DSH task keeps running on the external host; only a TanWords-spawned host is affected.",
+    "dsh.restarting": "Restarting…",
+    "dsh.restarted": "DSH host restarted.",
+    "dsh.restartFailed": "Failed to restart the DSH host.",
 };

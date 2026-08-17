@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { RotateCcw } from "lucide-react";
+import { invoke } from "@/ipc/backend";
 import { useT } from "@/hooks/useT";
 import { useSettingsStore, DSH_IDLE_STOP_CHOICES } from "@/store/settingsStore";
 import { SettingRow, ToggleGroup } from "./SettingsShared";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 /** Loopback port for the supervised DSH Web host. A local draft is committed
@@ -212,6 +217,79 @@ function DshGlobalShortcutSetting() {
   );
 }
 
+/** A full restart of the supervised DSH Web host. The icon button opens a
+ *  confirm modal (stopping and relaunching the host is disruptive enough to
+ *  warrant confirmation, especially if a DSH task is mid-flight); confirming
+ *  calls the `dsh_restart` IPC with the configured port. The retained DSH
+ *  page listens to the `dsh:status` events the supervisor emits during the
+ *  restart and re-attaches its native view to the new host URL automatically,
+ *  so this works whether or not the DSH page is currently open. */
+function DshRestartSetting() {
+  const t = useT();
+  const dshPort = useSettingsStore((state) => state.dshPort);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const close = () => {
+    if (busy) return; // don't dismiss mid-restart — the host is being killed
+    setConfirmOpen(false);
+  };
+
+  const performRestart = async () => {
+    setBusy(true);
+    try {
+      await invoke<string>("dsh_restart", { port: dshPort });
+      toast.success(t("dsh.restarted"));
+      setConfirmOpen(false);
+    } catch (error) {
+      // The supervisor emits a `dsh:status failed` event on failure, which the
+      // DSH page already renders (inline system-error panel). Surface a toast
+      // here too so the user gets immediate feedback in Settings.
+      toast.error(`${t("dsh.restartFailed")} ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <SettingRow label={t("settings.dshRestart")} sub={t("settings.dshRestartSub")}>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          onClick={() => setConfirmOpen(true)}
+          className="h-8 gap-1.5 rounded-lg px-3 text-xs font-medium"
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          {t("dsh.restart")}
+        </Button>
+      </div>
+      <Dialog open={confirmOpen} onClose={close} maxWidth="max-w-sm">
+        <div className="space-y-4 p-5">
+          <DialogTitle className="text-sm font-semibold">{t("dsh.restartConfirmTitle")}</DialogTitle>
+          <p className="text-xs leading-relaxed text-muted-foreground">{t("dsh.restartConfirmHint")}</p>
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <Button
+              variant="ghost"
+              disabled={busy}
+              onClick={close}
+              className="h-8 rounded-lg px-3 text-xs"
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              disabled={busy}
+              onClick={() => void performRestart()}
+              className="h-8 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            >
+              {busy ? t("dsh.restarting") : t("common.confirm")}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+    </SettingRow>
+  );
+}
+
 export function DshSection() {
   const t = useT();
 
@@ -228,6 +306,7 @@ export function DshSection() {
           <DshToolbarSetting />
           <DshIdleStopSetting />
           <DshGlobalShortcutSetting />
+          <DshRestartSetting />
         </div>
       </div>
     </>
