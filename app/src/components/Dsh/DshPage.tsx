@@ -15,9 +15,13 @@ import { Dialog, DialogTitle } from "@/components/ui/dialog";
 type DshStatus = "starting" | "ready" | "failed";
 
 /** Why the host failed — drives different renderer guidance.
- *  `notInstalled` shows the install/upgrade guidance panel; `other` shows the
- *  port-fix modal. */
-type DshFailKind = "notInstalled" | "other";
+ *  - `notInstalled`: `dsh` not on PATH → install/upgrade guidance panel.
+ *  - `portInUse`: chosen port already bound → port-fix modal (Retry + port input).
+ *  - `systemError`: host crashed for an OS reason a port change can't fix
+ *    (EMFILE/inotify exhaustion, OOM, EACCES, died-after-ready) → inline panel
+ *    showing the real error + Retry. Never the port-fix modal.
+ *  - `other`: unclassified → port-fix modal (preserves prior behavior). */
+type DshFailKind = "notInstalled" | "portInUse" | "systemError" | "other";
 
 interface DshStatusEvent {
   status: DshStatus;
@@ -109,19 +113,27 @@ export function DshPage({ visible }: { visible: boolean }) {
     return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
   };
 
-  /** Classify a failed-start error string and route the failure UI: the
-   *  "not installed" guidance panel for a missing `dsh`, the port-fix modal
-   *  for everything else. The supervisor's not-found reason is the source of
-   *  truth; a `dsh_show` that rejects with that same string carries no `kind`,
-   *  so we sniff the message here. */
-  const failFromError = (message: string) => {
-    const notInstalled = /not found on PATH|was not found/i.test(message);
-    setFailKind(notInstalled ? "notInstalled" : "other");
+  /** Classify a failed-start error string and route the failure UI. The
+   *  supervisor is authoritative: its `dsh:status` events carry a `kind`
+   *  (portInUse / systemError / notInstalled / other) classified from the real
+   *  error text. A `dsh_show`/`dsh_restart` *rejection* carries no `kind` (it's
+   *  just the error string), so when no kind is supplied we sniff the message
+   *  for the `notInstalled` fingerprint as a fallback. Only `portInUse` and
+   *  unclassified `other` open the port-fix modal — `notInstalled` shows its
+   *  guidance panel and `systemError` shows an inline error + Retry, so an
+   *  EMFILE/inotify exhaustion or "host stopped" never misleads the user with a
+   *  "change the port" modal. */
+  const failFromError = (message: string, kind?: DshFailKind) => {
+    const resolved: DshFailKind = kind ?? (
+      /not found on PATH|was not found/i.test(message) ? "notInstalled" : "other"
+    );
+    setFailKind(resolved);
     setError(message);
     setStatus("failed");
-    // notInstalled shows the inline guidance panel (no modal); other opens
-    // the port-fix modal.
-    setFailedModalOpen(!notInstalled);
+    // Only a genuine port problem (or an unclassified failure we can't place)
+    // opens the port-fix modal. notInstalled → inline guidance; systemError →
+    // inline error + Retry. Both keep the page usable and never freeze.
+    setFailedModalOpen(resolved === "portInUse" || resolved === "other");
   };
 
   /** Show (and on first use start) the DSH host, positioning the native view
@@ -172,6 +184,13 @@ export function DshPage({ visible }: { visible: boolean }) {
   // exception: dismissing its modal clears the blocker, but must not immediately
   // call `dsh_show` again and reopen the same modal in an unclosable loop. Retry
   // and Apply & Restart invoke the start path explicitly.
+  //
+  // `status` MUST be a dependency. A host that prints its ready line and then
+  // crashes (e.g. EMFILE exhausting inotify watchers) leaves `dsh_show`
+  // already-resolved with a native view attached to the now-dead host. When
+  // the `dsh:status` subscriber flips `status` to "failed", this effect must
+  // re-run so the `else` branch hides that dead view — otherwise it stays
+  // composited above the failure modal and swallows clicks, freezing the UI.
   useEffect(() => {
     if (visible && !blocked && status !== "failed") {
       void show();
@@ -179,7 +198,7 @@ export function DshPage({ visible }: { visible: boolean }) {
       invoke("dsh_hide").catch(() => {});
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, blocked]);
+  }, [visible, blocked, status]);
 
   // This is a visual-only preference: apply it immediately to the retained
   // native view without restarting DSH or losing the open conversation.
@@ -221,10 +240,12 @@ export function DshPage({ visible }: { visible: boolean }) {
         else if (e.status !== "failed") setError(null);
         if (e.status === "failed") {
           const kind = e.kind ?? "other";
-          setFailKind(kind);
-          // Only the port-fix modal auto-opens; "not installed" renders its
-          // guidance panel inline instead.
-          setFailedModalOpen(kind === "other");
+          // `failFromError` is authoritative here: it sets failKind, status,
+          // error, and the modal-open flag consistently with the rejection
+          // path. Only portInUse/other open the modal; notInstalled and
+          // systemError stay inline so an EMFILE/"host stopped" never shows
+          // a misleading port-fix modal.
+          failFromError(e.reason ?? "", kind);
         }
       },
       // The native view's renderer can die on its own (OOM, GPU fault) without
@@ -367,6 +388,39 @@ export function DshPage({ visible }: { visible: boolean }) {
         )}
         {failed && failKind === "notInstalled" && (
           <DshNotInstalledGuide onRetry={retry} />
+        )}
+        {failed && failKind === "systemError" && (
+          // A system-level failure (EMFILE/inotify exhaustion, OOM, EACCES, or
+          // a host that came up then died) that changing the port cannot fix.
+          // Show the real error verbatim so the user knows what is wrong, with
+          // a Retry button. No "Configure" button and no port-fix modal —
+          // those would mislead the user into "fixing" a port that isn't the
+          // problem. Inline (not a modal) so it is always closeable/dismissable
+          // by simply navigating away; never freezes.
+          <div
+            role="alert"
+            className="absolute inset-0 flex flex-col items-center justify-center bg-background/80 p-6 text-center"
+          >
+            <div className="w-full max-w-xl space-y-4 rounded-xl border border-border bg-background/95 p-5 shadow-sm">
+              <div className="space-y-1.5">
+                <p className="text-sm font-semibold text-destructive">{t("dsh.failed")}</p>
+                {error && (
+                  <p className="break-words whitespace-pre-wrap text-left text-xs leading-relaxed text-muted-foreground">
+                    {error}
+                  </p>
+                )}
+                <p className="text-[11px] leading-relaxed text-muted-foreground/80">
+                  {t("dsh.systemErrorHint")}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button variant="outline" size="sm" onClick={retry}>
+                  <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                  {t("dsh.retry")}
+                </Button>
+              </div>
+            </div>
+          </div>
         )}
         {failed && failKind === "other" && !failedModalOpen && (
           <div

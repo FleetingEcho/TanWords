@@ -43,9 +43,14 @@ export type DshStatus = "starting" | "ready" | "failed";
 
 /** Why the host failed — drives different renderer guidance.
  *  - `notInstalled`: `dsh` binary not on PATH → show install/upgrade guidance.
- *  - `other`: binary found but crashed, port in use, etc. → show the port-fix
- *    modal. */
-export type DshFailKind = "notInstalled" | "other";
+ *  - `portInUse`: the chosen port is already bound → show the port-fix modal.
+ *  - `systemError`: the host crashed for an OS-level reason that changing the
+ *    port cannot fix — EMFILE/ENOMEM (inotify/file-descriptor exhaustion),
+ *    EACCES, a host that exited after briefly printing its ready line, etc.
+ *    Show the real error inline with a Retry button; never the port-fix modal,
+ *    which would mislead the user into "fixing" a port that isn't the problem.
+ *  - `other`: unclassified failure → port-fix modal (preserves old behavior). */
+export type DshFailKind = "notInstalled" | "portInUse" | "systemError" | "other";
 
 export interface DshStatusEvent {
   status: DshStatus;
@@ -55,6 +60,24 @@ export interface DshStatusEvent {
   reason?: string;
   /** Failure category when status is "failed". */
   kind?: DshFailKind;
+}
+
+/** Classify a failure reason into a `DshFailKind` so the renderer shows the
+ *  right UI. A port error (`EADDRINUSE`, "address already in use", "port … in
+ *  use") is the only case that warrants the port-fix modal; everything else —
+ *  file-descriptor/inotify exhaustion (EMFILE/ENFILE), out-of-memory (ENOMEM),
+ *  permission errors (EACCES/EPERM), or a host that died after briefly printing
+ *  its ready line — is a system error the user cannot fix by changing the port,
+ *  so it routes to the inline error + Retry panel instead of misleading them
+ *  with the port-fix modal. */
+function classifyFailKind(reason: string): DshFailKind {
+  if (/EADDRINUSE|address already in use|port .* in use|in use\b/i.test(reason)) {
+    return "portInUse";
+  }
+  if (/EMFILE|ENFILE|ENOMEM|EACCES|EPERM|too many open files|exhausted/i.test(reason)) {
+    return "systemError";
+  }
+  return "other";
 }
 
 /** Executable locations a GUI-launched app cannot rely on macOS putting on
@@ -369,7 +392,7 @@ export class DshSupervisor {
     } catch (error) {
       this.pendingReject = null;
       const reason = `dsh failed to spawn: ${error instanceof Error ? error.message : String(error)}`;
-      this.emit({ status: "failed", kind: "other", reason });
+      this.emit({ status: "failed", kind: classifyFailKind(reason), reason });
       reject(error instanceof Error ? error : new Error(reason));
       return;
     }
@@ -399,7 +422,7 @@ export class DshSupervisor {
       settled = true;
       this.pendingReject = null;
       const reason = `dsh failed to start: ${error.message}`;
-      this.emit({ status: "failed", kind: "other", reason });
+      this.emit({ status: "failed", kind: classifyFailKind(reason), reason });
       reject(error);
     });
 
@@ -414,7 +437,7 @@ export class DshSupervisor {
         settled = true;
         this.pendingReject = null;
         const reason = `dsh exited before it was ready (code=${code} signal=${signal})`;
-        this.emit({ status: "failed", kind: "other", reason });
+        this.emit({ status: "failed", kind: classifyFailKind(reason), reason });
         reject(new Error(reason));
         return;
       }
@@ -426,7 +449,11 @@ export class DshSupervisor {
       this.startPromise = null;
       this.emit({
         status: "failed",
-        kind: "other",
+        // A host that came up and then died (EMFILE exhausting inotify watchers
+        // after printing its ready line, an OOM, a GPU fault, …) is never a
+        // port problem — the port was fine, the bind succeeded. Route to the
+        // inline system-error panel + Retry, never the port-fix modal.
+        kind: "systemError",
         reason: "The DeepSeek Harness host stopped. Reopen the DSH page to restart it.",
       });
     });

@@ -61,4 +61,33 @@ describe("DshPage failed-start UI", () => {
     await act(async () => {});
     expect(mocks.invoke.mock.calls.some(([method]) => method === "dsh_show")).toBe(false);
   });
+
+  it("shows a system error inline (no port-fix modal) for EMFILE/inotify exhaustion", async () => {
+    // EMFILE (too many open files / inotify watcher exhaustion) is a system
+    // limit, not a port problem. The port-fix modal would mislead the user
+    // into "fixing" a port that isn't the issue, so a `systemError` kind must
+    // surface the real error inline with only a Retry button — never open the
+    // port-fix modal, never freeze.
+    const view = render(<DshPage visible={false} />);
+    act(() => {
+      mocks.handlers["dsh:status"]?.({
+        status: "failed",
+        kind: "systemError",
+        reason: "EMFILE: too many open files, watch '/home/zteng/.dsh/profiles/web'",
+      });
+    });
+    view.rerender(<DshPage visible />);
+
+    // No port-fix modal: neither the modal's Dismiss nor its Apply & Restart.
+    expect(screen.queryByRole("button", { name: "Dismiss" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Apply & Restart" })).not.toBeInTheDocument();
+    // The real error is shown verbatim, inline.
+    expect(screen.getByRole("alert")).toHaveTextContent("EMFILE: too many open files");
+    // Only Retry is offered — changing the port can't fix a system limit.
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Configure" })).not.toBeInTheDocument();
+
+    await act(async () => {});
+    expect(mocks.invoke.mock.calls.some(([method]) => method === "dsh_show")).toBe(false);
+  });
 });

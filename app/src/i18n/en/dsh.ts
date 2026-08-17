@@ -17,6 +17,8 @@ export const dsh: Dict = {
     "dsh.applyAndRestart": "Apply & Restart",
     "dsh.portHint":
         "Set 0 to use or reuse DSH's standard port (3080), or enter a custom fixed port.",
+    "dsh.systemErrorHint":
+        "This is a system-level error (such as too many open files / inotify watchers, out of memory, or the host stopped). Changing the port won't fix it — retry, or resolve the underlying system limit and retry.",
 
     // ── Not-installed guidance panel ─────────────────────────────────────────
     // Shown in place of the port-fix modal when the supervisor reports `dsh`

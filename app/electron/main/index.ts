@@ -514,6 +514,18 @@ if (gotLock) {
     dshSupervisor.setEventSink((name, payload) => {
       broadcastEvent(name, payload);
       if (name === "dsh:task-finished") notifyDshTaskFinished();
+      // A "failed" status can arrive after a host that briefly printed its
+      // ready line then crashed (e.g. EMFILE exhausting inotify watchers).
+      // In that race `dsh_show` already resolved and attached a native view
+      // pointing at the now-dead host; if we leave it attached it composites
+      // above the renderer's failure modal and intercepts clicks, freezing
+      // the UI. Hide the native view from main the instant the host is
+      // reported dead — the renderer's own visibility effect hides it too,
+      // but only when its `status` dep re-runs (see DshPage.tsx). Hiding
+      // here is authoritative and survives any renderer-side dep mistake.
+      if (name === "dsh:status" && (payload as { status?: string }).status === "failed") {
+        dshPanel.hide();
+      }
     });
 
     tray.setEventSink(broadcastEvent);
