@@ -27,6 +27,7 @@ export function useTraySync() {
       "tray://prev": () => usePodcastPlayerStore.getState().skip(-1),
       "tray://next": () => usePodcastPlayerStore.getState().skip(1),
       "tray://open-dsh": () => useNavStore.getState().navigate("dsh"),
+      "tray://open-terminal": () => useNavStore.getState().navigate("terminal"),
       "tray://refresh-rss": async () => {
         const feeds = await db.getRssFeeds();
         // allSettled: one dead feed shouldn't stop the rest from refreshing.

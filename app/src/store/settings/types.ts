@@ -12,7 +12,7 @@ export type Theme =
   | "dim"
   | "system";
 export type SidebarTabId = Exclude<NavPage, "settings">;
-export type TopBarItemId = "search" | "scratch" | "dsh" | "db" | "tools" | "browser" | "mcp" | "ai" | "language" | "theme" | "updates" | "github";
+export type TopBarItemId = "search" | "scratch" | "dsh" | "terminal" | "db" | "tools" | "browser" | "mcp" | "ai" | "language" | "theme" | "updates" | "github";
 export type LayoutMode = "flexible" | "fixed";
 export type TerminalRenderer = "auto" | "webgl" | "dom";
 /** Which terminal library renders a tab's screen. `restty` (the default) is
@@ -40,7 +40,7 @@ export const DEFAULT_SIDEBAR_TABS: SidebarTabId[] = [
   "dashboard", "feeds", "reading", "documents", "vocabulary", "chat", "music", "browser", "terminal", "dsh", "tools",
 ];
 export const DEFAULT_TOPBAR_ITEMS: TopBarItemId[] = [
-  "search", "scratch", "tools", "browser", "dsh", "db", "mcp", "ai", "language", "theme", "updates", "github",
+  "search", "scratch", "tools", "browser", "dsh", "terminal", "db", "mcp", "ai", "language", "theme", "updates", "github",
 ];
 export const DEFAULT_LAYOUT_MODE: LayoutMode = "flexible";
 

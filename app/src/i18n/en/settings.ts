@@ -357,6 +357,7 @@ export const settings: Dict = {
     "settings.topBar.search": "Word search",
     "settings.topBar.scratch": "Reading",
     "settings.topBar.dsh": "DeepSeek Harness",
+    "settings.topBar.terminal": "Terminal",
     "settings.topBar.db": "Database status",
     "settings.topBar.tools": "Open tools",
     "settings.topBar.browser": "Mobile browser",

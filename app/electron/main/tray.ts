@@ -5,6 +5,7 @@
  *
  *    Open main window
  *    DeepSeek Harness
+ *    Terminal
  *    Music Control  ▸  ⏸ <track>  /  ⏮ Previous  /  ⏭ Next
  *    ─────────────
  *    Refresh RSS
@@ -15,9 +16,10 @@
  *  in the renderer's podcastPlayerStore and RSS syncing goes through the
  *  sidecar, so those rows emit `tray://*` events for `useTraySync` to act on,
  *  and the renderer pushes playback state back so the labels stay honest.
- *  "DeepSeek Harness" is the same pattern: it surfaces the window here (the
- *  only thing this process can do directly) and leaves the actual page
- *  navigation to the renderer via `tray://open-dsh`. */
+ *  "DeepSeek Harness" and "Terminal" are the same pattern: they surface the
+ *  window here (the only thing this process can do directly) and leave the
+ *  actual page navigation to the renderer via `tray://open-dsh` /
+ *  `tray://open-terminal`. */
 import { app, BrowserWindow, Menu, Tray, nativeImage } from "electron";
 import path from "node:path";
 import { restoreAndFocusWindow } from "./windowVisibility";
@@ -41,6 +43,7 @@ const STRINGS = {
   en: {
     showWindow: "Open main window",
     openDsh: "DeepSeek Harness",
+    openTerminal: "Terminal",
     musicControl: "Music Control",
     play: "Play",
     prev: "Previous",
@@ -51,6 +54,7 @@ const STRINGS = {
   zh: {
     showWindow: "打开主窗口",
     openDsh: "DeepSeek Harness",
+    openTerminal: "终端",
     musicControl: "音乐控制",
     play: "播放",
     prev: "上一首",
@@ -167,6 +171,13 @@ export class TrayManager {
         click: () => {
           this.showMainWindow();
           emit("tray://open-dsh");
+        },
+      },
+      {
+        label: s.openTerminal,
+        click: () => {
+          this.showMainWindow();
+          emit("tray://open-terminal");
         },
       },
       {

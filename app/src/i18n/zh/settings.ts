@@ -357,6 +357,7 @@ export const settings: Dict = {
     "settings.topBar.search": "单词搜索",
     "settings.topBar.scratch": "精读",
     "settings.topBar.dsh": "DeepSeek Harness",
+    "settings.topBar.terminal": "终端",
     "settings.topBar.db": "数据库状态",
     "settings.topBar.tools": "打开工具",
     "settings.topBar.browser": "移动浏览器",

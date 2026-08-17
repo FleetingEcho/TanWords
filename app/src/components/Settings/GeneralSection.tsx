@@ -398,6 +398,7 @@ export function GeneralSection() {
             {DEFAULT_TOPBAR_ITEMS.filter((item) => {
             if (item === "mcp") return hostCapabilities.mcp;
             if (item === "dsh") return hostCapabilities.dsh;
+            if (item === "terminal") return hostCapabilities.terminal;
             if (item === "updates") return hostCapabilities.updater;
             if (item === "browser") return hostCapabilities.browser;
               return true;

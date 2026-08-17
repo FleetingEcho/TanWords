@@ -106,6 +106,7 @@ describe("TrayManager menu", () => {
     expect(labels()).toEqual([
       "Open main window",
       "DeepSeek Harness",
+      "Terminal",
       "Music Control",
       undefined, // separator
       "Refresh RSS",
@@ -122,6 +123,7 @@ describe("TrayManager menu", () => {
     expect(labels()).toEqual([
       "打开主窗口",
       "DeepSeek Harness",
+      "终端",
       "音乐控制",
       undefined,
       "刷新 RSS",
@@ -203,11 +205,13 @@ describe("TrayManager menu", () => {
     const { events } = makeTray();
 
     latest().find((i) => i.label === "DeepSeek Harness")!.click?.();
+    latest().find((i) => i.label === "Terminal")!.click?.();
     musicRows().forEach((row) => row.click?.());
     latest().find((i) => i.label?.includes("Refresh RSS"))!.click?.();
 
     expect(events).toEqual([
       "tray://open-dsh",
+      "tray://open-terminal",
       "tray://toggle-play",
       "tray://prev",
       "tray://next",

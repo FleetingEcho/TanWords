@@ -5,7 +5,7 @@ import { callMain } from "@/ipc/host";
 import {
   BrainCircuit, Check, ChevronsLeft, ChevronsRight, ClipboardPaste, Cloud, CloudOff, Database, Lock,
   FilePlus2, Languages, MessageSquarePlus, Monitor, Moon, Palette, PanelLeft, Quote, Search, Server, Settings, Sun,
-  Grid2x2Plus, Rss, Smartphone, Type, Unplug, User, X,
+  Grid2x2Plus, Rss, Smartphone, SquareTerminal, Type, Unplug, User, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -379,6 +379,17 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
             className={`h-8 w-8 rounded-lg ${activePage === "dsh" ? "text-primary" : "text-muted-foreground"}`}
           >
             <DshIcon className="h-4 w-4" />
+          </Button>}
+          {hostCapabilities.terminal && visible("terminal") && <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate("terminal")}
+            title={t("nav.terminal")}
+            aria-label={t("nav.terminal")}
+            aria-current={activePage === "terminal" ? "page" : undefined}
+            className={`h-8 w-8 rounded-lg ${activePage === "terminal" ? "text-primary" : "text-muted-foreground"}`}
+          >
+            <SquareTerminal className="h-4 w-4" />
           </Button>}
           {visible("db") && <Popover open={dbOpen} onOpenChange={setDbOpen}>
             <PopoverTrigger asChild>
