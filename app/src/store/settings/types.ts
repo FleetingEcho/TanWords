@@ -40,7 +40,7 @@ export const DEFAULT_SIDEBAR_TABS: SidebarTabId[] = [
   "dashboard", "feeds", "reading", "documents", "vocabulary", "chat", "music", "browser", "terminal", "dsh", "tools",
 ];
 export const DEFAULT_TOPBAR_ITEMS: TopBarItemId[] = [
-  "search", "scratch", "dsh", "db", "tools", "browser", "mcp", "ai", "language", "theme", "updates", "github",
+  "search", "scratch", "tools", "browser", "dsh", "db", "mcp", "ai", "language", "theme", "updates", "github",
 ];
 export const DEFAULT_LAYOUT_MODE: LayoutMode = "flexible";
 
