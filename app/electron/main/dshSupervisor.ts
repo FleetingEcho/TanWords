@@ -112,7 +112,17 @@ function resolveDshBinary(): string | null {
   const explicit = process.env.DSH_BIN;
   if (explicit && fs.existsSync(explicit)) return explicit;
 
-  const ext = process.platform === "win32" ? ["", ".exe", ".cmd"] : [""];
+  // Order matters on Windows: npm/fnm shim directories place THREE files
+  // side by side for one logical command — a bare POSIX shell shim
+  // (`dsh`, `#!/bin/sh`), `dsh.exe`, and `dsh.cmd`. `spawn()` below runs
+  // without `shell: true`, so it hits CreateProcess directly, which cannot
+  // execute a shebang script — that always fails with ENOENT no matter
+  // what the actual problem is (this is what produced the "dsh failed to
+  // start: spawn ...\dsh ENOENT" report even after changing the port,
+  // since the port is never reached). ".cmd"/".exe" must be preferred so a
+  // real Windows-executable candidate wins before the bare shim is ever
+  // considered.
+  const ext = process.platform === "win32" ? [".exe", ".cmd", ""] : [""];
   const candidates: string[] = [];
   for (const dir of executableSearchDirs()) {
     for (const e of ext) candidates.push(path.join(dir, `dsh${e}`));
