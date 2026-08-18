@@ -14,8 +14,10 @@ import { useDBExtra } from "./useDB.extra";
 import { useDBSceneLab } from "./useDB.sceneLab";
 import { useDBPatterns } from "./useDB.patterns";
 import { useDBReading } from "./useDB.reading";
+import { useDBCalendar } from "./useDB.calendar";
 
 export * from "./useDB.types";
+export * from "./useDB.calendar";
 
 export function useDB() {
   const core = useDBCore();
@@ -23,6 +25,7 @@ export function useDB() {
   const sceneLab = useDBSceneLab();
   const patterns = useDBPatterns();
   const reading = useDBReading();
+  const calendar = useDBCalendar();
 
-  return useMemo(() => ({ ...core, ...extra, ...sceneLab, ...patterns, ...reading }), [core, extra, sceneLab, patterns, reading]);
+  return useMemo(() => ({ ...core, ...extra, ...sceneLab, ...patterns, ...reading, ...calendar }), [core, extra, sceneLab, patterns, reading, calendar]);
 }

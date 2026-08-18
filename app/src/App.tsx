@@ -36,6 +36,8 @@ import { useAppLockStore } from "@/store/appLockStore";
 
 const DashboardPage = React.lazy(() =>
   import("@/components/Dashboard/DashboardPage").then((m) => ({ default: m.DashboardPage })));
+const CalendarPage = React.lazy(() =>
+  import("@/components/Calendar/CalendarPage").then((m) => ({ default: m.CalendarPage })));
 const VocabularyPage = React.lazy(() =>
   import("@/components/Vocabulary/VocabularyPage").then((m) => ({ default: m.VocabularyPage })));
 const SettingsPage = React.lazy(() =>
@@ -383,6 +385,8 @@ function App() {
     switch (page) {
       case "dashboard":
         return <DashboardPage />;
+      case "calendar":
+        return <CalendarPage />;
       case "reading":
         return <ReadingPage />;
       case "music":

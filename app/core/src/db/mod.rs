@@ -95,6 +95,7 @@ pub mod search_history;
 pub mod scene_lab;
 pub mod patterns;
 pub mod ai_providers;
+pub mod calendar;
 
 pub use settings::*;
 pub use words_types::*;
@@ -112,6 +113,7 @@ pub use srs::*;
 pub use search_history::*;
 pub use scene_lab::*;
 pub use patterns::*;
+pub use calendar::*;
 
 #[cfg(test)]
 mod write_timeout_tests {
@@ -364,6 +366,64 @@ pub async fn init_db(conn: &Connection) -> SqlResult<()> {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );"
     ).await;
+
+    // Calendar: color categories ("calendars" in schedule-x terminology) and the
+    // events themselves. Two tables rather than one so a calendar can be hidden,
+    // renamed or recoloured independently of its events, and so an event carries
+    // only a `calendar_id` foreign key instead of a duplicated color string.
+    //
+    // Times are stored as Schedule-X's wire format verbatim (`YYYY-MM-DD` for
+    // all-day events, `YYYY-MM-DD HH:mm` for timed ones) so the renderer round-
+    // trips them without a conversion layer; the boundary between "date" and
+    // "datetime" is `all_day`, not a format sniff. `calendar_id` is a TEXT
+    // foreign key into calendar_calendars.id (a uuid string the frontend mints,
+    // matching schedule-x's Record<string, CalendarType> key shape).
+    let _ = conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS calendar_calendars (
+            id         TEXT PRIMARY KEY,
+            name       TEXT NOT NULL,
+            color_name TEXT NOT NULL DEFAULT 'blue',
+            visible    INTEGER NOT NULL DEFAULT 1,
+            sort_order INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS calendar_events (
+            id           TEXT PRIMARY KEY,
+            calendar_id  TEXT NOT NULL DEFAULT 'default',
+            title        TEXT NOT NULL DEFAULT '',
+            start        TEXT NOT NULL,
+            end          TEXT NOT NULL,
+            all_day      INTEGER NOT NULL DEFAULT 0,
+            description  TEXT NOT NULL DEFAULT '',
+            location     TEXT NOT NULL DEFAULT '',
+            created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at   TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY(calendar_id) REFERENCES calendar_calendars(id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_calendar_events_calendar
+            ON calendar_events(calendar_id);"
+    ).await;
+    // Per-event colour override, added after the initial release: NULL means
+    // "inherit the parent calendar's colour" (the original, only behaviour);
+    // a token here (one of calendarColors.ts's CALENDAR_COLOR_TOKENS) wins
+    // over the calendar's colour for that one event.
+    let _ = conn.execute("ALTER TABLE calendar_events ADD COLUMN color_name TEXT", ()).await;
+
+    // Seed two default calendars on a fresh install (and on any install whose
+    // fingerprint just changed to re-run this pass): a "Personal" calendar in
+    // blue and a "Work" calendar in green. INSERT OR IGNORE keeps them from
+    // duplicating on every re-run and respects any a user already added by id.
+    let default_calendars = vec![
+        ("default", "Personal", "blue", 0),
+        ("work", "Work", "green", 1),
+    ];
+    for (id, name, color_name, sort_order) in default_calendars {
+        conn.execute(
+            "INSERT OR IGNORE INTO calendar_calendars (id, name, color_name, sort_order)
+             VALUES (?1, ?2, ?3, ?4)",
+            libsql::params![id, name, color_name, sort_order],
+        )
+        .await?;
+    }
 
     // Insert default settings
     let settings = vec![

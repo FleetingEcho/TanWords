@@ -150,6 +150,15 @@ const ALLOWED: &[&str] = &[
     "r2_get_usage",
     "r2_put_asset",
     "r2_set_always_upload",
+    // ── calendar: events + colour-category "calendars", per-user ────────────
+    "db_list_calendar_events",
+    "db_create_calendar_event",
+    "db_update_calendar_event",
+    "db_delete_calendar_event",
+    "db_list_calendar_calendars",
+    "db_create_calendar_calendar",
+    "db_update_calendar_calendar",
+    "db_delete_calendar_calendar",
 ];
 
 /// Refused, with the reason attached. Kept as pairs rather than a bare list so

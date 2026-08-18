@@ -158,3 +158,58 @@
 @media (prefers-reduced-motion: reduce) {
   .animate-radar-sweep { animation: none; }
 }
+
+/* FullCalendar dark-theme overrides. FullCalendar v6 injects its own CSS via
+ *  JS (`<style data-fullcalendar>`) with light defaults on `:root`. These
+ *  overrides sit under the app's `.dark` class (applied to <html> by the
+ *  theme system) and re-skin the calendar chrome — page background, grid
+ *  borders, today highlight, toolbar buttons, and the selection highlight —
+ *  so the calendar matches the rest of the dark UI. Event colours come from
+ *  each event's `color`/`textColor` props, not from these variables. */
+.dark .fc {
+  --fc-page-bg-color: hsl(var(--background));
+  --fc-neutral-bg-color: hsl(var(--muted));
+  --fc-neutral-text-color: hsl(var(--muted-foreground));
+  --fc-border-color: hsl(var(--border));
+  --fc-non-business-color: hsla(0, 0%, 0%, 0.2);
+  --fc-today-bg-color: hsla(var(--primary) / 0.08);
+  --fc-now-indicator-color: hsl(var(--primary));
+  --fc-highlight-color: hsla(var(--primary) / 0.15);
+  --fc-button-text-color: hsl(var(--foreground));
+  --fc-button-bg-color: hsl(var(--secondary));
+  --fc-button-border-color: hsl(var(--border));
+  --fc-button-hover-bg-color: hsl(var(--accent));
+  --fc-button-hover-border-color: hsl(var(--border));
+  --fc-button-active-bg-color: hsl(var(--primary));
+  --fc-button-active-border-color: hsl(var(--primary));
+  --fc-more-link-bg-color: hsl(var(--muted));
+  --fc-more-link-text-color: hsl(var(--muted-foreground));
+}
+/* FullCalendar light theme: tone down the toolbar buttons to match the app's
+ *  neutral palette rather than FullCalendar's default dark-blue buttons. */
+.fc {
+  --fc-button-bg-color: hsl(var(--secondary));
+  --fc-button-border-color: hsl(var(--border));
+  --fc-button-hover-bg-color: hsl(var(--accent));
+  --fc-button-hover-border-color: hsl(var(--border));
+  --fc-button-text-color: hsl(var(--foreground));
+  --fc-button-active-bg-color: hsl(var(--primary));
+  --fc-button-active-border-color: hsl(var(--primary));
+}
+/* Let the calendar fill its flex container; FullCalendar's wrapper has no
+ *  height by default, so `height: 100%` on `.fc` resolves against the flex-
+ *  sized parent. */
+.fc {
+  height: 100%;
+}
+
+/* Shrink the toolbar buttons (prev/next, today, month/week/day) — FullCalendar
+ *  only exposes their *colors* as CSS custom properties, not size, so padding/
+ *  font-size need a direct override. */
+.fc .fc-button {
+  padding: 0.25em 0.5em;
+  font-size: 0.8125rem;
+}
+.fc .fc-icon {
+  font-size: 1em;
+}

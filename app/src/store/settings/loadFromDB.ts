@@ -214,6 +214,20 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       localStorage.setItem("tanwords_terminal_tab_migrated", "1");
       await invoke("db_set_setting", { key: "visible_sidebar_tabs", value: JSON.stringify(resolvedSidebarTabs) });
     }
+    // One-time upgrade: the Calendar page is new, so an existing install's
+    // persisted visible-tab list cannot contain it yet. Seed it right after
+    // Dashboard (its canonical position in DEFAULT_SIDEBAR_TABS) exactly once,
+    // while still respecting a user who later hides it in Settings — same
+    // pattern as the tools/terminal migrations above.
+    if (!localStorage.getItem("tanwords_calendar_tab_migrated")) {
+      if (!resolvedSidebarTabs.includes("calendar")) {
+        const dashboardIndex = resolvedSidebarTabs.indexOf("dashboard");
+        resolvedSidebarTabs = [...resolvedSidebarTabs];
+        resolvedSidebarTabs.splice(dashboardIndex < 0 ? 0 : dashboardIndex + 1, 0, "calendar");
+      }
+      localStorage.setItem("tanwords_calendar_tab_migrated", "1");
+      await invoke("db_set_setting", { key: "visible_sidebar_tabs", value: JSON.stringify(resolvedSidebarTabs) });
+    }
     cacheSidebarTabs(resolvedSidebarTabs);
 
     const hadSavedTopBar = Array.isArray(values.visible_topbar_items);

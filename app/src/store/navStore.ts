@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 export type NavPage =
   | "dashboard"
+  | "calendar"
   | "feeds"
   | "reading"
   | "music"

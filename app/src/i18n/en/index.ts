@@ -6,6 +6,7 @@ import { hackernews } from "./hackernews";
 import { reader } from "./reader";
 import { documents } from "./documents";
 import { dashboard } from "./dashboard";
+import { calendar } from "./calendar";
 import { discover } from "./discover";
 import { vocabulary } from "./vocabulary";
 import { search } from "./search";
@@ -32,6 +33,7 @@ export const en: Dict = {
     ...reader,
     ...documents,
     ...dashboard,
+    ...calendar,
     ...discover,
     ...vocabulary,
     ...search,

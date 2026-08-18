@@ -37,7 +37,7 @@ export interface TerminalCustomAppearance {
 export type RssTabSelection = number | "all" | "hackernews";
 
 export const DEFAULT_SIDEBAR_TABS: SidebarTabId[] = [
-  "dashboard", "feeds", "reading", "documents", "vocabulary", "chat", "music", "browser", "terminal", "dsh", "tools",
+  "dashboard", "calendar", "feeds", "reading", "documents", "vocabulary", "chat", "music", "browser", "terminal", "dsh", "tools",
 ];
 export const DEFAULT_TOPBAR_ITEMS: TopBarItemId[] = [
   "search", "scratch", "tools", "browser", "dsh", "terminal", "db", "mcp", "ai", "language", "theme", "updates", "github",

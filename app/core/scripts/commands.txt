@@ -195,3 +195,11 @@ db::ai_providers::ai_provider_list
 db::ai_providers::ai_provider_key
 db::ai_providers::ai_provider_upsert
 db::ai_providers::ai_provider_delete
+db::calendar::db_list_calendar_events
+db::calendar::db_create_calendar_event
+db::calendar::db_update_calendar_event
+db::calendar::db_delete_calendar_event
+db::calendar::db_list_calendar_calendars
+db::calendar::db_create_calendar_calendar
+db::calendar::db_update_calendar_calendar
+db::calendar::db_delete_calendar_calendar

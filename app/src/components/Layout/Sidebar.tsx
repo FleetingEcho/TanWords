@@ -4,7 +4,7 @@ import { SIDEBAR_WIDTH, useLayoutStore } from "@/store/layoutStore";
 import { useT } from "@/hooks/useT";
 import {
   GridIcon, BookIcon, DocIcon, ChatIcon,
-  FeedIcon, MusicIcon, DshIcon,
+  FeedIcon, MusicIcon, DshIcon, CalendarIcon,
 } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { useSettingsStore, type SidebarTabId } from "@/store/settingsStore";
@@ -25,6 +25,7 @@ interface NavItemDef {
 
 const BASE_NAV_ITEM_DEFS: Omit<NavItemDef, "label">[] = [
   { id: "dashboard", icon: GridIcon },
+  { id: "calendar", icon: CalendarIcon },
   { id: "browser", icon: Globe },
   { id: "documents", icon: DocIcon },
   { id: "feeds", icon: FeedIcon },

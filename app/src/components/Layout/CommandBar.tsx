@@ -36,7 +36,7 @@ import { hostCapabilities, isDesktopHost } from "@/platform";
 
 type McpState = { status: { running: boolean; error: string | null } };
 
-const PAGE_IDS: NavPage[] = (["feeds", "vocabulary", "documents", "chat", "dashboard", "music", "terminal", "dsh", "settings", "tools"] as NavPage[])
+const PAGE_IDS: NavPage[] = (["feeds", "vocabulary", "documents", "chat", "dashboard", "calendar", "music", "terminal", "dsh", "settings", "tools"] as NavPage[])
   .filter((id) => {
     if (id === "music") return hostCapabilities.music;
     if (id === "terminal") return hostCapabilities.terminal;
