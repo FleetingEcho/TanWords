@@ -12,6 +12,9 @@ export const dsh: Dict = {
     "dsh.restartHint":
         "Stop and relaunch the DSH host. Use this to apply a changed port, or to recover a stuck host.",
     "dsh.openExternal": "Open in browser",
+    "dsh.appearance": "Background appearance",
+    "dsh.blurLabel": "Blur",
+    "dsh.opacityLabel": "Opacity",
     "dsh.configure": "Configure",
     "dsh.dismiss": "Dismiss",
     "dsh.applyAndRestart": "Apply & Restart",

@@ -22,4 +22,8 @@ function DropdownMenuItem({ className, ...props }: DropdownMenuPrimitive.Dropdow
   return <DropdownMenuPrimitive.Item className={cn("flex cursor-default select-none items-center gap-2 rounded-md px-2.5 py-2 text-xs outline-hidden focus:bg-muted", className)} {...props} />;
 }
 
-export { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem };
+function DropdownMenuSeparator({ className, ...props }: DropdownMenuPrimitive.DropdownMenuSeparatorProps) {
+  return <DropdownMenuPrimitive.Separator className={cn("my-1 h-px bg-border", className)} {...props} />;
+}
+
+export { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator };

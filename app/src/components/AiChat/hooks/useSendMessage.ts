@@ -76,6 +76,16 @@ export function useSendMessage(params: {
     // and saved from the rendered answer.
     const tools = selectedPreset === "reading-tutor" ? [] : getEnabledTools(enabledGroups);
     const sysPrompt = systemPrompt || buildPresetPrompt("english-tutor", targetLevel);
+    // Calendar tools take relative dates ("tomorrow", "next Friday") from the
+    // user, but the model has no clock — hand it today's date so it can
+    // resolve those itself instead of guessing or asking. Appended only for
+    // the outgoing request, never persisted into the saved sysPrompt, so a
+    // reopened session doesn't accumulate stale date lines turn after turn.
+    const now = new Date();
+    const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const providerPrompt = enabledGroups.has("calendar")
+      ? `${sysPrompt}\n\nToday's date is ${todayIso} (YYYY-MM-DD, user's local time zone). Use it to resolve relative dates like "tomorrow" or "next Friday" when calling calendar tools.`
+      : sysPrompt;
     // Save the user's turn before starting the network request. This makes a
     // new session visible in History immediately and survives app/API failure.
     await sidebar.saveSession(sessionId, title, [...displayItems, userItem], sysPrompt, selectedPreset, selectedProviderId);
@@ -130,7 +140,7 @@ export function useSendMessage(params: {
         if (tools.length > 0 && provider.chatWithTools) {
           // ── Tool-enabled path ──────────────────────────────────────────
           const response = await provider.chatWithTools(
-            currentApiMsgs, sysPrompt, tools, controller.signal,
+            currentApiMsgs, providerPrompt, tools, controller.signal,
             (chunk) => { textContent += chunk; updateLastAssistant(textContent); }
           );
           textContent = response.textContent;
@@ -200,7 +210,7 @@ export function useSendMessage(params: {
               ? { role: m.role, content: m.content }
               : { role: m.role, content: (m.content as any[]).filter((b) => b.type === "text").map((b: any) => b.text).join("") }
           );
-          for await (const chunk of provider.chat(simpleMsgs, sysPrompt, controller.signal)) {
+          for await (const chunk of provider.chat(simpleMsgs, providerPrompt, controller.signal)) {
             if (controller.signal.aborted) break;
             textContent += chunk;
             updateLastAssistant(textContent);

@@ -11,6 +11,7 @@ export const calendar: Dict = {
     "calendar.searchPlaceholder": "Search events",
     "calendar.searchAriaLabel": "Search events by title, description, or location",
     "calendar.searchNoResults": "No matching events",
+    "calendar.noEvents": "No events",
     "calendar.collapseSidebar": "Collapse events panel",
     "calendar.expandSidebar": "Expand events panel",
     "calendar.previousPage": "Previous page",

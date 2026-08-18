@@ -2,7 +2,7 @@ import React from "react";
 import { useT } from "@/hooks/useT";
 import { TOOL_GROUPS, ToolGroupKey } from "./tools";
 import { TOOL_LABELS } from "./ToolCallCard";
-import { BookIcon, DocIcon, CloseIcon } from "@/components/ui/icons";
+import { BookIcon, DocIcon, CloseIcon, CalendarIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { ShieldCheck } from "lucide-react";
@@ -12,6 +12,7 @@ import { useSettingsStore } from "@/store/settingsStore";
 const GROUP_ICONS: Record<ToolGroupKey, React.FC<{ className?: string }>> = {
   vocabulary: BookIcon,
   documents: DocIcon,
+  calendar: CalendarIcon,
 };
 
 interface Props {

@@ -74,6 +74,13 @@ export function CalendarPage() {
     void load();
   }, [load]);
 
+  // Picks up events the AI Chat calendar tools create/edit/delete while this
+  // page isn't the one that made the change.
+  useEffect(() => {
+    window.addEventListener("calendar-updated", load);
+    return () => window.removeEventListener("calendar-updated", load);
+  }, [load]);
+
   // ── controlled event source ────────────────────────────────────────────────
   // DB rows → FullCalendar EventInput[], tinted with each calendar's colour
   // (or a per-event override). Recomputed only when the DB data or theme
@@ -112,7 +119,7 @@ export function CalendarPage() {
   // Collapsed by default only ever set by the user; search/pagination apply
   // to this list only — the grid itself always shows everything, so neither
   // hides an event you're mid-drag on or navigating toward.
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(0);
   const EVENTS_PAGE_SIZE = 10;
@@ -318,7 +325,6 @@ export function CalendarPage() {
         <div className="relative flex shrink-0">
           {sidebarCollapsed ? null : (
             <aside className="flex w-full flex-col gap-2 border-t border-border/80 p-3 lg:w-64 lg:border-l lg:border-t-0">
-              {events.length > 0 && (
               <div className="relative">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 <input
@@ -330,14 +336,14 @@ export function CalendarPage() {
                   className="h-8 w-full rounded-lg border border-border bg-card pl-7 pr-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-1 focus:ring-primary/40"
                 />
               </div>
-            )}
-            {events.length > 0 && (
               <div>
                 <p className="px-1 pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   {t("calendar.events")} ({searchedEvents.length})
                 </p>
                 {searchedEvents.length === 0 && (
-                  <p className="px-1 py-2 text-xs text-muted-foreground">{t("calendar.searchNoResults")}</p>
+                  <p className="px-1 py-2 text-xs text-muted-foreground">
+                    {events.length === 0 ? t("calendar.noEvents") : t("calendar.searchNoResults")}
+                  </p>
                 )}
                 <div className="flex flex-col gap-0.5">
                   {pagedEvents.map((e) => (
@@ -380,7 +386,6 @@ export function CalendarPage() {
                   </div>
                 )}
               </div>
-              )}
             </aside>
           )}
           {/* A small tab/handle flush against the panel's left edge, not a

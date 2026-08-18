@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { BookIcon, SearchIcon, SparkIcon, ClipboardListIcon, DocIcon, SlidersIcon } from "@/components/ui/icons";
+import { BookIcon, SearchIcon, SparkIcon, ClipboardListIcon, DocIcon, SlidersIcon, CalendarIcon } from "@/components/ui/icons";
 import { Cog, CircleX, CircleCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -25,6 +25,10 @@ const TOOL_ICONS: Record<string, React.FC<{ className?: string }>> = {
   insert_into_document: DocIcon,
   summarize_conversation: SparkIcon,
   save_note_as_document: DocIcon,
+  list_events:         CalendarIcon,
+  create_event:        CalendarIcon,
+  update_event:        CalendarIcon,
+  delete_event:        CalendarIcon,
 };
 
 export const TOOL_LABELS: Record<string, string> = {
@@ -40,6 +44,10 @@ export const TOOL_LABELS: Record<string, string> = {
   insert_into_document:"Insert into document",
   summarize_conversation:"Summarize to note",
   save_note_as_document:"Save note",
+  list_events:         "List events",
+  create_event:        "Create event",
+  update_event:        "Update event",
+  delete_event:        "Delete event",
 };
 
 function inputSummary(name: string, input: Record<string, unknown>): string {
@@ -55,6 +63,10 @@ function inputSummary(name: string, input: Record<string, unknown>): string {
     case "list_documents":      return "";
     case "insert_into_document":return `doc #${input.doc_id}`;
     case "save_note_as_document":return `"${input.title}"`;
+    case "list_events":         return input.query ? `"${input.query}"` : (input.from || input.to) ? `${input.from ?? "…"} → ${input.to ?? "…"}` : "";
+    case "create_event":        return `"${input.title}" ${input.start}`;
+    case "update_event":        return `${input.id}`;
+    case "delete_event":        return `${input.id}`;
     default: return JSON.stringify(input).slice(0, 60);
   }
 }

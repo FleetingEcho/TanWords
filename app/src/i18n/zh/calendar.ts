@@ -11,6 +11,7 @@ export const calendar: Dict = {
     "calendar.searchPlaceholder": "搜索事件",
     "calendar.searchAriaLabel": "按标题、描述或地点搜索事件",
     "calendar.searchNoResults": "没有匹配的事件",
+    "calendar.noEvents": "暂无事件",
     "calendar.collapseSidebar": "收起事件面板",
     "calendar.expandSidebar": "展开事件面板",
     "calendar.previousPage": "上一页",

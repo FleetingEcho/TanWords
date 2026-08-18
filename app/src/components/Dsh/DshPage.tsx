@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { BookOpen, Check, Copy, ExternalLink, Loader2, RefreshCw, RotateCcw, TerminalSquare } from "lucide-react";
+import { BookOpen, Check, Copy, Droplets, ExternalLink, Loader2, RefreshCw, RotateCcw, TerminalSquare } from "lucide-react";
 import { invoke } from "@/ipc/backend";
 import { subscribeAll } from "@/ipc/events";
 import { openExternal } from "@/ipc/shell";
@@ -59,7 +59,12 @@ export function DshPage({ visible }: { visible: boolean }) {
   const dshPort = useSettingsStore((s) => s.dshPort);
   const setDshPort = useSettingsStore((s) => s.setDshPort);
   const dshBackgroundOpacity = useSettingsStore((s) => s.dshBackgroundOpacity);
+  const setDshBackgroundOpacity = useSettingsStore((s) => s.setDshBackgroundOpacity);
   const dshBackgroundBlur = useSettingsStore((s) => s.dshBackgroundBlur);
+  const setDshBackgroundBlur = useSettingsStore((s) => s.setDshBackgroundBlur);
+  // Toolbar-local: lets the appearance row be toggled open per-visit without
+  // persisting anything — mirrors TerminalTool's glass/transparency controls.
+  const [appearanceControlsOpen, setAppearanceControlsOpen] = useState(false);
   // Whether the DSH page shows its own toolbar (DSH label, Restart, Reload,
   // Open-external). Hidden by default so the embedded agent UI gets the full
   // height; the user can re-enable it in Settings. Read live so a Settings
@@ -354,8 +359,71 @@ export function DshPage({ visible }: { visible: boolean }) {
               <ExternalLink className="h-4 w-4" />
             </Button>
           )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setAppearanceControlsOpen((open) => !open)}
+            title={t("dsh.appearance")}
+            aria-label={t("dsh.appearance")}
+            aria-pressed={appearanceControlsOpen}
+            className={`h-8 w-8 ${
+              appearanceControlsOpen
+                ? "bg-primary/15 text-primary"
+                : dshBackgroundOpacity < 100
+                  ? "text-primary"
+                  : "text-muted-foreground"
+            }`}
+          >
+            <Droplets className="h-4 w-4" />
+          </Button>
         </div>
       </div>
+      )}
+
+      {/* Kept on its own row (like Terminal's appearance controls) so it
+       *  doesn't compete with the toolbar's other actions for space. Live —
+       *  dragging updates the native view immediately via DshPage's opacity
+       *  effect and the CSS blur overlay below, so you can see the result
+       *  instead of tuning blind from the Settings page. */}
+      {dshToolbarVisible && appearanceControlsOpen && (
+        <div
+          role="group"
+          aria-label={t("dsh.appearance")}
+          className="flex shrink-0 flex-wrap items-center gap-x-5 gap-y-2 border-b border-border/70 px-4 py-2"
+        >
+          <label className="flex items-center gap-2">
+            <span className="text-[11px] text-muted-foreground">{t("dsh.blurLabel")}</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={dshBackgroundBlur}
+              onChange={(e) => setDshBackgroundBlur(Number(e.currentTarget.value))}
+              aria-label={t("dsh.blurLabel")}
+              className="h-6 w-24 cursor-pointer accent-primary"
+            />
+            <span className="w-9 text-right text-[11px] tabular-nums text-muted-foreground">
+              {dshBackgroundBlur}%
+            </span>
+          </label>
+          <label className="flex items-center gap-2">
+            <span className="text-[11px] text-muted-foreground">{t("dsh.opacityLabel")}</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={dshBackgroundOpacity}
+              onChange={(e) => setDshBackgroundOpacity(Number(e.currentTarget.value))}
+              aria-label={t("dsh.opacityLabel")}
+              className="h-6 w-24 cursor-pointer accent-primary"
+            />
+            <span className="w-9 text-right text-[11px] tabular-nums text-muted-foreground">
+              {dshBackgroundOpacity}%
+            </span>
+          </label>
+        </div>
       )}
 
       <div ref={setContainer} className="relative min-h-0 flex-1">

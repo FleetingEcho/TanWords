@@ -5,19 +5,25 @@ import { ChatSessionItem } from "@/hooks/useDB";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Button } from "@/components/ui/button";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Archive, ArchiveRestore, CalendarRange, ChevronsLeft, ChevronsRight, MessageSquare, MessageSquarePlus, MoreHorizontal, Pencil, Pin, PinOff, Search, Trash2, X } from "lucide-react";
-import { LIST_PANEL_WIDTH, LIST_PANEL_COLLAPSED_WIDTH, LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
+import { LIST_PANEL_COLLAPSED_WIDTH, LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
 
-/** Outlined and tinted, the same shape Documents' "new" button wears. Filled,
- *  this was the loudest thing on a screen whose job is to be quiet: a sidebar
- *  exists so the conversation beside it can be read. */
+/** Drag range for the resizable sidebar. Narrow enough that a title still
+ *  reads, wide enough to not eat the conversation column on a small window. */
+const MIN_SIDEBAR_WIDTH = 200;
+const MAX_SIDEBAR_WIDTH = 480;
+
+/** Plain ghost icon button, same weight as the search toggle beside it — a
+ *  tinted pill here was the loudest thing on a screen whose job is to be
+ *  quiet: a sidebar exists so the conversation beside it can be read. */
 const NEW_BUTTON_CLASS =
-  "h-6 w-6 shrink-0 rounded-lg border border-primary/40 bg-primary/10 p-0 text-primary shadow-none hover:bg-primary/20 hover:text-primary";
+  "h-6 w-6 shrink-0 rounded-md p-0 text-muted-foreground shadow-none hover:bg-muted hover:text-foreground";
 
 /** Heading, and — when there is anything archived — a switch between the two
- *  lists. Underlined rather than filled, matching the Words/Sentences and
- *  Library/Local switchers elsewhere in the app. */
+ *  lists. A quiet uppercase label rather than a bold underlined tab: the
+ *  section name should read like "Chats and tasks" does above Claude's own
+ *  list, not compete with the row titles below it for weight. */
 function ListTab({
   label, active, onSelect,
 }: {
@@ -31,10 +37,10 @@ function ListTab({
       variant="ghost"
       onClick={onSelect}
       aria-pressed={active}
-      className={`relative h-auto shrink-0 rounded-none px-0 py-0.5 text-sm font-bold transition-colors after:absolute after:inset-x-0 after:-bottom-0.5 after:h-0.5 after:rounded-full after:transition-colors hover:bg-transparent ${
+      className={`h-auto min-w-0 max-w-full truncate rounded px-0 py-0 text-[11px] font-semibold uppercase tracking-wide transition-colors hover:bg-transparent ${
         active
-          ? "text-foreground after:bg-primary hover:text-foreground"
-          : "text-muted-foreground after:bg-transparent hover:text-foreground"
+          ? "text-muted-foreground hover:text-muted-foreground"
+          : "text-muted-foreground/50 hover:text-muted-foreground"
       }`}
     >
       {label}
@@ -88,6 +94,12 @@ interface Props {
    *  collapse rail. */
   variant?: "inline" | "drawer";
   onRequestClose?: () => void;
+  /** Expanded width in px, for the "inline" variant only — the drawer fills
+   *  its own fixed-position overlay host and the collapsed rail has a fixed
+   *  width, so neither is resizable. Uncontrolled (falls back to the 2/3-of-
+   *  the-other-panels default) when the caller doesn't drive it. */
+  width?: number;
+  onWidthChange?: (width: number) => void;
 }
 
 export function AiChatSidebar({
@@ -95,6 +107,7 @@ export function AiChatSidebar({
   dateFrom, dateTo, onDateRangeChange,
   activeId, onSwitchSession, onDeleteSession, onToggleArchived, onTogglePinned, onRenameSession,
   onNewChat, collapsed, onToggleCollapsed, variant = "inline", onRequestClose,
+  width = 213, onWidthChange,
 }: Props) {
   const t = useT();
   const hasCustomAppBackground = useSettingsStore((state) => !!state.appBackgroundImage && state.appBackgroundVisible);
@@ -104,6 +117,29 @@ export function AiChatSidebar({
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [findOpen, setFindOpen] = useState(false);
   const [dateOpen, setDateOpen] = useState(false);
+  // Live width while a drag is in flight — kept separate from the persisted
+  // `width` prop so every pointermove doesn't round-trip through the parent
+  // (and its localStorage write) before the panel visibly follows the cursor.
+  const [dragWidth, setDragWidth] = useState<number | null>(null);
+  const resizeRef = React.useRef<{ startX: number; origWidth: number } | null>(null);
+
+  const onResizePointerDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    resizeRef.current = { startX: e.clientX, origWidth: width };
+  };
+  const onResizePointerMove = (e: React.PointerEvent) => {
+    const r = resizeRef.current;
+    if (!r) return;
+    const next = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, r.origWidth + (e.clientX - r.startX)));
+    setDragWidth(next);
+  };
+  const onResizePointerUp = () => {
+    if (resizeRef.current && dragWidth !== null) onWidthChange?.(dragWidth);
+    resizeRef.current = null;
+    setDragWidth(null);
+  };
+  const displayWidth = dragWidth ?? width;
 
   /** Derived, not stored: the last archived conversation can be restored or
    *  deleted while its list is showing, and a stored flag would leave the panel
@@ -201,17 +237,18 @@ export function AiChatSidebar({
           // focus from the freshly opened rename input.
           onCloseAutoFocus={(e) => e.preventDefault()}
         >
-          <DropdownMenuItem onSelect={() => setRenamingId(session.id)}>
-            <Pencil className="h-3.5 w-3.5" /> {t("aichat.rename")}
-          </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => onTogglePinned(session.id, !session.pinned)}>
             {session.pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
             {t(session.pinned ? "aichat.unpin" : "aichat.pin")}
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setRenamingId(session.id)}>
+            <Pencil className="h-3.5 w-3.5" /> {t("aichat.rename")}
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => onToggleArchived(session.id, !archived)}>
             {archived ? <ArchiveRestore className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
             {t(archived ? "aichat.unarchive" : "aichat.archive")}
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem
             onSelect={() => setPendingDeleteId(session.id)}
             className="text-destructive focus:bg-destructive/10 focus:text-destructive"
@@ -225,9 +262,24 @@ export function AiChatSidebar({
   );
 
   return (
-    <aside className={variant === "drawer"
-      ? `flex h-full w-full flex-col ${hasCustomAppBackground ? "bg-transparent" : "bg-card"}`
-      : `${collapsed ? LIST_PANEL_COLLAPSED_WIDTH : LIST_PANEL_WIDTH} shrink-0 border-r border-border/60 flex flex-col transition-[width] duration-300 ease-out ${hasCustomAppBackground ? "bg-transparent" : "backdrop-blur-xl bg-card"}`}>
+    <aside
+      className={variant === "drawer"
+        ? `flex h-full w-full flex-col ${hasCustomAppBackground ? "bg-transparent" : "bg-card"}`
+        : `relative ${collapsed ? LIST_PANEL_COLLAPSED_WIDTH : ""} shrink-0 border-r border-border/60 flex flex-col ${
+            collapsed || dragWidth !== null ? "" : "transition-[width] duration-300 ease-out"
+          } ${hasCustomAppBackground ? "bg-transparent" : "backdrop-blur-xl bg-card"}`}
+      style={variant === "inline" && !collapsed ? { width: displayWidth } : undefined}
+    >
+      {variant === "inline" && !collapsed && (
+        <div
+          onPointerDown={onResizePointerDown}
+          onPointerMove={onResizePointerMove}
+          onPointerUp={onResizePointerUp}
+          onPointerCancel={onResizePointerUp}
+          title={t("aichat.resizeSidebar")}
+          className="absolute -right-0.5 top-0 z-10 h-full w-1.5 cursor-col-resize touch-none select-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-transparent hover:after:bg-primary/40 active:after:bg-primary/60"
+        />
+      )}
       {collapsed ? (
         <div className="p-3 pb-2 border-b border-border flex flex-col items-center gap-2">
           <Button variant="ghost" onClick={onToggleCollapsed} className={`h-7 w-7 p-0 ${LIST_PANEL_TOGGLE_CLASS}`} title={t("aichat.sidebarExpand")}>
@@ -235,7 +287,7 @@ export function AiChatSidebar({
           </Button>
           {/* Same outlined treatment as the expanded panel's — the rail is the
             * same button at a different width, not a different button. */}
-          <Button onClick={onNewChat} className={`${NEW_BUTTON_CLASS} h-7 w-7`} title={t("aichat.newChat")} aria-label={t("aichat.newChat")}>
+          <Button variant="ghost" onClick={onNewChat} className={`${NEW_BUTTON_CLASS} h-7 w-7`} title={t("aichat.newChat")} aria-label={t("aichat.newChat")}>
             <MessageSquarePlus className="w-3.5 h-3.5" />
           </Button>
         </div>
@@ -244,7 +296,7 @@ export function AiChatSidebar({
         // filter box, then the list — each with its own rule, which sliced a
         // 320px panel into strips before a single conversation appeared.
         <div className="border-b border-border">
-          <div className="flex items-center gap-2 px-3 pt-3 pb-2">
+          <div className="flex h-8 items-center gap-2 px-3">
             {variant === "drawer" ? (
               <Button variant="ghost" size="icon" onClick={onRequestClose} className="-ml-1 h-6 w-6 shrink-0" title={t("aichat.closeSessions")} aria-label={t("aichat.closeSessions")}>
                 <X className="h-3.5 w-3.5" />
@@ -255,16 +307,27 @@ export function AiChatSidebar({
             </Button>
             )}
 
-            {/* The heading. Archived used to be a disclosure stapled to the
-              * bottom of the list; as the second tab it gets a real home, and
-              * the rule under the live one is then telling the truth rather
-              * than decorating a label that switches nothing. */}
-            <div className="flex min-w-0 flex-1 items-center gap-3">
+            {/* The heading. "Chats" is a truncating label — at the panel's
+              * narrower widths there isn't room for two full text tabs side
+              * by side without them overlapping the search/new buttons — so
+              * Archived (a secondary view) is an icon toggle instead of a
+              * second label competing for the same line. */}
+            <div className="flex min-w-0 flex-1 items-center gap-2">
               <ListTab label={t("aichat.chats")} active={!archiveView} onSelect={() => setShowArchive(false)} />
+              <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/50">{shownSessions.length}</span>
               {archivedSessions.length > 0 && (
-                <ListTab label={t("aichat.archivedTab")} active={archiveView} onSelect={() => setShowArchive(true)} />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowArchive((v) => !v)}
+                  aria-pressed={archiveView}
+                  title={t("aichat.archivedTab")}
+                  aria-label={t("aichat.archivedTab")}
+                  className={`h-5 w-5 shrink-0 rounded ${archiveView ? "text-primary hover:text-primary" : "text-muted-foreground/50 hover:text-foreground"}`}
+                >
+                  <Archive className="h-3 w-3" />
+                </Button>
               )}
-              <span className="text-xs tabular-nums text-muted-foreground">{shownSessions.length}</span>
             </div>
 
             <Button
@@ -278,7 +341,7 @@ export function AiChatSidebar({
             >
               <Search className="h-3.5 w-3.5" />
             </Button>
-            <Button onClick={onNewChat} className={NEW_BUTTON_CLASS} title={t("aichat.newChat")} aria-label={t("aichat.newChat")}>
+            <Button variant="ghost" onClick={onNewChat} className={NEW_BUTTON_CLASS} title={t("aichat.newChat")} aria-label={t("aichat.newChat")}>
               <MessageSquarePlus className="h-3.5 w-3.5" />
             </Button>
           </div>

@@ -36,6 +36,7 @@ export async function saveNoteAsDocument(title: string, content: string): Promis
 export const TOOL_GROUPS = {
   vocabulary: { label: "Vocabulary", tools: ["get_vocabulary_stats", "list_vocabulary", "search_vocabulary", "save_word", "add_words_to_vocab", "save_sentences"] },
   documents:  { label: "Documents",  tools: ["list_documents", "insert_into_document", "summarize_conversation", "save_note_as_document"] },
+  calendar:   { label: "Calendar",   tools: ["list_events", "create_event", "update_event", "delete_event"] },
 } as const;
 
 export type ToolGroupKey = keyof typeof TOOL_GROUPS;
@@ -239,6 +240,68 @@ const ALL_TOOL_DEFS: Record<string, ToolDef> = {
       required: ["title", "content"],
     },
   },
+
+  list_events: {
+    name: "list_events",
+    description: "List the user's calendar events, most recent first. Use this to find an event's id before calling update_event or delete_event, to answer questions about the user's schedule, or to check for conflicts before creating a new event. Use from/to (YYYY-MM-DD) to narrow to a date range — e.g. 'today', 'this week', 'next month' — and query to filter by title/description/location text.",
+    input_schema: {
+      type: "object",
+      properties: {
+        from:  { type: "string", description: "Only include events starting on or after this date, YYYY-MM-DD. Omit for no lower bound." },
+        to:    { type: "string", description: "Only include events starting on or before this date, YYYY-MM-DD. Omit for no upper bound." },
+        query: { type: "string", description: "Optional text filter over title, description, and location." },
+        limit: { type: "number", description: "Maximum events to return. Default 30, maximum 100." },
+      },
+      required: [],
+    },
+  },
+
+  create_event: {
+    name: "create_event",
+    description: "Create a new calendar event. Call this when the user asks you to schedule, add, book, or create an event/meeting/reminder. Times use the user's local wall-clock time, formatted as 'YYYY-MM-DD HH:mm' for a timed event or plain 'YYYY-MM-DD' for an all-day event (set all_day true in that case). Work out concrete dates from the conversation's current date rather than asking the user to do the math (e.g. 'tomorrow at 3pm', 'next Friday').",
+    input_schema: {
+      type: "object",
+      properties: {
+        title:       { type: "string", description: "Event title" },
+        start:       { type: "string", description: "Start, 'YYYY-MM-DD HH:mm' (timed) or 'YYYY-MM-DD' (all-day)" },
+        end:         { type: "string", description: "End, same format as start. For a point-in-time reminder, use the same value as start." },
+        all_day:     { type: "boolean", description: "True for an all-day event. Default false." },
+        description: { type: "string", description: "Optional notes/description" },
+        location:    { type: "string", description: "Optional location" },
+      },
+      required: ["title", "start", "end"],
+    },
+  },
+
+  update_event: {
+    name: "update_event",
+    description: "Edit an existing calendar event — reschedule it, rename it, or change its description/location. Call list_events first if you don't already have the event's id from this conversation. Only send the fields that are changing; omitted fields keep their current value.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id:          { type: "string", description: "Event id, from list_events or a prior create_event/list_events result" },
+        title:       { type: "string", description: "New title" },
+        start:       { type: "string", description: "New start, 'YYYY-MM-DD HH:mm' (timed) or 'YYYY-MM-DD' (all-day)" },
+        end:         { type: "string", description: "New end, same format as start" },
+        all_day:     { type: "boolean", description: "Switch between timed and all-day" },
+        description: { type: "string", description: "New notes/description" },
+        location:    { type: "string", description: "New location" },
+      },
+      required: ["id"],
+    },
+  },
+
+  delete_event: {
+    name: "delete_event",
+    description: "Permanently delete a calendar event. Call list_events first if you don't already have the event's id from this conversation — confirm you have the right one (title/time) before deleting, since this cannot be undone.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Event id, from list_events" },
+      },
+      required: ["id"],
+    },
+  },
 };
 
 export function getEnabledTools(groups: Set<ToolGroupKey>): ToolDef[] {
@@ -417,6 +480,64 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
         const { title, content: mdContent } = input as { title: string; content: string };
         const docId = await saveNoteAsDocument(title, mdContent);
         return { tool_use_id: id, content: `✓ Saved "${title}" to Documents (#${docId}).` };
+      }
+
+      case "list_events": {
+        const { from, to, query, limit } = input as { from?: string; to?: string; query?: string; limit?: number };
+        const safeLimit = Math.min(Math.max(Number(limit) || 30, 1), 100);
+        const all: any[] = await invoke("db_list_calendar_events");
+        const q = (query ?? "").trim().toLowerCase();
+        const filtered = all.filter((e) => {
+          if (from && e.start.slice(0, 10) < from) return false;
+          if (to && e.start.slice(0, 10) > to) return false;
+          if (q && !(
+            e.title.toLowerCase().includes(q)
+            || e.description.toLowerCase().includes(q)
+            || e.location.toLowerCase().includes(q)
+          )) return false;
+          return true;
+        });
+        if (filtered.length === 0) return { tool_use_id: id, content: "No matching events." };
+        const page = filtered.slice(0, safeLimit);
+        const lines = page.map((e) =>
+          `- [${e.id}] "${e.title}" ${e.start} → ${e.end}${e.all_day ? " (all day)" : ""}${e.location ? ` @ ${e.location}` : ""}`
+        ).join("\n");
+        return {
+          tool_use_id: id,
+          content: `${filtered.length} event${filtered.length === 1 ? "" : "s"}${filtered.length > page.length ? `, showing ${page.length}` : ""}:\n${lines}`,
+        };
+      }
+
+      case "create_event": {
+        const { title, start, end, all_day, description, location } = input as {
+          title: string; start: string; end: string; all_day?: boolean; description?: string; location?: string;
+        };
+        const eventId: string = await invoke("db_create_calendar_event", {
+          title, start, end,
+          allDay: all_day ?? false,
+          description: description ?? "",
+          location: location ?? "",
+        });
+        window.dispatchEvent(new CustomEvent("calendar-updated"));
+        return { tool_use_id: id, content: `✓ Created "${title}" (${start} → ${end}), id ${eventId}.` };
+      }
+
+      case "update_event": {
+        const { id: eventId, title, start, end, all_day, description, location } = input as {
+          id: string; title?: string; start?: string; end?: string; all_day?: boolean; description?: string; location?: string;
+        };
+        await invoke("db_update_calendar_event", {
+          id: eventId, title, start, end, allDay: all_day, description, location,
+        });
+        window.dispatchEvent(new CustomEvent("calendar-updated"));
+        return { tool_use_id: id, content: `✓ Updated event ${eventId}.` };
+      }
+
+      case "delete_event": {
+        const { id: eventId } = input as { id: string };
+        await invoke("db_delete_calendar_event", { eventId });
+        window.dispatchEvent(new CustomEvent("calendar-updated"));
+        return { tool_use_id: id, content: `✓ Deleted event ${eventId}.` };
       }
 
       default:

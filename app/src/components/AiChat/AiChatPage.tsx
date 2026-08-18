@@ -29,6 +29,17 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
   React.useEffect(() => { onActiveIdChange?.(s.activeId); }, [s.activeId, onActiveIdChange]);
   const navigate = useNavStore((state) => state.navigate);
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(() => localStorage.getItem("aichat-sidebar-collapsed") === "1");
+  // Defaults to 2/3 of the other list panels' shared width (LIST_PANEL_WIDTH,
+  // 320px) — this sidebar carries less per row (title + date) than Documents'
+  // or Vocabulary's, so it doesn't need their full width to read comfortably.
+  const [sidebarWidth, setSidebarWidth] = React.useState(() => {
+    const stored = Number(localStorage.getItem("aichat-sidebar-width"));
+    return Number.isFinite(stored) && stored > 0 ? stored : 213;
+  });
+  const persistSidebarWidth = (width: number) => {
+    setSidebarWidth(width);
+    localStorage.setItem("aichat-sidebar-width", String(width));
+  };
   // <lg the sidebar isn't a column — it's a drawer over the conversation.
   const [mobileSidebarOpen, setMobileSidebarOpen] = React.useState(false);
   const [confirmClear, setConfirmClear] = React.useState(false);
@@ -122,6 +133,8 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
           onNewChat={s.startNew}
           collapsed={sidebarCollapsed}
           onToggleCollapsed={toggleSidebar}
+          width={sidebarWidth}
+          onWidthChange={persistSidebarWidth}
         />
       </div>
 
@@ -145,17 +158,17 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
 
       <main className="min-w-0 flex-1 flex flex-col overflow-hidden">
         {/* Compact icon-led session toolbar */}
-        <div className={`flex items-center gap-2 px-3 lg:px-5 h-12 lg:h-16 border-b border-border/60 shrink-0 ${hasCustomAppBackground ? "bg-transparent" : "bg-background/65 backdrop-blur-xl"}`}>
+        <div className={`flex items-center gap-2 px-3 lg:px-5 h-6 lg:h-8 border-b border-border/60 shrink-0 ${hasCustomAppBackground ? "bg-transparent" : "bg-background/65 backdrop-blur-xl"}`}>
           <Button
             variant="ghost"
             onClick={() => setMobileSidebarOpen(true)}
             title={t("aichat.sessions")}
             aria-label={t("aichat.sessions")}
-            className="h-9 gap-1 rounded-xl px-2 text-muted-foreground hover:bg-muted hover:text-foreground shrink-0 lg:hidden"
+            className="h-6 gap-1 rounded-lg px-2 text-muted-foreground hover:bg-muted hover:text-foreground shrink-0 lg:hidden"
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft className="h-3.5 w-3.5" />
           </Button>
-          <div className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold tracking-tight text-foreground">{s.isNewSession ? t("aichat.newChat") : s.activeTitle}</span><span className="mt-0.5 block text-[10px] text-muted-foreground">{messages.length ? t("aichat.messageCount", { count: messages.length }) : t("aichat.ready")}</span></div>
+          <div className="min-w-0 flex-1 flex items-baseline gap-2"><span className="truncate text-xs font-semibold tracking-tight text-foreground">{s.isNewSession ? t("aichat.newChat") : s.activeTitle}</span><span className="hidden shrink-0 truncate text-[10px] text-muted-foreground lg:inline">{messages.length ? t("aichat.messageCount", { count: messages.length }) : t("aichat.ready")}</span></div>
           {/* The selector is the connection indicator: it already names the
             * provider in use, so a separate "connected" light beside it said
             * the same thing twice and squeezed the model name into an
@@ -167,9 +180,9 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
                 <SelectTrigger
                   title={activeProvider ? `${activeProvider.name} · ${activeProvider.modelId}` : t("aichat.toolbarModel")}
                   aria-label={t("aichat.toolbarModel")}
-                  className="h-9 w-auto max-w-[240px] gap-2 rounded-xl border-border/70 bg-card/70 px-2.5 text-xs shadow-none focus:ring-1 focus:ring-primary/20 shrink-0"
+                  className="h-6 w-auto max-w-[240px] gap-2 rounded-lg border-border/70 bg-card/70 px-2 text-[11px] shadow-none focus:ring-1 focus:ring-primary/20 shrink-0"
                 >
-                  <PlugZap className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                  <PlugZap className="h-3 w-3 shrink-0 text-emerald-500" />
                   <SelectValue>{activeProvider?.modelId || activeProvider?.name}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -183,8 +196,8 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
             </div>
           ) : (
             <div className="hidden lg:block">
-              <Button variant="ghost" onClick={() => navigate("settings")} title={t("aichat.providerDisconnected")} aria-label={t("aichat.providerDisconnected")} className="h-9 gap-2 rounded-xl px-2.5 text-xs font-medium text-amber-500 hover:bg-amber-500/10 hover:text-amber-500 shrink-0">
-                <Unplug className="h-3.5 w-3.5" />
+              <Button variant="ghost" onClick={() => navigate("settings")} title={t("aichat.providerDisconnected")} aria-label={t("aichat.providerDisconnected")} className="h-6 gap-1.5 rounded-lg px-2 text-[11px] font-medium text-amber-500 hover:bg-amber-500/10 hover:text-amber-500 shrink-0">
+                <Unplug className="h-3 w-3" />
                 {t("aichat.providerDisconnected")}
               </Button>
             </div>
@@ -196,9 +209,9 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
             title={headerOpen ? t("aichat.headerHide") : t("aichat.headerShow")}
             aria-label={headerOpen ? t("aichat.headerHide") : t("aichat.headerShow")}
             aria-expanded={headerOpen}
-            className="h-9 w-9 shrink-0 rounded-xl text-muted-foreground lg:hidden"
+            className="h-6 w-6 shrink-0 rounded-lg text-muted-foreground"
           >
-            {headerOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            {headerOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
           </Button>
           {s.displayItems.length > 0 && (
             <>
@@ -207,13 +220,13 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
                 onClick={s.summarizeAndSave}
                 disabled={s.streaming}
                 title={t("aichat.summarizeAndSaveHint")}
-                className="h-9 gap-1.5 rounded-xl px-2.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground shrink-0"
+                className="h-6 gap-1.5 rounded-lg px-2 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground shrink-0"
               >
-                <FilePlus2 className="h-3.5 w-3.5" />
+                <FilePlus2 className="h-3 w-3" />
                 <span className="hidden md:inline">{t("aichat.summarizeAndSave")}</span>
               </Button>
-              <Button variant="ghost" onClick={() => setConfirmClear(true)} title={t("aichat.clear")} aria-label={t("aichat.clear")} className="h-9 w-9 rounded-xl p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive shrink-0">
-                <Eraser className="h-4 w-4" />
+              <Button variant="ghost" onClick={() => setConfirmClear(true)} title={t("aichat.clear")} aria-label={t("aichat.clear")} className="h-6 w-6 rounded-lg p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive shrink-0">
+                <Eraser className="h-3.5 w-3.5" />
               </Button>
             </>
           )}
@@ -222,7 +235,7 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
         {/* Tutor and its effective system prompt live together, directly above
           * the conversation. The role stays switchable while collapsed; expanding
           * reveals the exact prompt that will be sent and makes it editable. */}
-        <section className={`${headerOpen ? "block" : "hidden"} border-b border-border/60 shrink-0 lg:block ${hasCustomAppBackground ? "bg-transparent" : "bg-background/40 backdrop-blur-md"}`}>
+        <section className={`${headerOpen ? "block" : "hidden"} border-b border-border/60 shrink-0 ${hasCustomAppBackground ? "bg-transparent" : "bg-background/40 backdrop-blur-md"}`}>
           <div className="flex min-h-12 items-center gap-2 px-3 lg:px-5">
             <Bot className="h-4 w-4 shrink-0 text-primary" />
             <Select value={s.selectedPreset} onValueChange={(v) => s.setSelectedPreset(v)}>

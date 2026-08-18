@@ -424,7 +424,7 @@ function App() {
 
   return (
     <>
-    <AppBackground disableBlur={isTerminalRoute} />
+    <AppBackground disableBlur={isTerminalRoute || isDshRoute} />
     <MainLayout
       activeNav={page}
       onNavigate={(id) => navigate(id as any)}

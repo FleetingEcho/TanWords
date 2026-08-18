@@ -31,7 +31,7 @@ export function useChatSession(params: {
   const [customPrompt, setCustomPrompt] = useState(() => buildPresetPrompt("english-tutor", targetLevel));
   const [selectedProviderId, setSelectedProviderId] = useState(() => providers[0]?.id ?? "");
   const [enabledGroups, setEnabledGroups] = useState<Set<ToolGroupKey>>(
-    () => new Set<ToolGroupKey>(["vocabulary", "documents"])
+    () => new Set<ToolGroupKey>(["vocabulary", "documents", "calendar"])
   );
   const [showTools, setShowTools] = useState(false);
 
