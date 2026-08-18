@@ -170,20 +170,52 @@ Docs and AI Chat are first-class pages in the sidebar: a personal notes editor w
 
 ## Install
 
-Download the latest `.dmg` from [Releases](https://github.com/FleetingEcho/TanWords/releases/latest). Choose the `-arm64` file on Apple Silicon and the unsuffixed file on Intel.
+Prebuilt installers for macOS, Windows, and Linux are published on the
+[Releases](https://github.com/FleetingEcho/TanWords/releases) page. Grab the
+file for your platform from the latest release that has it.
 
-### macOS says "TanWords is damaged and can't be opened"
+### macOS
 
-This is expected on first install, and the app is not damaged. The build carries an ad-hoc signature rather than a paid Developer ID signature, so macOS quarantines a browser-downloaded bundle and refuses to launch it. Two commands fix it permanently:
+Download the `.dmg`. Choose the `-arm64` file on Apple Silicon and the
+unsuffixed file on Intel.
+
+#### "TanWords is damaged and can't be opened"
+
+This is expected on first install, and the app is not damaged. The build
+carries an ad-hoc signature rather than a paid Developer ID signature, so macOS
+quarantines a browser-downloaded bundle and refuses to launch it. Two commands
+fix it permanently:
 
 ```bash
 xattr -cr /Applications/TanWords.app
 codesign --force --deep --sign - /Applications/TanWords.app
 ```
 
-The second command prints `replacing existing signature`, which is normal. Run both. `xattr` alone only strips the quarantine flag; the bundle still needs to pass signature validation.
+The second command prints `replacing existing signature`, which is normal. Run
+both. `xattr` alone only strips the quarantine flag; the bundle still needs to
+pass signature validation.
 
-This setup is needed once. In-app updates download and verify their own archive instead of going through the browser, so later versions install without repeating these steps.
+This setup is needed once. In-app updates download and verify their own archive
+instead of going through the browser, so later versions install without
+repeating these steps.
+
+### Windows
+
+Download `TanWords-Setup-x.y.z.exe` and run it. The installer is not signed
+with a paid certificate, so SmartScreen may warn "Windows protected your PC";
+click **More info → Run anyway** to continue.
+
+### Linux
+
+Download `TanWords-x.y.z.AppImage`, make it executable, and run it:
+
+```bash
+chmod +x TanWords-*.AppImage
+./TanWords-*.AppImage
+```
+
+AppImages need FUSE to mount. On a minimal install, install `libfuse2`
+(Debian/Ubuntu) or `fuse` (Fedora/RHEL) if the app fails to start.
 
 ## Quick Start
 

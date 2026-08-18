@@ -162,20 +162,47 @@ Docs 和 AI Chat 都位于侧边栏：一个带全文搜索和标签的个人笔
 
 ## 安装
 
-到 [Releases](https://github.com/FleetingEcho/TanWords/releases/latest) 下载最新 `.dmg`：Apple Silicon 选择带 `-arm64` 的文件，Intel 选择不带后缀的文件。
+macOS、Windows 和 Linux 的预编译安装包发布在
+[Releases](https://github.com/FleetingEcho/TanWords/releases) 页面，按你的平台
+从最新发布中选择对应文件下载。
 
-### macOS 提示「TanWords 已损坏，无法打开」
+### macOS
 
-首次安装出现这个提示是预期行为，应用本身没有损坏。构建产物只有 ad-hoc 签名，没有付费的 Developer ID 签名，所以 macOS 会给从浏览器下载的 bundle 打上隔离标记，并拒绝启动。用两条命令永久解决：
+下载 `.dmg`：Apple Silicon 选择带 `-arm64` 的文件，Intel 选择不带后缀的文件。
+
+#### 「TanWords 已损坏，无法打开」
+
+首次安装出现这个提示是预期行为，应用本身没有损坏。构建产物只有 ad-hoc 签名，
+没有付费的 Developer ID 签名，所以 macOS 会给从浏览器下载的 bundle 打上隔离
+标记，并拒绝启动。用两条命令永久解决：
 
 ```bash
 xattr -cr /Applications/TanWords.app
 codesign --force --deep --sign - /Applications/TanWords.app
 ```
 
-第二条命令会输出 `replacing existing signature`，属于正常现象。两条都要执行：只执行 `xattr` 只能清除隔离标记，应用仍需要通过签名校验。
+第二条命令会输出 `replacing existing signature`，属于正常现象。两条都要执行：
+只执行 `xattr` 只能清除隔离标记，应用仍需要通过签名校验。
 
-这套操作只需做一次。应用内更新会自行下载并校验签名，不经过浏览器，之后的新版本无需重复执行。
+这套操作只需做一次。应用内更新会自行下载并校验签名，不经过浏览器，之后的新版本
+无需重复执行。
+
+### Windows
+
+下载 `TanWords-Setup-x.y.z.exe` 并运行。安装程序没有付费证书签名，
+SmartScreen 可能提示「Windows 已保护你的电脑」；点击**更多信息 → 仍要运行**继续即可。
+
+### Linux
+
+下载 `TanWords-x.y.z.AppImage`，赋予执行权限后运行：
+
+```bash
+chmod +x TanWords-*.AppImage
+./TanWords-*.AppImage
+```
+
+AppImage 依赖 FUSE 才能挂载。在精简系统上如果应用无法启动，请安装
+`libfuse2`（Debian/Ubuntu）或 `fuse`（Fedora/RHEL）。
 
 ## 快速开始
 
