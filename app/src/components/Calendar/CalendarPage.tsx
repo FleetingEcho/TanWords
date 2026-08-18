@@ -279,7 +279,7 @@ export function CalendarPage() {
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* FullCalendar. `flex-1 min-h-0` gives it a definite height; the `.fc`
           * height:100% rule in index.css makes FullCalendar fill it. */}
-        <div className="fc-calendar min-h-0 flex-1 p-2 sm:p-4">
+        <div className="fc-calendar min-h-0 flex-1 p-2 mr-3 sm:p-4">
           <FullCalendar
             ref={(instance) => { calendarApiRef.current = instance?.getApi() ?? null; }}
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
@@ -317,7 +317,7 @@ export function CalendarPage() {
           * edge, not a button that scrolls away with the list. */}
         <div className="relative flex shrink-0">
           {sidebarCollapsed ? null : (
-            <aside className="flex w-full flex-col gap-2 border-t border-border/80 p-3 pt-9 lg:w-64 lg:border-l lg:border-t-0">
+            <aside className="flex w-full flex-col gap-2 border-t border-border/80 p-3 lg:w-64 lg:border-l lg:border-t-0">
               {events.length > 0 && (
               <div className="relative">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -383,16 +383,19 @@ export function CalendarPage() {
               )}
             </aside>
           )}
-          <Button
-            variant="ghost"
-            size="icon"
+          {/* A small tab/handle flush against the panel's left edge, not a
+            * free-floating circle — same shape language as a drawer pull
+            * tab: rounded only on the outward side, attached to the border
+            * it controls rather than hovering apart from it. */}
+          <button
+            type="button"
             onClick={() => setSidebarCollapsed((c) => !c)}
             title={sidebarCollapsed ? t("calendar.expandSidebar") : t("calendar.collapseSidebar")}
             aria-label={sidebarCollapsed ? t("calendar.expandSidebar") : t("calendar.collapseSidebar")}
-            className="absolute -left-8 top-3 z-10 hidden h-6 w-6 rounded-full border border-border bg-card text-muted-foreground shadow-xs hover:bg-muted hover:text-foreground lg:flex"
+            className="absolute -left-5 top-16 z-10 hidden h-9 w-5 items-center justify-center rounded-l-md border border-r-0 border-border bg-card text-muted-foreground shadow-xs hover:bg-muted hover:text-foreground lg:flex"
           >
             {sidebarCollapsed ? <ChevronsLeft className="h-3.5 w-3.5" /> : <ChevronsRight className="h-3.5 w-3.5" />}
-          </Button>
+          </button>
         </div>
       </div>
 
