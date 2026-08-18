@@ -138,6 +138,38 @@ function resolveDshBinary(): string | null {
   return null;
 }
 
+/** npm-style `.cmd`/`.bat` shims — the format fnm, npm, pnpm, and corepack
+ *  all generate — follow a fixed template:
+ *  `"%_prog%"  "%dp0%\node_modules\<pkg>\<entry>.js" %*`, invoking a
+ *  bundled `node.exe` (or the one on PATH) against the real JS entry point
+ *  next to the shim. Windows cannot execute `.cmd`/`.bat` via CreateProcess
+ *  directly, and Node's CVE-2024-27980 hardening makes `spawn()` throw a
+ *  synchronous EINVAL for exactly that case unless `shell: true` is passed.
+ *  `shell: true` "fixes" the EINVAL but replaces the process we get back
+ *  with the wrapping cmd.exe — killChild() below signals `child.pid`
+ *  expecting it to BE the dsh process (for its careful graceful-shutdown
+ *  flush), and under a shell wrapper that signal never reaches dsh, leaving
+ *  it running as an orphan. Parsing the shim to invoke node + the real
+ *  script directly sidesteps both problems. Returns null if the file isn't
+ *  a recognized shim, so the caller can fall back to `shell: true` rather
+ *  than fail outright. */
+function resolveWindowsCmdShim(cmdPath: string): { exe: string; args: string[] } | null {
+  let content: string;
+  try {
+    content = fs.readFileSync(cmdPath, "utf8");
+  } catch {
+    return null;
+  }
+  const match = /"%_prog%"\s+"%dp0%\\(.+?)"\s+%\*/.exec(content);
+  if (!match) return null;
+  const shimDir = path.dirname(cmdPath);
+  const script = path.join(shimDir, match[1]);
+  if (!fs.existsSync(script)) return null;
+  const bundledNode = path.join(shimDir, "node.exe");
+  const exe = fs.existsSync(bundledNode) ? bundledNode : "node";
+  return { exe, args: [script] };
+}
+
 /** Preserve the app environment while ensuring an `env node`/`env bun`
  *  launcher can find a runtime beside the resolved CLI. Finder-launched macOS
  *  apps commonly inherit only `/usr/bin:/bin:/usr/sbin:/sbin`, even when `dsh`
@@ -368,6 +400,24 @@ export class DshSupervisor {
 
     this.pendingReject = reject;
 
+    const dshArgs = ["--profile", "web", "--host", "127.0.0.1", "--port", String(this.targetPort())];
+    // `.cmd`/`.bat` can't be spawned directly on Windows without `shell:
+    // true` (see resolveWindowsCmdShim's comment) — resolve through the
+    // real node + script it wraps instead, falling back to `shell: true`
+    // only if the shim doesn't match the expected npm template.
+    let spawnExe = bin;
+    let spawnArgs = dshArgs;
+    let useShell = false;
+    if (process.platform === "win32" && /\.(cmd|bat)$/i.test(bin)) {
+      const shim = resolveWindowsCmdShim(bin);
+      if (shim) {
+        spawnExe = shim.exe;
+        spawnArgs = [...shim.args, ...dshArgs];
+      } else {
+        useShell = true;
+      }
+    }
+
     let child: ChildProcessWithoutNullStreams;
     try {
       // `spawn` normally emits spawn failures asynchronously via 'error', but
@@ -376,12 +426,13 @@ export class DshSupervisor {
       // rather than letting the throw propagate out of the Promise executor
       // (which would crash the main process).
       child = spawn(
-        bin,
-        ["--profile", "web", "--host", "127.0.0.1", "--port", String(this.targetPort())],
+        spawnExe,
+        spawnArgs,
         {
           stdio: ["pipe", "pipe", "pipe"],
           windowsHide: true,
           env: dshChildEnv(bin),
+          shell: useShell,
           // Detach `dsh` into its own process group so a Ctrl-C in the dev
           // terminal does not signal it directly. Without this, Ctrl-C under
           // `bun run dev` sends SIGINT to the whole foreground group — vite,
