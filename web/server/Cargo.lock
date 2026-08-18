@@ -3588,7 +3588,7 @@ dependencies = [
 
 [[package]]
 name = "tanwords"
-version = "1.18.20"
+version = "1.18.21"
 dependencies = [
  "adblock",
  "aes-gcm",
