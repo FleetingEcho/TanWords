@@ -134,13 +134,15 @@ pub async fn db_document_title_exists(
     conn: State<'_, AppState>,
 ) -> Result<bool, String> {
     let db = db::conn(&conn)?;
-    Ok(db::scalar_i64(
+    // EXISTS returns 0/1 on SQLite and true/false on Postgres; reading as bool
+    // is portable across both (scalar_i64 would fail on Postgres's native BOOL).
+    Ok(db::fetch_one(
         &db,
         "SELECT EXISTS(SELECT 1 FROM documents WHERE LOWER(title) = LOWER(?1))",
         [title],
+        |r| r.get::<bool>(0),
     )
-    .await?
-        != 0)
+    .await?)
 }
 
 #[crate::shim::command]

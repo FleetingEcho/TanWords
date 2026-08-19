@@ -62,7 +62,10 @@ pub async fn db_get_search_history(
             Ok(SearchHistoryItem {
                 word: row.get(0)?,
                 searched_at: row.get(1)?,
-                in_vocab: row.get::<i64>(2)? != 0,
+                // EXISTS returns 0/1 on SQLite and true/false on Postgres;
+                // reading as bool is portable across both (sqlx-sqlite maps
+                // the 0/1 integer to bool, sqlx-postgres reads the native BOOL).
+                in_vocab: row.get::<bool>(2)?,
             })
         },
     )

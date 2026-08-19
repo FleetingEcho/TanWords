@@ -275,6 +275,32 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     assert!(tx_id > 0);
     let txs = db_get_translations(None, None, state.clone()).await.unwrap();
     assert!(txs.iter().any(|t| t.id == tx_id));
+
+    // search history (txn_conn + transaction + CURRENT_TIMESTAMP — the
+    // translator rewrites CURRENT_TIMESTAMP to to_char(now() AT TIME ZONE
+    // 'UTC', ...) on Postgres). Add two (second dedups the first), list,
+    // clear.
+    use tanwords_lib::db::{
+        db_add_search_history, db_clear_search_history, db_get_search_history,
+    };
+    db_add_search_history("serendipity".into(), state.clone())
+        .await
+        .unwrap();
+    db_add_search_history("ephemeral".into(), state.clone())
+        .await
+        .unwrap();
+    // re-adding "serendipity" dedups (DELETEs the old row, inserts fresh) —
+    // exercises the transaction's DELETE+INSERT+commit path.
+    db_add_search_history("serendipity".into(), state.clone())
+        .await
+        .unwrap();
+    let history = db_get_search_history(state.clone()).await.unwrap();
+    assert!(history.iter().any(|h| h.word == "serendipity"));
+    assert!(history.iter().any(|h| h.word == "ephemeral"));
+    // the re-added "serendipity" should appear once (deduped).
+    let ser_count = history.iter().filter(|h| h.word == "serendipity").count();
+    assert_eq!(ser_count, 1);
+    db_clear_search_history(state.clone()).await.unwrap();
 }
 
 #[tokio::test]
