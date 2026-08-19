@@ -187,6 +187,20 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     .await
     .unwrap();
     assert!(sessions.iter().any(|s| s.id == "chat-1"));
+
+    // quiz result → SRS multi-arg datetime (datetime('now', '+' || ?N || ' days')
+    // the translator rewrites to a Postgres interval cast). The added word's id
+    // is the quiz target; the first quiz save hits the INSERT branch (new
+    // srs_record), the second hits the UPDATE branch.
+    use tanwords_lib::db::{db_get_quiz_words, db_save_quiz_result};
+    let quiz_words = db_get_quiz_words(Some(5), state.clone()).await.unwrap();
+    let quiz_word_id = quiz_words.first().map(|w| w.id).expect("quiz words present");
+    db_save_quiz_result(quiz_word_id, true, state.clone())
+        .await
+        .unwrap();
+    db_save_quiz_result(quiz_word_id, false, state.clone())
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
