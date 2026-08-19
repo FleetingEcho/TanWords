@@ -301,6 +301,21 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     let ser_count = history.iter().filter(|h| h.word == "serendipity").count();
     assert_eq!(ser_count, 1);
     db_clear_search_history(state.clone()).await.unwrap();
+
+    // dashboard stats (COUNT(*) across words/patterns/chat/docs — COUNT
+    // returns BIGINT on Postgres, so scalar_i64 is the right read — plus
+    // COALESCE(w.level, '') subquery reads). Verifies the data the earlier
+    // commands inserted shows up in the aggregate counts.
+    use tanwords_lib::db::db_dashboard_stats;
+    let stats = db_dashboard_stats(state.clone()).await.unwrap();
+    // db_add_word added "hello" (the dedup re-add is a no-op), so at least one
+    // word; one pattern; one document; one chat session.
+    assert!(stats.word_count >= 1, "words: {}", stats.word_count);
+    assert!(stats.pattern_count >= 1, "patterns: {}", stats.pattern_count);
+    assert!(stats.doc_count >= 1, "docs: {}", stats.doc_count);
+    assert!(stats.chat_count >= 1, "chats: {}", stats.chat_count);
+    assert!(!stats.recent_words.is_empty());
+    assert!(!stats.recent_docs.is_empty());
 }
 
 #[tokio::test]
