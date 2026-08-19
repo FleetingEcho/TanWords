@@ -46,9 +46,9 @@ export function SentenceExtractionCard({ items, variant = "generated" }: { items
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const patterns = await db.listPatterns();
+      const sentences = await db.listSentences();
       if (cancelled) return;
-      const savedSet = new Set(patterns.flatMap((p) => p.examples.map((e) => e.sentence)));
+      const savedSet = new Set(sentences.map((s) => s.sentence));
       setAdded((prev) => {
         const next = { ...prev };
         items.forEach((item, i) => {
@@ -80,7 +80,7 @@ export function SentenceExtractionCard({ items, variant = "generated" }: { items
 
   const addOne = async (i: number) => {
     const item = items[i];
-    const saved = await db.saveSentencePattern(item.sentence, item.zh, item.skeleton ?? "", item.note ?? "", item.level ?? "", "chat");
+    const saved = await db.saveSentence(item.sentence, item.zh, item.note ?? "", item.level ?? "", "chat");
     if (saved) {
       setAdded((prev) => ({ ...prev, [i]: true }));
       if (saved.created) toast.success(t("aichat.sentence.toastAddedOne"));
@@ -95,7 +95,7 @@ export function SentenceExtractionCard({ items, variant = "generated" }: { items
     let count = 0;
     const next = { ...added };
     for (const { item, i } of chosen) {
-      const saved = await db.saveSentencePattern(item.sentence, item.zh, item.skeleton ?? "", item.note ?? "", item.level ?? "", "chat");
+      const saved = await db.saveSentence(item.sentence, item.zh, item.note ?? "", item.level ?? "", "chat");
       if (saved) { next[i] = true; if (saved.created) count += 1; }
     }
     setAdded(next);

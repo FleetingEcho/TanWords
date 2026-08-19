@@ -20,11 +20,9 @@ function lookupWord(word: string) {
 export function SpeakingBlockquote({
   lines,
   source = "speaking",
-  skeleton = "Speaking Coach",
 }: {
   lines: string[];
   source?: string;
-  skeleton?: string;
 }) {
   const db = useDB();
   const t = useT();
@@ -37,10 +35,9 @@ export function SpeakingBlockquote({
   const save = async (index: number) => {
     if (saving !== null) return;
     setSaving(index);
-    const result = await db.saveSentencePattern(
+    const result = await db.saveSentence(
       lines[index].trim(),
       "",
-      skeleton,
       "",
       "",
       source,
@@ -108,5 +105,5 @@ export const renderSpeakingBlockquote = (lines: string[], key: string) => (
 
 /** Same interactive quote treatment for the Reader's AI study notes. */
 export const renderStudyBlockquote = (lines: string[], key: string) => (
-  <SpeakingBlockquote key={key} lines={lines} source="reading" skeleton="Reading notes" />
+  <SpeakingBlockquote key={key} lines={lines} source="reading" />
 );

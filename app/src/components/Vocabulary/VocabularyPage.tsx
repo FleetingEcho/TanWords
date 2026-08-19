@@ -5,7 +5,7 @@ import { useT } from "@/hooks/useT";
 import { useSelectedWordStore } from "@/store/selectedWordStore";
 import { WordListPanel } from "./WordListPanel";
 import { WordDetailPanel } from "./WordDetailPanel";
-import { PatternLibrary } from "./PatternLibrary";
+import { SentenceLibrary } from "./SentenceLibrary";
 import { VocabViewTabs, type VocabView } from "./VocabViewTabs";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useVocabWordList } from "./hooks/useVocabWordList";
@@ -48,7 +48,7 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
   // Below lg the list+detail split collapses into list-with-overlay; the same
   // flag gates the desktop-only auto-select below.
   const narrow = useIsNarrow();
-  // The generate-sentences modal lives here rather than inside PatternLibrary
+  // The generate-sentences modal lives here rather than inside SentenceLibrary
   // so asking a word on the Words tab for examples doesn't have to switch tabs
   // to reach it — the modal opens over whichever tab you were already on.
   const [genWord, setGenWord] = useState<string | null>(null);
@@ -59,13 +59,13 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
   useEffect(() => {
     if (genWord === null) return;
     let cancelled = false;
-    void db.listPatterns().then((patterns) => {
-      if (!cancelled) setExistingSentences(patterns.flatMap((p) => p.examples.map((e) => e.sentence)));
+    void db.listSentences().then((sentences) => {
+      if (!cancelled) setExistingSentences(sentences.map((s) => s.sentence));
     });
     return () => { cancelled = true; };
   }, [genWord, db]);
   useEffect(() => {
-    if (initialSentenceId !== undefined) setView("patterns");
+    if (initialSentenceId !== undefined) setView("sentences");
     else if (initialWordId) setView("words");
   }, [initialWordId, initialSentenceId]);
 
@@ -167,8 +167,8 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
         * full-width bordered strip for two words, sitting directly above a
         * heading that repeated the selected one, was a row of chrome the page
         * paid for twice. */}
-      {view === "patterns" ? (
-        <PatternLibrary initialSentenceId={initialSentenceId} viewTabs={viewTabs} />
+      {view === "sentences" ? (
+        <SentenceLibrary initialSentenceId={initialSentenceId} viewTabs={viewTabs} />
       ) : (<>
       <div className="flex min-h-0 flex-1">
       <WordListPanel
@@ -271,7 +271,7 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
         onCancel={() => !list.deletingSelected && list.setDeleteSelectedOpen(false)}
       />
 
-      {/* Rendered at page level, not inside PatternLibrary: asking a word for
+      {/* Rendered at page level, not inside SentenceLibrary: asking a word for
         * example sentences should open this over the Words tab you are on, not
         * throw you across to the Sentences tab to reach the same dialog. */}
       <SentenceModal
@@ -280,7 +280,7 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
         initialMode="generate"
         initialQuery={genWord}
         existingSentences={existingSentences}
-        onAdded={() => window.dispatchEvent(new CustomEvent("patterns-updated"))}
+        onAdded={() => window.dispatchEvent(new CustomEvent("sentences-updated"))}
       />
     </div>
   );

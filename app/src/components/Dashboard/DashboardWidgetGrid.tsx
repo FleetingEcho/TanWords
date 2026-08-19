@@ -4,7 +4,7 @@ import { RssWidget } from "./RssWidget";
 import { LatestWordsWidget } from "./LatestWordsWidget";
 import { RecentlyReadWidget } from "./RecentlyReadWidget";
 import { RecentDocumentsWidget } from "./RecentDocumentsWidget";
-import { PatternsWidget } from "./PatternsWidget";
+import { SentencesWidget } from "./SentencesWidget";
 import { ListenNextWidget } from "./ListenNextWidget";
 
 /** The Dashboard's Recents area.
@@ -30,7 +30,7 @@ import { ListenNextWidget } from "./ListenNextWidget";
  *  bento cannot express — size and position are part of the composition now,
  *  not a free ordering — and nothing had been able to write to it since the
  *  drag handles were removed. */
-type AsyncWidget = "patterns" | "rss" | "listen-next";
+type AsyncWidget = "sentences" | "rss" | "listen-next";
 
 export function DashboardWidgetGrid({ stats, statsFailed = false, onInitialDataSettled }: {
   stats: DashboardStats | null;
@@ -51,7 +51,7 @@ export function DashboardWidgetGrid({ stats, statsFailed = false, onInitialDataS
       return next;
     });
   }, []);
-  const settlePatterns = useCallback(() => settleWidget("patterns"), [settleWidget]);
+  const settleSentences = useCallback(() => settleWidget("sentences"), [settleWidget]);
   const settleRss = useCallback(() => settleWidget("rss"), [settleWidget]);
   const settleListenNext = useCallback(() => settleWidget("listen-next"), [settleWidget]);
 
@@ -62,7 +62,7 @@ export function DashboardWidgetGrid({ stats, statsFailed = false, onInitialDataS
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-2">
       <div className="lg:col-span-7">
-        <PatternsWidget maxRows={7} onInitialDataSettled={settlePatterns} />
+        <SentencesWidget maxRows={7} onInitialDataSettled={settleSentences} />
       </div>
       {/* flex-1 on each: the pair splits whatever height this cell is given,
         * which is what keeps their outer edges level with the hero's. */}

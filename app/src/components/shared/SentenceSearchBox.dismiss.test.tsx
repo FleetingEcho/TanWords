@@ -6,8 +6,8 @@ vi.mock("@/hooks/useT", () => ({ useT: () => (key: string) => key }));
 
 vi.mock("@/hooks/useDB", () => ({
   useDB: () => ({
-    listPatterns: vi.fn().mockResolvedValue([]),
-    saveSentencePattern: vi.fn().mockResolvedValue(true),
+    listSentences: vi.fn().mockResolvedValue([]),
+    saveSentence: vi.fn().mockResolvedValue(true),
   }),
 }));
 
@@ -63,7 +63,7 @@ describe("SentenceSearchBox dismissal", () => {
         <SentenceSearchBox variant="inline" />
       </>,
     );
-    const input = screen.getByPlaceholderText("vocab.patterns.quickSearchPlaceholder");
+    const input = screen.getByPlaceholderText("vocab.sentences.quickSearchPlaceholder");
 
     await searchFor(input);
     expect(analyzeSentence).toHaveBeenCalledTimes(1);
@@ -82,7 +82,7 @@ describe("SentenceSearchBox dismissal", () => {
 
   it("re-opens on Enter without asking the model again when the query is unchanged", async () => {
     render(<SentenceSearchBox variant="inline" />);
-    const input = screen.getByPlaceholderText("vocab.patterns.quickSearchPlaceholder");
+    const input = screen.getByPlaceholderText("vocab.sentences.quickSearchPlaceholder");
 
     await searchFor(input);
     fireEvent.keyDown(input, { key: "Escape" });
@@ -96,7 +96,7 @@ describe("SentenceSearchBox dismissal", () => {
 
   it("analyzes again once the query actually changes", async () => {
     render(<SentenceSearchBox variant="inline" />);
-    const input = screen.getByPlaceholderText("vocab.patterns.quickSearchPlaceholder");
+    const input = screen.getByPlaceholderText("vocab.sentences.quickSearchPlaceholder");
 
     await searchFor(input);
 
@@ -122,7 +122,7 @@ describe("SentenceSearchBox dismissal", () => {
         <SentenceSearchBox variant="inline" />
       </>,
     );
-    const input = screen.getByPlaceholderText("vocab.patterns.quickSearchPlaceholder");
+    const input = screen.getByPlaceholderText("vocab.sentences.quickSearchPlaceholder");
     fireEvent.change(input, { target: { value: SENTENCE } });
     fireEvent.keyDown(input, { key: "Enter" });
 

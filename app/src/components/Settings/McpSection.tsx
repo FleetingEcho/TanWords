@@ -12,7 +12,7 @@ type McpStatus = { running: boolean; endpoint: string | null; error: string | nu
 const MCP_TOOL_GROUPS: { key: string; tools: string[] }[] = [
   { key: "vocabulary", tools: ["vocabulary_search", "vocabulary_known_words", "vocabulary_get", "vocabulary_add", "vocabulary_add_batch", "vocabulary_update", "vocabulary_delete"] },
   { key: "documents", tools: ["documents_list", "documents_search", "documents_get", "documents_create", "documents_update", "documents_append", "documents_delete"] },
-  { key: "patterns", tools: ["patterns_list", "patterns_search", "patterns_add"] },
+  { key: "sentences", tools: ["sentences_list", "sentences_search", "sentences_add"] },
   { key: "articles", tools: ["articles_add", "articles_list", "articles_get", "articles_comment"] },
   { key: "feeds", tools: ["feeds_list", "feeds_entries"] },
   { key: "hackernews", tools: ["hackernews_list", "hackernews_search", "hackernews_comments"] },

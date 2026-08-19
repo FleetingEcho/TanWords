@@ -173,10 +173,12 @@ export function buildInlineAskUserPrompt(selection: string, context: string, tar
   return `选中的内容："${selection}"（学习者目标水平：CEFR ${targetLevel}）${ctx}`;
 }
 
-/** Turns one English sentence into a saveable pattern entry: the sentence
- *  library stores a reusable skeleton and a usage note alongside the sentence
- *  (see useDB.patterns' saveSentencePattern), which a raw selection from a
- *  chat reply doesn't come with. See src/lib/patternFromSentence.ts. */
+/** Analyzes one English sentence for the sentence library: it returns a
+ *  translation, usage note, and CEFR level to save alongside the sentence
+ *  (see useDB.sentences' saveSentence), which a raw selection from a chat
+ *  reply doesn't come with. The analysis may also produce a reusable
+ *  pattern skeleton, but the flat-sentence model no longer stores one, so
+ *  only zh/note/level are used. See src/lib/patternFromSentence.ts. */
 export const SENTENCE_PATTERN_SYSTEM_PROMPT = `你是一个句式分析器。给定一个英文句子，提取它可复用的句式骨架，供中文母语学习者收藏后仿写。
 
 只返回一个 JSON 对象，不要任何其他文字、不要代码块标记、不要解释：

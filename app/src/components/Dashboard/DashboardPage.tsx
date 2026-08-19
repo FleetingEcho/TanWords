@@ -152,7 +152,7 @@ export function DashboardPage() {
         * diligently — one tile per kind of thing you accumulate. */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatTile transparent={hasCustomAppBackground} value={statsSettled ? stats?.word_count ?? 0 : null} label={t("dash.stat.words")} onClick={() => navigate("vocabulary")} />
-        <StatTile transparent={hasCustomAppBackground} value={statsSettled ? stats?.pattern_count ?? 0 : null} label={t("dash.stat.sentences")} accent onClick={openVocabularyPatterns} />
+        <StatTile transparent={hasCustomAppBackground} value={statsSettled ? stats?.sentence_count ?? 0 : null} label={t("dash.stat.sentences")} accent onClick={openVocabularyPatterns} />
         <StatTile transparent={hasCustomAppBackground} value={statsSettled ? stats?.chat_count ?? 0 : null} label={t("dash.stat.chats")} onClick={() => navigate("chat")} />
         <StatTile transparent={hasCustomAppBackground} value={statsSettled ? stats?.doc_count ?? 0 : null} label={t("dash.stat.docs")} onClick={() => navigate("documents")} />
       </div>

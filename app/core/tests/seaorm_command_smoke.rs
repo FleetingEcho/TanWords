@@ -68,7 +68,7 @@ async fn wipe_postgres(url: &str) {
 
 async fn shared_command_cycle(state: State<'_, AppState>) {
     use tanwords_lib::db::{
-        db_add_word, db_create_document, db_get_documents, db_save_sentence_pattern,
+        db_add_word, db_create_document, db_get_documents, db_save_sentence,
     };
 
     // add a word through the command surface
@@ -95,13 +95,12 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     .unwrap();
     assert!(!dup.is_new);
 
-    // save a pattern (exercises a transaction + RETURNING id). The result
+    // save a sentence (exercises a transaction + RETURNING id). The result
     // struct's fields are Serialize-only (frontend-facing), so we only assert
     // the call succeeded — an Err would surface a backend-portability bug.
-    let _pat = db_save_sentence_pattern(
+    let _sent = db_save_sentence(
         "I love Rust".into(),
         "我爱 Rust".into(),
-        "I love Rust".into(),
         String::new(),
         "A2".into(),
         String::new(),
@@ -110,15 +109,10 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     .await
     .unwrap();
 
-    // list patterns — exercises the `starred` BIGINT 0/1 -> bool READ on
-    // Postgres. The prior `fedbd89` fix cast the bool param to i64 on the
-    // WRITE side (db_set_pattern_starred), but the read path
-    // (`SELECT ... starred ...` decoded as bool) was never exercised here and
-    // breaks on Postgres strict typing (INT8 is not compatible with BOOL).
-    // The fields are Serialize-only, so we assert the call succeeds — an Err
-    // here reproduces the user's startup `db_list_patterns` 400.
-    use tanwords_lib::db::db_list_patterns;
-    let _patterns = db_list_patterns(state.clone()).await.unwrap();
+    // list sentences — exercises the `starred` BIGINT 0/1 -> bool READ on
+    // Postgres. The fields are Serialize-only, so we assert the call succeeds.
+    use tanwords_lib::db::db_list_sentences;
+    let _sentences = db_list_sentences(state.clone()).await.unwrap();
 
     // create a document and list it
     let doc_id = db_create_document(state.clone()).await.unwrap();
@@ -335,7 +329,7 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     // db_add_word added "hello" (the dedup re-add is a no-op), so at least one
     // word; one pattern; one document; one chat session.
     assert!(stats.word_count >= 1, "words: {}", stats.word_count);
-    assert!(stats.pattern_count >= 1, "patterns: {}", stats.pattern_count);
+    assert!(stats.sentence_count >= 1, "sentences: {}", stats.sentence_count);
     assert!(stats.doc_count >= 1, "docs: {}", stats.doc_count);
     assert!(stats.chat_count >= 1, "chats: {}", stats.chat_count);
     assert!(!stats.recent_words.is_empty());

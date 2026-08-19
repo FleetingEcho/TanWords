@@ -93,16 +93,16 @@ pub(super) struct UpdateVocabulary {
     pub(super) notes: Option<String>,
 }
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub(super) struct SearchPatterns {
-    #[schemars(description = "Pattern skeleton, meaning, or example sentence to search for")]
+pub(super) struct SearchSentences {
+    #[schemars(description = "Sentence text, meaning, or note to search for")]
     pub(super) query: String,
     #[serde(default = "default_limit")]
     pub(super) limit: usize,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub(super) struct ListPatterns {
-    #[schemars(description = "Optional pattern skeleton, meaning, or example to filter by")]
+pub(super) struct ListSentences {
+    #[schemars(description = "Optional sentence text, meaning, or note to filter by")]
     pub(super) query: Option<String>,
     #[serde(default = "default_limit")]
     pub(super) limit: usize,
@@ -110,19 +110,17 @@ pub(super) struct ListPatterns {
     pub(super) offset: usize,
 }
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub(super) struct AddPattern {
-    #[schemars(description = "Reusable skeleton, e.g. 'be shortlisted for + noun'")]
-    pub(super) pattern: String,
+pub(super) struct AddSentence {
+    #[schemars(description = "The English sentence to save")]
+    pub(super) sentence: String,
     #[serde(default)]
-    #[schemars(description = "Chinese gloss of what the pattern expresses")]
+    #[schemars(description = "Chinese translation of the sentence")]
     pub(super) zh: String,
     #[serde(default)]
-    #[schemars(description = "Short note on the scenario or register it fits")]
+    #[schemars(description = "Short note on usage or context")]
     pub(super) note: String,
     #[schemars(description = "CEFR level: A1|A2|B1|B2|C1|C2")]
     pub(super) level: Option<String>,
-    #[schemars(description = "Example sentence the pattern was taken from")]
-    pub(super) example: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]

@@ -62,7 +62,7 @@ describe("vocabulary AI tools", () => {
       ],
     });
 
-    expect(invokeMock).toHaveBeenNthCalledWith(1, "db_save_sentence_pattern", expect.objectContaining({
+    expect(invokeMock).toHaveBeenNthCalledWith(1, "db_save_sentence", expect.objectContaining({
       sentence: "It was not until later that the pattern became clear.",
       source: "chat",
     }));

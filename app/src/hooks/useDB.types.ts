@@ -141,7 +141,7 @@ export interface DocumentListResult {
 
 export interface DashboardStats {
   word_count: number;
-  pattern_count: number;
+  sentence_count: number;
   chat_count: number;
   doc_count: number;
   recent_words: { id: number; word: string; zh: string; level: string; updated_at: string }[];
@@ -309,7 +309,7 @@ export interface ImportConflict {
   existing: string;
 }
 
-export type ImportKind = "words" | "patterns" | "articles" | "documents" | "knownWords";
+export type ImportKind = "words" | "sentences" | "articles" | "documents" | "knownWords";
 
 export interface ImportGroup {
   kind: ImportKind;

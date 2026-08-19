@@ -3,16 +3,16 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  listPatterns: vi.fn(),
-  saveSentencePattern: vi.fn(),
+  listSentences: vi.fn(),
+  saveSentence: vi.fn(),
   generateSentenceCandidate: vi.fn(),
   analyzeSentence: vi.fn(),
 }));
 
 vi.mock("@/hooks/useDB", () => ({
   useDB: () => ({
-    listPatterns: mocks.listPatterns,
-    saveSentencePattern: mocks.saveSentencePattern,
+    listSentences: mocks.listSentences,
+    saveSentence: mocks.saveSentence,
   }),
 }));
 vi.mock("@/hooks/useT", () => ({ useT: () => (key: string) => key }));
@@ -45,8 +45,8 @@ const candidate = {
 describe("SentenceSearchBox empty-result generation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.listPatterns.mockResolvedValue([]);
-    mocks.saveSentencePattern.mockResolvedValue(true);
+    mocks.listSentences.mockResolvedValue([]);
+    mocks.saveSentence.mockResolvedValue(true);
   });
 
   it("shows no result plus a skeleton, then lets the user dismiss without saving", async () => {
@@ -54,35 +54,34 @@ describe("SentenceSearchBox empty-result generation", () => {
     mocks.generateSentenceCandidate.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
     render(<SentenceSearchBox />);
 
-    const input = screen.getByPlaceholderText("vocab.patterns.quickSearchPlaceholder");
+    const input = screen.getByPlaceholderText("vocab.sentences.quickSearchPlaceholder");
     fireEvent.change(input, { target: { value: "苹果" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(await screen.findByText("vocab.patterns.noMatch")).toBeTruthy();
+    expect(await screen.findByText("vocab.sentences.noMatch")).toBeTruthy();
     expect(screen.getByLabelText("common.loading")).toBeTruthy();
     finish(candidate);
     expect(await screen.findByText(candidate.sentence)).toBeTruthy();
 
     fireEvent.click(screen.getByText("common.cancel"));
     expect(screen.queryByText(candidate.sentence)).toBeNull();
-    expect(mocks.saveSentencePattern).not.toHaveBeenCalled();
+    expect(mocks.saveSentence).not.toHaveBeenCalled();
   });
 
   it("saves exactly the generated candidate only after Add is chosen", async () => {
     mocks.generateSentenceCandidate.mockResolvedValue(candidate);
     render(<SentenceSearchBox />);
 
-    const input = screen.getByPlaceholderText("vocab.patterns.quickSearchPlaceholder");
+    const input = screen.getByPlaceholderText("vocab.sentences.quickSearchPlaceholder");
     fireEvent.change(input, { target: { value: "apple" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(await screen.findByText(candidate.sentence)).toBeTruthy();
-    expect(mocks.saveSentencePattern).not.toHaveBeenCalled();
+    expect(mocks.saveSentence).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByText("vocab.patterns.add"));
-    await waitFor(() => expect(mocks.saveSentencePattern).toHaveBeenCalledWith(
+    fireEvent.click(screen.getByText("vocab.sentences.add"));
+    await waitFor(() => expect(mocks.saveSentence).toHaveBeenCalledWith(
       candidate.sentence,
       candidate.zh,
-      candidate.skeleton,
       candidate.note,
       candidate.level,
       "manual",
@@ -100,20 +99,19 @@ describe("SentenceSearchBox empty-result generation", () => {
       .mockResolvedValueOnce(replacement);
     render(<SentenceSearchBox />);
 
-    const input = screen.getByPlaceholderText("vocab.patterns.quickSearchPlaceholder");
+    const input = screen.getByPlaceholderText("vocab.sentences.quickSearchPlaceholder");
     fireEvent.change(input, { target: { value: "苹果" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(await screen.findByText(candidate.sentence)).toBeTruthy();
 
-    fireEvent.click(screen.getByLabelText("vocab.patterns.regenerate"));
+    fireEvent.click(screen.getByLabelText("vocab.sentences.regenerate"));
     expect(await screen.findByText(replacement.sentence)).toBeTruthy();
     expect(screen.queryByText(candidate.sentence)).toBeNull();
 
-    fireEvent.click(screen.getByText("vocab.patterns.add"));
-    await waitFor(() => expect(mocks.saveSentencePattern).toHaveBeenCalledWith(
+    fireEvent.click(screen.getByText("vocab.sentences.add"));
+    await waitFor(() => expect(mocks.saveSentence).toHaveBeenCalledWith(
       replacement.sentence,
       replacement.zh,
-      replacement.skeleton,
       replacement.note,
       replacement.level,
       "manual",
@@ -121,25 +119,29 @@ describe("SentenceSearchBox empty-result generation", () => {
   });
 
   it("offers opt-in generation when saved results already match", async () => {
-    mocks.listPatterns.mockResolvedValue([{
+    mocks.listSentences.mockResolvedValue([{
       id: 1,
-      pattern: "be seamless",
+      sentence: "The transition was seamless.",
       zh: "天衣无缝",
       note: "",
       level: "B2",
-      examples: [{ sentence: "The transition was seamless." }],
+      source: "manual",
+      article_id: null,
+      starred: false,
+      created_at: "",
+      updated_at: "",
     }]);
     mocks.generateSentenceCandidate.mockResolvedValue(candidate);
     render(<SentenceSearchBox />);
-    await waitFor(() => expect(mocks.listPatterns).toHaveBeenCalled());
+    await waitFor(() => expect(mocks.listSentences).toHaveBeenCalled());
 
-    const input = screen.getByPlaceholderText("vocab.patterns.quickSearchPlaceholder");
+    const input = screen.getByPlaceholderText("vocab.sentences.quickSearchPlaceholder");
     fireEvent.change(input, { target: { value: "seamless" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(await screen.findByText("The transition was seamless.")).toBeTruthy();
     expect(mocks.generateSentenceCandidate).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByText("vocab.patterns.generateSentence"));
+    fireEvent.click(screen.getByText("vocab.sentences.generateSentence"));
     expect(await screen.findByText(candidate.sentence)).toBeTruthy();
   });
 });

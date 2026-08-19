@@ -2,7 +2,7 @@ import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-const saveSentencePattern = vi.fn().mockResolvedValue({ created: true });
+const saveSentence = vi.fn().mockResolvedValue({ created: true });
 const addWord = vi.fn().mockResolvedValue({ id: 1 });
 
 vi.mock("@/hooks/useT", () => ({ useT: () => (key: string) => key }));
@@ -10,7 +10,7 @@ vi.mock("@/hooks/useT", () => ({ useT: () => (key: string) => key }));
 vi.mock("@/hooks/useDB", () => ({
   useDB: () => ({
     getWords: vi.fn().mockResolvedValue([]),
-    saveSentencePattern,
+    saveSentence,
     addWord,
   }),
 }));
@@ -40,9 +40,9 @@ describe("BrowserAskPane", () => {
     fireEvent.click(await screen.findByText("sel.savePattern"));
 
     await waitFor(() =>
-      expect(saveSentencePattern).toHaveBeenCalledWith(
+      expect(saveSentence).toHaveBeenCalledWith(
         "The committee has been debating the proposal for several weeks.",
-        "", "", "", "",
+        "", "", "",
         // Attribution, so a sentence kept from a web page is traceable later.
         "browser",
       ),

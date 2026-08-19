@@ -173,7 +173,7 @@ const ALL_TOOL_DEFS: Record<string, ToolDef> = {
 
   save_sentences: {
     name: "save_sentences",
-    description: "Save generated or recommended English sentences directly to the user's sentence library in one call. Use when the user asks you to save, keep, or add sentences you just produced (for example model sentences, quiz feedback examples, or related usage examples). Each item needs the exact English sentence; include a Chinese meaning, reusable skeleton, usage note, and CEFR level when available. Duplicates are skipped automatically.",
+    description: "Save generated or recommended English sentences directly to the user's sentence library in one call. Use when the user asks you to save, keep, or add sentences you just produced (for example model sentences, quiz feedback examples, or related usage examples). Each item needs the exact English sentence; include a Chinese meaning, usage note, and CEFR level when available. Duplicates are skipped automatically.",
     input_schema: {
       type: "object",
       properties: {
@@ -184,7 +184,6 @@ const ALL_TOOL_DEFS: Record<string, ToolDef> = {
             properties: {
               sentence: { type: "string", description: "The exact English sentence to save" },
               zh:       { type: "string", description: "Chinese meaning / translation" },
-              skeleton: { type: "string", description: "Reusable sentence pattern skeleton, e.g. 'It is not until X that Y'" },
               note:     { type: "string", description: "Short usage note" },
               level:    { type: "string", enum: ["A1", "A2", "B1", "B2", "C1", "C2"], description: "Estimated CEFR level" },
             },
@@ -408,7 +407,7 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
       }
 
       case "save_sentences": {
-        const { sentences } = input as { sentences?: { sentence: string; zh?: string; skeleton?: string; note?: string; level?: string }[] };
+        const { sentences } = input as { sentences?: { sentence: string; zh?: string; note?: string; level?: string }[] };
         const items = sentences ?? [];
         if (items.length === 0) {
           return { tool_use_id: id, content: "No sentences provided to save.", is_error: true };
@@ -418,10 +417,9 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
         for (const item of items) {
           const sentence = item.sentence?.trim();
           if (!sentence) continue;
-          const result: { created: boolean } | null = await invoke("db_save_sentence_pattern", {
+          const result: { created: boolean } | null = await invoke("db_save_sentence", {
             sentence,
             zh: item.zh ?? "",
-            skeleton: item.skeleton ?? "",
             note: item.note ?? "",
             level: item.level ?? "",
             source: "chat",
@@ -429,7 +427,7 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
           if (result?.created) added += 1;
           else if (result) skipped += 1;
         }
-        if (added > 0) window.dispatchEvent(new CustomEvent("patterns-updated"));
+        if (added > 0) window.dispatchEvent(new CustomEvent("sentences-updated"));
         const suffix = skipped > 0 ? `, skipped ${skipped} already saved` : "";
         return { tool_use_id: id, content: `✓ Saved ${added} sentence${added === 1 ? "" : "s"} to the sentence library${suffix}.` };
       }

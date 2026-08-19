@@ -45,13 +45,13 @@ const ALLOWED: &[&str] = &[
     "db_save_word_chat",
     "db_save_word_notes",
     "db_set_word_starred",
-    // ── sentence patterns ─────────────────────────────────────────────────
-    "db_delete_pattern",
-    "db_delete_patterns_batch",
-    "db_list_patterns",
-    "db_save_sentence_pattern",
-    "db_set_pattern_starred",
-    "db_update_pattern_analysis",
+    // ── sentences ──────────────────────────────────────────────────────────
+    "db_delete_sentence",
+    "db_delete_sentences_batch",
+    "db_list_sentences",
+    "db_save_sentence",
+    "db_set_sentence_starred",
+    "db_update_sentence",
     // ── documents ─────────────────────────────────────────────────────────
     "db_change_document_password",
     "db_create_document",

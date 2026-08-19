@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { BookPlus, RefreshCw, Sparkles } from "lucide-react";
 import { useDB } from "@/hooks/useDB";
-import type { PatternItem } from "@/hooks/useDB.patterns";
+import type { SentenceItem } from "@/hooks/useDB.sentences";
 import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
 import { findBestProvider } from "@/providers/select";
@@ -33,9 +33,9 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
   const levels = useSettingsStore((s) => s.targetLevels.join("/"));
   const openVocabularySentence = useNavStore((s) => s.openVocabularySentence);
 
-  const [allPatterns, setAllPatterns] = useState<PatternItem[]>([]);
+  const [allSentences, setAllSentences] = useState<SentenceItem[]>([]);
   const [query, setQuery] = useState("");
-  const [matches, setMatches] = useState<PatternItem[]>([]);
+  const [matches, setMatches] = useState<SentenceItem[]>([]);
   const [searched, setSearched] = useState(false);
   const [adding, setAdding] = useState(false);
   /** The AI reading of the typed sentence, shown before it is saved. */
@@ -53,16 +53,16 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
   const containerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const loadPatterns = () => db.listPatterns().then(setAllPatterns);
-  useEffect(() => { loadPatterns(); }, []);
+  const loadSentences = () => db.listSentences().then(setAllSentences);
+  useEffect(() => { loadSentences(); }, []);
   useEffect(() => {
-    window.addEventListener("patterns-updated", loadPatterns);
-    return () => window.removeEventListener("patterns-updated", loadPatterns);
+    window.addEventListener("sentences-updated", loadSentences);
+    return () => window.removeEventListener("sentences-updated", loadSentences);
   }, []);
 
   const q = query.trim();
-  const candidateAlreadySaved = analysis ? allPatterns.some((p) =>
-    p.examples.some((e) => e.sentence.trim().toLowerCase() === analysis.sentence.trim().toLowerCase())) : false;
+  const candidateAlreadySaved = analysis ? allSentences.some((s) =>
+    s.sentence.trim().toLowerCase() === analysis.sentence.trim().toLowerCase()) : false;
 
   // Editing the query invalidates whatever was last searched — reset instead of
   // re-searching automatically. This box used to search on every keystroke,
@@ -84,12 +84,12 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
 
   useDismissOnOutside(inline && open, () => setOpen(false), [containerRef, panelRef]);
 
-  // Pressing Enter before `listPatterns()` resolves would otherwise search an
+  // Pressing Enter before `listSentences()` resolves would otherwise search an
   // empty snapshot and never retry; recompute if the library lands afterwards.
   useEffect(() => {
     if (!searched || !q) return;
-    setMatches(filterSentencePatterns(allPatterns, q).slice(0, 8));
-  }, [allPatterns]);
+    setMatches(filterSentencePatterns(allSentences, q).slice(0, 8));
+  }, [allSentences]);
 
   const runGeneration = async () => {
     analyzeAbortRef.current?.abort();
@@ -123,7 +123,7 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
   const runSearch = async () => {
     if (!q) return;
     setOpen(true);
-    const found = filterSentencePatterns(allPatterns, q).slice(0, 8);
+    const found = filterSentencePatterns(allSentences, q).slice(0, 8);
     setMatches(found);
     setSearched(true);
     setDismissed(false);
@@ -143,12 +143,12 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
       // Saving only commits the candidate that was shown. Never run a second
       // hidden generation that could save different text from what was chosen.
       const result = analysis;
-      const saved = await db.saveSentencePattern(result.sentence, result.zh, result.skeleton, result.note, result.level, "manual");
+      const saved = await db.saveSentence(result.sentence, result.zh, result.note, result.level, "manual");
       if (saved) {
-        toast.success(t("vocab.patterns.savedOne"));
+        toast.success(t("vocab.sentences.savedOne"));
         setQuery("");
-        loadPatterns();
-        window.dispatchEvent(new CustomEvent("patterns-updated"));
+        loadSentences();
+        window.dispatchEvent(new CustomEvent("sentences-updated"));
       }
     } finally {
       setAdding(false);
@@ -157,34 +157,31 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
 
   const resultsPanel = (
     <div className="space-y-1">
-      {matches.map((p) => {
-        const tokens = q.toLowerCase().split(/\s+/).filter(Boolean);
-        const sentence = p.examples.find((e) =>
-          tokens.every((token) => e.sentence.toLowerCase().includes(token))
-        )?.sentence ?? p.examples[0]?.sentence ?? p.pattern;
+      {matches.map((s) => {
+        const sentence = s.sentence;
         return (
           <div
-            key={p.id}
+            key={s.id}
             role="button"
             tabIndex={0}
             onClick={() => {
               setQuery("");
-              openVocabularySentence(p.id);
+              openVocabularySentence(s.id);
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
                 setQuery("");
-                openVocabularySentence(p.id);
+                openVocabularySentence(s.id);
               }
             }}
             className="flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted"
           >
             <span className="min-w-0 flex-1 whitespace-normal text-xs font-medium leading-relaxed text-foreground">{sentence}</span>
             {hostCapabilities.nativeTts && <SpeakButton text={sentence} className="mt-0.5 h-3.5 w-3.5" />}
-            <LevelBadge level={p.level} />
+            <LevelBadge level={s.level} />
             <span className="mt-0.5 shrink-0 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
-              {t("vocab.patterns.inLibrary")}
+              {t("vocab.sentences.inLibrary")}
             </span>
           </div>
         );
@@ -197,12 +194,12 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
           className="h-8 w-full justify-center gap-1.5 rounded-lg text-xs font-semibold text-primary hover:bg-primary/10"
         >
           <Sparkles className="h-3.5 w-3.5" />
-          {t("vocab.patterns.generateSentence")}
+          {t("vocab.sentences.generateSentence")}
         </Button>
       )}
 
       {!matches.length && (
-        <p className="px-2 py-1 text-xs text-muted-foreground">{t("vocab.patterns.noMatch")}</p>
+        <p className="px-2 py-1 text-xs text-muted-foreground">{t("vocab.sentences.noMatch")}</p>
       )}
 
       {/* The typed sentence, read by the AI. Words have shown this since the
@@ -237,7 +234,7 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
           )}
 
           {analyzeFailed && !analyzing && (
-            <p className="mt-2 text-[11px] text-muted-foreground">{t("vocab.patterns.analyzeFailed")}</p>
+            <p className="mt-2 text-[11px] text-muted-foreground">{t("vocab.sentences.analyzeFailed")}</p>
           )}
           {noProvider && <p className="mt-2 text-[11px] text-muted-foreground">{t("vocab.noApiKey")}</p>}
 
@@ -247,8 +244,8 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
               size="icon"
               onClick={() => void runGeneration()}
               disabled={analyzing || adding}
-              title={t("vocab.patterns.regenerate")}
-              aria-label={t("vocab.patterns.regenerate")}
+              title={t("vocab.sentences.regenerate")}
+              aria-label={t("vocab.sentences.regenerate")}
               className="mr-auto h-7 w-7 rounded-lg text-muted-foreground hover:text-primary"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${analyzing ? "animate-spin" : ""}`} />
@@ -272,7 +269,7 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
               className="h-7 items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-primary hover:bg-primary/10 disabled:opacity-50"
             >
               <BookPlus className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">{adding ? t("vocab.patterns.adding") : t("vocab.patterns.add")}</span>
+              <span className="truncate">{adding ? t("vocab.sentences.adding") : t("vocab.sentences.add")}</span>
             </Button>
           </div>
         </div>
@@ -301,7 +298,7 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
             if (searched && !analyzeFailed && !noProvider) { setOpen(true); return; }
             runSearch();
           }}
-          placeholder={t("vocab.patterns.quickSearchPlaceholder")}
+          placeholder={t("vocab.sentences.quickSearchPlaceholder")}
           className="w-full h-8 pl-8 pr-7 rounded-lg border border-input bg-background text-xs focus:outline-hidden focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground"
         />
         {q && (

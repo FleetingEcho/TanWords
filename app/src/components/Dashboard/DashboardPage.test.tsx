@@ -50,7 +50,7 @@ import { DashboardPage } from "./DashboardPage";
 
 const stats: DashboardStats = {
   word_count: 17,
-  pattern_count: 8,
+  sentence_count: 8,
   chat_count: 4,
   doc_count: 3,
   recent_words: [],

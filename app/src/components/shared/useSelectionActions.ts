@@ -70,10 +70,10 @@ export function useSelectionActions(text: string, source: string) {
     try {
       const provider = findBestProvider();
       // The analysis is a nicety, not a gate: with no provider (or a failed
-      // call) the sentence still gets saved, just without a skeleton/note.
+      // call) the sentence still gets saved, just without a translation/note.
       const info = provider ? await fetchSentencePattern(provider, sentence, targetLevel) : null;
-      const saved = await db.saveSentencePattern(
-        sentence, info?.zh ?? "", info?.skeleton ?? "", info?.note ?? "", info?.level ?? "", source
+      const saved = await db.saveSentence(
+        sentence, info?.zh ?? "", info?.note ?? "", info?.level ?? "", source
       );
       if (saved) {
         toast.success(saved.created ? t("sel.saved") : t("sel.alreadySaved"));

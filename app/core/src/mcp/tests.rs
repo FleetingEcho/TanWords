@@ -7,8 +7,8 @@ use super::config::{load_config, mcp_generate_token, save_config, McpConfig};
 use super::controller::McpController;
 use super::tools::TanWordsMcp;
 use super::types::{
-    AddArticle, AddArticleComment, AddPattern, AddVocabulary, AppendDocument, CreateDocument, GetDocument, SearchDocuments,
-    ListArticles, ListDocuments, ListKnownWords, ListPatterns, SearchPatterns, SearchVocabulary, UpdateVocabulary,
+    AddArticle, AddArticleComment, AddSentence, AddVocabulary, AppendDocument, CreateDocument, GetDocument, SearchDocuments,
+    ListArticles, ListDocuments, ListKnownWords, ListSentences, SearchSentences, SearchVocabulary, UpdateVocabulary,
 };
 
 /// Change notifications and the DB handle both go through callbacks, so tests
@@ -199,31 +199,28 @@ async fn vocabulary_can_be_corrected_and_removed() {
 }
 
 #[tokio::test]
-async fn patterns_deduplicate_and_collect_examples() {
+async fn sentences_deduplicate_on_save() {
     let (database, path) = test_database().await;
     let server = test_server(database);
 
-    let first = server.patterns_add(Parameters(AddPattern {
-        pattern: "be shortlisted for + noun".into(),
+    let first = server.sentences_add(Parameters(AddSentence {
+        sentence: "She was shortlisted for the role.".into(),
         zh: "入围……".into(),
         note: "求职、评奖场景".into(),
         level: Some("C1".into()),
-        example: Some("She was shortlisted for the role.".into()),
     })).await;
     assert!(first.contains("\"created\": true"));
 
-    let again = server.patterns_add(Parameters(AddPattern {
-        pattern: "be shortlisted for + noun".into(),
+    let again = server.sentences_add(Parameters(AddSentence {
+        sentence: "She was shortlisted for the role.".into(),
         zh: "入围……".into(),
         note: "".into(),
         level: None,
-        example: Some("Three teams were shortlisted for the grant.".into()),
     })).await;
     assert!(again.contains("\"created\": false"));
 
-    let found = server.patterns_search(Parameters(SearchPatterns { query: "shortlisted".into(), limit: 20 })).await;
+    let found = server.sentences_search(Parameters(SearchSentences { query: "shortlisted".into(), limit: 20 })).await;
     assert!(found.contains("She was shortlisted"));
-    assert!(found.contains("Three teams were shortlisted"));
 
     let _ = std::fs::remove_file(path);
 }
@@ -301,14 +298,14 @@ async fn list_tools_and_known_words_are_available() {
         .await;
     assert!(docs.contains("\"items\""));
 
-    let patterns = server
-        .patterns_list(Parameters(ListPatterns {
+    let sentences = server
+        .sentences_list(Parameters(ListSentences {
             query: None,
             limit: 10,
             offset: 0,
         }))
         .await;
-    assert!(patterns.contains("\"items\""));
+    assert!(sentences.contains("\"items\""));
 
     let _ = std::fs::remove_file(path);
 }

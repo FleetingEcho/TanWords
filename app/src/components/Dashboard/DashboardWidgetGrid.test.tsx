@@ -16,7 +16,7 @@ vi.hoisted(() => {
 // is the parent's stats query, not the per-card fetches.
 vi.mock("@/hooks/useDB", () => ({
   useDB: () => ({
-    listPatterns: async () => [],
+    listSentences: async () => [],
     getRssFeeds: async () => [],
     getRssEntries: async () => [],
     getRssUnreadCounts: async () => [],

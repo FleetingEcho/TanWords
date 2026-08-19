@@ -1,14 +1,14 @@
-import type { PatternItem } from "@/hooks/useDB.patterns";
+import type { SentenceItem } from "@/hooks/useDB.sentences";
 
-export function filterSentencePatterns(items: PatternItem[], query: string): PatternItem[] {
+export function filterSentencePatterns(items: SentenceItem[], query: string): SentenceItem[] {
   const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (!tokens.length) return [];
-  return items.filter((pattern) => {
+  return items.filter((s) => {
     const searchable = [
-      pattern.pattern,
-      pattern.zh,
-      pattern.note,
-      ...pattern.examples.map((example) => example.sentence),
+      s.sentence,
+      s.zh,
+      s.note,
+      s.source,
     ].join(" ").toLowerCase();
     return tokens.every((token) => searchable.includes(token));
   });

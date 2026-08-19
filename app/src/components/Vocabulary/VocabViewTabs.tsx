@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { useT } from "@/hooks/useT";
 
-export type VocabView = "words" | "patterns";
+export type VocabView = "words" | "sentences";
 
 /** Words / Sentences, rendered as the list's own heading rather than as a bar
  *  above it.
@@ -22,7 +22,7 @@ export function VocabViewTabs({
 
   return (
     <div className="flex min-w-0 items-center gap-3">
-      {(["words", "patterns"] as const).map((value) => (
+      {(["words", "sentences"] as const).map((value) => (
         <Button
           key={value}
           type="button"
@@ -38,7 +38,7 @@ export function VocabViewTabs({
               : "text-muted-foreground after:bg-transparent hover:text-foreground"
           }`}
         >
-          {t(value === "words" ? "vocab.tabWords" : "vocab.tabPatterns")}
+          {t(value === "words" ? "vocab.tabWords" : "vocab.tabSentences")}
         </Button>
       ))}
     </div>

@@ -59,18 +59,18 @@ pub async fn db_import_analyze(
         groups.push(ImportGroup { kind: "words".into(), new_count, conflicts });
     }
 
-    // ── Patterns
-    if has_table(&source, "patterns").await {
+    // ── Sentences
+    if has_table(&source, "sentences").await {
         let incoming: Vec<(String, String, String)> = db::fetch_all(
             &source,
-            "SELECT pattern, COALESCE(zh,''), COALESCE(note,'') FROM patterns ORDER BY id",
+            "SELECT sentence, COALESCE(zh,''), COALESCE(note,'') FROM sentences ORDER BY id",
             (),
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )
         .await?;
         let existing: HashMap<String, String> = db::fetch_all(
             &target,
-            "SELECT pattern, COALESCE(zh,'') FROM patterns",
+            "SELECT sentence, COALESCE(zh,'') FROM sentences",
             (),
             |r| Ok((r.get::<String>(0)?, r.get::<String>(1)?)),
         )
@@ -80,18 +80,18 @@ pub async fn db_import_analyze(
 
         let mut new_count = 0;
         let mut conflicts = Vec::new();
-        for (pattern, zh, _note) in &incoming {
-            match existing.get(pattern) {
+        for (sentence, zh, _note) in &incoming {
+            match existing.get(sentence) {
                 Some(existing_zh) => conflicts.push(ImportConflict {
-                    key: pattern.clone(),
-                    title: truncate(pattern, 60),
+                    key: sentence.clone(),
+                    title: truncate(sentence, 60),
                     incoming: truncate(zh, 60),
                     existing: truncate(existing_zh, 60),
                 }),
                 None => new_count += 1,
             }
         }
-        groups.push(ImportGroup { kind: "patterns".into(), new_count, conflicts });
+        groups.push(ImportGroup { kind: "sentences".into(), new_count, conflicts });
     }
 
     // ── Reading articles

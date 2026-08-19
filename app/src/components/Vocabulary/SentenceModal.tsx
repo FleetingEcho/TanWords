@@ -51,13 +51,13 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
       let result: GeneratedSentence = { sentence, zh: "", level: "", skeleton: "", note: "" };
       if (provider) {
         try { result = await analyzeSentence(provider, sentence, levels); }
-        catch { toast.error(t("vocab.patterns.analyzeFailed")); }
+        catch { toast.error(t("vocab.sentences.analyzeFailed")); }
       } else {
         toast.info(t("vocab.noApiKey"));
       }
-      const saved = await db.saveSentencePattern(result.sentence, result.zh, result.skeleton, result.note, result.level, "manual");
+      const saved = await db.saveSentence(result.sentence, result.zh, result.note, result.level, "manual");
       if (saved) {
-        toast.success(t("vocab.patterns.savedOne"));
+        toast.success(t("vocab.sentences.savedOne"));
         setQuickText("");
         onAdded();
       }
@@ -73,7 +73,7 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
   const [candidates, setCandidates] = useState<GeneratedSentence[]>([]);
   const [genBusy, setGenBusy] = useState(false);
   const [addBusy, setAddBusy] = useState(false);
-  // sentence → pattern_id, for candidates saved during this session
+  // sentence → id, for candidates saved during this session
   const [savedMap, setSavedMap] = useState<Map<string, number>>(new Map());
   // Sentences ticked for saving. Nothing is written to the library until the
   // user confirms — generating is a preview, not a commit.
@@ -105,12 +105,12 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
       };
       const generated = (await generateSentences(provider, query, levels, [...existing], undefined, applyBatch))
         .filter((c) => !existing.has(c.sentence));
-      if (!generated.length) throw new Error(t("vocab.patterns.genEmpty"));
+      if (!generated.length) throw new Error(t("vocab.sentences.genEmpty"));
       setCandidates([...base, ...generated]);
       tick(generated);
     } catch (error: any) {
       setCandidates(base);
-      toast.error(error?.message || t("vocab.patterns.genFailed"));
+      toast.error(error?.message || t("vocab.sentences.genFailed"));
     } finally { setGenBusy(false); }
   };
 
@@ -138,11 +138,11 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
       const entries = new Map(savedMap);
       let count = 0;
       for (const candidate of toAdd) {
-        const saved = await db.saveSentencePattern(candidate.sentence, candidate.zh, candidate.skeleton, candidate.note, candidate.level, "generated");
-        if (saved) { entries.set(candidate.sentence, saved.pattern_id); count += 1; }
+        const saved = await db.saveSentence(candidate.sentence, candidate.zh, candidate.note, candidate.level, "generated");
+        if (saved) { entries.set(candidate.sentence, saved.id); count += 1; }
       }
       setSavedMap(entries);
-      if (count) { toast.success(t("vocab.patterns.savedMany", { count })); onAdded(); }
+      if (count) { toast.success(t("vocab.sentences.savedMany", { count })); onAdded(); }
     } finally { setAddBusy(false); }
   };
 
@@ -158,15 +158,15 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
 
   /** Undo for a candidate already written to the library this session. */
   const removeCandidate = async (candidate: GeneratedSentence) => {
-    const patternId = savedMap.get(candidate.sentence);
-    if (patternId !== undefined) {
-      const deleted = await db.deletePattern(patternId);
+    const sentenceId = savedMap.get(candidate.sentence);
+    if (sentenceId !== undefined) {
+      const deleted = await db.deleteSentence(sentenceId);
       if (!deleted) return;
     }
     setCandidates((current) => current.filter((c) => c.sentence !== candidate.sentence));
     setSavedMap((current) => { const next = new Map(current); next.delete(candidate.sentence); return next; });
     setSelected((current) => { const next = new Set(current); next.delete(candidate.sentence); return next; });
-    toast.success(t("vocab.patterns.deleted"));
+    toast.success(t("vocab.sentences.deleted"));
     onAdded();
   };
 
@@ -185,7 +185,7 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
       <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-border">
         <div className="flex items-center gap-2">
           <SparkIcon className="w-3.5 h-3.5 text-primary" />
-          <DialogTitle className="text-sm font-semibold">{t("vocab.patterns.modalTitle")}</DialogTitle>
+          <DialogTitle className="text-sm font-semibold">{t("vocab.sentences.modalTitle")}</DialogTitle>
         </div>
         <Button
           variant="ghost"
@@ -204,7 +204,7 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
             mode === "generate" ? "bg-primary text-white hover:bg-primary" : "bg-muted text-muted-foreground hover:bg-muted/80"
           }`}
         >
-          {t("vocab.patterns.tabGenerate")}
+          {t("vocab.sentences.tabGenerate")}
         </Button>
         <Button
           variant="ghost"
@@ -213,20 +213,20 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
             mode === "add" ? "bg-primary text-white hover:bg-primary" : "bg-muted text-muted-foreground hover:bg-muted/80"
           }`}
         >
-          {t("vocab.patterns.tabAdd")}
+          {t("vocab.sentences.tabAdd")}
         </Button>
       </div>
 
       <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
         {mode === "add" ? (
           <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">{t("vocab.patterns.addHint")}</p>
+            <p className="text-xs text-muted-foreground">{t("vocab.sentences.addHint")}</p>
             <div className="flex gap-2">
               <input
                 value={quickText}
                 onChange={(e) => setQuickText(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && void quickAdd()}
-                placeholder={t("vocab.patterns.addPlaceholder")}
+                placeholder={t("vocab.sentences.addPlaceholder")}
                 className="flex-1 h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-hidden focus:ring-2 focus:ring-primary/40 placeholder:text-muted-foreground"
               />
               <Button
@@ -234,7 +234,7 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
                 disabled={quickBusy || !quickText.trim()}
                 className="h-9 px-5 rounded-lg text-sm font-semibold bg-primary text-white hover:bg-primary/90 disabled:opacity-50 transition-colors shrink-0"
               >
-                {quickBusy ? t("vocab.patterns.adding") : t("vocab.patterns.add")}
+                {quickBusy ? t("vocab.sentences.adding") : t("vocab.sentences.add")}
               </Button>
             </div>
           </div>
@@ -245,11 +245,11 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
                 value={genQuery}
                 onChange={(e) => setGenQuery(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && void generate(false)}
-                placeholder={t("vocab.patterns.genPlaceholder")}
+                placeholder={t("vocab.sentences.genPlaceholder")}
                 className="h-9 min-w-0 flex-1 rounded-lg border border-input bg-background px-3 text-sm outline-hidden focus:border-primary/50 focus:ring-2 focus:ring-primary/15"
               />
               <Button className="h-9" disabled={genBusy || !genQuery.trim()} onClick={() => void generate(false)}>
-                {genBusy ? t("vocab.patterns.generating") : t("vocab.patterns.generate")}
+                {genBusy ? t("vocab.sentences.generating") : t("vocab.sentences.generate")}
               </Button>
             </div>
 
@@ -257,7 +257,7 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
               <div>
                 <div className="flex items-center gap-2 text-xs text-primary">
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
-                  {t("vocab.patterns.genProgress", { count: candidates.length })}
+                  {t("vocab.sentences.genProgress", { count: candidates.length })}
                 </div>
                 <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted">
                   <div className="h-full w-1/3 animate-pulse rounded-full bg-linear-to-r from-primary/40 to-primary" />
@@ -268,18 +268,18 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
             {!!candidates.length && (
               <>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-muted-foreground">{t("vocab.patterns.candidates", { count: candidates.length, topic: genTopic })}</span>
+                  <span className="text-xs text-muted-foreground">{t("vocab.sentences.candidates", { count: candidates.length, topic: genTopic })}</span>
                   <div className="flex items-center gap-2">
                     {selectable.length > 0 && (
                       <button disabled={genBusy} onClick={toggleAll} className="text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40">
-                        {allSelected ? t("vocab.patterns.unselectAll") : t("vocab.patterns.selectAll")}
+                        {allSelected ? t("vocab.sentences.unselectAll") : t("vocab.sentences.selectAll")}
                       </button>
                     )}
                     <button disabled={genBusy} onClick={() => void generate(true)} className="text-xs font-medium text-primary disabled:opacity-40">
-                      {genBusy ? t("vocab.patterns.generating") : t("vocab.patterns.genMore")}
+                      {genBusy ? t("vocab.sentences.generating") : t("vocab.sentences.genMore")}
                     </button>
                     <button disabled={genBusy} onClick={() => { setCandidates([]); setSavedMap(new Map()); setSelected(new Set()); }} className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-40">
-                      {t("vocab.patterns.genClear")}
+                      {t("vocab.sentences.genClear")}
                     </button>
                   </div>
                 </div>
@@ -328,7 +328,7 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
                           {saved && (
                             <button
                               onClick={() => void removeCandidate(candidate)}
-                              title={t("vocab.patterns.delete")}
+                              title={t("vocab.sentences.delete")}
                               className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border bg-background text-xs text-muted-foreground transition hover:border-destructive hover:bg-destructive/10 hover:text-destructive"
                             >×</button>
                           )}
@@ -348,14 +348,14 @@ export function SentenceModal({ open, onClose, initialMode, initialQuery, existi
       {mode === "generate" && candidates.length > 0 && (
         <div className="flex items-center justify-between gap-3 border-t border-border px-6 py-3">
           <span className="text-xs text-muted-foreground">
-            {t("vocab.patterns.selectedCount", { count: selectedCount })}
+            {t("vocab.sentences.selectedCount", { count: selectedCount })}
           </span>
           <Button
             onClick={addSelected}
             disabled={genBusy || addBusy || selectedCount === 0}
             className="h-9 px-5 rounded-lg text-sm font-semibold bg-primary text-white hover:bg-primary/90 disabled:opacity-50 transition-colors"
           >
-            {addBusy ? t("vocab.patterns.adding") : t("vocab.patterns.addSelected", { count: selectedCount })}
+            {addBusy ? t("vocab.sentences.adding") : t("vocab.sentences.addSelected", { count: selectedCount })}
           </Button>
         </div>
       )}

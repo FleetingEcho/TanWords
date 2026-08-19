@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use crate::shim::{AppHandle, State};
 
 use super::apply_documents_known::{apply_documents, apply_known_words};
-use super::apply_patterns_articles::{apply_articles, apply_patterns};
+use super::apply_patterns_articles::{apply_articles, apply_sentences};
 use super::source::{has_table, open_source, read_words, SourceWord};
 use super::types::{ImportDecisions, ImportOutcome, ImportProgress, ImportResult};
 use crate::db;
@@ -71,8 +71,8 @@ pub async fn db_import_apply(
         // Only steps that will actually run count toward the total, so the UI's
         // "2/3" means something instead of always showing "2/5".
         let mut steps = vec!["words"];
-        if has_table(&source, "patterns").await {
-            steps.push("patterns");
+        if has_table(&source, "sentences").await {
+            steps.push("sentences");
         }
         if has_table(&source, "reading_articles").await {
             steps.push("articles");
@@ -94,14 +94,14 @@ pub async fn db_import_apply(
             apply_words(&app, step_index, step_total, &source, &tx, &chosen("words"), decisions.include_new)
                 .await?,
         );
-        if steps.contains(&"patterns") {
+        if steps.contains(&"sentences") {
             step_index += 1;
             let _ = app.emit(
                 "import-progress",
-                ImportProgress { step: "patterns".into(), step_index, step_total, done: 0, total: 0 },
+                ImportProgress { step: "sentences".into(), step_index, step_total, done: 0, total: 0 },
             );
             result.outcomes
-                .push(apply_patterns(&source, &tx, &chosen("patterns"), decisions.include_new).await?);
+                .push(apply_sentences(&source, &tx, &chosen("sentences"), decisions.include_new).await?);
         }
         if steps.contains(&"articles") {
             step_index += 1;

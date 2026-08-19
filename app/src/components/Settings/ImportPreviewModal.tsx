@@ -11,7 +11,7 @@ import {
 
 const KIND_LABEL: Record<ImportKind, string> = {
   words: "settings.importDBKindWords",
-  patterns: "settings.importDBKindPatterns",
+  sentences: "settings.importDBKindSentences",
   articles: "settings.importDBKindArticles",
   documents: "settings.importDBKindDocuments",
   knownWords: "settings.importDBKindKnownWords",

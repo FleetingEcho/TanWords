@@ -23,12 +23,12 @@ pub struct RecentDoc {
 ///
 /// `words_this_week`, `article_count` and `known_count` used to be here too.
 /// Two of them were never rendered at all, and the tiles now count the four
-/// things the app actually collects — words, sentence patterns, AI chats,
-/// documents — so those three queries ran on every dashboard load for nothing.
+/// things the app actually collects — words, sentences, AI chats, documents —
+/// so those three queries ran on every dashboard load for nothing.
 #[derive(serde::Serialize)]
 pub struct DashboardStats {
     pub word_count: i64,
-    pub pattern_count: i64,
+    pub sentence_count: i64,
     pub chat_count: i64,
     pub doc_count: i64,
     pub recent_words: Vec<RecentWord>,
@@ -40,7 +40,7 @@ pub async fn db_dashboard_stats(conn: State<'_, AppState>) -> Result<DashboardSt
     let db = db::conn(&conn)?;
 
     let word_count = db::scalar_i64(&db, "SELECT COUNT(*) FROM words", ()).await?;
-    let pattern_count = db::scalar_i64(&db, "SELECT COUNT(*) FROM patterns", ()).await?;
+    let sentence_count = db::scalar_i64(&db, "SELECT COUNT(*) FROM sentences", ()).await?;
     let chat_count = db::scalar_i64(&db, "SELECT COUNT(*) FROM ai_chat_sessions", ()).await?;
     let doc_count = db::scalar_i64(&db, "SELECT COUNT(*) FROM documents", ()).await?;
 
@@ -92,7 +92,7 @@ pub async fn db_dashboard_stats(conn: State<'_, AppState>) -> Result<DashboardSt
 
     Ok(DashboardStats {
         word_count,
-        pattern_count,
+        sentence_count,
         chat_count,
         doc_count,
         recent_words,

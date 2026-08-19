@@ -17,7 +17,7 @@ export function useMcpSync() {
     return subscribeAll({
       "mcp:vocab-changed": () => window.dispatchEvent(new CustomEvent("vocab-updated")),
       "mcp:docs-changed": () => window.dispatchEvent(new CustomEvent("docs-updated")),
-      "mcp:patterns-changed": () => window.dispatchEvent(new CustomEvent("patterns-updated")),
+      "mcp:sentences-changed": () => window.dispatchEvent(new CustomEvent("sentences-updated")),
       "mcp:articles-changed": () => window.dispatchEvent(new CustomEvent("articles-updated")),
     });
   }, []);

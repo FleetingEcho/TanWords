@@ -20,7 +20,7 @@ mod articles;
 mod documents;
 mod feeds;
 mod hackernews;
-mod patterns;
+mod sentences;
 mod vocabulary;
 
 /// Called after every write so the running app can reload the affected list.
@@ -53,7 +53,7 @@ impl TanWordsMcp {
             notifier,
             tool_router: Self::vocabulary_tool_router()
                 + Self::documents_tool_router()
-                + Self::patterns_tool_router()
+                + Self::sentences_tool_router()
                 + Self::articles_tool_router()
                 + Self::feeds_tool_router()
                 + Self::hackernews_tool_router(),
@@ -113,9 +113,9 @@ impl TanWordsMcp {
                 "One Markdown document from Documents",
             ),
             template(
-                "tanwords://patterns/{id}",
-                "Sentence pattern",
-                "One saved sentence pattern plus examples",
+                "tanwords://sentences/{id}",
+                "Sentence",
+                "One saved sentence with translation and note",
             ),
             template(
                 "tanwords://articles/{id}",
@@ -145,7 +145,7 @@ impl TanWordsMcp {
             ),
             Prompt::new(
                 "daily-review",
-                Some("Build a short review from known words and saved patterns"),
+                Some("Build a short review from known words and saved sentences"),
                 None,
             ),
             Prompt::new(
@@ -180,10 +180,10 @@ impl TanWordsMcp {
                 arg("document_id")
             ))),
             "daily-review" => Ok(user(
-                "Use vocabulary_known_words and patterns_list to build a short, practical review: 5 words and 2-3 sentence patterns the user should revisit.".into(),
+                "Use vocabulary_known_words and sentences_list to build a short, practical review: 5 words and 2-3 sentences the user should revisit.".into(),
             )),
             "generate-speaking-material" => Ok(user(format!(
-                "Generate speaking practice material for this scenario. Return Markdown with 常用词汇, 高频句 and 地道表达; every speakable English sentence must be its own blockquote line so the app can attach TTS and save buttons. Save useful phrases with patterns_add when appropriate.\n\nScenario: {}",
+                "Generate speaking practice material for this scenario. Return Markdown with 常用词汇, 高频句 and 地道表达; every speakable English sentence must be its own blockquote line so the app can attach TTS and save buttons. Save useful phrases with sentences_add when appropriate.\n\nScenario: {}",
                 arg("scenario")
             ))),
             _ => Err(rmcp::ErrorData::invalid_params(format!("Unknown prompt: {name}"), None)),
@@ -201,7 +201,7 @@ impl TanWordsMcp {
                 "words": self.scalar_count("SELECT COUNT(*) FROM words").await.unwrap_or_default(),
                 "knownWords": self.scalar_count("SELECT COUNT(*) FROM user_known_words").await.unwrap_or_default(),
                 "documents": self.scalar_count("SELECT COUNT(*) FROM documents WHERE protected=0").await.unwrap_or_default(),
-                "patterns": self.scalar_count("SELECT COUNT(*) FROM patterns").await.unwrap_or_default(),
+                "sentences": self.scalar_count("SELECT COUNT(*) FROM sentences").await.unwrap_or_default(),
                 "articles": self.scalar_count("SELECT COUNT(*) FROM reading_articles").await.unwrap_or_default(),
                 "rssFeeds": self.scalar_count("SELECT COUNT(*) FROM rss_feeds").await.unwrap_or_default(),
                 "rssEntries": self.scalar_count("SELECT COUNT(*) FROM rss_entries").await.unwrap_or_default(),
@@ -260,27 +260,18 @@ impl TanWordsMcp {
             });
         }
 
-        if let Some(id_str) = uri.strip_prefix("tanwords://patterns/") {
-            let id: i64 = id_str.parse().map_err(|_| rmcp::ErrorData::invalid_params("Invalid pattern ID", None))?;
-            let mut pattern: Value = crate::db::fetch_one(
+        if let Some(id_str) = uri.strip_prefix("tanwords://sentences/") {
+            let id: i64 = id_str.parse().map_err(|_| rmcp::ErrorData::invalid_params("Invalid sentence ID", None))?;
+            let sentence: Value = crate::db::fetch_one(
                 &conn,
-                "SELECT id,pattern,zh,note,level,created_at FROM patterns WHERE id=?1",
+                "SELECT id,sentence,zh,note,level,source,created_at FROM sentences WHERE id=?1",
                 [id],
-                |row| Ok(json!({"id":row.get::<i64>(0)?,"pattern":row.get::<String>(1)?,"zh":row.get::<String>(2)?,"note":row.get::<String>(3)?,"level":row.get::<Option<String>>(4)?,"createdAt":row.get::<String>(5)?})),
+                |row| Ok(json!({"id":row.get::<i64>(0)?,"sentence":row.get::<String>(1)?,"zh":row.get::<String>(2)?,"note":row.get::<String>(3)?,"level":row.get::<Option<String>>(4)?,"source":row.get::<String>(5)?,"createdAt":row.get::<String>(6)?})),
             )
             .await
-            .map_err(|_| rmcp::ErrorData::invalid_params("Pattern not found", None))?;
-            let examples: Vec<Value> = crate::db::fetch_all(
-                &conn,
-                "SELECT sentence,source FROM pattern_examples WHERE pattern_id=?1 ORDER BY id",
-                [id],
-                |row| Ok(json!({"sentence":row.get::<String>(0)?,"source":row.get::<String>(1)?})),
-            )
-            .await
-            .unwrap_or_default();
-            pattern["examples"] = json!(examples);
+            .map_err(|_| rmcp::ErrorData::invalid_params("Sentence not found", None))?;
             return Ok(ReadResourceResult {
-                contents: vec![ResourceContents::text(json_text(pattern), uri)],
+                contents: vec![ResourceContents::text(json_text(sentence), uri)],
             });
         }
 
@@ -307,7 +298,7 @@ impl TanWordsMcp {
 impl ServerHandler for TanWordsMcp {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
-            instructions: Some("Use TanWords as the user's local English-learning knowledge base. Documents, vocabulary, patterns and articles are identified by numeric IDs; duplicate document titles are valid.".into()),
+            instructions: Some("Use TanWords as the user's local English-learning knowledge base. Documents, vocabulary, sentences and articles are identified by numeric IDs; duplicate document titles are valid.".into()),
             capabilities: ServerCapabilities::builder()
                 .enable_tools()
                 .enable_resources()

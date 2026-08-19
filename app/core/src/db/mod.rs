@@ -89,11 +89,10 @@ mod reading;
 pub mod articles;
 pub mod dashboard;
 pub mod device_paths;
-pub mod migrations;
 pub mod srs;
 pub mod search_history;
 pub mod scene_lab;
-pub mod patterns;
+pub mod sentences;
 pub mod ai_providers;
 pub mod calendar;
 
@@ -112,7 +111,7 @@ pub use device_paths::*;
 pub use srs::*;
 pub use search_history::*;
 pub use scene_lab::*;
-pub use patterns::*;
+pub use sentences::*;
 pub use calendar::*;
 
 #[cfg(test)]
@@ -169,7 +168,6 @@ fn schema_fingerprint(kind: connection::DbKind) -> String {
         connection::DbKind::Turso => {}
     }
     hasher.update(include_str!("mod.rs"));
-    hasher.update(migrations::latest_version().to_le_bytes());
     format!("{:x}", hasher.finalize())
 }
 
@@ -204,8 +202,9 @@ pub async fn init_db(conn: &Conn) -> Result<(), DbErr> {
     }
 }
 
-/// SQLite schema initialization — the existing hand-rolled runner, unchanged in
-/// shape, just routed through the new `Conn`. Idempotent and fingerprint-gated.
+/// SQLite schema initialization — one clean current-schema DDL from schema.sql.
+/// Idempotent and fingerprint-gated. No incremental migration history: old
+/// databases are not supported (breaking change).
 async fn init_db_sqlite(conn: &Conn) -> Result<(), DbErr> {
     let fingerprint = schema_fingerprint(connection::DbKind::Local);
     if stored_fingerprint(conn).await.as_deref() == Some(fingerprint.as_str()) {
@@ -214,187 +213,7 @@ async fn init_db_sqlite(conn: &Conn) -> Result<(), DbErr> {
 
     conn.execute_batch(include_str!("../../sql/schema.sql")).await?;
 
-    // Migrations (idempotent)
-    let _ = conn
-        .execute("ALTER TABLE words ADD COLUMN enrichment_json TEXT", ())
-        .await;
-    let _ = conn
-        .execute("ALTER TABLE words ADD COLUMN user_notes TEXT DEFAULT ''", ())
-        .await;
-    let _ = conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS word_chats (
-            word_id INTEGER PRIMARY KEY,
-            messages TEXT NOT NULL DEFAULT '[]',
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY(word_id) REFERENCES words(id)
-        );"
-    ).await;
-
-    // Documents feature
-    let _ = conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS documents (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            title        TEXT    NOT NULL DEFAULT 'Untitled',
-            content      TEXT    NOT NULL DEFAULT '{}',
-            content_text TEXT    NOT NULL DEFAULT '',
-            tags         TEXT    NOT NULL DEFAULT '[]',
-            pinned       INTEGER NOT NULL DEFAULT 0,
-            word_count   INTEGER NOT NULL DEFAULT 0,
-            created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
-            updated_at   TEXT    NOT NULL DEFAULT (datetime('now'))
-        );
-        CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
-            title,
-            content_text,
-            content='documents',
-            content_rowid='id'
-        );
-        CREATE TRIGGER IF NOT EXISTS docs_ai AFTER INSERT ON documents BEGIN
-            INSERT INTO documents_fts(rowid, title, content_text)
-            VALUES (new.id, new.title, new.content_text);
-        END;
-        CREATE TRIGGER IF NOT EXISTS docs_ad AFTER DELETE ON documents BEGIN
-            INSERT INTO documents_fts(documents_fts, rowid, title, content_text)
-            VALUES ('delete', old.id, old.title, old.content_text);
-        END;
-        CREATE TRIGGER IF NOT EXISTS docs_au AFTER UPDATE ON documents BEGIN
-            INSERT INTO documents_fts(documents_fts, rowid, title, content_text)
-            VALUES ('delete', old.id, old.title, old.content_text);
-            INSERT INTO documents_fts(rowid, title, content_text)
-            VALUES (new.id, new.title, new.content_text);
-        END;
-        CREATE TABLE IF NOT EXISTS document_assets (
-            id          TEXT PRIMARY KEY,
-            document_id INTEGER NOT NULL,
-            file_name   TEXT NOT NULL DEFAULT 'image',
-            mime_type   TEXT NOT NULL,
-            data        BLOB NOT NULL,
-            size        INTEGER NOT NULL,
-            created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-            FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE
-        );
-        CREATE INDEX IF NOT EXISTS idx_document_assets_document
-            ON document_assets(document_id);"
-    ).await;
-
-    // Files uploaded from the asset manager rather than from inside a document.
-    let _ = conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS standalone_assets (
-            id          TEXT PRIMARY KEY,
-            file_name   TEXT NOT NULL DEFAULT 'file',
-            mime_type   TEXT NOT NULL,
-            data        BLOB NOT NULL,
-            size        INTEGER NOT NULL,
-            created_at  TEXT NOT NULL DEFAULT (datetime('now'))
-        );
-        -- One id space for reads: fetching, exporting and zipping an asset can
-        -- stay a single query against all_document_assets instead of probing
-        -- two tables. document_id = 0 matches no document, so require_key()
-        -- correctly reports an unprotected, keyless asset for uploads.
-        -- Objects that live in R2 instead of this table: `data` is empty and
-        -- `remote_key` points at the bucket. See src/r2/mod.rs.
-        CREATE VIEW IF NOT EXISTS all_document_assets AS
-            SELECT id, document_id, file_name, mime_type, data, size, created_at, 0 AS standalone
-              FROM document_assets
-            UNION ALL
-            SELECT id, 0 AS document_id, file_name, mime_type, data, size, created_at, 1 AS standalone
-              FROM standalone_assets;"
-    ).await;
-    let _ = conn
-        .execute("ALTER TABLE standalone_assets ADD COLUMN remote_key TEXT", ())
-        .await;
-
-    let _ = conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS r2_config (
-            id         INTEGER PRIMARY KEY CHECK (id = 1),
-            config_enc TEXT NOT NULL
-        );"
-    ).await;
-    let _ = conn.execute("ALTER TABLE r2_config ADD COLUMN config_enc TEXT", ()).await;
-    let _ = conn.execute(
-        "ALTER TABLE documents ADD COLUMN protected INTEGER NOT NULL DEFAULT 0",
-        (),
-    ).await;
-    let _ = conn.execute("ALTER TABLE documents ADD COLUMN protection_salt BLOB", ()).await;
-    let _ = conn.execute("ALTER TABLE documents ADD COLUMN wrapped_key BLOB", ()).await;
-
-    // AI Chat sessions
-    let _ = conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS ai_chat_sessions (
-            id            TEXT PRIMARY KEY,
-            title         TEXT    NOT NULL DEFAULT 'New Chat',
-            messages      TEXT    NOT NULL DEFAULT '[]',
-            system_prompt TEXT    NOT NULL DEFAULT '',
-            preset_id     TEXT    NOT NULL DEFAULT 'english-tutor',
-            provider_id   TEXT    NOT NULL DEFAULT '',
-            message_count INTEGER NOT NULL DEFAULT 0,
-            created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP
-        );
-        CREATE INDEX IF NOT EXISTS idx_ai_chat_sessions_updated ON ai_chat_sessions(updated_at DESC);"
-    ).await;
-    let _ = conn.execute("ALTER TABLE ai_chat_sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0", ()).await;
-    let _ = conn.execute("ALTER TABLE ai_chat_sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0", ()).await;
-
-    // Reading lessons: articles + extracted items + known words
-    let _ = conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS articles (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            title      TEXT NOT NULL DEFAULT '',
-            source_url TEXT NOT NULL DEFAULT '',
-            origin     TEXT NOT NULL DEFAULT 'pasted',
-            content    TEXT NOT NULL DEFAULT '',
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        );
-        CREATE TABLE IF NOT EXISTS extracted_items (
-            id               INTEGER PRIMARY KEY AUTOINCREMENT,
-            article_id       INTEGER NOT NULL,
-            kind             TEXT NOT NULL DEFAULT 'word',
-            text             TEXT NOT NULL,
-            zh               TEXT NOT NULL DEFAULT '',
-            note             TEXT NOT NULL DEFAULT '',
-            level            TEXT NOT NULL DEFAULT '',
-            context_sentence TEXT NOT NULL DEFAULT '',
-            status           TEXT NOT NULL DEFAULT 'candidate',
-            created_at       DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY(article_id) REFERENCES articles(id)
-        );
-        CREATE INDEX IF NOT EXISTS idx_extracted_article ON extracted_items(article_id);
-        CREATE TABLE IF NOT EXISTS user_known_words (
-            word       TEXT PRIMARY KEY,
-            source     TEXT NOT NULL DEFAULT 'marked',
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        );"
-    ).await;
-
-    // Calendar
-    let _ = conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS calendar_calendars (
-            id         TEXT PRIMARY KEY,
-            name       TEXT NOT NULL,
-            color_name TEXT NOT NULL DEFAULT 'blue',
-            visible    INTEGER NOT NULL DEFAULT 1,
-            sort_order INTEGER NOT NULL DEFAULT 0
-        );
-        CREATE TABLE IF NOT EXISTS calendar_events (
-            id           TEXT PRIMARY KEY,
-            calendar_id  TEXT NOT NULL DEFAULT 'default',
-            title        TEXT NOT NULL DEFAULT '',
-            start        TEXT NOT NULL,
-            end          TEXT NOT NULL,
-            all_day      INTEGER NOT NULL DEFAULT 0,
-            description  TEXT NOT NULL DEFAULT '',
-            location     TEXT NOT NULL DEFAULT '',
-            created_at   TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_at   TEXT NOT NULL DEFAULT (datetime('now')),
-            FOREIGN KEY(calendar_id) REFERENCES calendar_calendars(id) ON DELETE SET NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_calendar_events_calendar
-            ON calendar_events(calendar_id);"
-    ).await;
-    let _ = conn.execute("ALTER TABLE calendar_events ADD COLUMN color_name TEXT", ()).await;
-
-    // Seed two default calendars on a fresh install.
+    // Seed default calendars.
     let default_calendars = vec![
         ("default", "Personal", "blue", 0),
         ("work", "Work", "green", 1),
@@ -408,7 +227,7 @@ async fn init_db_sqlite(conn: &Conn) -> Result<(), DbErr> {
         .await?;
     }
 
-    // Insert default settings
+    // Insert default settings.
     let settings = vec![
         ("theme", r#""system""#),
         ("hotkey", r#""CmdOrCtrl+Shift+T""#),
@@ -422,7 +241,6 @@ async fn init_db_sqlite(conn: &Conn) -> Result<(), DbErr> {
         ("target_level", r#""C1""#),
         ("daily_goal", "10"),
     ];
-
     for (key, value) in settings {
         conn.execute(
             "INSERT OR IGNORE INTO user_settings (key, value) VALUES (?1, ?2)",
@@ -431,17 +249,11 @@ async fn init_db_sqlite(conn: &Conn) -> Result<(), DbErr> {
         .await?;
     }
 
-    migrations::run(conn).await?;
-
     // One-time: adopt a desktop R2 configuration that predates the per-database
     // table, so upgrading does not look like the bucket disconnected itself.
     crate::r2::migrate_from_app_config(conn).await;
 
-    // Last, and only on the path where everything above actually ran: the
-    // stamp is what lets the next launch skip all of it, so it must never be
-    // written for a pass that failed partway. `ON CONFLICT(key) DO UPDATE`
-    // is the portable upsert (SQLite's `INSERT OR REPLACE` deletes+reinserts,
-    // which Postgres doesn't support; ON CONFLICT works on both backends).
+    // Stamp the fingerprint — only on the path where everything above ran.
     conn.execute(
         "INSERT INTO user_settings (key, value) VALUES (?1, ?2)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",

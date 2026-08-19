@@ -135,21 +135,6 @@ CREATE TABLE IF NOT EXISTS document_folders (
                 created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
             , locked BIGINT NOT NULL DEFAULT 0);
 
-CREATE TABLE IF NOT EXISTS tags (
-  id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  name       TEXT NOT NULL UNIQUE,
-  color      TEXT,
-  tag_type   TEXT DEFAULT 'user'
-);
-
-CREATE TABLE IF NOT EXISTS entity_tags (
-  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  tag_id      BIGINT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
-  entity_id   BIGINT NOT NULL,
-  entity_type TEXT NOT NULL,
-  UNIQUE (tag_id, entity_id, entity_type)
-);
-
 CREATE TABLE IF NOT EXISTS feed_bookmarks (
                 id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                 url            TEXT NOT NULL UNIQUE,
@@ -215,37 +200,17 @@ CREATE TABLE IF NOT EXISTS knowledge_edges (
                 UNIQUE (map_id, source_id, target_id, relation)
             );
 
-CREATE TABLE IF NOT EXISTS patterns (
-                id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-                pattern       TEXT NOT NULL,
-                zh            TEXT NOT NULL DEFAULT '',
-                function_tag  TEXT NOT NULL DEFAULT 'other',
-                level         TEXT,
-                note          TEXT NOT NULL DEFAULT '',
-                analysis      TEXT,
-                created_at    TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
-            , starred BIGINT NOT NULL DEFAULT 0
-                CHECK (starred IN (0, 1)), updated_at TEXT NOT NULL DEFAULT '');
-
-CREATE TABLE IF NOT EXISTS pattern_examples (
+CREATE TABLE IF NOT EXISTS sentences (
                 id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-                pattern_id  BIGINT NOT NULL,
                 sentence    TEXT NOT NULL,
+                zh          TEXT NOT NULL DEFAULT '',
+                level       TEXT,
+                note        TEXT NOT NULL DEFAULT '',
                 source      TEXT NOT NULL DEFAULT '',
-                article_id  BIGINT,
+                article_id  BIGINT REFERENCES articles(id) ON DELETE SET NULL,
+                starred     BIGINT NOT NULL DEFAULT 0 CHECK (starred IN (0, 1)),
                 created_at  TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
-                FOREIGN KEY(pattern_id) REFERENCES patterns(id)
-            );
-
-CREATE TABLE IF NOT EXISTS pattern_practice (
-                id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-                pattern_id  BIGINT NOT NULL,
-                sentence    TEXT NOT NULL,
-                feedback    TEXT NOT NULL DEFAULT '',
-                verdict     TEXT NOT NULL DEFAULT '',
-                saved       BIGINT NOT NULL DEFAULT 0,
-                created_at  TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
-                FOREIGN KEY(pattern_id) REFERENCES patterns(id)
+                updated_at  TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
             );
 
 CREATE TABLE IF NOT EXISTS quiz_sessions (
@@ -264,28 +229,6 @@ CREATE TABLE IF NOT EXISTS quiz_answers (
   entity_type TEXT NOT NULL,
   is_correct  BIGINT NOT NULL,
   user_answer TEXT,
-  created_at  TEXT DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
-);
-
-CREATE TABLE IF NOT EXISTS sentences (
-  id               BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  "text"             TEXT NOT NULL,
-  translation      TEXT,
-  source_name      TEXT,
-  source_type      TEXT,
-  grammar_analysis TEXT,
-  difficulty       TEXT,
-  notes            TEXT,
-  created_at       TEXT DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
-);
-
-CREATE TABLE IF NOT EXISTS quotes (
-  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  "text"        TEXT NOT NULL,
-  source_name TEXT,
-  source_type TEXT,
-  word_id     BIGINT REFERENCES words(id) ON DELETE SET NULL,
-  sentence_id BIGINT REFERENCES sentences(id) ON DELETE SET NULL,
   created_at  TEXT DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
 );
 
@@ -337,16 +280,6 @@ CREATE TABLE IF NOT EXISTS rss_entries (
                 is_read     BIGINT NOT NULL DEFAULT 0,
                 fetched_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
             , audio_url TEXT, audio_duration BIGINT, hn_item_id BIGINT);
-
-CREATE TABLE IF NOT EXISTS saved_sentences (
-                id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-                "text"          TEXT NOT NULL,
-                zh            TEXT NOT NULL DEFAULT '',
-                note          TEXT NOT NULL DEFAULT '',
-                article_id    BIGINT REFERENCES articles(id) ON DELETE SET NULL,
-                article_title TEXT NOT NULL DEFAULT '',
-                created_at    TEXT DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
-            );
 
 CREATE TABLE IF NOT EXISTS scenes (
                 id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -443,15 +376,6 @@ CREATE TABLE IF NOT EXISTS search_history (
                 word        TEXT NOT NULL,
                 searched_at TEXT DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
             );
-
-CREATE TABLE IF NOT EXISTS sentence_words (
-  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  sentence_id BIGINT NOT NULL REFERENCES sentences(id) ON DELETE CASCADE,
-  word_id     BIGINT NOT NULL REFERENCES words(id) ON DELETE CASCADE,
-  "position"    BIGINT,
-  is_key      BIGINT DEFAULT 0,
-  UNIQUE (sentence_id, word_id)
-);
 
 CREATE TABLE IF NOT EXISTS srs_records (
   id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -640,8 +564,6 @@ CREATE INDEX IF NOT EXISTS idx_document_assets_document
 
 CREATE INDEX IF NOT EXISTS idx_documents_folder ON documents(folder);
 
-CREATE INDEX IF NOT EXISTS idx_entity_tags_entity ON entity_tags(entity_id, entity_type);
-
 CREATE INDEX IF NOT EXISTS idx_feed_bookmarks_created
                 ON feed_bookmarks(created_at DESC);
 
@@ -651,12 +573,6 @@ CREATE INDEX IF NOT EXISTS idx_knowledge_nodes_map_parent ON knowledge_nodes(map
 
 CREATE INDEX IF NOT EXISTS idx_knowledge_nodes_word ON knowledge_nodes(word_id);
 
-CREATE INDEX IF NOT EXISTS idx_pattern_examples_article ON pattern_examples(article_id);
-
-CREATE INDEX IF NOT EXISTS idx_pattern_examples_pattern ON pattern_examples(pattern_id);
-
-CREATE INDEX IF NOT EXISTS idx_pattern_practice_pattern ON pattern_practice(pattern_id);
-
 CREATE INDEX IF NOT EXISTS idx_reading_articles_read ON reading_articles(last_read_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_reading_comments_article ON reading_article_comments(article_id);
@@ -665,7 +581,7 @@ CREATE INDEX IF NOT EXISTS idx_rss_entries_feed ON rss_entries(feed_id, publishe
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_rss_feeds_url ON rss_feeds(url);
 
-CREATE INDEX IF NOT EXISTS idx_saved_sentences_created ON saved_sentences(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sentences_created ON sentences(created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_scene_attempts_session ON scene_attempts(session_id, attempted_at);
 
@@ -684,10 +600,6 @@ CREATE INDEX IF NOT EXISTS idx_scene_vocab_word ON scene_vocabulary(word_id);
 CREATE INDEX IF NOT EXISTS idx_search_history_searched_at ON search_history(searched_at DESC);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_search_history_word ON search_history(word);
-
-CREATE INDEX IF NOT EXISTS idx_sentence_words_sentence ON sentence_words(sentence_id);
-
-CREATE INDEX IF NOT EXISTS idx_sentence_words_word ON sentence_words(word_id);
 
 CREATE INDEX IF NOT EXISTS idx_srs_records_next_review ON srs_records(next_review_at);
 

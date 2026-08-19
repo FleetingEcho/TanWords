@@ -1,5 +1,5 @@
 import React from "react";
-import { PatternItem } from "@/hooks/useDB.patterns";
+import { SentenceItem } from "@/hooks/useDB.sentences";
 import { useT } from "@/hooks/useT";
 import { LevelBadge } from "@/components/shared/LevelBadge";
 import { SpeakButton } from "@/components/ui/SpeakButton";
@@ -12,7 +12,7 @@ import { hostCapabilities } from "@/platform";
 import { useSettingsStore } from "@/store/settingsStore";
 
 interface Props {
-  items: PatternItem[];
+  items: SentenceItem[];
   expandedId: number | null;
   highlightId?: number;
   search: string;
@@ -28,15 +28,15 @@ interface Props {
   onStarredOnlyChange: (v: boolean) => void;
   onDateFromChange: (v: string) => void;
   onDateToChange: (v: string) => void;
-  onToggleExpand: (item: PatternItem) => void;
+  onToggleExpand: (item: SentenceItem) => void;
   /** Double-click enters select mode (pre-selecting the sentence) or exits it */
-  onDoubleClick: (item: PatternItem) => void;
+  onDoubleClick: (item: SentenceItem) => void;
   onPageChange: (p: number) => void;
   onPageSizeChange: (size: number) => void;
   onOpenAdd: () => void;
   onOpenGenerate: () => void;
-  onRequestDelete: (item: PatternItem) => void;
-  onReanalyze: (item: PatternItem) => void;
+  onRequestDelete: (item: SentenceItem) => void;
+  onReanalyze: (item: SentenceItem) => void;
   reanalyzingId: number | null;
   onToggleStar: (id: number) => void;
   selectMode: boolean;
@@ -87,17 +87,16 @@ function Highlight({ text, tokens }: { text: string; tokens: string[] }) {
 }
 
 /** When a row matched the search only through a field its collapsed line
- *  doesn't show (the note, the skeleton, an extra example), return that
- *  field's text so the row can surface it as a snippet — otherwise the row
- *  looks like a false positive. */
-function findHiddenMatch(item: PatternItem, sentence: string, tokens: string[]): string | null {
+ *  doesn't show (the note or the source), return that field's text so the
+ *  row can surface it as a snippet — otherwise the row looks like a false
+ *  positive. */
+function findHiddenMatch(item: SentenceItem, sentence: string, tokens: string[]): string | null {
   if (tokens.length === 0) return null;
   const visible = `${sentence} ${item.zh}`.toLowerCase();
   if (tokens.every((tk) => visible.includes(tk))) return null;
   const hiddenFields = [
     item.note.startsWith("__") ? "" : item.note,
-    item.pattern !== sentence ? item.pattern : "",
-    ...item.examples.slice(1).map((e) => e.sentence),
+    item.source,
   ];
   for (const field of hiddenFields) {
     if (!field) continue;
@@ -108,9 +107,10 @@ function findHiddenMatch(item: PatternItem, sentence: string, tokens: string[]):
 }
 
 /** Sentence library as a single full-width feed (HN-list style): one compact
- *  row per sentence, and clicking a row expands its translation / skeleton /
- *  note / extra examples inline right below it — no separate detail pane, so
- *  the sentence itself always gets the full width. */
+ *  row per sentence, and clicking a row expands its translation / note /
+ *  source inline right below it — no separate detail pane, so the sentence
+ *  itself always gets the full width. Each row is its own first-class
+ *  sentence (the old pattern template + child examples duo is gone). */
 export function SentenceList({
   items, expandedId, highlightId, search, searchTokens, levelFilter, starredOnly, dateFrom, dateTo, page, pageSize,
   onSearchChange, onLevelFilterChange, onStarredOnlyChange, onDateFromChange, onDateToChange,
@@ -135,12 +135,12 @@ export function SentenceList({
         {/* `items-center`, not baseline — see WordListPanel: the heading is a
           * pair of tab buttons now, and buttons have no baseline to align to. */}
         <div className="flex flex-wrap items-center gap-2">
-          {viewTabs ?? <h2 className="min-w-0 truncate text-lg font-bold">{t("vocab.patterns.title")}</h2>}
+          {viewTabs ?? <h2 className="min-w-0 truncate text-lg font-bold">{t("vocab.sentences.title")}</h2>}
           <div className="ml-auto flex items-center gap-1">
             <Button
               variant="ghost"
               onClick={onOpenAdd}
-              title={t("vocab.patterns.addTooltip")}
+              title={t("vocab.sentences.addTooltip")}
               className="w-10 h-10 lg:w-6 lg:h-6 p-0 rounded-md flex items-center justify-center text-primary hover:bg-primary/10 transition-colors shrink-0"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -205,7 +205,7 @@ export function SentenceList({
             type="text"
             value={search}
             onChange={(e) => onSearchChange(e.target.value.toLowerCase())}
-            placeholder={t("vocab.patterns.searchPlaceholder")}
+            placeholder={t("vocab.sentences.searchPlaceholder")}
             className={`w-full h-9 pl-8 pr-3 rounded-lg border border-input text-sm placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30 ${hasCustomAppBackground ? "bg-background/65 backdrop-blur-md" : "bg-background"}`}
           />
           <svg className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-muted-foreground" viewBox="0 0 20 20" fill="currentColor">
@@ -232,14 +232,12 @@ export function SentenceList({
         <div className="mx-auto w-full max-w-4xl divide-y divide-border" data-no-selection>
           {paged.length === 0 && (
             <div className="p-4 text-center text-sm text-muted-foreground">
-              {items.length === 0 && !search ? t("vocab.patterns.empty") : t("vocab.patterns.noMatch")}
+              {items.length === 0 && !search ? t("vocab.sentences.empty") : t("vocab.sentences.noMatch")}
             </div>
           )}
           {paged.map((item) => {
-            const [primary, ...rest] = item.examples;
-            const sentence = primary?.sentence ?? item.pattern;
+            const sentence = item.sentence;
             const expanded = !selectMode && item.id === expandedId;
-            const showSkeleton = item.pattern && item.pattern !== sentence;
             const hiddenMatch = expanded ? null : findHiddenMatch(item, sentence, searchTokens);
             return (
               <div
@@ -310,45 +308,20 @@ export function SentenceList({
                         <Highlight text={item.zh} tokens={searchTokens} />
                       </p>
                     )}
-                    {showSkeleton && (
-                      <p className="text-xs font-mono text-muted-foreground/70">
-                        <Highlight text={item.pattern} tokens={searchTokens} />
-                      </p>
-                    )}
                     {item.note && !item.note.startsWith("__") && (
                       <p className="rounded-xl bg-muted/50 px-4 py-3 text-sm leading-6">
                         <Highlight text={item.note} tokens={searchTokens} />
                       </p>
                     )}
-                    {rest.length > 0 && (
-                      <section>
-                        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                          {t("vocab.patterns.moreExamples")}
-                        </p>
-                        <div className="space-y-2.5">
-                          {rest.map((example) => (
-                            <div key={example.id} className="flex items-start gap-2 rounded-xl border border-border bg-card px-3 py-2.5">
-                              <p className="min-w-0 flex-1 wrap-break-word text-sm leading-6">
-                                <Highlight text={example.sentence} tokens={searchTokens} />
-                              </p>
-                              {hostCapabilities.nativeTts && <SpeakButton text={example.sentence} className="mt-0.5 w-3.5 h-3.5 shrink-0" />}
-                              {example.source && (
-                                <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">{example.source}</span>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </section>
-                    )}
                     <div className="flex items-center gap-2">
-                      {primary?.source && (
-                        <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">{primary.source}</span>
+                      {item.source && (
+                        <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">{item.source}</span>
                       )}
                       <Button
                         variant="ghost"
                         onClick={() => onReanalyze(item)}
                         disabled={reanalyzingId !== null}
-                        title={reanalyzingId === item.id ? t("vocab.patterns.reanalyzing") : t("vocab.patterns.reanalyzeTooltip")}
+                        title={reanalyzingId === item.id ? t("vocab.sentences.reanalyzing") : t("vocab.sentences.reanalyzeTooltip")}
                         className="ml-auto w-7 h-7 p-0 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-primary/10 hover:text-primary disabled:opacity-40 transition-colors shrink-0"
                       >
                         <RefreshCw className={`w-4 h-4 ${reanalyzingId === item.id ? "animate-spin" : ""}`} />
@@ -356,7 +329,7 @@ export function SentenceList({
                       <Button
                         variant="ghost"
                         onClick={() => onRequestDelete(item)}
-                        title={t("vocab.patterns.delete")}
+                        title={t("vocab.sentences.delete")}
                         className="w-7 h-7 p-0 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-destructive/15 hover:text-destructive transition-colors shrink-0"
                       >
                         <Trash2 className="w-4 h-4" />
