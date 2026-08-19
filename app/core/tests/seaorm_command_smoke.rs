@@ -182,7 +182,13 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     .await
     .unwrap();
     let sessions = db_list_chat_sessions(
-        Some(0), Some(50), None, None, None, state.clone(),
+        Some(0), Some(50), None,
+        // date_from / date_to exercise the `date(?N, '+1 day')` inclusive
+        // end-of-range filter the translator rewrites to `($N)::date + 1` on
+        // Postgres.
+        Some("2000-01-01".into()),
+        Some("2099-12-31".into()),
+        state.clone(),
     )
     .await
     .unwrap();
@@ -206,14 +212,20 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     // into it (exercises document_folders + documents.folder update + the
     // LIKE/transaction logic in folders.rs).
     use tanwords_lib::db::{
-        db_create_document_folder, db_list_document_folders, db_set_documents_folder,
-        db_update_document,
+        db_create_document_folder, db_list_document_folders, db_rename_document_folder,
+        db_set_documents_folder, db_update_document,
     };
     db_create_document_folder("Study/Rust".into(), state.clone())
         .await
         .unwrap();
+    // rename "Study/Rust" -> "Study/Systems" exercises the UPDATE OR REPLACE
+    // rewrite (translator drops OR REPLACE on Postgres) plus the substr/length
+    // path-prefix rewrite on both folder tables.
+    db_rename_document_folder("Study/Rust".into(), "Study/Systems".into(), state.clone())
+        .await
+        .unwrap();
     let folders = db_list_document_folders(state.clone()).await.unwrap();
-    assert!(folders.iter().any(|f| f.path == "Study" || f.path == "Study/Rust"));
+    assert!(folders.iter().any(|f| f.path == "Study" || f.path == "Study/Systems"));
 
     db_update_document(
         doc_id,
@@ -228,7 +240,7 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     )
     .await
     .unwrap();
-    db_set_documents_folder(vec![doc_id], "Study/Rust".into(), state.clone())
+    db_set_documents_folder(vec![doc_id], "Study/Systems".into(), state.clone())
         .await
         .unwrap();
 

@@ -470,6 +470,15 @@ fn translate_for_pg(sql: &str) -> String {
             out = format!("INSERT {body} ON CONFLICT DO NOTHING");
         }
     }
+    // `UPDATE OR REPLACE` is SQLite-only (it deletes conflicting rows on a
+    // UNIQUE constraint before the update). Postgres has no such form. The
+    // call sites that use it (folder rename/move) pre-create the target
+    // chain and guard against moving a folder into its own subtree, so a real
+    // UNIQUE collision on document_folders.path is not expected in practice;
+    // dropping `OR REPLACE` keeps the statement parseable on Postgres.
+    if let Some(rest) = out.strip_prefix("UPDATE OR REPLACE ") {
+        out = format!("UPDATE {rest}");
+    }
     // Timestamps as TEXT in SQLite's UTC `YYYY-MM-DD HH:MM:SS` format, so the
     // read-as-String code path is identical on both backends.
     out = out.replace("datetime('now')", "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')");
@@ -498,6 +507,16 @@ fn translate_for_pg(sql: &str) -> String {
     .unwrap();
     out = multi_arg_date
         .replace_all(&out, "to_char((now() AT TIME ZONE 'UTC') + ($$$1 || ' days')::interval, 'YYYY-MM-DD')")
+        .into_owned();
+    // `date($N, '+1 day')` — SQLite's date() applied to a bound date string
+    // with a +1-day modifier (used for inclusive end-of-range filters:
+    // `updated_at < date(:to, '+1 day')`). Postgres has no date() function;
+    // the equivalent is casting the bound text to a date, adding a day, and
+    // formatting back to the TEXT 'YYYY-MM-DD' the columns store (so the
+    // comparison stays text<text, which Postgres accepts without a cast).
+    let date_plus_day = regex::Regex::new(r"date\(\$(\d+),\s*'\+1 day'\)").unwrap();
+    out = date_plus_day
+        .replace_all(&out, "to_char(($$$1)::date + 1, 'YYYY-MM-DD')")
         .into_owned();
     // `json_each(expr)` — SQLite's table-valued function that yields one row
     // per array element, with the element in a column named `value`. Postgres
@@ -629,6 +648,30 @@ mod tests {
         assert_eq!(
             translate_for_pg("SELECT minstr(x, y) FROM t"),
             "SELECT minstr(x, y) FROM t" // word boundary respected
+        );
+    }
+
+    #[test]
+    fn update_or_replace_drops_or_replace() {
+        // SQLite's `UPDATE OR REPLACE` (deletes conflicting UNIQUE rows before
+        // the update) has no Postgres equivalent; the call sites pre-create
+        // the target chain and guard against self-move, so dropping OR REPLACE
+        // keeps the statement parseable without changing observable behavior.
+        assert_eq!(
+            translate_for_pg("UPDATE OR REPLACE documents SET folder = ?1 || substr(folder, length(?2) + 1) WHERE folder = ?2"),
+            "UPDATE documents SET folder = $1 || substr(folder, length($2) + 1) WHERE folder = $2"
+        );
+    }
+
+    #[test]
+    fn date_placeholder_plus_one_day_becomes_date_cast_plus_one() {
+        // SQLite `date(:to, '+1 day')` for an inclusive end-of-range filter;
+        // Postgres has no date() function — cast the bound text to a date, add
+        // a day, and format back to TEXT 'YYYY-MM-DD' so the comparison against
+        // the TEXT column stays text<text (Postgres won't implicitly cast).
+        assert_eq!(
+            translate_for_pg("AND updated_at < date(?1, '+1 day')"),
+            "AND updated_at < to_char(($1)::date + 1, 'YYYY-MM-DD')"
         );
     }
 

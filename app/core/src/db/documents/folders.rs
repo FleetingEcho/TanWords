@@ -130,6 +130,19 @@ pub async fn db_rename_document_folder(
     }
     let db = db::conn(&conn)?;
     ensure_folder_chain(&db, &new).await?;
+    // `ensure_folder_chain` created the `new` leaf as a placeholder row so the
+    // sidebar shows it immediately. The UPDATE below renames `old` -> `new` and
+    // would collide with that placeholder on Postgres (SQLite's
+    // `UPDATE OR REPLACE` silently deleted the conflicting row first; Postgres
+    // has no such form). Drop the placeholder leaf here so the renamed row can
+    // take the `new` path — net effect matches SQLite: `new` exists (the
+    // renamed row), `old` is gone, ancestors are preserved.
+    db.execute(
+        "DELETE FROM document_folders WHERE path = ?1",
+        params![new.clone()],
+    )
+    .await
+    .map_err(|e| e.to_string())?;
     for (table, column) in [("documents", "folder"), ("document_folders", "path")] {
         // `substr(col, 1, n) = old || '/'` rather than LIKE: folder names may
         // contain `%` or `_`, which LIKE would read as wildcards.
