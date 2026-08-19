@@ -89,8 +89,12 @@ pub async fn db_get_words(
             created_at: row.get(8)?,
             updated_at: row.get(9)?,
             source: row.get(10)?,
-            enriched: row.get(11)?,
-            starred: row.get(12)?,
+            // `enriched` is `(enrichment_text IS NOT NULL)` — BOOL on
+            // Postgres, 0/1 on SQLite; reading as bool is portable. `starred`
+            // is a BIGINT 0/1 column — read as i64 (Postgres won't decode INT8
+            // as bool) and compare.
+            enriched: row.get::<bool>(11)?,
+            starred: row.get::<i64>(12)? != 0,
         })
     })
     .await

@@ -74,7 +74,10 @@ pub async fn list(conn: &Conn, device: &str) -> Result<Vec<AiProvider>, String> 
                 kind: row.get(2)?,
                 api_base: row.get(3)?,
                 model_id: row.get(4)?,
-                has_key: row.get::<i64>(5)? != 0,
+                // `api_key_enc <> ''` is a comparison — BOOL on Postgres, 0/1
+                // on SQLite; read as bool (portable both ways, like the EXISTS
+                // and `IS NOT NULL` reads).
+                has_key: row.get::<bool>(5)?,
             })
         },
     )

@@ -367,6 +367,51 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     let roundtrip =
         base64::engine::general_purpose::STANDARD.decode(&asset.data_base64).unwrap();
     assert_eq!(roundtrip, payload);
+
+    // word list with a search filter — exercises the `?1` reuse (LIKE ?1 OR
+    // EXISTS (... LIKE ?1)) the translator now preserves as a single $1, plus
+    // the LOWER(w.word) sort. Also probes the `enriched`/`starred` bool reads
+    // (enriched is `IS NOT NULL` -> BOOL on Postgres; starred is a BIGINT 0/1
+    // column read as bool).
+    use tanwords_lib::db::db_get_words;
+    let words = db_get_words(
+        Some("hel".into()), // matches the "hello" word added at the top
+        None,
+        Some("alpha".into()),
+        None,
+        None,
+        None,
+        state.clone(),
+    )
+    .await
+    .unwrap();
+    assert!(words.iter().any(|w| w.word == "hello"));
+
+    // ai provider list — exercises the `api_key_enc <> ''` comparison read
+    // (BOOL on Postgres, 0/1 on SQLite) as bool, plus the ON CONFLICT upsert
+    // in ai_provider_upsert. Upsert a provider with a key, list, confirm
+    // has_key is true.
+    use tanwords_lib::db::ai_providers::{
+        ai_provider_delete, ai_provider_list, ai_provider_upsert,
+    };
+    ai_provider_upsert(
+        "test-provider".into(),
+        "Test".into(),
+        "openai".into(),
+        "https://api.example.com".into(),
+        "gpt-4".into(),
+        Some("sk-test-key".into()),
+        state.clone(),
+    )
+    .await
+    .unwrap();
+    let providers = ai_provider_list(state.clone()).await.unwrap();
+    let ours = providers.iter().find(|p| p.id == "test-provider");
+    assert!(ours.is_some(), "test-provider present after upsert");
+    assert!(ours.unwrap().has_key, "has_key true when api_key was set");
+    ai_provider_delete("test-provider".into(), state.clone())
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
