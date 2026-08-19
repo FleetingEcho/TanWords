@@ -1,7 +1,7 @@
 {
   "name": "tanwords",
   "private": true,
-  "version": "1.18.22",
+  "version": "1.18.23",
   "desktopName": "tanwords",
   "type": "module",
   "homepage": "https://github.com/FleetingEcho/TanWords",
