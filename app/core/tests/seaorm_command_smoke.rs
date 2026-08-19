@@ -144,8 +144,10 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     let articles = db_list_reading_articles(
         None,            // search (None = no FTS, works on both backends)
         None,
-        None,
-        None,
+        // date_from / date_to exercise the `date(?N, '+1 day')` inclusive
+        // end-of-range filter the translator rewrites on Postgres.
+        Some("2000-01-01".into()),
+        Some("2099-12-31".into()),
         None,
         None,
         Some(0),
