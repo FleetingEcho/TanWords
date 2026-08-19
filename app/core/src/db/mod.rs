@@ -438,9 +438,12 @@ async fn init_db_sqlite(conn: &Conn) -> Result<(), DbErr> {
 
     // Last, and only on the path where everything above actually ran: the
     // stamp is what lets the next launch skip all of it, so it must never be
-    // written for a pass that failed partway.
+    // written for a pass that failed partway. `ON CONFLICT(key) DO UPDATE`
+    // is the portable upsert (SQLite's `INSERT OR REPLACE` deletes+reinserts,
+    // which Postgres doesn't support; ON CONFLICT works on both backends).
     conn.execute(
-        "INSERT OR REPLACE INTO user_settings (key, value) VALUES (?1, ?2)",
+        "INSERT INTO user_settings (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         params![SCHEMA_FINGERPRINT_KEY, fingerprint],
     )
     .await?;
