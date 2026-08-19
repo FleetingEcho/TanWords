@@ -110,6 +110,16 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     .await
     .unwrap();
 
+    // list patterns — exercises the `starred` BIGINT 0/1 -> bool READ on
+    // Postgres. The prior `fedbd89` fix cast the bool param to i64 on the
+    // WRITE side (db_set_pattern_starred), but the read path
+    // (`SELECT ... starred ...` decoded as bool) was never exercised here and
+    // breaks on Postgres strict typing (INT8 is not compatible with BOOL).
+    // The fields are Serialize-only, so we assert the call succeeds — an Err
+    // here reproduces the user's startup `db_list_patterns` 400.
+    use tanwords_lib::db::db_list_patterns;
+    let _patterns = db_list_patterns(state.clone()).await.unwrap();
+
     // create a document and list it
     let doc_id = db_create_document(state.clone()).await.unwrap();
     assert!(doc_id > 0);

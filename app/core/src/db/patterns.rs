@@ -46,7 +46,11 @@ pub async fn db_list_patterns(conn: State<'_, AppState>) -> Result<Vec<PatternIt
                 zh: r.get(2)?,
                 note: r.get(3)?,
                 level: r.get(4)?,
-                starred: r.get(5)?,
+                // `starred` is a BIGINT 0/1 column on Postgres (and INTEGER on
+                // SQLite) — read as i64 and compare, the same convention as
+                // words_query.rs / calendar. Decoding INT8 as a bare bool
+                // fails on Postgres strict typing.
+                starred: r.get::<i64>(5)? != 0,
                 created_at: r.get(6)?,
                 updated_at: r.get(7)?,
                 examples: Vec::new(),
