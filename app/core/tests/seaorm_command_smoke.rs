@@ -127,6 +127,66 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     .await
     .unwrap();
     assert!(docs.items.iter().any(|d| d.id == doc_id));
+
+    // reading article (save + list-without-search + comment)
+    use tanwords_lib::db::{db_add_reading_comment, db_list_reading_articles, db_save_reading_article};
+    let article_id = db_save_reading_article(
+        "A short essay".into(),
+        "This is the body of the essay.".into(),
+        "pasted".into(),
+        None,
+        None,
+        state.clone(),
+    )
+    .await
+    .unwrap();
+    assert!(article_id > 0);
+    let articles = db_list_reading_articles(
+        None,            // search (None = no FTS, works on both backends)
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(0),
+        Some(50),
+        state.clone(),
+    )
+    .await
+    .unwrap();
+    assert!(articles.items.iter().any(|a| a.id == article_id));
+
+    let comment_id = db_add_reading_comment(
+        article_id,
+        "reader".into(),
+        "good point".into(),
+        None,
+        state.clone(),
+    )
+    .await
+    .unwrap();
+    assert!(comment_id > 0);
+
+    // chat session upsert + list
+    use tanwords_lib::db::{db_list_chat_sessions, db_upsert_chat_session};
+    db_upsert_chat_session(
+        "chat-1".into(),
+        "First chat".into(),
+        "[]".into(),
+        String::new(),
+        "english-tutor".into(),
+        String::new(),
+        0,
+        state.clone(),
+    )
+    .await
+    .unwrap();
+    let sessions = db_list_chat_sessions(
+        Some(0), Some(50), None, None, None, state.clone(),
+    )
+    .await
+    .unwrap();
+    assert!(sessions.iter().any(|s| s.id == "chat-1"));
 }
 
 #[tokio::test]
