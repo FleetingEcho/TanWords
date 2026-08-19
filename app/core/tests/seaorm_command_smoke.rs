@@ -427,6 +427,105 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     let doc = db_get_document(doc_id, state.clone()).await.unwrap();
     assert_eq!(doc.id, doc_id);
     assert!(!doc.protected); // created without a key
+
+    // scene_lab — the most complex multi-table transaction in the app. Build
+    // a SaveSceneLessonInput via serde (its fields are private but it derives
+    // Deserialize), then save_scene_lesson runs one transaction that upserts
+    // scenes, inserts scene_objects/scene_lessons/scene_vocabulary/
+    // scene_examples/scene_relations/scene_tasks with RETURNING id + ON
+    // CONFLICT, then commits. Then list_scenes, get_scene_lesson,
+    // start/finish a session, and save an attempt (the learning_status
+    // recompute). All within one round on both backends.
+    use tanwords_lib::db::scene_lab::SaveSceneLessonInput;
+    use tanwords_lib::db::{
+        db_finish_scene_session, db_get_scene_lesson, db_list_scenes, db_save_scene_attempt,
+        db_save_scene_lesson, db_start_scene_session,
+    };
+    let input: SaveSceneLessonInput = serde_json::from_value(serde_json::json!({
+        "scene_key": "cafe-morning",
+        "scene_name": "Morning at the Cafe",
+        "scene_type": "conversation",
+        "asset_path": "",
+        "generation_version": 1,
+        "target_levels": "A1,A2",
+        "prompt_version": 1,
+        "generation_key": "gen-cafe-1",
+        "objects": [
+            {"object_key": "counter", "label": "Counter", "position": {}, "metadata": {}},
+            {"object_key": "cup", "label": "Cup", "position": {}, "metadata": {}}
+        ],
+        "vocabulary": [
+            {
+                "object_key": "counter", "word": "counter", "zh": "柜台",
+                "ipa": "ˈkaʊntər", "level": "A2", "category": "noun",
+                "importance": 3, "learning_status": "new",
+                "examples": [{"kind": "sentence", "content_en": "At the counter.", "content_zh": "在柜台。"}]
+            },
+            {
+                "object_key": "cup", "word": "cup", "zh": "杯子",
+                "ipa": "kʌp", "level": "A1", "category": "noun",
+                "importance": 4, "learning_status": "new",
+                "examples": []
+            }
+        ],
+        "relations": [
+            {"source_key": "cup", "relation": "located_near", "target_key": "counter"}
+        ],
+        "tasks": [
+            {"title_en": "Order coffee", "title_zh": "点咖啡", "steps": []}
+        ]
+    })).expect("deserialize scene input");
+    let lesson_id = db_save_scene_lesson(input, state.clone()).await.unwrap();
+    assert!(lesson_id > 0);
+
+    let scenes = db_list_scenes(state.clone()).await.unwrap();
+    assert!(!scenes.is_empty());
+
+    let lesson = db_get_scene_lesson(lesson_id, state.clone())
+        .await
+        .unwrap();
+    // SceneLessonDetail's fields are Serialize-only (frontend-facing), so we
+    // just assert the lesson resolved to Some — an Err or None would surface
+    // a backend-portability bug in the multi-table JOIN read.
+    assert!(lesson.is_some(), "scene lesson present after save");
+
+    // start a session, record an attempt (correct), finish — exercises
+    // RETURNING id + the COUNT/SUM(correct) learning-status recompute.
+    let session_id = db_start_scene_session(lesson_id, "task".into(), state.clone())
+        .await
+        .unwrap();
+    assert!(session_id > 0);
+    // The vocabulary list is private, so fetch a vocab id via a raw query on
+    // the Conn rather than the command surface.
+    let db = tanwords_lib::db::conn(&state).unwrap();
+    let vocab_id = tanwords_lib::db::fetch_one(
+        &db,
+        "SELECT id FROM scene_vocabulary WHERE lesson_id = ?1 ORDER BY id LIMIT 1",
+        vec![tanwords_lib::db::Value::BigInt(Some(lesson_id))],
+        |r| r.get::<i64>(0),
+    )
+    .await
+    .unwrap();
+    db_save_scene_attempt(
+        session_id,
+        vocab_id,
+        "task".into(),
+        true,
+        1200,
+        0,
+        state.clone(),
+    )
+    .await
+    .unwrap();
+    db_finish_scene_session(session_id, state.clone()).await.unwrap();
+
+    // scene progress — exercises the two SUM(CASE...) aggregates that return
+    // NUMERIC on Postgres (CAST AS BIGINT makes them i64-decodable). The
+    // struct fields are Serialize-only, so just assert it succeeds.
+    use tanwords_lib::db::db_get_scene_progress;
+    let _progress = db_get_scene_progress(lesson_id, state.clone())
+        .await
+        .unwrap();
 }
 
 #[tokio::test]

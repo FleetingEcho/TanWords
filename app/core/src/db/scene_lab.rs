@@ -362,7 +362,10 @@ pub async fn db_save_scene_attempt(
         .map_err(|e|e.to_string())?;
     let (total, wins): (i64, i64) = db::fetch_one(
         &db,
-        "SELECT COUNT(*),COALESCE(SUM(correct),0) FROM scene_attempts WHERE scene_vocabulary_id=?1",
+        // `SUM(correct)` returns NUMERIC on Postgres (not INT8), which sqlx
+        // won't decode as i64. CAST(... AS BIGINT) is portable (SQLite accepts
+        // it too) and pins the result to INT8 on both backends.
+        "SELECT COUNT(*),CAST(COALESCE(SUM(correct),0) AS BIGINT) FROM scene_attempts WHERE scene_vocabulary_id=?1",
         [scene_vocabulary_id],
         |r| Ok((r.get(0)?, r.get(1)?)),
     )
@@ -391,7 +394,9 @@ pub async fn db_get_scene_progress(
     let db = db::conn(&conn)?;
     db::fetch_one(
         &db,
-        "SELECT COUNT(*),COALESCE(SUM(CASE WHEN learning_status!='new' THEN 1 ELSE 0 END),0),COALESCE(SUM(CASE WHEN learning_status='mastered' THEN 1 ELSE 0 END),0),(SELECT COUNT(*) FROM scene_attempts a JOIN scene_vocabulary x ON x.id=a.scene_vocabulary_id WHERE x.lesson_id=?1) FROM scene_vocabulary WHERE lesson_id=?1",
+        // Both SUM(CASE...) aggregates return NUMERIC on Postgres (not INT8);
+        // CAST(... AS BIGINT) pins them to INT8 for i64 decode (portable).
+        "SELECT COUNT(*),CAST(COALESCE(SUM(CASE WHEN learning_status!='new' THEN 1 ELSE 0 END),0) AS BIGINT),CAST(COALESCE(SUM(CASE WHEN learning_status='mastered' THEN 1 ELSE 0 END),0) AS BIGINT),(SELECT COUNT(*) FROM scene_attempts a JOIN scene_vocabulary x ON x.id=a.scene_vocabulary_id WHERE x.lesson_id=?1) FROM scene_vocabulary WHERE lesson_id=?1",
         [lesson_id],
         |r| Ok(SceneProgress { total: r.get(0)?, learned: r.get(1)?, mastered: r.get(2)?, attempts: r.get(3)? }),
     )
