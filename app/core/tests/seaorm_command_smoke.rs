@@ -420,6 +420,13 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     let detail = db_get_word_detail(added.id, state.clone()).await.unwrap();
     assert_eq!(detail.word, "hello");
     assert_eq!(detail.id, added.id);
+
+    // document detail — the single-doc fetch path (reads pinned/protected
+    // BIGINT 0/1 columns as i64 != 0, portable).
+    use tanwords_lib::db::db_get_document;
+    let doc = db_get_document(doc_id, state.clone()).await.unwrap();
+    assert_eq!(doc.id, doc_id);
+    assert!(!doc.protected); // created without a key
 }
 
 #[tokio::test]
