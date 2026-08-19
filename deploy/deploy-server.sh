@@ -84,7 +84,26 @@ echo "==> loading image and replacing app container"
 ssh "${SSH_OPTS[@]}" "$TARGET" bash -s -- "$PUBLIC_HOST" <<'REMOTE'
 set -euo pipefail
 public_host_arg=$1
+
+# Bootstrap a genuinely clean server: the directory this whole script `cd`s
+# into next, Docker itself, and the inbound ports Caddy/sqld need. All of
+# this is a no-op on a server that already has them (mkdir -p, "docker
+# already installed", "ufw rule already present" are all idempotent), so it
+# costs nothing on a routine redeploy.
+mkdir -p /opt/tanwords/deploy/caddy
 cd /opt/tanwords/deploy
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "==> Docker not found, installing via get.docker.com"
+  curl -fsSL https://get.docker.com | sh
+fi
+
+if command -v ufw >/dev/null 2>&1; then
+  ufw allow 80/tcp comment 'TanWords HTTP' >/dev/null
+  ufw allow 443/tcp comment 'TanWords HTTPS' >/dev/null
+  ufw allow 443/udp comment 'TanWords HTTP/3' >/dev/null
+  ufw allow 8443/tcp comment 'TanWords sqld' >/dev/null
+fi
 
 # Initialize absent configuration values without changing existing keys. Empty
 # assignments are treated as absent. Newly generated values are printed only at
@@ -145,6 +164,12 @@ mv /tmp/tanwords-compose.yml compose.yml
 mv /tmp/tanwords-Caddyfile caddy/Caddyfile
 mv /tmp/tanwords-jwt.pub sqld/jwt.pub
 
+# Creates whatever doesn't exist yet (caddy, on a first deploy) and leaves
+# already-running, unchanged services alone — compose only recreates a
+# service here if its config actually changed, which `app`/`sqld` need
+# forcing for anyway since their image/mounted files change without the
+# compose config itself changing.
+docker compose up -d
 docker compose up -d --no-deps --force-recreate app sqld
 
 container=$(docker compose ps -q app)
@@ -219,5 +244,5 @@ REMOTE
 
 echo
 echo "sqld connection for a desktop app (Settings > Cloud tab):"
-echo "  URL:   https://$PUBLIC_HOST"
+echo "  URL:   https://$PUBLIC_HOST:8443"
 echo "  Token: $(bun "$ROOT/deploy/sqld/sign-token.mjs" 2>/dev/null)"
