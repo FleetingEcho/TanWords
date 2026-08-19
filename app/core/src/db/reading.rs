@@ -149,6 +149,15 @@ pub async fn db_list_reading_articles(
     conn: State<'_, AppState>,
 ) -> Result<ReadingArticlePage, String> {
     let db = db::conn(&conn)?;
+    // FTS5 search is SQLite-only for now (the Postgres backend has no
+    // `reading_articles_fts` virtual table — tsvector+GIN is the follow-up
+    // port). Refuse the search argument on Postgres rather than silently
+    // returning everything; non-search listings still work.
+    if search.as_deref().map(|s| !s.trim().is_empty()).unwrap_or(false)
+        && db.kind() == db::DbKind::Postgres
+    {
+        return Err("Full-text search is not yet supported on the Postgres backend".into());
+    }
     let lim = limit.unwrap_or(20).clamp(1, 100);
     let offset = page.unwrap_or(0) * lim;
 

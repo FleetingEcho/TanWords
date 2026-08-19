@@ -48,6 +48,13 @@ impl TanWordsMcp {
     pub(in crate::mcp) async fn articles_list(&self, Parameters(input): Parameters<ListArticles>) -> String {
         let result: Result<Value, String> = async {
             let conn = self.connect().await?;
+            // FTS5 search is SQLite-only (no `reading_articles_fts` virtual
+            // table on Postgres; tsvector is the follow-up port).
+            if input.query.as_deref().map(|q| !q.trim().is_empty()).unwrap_or(false)
+                && conn.kind() == crate::db::DbKind::Postgres
+            {
+                return Err("Full-text search is not yet supported on the Postgres backend".into());
+            }
             let terms = input.query.as_deref().map(db::fts_match_query).filter(|t| !t.is_empty());
             let limit = input.limit.min(100) as i64;
             let rows = match terms {

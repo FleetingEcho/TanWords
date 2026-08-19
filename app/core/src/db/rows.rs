@@ -466,6 +466,38 @@ fn translate_for_pg(sql: &str) -> String {
     out = out.replace("date('now')", "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD')");
     out = out.replace("CURRENT_TIMESTAMP", "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')");
     out = out.replace("CURRENT_DATE", "to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD')");
+    // Multi-arg date arithmetic. SQLite: `datetime('now', '+' || ?N || ' days')`
+    // builds a string like `+5 days` at bind time; Postgres has no such form,
+    // so emit `to_char((now() AT TIME ZONE 'UTC') + ($N || ' days')::interval, …)`.
+    // The placeholder is already `$N` here (translated above), so the regex
+    // matches `$1`, `$2`, etc. Both the `+`-prefixed and bare forms are covered.
+    let multi_arg_dt = regex::Regex::new(
+        r"datetime\('now',\s*'\+' \|\| \$(\d+) \|\| ' days'\)",
+    )
+    .unwrap();
+    // The capture group holds the placeholder digits only (the leading `$`
+    // is matched literally by `\$`). In regex replacement, `$$` emits a
+    // literal `$`, so `$$$1` reconstructs the Postgres placeholder `$N`
+    // (literal `$` + the captured digits).
+    out = multi_arg_dt
+        .replace_all(&out, "to_char((now() AT TIME ZONE 'UTC') + ($$$1 || ' days')::interval, 'YYYY-MM-DD HH24:MI:SS')")
+        .into_owned();
+    let multi_arg_date = regex::Regex::new(
+        r"date\('now',\s*'\+' \|\| \$(\d+) \|\| ' days'\)",
+    )
+    .unwrap();
+    out = multi_arg_date
+        .replace_all(&out, "to_char((now() AT TIME ZONE 'UTC') + ($$$1 || ' days')::interval, 'YYYY-MM-DD')")
+        .into_owned();
+    // `json_each(expr)` — SQLite's table-valued function that yields one row
+    // per array element, with the element in a column named `value`. Postgres
+    // equivalent: `jsonb_array_elements_text((expr)::jsonb)`, which also
+    // names its output column `value`. The call sites only ever pass a simple
+    // column reference (e.g. `d.tags`), so a no-nested-paren regex suffices.
+    let json_each = regex::Regex::new(r"json_each\(([^()]+)\)").unwrap();
+    out = json_each
+        .replace_all(&out, "jsonb_array_elements_text(($1)::jsonb)")
+        .into_owned();
     out
 }
 
@@ -543,12 +575,38 @@ mod tests {
     }
 
     #[test]
-    fn multi_argument_date_now_is_left_untouched_for_per_feature_port() {
-        // Postgres has no datetime(); this stays sqlite-style and is ported
-        // when the feature that owns it (quiz / reading) targets Postgres.
+    fn json_each_becomes_jsonb_array_elements_text() {
+        // SQLite's `json_each(col)` → Postgres' table-valued function, which
+        // also names its output column `value` so the WHERE clauses that
+        // reference `value` keep working unchanged.
+        assert_eq!(
+            translate_for_pg("EXISTS (SELECT 1 FROM json_each(d.tags) WHERE value = ?1)"),
+            "EXISTS (SELECT 1 FROM jsonb_array_elements_text((d.tags)::jsonb) WHERE value = $1)"
+        );
+        assert_eq!(
+            translate_for_pg("SELECT DISTINCT value FROM documents, json_each(documents.tags) ORDER BY value"),
+            "SELECT DISTINCT value FROM documents, jsonb_array_elements_text((documents.tags)::jsonb) ORDER BY value"
+        );
+    }
+
+    #[test]
+    fn multi_argument_datetime_now_becomes_interval_addition() {
+        // SQLite `datetime('now', '+' || ?N || ' days')` builds the interval
+        // string at bind time; Postgres has no such form, so the translator
+        // emits an interval cast. The placeholder is already `$N` at the
+        // point the regex runs.
         assert_eq!(
             translate_for_pg("WHERE next_review_at = datetime('now', '+' || ?1 || ' days')"),
-            "WHERE next_review_at = datetime('now', '+' || $1 || ' days')"
+            "WHERE next_review_at = to_char((now() AT TIME ZONE 'UTC') + ($1 || ' days')::interval, 'YYYY-MM-DD HH24:MI:SS')"
+        );
+        assert_eq!(
+            translate_for_pg("WHERE d = date('now', '+' || ?3 || ' days')"),
+            "WHERE d = to_char((now() AT TIME ZONE 'UTC') + ($1 || ' days')::interval, 'YYYY-MM-DD')"
+        );
+        // The bare single-arg forms are still handled by the plain replace.
+        assert_eq!(
+            translate_for_pg("SET updated_at = datetime('now') WHERE id = ?1"),
+            "SET updated_at = to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') WHERE id = $1"
         );
     }
 }

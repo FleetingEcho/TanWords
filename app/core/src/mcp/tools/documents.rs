@@ -19,6 +19,11 @@ impl TanWordsMcp {
             let offset = input.offset as i64;
             let items = match input.query.as_deref().map(str::trim).filter(|q| !q.is_empty()) {
                 Some(query) => {
+                    // FTS5 search is SQLite-only (no `documents_fts` virtual
+                    // table on Postgres; tsvector is the follow-up port).
+                    if conn.kind() == crate::db::DbKind::Postgres {
+                        return Err("Full-text search is not yet supported on the Postgres backend".into());
+                    }
                     let terms = fts_query(query);
                     if terms.is_empty() {
                         Vec::new()
@@ -63,6 +68,11 @@ impl TanWordsMcp {
     pub(in crate::mcp) async fn documents_search(&self, Parameters(input): Parameters<SearchDocuments>) -> String {
         let result: Result<Value, String> = async {
             let conn = self.connect().await?;
+            // FTS5 search is SQLite-only (no `documents_fts` virtual table on
+            // Postgres; tsvector is the follow-up port).
+            if conn.kind() == crate::db::DbKind::Postgres {
+                return Err("Full-text search is not yet supported on the Postgres backend".into());
+            }
             // The app maintains a documents_fts index (see db::init_db). The
             // old character-interleaved LIKE ("%a%p%i%") matched almost every
             // document for a short query and could not rank them; FTS gives
