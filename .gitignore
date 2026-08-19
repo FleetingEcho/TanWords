@@ -27,3 +27,5 @@ deploy/*.db
 # from one, so it's not tracked to avoid drifting from .env.
 deploy/sqld/jwt.pub
 deploy/sqld/*.jwt
+deploy/sqld-only/.env
+deploy/sqld-only/jwt.pub
