@@ -39,7 +39,7 @@ pub async fn db_save_translation(
 
     db.execute(
         "INSERT INTO daily_streaks (\"date\", translations) VALUES (date('now'), 1)
-         ON CONFLICT(\"date\") DO UPDATE SET translations = translations + 1",
+         ON CONFLICT(\"date\") DO UPDATE SET translations = daily_streaks.translations + 1",
         (),
     )
     .await

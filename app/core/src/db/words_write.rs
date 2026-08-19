@@ -62,7 +62,7 @@ pub async fn db_add_word(
     if is_new {
         db.execute(
             "INSERT INTO daily_streaks (\"date\", words_added) VALUES (date('now'), 1)
-             ON CONFLICT(\"date\") DO UPDATE SET words_added = words_added + 1",
+             ON CONFLICT(\"date\") DO UPDATE SET words_added = daily_streaks.words_added + 1",
             (),
         )
         .await
@@ -215,7 +215,7 @@ pub async fn db_add_word_enriched(
 
     if is_new {
         tx.execute(
-            "INSERT INTO daily_streaks (\"date\", words_added) VALUES (date('now'), 1) ON CONFLICT(\"date\") DO UPDATE SET words_added = words_added + 1",
+            "INSERT INTO daily_streaks (\"date\", words_added) VALUES (date('now'), 1) ON CONFLICT(\"date\") DO UPDATE SET words_added = daily_streaks.words_added + 1",
             (),
         )
         .await

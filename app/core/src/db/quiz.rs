@@ -90,7 +90,7 @@ pub async fn db_save_quiz_result(
 
     db.execute(
         "INSERT INTO daily_streaks (\"date\", quiz_done) VALUES (date('now'), 1)
-         ON CONFLICT(\"date\") DO UPDATE SET quiz_done = quiz_done + 1",
+         ON CONFLICT(\"date\") DO UPDATE SET quiz_done = daily_streaks.quiz_done + 1",
         (),
     )
     .await
