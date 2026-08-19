@@ -173,23 +173,6 @@ export function buildInlineAskUserPrompt(selection: string, context: string, tar
   return `选中的内容："${selection}"（学习者目标水平：CEFR ${targetLevel}）${ctx}`;
 }
 
-/** Analyzes one English sentence for the sentence library: it returns a
- *  translation, usage note, and CEFR level to save alongside the sentence
- *  (see useDB.sentences' saveSentence), which a raw selection from a chat
- *  reply doesn't come with. The analysis may also produce a reusable
- *  pattern skeleton, but the flat-sentence model no longer stores one, so
- *  only zh/note/level are used. See src/lib/patternFromSentence.ts. */
-export const SENTENCE_PATTERN_SYSTEM_PROMPT = `你是一个句式分析器。给定一个英文句子，提取它可复用的句式骨架，供中文母语学习者收藏后仿写。
-
-只返回一个 JSON 对象，不要任何其他文字、不要代码块标记、不要解释：
-{"zh":"<这句话的自然中文翻译>","skeleton":"<可复用的句式骨架，用占位符表示可替换成分，如 'be shortlisted for + noun'、'It is not until X that Y'>","note":"<20字以内的中文说明：这个句式用在什么场景、什么语域>","level":"<CEFR等级，仅限 A1|A2|B1|B2|C1|C2>"}
-
-骨架要抓真正可迁移的结构，不要把整句原样抄回去，也不要抽象到 'subject + verb' 这种毫无信息量的程度。`;
-
-export function buildSentencePatternUserPrompt(sentence: string, targetLevel: string): string {
-  return `英文句子："${sentence}"（学习者目标水平：${targetLevel}）`;
-}
-
 export function buildBasicInfoUserPrompt(word: string, targetLevel: string): string {
   return `单词或短语："${word}"（学习者目标水平：${targetLevel}）`;
 }

@@ -4,16 +4,18 @@ import { useT } from "@/hooks/useT";
 import { SpeakButton } from "@/components/ui/SpeakButton";
 import { hostCapabilities } from "@/platform";
 import { Button } from "@/components/ui/button";
-import { Anchor, AskMode, MAX_PATTERN, isWordish } from "./selectionAskHelpers";
+import { Anchor, AskMode, MAX_PATTERN, canAddAsWord, isWordish, wordCount } from "./selectionAskHelpers";
 import { copyText } from "./touchSelection";
 
 /** The button row inside the floating selection toolbar — split out of
  * SelectionAsk purely for size. Same grammar for a word and a sentence, so
  * the buttons don't move around under the cursor between selections:
  *   [ keep it ] [ translate ] [ go deeper ] | [ copy ] [ hear it ]
- * Only what each slot means changes with the selection — and "keep it" drops
- * out entirely for a selection too long to be a sentence worth saving, since
- * translating or asking about a couple of paragraphs still makes sense. */
+ * "keep it" can offer both actions at once: a multi-word selection (a
+ * quote, a clause with a comma) reads like a sentence but may still be
+ * exactly the idiom/collocation someone wants filed under Words instead —
+ * so both buttons show whenever the text qualifies for either, rather than
+ * the toolbar guessing a single intent from word count and punctuation. */
 export function SelectionToolbarButtons({
   anchor, collected, adding, saving, addWord, savePattern, dismiss, setAsking,
 }: {
@@ -28,10 +30,14 @@ export function SelectionToolbarButtons({
 }) {
   const t = useT();
   const [copied, setCopied] = useState(false);
+  const canWord = canAddAsWord(anchor.text);
+  // A lone word already gets its own "add word" slot — only offer "save
+  // sentence" alongside it once there's more than one word to it.
+  const canSentence = wordCount(anchor.text) > 1 && anchor.text.length <= MAX_PATTERN;
   return (
     <div className="flex items-center gap-0.5 rounded-xl border border-border bg-popover p-1 shadow-2xl ring-1 ring-black/5">
       {/* 1 — keep it */}
-      {isWordish(anchor.text) ? (
+      {canWord && (
         collected ? (
           <span className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
             <Check className="h-3 w-3" />
@@ -48,7 +54,8 @@ export function SelectionToolbarButtons({
             {adding ? t("sel.adding") : t("sel.addWord")}
           </Button>
         )
-      ) : anchor.text.length > MAX_PATTERN ? null : (
+      )}
+      {canSentence && (
         <Button
           variant="ghost"
           onClick={() => savePattern(anchor.text)}

@@ -139,6 +139,7 @@ export function MainLayout({
   const collapsed = useLayoutStore((s) => s.sidebarCollapsed);
   const toggleCollapsed = useLayoutStore((s) => s.toggleSidebar);
   const visibleSidebarTabs = useSettingsStore((s) => s.visibleSidebarTabs);
+  const sidebarTabOrder = useSettingsStore((s) => s.sidebarTabOrder);
   const hasCustomAppBackground = useSettingsStore((s) => !!s.appBackgroundImage && s.appBackgroundVisible);
   const podcastActive = usePodcastPlayerStore((s) => s.status !== "idle" && s.track !== null);
   const layoutMode = useSettingsStore((s) => s.layoutMode);
@@ -151,8 +152,14 @@ export function MainLayout({
   // a list of nine links is a poor trade, and the dock costs nothing at rest.
   const isTablet = useMediaQuery("(min-width: 768px) and (max-width: 1023px)");
   const compact = effectiveMode === "flexible" && (isNarrow || isTablet);
-  const NAV_ITEMS: NavItemDef[] = NAV_ITEM_DEFS
-    .filter((d) => visibleSidebarTabs.includes(d.id))
+  // Rendered in the user's drag-reordered sequence (from Settings' Sidebar
+  // tabs grid), not NAV_ITEM_DEFS' declaration order — sidebarTabOrder covers
+  // every tab id, so ids this host lacks capabilities for (absent from
+  // NAV_ITEM_DEFS) just drop out of the lookup below.
+  const navItemDefsById = new Map(NAV_ITEM_DEFS.map((d) => [d.id, d]));
+  const NAV_ITEMS: NavItemDef[] = sidebarTabOrder
+    .map((id) => navItemDefsById.get(id))
+    .filter((d): d is Omit<NavItemDef, "label"> => !!d && visibleSidebarTabs.includes(d.id))
     .map((d) => ({ ...d, label: t(`nav.${d.id}`) }));
   // Settings rides along in the dock: without it the CommandBar gear is the
   // only way in, since there is no sidebar to pin it below.

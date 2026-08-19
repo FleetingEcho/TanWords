@@ -16,12 +16,13 @@ import {
   DEFAULT_TERMINAL_RENDERER, DEFAULT_TERMINAL_ENGINE,
   DOCUMENT_TEXT_COLOR_RE, normalizeHexColor, type Theme, type RssTabSelection,
   type LayoutMode, type TerminalRenderer, type TerminalEngine, type TerminalColorScheme, type TerminalCustomAppearance,
-  type TopBarItemId,
+  type TopBarItemId, type SidebarTabId,
 } from "./types";
 import {
   cacheUiLanguage, cacheSidebarTabs, cacheTopBarItems, cacheDefaultRssTab, cacheFeedsViewMode,
-  cacheLayoutMode,
+  cacheLayoutMode, cacheSidebarTabOrder, cacheTopBarItemOrder,
 } from "./cache";
+import { normalizeOrder } from "./reorder";
 import { applyTheme, applyDocumentFontSize, applyDocumentLineHeight, applyDocumentParagraphSpacing, applyDocumentTextColor, applyHighlightColor, parseBannerPosition } from "./domEffects";
 import { isDesktopHost } from "@/platform";
 
@@ -95,6 +96,8 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       "show_github_link",
       "visible_sidebar_tabs",
       "visible_topbar_items",
+      "sidebar_tab_order",
+      "topbar_item_order",
       "layout_mode",
       "default_rss_tab",
       "feeds_view_mode",
@@ -250,6 +253,16 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       await invoke("db_set_setting", { key: "visible_topbar_items", value: JSON.stringify(resolvedTopBarItems) });
     }
     cacheTopBarItems(resolvedTopBarItems);
+
+    const resolvedSidebarTabOrder: SidebarTabId[] = Array.isArray(values.sidebar_tab_order)
+      ? normalizeOrder(values.sidebar_tab_order as unknown as unknown[], DEFAULT_SIDEBAR_TABS)
+      : DEFAULT_SIDEBAR_TABS;
+    cacheSidebarTabOrder(resolvedSidebarTabOrder);
+    const resolvedTopBarItemOrder: TopBarItemId[] = Array.isArray(values.topbar_item_order)
+      ? normalizeOrder(values.topbar_item_order as unknown as unknown[], DEFAULT_TOPBAR_ITEMS)
+      : DEFAULT_TOPBAR_ITEMS;
+    cacheTopBarItemOrder(resolvedTopBarItemOrder);
+
     const resolvedLayoutMode: LayoutMode = values.layout_mode === "fixed" ? "fixed" : DEFAULT_LAYOUT_MODE;
     cacheLayoutMode(resolvedLayoutMode);
 
@@ -419,6 +432,8 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       selectionActions: (values.selection_actions as unknown) !== false && values.selection_actions !== "false",
       visibleSidebarTabs: resolvedSidebarTabs,
       visibleTopBarItems: resolvedTopBarItems,
+      sidebarTabOrder: resolvedSidebarTabOrder,
+      topBarItemOrder: resolvedTopBarItemOrder,
       layoutMode: resolvedLayoutMode,
       defaultRssTab: resolvedDefaultRssTab,
       feedsViewMode: resolvedFeedsViewMode,

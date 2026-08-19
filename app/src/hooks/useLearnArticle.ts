@@ -35,7 +35,27 @@ export function useLearnArticle() {
       const sessionId = genId();
       const fallbackTitle = article.title.slice(0, 50) + (article.title.length > 50 ? "…" : "");
       store.start(articleUrl, controller, sessionId);
-      const sysPrompt = buildPresetPrompt("reading-tutor", targetLevel);
+      // Placeholder until the known-words fetch below resolves — reassigned before
+      // runExchange/persistTranscript are ever actually called, same personalization
+      // useAnalyzeArticle's Notes prompt already applies.
+      let sysPrompt = buildPresetPrompt("reading-tutor", targetLevel);
+
+      // Neither streaming call below has a per-chunk-arrival deadline, so a
+      // provider that stops emitting mid-response (without ever closing the
+      // connection) would otherwise leave the job stuck on "running" forever
+      // — no toast, no error, and the reader bar's spinner never clears. Any
+      // gap this long between chunks aborts the shared controller, which
+      // unwinds the same way a real Cancel click does.
+      const STALL_TIMEOUT_MS = 45_000;
+      let stalled = false;
+      let watchdog: number | undefined;
+      const armWatchdog = () => {
+        if (watchdog !== undefined) window.clearTimeout(watchdog);
+        watchdog = window.setTimeout(() => { stalled = true; controller.abort(); }, STALL_TIMEOUT_MS);
+      };
+      const disarmWatchdog = () => {
+        if (watchdog !== undefined) { window.clearTimeout(watchdog); watchdog = undefined; }
+      };
 
       const persistTranscript = async (userText: string, assistantText: string, title = fallbackTitle) => {
         const items: DisplayItem[] = [
@@ -64,7 +84,9 @@ export function useLearnArticle() {
         let lastAssistantText = "";
         let lastPersistAt = 0;
         await persistTranscript(userText, "");
+        armWatchdog();
         for await (const chunk of provider.chat([{ role: "user", content: userText }], sysPrompt, controller.signal)) {
+          armWatchdog();
           lastAssistantText += chunk;
           const now = Date.now();
           if (now - lastPersistAt >= 500) {
@@ -72,6 +94,7 @@ export function useLearnArticle() {
             await persistTranscript(userText, lastAssistantText);
           }
         }
+        disarmWatchdog();
 
         lastAssistantText = unwrapMarkdownFence(lastAssistantText);
         if (!lastAssistantText.trim()) throw new Error(t("reader.learnEmptyResponse"));
@@ -92,6 +115,12 @@ export function useLearnArticle() {
           let lastAssistantText = "";
           let truncated = false;
 
+          const [knownWords, vocab] = await Promise.all([db.getKnownWords(), db.getWords()]);
+          const excludeWords = [
+            ...new Set([...knownWords.map((w) => w.toLowerCase()), ...vocab.map((w) => w.word.toLowerCase())]),
+          ];
+          sysPrompt = buildPresetPrompt("reading-tutor", targetLevel, excludeWords);
+
           for (let i = 0; i < CHAR_BUDGETS.length; i++) {
             userText = buildArticleBody(article, CHAR_BUDGETS[i]);
             try {
@@ -106,14 +135,19 @@ export function useLearnArticle() {
           let title = fallbackTitle;
           try {
             let raw = "";
+            armWatchdog();
             for await (const chunk of provider.generate(
               "Summarize the following exchange as a short chat title. Output ONLY the title — no quotes, no punctuation at the end, no explanation. Max 10 Chinese characters, or 6 English words, whichever fits the conversation's language.",
-              `User: ${userText.slice(0, 500)}\nAssistant: ${lastAssistantText.slice(0, 500)}`
-            )) raw += chunk;
+              `User: ${userText.slice(0, 500)}\nAssistant: ${lastAssistantText.slice(0, 500)}`,
+              controller.signal
+            )) { armWatchdog(); raw += chunk; }
             const cleaned = raw.trim().replace(/^["'「『]|["'」』.。!！?？]+$/g, "").slice(0, 24);
             if (cleaned) title = cleaned;
           } catch {
-            // Keep the truncated fallback title.
+            // Keep the truncated fallback title — the exchange itself already
+            // succeeded, so a stalled/failed title call shouldn't fail the job.
+          } finally {
+            disarmWatchdog();
           }
 
           await persistTranscript(userText, lastAssistantText, title);
@@ -121,7 +155,13 @@ export function useLearnArticle() {
           useLearnChatStore.getState().finishSuccess(articleUrl, sessionId);
           toast.success(t(truncated ? "reader.learnDoneTruncated" : "reader.learnDone", { title: article.title }));
         } catch (e: any) {
+          disarmWatchdog();
           if (e?.name === "AbortError") {
+            if (stalled) {
+              useLearnChatStore.getState().finishError(articleUrl);
+              toast.error(t("reader.learnStalled", { title: article.title }));
+              return;
+            }
             useLearnChatStore.getState().dismiss(articleUrl);
             return;
           }

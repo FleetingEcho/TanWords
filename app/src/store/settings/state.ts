@@ -28,6 +28,12 @@ export interface SettingsState {
   visibleSidebarTabs: SidebarTabId[];
   /** User-selected controls visible in the global command bar. */
   visibleTopBarItems: TopBarItemId[];
+  /** Display order over *every* sidebar tab id (visible or not) — drag-reordered
+   *  from the Settings page. `visibleSidebarTabs` only decides membership; this
+   *  decides sequence, for both the Settings pill grid and the real sidebar. */
+  sidebarTabOrder: SidebarTabId[];
+  /** Same idea as `sidebarTabOrder`, for the command bar's icon group. */
+  topBarItemOrder: TopBarItemId[];
   /** Responsive layout mode. Flexible adapts the shell and pages to narrow
    * viewports; fixed keeps the classic desktop chrome on wide screens. */
   layoutMode: LayoutMode;
@@ -167,6 +173,8 @@ export interface SettingsState {
   setSelectionActions: (v: boolean) => void;
   setSidebarTabVisible: (tab: SidebarTabId, visible: boolean) => void;
   setTopBarItemVisible: (item: TopBarItemId, visible: boolean) => void;
+  setSidebarTabOrder: (order: SidebarTabId[]) => void;
+  setTopBarItemOrder: (order: TopBarItemId[]) => void;
   setLayoutMode: (mode: LayoutMode) => void;
   setDefaultRssTab: (tab: RssTabSelection) => void;
   setFeedsViewMode: (mode: "card" | "list") => void;

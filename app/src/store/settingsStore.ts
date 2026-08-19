@@ -16,6 +16,7 @@ import {
 import {
   cachedUiLanguage, cacheUiLanguage, cachedSidebarTabs, cacheSidebarTabs,
   cachedTopBarItems, cacheTopBarItems,
+  cachedSidebarTabOrder, cacheSidebarTabOrder, cachedTopBarItemOrder, cacheTopBarItemOrder,
   cachedDefaultRssTab, cacheDefaultRssTab, cachedFeedsViewMode, cacheFeedsViewMode, saveSetting, saveSettings, saveSettingDebounced,
   cachedLayoutMode, cacheLayoutMode,
 } from "./settings/cache";
@@ -56,6 +57,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   selectionActions: true,
   visibleSidebarTabs: cachedSidebarTabs(),
   visibleTopBarItems: cachedTopBarItems(),
+  sidebarTabOrder: cachedSidebarTabOrder(),
+  topBarItemOrder: cachedTopBarItemOrder(),
   layoutMode: cachedLayoutMode(),
   defaultRssTab: cachedDefaultRssTab(),
   feedsViewMode: cachedFeedsViewMode(),
@@ -151,6 +154,18 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ visibleTopBarItems: next });
     cacheTopBarItems(next);
     saveSetting("visible_topbar_items", JSON.stringify(next));
+  },
+
+  setSidebarTabOrder: (order) => {
+    set({ sidebarTabOrder: order });
+    cacheSidebarTabOrder(order);
+    saveSetting("sidebar_tab_order", JSON.stringify(order));
+  },
+
+  setTopBarItemOrder: (order) => {
+    set({ topBarItemOrder: order });
+    cacheTopBarItemOrder(order);
+    saveSetting("topbar_item_order", JSON.stringify(order));
   },
 
   setLayoutMode: (mode) => {

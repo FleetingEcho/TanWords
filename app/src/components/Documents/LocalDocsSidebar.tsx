@@ -2,12 +2,12 @@ import React from "react";
 import { LocalDocItem, LocalDocSearchResult } from "@/lib/localDocs";
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronsRight, Copy, Download, FileInput, FileText, FolderOpen, Loader2, MoreHorizontal } from "lucide-react";
+import { Copy, Download, FileInput, FileText, FolderOpen, Loader2, MoreHorizontal } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { LocalDocTree } from "./LocalDocTree";
 import { LocalDocSearchResults } from "./LocalDocSearchResults";
-import { LIST_PANEL_WIDTH, LIST_PANEL_COLLAPSED_WIDTH, LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
+import { LIST_PANEL_WIDTH } from "@/components/shared/listPanel";
+import { ListPanelEdgeHandle } from "@/components/shared/ListPanelEdgeHandle";
 import { DocPanelHeader } from "./DocPanelHeader";
 import { toast } from "sonner";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -90,18 +90,9 @@ export function LocalDocsSidebar({
   const hasCustomAppBackground = useSettingsStore((state) => !!state.appBackgroundImage && state.appBackgroundVisible);
 
   return (
-    <Collapsible open={sidebarOpen} onOpenChange={onSidebarOpenChange} asChild>
-      <div className={`${sidebarOpen ? LIST_PANEL_WIDTH : LIST_PANEL_COLLAPSED_WIDTH} h-full shrink-0 border-r border-border ${hasCustomAppBackground ? "bg-transparent" : "bg-[var(--document-list-surface)]"} transition-[width] duration-200 ${sidebarOpen ? "max-lg:w-full max-lg:shrink" : "max-lg:w-[60px]"}`}>
-        {!sidebarOpen && (
-          <div className="flex justify-center pt-3">
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="icon" className={`h-7 w-7 ${LIST_PANEL_TOGGLE_CLASS}`} title={t("doc.expandFiles")} aria-label={t("doc.expandFiles")}>
-                <ChevronsRight className="h-3.5 w-3.5" />
-              </Button>
-            </CollapsibleTrigger>
-          </div>
-        )}
-        <CollapsibleContent className="h-full">
+    <div className="relative flex h-full shrink-0">
+      {sidebarOpen && (
+      <div className={`${LIST_PANEL_WIDTH} h-full shrink-0 border-r border-border ${hasCustomAppBackground ? "bg-transparent" : "bg-[var(--document-list-surface)]"} max-lg:w-full max-lg:shrink`}>
         <div className="flex flex-col h-full">
         {/* Same two-row header the database panel wears — see DocPanelHeader.
           * The mounted folder's path is the one thing this panel has that the
@@ -109,8 +100,6 @@ export function LocalDocsSidebar({
           * where the list comes from rather than what you can do to it. */}
         <DocPanelHeader
           sourceTabs={sourceTabs}
-          onCollapse={() => onSidebarOpenChange(false)}
-          collapseLabel={t("doc.collapseFiles")}
           search={search}
           onSearchChange={onSearchChange}
           searchPlaceholder={t("doc.searchFilesAndContent")}
@@ -231,8 +220,15 @@ export function LocalDocsSidebar({
           </div>
         )}
         </div>
-        </CollapsibleContent>
       </div>
-    </Collapsible>
+      )}
+      <ListPanelEdgeHandle
+        edge="leading"
+        collapsed={!sidebarOpen}
+        onClick={() => onSidebarOpenChange(!sidebarOpen)}
+        label={sidebarOpen ? t("doc.collapseFiles") : t("doc.expandFiles")}
+        top="top-3"
+      />
+    </div>
   );
 }

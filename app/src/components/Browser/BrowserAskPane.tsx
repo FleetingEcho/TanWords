@@ -4,7 +4,7 @@ import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 import { SpeakButton } from "@/components/ui/SpeakButton";
 import { InlineAskPanel } from "@/components/shared/InlineAskPanel";
-import { AskMode, AskTarget, isWordish } from "@/components/shared/selectionAskHelpers";
+import { AskMode, AskTarget, canAddAsWord, isWordish, wordCount } from "@/components/shared/selectionAskHelpers";
 import { useSelectionActions } from "@/components/shared/useSelectionActions";
 
 const WIDTH_KEY = "tanwords_browser_ask_width";
@@ -43,6 +43,8 @@ export function BrowserAskPane({ onClose }: { onClose: () => void }) {
 
   const text = draft.trim();
   const wordish = isWordish(text);
+  const canWord = canAddAsWord(text);
+  const canSentence = wordCount(text) > 1;
   // "browser" attribution, so a sentence kept from a web page is traceable to
   // one later, the way reader/chat saves already are.
   const { collected, adding, saving, addWord, savePattern } = useSelectionActions(text, "browser");
@@ -140,7 +142,7 @@ export function BrowserAskPane({ onClose }: { onClose: () => void }) {
           * it. Only what each slot means changes with word vs sentence, so the
           * two surfaces stay one piece of muscle memory. */}
         <div className="flex flex-wrap items-center gap-1">
-          {wordish ? (
+          {canWord && (
             collected ? (
               <span className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
                 <Check className="h-3 w-3" />
@@ -155,7 +157,8 @@ export function BrowserAskPane({ onClose }: { onClose: () => void }) {
                 {adding ? t("sel.adding") : t("sel.addWord")}
               </Button>
             )
-          ) : (
+          )}
+          {canSentence && (
             <Button
               variant="ghost" onClick={() => void savePattern(text)} disabled={!text || saving}
               className="h-7 gap-1.5 rounded-lg px-2 text-[11px] font-semibold text-primary"

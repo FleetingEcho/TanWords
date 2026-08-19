@@ -2,6 +2,7 @@ import {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_VISIBLE_TOPBAR_ITEMS,
   DEFAULT_LAYOUT_MODE, type SidebarTabId, type TopBarItemId, type RssTabSelection, type LayoutMode,
 } from "./types";
+import { normalizeOrder } from "./reorder";
 
 /** localStorage mirrors of a handful of settings that several pages read
  * synchronously on mount, before loadFromDB()'s async round-trip resolves —
@@ -63,6 +64,37 @@ export function cachedTopBarItems(): TopBarItemId[] {
 
 export function cacheTopBarItems(items: TopBarItemId[]) {
   try { localStorage.setItem(TOPBAR_ITEMS_CACHE_KEY, JSON.stringify(items)); } catch {}
+}
+
+const SIDEBAR_TAB_ORDER_CACHE_KEY = "tanwords_sidebar_tab_order_cache";
+const TOPBAR_ITEM_ORDER_CACHE_KEY = "tanwords_topbar_item_order_cache";
+
+export function cachedSidebarTabOrder(): SidebarTabId[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SIDEBAR_TAB_ORDER_CACHE_KEY) || "null");
+    if (!Array.isArray(parsed)) return DEFAULT_SIDEBAR_TABS;
+    return normalizeOrder(parsed, DEFAULT_SIDEBAR_TABS);
+  } catch {
+    return DEFAULT_SIDEBAR_TABS;
+  }
+}
+
+export function cacheSidebarTabOrder(order: SidebarTabId[]) {
+  try { localStorage.setItem(SIDEBAR_TAB_ORDER_CACHE_KEY, JSON.stringify(order)); } catch {}
+}
+
+export function cachedTopBarItemOrder(): TopBarItemId[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(TOPBAR_ITEM_ORDER_CACHE_KEY) || "null");
+    if (!Array.isArray(parsed)) return DEFAULT_TOPBAR_ITEMS;
+    return normalizeOrder(parsed, DEFAULT_TOPBAR_ITEMS);
+  } catch {
+    return DEFAULT_TOPBAR_ITEMS;
+  }
+}
+
+export function cacheTopBarItemOrder(order: TopBarItemId[]) {
+  try { localStorage.setItem(TOPBAR_ITEM_ORDER_CACHE_KEY, JSON.stringify(order)); } catch {}
 }
 
 const LAYOUT_MODE_CACHE_KEY = "tanwords_layout_mode_cache";

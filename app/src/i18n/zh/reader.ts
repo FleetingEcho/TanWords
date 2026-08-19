@@ -19,6 +19,7 @@ export const reader: Dict = {
     "reader.learnDone": "「{title}」已生成，可以在 AI 对话中查看",
     "reader.learnDoneTruncated": "「{title}」已根据精简内容生成，可以在 AI 对话中查看",
     "reader.learnFailed": "「{title}」分析失败",
+    "reader.learnStalled": "「{title}」分析已停滞，模型无响应，请重试或换用其他模型",
     "reader.learnEmptyResponse": "模型返回了空内容，请重试或换用其他模型",
     "reader.learnTruncated": "文章内容过长，已自动精简以适配当前模型的上下文窗口",
     "reader.learnContextOverflow": "文章超出当前模型的上下文窗口，请更换支持更大上下文的模型，或选择更短的文章",

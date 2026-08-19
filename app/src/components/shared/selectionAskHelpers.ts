@@ -114,6 +114,18 @@ export function isWordish(text: string) {
   return wordCount(text) <= 3 && !/[.!?]$/.test(text);
 }
 
+/** Short enough to be worth keeping as a standalone vocabulary entry — a
+ *  single word, or a short idiom/collocation/phrase. Deliberately looser than
+ *  `isWordish` (which also drives translate-vs-explain and lookup-vs-ask
+ *  mode): a multi-word selection that reads like a sentence — commas, a
+ *  trailing period, more than 3 words — can still be exactly the phrase
+ *  someone wants filed under Words rather than the sentence library, so the
+ *  "keep it" row offers both actions instead of picking one for you. */
+export const WORD_MAX_WORDS = 6;
+export function canAddAsWord(text: string) {
+  return wordCount(text) <= WORD_MAX_WORDS;
+}
+
 /** Selecting inside these is never a lookup — it's editing, or picking text
  *  out of the answer panel itself. */
 export const IGNORED = 'input, textarea, [contenteditable=""], [contenteditable="true"], [data-no-selection]';

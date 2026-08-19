@@ -4,10 +4,9 @@ import { DocSelector } from "./DocSelector";
 import { LazyDocEditor } from "./LazyDocEditor";
 import { useDocumentEditor } from "./useDocumentEditor";
 import { LocalDocsView } from "./LocalDocsView";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
-import { ChevronsLeft, ChevronsRight } from "lucide-react";
-import { LIST_PANEL_WIDTH, LIST_PANEL_COLLAPSED_WIDTH, LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
+import { ChevronsLeft } from "lucide-react";
+import { ListPanelEdgeHandle } from "@/components/shared/ListPanelEdgeHandle";
 import { EmptyCanvas } from "@/components/shared/EmptyCanvas";
 import { DocSourceTabs } from "./DocSourceTabs";
 import { LockedDocumentPanel } from "./LockedDocumentPanel";
@@ -212,29 +211,28 @@ export function DocumentsPage() {
       <div className="relative flex-1 overflow-hidden">
         <div className={`absolute inset-0 ${source === "db" ? "flex" : "hidden"} overflow-hidden ${dbZenMode ? `fixed inset-0 z-50 ${hasCustomAppBackground ? "" : "bg-background"}` : ""}`}>
             {!dbZenMode && (
-            <Collapsible open={dbSidebarOpen} onOpenChange={setDbSidebarOpen} asChild>
-              <div className={`${dbSidebarOpen ? LIST_PANEL_WIDTH : LIST_PANEL_COLLAPSED_WIDTH} h-full shrink-0 transition-[width] duration-200 max-lg:w-full max-lg:shrink ${showMobileEditor ? "max-lg:hidden" : ""}`}>
-                {!dbSidebarOpen && <div className={`flex h-full justify-center border-r border-border pt-3 ${hasCustomAppBackground ? "bg-transparent" : "bg-card"}`}>
-                  <CollapsibleTrigger asChild>
-                    <Button variant="ghost" size="icon" className={`h-7 w-7 ${LIST_PANEL_TOGGLE_CLASS}`} title={t("doc.expandFiles")}><ChevronsRight className="h-3.5 w-3.5" /></Button>
-                  </CollapsibleTrigger>
-                </div>}
-                <CollapsibleContent className="h-full">
-                  <DocSelector
-                    sourceTabs={sourceTabs}
-                    activeId={activeId}
-                    onSelect={loadDoc}
-                    onNewDoc={handleNewDoc}
-                    onNewDocIn={handleNewDocIn}
-                    refreshKey={refreshKey}
-                    manualRefreshKey={dbRefreshKey}
-                    onRefreshingChange={setDbRefreshing}
-                    onCollapse={() => setDbSidebarOpen(false)}
-                    beforeLock={flushActiveDocument}
-                  />
-                </CollapsibleContent>
-              </div>
-            </Collapsible>
+            <div className={`relative flex h-full shrink-0 ${showMobileEditor ? "max-lg:hidden" : ""}`}>
+              {dbSidebarOpen && (
+                <DocSelector
+                  sourceTabs={sourceTabs}
+                  activeId={activeId}
+                  onSelect={loadDoc}
+                  onNewDoc={handleNewDoc}
+                  onNewDocIn={handleNewDocIn}
+                  refreshKey={refreshKey}
+                  manualRefreshKey={dbRefreshKey}
+                  onRefreshingChange={setDbRefreshing}
+                  beforeLock={flushActiveDocument}
+                />
+              )}
+              <ListPanelEdgeHandle
+                edge="leading"
+                collapsed={!dbSidebarOpen}
+                onClick={() => setDbSidebarOpen(!dbSidebarOpen)}
+                label={dbSidebarOpen ? t("doc.collapseFiles") : t("doc.expandFiles")}
+                top="top-3"
+              />
+            </div>
             )}
 
             <div className={`flex-1 overflow-hidden min-w-0 ${showMobileEditor ? "" : "max-lg:hidden"}`}>

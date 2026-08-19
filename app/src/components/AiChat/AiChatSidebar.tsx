@@ -6,8 +6,8 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Button } from "@/components/ui/button";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { Archive, ArchiveRestore, CalendarRange, ChevronsLeft, ChevronsRight, MessageSquare, MessageSquarePlus, MoreHorizontal, Pencil, Pin, PinOff, Search, Trash2, X } from "lucide-react";
-import { LIST_PANEL_COLLAPSED_WIDTH, LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
+import { Archive, ArchiveRestore, CalendarRange, MessageSquarePlus, MoreHorizontal, Pencil, Pin, PinOff, Search, Trash2, X } from "lucide-react";
+import { ListPanelEdgeHandle } from "@/components/shared/ListPanelEdgeHandle";
 
 /** Drag range for the resizable sidebar. Narrow enough that a title still
  *  reads, wide enough to not eat the conversation column on a small window. */
@@ -261,16 +261,16 @@ export function AiChatSidebar({
     </div>
   );
 
-  return (
+  const panel = (
     <aside
       className={variant === "drawer"
         ? `flex h-full w-full flex-col ${hasCustomAppBackground ? "bg-transparent" : "bg-card"}`
-        : `relative ${collapsed ? LIST_PANEL_COLLAPSED_WIDTH : ""} shrink-0 border-r border-border/60 flex flex-col ${
-            collapsed || dragWidth !== null ? "" : "transition-[width] duration-300 ease-out"
+        : `relative shrink-0 border-r border-border/60 flex flex-col ${
+            dragWidth !== null ? "" : "transition-[width] duration-300 ease-out"
           } ${hasCustomAppBackground ? "bg-transparent" : "backdrop-blur-xl bg-card"}`}
-      style={variant === "inline" && !collapsed ? { width: displayWidth } : undefined}
+      style={variant === "inline" ? { width: displayWidth } : undefined}
     >
-      {variant === "inline" && !collapsed && (
+      {variant === "inline" && (
         <div
           onPointerDown={onResizePointerDown}
           onPointerMove={onResizePointerMove}
@@ -280,31 +280,15 @@ export function AiChatSidebar({
           className="absolute -right-0.5 top-0 z-10 h-full w-1.5 cursor-col-resize touch-none select-none after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-transparent hover:after:bg-primary/40 active:after:bg-primary/60"
         />
       )}
-      {collapsed ? (
-        <div className="p-3 pb-2 border-b border-border flex flex-col items-center gap-2">
-          <Button variant="ghost" onClick={onToggleCollapsed} className={`h-7 w-7 p-0 ${LIST_PANEL_TOGGLE_CLASS}`} title={t("aichat.sidebarExpand")}>
-            <ChevronsRight className="h-3.5 w-3.5" />
-          </Button>
-          {/* Same outlined treatment as the expanded panel's — the rail is the
-            * same button at a different width, not a different button. */}
-          <Button variant="ghost" onClick={onNewChat} className={`${NEW_BUTTON_CLASS} h-7 w-7`} title={t("aichat.newChat")} aria-label={t("aichat.newChat")}>
-            <MessageSquarePlus className="w-3.5 h-3.5" />
-          </Button>
-        </div>
-      ) : (
-        // One block, one border. This was three stacked bands — a header, a
-        // filter box, then the list — each with its own rule, which sliced a
-        // 320px panel into strips before a single conversation appeared.
-        <div className="border-b border-border">
+      {/* One block, one border. This was three stacked bands — a header, a
+        * filter box, then the list — each with its own rule, which sliced a
+        * 320px panel into strips before a single conversation appeared. */}
+      <div className="border-b border-border">
           <div className="flex h-8 items-center gap-2 px-3">
-            {variant === "drawer" ? (
+            {variant === "drawer" && (
               <Button variant="ghost" size="icon" onClick={onRequestClose} className="-ml-1 h-6 w-6 shrink-0" title={t("aichat.closeSessions")} aria-label={t("aichat.closeSessions")}>
                 <X className="h-3.5 w-3.5" />
               </Button>
-            ) : (
-            <Button variant="ghost" size="icon" onClick={onToggleCollapsed} className={`-ml-1 h-6 w-6 shrink-0 ${LIST_PANEL_TOGGLE_CLASS}`} title={t("aichat.sidebarCollapse")}>
-              <ChevronsLeft className="h-3.5 w-3.5" />
-            </Button>
             )}
 
             {/* The heading. "Chats" is a truncating label — at the panel's
@@ -387,10 +371,9 @@ export function AiChatSidebar({
               )}
             </div>
           )}
-        </div>
-      )}
+      </div>
 
-      {!collapsed && <div className="flex-1 overflow-y-auto py-1">
+      <div className="flex-1 overflow-y-auto py-1">
         {shownSessions.length === 0 && (
           <p className="px-4 py-6 text-xs text-muted-foreground text-center">
             {searchQuery || dateFrom || dateTo ? t("aichat.noResults") : t("aichat.noSessions")}
@@ -399,28 +382,7 @@ export function AiChatSidebar({
         {shownSessions.map((session) => (
           <SessionRow key={session.id} session={session} archived={archiveView} />
         ))}
-      </div>}
-
-      {/* A chat glyph per session, not the title's first letter. Initials only
-        * read as initials when they mean something — here they were arbitrary
-        * ("S", "M", "S"), told you nothing about which chat was which, and made
-        * the rail look like a column of stray characters. The icon says "chat"
-        * and the title lives in the tooltip; the active one is marked by its
-        * highlight. */}
-      {collapsed && <div className="flex-1 flex flex-col items-center gap-2 py-3">
-        {displaySessions.slice(0, 8).map((session) => (
-          <Button
-            key={session.id}
-            variant="ghost"
-            onClick={() => onSwitchSession(session.id)}
-            title={session.title}
-            aria-label={session.title}
-            className={`h-8 w-8 rounded-xl p-0 ${session.id === activeId ? "bg-primary/12 text-primary ring-1 ring-primary/20" : "text-muted-foreground hover:text-foreground"}`}
-          >
-            <MessageSquare className="h-3.5 w-3.5" />
-          </Button>
-        ))}
-      </div>}
+      </div>
 
       <ConfirmModal
         open={pendingDeleteId !== null}
@@ -433,5 +395,20 @@ export function AiChatSidebar({
         }}
       />
     </aside>
+  );
+
+  if (variant !== "inline") return panel;
+
+  return (
+    <div className="relative flex h-full shrink-0">
+      {!collapsed && panel}
+      <ListPanelEdgeHandle
+        edge="leading"
+        collapsed={collapsed}
+        onClick={onToggleCollapsed}
+        label={collapsed ? t("aichat.sidebarExpand") : t("aichat.sidebarCollapse")}
+        top="top-10"
+      />
+    </div>
   );
 }

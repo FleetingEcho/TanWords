@@ -4,7 +4,12 @@ import { ToolCallDisplay } from "./ToolCallCard";
 import { collapseBlankLines } from "@/lib/textCleanup";
 
 // Prompts stay English (they instruct the model); preset names are i18n keys.
-export function buildPresetPrompt(presetId: string, targetLevel: string): string {
+// `knownWords` is optional: the interactive preset picker (AiChatPage, useChatSession)
+// has no article-specific vocabulary to exclude at prompt-build time, so it's only
+// ever populated by the headless Reading Tutor job (see useLearnArticle.ts), which
+// already has the user's saved vocab on hand — same personalization useAnalyzeArticle's
+// Notes prompt applies.
+export function buildPresetPrompt(presetId: string, targetLevel: string, knownWords: string[] = []): string {
   switch (presetId) {
     case "english-tutor":
       return `You are an expert English tutor for senior software engineers. The learner's target level is CEFR ${targetLevel} — calibrate vocabulary suggestions and explanations to that level. Help with grammar, vocabulary, idioms, and professional communication. Provide expert-level nuance with tech/business examples. Use Chinese for explanations when helpful. Return readable Markdown directly. When the user asks you to pull vocabulary from a text, list the useful words, phrases, collocations, phrasal verbs and idioms in concise Markdown with Chinese meanings and source context. Do not wrap the whole answer in a markdown code fence. Use app tools only when the user explicitly asks you to search or change their saved data.`;
@@ -12,20 +17,22 @@ export function buildPresetPrompt(presetId: string, targetLevel: string): string
       return "You are a grammar expert specializing in technical and professional English. Analyze sentences, explain grammatical structures, identify errors, and suggest improvements with clear before/after comparisons. Use Chinese for explanations when helpful.";
     case "writing-coach":
       return "You are a professional writing coach for software engineers. Help improve clarity, conciseness, tone, and impact in emails, docs, and messages. Show rewritten versions and explain improvements. Use Chinese for explanations when helpful.";
-    case "reading-tutor":
+    case "reading-tutor": {
+      const known = knownWords.slice(0, 150).join(", ");
       return `You are a reading tutor for a Chinese-native English learner working in tech (target level: CEFR ${targetLevel}). Analyze a fresh English article as a compact, practical study guide in Chinese.
 
 Return ordinary Markdown text directly. Never wrap the response in a \`\`\`markdown code fence and never call tools.
 
 Always include these sections:
 - ## 文章导读 — a concise Chinese summary and the author's tone or argument.
-- ## 值得学的词汇 — recommend AT LEAST 20 learning items from the article. Prioritize individual English words, then use short phrases, collocations, phrasal verbs, idioms, or familiar words used in an unusual sense to reach 20 when necessary. For every item, show the English item in bold, its CEFR level, a short natural Chinese meaning, and one brief quote of its source context. Never omit this section or return fewer than 20 items unless the supplied text itself contains fewer than 20 distinct English words. Exclude proper nouns and basic function words.
-- ## 值得模仿的句子 — include 3-8 exact sentences from the article. Explain the reusable pattern, grammar or rhetorical move in concise Chinese.
+- ## 值得学的词汇 — select 20-30 useful words or short phrases from the article. Prioritize individual English words, then short phrases, collocations, phrasal verbs, idioms, or familiar words used in an unusual sense to reach the count when necessary. Each item must be one concise bullet in this exact format: **word or phrase** — 简单中文释义. Do not add CEFR labels, source-context quotes, usage essays, or a table — the meaning alone. Exclude proper nouns and basic function words.
+- ## 值得模仿的句子 — include 3-8 exact sentences copied verbatim from the article. Explain the reusable pattern, grammar or rhetorical move in concise Chinese.
 - ## 语言观察 — include 2-4 brief points about recurring grammar, usage contrasts, register or writing technique.
-
+${known ? `\nThe learner already knows these words; do not include them in the vocabulary section: ${known}\n` : ""}
 Keep the guide practical and easy to scan. Do not output JSON, XML, tool calls, or instructions for saving items. The app already lets the learner select any word or sentence from your Markdown response and save it.
 
 For follow-up questions, answer directly and conversationally in Chinese unless the user asks for another language.`;
+    }
     case "vocab-map":
       return `You are an expert English vocabulary coach for Chinese learners (target level: CEFR ${targetLevel} — calibrate to that level, with light stretch above it). When the user gives you a single word, or a topic/scene they want vocabulary for, respond in two parts:
 

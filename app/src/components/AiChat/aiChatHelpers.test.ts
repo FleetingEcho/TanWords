@@ -27,11 +27,21 @@ describe("unwrapMarkdownFence", () => {
 });
 
 describe("reading tutor prompt", () => {
-  it("requires a vocabulary section with at least 20 items", () => {
+  it("requires a vocabulary section of concise bullets, no CEFR labels", () => {
     const prompt = buildPresetPrompt("reading-tutor", "B2");
     expect(prompt).toContain("## 值得学的词汇");
-    expect(prompt).toContain("AT LEAST 20");
-    expect(prompt).toContain("Never omit this section");
+    expect(prompt).toContain("20-30");
+    expect(prompt).toContain("Do not add CEFR labels");
+  });
+
+  it("excludes the learner's known words when supplied", () => {
+    const prompt = buildPresetPrompt("reading-tutor", "B2", ["hello", "world"]);
+    expect(prompt).toContain("do not include them in the vocabulary section: hello, world");
+  });
+
+  it("omits the exclusion clause when no known words are supplied", () => {
+    const prompt = buildPresetPrompt("reading-tutor", "B2");
+    expect(prompt).not.toContain("do not include them in the vocabulary section");
   });
 });
 

@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Eye, Trash2, Upload } from "lucide-react";
-import { DEFAULT_BANNER_POSITION, DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, useSettingsStore, Theme } from "@/store/settingsStore";
+import { DEFAULT_BANNER_POSITION, useSettingsStore, Theme, type SidebarTabId, type TopBarItemId } from "@/store/settingsStore";
+import { mergeReorderedSubset } from "@/store/settings/reorder";
 import { useT } from "@/hooks/useT";
 import { useDB } from "@/hooks/useDB";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -321,6 +322,68 @@ function DefaultRssTabSetting() {
   );
 }
 
+/** A checkbox pill grid that's also a drag-sortable list — native HTML5 drag
+ *  and drop, no library. Dropping one pill onto another swaps its position
+ *  in `items`; `onReorder` gets the full new sequence and is responsible for
+ *  persisting it (merging back into whatever full order it's a filtered view
+ *  of, if any). Order and visibility are independent here on purpose: a
+ *  hidden pill can still be dragged to where you want it before you ever
+ *  turn it on. */
+function SortablePillGrid<T extends string>({
+  items, isVisible, labelFor, onToggle, onReorder, widthClass = "w-32",
+}: {
+  items: T[];
+  isVisible: (id: T) => boolean;
+  labelFor: (id: T) => string;
+  onToggle: (id: T, visible: boolean) => void;
+  onReorder: (order: T[]) => void;
+  widthClass?: string;
+}) {
+  const [dragId, setDragId] = useState<T | null>(null);
+  const [overId, setOverId] = useState<T | null>(null);
+
+  const handleDrop = (targetId: T) => {
+    setOverId(null);
+    if (!dragId || dragId === targetId) { setDragId(null); return; }
+    const from = items.indexOf(dragId);
+    const to = items.indexOf(targetId);
+    setDragId(null);
+    if (from < 0 || to < 0) return;
+    const next = [...items];
+    next.splice(from, 1);
+    next.splice(to, 0, dragId);
+    onReorder(next);
+  };
+
+  return (
+    <div className="flex max-w-4xl flex-wrap gap-2">
+      {items.map((id) => {
+        const visible = isVisible(id);
+        return (
+          <label
+            key={id}
+            draggable
+            onDragStart={(e) => { setDragId(id); e.dataTransfer.effectAllowed = "move"; }}
+            onDragOver={(e) => { e.preventDefault(); if (dragId && dragId !== id) setOverId(id); }}
+            onDragLeave={() => setOverId((cur) => (cur === id ? null : cur))}
+            onDrop={(e) => { e.preventDefault(); handleDrop(id); }}
+            onDragEnd={() => { setDragId(null); setOverId(null); }}
+            title={labelFor(id)}
+            className={`flex h-8 ${widthClass} cursor-grab items-center gap-2 rounded-full border px-3 text-xs font-medium transition-colors active:cursor-grabbing ${
+              visible
+                ? "border-primary/30 bg-primary/[0.07] text-foreground"
+                : "border-transparent bg-muted/50 text-muted-foreground hover:bg-muted"
+            } ${dragId === id ? "opacity-40" : ""} ${overId === id ? "ring-2 ring-primary/60" : ""}`}
+          >
+            <Checkbox className="h-3.5 w-3.5 rounded-full shadow-none" checked={visible} onCheckedChange={(checked) => onToggle(id, checked === true)} />
+            <span className="truncate">{labelFor(id)}</span>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
 export function GeneralSection() {
   const [accountEmail, setAccountEmail] = useState<string | null>(null);
   useEffect(() => {
@@ -394,24 +457,20 @@ export function GeneralSection() {
             </div>
             <p className="mt-0.5 text-xs text-muted-foreground">{t("settings.topBarItemsSub")}</p>
           </div>
-          <div className="flex max-w-4xl flex-wrap gap-2">
-            {DEFAULT_TOPBAR_ITEMS.filter((item) => {
-            if (item === "mcp") return hostCapabilities.mcp;
-            if (item === "dsh") return hostCapabilities.dsh;
-            if (item === "terminal") return hostCapabilities.terminal;
-            if (item === "updates") return hostCapabilities.updater;
-            if (item === "browser") return hostCapabilities.browser;
+          <SortablePillGrid
+            items={settings.topBarItemOrder.filter((item) => {
+              if (item === "mcp") return hostCapabilities.mcp;
+              if (item === "dsh") return hostCapabilities.dsh;
+              if (item === "terminal") return hostCapabilities.terminal;
+              if (item === "updates") return hostCapabilities.updater;
+              if (item === "browser") return hostCapabilities.browser;
               return true;
-            }).map((item) => {
-              const visible = settings.visibleTopBarItems.includes(item);
-              return (
-                <label key={item} className={`flex h-8 w-32 cursor-pointer items-center gap-2 rounded-full border px-3 text-xs font-medium transition-colors ${visible ? "border-primary/30 bg-primary/[0.07] text-foreground" : "border-transparent bg-muted/50 text-muted-foreground hover:bg-muted"}`}>
-                  <Checkbox className="h-3.5 w-3.5 rounded-full shadow-none" checked={visible} onCheckedChange={(checked) => settings.setTopBarItemVisible(item, checked === true)} />
-                  <span className="truncate">{t(`settings.topBar.${item}`)}</span>
-                </label>
-              );
             })}
-          </div>
+            isVisible={(item) => settings.visibleTopBarItems.includes(item)}
+            labelFor={(item) => t(`settings.topBar.${item}`)}
+            onToggle={(item, visible) => settings.setTopBarItemVisible(item, visible)}
+            onReorder={(order: TopBarItemId[]) => settings.setTopBarItemOrder(mergeReorderedSubset(settings.topBarItemOrder, order))}
+          />
         </div>
         <div className="py-4">
           <div className="mb-3">
@@ -423,29 +482,18 @@ export function GeneralSection() {
             </div>
             <p className="mt-0.5 text-xs text-muted-foreground">{t("settings.sidebarTabsSub")}</p>
           </div>
-          <div className="flex max-w-3xl flex-wrap gap-2">
-            {DEFAULT_SIDEBAR_TABS.filter((tab) => {
+          <SortablePillGrid
+            items={settings.sidebarTabOrder.filter((tab) => {
               if (tab === "music") return hostCapabilities.music;
               if (tab === "browser") return hostCapabilities.browser;
               if (tab === "terminal") return hostCapabilities.terminal;
               return true;
-            }).map((tab) => {
-              const visible = settings.visibleSidebarTabs.includes(tab);
-              return (
-                <label
-                  key={tab}
-                  className={`flex h-8 w-32 cursor-pointer items-center gap-2 rounded-full border px-3 text-xs font-medium transition-colors ${
-                    visible
-                      ? "border-primary/30 bg-primary/[0.07] text-foreground"
-                      : "border-transparent bg-muted/50 text-muted-foreground hover:bg-muted"
-                  }`}
-                >
-                  <Checkbox className="h-3.5 w-3.5 rounded-full shadow-none" checked={visible} onCheckedChange={(checked) => settings.setSidebarTabVisible(tab, checked === true)} />
-                  <span className="truncate">{t(`nav.${tab}`)}</span>
-                </label>
-              );
             })}
-          </div>
+            isVisible={(tab) => settings.visibleSidebarTabs.includes(tab)}
+            labelFor={(tab) => t(`nav.${tab}`)}
+            onToggle={(tab, visible) => settings.setSidebarTabVisible(tab, visible)}
+            onReorder={(order: SidebarTabId[]) => settings.setSidebarTabOrder(mergeReorderedSubset(settings.sidebarTabOrder, order))}
+          />
         </div>
 
         {hostCapabilities.auth && (

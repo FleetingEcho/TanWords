@@ -1,7 +1,6 @@
 import type React from "react";
-import { ChevronsLeft, Filter, Plus, Search } from "lucide-react";
+import { Filter, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
 
 /** The header both document panels wear — the database list and the mounted
  *  folder's file tree.
@@ -9,9 +8,10 @@ import { LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
  *  Two rows, and the split between them is the point: the first says *which
  *  library you are in* (source tabs, refresh, library-wide actions), the second
  *  says *what you are doing inside it* (find, filter, create). Before this they
- *  were four rows across three alignment systems, and the row holding the
- *  actions had a lone collapse chevron on its left, so a panel-width gap opened
- *  in the middle of it.
+ *  were four rows across three alignment systems. The panel's own collapse
+ *  control used to lead this row too; it now lives outside the panel as an
+ *  edge-attached pull tab (see ListPanelEdgeHandle) so this header is only
+ *  ever about what's inside the panel.
  *
  *  Shared rather than copied because these two panels have already drifted
  *  apart once (see listPanel.ts on their backgrounds), and the header is the
@@ -19,8 +19,6 @@ import { LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
  */
 export function DocPanelHeader({
   sourceTabs,
-  onCollapse,
-  collapseLabel,
   actions,
   search,
   onSearchChange,
@@ -35,8 +33,6 @@ export function DocPanelHeader({
    *  refresh button at its right edge, which is why it is given the row's
    *  free space rather than sized to its content. */
   sourceTabs?: React.ReactNode;
-  onCollapse?: () => void;
-  collapseLabel: string;
   /** Library-wide icon buttons — the attachment manager, the import/export
    *  menu. They belong beside the source tabs, not beside "new document". */
   actions?: React.ReactNode;
@@ -65,21 +61,8 @@ export function DocPanelHeader({
 }) {
   return (
     <div className="shrink-0 space-y-2 px-3 pb-2 pt-3">
-      {/* Which library. The collapse chevron leads the row because it acts on
-        * the panel itself, not on anything in the list. */}
+      {/* Which library. */}
       <div className="flex items-center gap-1">
-        {onCollapse && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onCollapse}
-            title={collapseLabel}
-            aria-label={collapseLabel}
-            className={`-ml-1 h-6 w-6 shrink-0 ${LIST_PANEL_TOGGLE_CLASS}`}
-          >
-            <ChevronsLeft className="h-3.5 w-3.5" />
-          </Button>
-        )}
         {sourceTabs && <div className="flex min-w-0 flex-1 items-center">{sourceTabs}</div>}
         {actions}
       </div>

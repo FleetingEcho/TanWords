@@ -6,14 +6,13 @@ import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
 import { findBestProvider } from "@/providers/select";
 import { INLINE_ASK_SYSTEM_PROMPT, buildInlineAskUserPrompt } from "@/providers/base";
-import { fetchSentencePattern } from "@/lib/patternFromSentence";
 import { fetchBasicInfo, BasicInfo } from "@/lib/basicInfo";
 import { parseEnrichmentStream } from "@/lib/enrichMeta";
 import { SpeakButton } from "@/components/ui/SpeakButton";
 import { hostCapabilities } from "@/platform";
 import { Markdown } from "@/components/AiChat/Markdown";
 import { Button } from "@/components/ui/button";
-import { AskMode, AskTarget, cleanWord, isWordish } from "./selectionAskHelpers";
+import { AskMode, AskTarget, canAddAsWord, cleanWord, isWordish, wordCount } from "./selectionAskHelpers";
 
 /** Streams an answer about the selection.
  *
@@ -57,13 +56,15 @@ export function InlineAskPanel({ anchor, mode: initialMode, onClose, layout = "f
 
   const word = cleanWord(anchor.text);
   const wordish = isWordish(anchor.text);
+  const canWord = canAddAsWord(anchor.text);
+  const canSentence = wordCount(anchor.text) > 1;
 
   // A word gets its dictionary fields fetched alongside the explanation, so
   // "add to vocabulary" is one click with a real gloss/level behind it rather
   // than a bare headword — and so an already-collected word can say so
   // instead of offering to add it twice.
   useEffect(() => {
-    if (!wordish || !word) return;
+    if (!canWord || !word) return;
     let cancelled = false;
     const controller = new AbortController();
     void (async () => {
@@ -198,36 +199,35 @@ export function InlineAskPanel({ anchor, mode: initialMode, onClose, layout = "f
 
         {done && !error && (
           <div className="flex items-center gap-1 border-t border-border px-2 py-1.5">
-            {wordish ? (
-              <>
-                {collected ? (
-                  <span className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-                    <Check className="h-3 w-3" />
-                    {t("sel.inVocab")}
-                  </span>
-                ) : (
-                  <Button
-                    variant="ghost"
-                    onClick={() => void addToVocab()}
-                    disabled={adding}
-                    className="h-7 gap-1.5 rounded-lg px-2 text-[11px] font-semibold text-primary"
-                  >
-                    <BookPlus className="h-3 w-3" />
-                    {adding ? t("sel.adding") : t("sel.addWord")}
-                  </Button>
-                )}
-                {mode !== "deep" && (
-                  <Button
-                    variant="ghost"
-                    onClick={() => setMode("deep")}
-                    className="h-7 gap-1.5 rounded-lg px-2 text-[11px] font-medium text-muted-foreground"
-                  >
-                    <Search className="h-3 w-3" />
-                    {t("sel.lookup")}
-                  </Button>
-                )}
-              </>
-            ) : (
+            {canWord && (
+              collected ? (
+                <span className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                  <Check className="h-3 w-3" />
+                  {t("sel.inVocab")}
+                </span>
+              ) : (
+                <Button
+                  variant="ghost"
+                  onClick={() => void addToVocab()}
+                  disabled={adding}
+                  className="h-7 gap-1.5 rounded-lg px-2 text-[11px] font-semibold text-primary"
+                >
+                  <BookPlus className="h-3 w-3" />
+                  {adding ? t("sel.adding") : t("sel.addWord")}
+                </Button>
+              )
+            )}
+            {wordish && mode !== "deep" && (
+              <Button
+                variant="ghost"
+                onClick={() => setMode("deep")}
+                className="h-7 gap-1.5 rounded-lg px-2 text-[11px] font-medium text-muted-foreground"
+              >
+                <Search className="h-3 w-3" />
+                {t("sel.lookup")}
+              </Button>
+            )}
+            {canSentence && (
               <SavePatternButton sentence={anchor.text} source={anchor.source} db={db} onSaved={onClose} />
             )}
           </div>
@@ -237,6 +237,9 @@ export function InlineAskPanel({ anchor, mode: initialMode, onClose, layout = "f
   );
 }
 
+/** Saves the raw sentence immediately — no AI call in the way. The zh/note/
+ *  level fields start empty; the sentence library's "reanalyze" action fills
+ *  them in later, whenever there's time to go through what got collected. */
 function SavePatternButton({
   sentence, source, db, onSaved,
 }: {
@@ -246,7 +249,6 @@ function SavePatternButton({
   onSaved: () => void;
 }) {
   const t = useT();
-  const targetLevel = useSettingsStore((s) => s.targetLevels.join("/"));
   const [saving, setSaving] = useState(false);
   return (
     <Button
@@ -255,11 +257,7 @@ function SavePatternButton({
       onClick={async () => {
         setSaving(true);
         try {
-          const provider = findBestProvider();
-          const info = provider ? await fetchSentencePattern(provider, sentence, targetLevel) : null;
-          const saved = await db.saveSentence(
-            sentence, info?.zh ?? "", info?.note ?? "", info?.level ?? "", source
-          );
+          const saved = await db.saveSentence(sentence, "", "", "", source);
           if (saved) {
             toast.success(saved.created ? t("sel.saved") : t("sel.alreadySaved"));
             onSaved();

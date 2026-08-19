@@ -20,12 +20,11 @@ import { STATUS_LIST, StatusIcon, statusLabelKey } from "./documentStatus";
  * panel; what stays here is only what the database library has that the folder
  * one does not — the attachment manager and the sort/tag/date filters. */
 export function DocSelectorHeader({
-  list, density, onDensityChange, onCollapse, onNewDoc, onOpenImages, onImport, onExportAll, sourceTabs,
+  list, density, onDensityChange, onNewDoc, onOpenImages, onImport, onExportAll, sourceTabs,
 }: {
   list: DocListState;
   density: DocListDensity;
   onDensityChange: (next: DocListDensity) => void;
-  onCollapse?: () => void;
   /** The database/local-folder switcher, which lives in the header's first row
    *  rather than in a bar of its own — see DocSourceTabs. */
   sourceTabs?: React.ReactNode;
@@ -46,8 +45,6 @@ export function DocSelectorHeader({
   return (
     <DocPanelHeader
       sourceTabs={sourceTabs}
-      onCollapse={onCollapse}
-      collapseLabel={t("doc.collapseFiles")}
       search={search}
       onSearchChange={setSearch}
       searchPlaceholder={t("doc.search")}

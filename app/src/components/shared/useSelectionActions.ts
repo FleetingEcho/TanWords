@@ -4,9 +4,8 @@ import { useDB } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
 import { findBestProvider } from "@/providers/select";
-import { fetchSentencePattern } from "@/lib/patternFromSentence";
 import { fetchBasicInfo } from "@/lib/basicInfo";
-import { cleanWord, isWordish } from "./selectionAskHelpers";
+import { canAddAsWord, cleanWord } from "./selectionAskHelpers";
 
 /** The "keep it" half of the selection toolbar: add a word to the vocabulary,
  *  or save a sentence to the pattern library.
@@ -28,7 +27,7 @@ export function useSelectionActions(text: string, source: string) {
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const word = isWordish(text) ? cleanWord(text) : "";
+  const word = canAddAsWord(text) ? cleanWord(text) : "";
 
   // One local SQLite query per selection, so the toolbar can say "in vocab"
   // rather than offer to add a word that is already there.
@@ -63,18 +62,18 @@ export function useSelectionActions(text: string, source: string) {
   };
 
   /** Resolves true once the sentence is in the library, so callers can dismiss
-   *  their own UI — the floating toolbar closes, the docked pane stays open. */
+   *  their own UI — the floating toolbar closes, the docked pane stays open.
+   *
+   *  Saves the raw sentence immediately, with no AI call in the way — "save"
+   *  needs to be instant while you're mid-read, not gated on a round trip you
+   *  didn't ask for. The zh/note/level fields start empty; the sentence
+   *  library's own "reanalyze" action (SentenceList) fills them in whenever
+   *  you actually sit down to go through what you collected. */
   const savePattern = async (sentence: string): Promise<boolean> => {
     if (saving) return false;
     setSaving(true);
     try {
-      const provider = findBestProvider();
-      // The analysis is a nicety, not a gate: with no provider (or a failed
-      // call) the sentence still gets saved, just without a translation/note.
-      const info = provider ? await fetchSentencePattern(provider, sentence, targetLevel) : null;
-      const saved = await db.saveSentence(
-        sentence, info?.zh ?? "", info?.note ?? "", info?.level ?? "", source
-      );
+      const saved = await db.saveSentence(sentence, "", "", "", source);
       if (saved) {
         toast.success(saved.created ? t("sel.saved") : t("sel.alreadySaved"));
         return true;

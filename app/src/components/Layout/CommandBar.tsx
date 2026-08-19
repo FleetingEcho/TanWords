@@ -25,7 +25,7 @@ import type { DbConnection } from "@/hooks/useDB.types";
 import { useProviderStatus } from "@/hooks/useProviderStatus";
 import { NavPage, useNavStore } from "@/store/navStore";
 import { UpdateButton } from "@/components/Layout/UpdateButton";
-import { useSettingsStore } from "@/store/settingsStore";
+import { useSettingsStore, type TopBarItemId } from "@/store/settingsStore";
 import { useLayoutStore } from "@/store/layoutStore";
 import { useAnalysisStore } from "@/store/analysisStore";
 import { useVocabEnrichStore } from "@/store/vocabEnrichStore";
@@ -35,6 +35,17 @@ import { useFloatingBrowserStore } from "@/store/floatingBrowserStore";
 import { hostCapabilities, isDesktopHost } from "@/platform";
 
 type McpState = { status: { running: boolean; error: string | null } };
+
+/** Top-bar items rendered as one homogeneous group of small square icon
+ *  buttons (see the `iconGroupItems` map below) — drag-reordered from
+ *  Settings' "Top navigation controls" grid. "search" and "scratch" are laid
+ *  out separately (the search box grows to fill the header; "scratch" is a
+ *  labelled button ahead of this group) and structurally can't interleave
+ *  with a row of fixed-width icons, so they keep their current fixed spots
+ *  regardless of where they're dragged to in Settings. */
+const ICON_GROUP_IDS: TopBarItemId[] = [
+  "tools", "browser", "dsh", "terminal", "db", "mcp", "ai", "language", "theme", "updates", "github",
+];
 
 const PAGE_IDS: NavPage[] = (["feeds", "vocabulary", "documents", "chat", "dashboard", "calendar", "music", "terminal", "dsh", "settings", "tools"] as NavPage[])
   .filter((id) => {
@@ -69,6 +80,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   const theme = useSettingsStore((state) => state.theme);
   const setTheme = useSettingsStore((state) => state.setTheme);
   const visibleItems = useSettingsStore((state) => state.visibleTopBarItems);
+  const topBarItemOrder = useSettingsStore((state) => state.topBarItemOrder);
   // The sidebar collapses to zero width; its expand control moves here so it
   // is always reachable. Desktop-only (mobile/tablet use the floating dock).
   const sidebarCollapsed = useLayoutStore((state) => state.sidebarCollapsed);
@@ -90,7 +102,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   };
   const userAvatar = useSettingsStore((state) => state.userAvatar);
   const hasCustomAppBackground = useSettingsStore((state) => !!state.appBackgroundImage && state.appBackgroundVisible);
-  const visible = (item: import("@/store/settingsStore").TopBarItemId) => {
+  const visible = (item: TopBarItemId) => {
     if (!visibleItems.includes(item)) return false;
     if (item === "mcp") return hostCapabilities.mcp;
     if (item === "dsh") return hostCapabilities.dsh;
@@ -211,6 +223,153 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   const aiTone = !providersReady
     ? "text-muted-foreground"
     : providerConnected ? "text-foreground" : "text-amber-500";
+
+  // Keyed by id so `iconGroupOrder.map` below can render them in the user's
+  // drag-reordered sequence — same JSX each icon always had, just addressed
+  // by id instead of appearing in a fixed source order.
+  const iconGroupItems: Partial<Record<TopBarItemId, React.ReactNode>> = {
+    tools: visible("tools") && (
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={toggleToolsModal}
+        title={t("tools.ballLabel")}
+        className="h-8 w-8 rounded-lg text-muted-foreground"
+      >
+        <Grid2x2Plus className="h-4 w-4" />
+      </Button>
+    ),
+    browser: hostCapabilities.browser && visible("browser") && (
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={onClickFloatingBrowserIcon}
+        title={t("floatingBrowser.toggleLabel")}
+        className="relative h-8 w-8 rounded-lg text-muted-foreground"
+      >
+        <Smartphone className="h-4 w-4" />
+        {floatingBrowserMinimized && (
+          <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-emerald-500" />
+        )}
+      </Button>
+    ),
+    dsh: hostCapabilities.dsh && visible("dsh") && (
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => navigate("dsh")}
+        title={t("nav.dsh")}
+        aria-label={t("nav.dsh")}
+        aria-current={activePage === "dsh" ? "page" : undefined}
+        className={`h-8 w-8 rounded-lg ${activePage === "dsh" ? "text-primary" : "text-muted-foreground"}`}
+      >
+        <DshIcon className="h-4 w-4" />
+      </Button>
+    ),
+    terminal: hostCapabilities.terminal && visible("terminal") && (
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => navigate("terminal")}
+        title={t("nav.terminal")}
+        aria-label={t("nav.terminal")}
+        aria-current={activePage === "terminal" ? "page" : undefined}
+        className={`h-8 w-8 rounded-lg ${activePage === "terminal" ? "text-primary" : "text-muted-foreground"}`}
+      >
+        <SquareTerminal className="h-4 w-4" />
+      </Button>
+    ),
+    db: visible("db") && (
+      <Popover open={dbOpen} onOpenChange={setDbOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className={`relative h-8 w-8 rounded-lg ${isDbOffline ? "text-amber-500" : "text-muted-foreground"}`}
+          >
+            {isDbRemote
+              ? (isDbOffline ? <CloudOff className="h-4 w-4" /> : <Cloud className="h-4 w-4" />)
+              : <Database className="h-4 w-4" />}
+            {isDbRemote && !isDbOffline && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent side="bottom" align="end" className="w-72 p-3">
+          <p className="font-medium text-sm">{isDbRemote ? dbCloudLabel : t("command.dbLocal")}</p>
+          <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
+            {isDbRemote ? connection?.remoteUrl : connection?.path}
+          </p>
+          {isDbOffline && <p className="mt-1 text-xs text-amber-500">{t("settings.remoteDBOffline")}</p>}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => { setDbOpen(false); navigate("settings", undefined, "data"); }}
+            className="mt-2 h-7 w-full justify-start rounded-md px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <Settings className="h-3.5 w-3.5" />
+            {t("nav.settings")}
+          </Button>
+        </PopoverContent>
+      </Popover>
+    ),
+    mcp: hostCapabilities.mcp && visible("mcp") && (
+      <Button variant="ghost" size="icon" onClick={() => navigate("settings", undefined, "mcp")} title={mcp.error || (mcp.running ? t("command.mcpRunning") : t("command.mcpStopped"))} className={`relative h-8 w-8 rounded-lg ${mcp.error ? "text-amber-500" : mcp.running ? "text-foreground" : "text-muted-foreground"}`}><Server className="h-4 w-4" />{mcp.running && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />}</Button>
+    ),
+    ai: visible("ai") && (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" title={aiTitle} className={`relative h-8 w-8 rounded-lg ${aiTone}`}>
+            {providerConnected || !providersReady ? <BrainCircuit className="h-4 w-4" /> : <Unplug className="h-4 w-4" />}
+            {providersReady && providerConnected && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-72">
+          <div className="px-2.5 py-2"><p className="text-xs font-semibold">{t("command.globalModel")}</p><p className="mt-0.5 text-[10px] text-muted-foreground">{t("command.globalModelHint")}</p></div>
+          <div className="my-1 h-px bg-border" />
+          {availableProviders.map((provider) => (
+            <DropdownMenuItem key={provider.id} onClick={() => setDefaultProvider(provider.id)} className="py-2.5">
+              <BrainCircuit className="h-4 w-4 text-muted-foreground" />
+              <span className="min-w-0 flex-1"><span className="block truncate font-medium">{provider.name}</span><span className="block truncate font-mono text-[10px] text-muted-foreground">{provider.modelId}</span></span>
+              {provider.id === defaultProvider && <Check className="h-4 w-4 text-emerald-500" />}
+            </DropdownMenuItem>
+          ))}
+          {availableProviders.length === 0 && <p className="px-2.5 py-4 text-center text-xs text-muted-foreground">{t("command.noModels")}</p>}
+          <div className="my-1 h-px bg-border" />
+          <DropdownMenuItem onClick={() => navigate("settings")}><Settings className="h-4 w-4" />{t("command.manageModels")}</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    ),
+    language: visible("language") && (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" title={t("settings.uiLanguage")} className="h-8 w-8 rounded-lg text-muted-foreground"><Languages className="h-4 w-4" /></Button></DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-40">
+          <DropdownMenuItem onClick={() => setLanguage("zh")}><span className="w-5 font-medium">中</span><span className="flex-1">中文</span>{language === "zh" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setLanguage("en")}><span className="w-5 font-medium">En</span><span className="flex-1">English</span>{language === "en" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    ),
+    theme: visible("theme") && (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" title={t("settings.theme")} className="h-8 w-8 rounded-lg text-muted-foreground"><ThemeIcon theme={theme} /></Button></DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-64">
+          <DropdownMenuItem onClick={() => setTheme("light")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.light")}</span>{theme === "light" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setTheme("dark")}><Moon className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.dark")}</span>{theme === "dark" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setTheme("catppuccin-latte")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.catppuccinLatte")}</span>{theme === "catppuccin-latte" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setTheme("catppuccin-mocha")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.catppuccinMocha")}</span>{theme === "catppuccin-mocha" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setTheme("dracula")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.dracula")}</span>{theme === "dracula" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setTheme("tokyo-night")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.tokyoNight")}</span>{theme === "tokyo-night" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setTheme("tokyo-night-day")}><Sun className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.tokyoNightDay")}</span>{theme === "tokyo-night-day" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setTheme("tokyo-night-storm")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.tokyoNightStorm")}</span>{theme === "tokyo-night-storm" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setTheme("dim")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.dim")}</span>{theme === "dim" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setTheme("system")}><Monitor className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.system")}</span>{theme === "system" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    ),
+    updates: hostCapabilities.updater && visible("updates") && <UpdateButton placement="toolbar" />,
+    github: visible("github") && (
+      <Button variant="ghost" size="icon" onClick={() => void openGitHub()} title="GitHub" className="h-8 w-8 rounded-lg text-muted-foreground"><GitHubIcon className="h-4 w-4" /></Button>
+    ),
+  };
+  const iconGroupOrder = topBarItemOrder.filter((id) => ICON_GROUP_IDS.includes(id));
 
   return (
     <>
@@ -354,128 +513,9 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
           >
             {iconsCollapsed ? <ChevronsLeft className="h-4 w-4" /> : <ChevronsRight className="h-4 w-4" />}
           </Button>
-          {!iconsCollapsed && <>
-          {visible("tools") && <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleToolsModal}
-            title={t("tools.ballLabel")}
-            className="h-8 w-8 rounded-lg text-muted-foreground"
-          >
-            <Grid2x2Plus className="h-4 w-4" />
-          </Button>}
-          {hostCapabilities.browser && visible("browser") && <Button
-            variant="ghost"
-            size="icon"
-            onClick={onClickFloatingBrowserIcon}
-            title={t("floatingBrowser.toggleLabel")}
-            className="relative h-8 w-8 rounded-lg text-muted-foreground"
-          >
-            <Smartphone className="h-4 w-4" />
-            {floatingBrowserMinimized && (
-              <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            )}
-          </Button>}
-          {hostCapabilities.dsh && visible("dsh") && <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate("dsh")}
-            title={t("nav.dsh")}
-            aria-label={t("nav.dsh")}
-            aria-current={activePage === "dsh" ? "page" : undefined}
-            className={`h-8 w-8 rounded-lg ${activePage === "dsh" ? "text-primary" : "text-muted-foreground"}`}
-          >
-            <DshIcon className="h-4 w-4" />
-          </Button>}
-          {hostCapabilities.terminal && visible("terminal") && <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate("terminal")}
-            title={t("nav.terminal")}
-            aria-label={t("nav.terminal")}
-            aria-current={activePage === "terminal" ? "page" : undefined}
-            className={`h-8 w-8 rounded-lg ${activePage === "terminal" ? "text-primary" : "text-muted-foreground"}`}
-          >
-            <SquareTerminal className="h-4 w-4" />
-          </Button>}
-          {visible("db") && <Popover open={dbOpen} onOpenChange={setDbOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={`relative h-8 w-8 rounded-lg ${isDbOffline ? "text-amber-500" : "text-muted-foreground"}`}
-              >
-                {isDbRemote
-                  ? (isDbOffline ? <CloudOff className="h-4 w-4" /> : <Cloud className="h-4 w-4" />)
-                  : <Database className="h-4 w-4" />}
-                {isDbRemote && !isDbOffline && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent side="bottom" align="end" className="w-72 p-3">
-              <p className="font-medium text-sm">{isDbRemote ? dbCloudLabel : t("command.dbLocal")}</p>
-              <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
-                {isDbRemote ? connection?.remoteUrl : connection?.path}
-              </p>
-              {isDbOffline && <p className="mt-1 text-xs text-amber-500">{t("settings.remoteDBOffline")}</p>}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => { setDbOpen(false); navigate("settings", undefined, "data"); }}
-                className="mt-2 h-7 w-full justify-start rounded-md px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                <Settings className="h-3.5 w-3.5" />
-                {t("nav.settings")}
-              </Button>
-            </PopoverContent>
-          </Popover>}
-          {hostCapabilities.mcp && visible("mcp") && <Button variant="ghost" size="icon" onClick={() => navigate("settings", undefined, "mcp")} title={mcp.error || (mcp.running ? t("command.mcpRunning") : t("command.mcpStopped"))} className={`relative h-8 w-8 rounded-lg ${mcp.error ? "text-amber-500" : mcp.running ? "text-foreground" : "text-muted-foreground"}`}><Server className="h-4 w-4" />{mcp.running && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />}</Button>}
-          {visible("ai") && <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" title={aiTitle} className={`relative h-8 w-8 rounded-lg ${aiTone}`}>
-                {providerConnected || !providersReady ? <BrainCircuit className="h-4 w-4" /> : <Unplug className="h-4 w-4" />}
-                {providersReady && providerConnected && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-72">
-              <div className="px-2.5 py-2"><p className="text-xs font-semibold">{t("command.globalModel")}</p><p className="mt-0.5 text-[10px] text-muted-foreground">{t("command.globalModelHint")}</p></div>
-              <div className="my-1 h-px bg-border" />
-              {availableProviders.map((provider) => (
-                <DropdownMenuItem key={provider.id} onClick={() => setDefaultProvider(provider.id)} className="py-2.5">
-                  <BrainCircuit className="h-4 w-4 text-muted-foreground" />
-                  <span className="min-w-0 flex-1"><span className="block truncate font-medium">{provider.name}</span><span className="block truncate font-mono text-[10px] text-muted-foreground">{provider.modelId}</span></span>
-                  {provider.id === defaultProvider && <Check className="h-4 w-4 text-emerald-500" />}
-                </DropdownMenuItem>
-              ))}
-              {availableProviders.length === 0 && <p className="px-2.5 py-4 text-center text-xs text-muted-foreground">{t("command.noModels")}</p>}
-              <div className="my-1 h-px bg-border" />
-              <DropdownMenuItem onClick={() => navigate("settings")}><Settings className="h-4 w-4" />{t("command.manageModels")}</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>}
-          {visible("language") && <DropdownMenu>
-            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" title={t("settings.uiLanguage")} className="h-8 w-8 rounded-lg text-muted-foreground"><Languages className="h-4 w-4" /></Button></DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
-              <DropdownMenuItem onClick={() => setLanguage("zh")}><span className="w-5 font-medium">中</span><span className="flex-1">中文</span>{language === "zh" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setLanguage("en")}><span className="w-5 font-medium">En</span><span className="flex-1">English</span>{language === "en" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>}
-          {visible("theme") && <DropdownMenu>
-            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" title={t("settings.theme")} className="h-8 w-8 rounded-lg text-muted-foreground"><ThemeIcon theme={theme} /></Button></DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
-              <DropdownMenuItem onClick={() => setTheme("light")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.light")}</span>{theme === "light" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setTheme("dark")}><Moon className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.dark")}</span>{theme === "dark" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setTheme("catppuccin-latte")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.catppuccinLatte")}</span>{theme === "catppuccin-latte" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setTheme("catppuccin-mocha")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.catppuccinMocha")}</span>{theme === "catppuccin-mocha" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setTheme("dracula")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.dracula")}</span>{theme === "dracula" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setTheme("tokyo-night")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.tokyoNight")}</span>{theme === "tokyo-night" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setTheme("tokyo-night-day")}><Sun className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.tokyoNightDay")}</span>{theme === "tokyo-night-day" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setTheme("tokyo-night-storm")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.tokyoNightStorm")}</span>{theme === "tokyo-night-storm" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setTheme("dim")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.dim")}</span>{theme === "dim" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setTheme("system")}><Monitor className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.system")}</span>{theme === "system" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>}
-          {hostCapabilities.updater && visible("updates") && <UpdateButton placement="toolbar" />}
-          {visible("github") && <Button variant="ghost" size="icon" onClick={() => void openGitHub()} title="GitHub" className="h-8 w-8 rounded-lg text-muted-foreground"><GitHubIcon className="h-4 w-4" /></Button>}
-          </>}
+          {!iconsCollapsed && iconGroupOrder.map((id) => (
+            <React.Fragment key={id}>{iconGroupItems[id]}</React.Fragment>
+          ))}
           <Button variant="ghost" size="icon" onClick={() => navigate("settings")} title={t("command.profile")} className="h-8 w-8 rounded-full p-0 overflow-hidden ring-1 ring-border/60 text-muted-foreground">
             {userAvatar ? <UserAvatarImage /> : <User className="h-4 w-4" />}
           </Button>
