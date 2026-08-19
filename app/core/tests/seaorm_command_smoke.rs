@@ -412,6 +412,14 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     ai_provider_delete("test-provider".into(), state.clone())
         .await
         .unwrap();
+
+    // word detail — complex LEFT JOIN (words + srs_records) + a separate
+    // word_definitions fetch, all String/Option/i64 reads. Verifies the
+    // JOIN + COALESCE path is portable.
+    use tanwords_lib::db::db_get_word_detail;
+    let detail = db_get_word_detail(added.id, state.clone()).await.unwrap();
+    assert_eq!(detail.word, "hello");
+    assert_eq!(detail.id, added.id);
 }
 
 #[tokio::test]
