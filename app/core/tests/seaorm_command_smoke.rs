@@ -342,6 +342,31 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
         .unwrap();
     // candidates lists every other document; with one doc it's empty here.
     assert!(link_ctx.candidates.iter().all(|c| c.id != doc_id));
+
+    // document asset binary round-trip — exercises the BYTEA/BLOB `data`
+    // column: bind a Vec<u8> via params! (Value::Bytes) and read it back as
+    // Vec<u8>. This is the one binary column in the schema, so it needs a
+    // dedicated check that the bind+read works on both backends (SQLite BLOB
+    // <-> Postgres BYTEA). Also exercises the all_document_assets VIEW.
+    use base64::Engine;
+    use tanwords_lib::db::{db_create_document_asset, db_get_document_asset};
+    let payload = b"hello-bytes-payload".to_vec();
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&payload);
+    let asset_id = db_create_document_asset(
+        doc_id,
+        "note.txt".into(),
+        "text/plain".into(),
+        b64,
+        state.clone(),
+    )
+    .await
+    .unwrap();
+    assert!(!asset_id.is_empty());
+    let asset = db_get_document_asset(asset_id, state.clone()).await.unwrap();
+    // The doc isn't protected, so the bytes come back decrypted (== input).
+    let roundtrip =
+        base64::engine::general_purpose::STANDARD.decode(&asset.data_base64).unwrap();
+    assert_eq!(roundtrip, payload);
 }
 
 #[tokio::test]

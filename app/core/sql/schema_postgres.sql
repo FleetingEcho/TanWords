@@ -602,7 +602,18 @@ CREATE TABLE IF NOT EXISTS writing_vocabulary (
                 vocabulary_id BIGINT REFERENCES words(id) ON DELETE SET NULL
             );
 
-
+-- Views (created by init_db_sqlite via execute_batch, not in schema.sql, so
+-- added here manually: the auto-generation dump only captured tables/indexes).
+-- all_document_assets: UNION of document_assets + standalone_assets so the
+-- read paths stay a single query against both. Fully portable (UNION ALL).
+-- Postgres has no `CREATE VIEW IF NOT EXISTS`; `CREATE OR REPLACE VIEW`
+-- achieves the same idempotency (re-creates if it exists).
+CREATE OR REPLACE VIEW all_document_assets AS
+    SELECT id, document_id, file_name, mime_type, data, size, created_at, 0 AS standalone
+      FROM document_assets
+    UNION ALL
+    SELECT id, 0 AS document_id, file_name, mime_type, data, size, created_at, 1 AS standalone
+      FROM standalone_assets;
 
 CREATE INDEX IF NOT EXISTS idx_ai_chat_sessions_updated ON ai_chat_sessions(updated_at DESC);
 
