@@ -437,13 +437,23 @@ fn translate_for_pg(sql: &str) -> String {
                 in_str = true;
             }
             '?' => {
-                idx += 1;
-                // consume any digits following (the `?N` numbered form)
+                // `?N` (numbered) reuses the same bind slot on both SQLite and
+                // Postgres — map it to `$N` preserving N so a repeated `?1`
+                // stays a single `$1` parameter (Postgres counts distinct `$N`
+                // numbers, not occurrences). A bare `?` gets the next sequential
+                // number, matching SQLite's positional binding.
+                let mut digits = String::new();
                 while matches!(chars.peek(), Some(d) if d.is_ascii_digit()) {
+                    digits.push(*chars.peek().unwrap());
                     chars.next();
                 }
                 use std::fmt::Write;
-                let _ = write!(out, "${idx}");
+                if digits.is_empty() {
+                    idx += 1;
+                    let _ = write!(out, "${idx}");
+                } else {
+                    let _ = write!(out, "${digits}");
+                }
             }
             other => out.push(other),
         }
@@ -498,6 +508,13 @@ fn translate_for_pg(sql: &str) -> String {
     out = json_each
         .replace_all(&out, "jsonb_array_elements_text(($1)::jsonb)")
         .into_owned();
+    // `instr(haystack, needle)` — SQLite returns the 1-based position of
+    // `needle` in `haystack` (0 if absent). Postgres has `strpos(haystack,
+    // needle)` with identical argument order and the same 0-on-absent
+    // semantics (NULL only on NULL input, which the call sites never pass).
+    // `\b` keeps this from matching a longer identifier ending in "instr".
+    let instr = regex::Regex::new(r"\binstr\(").unwrap();
+    out = instr.replace_all(&out, "strpos(").into_owned();
     out
 }
 
@@ -506,11 +523,21 @@ mod tests {
     use super::translate_for_pg;
 
     #[test]
-    fn numbered_and_bare_placeholders_become_dollar_n_in_order() {
+    fn numbered_placeholders_preserve_their_number_bare_ones_sequence() {
+        // `?N` preserves N (so a repeated `?1` stays a single `$1` parameter —
+        // Postgres counts distinct `$N` numbers, not occurrences); a bare `?`
+        // gets the next sequential number, matching SQLite's positional binding.
         assert_eq!(translate_for_pg("SELECT ?1 + ?2"), "SELECT $1 + $2");
         assert_eq!(translate_for_pg("SELECT ? + ?"), "SELECT $1 + $2");
-        assert_eq!(translate_for_pg("WHERE id = ?10 AND x > ?2"), "WHERE id = $1 AND x > $2");
+        assert_eq!(translate_for_pg("WHERE id = ?10 AND x > ?2"), "WHERE id = $10 AND x > $2");
         assert_eq!(translate_for_pg("VALUES (?1, ?2, ?3)"), "VALUES ($1, $2, $3)");
+        // reuse: both `?1` map to the same `$1` (one bind value, not two)
+        assert_eq!(
+            translate_for_pg("WHERE id != ?1 AND instr(content, 'x' || ?1) > 0"),
+            "WHERE id != $1 AND strpos(content, 'x' || $1) > 0"
+        );
+        // bare `?` mixed with `?N`: bare ones sequence, numbered ones keep N
+        assert_eq!(translate_for_pg("WHERE a = ? AND b = ?1 AND c = ?"), "WHERE a = $1 AND b = $1 AND c = $2");
     }
 
     #[test]
@@ -590,6 +617,22 @@ mod tests {
     }
 
     #[test]
+    fn instr_becomes_strpos() {
+        // SQLite `instr(haystack, needle)` and Postgres `strpos(haystack,
+        // needle)` share argument order and the 0-on-absent result; the
+        // translator just renames the function. `\b` avoids touching a
+        // longer identifier that happens to end in "instr".
+        assert_eq!(
+            translate_for_pg("WHERE instr(content, 'tanwords-doc://' || ?1) > 0"),
+            "WHERE strpos(content, 'tanwords-doc://' || $1) > 0"
+        );
+        assert_eq!(
+            translate_for_pg("SELECT minstr(x, y) FROM t"),
+            "SELECT minstr(x, y) FROM t" // word boundary respected
+        );
+    }
+
+    #[test]
     fn multi_argument_datetime_now_becomes_interval_addition() {
         // SQLite `datetime('now', '+' || ?N || ' days')` builds the interval
         // string at bind time; Postgres has no such form, so the translator
@@ -601,7 +644,7 @@ mod tests {
         );
         assert_eq!(
             translate_for_pg("WHERE d = date('now', '+' || ?3 || ' days')"),
-            "WHERE d = to_char((now() AT TIME ZONE 'UTC') + ($1 || ' days')::interval, 'YYYY-MM-DD')"
+            "WHERE d = to_char((now() AT TIME ZONE 'UTC') + ($3 || ' days')::interval, 'YYYY-MM-DD')"
         );
         // The bare single-arg forms are still handled by the plain replace.
         assert_eq!(

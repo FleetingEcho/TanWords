@@ -67,7 +67,9 @@ pub async fn db_get_words(
 
     match sort_by.as_deref() {
         Some("freq") => sql.push_str(" ORDER BY w.word_freq DESC, w.created_at DESC"),
-        Some("alpha") => sql.push_str(" ORDER BY w.word COLLATE NOCASE ASC"),
+        // LOWER(col) is the portable case-insensitive sort — SQLite's
+        // `COLLATE NOCASE` is SQLite-only (Postgres has no NOCASE collation).
+        Some("alpha") => sql.push_str(" ORDER BY LOWER(w.word) ASC"),
         // "recent" — updated_at is initialized to created_at on insert and bumped
         // on every edit (enrichment, notes), so ordering by it alone surfaces
         // both newly-added and newly-edited words without a MAX() expression.

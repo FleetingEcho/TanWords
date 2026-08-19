@@ -316,6 +316,18 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     assert!(stats.chat_count >= 1, "chats: {}", stats.chat_count);
     assert!(!stats.recent_words.is_empty());
     assert!(!stats.recent_docs.is_empty());
+
+    // document link context — exercises the COLLATE NOCASE -> LOWER(title)
+    // portable sort and the instr() -> strpos() translator rewrite (the
+    // backlinks query). The created doc has empty content so no outgoing
+    // links, but candidates + the LOWER sort + the instr/strpos backlink
+    // scan must run without error on both backends.
+    use tanwords_lib::db::db_get_document_link_context;
+    let link_ctx = db_get_document_link_context(doc_id, state.clone())
+        .await
+        .unwrap();
+    // candidates lists every other document; with one doc it's empty here.
+    assert!(link_ctx.candidates.iter().all(|c| c.id != doc_id));
 }
 
 #[tokio::test]
