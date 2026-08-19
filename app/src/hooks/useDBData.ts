@@ -41,6 +41,21 @@ export function useDBData() {
     }
   }, []);
 
+  /** Where a local database would live, independent of what's actually
+   *  connected right now — unlike `getDbPath` (empty while connected to
+   *  Postgres, which has no local file). Lets the Local tab show a real path
+   *  even while a remote profile is active, instead of showing nothing or
+   *  the remote's own URL. */
+  const getDefaultLocalPath = useCallback(async (): Promise<string> => {
+    if (!isDesktopHost) return "";
+    try {
+      return await invoke<string>("db_get_default_local_path");
+    } catch (e) {
+      logError("getDefaultLocalPath", e);
+      return "";
+    }
+  }, []);
+
   const getDbSize = useCallback(async (): Promise<number> => {
     try {
       return await invoke<number>("db_get_db_size");
@@ -56,6 +71,19 @@ export function useDBData() {
       await invoke("db_export_backup", { dest, password });
     } catch (e) {
       reportWriteError("exportBackup", e, "导出备份失败");
+      throw e;
+    }
+  }, []);
+
+  /** Downloads a local SQLite snapshot of the currently-connected Postgres
+   *  database — table-by-table copy, since Postgres has no local replica
+   *  file for `VACUUM INTO` to clone. Desktop-only, same as connecting. */
+  const exportPostgresBackup = useCallback(async (dest: string, password: string | null = null): Promise<void> => {
+    if (!isDesktopHost) return;
+    try {
+      await invoke("db_export_postgres_backup", { dest, password });
+    } catch (e) {
+      reportWriteError("exportPostgresBackup", e, "导出 Postgres 备份失败");
       throw e;
     }
   }, []);
@@ -82,6 +110,24 @@ export function useDBData() {
       return await invoke<DbConnection>("db_connect_turso", { url, token });
     } catch (e) {
       reportWriteError("connectTurso", e, "连接 Turso 失败");
+      throw e;
+    }
+  }, []);
+
+  /** Points the app directly at a user-supplied Postgres database. Unlike
+   *  Turso there is no local replica or keychain token — the connection
+   *  string carries its own credentials and every read/write is a live
+   *  network round trip from then on. Caller must reload the app afterwards. */
+  const connectPostgres = useCallback(async (url: string): Promise<DbConnection> => {
+    // Desktop-only for now: the web server has a per-account Turso store
+    // (`state.users.set_turso`) but no equivalent sealed-credential storage
+    // for an arbitrary Postgres connection string yet. The UI gates the
+    // Postgres tab to the desktop host so this branch isn't reachable there.
+    if (!isDesktopHost) throw new Error("Postgres connections are desktop-only for now");
+    try {
+      return await invoke<DbConnection>("db_connect_postgres", { url });
+    } catch (e) {
+      reportWriteError("connectPostgres", e, "连接 Postgres 失败");
       throw e;
     }
   }, []);
@@ -310,14 +356,14 @@ export function useDBData() {
   }, []);
 
   return useMemo(() => ({
-    getDbPath, getDbSize, exportBackup, switchDbPath, clearTranslations,
-    getConnection, connectTurso, selectDbSource, disconnectRemote, syncNow,
+    getDbPath, getDefaultLocalPath, getDbSize, exportBackup, exportPostgresBackup, switchDbPath, clearTranslations,
+    getConnection, connectTurso, connectPostgres, selectDbSource, disconnectRemote, syncNow,
     getStartupWarning, isSavedProfileTurso, forgetSavedProfile, getRememberedTurso,
     importAnalyze, importApply, importOverwrite, vacuumDatabase,
     getRemoteAccess, enableRemoteAccess, rotateRemoteAccess, disableRemoteAccess,
   }), [
-    getDbPath, getDbSize, exportBackup, switchDbPath, clearTranslations,
-    getConnection, connectTurso, selectDbSource, disconnectRemote, syncNow,
+    getDbPath, getDefaultLocalPath, getDbSize, exportBackup, exportPostgresBackup, switchDbPath, clearTranslations,
+    getConnection, connectTurso, connectPostgres, selectDbSource, disconnectRemote, syncNow,
     getStartupWarning, isSavedProfileTurso, forgetSavedProfile, getRememberedTurso,
     importAnalyze, importApply, importOverwrite, vacuumDatabase,
     getRemoteAccess, enableRemoteAccess, rotateRemoteAccess, disableRemoteAccess,

@@ -20,6 +20,7 @@ export const nav: Dict = {
     "command.analyzingHint": "{n} 篇文章分析中 — 点击查看或取消",
     "command.dbLocal": "本地数据库",
     "command.dbCloud": "云端数据库（Turso）",
+    "command.dbCloudPostgres": "云端数据库（Postgres）",
     "command.mcpRunning": "MCP 服务运行中",
     "command.mcpStopped": "MCP 服务未运行",
     "command.aiConnected": "AI 已连接",

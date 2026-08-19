@@ -474,6 +474,17 @@ CREATE TABLE IF NOT EXISTS standalone_assets (
             created_at  TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
         , remote_key TEXT);
 
+-- Missing from the original auto-generated dump (added to init_db_sqlite
+-- after schema_postgres.sql was last regenerated) — the Cloudflare R2 bucket
+-- config, sealed with this device's key (see r2::mod's `seal`/`unseal`).
+-- Without this table, saving R2 config against a Postgres connection errors
+-- outright, and any full-overwrite import silently drops the row (it can't
+-- insert into a table that doesn't exist).
+CREATE TABLE IF NOT EXISTS r2_config (
+  id         BIGINT PRIMARY KEY CHECK (id = 1),
+  config_enc TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS translations (
   id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   source_text  TEXT NOT NULL,

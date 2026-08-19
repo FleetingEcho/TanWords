@@ -266,23 +266,25 @@ export interface RssEntryRow {
 /** Which database the app is talking to, and what that profile supports.
  *  Mirrors `DbDescriptor` in src-tauri/src/db/connection.rs. */
 export interface DbConnection {
-  kind: "local" | "turso";
-  /** The SQLite file. For a Turso profile this is the local replica. */
+  kind: "local" | "turso" | "postgres";
+  /** The SQLite file. For a Turso profile this is the local replica; empty
+   *  for Postgres, which has no local file. */
   path: string;
   remoteUrl: string | null;
   caps: {
-    /** VACUUM INTO backup export. Off for Turso. */
+    /** VACUUM INTO backup export. Off for Turso and Postgres. */
     export: boolean;
     /** Whether the profile can be repointed at another file. */
     switchPath: boolean;
-    /** Whether an explicit pull-from-primary is meaningful. */
+    /** Whether an explicit pull-from-primary is meaningful. Off for Postgres
+     *  — it's a direct connection with no replica to sync from. */
     sync: boolean;
     /** False when serving a replica offline — it is opened read-only, so any
      *  save will fail at the driver. */
     writable: boolean;
-    /** Whether VACUUM is supported. Off for Turso/self-hosted sqld — their
-     *  storage isn't a plain rolling SQLite file, and VACUUM is rejected
-     *  outright by the server itself, not just proxying. */
+    /** Whether VACUUM is supported. Off for Turso/self-hosted sqld/Postgres —
+     *  their storage isn't a plain rolling SQLite file, and VACUUM is
+     *  rejected outright by the server itself, not just proxying. */
     vacuum: boolean;
   };
   /** A Turso profile falling back to its local replica because the primary
@@ -380,6 +382,17 @@ export interface RemoteAccessStatus {
  *  db/import/overwrite.rs. */
 export interface OverwriteProgress {
   phase: "clearing" | "copying" | "indexing";
+  table: string;
+  tableIndex: number;
+  tableTotal: number;
+}
+
+/** Payload of the `"postgres-export-progress"` event, emitted while
+ *  `exportPostgresBackup` runs. Mirrors `PostgresExportProgress` in
+ *  db/settings.rs — same shape as `OverwriteProgress`, own event name so the
+ *  two operations' listeners never cross-talk. */
+export interface PostgresExportProgress {
+  phase: "clearing" | "copying";
   table: string;
   tableIndex: number;
   tableTotal: number;

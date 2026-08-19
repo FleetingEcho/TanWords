@@ -281,3 +281,183 @@ pub(super) async fn apply_words(
     }
     Ok(outcome)
 }
+
+#[cfg(test)]
+mod postgres_target_tests {
+    use super::*;
+    use crate::db::connection::DbProfile;
+    use std::collections::HashSet;
+    use std::sync::Arc;
+
+    fn test_app_handle() -> crate::shim::AppHandle {
+        let (events, _rx) = tokio::sync::broadcast::channel(16);
+        crate::shim::AppHandle::new(Arc::new(crate::shim::Registry::default()), events)
+    }
+
+    /// The merge-import path (`db_import_analyze` / `db_import_apply`) reads
+    /// its source through `open_source`, which always opens a plain local
+    /// SQLite file — the source is never backend-dependent. What's actually
+    /// in question is whether the *target* side (every `tx.execute(..)` in
+    /// `apply_words`/`apply_documents`/`apply_known_words`) survives being
+    /// routed through `translate_for_pg` when the active connection is
+    /// Postgres instead of SQLite. Requires a live Postgres reachable at
+    /// `TANWORDS_PG_TEST_URL` — skipped otherwise.
+    #[tokio::test]
+    async fn merge_import_applies_cleanly_against_a_postgres_target() {
+        let Ok(url) = std::env::var("TANWORDS_PG_TEST_URL") else {
+            eprintln!("skipping: TANWORDS_PG_TEST_URL not set");
+            return;
+        };
+
+        let source_path = std::env::temp_dir()
+            .join(format!("tanwords-import-src-{}.db", uuid::Uuid::new_v4()));
+        {
+            let seed = db::connection::open(
+                &DbProfile::Local { path: source_path.to_string_lossy().into_owned() },
+                None,
+            )
+            .await
+            .unwrap()
+            .conn();
+            seed.execute(
+                "INSERT INTO words (word, level, word_freq) VALUES ('mergetestword', 'B1', 1)",
+                (),
+            )
+            .await
+            .unwrap();
+            let word_id: i64 = db::fetch_one(&seed, "SELECT id FROM words WHERE word = 'mergetestword'", (), |r| r.get(0))
+                .await
+                .unwrap();
+            seed.execute(
+                "INSERT INTO word_definitions (word_id, pos, zh) VALUES (?1, 'n.', '测试')",
+                params![word_id],
+            )
+            .await
+            .unwrap();
+            seed.execute(
+                "INSERT INTO documents (title, content_text) VALUES ('merge-test-doc', 'hello')",
+                (),
+            )
+            .await
+            .unwrap();
+            seed.execute(
+                "INSERT INTO user_known_words (word) VALUES ('mergeknownword')",
+                (),
+            )
+            .await
+            .unwrap();
+        }
+
+        let target = db::connection::open(&DbProfile::Postgres { url }, None)
+            .await
+            .unwrap()
+            .conn();
+        // Clean slate: a previous failed run of this test could leave rows
+        // behind on the shared test database.
+        let _ = target.execute("DELETE FROM words WHERE word = 'mergetestword'", ()).await;
+        let _ = target.execute("DELETE FROM documents WHERE title = 'merge-test-doc'", ()).await;
+        let _ = target.execute("DELETE FROM user_known_words WHERE word = 'mergeknownword'", ()).await;
+
+        let source = super::super::source::open_source(&source_path.to_string_lossy().into_owned())
+            .await
+            .unwrap();
+        let app = test_app_handle();
+        let tx = target.transaction().await.unwrap();
+
+        apply_words(&app, 1, 1, &source, &tx, &HashSet::new(), true).await.unwrap();
+        super::super::apply_documents_known::apply_documents(&source, &tx, &HashSet::new(), true)
+            .await
+            .unwrap();
+        super::super::apply_documents_known::apply_known_words(&source, &tx, true)
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+
+        let word_count = db::scalar_i64(&target, "SELECT COUNT(*) FROM words WHERE word = 'mergetestword'", ())
+            .await
+            .unwrap();
+        assert_eq!(word_count, 1);
+        let def_count = db::scalar_i64(
+            &target,
+            "SELECT COUNT(*) FROM word_definitions wd JOIN words w ON w.id = wd.word_id WHERE w.word = 'mergetestword'",
+            (),
+        )
+        .await
+        .unwrap();
+        assert_eq!(def_count, 1);
+        let doc_count = db::scalar_i64(&target, "SELECT COUNT(*) FROM documents WHERE title = 'merge-test-doc'", ())
+            .await
+            .unwrap();
+        assert_eq!(doc_count, 1);
+        let known_count =
+            db::scalar_i64(&target, "SELECT COUNT(*) FROM user_known_words WHERE word = 'mergeknownword'", ())
+                .await
+                .unwrap();
+        assert_eq!(known_count, 1);
+
+        let _ = std::fs::remove_file(&source_path);
+        target.execute("DELETE FROM words WHERE word = 'mergetestword'", ()).await.unwrap();
+        target.execute("DELETE FROM documents WHERE title = 'merge-test-doc'", ()).await.unwrap();
+        target.execute("DELETE FROM user_known_words WHERE word = 'mergeknownword'", ()).await.unwrap();
+    }
+
+    /// The other direction: a backup downloaded via Settings' "Export Database
+    /// Backup" while connected to Postgres (`db_export_postgres_backup`) is a
+    /// table-by-table copy into an *ordinary local SQLite file* — not a
+    /// `pg_dump` file. So re-importing it into a local SQLite database is the
+    /// same SQLite-source-into-SQLite-target path every other TanWords backup
+    /// already takes; this exercises the exact bytes that command produces,
+    /// including the read-only reopen `open_source` does (a WAL-checkpoint
+    /// edge case a manual reasoning-only check could miss).
+    #[tokio::test]
+    async fn a_postgres_export_snapshot_reimports_into_a_local_target() {
+        let Ok(url) = std::env::var("TANWORDS_PG_TEST_URL") else {
+            eprintln!("skipping: TANWORDS_PG_TEST_URL not set");
+            return;
+        };
+
+        let source = db::connection::open(&DbProfile::Postgres { url }, None)
+            .await
+            .unwrap()
+            .conn();
+        let _ = source.execute("DELETE FROM words WHERE word = 'pgexportword'", ()).await;
+        source
+            .execute("INSERT INTO words (word, level, word_freq) VALUES ('pgexportword', 'B1', 1)", ())
+            .await
+            .unwrap();
+
+        let snapshot_path = std::env::temp_dir()
+            .join(format!("tanwords-pg-export-reimport-{}.db", uuid::Uuid::new_v4()));
+        crate::db::settings::export_postgres_snapshot(&test_app_handle(), &source, &snapshot_path.to_string_lossy())
+            .await
+            .unwrap();
+
+        // Re-import that snapshot file into a brand-new local database, the
+        // same way choosing it in "Import from a local database" would.
+        let opened = super::super::source::open_source(&snapshot_path.to_string_lossy().into_owned())
+            .await
+            .unwrap();
+        let incoming = super::super::source::read_words(&opened).await.unwrap();
+        assert!(incoming.iter().any(|w| w.word == "pgexportword"));
+
+        let local_target = db::connection::open(
+            &DbProfile::Local { path: std::env::temp_dir().join(format!("tanwords-reimport-target-{}.db", uuid::Uuid::new_v4())).to_string_lossy().into_owned() },
+            None,
+        )
+        .await
+        .unwrap()
+        .conn();
+        let app = test_app_handle();
+        let tx = local_target.transaction().await.unwrap();
+        apply_words(&app, 1, 1, &opened, &tx, &HashSet::new(), true).await.unwrap();
+        tx.commit().await.unwrap();
+
+        let count = db::scalar_i64(&local_target, "SELECT COUNT(*) FROM words WHERE word = 'pgexportword'", ())
+            .await
+            .unwrap();
+        assert_eq!(count, 1);
+
+        let _ = std::fs::remove_file(&snapshot_path);
+        source.execute("DELETE FROM words WHERE word = 'pgexportword'", ()).await.unwrap();
+    }
+}

@@ -78,9 +78,13 @@ pub async fn db_get_rss_feeds(conn: State<'_, AppState>) -> Result<Vec<RssFeed>,
                 is_podcast: row.get(7)?,
                 category: row.get(8)?,
                 category_override: row.get(9)?,
-                is_pinned: row.get(10)?,
+                // `is_pinned`/`is_paused` are stored BIGINT 0/1 columns, not
+                // comparison expressions — decode as i64 and compare, like the
+                // other raw flag columns (`is_podcast` above is a genuine
+                // EXISTS(...) expression, which does decode as bool).
+                is_pinned: row.get::<i64>(10)? != 0,
                 pin_order: row.get(11)?,
-                is_paused: row.get(12)?,
+                is_paused: row.get::<i64>(12)? != 0,
             })
         },
     )
@@ -292,11 +296,13 @@ pub async fn db_sync_rss_feed(
     // txn_conn, not conn: the entry upserts below run in an interactive
     // transaction, which must not pin the shared Hrana stream on Turso.
     let db = db::txn_conn(&conn).await?;
+    // `is_paused` is a stored BIGINT 0/1 column, not a comparison expression
+    // — decode as i64 and compare (Postgres won't decode BIGINT as bool).
     let (url, is_paused): (String, bool) = db::fetch_one(
         &db,
         "SELECT url, is_paused FROM rss_feeds WHERE id = ?1",
         params![feed_id],
-        |row| Ok((row.get::<String>(0)?, row.get::<bool>(1)?)),
+        |row| Ok((row.get::<String>(0)?, row.get::<i64>(1)? != 0)),
     )
     .await?;
 
@@ -396,7 +402,9 @@ fn map_rss_entry_row(row: &crate::db::Row) -> crate::db::DbResult<RssEntryRow> {
         audio_duration: row.get(8)?,
         hn_item_id: row.get(9)?,
         published: row.get(10)?,
-        is_read: row.get(11)?,
+        // Stored BIGINT 0/1 column, not a comparison expression — decode as
+        // i64 and compare (Postgres won't decode BIGINT as bool).
+        is_read: row.get::<i64>(11)? != 0,
         fetched_at: row.get(12)?,
     })
 }

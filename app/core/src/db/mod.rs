@@ -66,6 +66,7 @@ pub async fn txn_conn(state: &State<'_, AppState>) -> Result<Conn, String> {
 
 pub mod connection;
 pub mod import;
+pub(crate) mod pg_copy;
 pub mod rows;
 pub use connection::{DbCaps, DbDescriptor, DbKind, DbProfile};
 pub use import::*;

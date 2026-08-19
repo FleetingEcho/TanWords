@@ -3,10 +3,13 @@
 //! [`super::apply`] merges. Unlike a merge, this is destructive: every row
 //! currently in the target is deleted first, then the source's rows are
 //! copied in verbatim (original ids and all, since nothing can collide once
-//! the target is empty). Works against either a local database or a
-//! connected remote (Turso/self-hosted sqld) target identically — the only
-//! target-specific behavior is inherited from [`db::txn_conn`], same as the
-//! merge-based import.
+//! the target is empty). The source is always a plain local SQLite file
+//! (`open_source` guarantees it); the target can be either backend — a local
+//! SQLite database or a connected Postgres one. Postgres-specific handling
+//! (typed NULLs, `OVERRIDING SYSTEM VALUE` + identity-sequence resync for
+//! preserved ids, information_schema introspection instead of
+//! `sqlite_master`) lives in `db::pg_copy`, shared with
+//! `settings::export_postgres_snapshot`.
 
 use crate::db::Conn; use crate::db::Value;
 use std::collections::HashSet;
@@ -23,8 +26,8 @@ pub struct OverwriteResult {
     pub rows_copied: i64,
     /// Rows too large for a single write-delegation message to carry (see
     /// `MAX_SINGLE_ROW_BYTES`) — left out of the copy rather than failing the
-    /// whole operation. Empty against a local target, where this limit
-    /// doesn't apply.
+    /// whole operation. Empty against a local or Postgres target, where this
+    /// limit (a Turso/sqld write-delegation constraint) doesn't apply.
     pub skipped: Vec<String>,
 }
 
@@ -56,14 +59,6 @@ pub async fn db_import_overwrite(
     let descriptor = conn.descriptor()?;
     if !descriptor.caps.writable {
         return Err("The current database is read-only and cannot import".into());
-    }
-    // Overwrite copies a sqlite source file's tables verbatim (original ids,
-    // `sqlite_sequence` resets, FTS5 `rebuild` commands). All of that is
-    // sqlite-specific and has no Postgres equivalent — a Postgres target
-    // would need pg_dump/restore semantics, not a row-by-row INSERT. Refuse
-    // rather than silently doing the wrong thing.
-    if descriptor.kind == db::DbKind::Postgres {
-        return Err("Overwrite-import is only supported on a local SQLite target".into());
     }
     // The 4MiB-ish message-size ceiling (see `MAX_SINGLE_ROW_BYTES`) is a
     // property of write-delegation to a remote primary, not of SQLite — a
@@ -152,8 +147,16 @@ async fn run_overwrite(
     // Best-effort: restarts autoincrement counters so the freshly copied
     // rows' original ids don't collide with a stale high-water mark. Not
     // every schema has used AUTOINCREMENT anywhere, so a missing
-    // sqlite_sequence table is not an error.
-    let _ = tx.execute("DELETE FROM sqlite_sequence", ()).await;
+    // sqlite_sequence table is not an error — but only on SQLite: unlike
+    // SQLite, a failed statement on Postgres poisons the rest of the
+    // transaction (every statement after it errors with "current
+    // transaction is aborted" until rollback), so running this
+    // unconditionally would silently break every Postgres overwrite. There's
+    // no Postgres equivalent needed here — `copy_postgres_table` resyncs
+    // each table's identity sequence itself after copying it.
+    if target.backend() != sea_orm::DbBackend::Postgres {
+        tx.execute("DELETE FROM sqlite_sequence", ()).await.ok();
+    }
 
     let mut rows_copied = 0i64;
     let mut skipped = Vec::new();
@@ -182,9 +185,22 @@ async fn run_overwrite(
     Ok(OverwriteResult { tables: insert_order.to_vec(), rows_copied, skipped })
 }
 
-// ── Schema introspection (always run against the local source file) ────────
+// ── Schema introspection ─────────────────────────────────────────────────
+// `source` is always a plain local SQLite file (`open_source` guarantees
+// it), so its introspection is always the SQLite branch below. `target`
+// (used only for `list_real_tables`, to know which tables actually exist to
+// delete/copy into) can be either backend.
 
 async fn list_real_tables(conn: &Conn) -> Result<Vec<String>, String> {
+    if conn.backend() == sea_orm::DbBackend::Postgres {
+        return db::fetch_all(
+            conn,
+            "SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'",
+            (),
+            |r| r.get(0),
+        )
+        .await;
+    }
     db::fetch_all(
         conn,
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
@@ -310,32 +326,6 @@ fn describe_value(v: &Value) -> String {
     }
 }
 
-/// Converts a decoded JSON cell back into a bindable SeaORM `Value` for the
-/// copy INSERT. The schema has no BLOB columns (verified against schema.sql),
-/// so the json-representable scalar set is exhaustive here. Numbers split
-/// into integers vs floats so SeaORM binds `BIGINT`/`DOUBLE PRECISION`
-/// correctly on Postgres (a json `1` must not be sent as a float).
-fn json_to_bind(v: &serde_json::Value) -> Value {
-    match v {
-        serde_json::Value::Null => Value::String(None),
-        serde_json::Value::Bool(b) => Value::Bool(Some(*b)),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Value::BigInt(Some(i))
-            } else if let Some(u) = n.as_u64() {
-                Value::BigUnsigned(Some(u))
-            } else if let Some(f) = n.as_f64() {
-                Value::Double(Some(f))
-            } else {
-                Value::String(None)
-            }
-        }
-        serde_json::Value::String(s) => Value::String(Some(s.clone())),
-        // Arrays/objects (json columns) round-trip as their serialized text.
-        other => Value::String(Some(other.to_string())),
-    }
-}
-
 async fn copy_table(
     source: &Conn,
     target: &Conn,
@@ -343,54 +333,68 @@ async fn copy_table(
     is_remote: bool,
     skipped: &mut Vec<String>,
 ) -> Result<i64, String> {
+    use crate::db::pg_copy::{json_cell_to_bind, postgres_dest_column_types, resync_postgres_identity_sequence};
     use sea_orm::FromQueryResult;
+
+    // Only meaningful (and only fetched) when `target` is Postgres — see
+    // `db::pg_copy`'s module doc for why a NULL bind needs it there.
+    let dest_col_types = postgres_dest_column_types(target, table).await;
 
     // Read every source row as a JSON object. SeaORM's `JsonValue`
     // `FromQueryResult` impl probes each column's declared type and decodes
     // it into the matching json scalar, so this works on both sqlite and
-    // postgres sources without us hand-mapping column types. The schema has
-    // no BLOB columns, so the json-representable set is complete here.
+    // postgres sources without us hand-mapping column types. `json_cell_to_bind`
+    // (not the raw JSON value) handles this schema's few BLOB columns, which
+    // decode as a JSON array of byte values through this probe.
     let rows = source
         .query_all(&format!("SELECT * FROM \"{table}\""), ())
         .await
         .map_err(|e| format!("Failed to read {table}: {e}"))?;
 
-    let column_list = if rows.is_empty() {
-        // No rows: derive the column list from the empty result's metadata so
-        // the INSERT skeleton still type-checks against the target (though we
-        // won't actually bind anything). `column_names()` on an empty result
-        // is backend-defined, so fall back to a PRAGMA-driven list on sqlite.
-        match source.backend() {
-            sea_orm::DbBackend::Sqlite => {
-                let cols: Vec<String> = db::fetch_all(
-                    source,
-                    "SELECT name FROM pragma_table_info(?) ORDER BY cid",
-                    [table],
-                    |r| r.get::<String>(0),
-                )
-                .await
-                .unwrap_or_default();
-                cols
-            }
-            _ => rows
-                .first()
-                .map(|r| r.column_names())
-                .unwrap_or_default(),
+    // Decode every row up front into its JSON object, and derive the column
+    // list from that same decode's keys — NOT from `column_names()`. Those
+    // two used to be different orderings: `column_names()` returns the
+    // physical/schema column order, but `serde_json::Map` (used to hold a
+    // decoded row) is a `BTreeMap` — alphabetical by key — unless the crate's
+    // `preserve_order` feature is on, which it isn't here. Building the
+    // column list from one ordering and each row's bound values from the
+    // other silently bound every value into the wrong column position.
+    // SQLite's weak per-column typing let that corrupt data with no error;
+    // Postgres's strict typing is what actually surfaced it (as a "column X
+    // is of type Y but expression is of type Z" error) — it was already
+    // wrong for a SQLite target too. Below, `map.get(col)` for each column in
+    // `column_list`'s own order makes the two impossible to desync, rather
+    // than relying on two separate derivations staying aligned.
+    let mut decoded_rows: Vec<serde_json::Map<String, serde_json::Value>> = Vec::with_capacity(rows.len());
+    for row in &rows {
+        let obj = sea_orm::JsonValue::from_query_result(row, "")
+            .map_err(|e| format!("Failed to decode row from {table}: {e}"))?;
+        match obj {
+            serde_json::Value::Object(m) => decoded_rows.push(m),
+            _ => return Err(format!("Unexpected row shape from {table}")),
         }
+    }
+
+    let column_names: Vec<String> = if let Some(first) = decoded_rows.first() {
+        first.keys().cloned().collect()
     } else {
-        rows[0].column_names()
+        // No rows: the INSERT skeleton this builds is never actually
+        // executed (`flush` no-ops on an empty batch), so an empty/
+        // best-effort list is fine — just needs to not panic below.
+        match source.backend() {
+            sea_orm::DbBackend::Sqlite => db::fetch_all(
+                source,
+                "SELECT name FROM pragma_table_info(?) ORDER BY cid",
+                [table],
+                |r| r.get::<String>(0),
+            )
+            .await
+            .unwrap_or_default(),
+            _ => Vec::new(),
+        }
     };
-    let column_list = column_list
-        .iter()
-        .map(|c| format!("\"{c}\""))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let column_count = if rows.is_empty() {
-        // Re-derive from the column_list we just built (comma-separated quoted names).
-        column_list.matches('"').count() / 2
-    } else {
-        rows[0].column_names().len()
-    } as i32;
+    let column_count = column_names.len() as i32;
+    let column_list = column_names.iter().map(|c| format!("\"{c}\"")).collect::<Vec<_>>().join(", ");
 
     let mut copied = 0i64;
     let mut batch: Vec<Vec<Value>> = Vec::new();
@@ -406,7 +410,8 @@ async fn copy_table(
         if batch.is_empty() {
             return Ok(());
         }
-        let mut sql = format!("INSERT INTO \"{table}\" ({column_list}) VALUES ");
+        let overriding = crate::db::pg_copy::postgres_overriding_clause(target);
+        let mut sql = format!("INSERT INTO \"{table}\" ({column_list}){overriding} VALUES ");
         let mut values: Vec<Value> = Vec::with_capacity(batch.len() * column_count as usize);
         for (i, row) in batch.iter().enumerate() {
             if i > 0 {
@@ -423,16 +428,16 @@ async fn copy_table(
         Ok(())
     }
 
-    for row in rows {
-        let obj = sea_orm::JsonValue::from_query_result(&row, "")
-            .map_err(|e| format!("Failed to decode row from {table}: {e}"))?;
-        let map = match obj {
-            serde_json::Value::Object(m) => m,
-            _ => return Err(format!("Unexpected row shape from {table}")),
-        };
-        // Bind in column order (map iteration is insertion-ordered in
-        // serde_json, which matches the SELECT order SeaORM used).
-        let values: Vec<Value> = map.iter().map(|(_, v)| json_to_bind(v)).collect();
+    for map in decoded_rows {
+        // Look up by name in `column_names`'s order — see the comment above
+        // on why this must not rely on `map`'s own iteration order matching.
+        let values: Vec<Value> = column_names
+            .iter()
+            .map(|col| {
+                let v = map.get(col).unwrap_or(&serde_json::Value::Null);
+                json_cell_to_bind(table, col, v, dest_col_types.get(col.as_str()).map(|s| s.as_str()))
+            })
+            .collect();
         let row_bytes: usize = values.iter().map(value_len).sum();
 
         if is_remote && row_bytes > MAX_SINGLE_ROW_BYTES {
@@ -456,5 +461,217 @@ async fn copy_table(
         batch.push(values);
     }
     flush(target, table, &column_list, column_count, &mut batch).await?;
+    // `OVERRIDING SYSTEM VALUE` (in `flush`) preserves the source's original
+    // ids on a Postgres target but doesn't advance the identity sequence —
+    // without this, the very next ordinary insert (the app itself, adding a
+    // word) would collide with an id this copy just took. No-op elsewhere.
+    resync_postgres_identity_sequence(target, table, &dest_col_types).await;
     Ok(copied)
+}
+
+#[cfg(test)]
+mod postgres_target_tests {
+    use crate::db::connection::DbProfile;
+
+    /// Full-overwrite wipes the *entire* target database — this must never
+    /// run against the same Postgres a person is actually using, even under
+    /// a shared "test" env var other (non-destructive) tests point at real
+    /// data. `TANWORDS_PG_OVERWRITE_TEST_URL` is a separate, dedicated
+    /// variable specifically so a `TANWORDS_PG_TEST_URL` env value can never
+    /// be misread as opting into this. Point it at a disposable database
+    /// only (e.g. `createdb tanwords_overwrite_test` in the same instance) —
+    /// skipped when unset, same convention as the other Postgres tests.
+    #[tokio::test]
+    async fn overwrite_import_replaces_a_postgres_target_end_to_end() {
+        let Ok(url) = std::env::var("TANWORDS_PG_OVERWRITE_TEST_URL") else {
+            eprintln!("skipping: TANWORDS_PG_OVERWRITE_TEST_URL not set");
+            return;
+        };
+
+        // Source: a small local SQLite file with a word (+ definition + srs
+        // record via the normal insert path), a document, and a document
+        // asset with real binary data — covers the identity-sequence,
+        // typed-NULL, and BLOB edge cases all at once.
+        let source_path = std::env::temp_dir()
+            .join(format!("tanwords-overwrite-src-{}.db", uuid::Uuid::new_v4()));
+        {
+            let seed = crate::db::connection::open(
+                &DbProfile::Local { path: source_path.to_string_lossy().into_owned() },
+                None,
+            )
+            .await
+            .unwrap()
+            .conn();
+            seed.execute(
+                "INSERT INTO words (word, level, word_freq) VALUES ('overwritetestword', 'B1', 1)",
+                (),
+            )
+            .await
+            .unwrap();
+            let doc_id: i64 = crate::db::fetch_one(
+                &seed,
+                "INSERT INTO documents (title, protection_salt) VALUES ('overwrite-doc', ?1) RETURNING id",
+                crate::db::params![vec![1u8, 2, 3]],
+                |r| r.get(0),
+            )
+            .await
+            .unwrap();
+            seed.execute(
+                "INSERT INTO document_assets (id, document_id, mime_type, data, size) VALUES ('ow-asset', ?1, 'image/png', ?2, 4)",
+                crate::db::params![doc_id, vec![0xCAu8, 0xFEu8, 0xBAu8, 0xBEu8]],
+            )
+            .await
+            .unwrap();
+        }
+
+        // Target: the dedicated throwaway Postgres, seeded with unrelated
+        // data first so the test actually proves "wipe, then replace" —
+        // not just "insert into an empty database".
+        let database = crate::db::connection::open(&DbProfile::Postgres { url }, None).await.unwrap();
+        let pre_existing = database.conn();
+        let _ = pre_existing.execute("DELETE FROM words WHERE word = 'pre-existing-should-be-wiped'", ()).await;
+        pre_existing
+            .execute("INSERT INTO words (word, level, word_freq) VALUES ('pre-existing-should-be-wiped', 'A1', 1)", ())
+            .await
+            .unwrap();
+
+        let (registry, app) = crate::build_state_for(database, None).await;
+        let ctx = crate::rpc::Ctx::new(registry, app);
+
+        let result = crate::rpc::dispatch::dispatch(
+            &ctx,
+            "db_import_overwrite",
+            crate::rpc::Args::new(serde_json::json!({
+                "sourcePath": source_path.to_string_lossy(),
+                "password": null,
+            })),
+        )
+        .await
+        .expect("overwrite-import should succeed against a Postgres target");
+        assert!(
+            result["rowsCopied"].as_i64().unwrap_or(0) > 0,
+            "expected rows to be copied, got {result}"
+        );
+
+        let target = pre_existing;
+        let wiped = crate::db::scalar_i64(&target, "SELECT COUNT(*) FROM words WHERE word = 'pre-existing-should-be-wiped'", ())
+            .await
+            .unwrap();
+        assert_eq!(wiped, 0, "pre-existing target data must be wiped, not merged");
+
+        let word: String = crate::db::fetch_one(&target, "SELECT word FROM words WHERE word = 'overwritetestword'", (), |r| r.get(0))
+            .await
+            .unwrap();
+        assert_eq!(word, "overwritetestword");
+
+        let salt: Vec<u8> = crate::db::fetch_one(&target, "SELECT protection_salt FROM documents WHERE title = 'overwrite-doc'", (), |r| r.get(0))
+            .await
+            .unwrap();
+        assert_eq!(salt, vec![1, 2, 3]);
+
+        let asset_data: Vec<u8> = crate::db::fetch_one(&target, "SELECT data FROM document_assets WHERE id = 'ow-asset'", (), |r| r.get(0))
+            .await
+            .unwrap();
+        assert_eq!(asset_data, vec![0xCA, 0xFE, 0xBA, 0xBE]);
+
+        // The identity sequence must have advanced past the copied rows —
+        // this is exactly the bug that broke the very next ordinary insert
+        // before `resync_postgres_identity_sequence` was wired in here.
+        target
+            .execute("INSERT INTO words (word, level, word_freq) VALUES ('overwrite-sequence-check', 'A1', 1)", ())
+            .await
+            .expect("an ordinary insert after overwrite-import must not collide with a copied id");
+
+        let _ = std::fs::remove_file(&source_path);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::db::connection::DbProfile;
+
+    /// Regression test for a column-misalignment bug that predates Postgres
+    /// support entirely: the column list used to come from `column_names()`
+    /// (physical/schema order) while each row's bound values came from
+    /// `serde_json::Map::iter()` — a `BTreeMap`, alphabetical by key, since
+    /// this crate doesn't enable serde_json's `preserve_order` feature. For
+    /// a table whose alphabetical and physical column orders differ (most of
+    /// them), every value silently bound into the wrong column position.
+    /// SQLite's weak per-column typing let that through with no error —
+    /// wrong data, not a crash — which is exactly why it went unnoticed
+    /// until Postgres's strict typing turned the same bug into a visible
+    /// error. This pins the fix: a table where alphabetical order really
+    /// does differ from physical order, checked field-by-field.
+    #[tokio::test]
+    async fn overwrite_import_keeps_columns_aligned_against_a_sqlite_target() {
+        let source_path = std::env::temp_dir()
+            .join(format!("tanwords-overwrite-sqlite-src-{}.db", uuid::Uuid::new_v4()));
+        {
+            let seed = crate::db::connection::open(
+                &DbProfile::Local { path: source_path.to_string_lossy().into_owned() },
+                None,
+            )
+            .await
+            .unwrap()
+            .conn();
+            // `words`' physical column order starts (id, word, word_type,
+            // level, word_freq, ...) — alphabetically, `created_at` and
+            // `enrichment_json` sort before `id`, so a column-order mixup
+            // here reliably produces visibly wrong data instead of an
+            // accidental pass.
+            seed.execute(
+                "INSERT INTO words (word, word_type, level, word_freq, mnemonic) VALUES ('alignmentword', 'noun', 'B2', 7, 'remember this')",
+                (),
+            )
+            .await
+            .unwrap();
+        }
+
+        let target_path = std::env::temp_dir()
+            .join(format!("tanwords-overwrite-sqlite-tgt-{}.db", uuid::Uuid::new_v4()));
+        let database = crate::db::connection::open(
+            &DbProfile::Local { path: target_path.to_string_lossy().into_owned() },
+            None,
+        )
+        .await
+        .unwrap();
+
+        let (registry, app) = crate::build_state_for(database, None).await;
+        let ctx = crate::rpc::Ctx::new(registry, app);
+
+        crate::rpc::dispatch::dispatch(
+            &ctx,
+            "db_import_overwrite",
+            crate::rpc::Args::new(serde_json::json!({
+                "sourcePath": source_path.to_string_lossy(),
+                "password": null,
+            })),
+        )
+        .await
+        .expect("overwrite-import should succeed against a SQLite target");
+
+        let target_conn = crate::db::connection::open(
+            &DbProfile::Local { path: target_path.to_string_lossy().into_owned() },
+            None,
+        )
+        .await
+        .unwrap()
+        .conn();
+        let (word, word_type, level, word_freq, mnemonic): (String, String, String, i64, String) = crate::db::fetch_one(
+            &target_conn,
+            "SELECT word, word_type, level, word_freq, mnemonic FROM words WHERE word = 'alignmentword'",
+            (),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+        )
+        .await
+        .unwrap();
+        assert_eq!(word, "alignmentword");
+        assert_eq!(word_type, "noun");
+        assert_eq!(level, "B2");
+        assert_eq!(word_freq, 7);
+        assert_eq!(mnemonic, "remember this");
+
+        let _ = std::fs::remove_file(&source_path);
+        let _ = std::fs::remove_file(&target_path);
+    }
 }

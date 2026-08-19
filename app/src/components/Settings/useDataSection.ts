@@ -6,10 +6,23 @@ import { isDesktopHost } from "@/platform";
 import { subscribe } from "@/ipc/events";
 import type { useDB } from "@/hooks/useDB";
 import type { useT } from "@/hooks/useT";
-import { DbConnection, ImportDecisions, ImportPlan, ImportProgress, OverwriteProgress, RemoteAccessStatus, RememberedTursoConnection } from "@/hooks/useDB.types";
+import { DbConnection, ImportDecisions, ImportPlan, ImportProgress, OverwriteProgress, PostgresExportProgress, RemoteAccessStatus, RememberedTursoConnection } from "@/hooks/useDB.types";
+
+/** Every db.* call throws either a plain string (the backend's error text,
+ *  passed through as-is by `invoke`) or an `Error` — normalise to text for
+ *  display in the import error modal. */
+function errorMessage(e: unknown): string {
+  if (typeof e === "string") return e;
+  if (e instanceof Error) return e.message;
+  return String(e);
+}
 
 export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeof useT>) {
   const [dbPath, setDbPath] = useState("");
+  // Where a local database would live, independent of what's actually
+  // connected — shown on the Local tab in place of the remote's own URL
+  // while a Turso/Postgres profile is active (there's no local path then).
+  const [defaultLocalPath, setDefaultLocalPath] = useState("");
   const [dbSize, setDbSize] = useState<number | null>(null);
   const [connection, setConnection] = useState<DbConnection | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -21,18 +34,30 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
   // profile was Turso — see the effect below.
   const [activeTab, setActiveTab] = useState<"local" | "cloud">("local");
 
+  // Which cloud backend the connect form targets. Defaults to "turso" and
+  // flips to "postgres" once we know the active profile is Postgres — see
+  // the effect below.
+  const [cloudBackend, setCloudBackend] = useState<"turso" | "postgres">("turso");
+
   // Turso connection form
   const [tursoOpen, setTursoOpen] = useState(false);
   const [tursoUrl, setTursoUrl] = useState("");
   const [tursoToken, setTursoToken] = useState("");
   const [rememberedTurso, setRememberedTurso] = useState<RememberedTursoConnection | null>(null);
   const [connecting, setConnecting] = useState(false);
+
+  // Postgres connection form. No local replica and no keychain token — the
+  // connection string carries its own credentials, so there's nothing to
+  // "remember" the way Turso's token is.
+  const [postgresOpen, setPostgresOpen] = useState(false);
+  const [postgresUrl, setPostgresUrl] = useState("");
+  const [connectingPostgres, setConnectingPostgres] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [stuckTursoWarning, setStuckTursoWarning] = useState<string | null>(null);
   const [forgetting, setForgetting] = useState(false);
   const [showExportPassword, setShowExportPassword] = useState(false);
-  const [pendingExportSource, setPendingExportSource] = useState<"local" | "turso">("local");
+  const [pendingExportSource, setPendingExportSource] = useState<"local" | "turso" | "postgres">("local");
   const [showImportPassword, setShowImportPassword] = useState(false);
   const [pendingImportPath, setPendingImportPath] = useState<string | null>(null);
   const [importPassword, setImportPassword] = useState("");
@@ -42,6 +67,10 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
   const [analyzing, setAnalyzing] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
+  // Shown as a modal (not just a toast) whenever an import/export step fails,
+  // so the specific reason — a bad password, an unrecognised file, a broken
+  // connection mid-copy — doesn't get lost as a transient notification.
+  const [importError, setImportError] = useState<string | null>(null);
 
   useEffect(() => subscribe<ImportProgress>("import-progress", setImportProgress), []);
 
@@ -51,6 +80,12 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
   const [overwriteProgress, setOverwriteProgress] = useState<OverwriteProgress | null>(null);
 
   useEffect(() => subscribe<OverwriteProgress>("overwrite-progress", setOverwriteProgress), []);
+
+  // Postgres → local SQLite backup export (table-by-table copy, since
+  // Postgres has no local replica file for VACUUM INTO to clone).
+  const [postgresExportProgress, setPostgresExportProgress] = useState<PostgresExportProgress | null>(null);
+
+  useEffect(() => subscribe<PostgresExportProgress>("postgres-export-progress", setPostgresExportProgress), []);
 
   const [vacuuming, setVacuuming] = useState(false);
 
@@ -65,11 +100,15 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
   const [remoteAccessToken, setRemoteAccessToken] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isDesktopHost) db.getDbPath().then(setDbPath);
+    if (isDesktopHost) {
+      db.getDbPath().then(setDbPath);
+      db.getDefaultLocalPath().then(setDefaultLocalPath);
+    }
     db.getDbSize().then(setDbSize);
     db.getConnection().then((c) => {
       setConnection(c);
-      if (c?.kind === "turso") setActiveTab("cloud");
+      if (c?.kind === "turso" || c?.kind === "postgres") setActiveTab("cloud");
+      if (c?.kind === "postgres") setCloudBackend("postgres");
     });
     // A saved Turso profile that failed to open at launch is kept (not
     // self-cleared like a local one) in case it was just a flaky network —
@@ -90,7 +129,7 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
     if (!isDesktopHost) db.getRemoteAccess().then(setRemoteAccess);
   }, []);
 
-  const isRemote = connection?.kind === "turso";
+  const isRemote = connection?.kind === "turso" || connection?.kind === "postgres";
   // Serving the replica read-only because the primary was unreachable at
   // startup: syncing can't work, so the button would only ever fail.
   const isOffline = connection?.offline ?? false;
@@ -155,6 +194,19 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
     }
   };
 
+  const handleConnectPostgres = async () => {
+    setConnectingPostgres(true);
+    try {
+      await db.connectPostgres(postgresUrl);
+      toast.success(t("settings.remoteDBConnectOk"));
+      setTimeout(() => window.location.reload(), 600);
+    } catch {
+      // useDB already toasts the failure; keep the form open so the user can
+      // correct the connection string rather than retyping it.
+      setConnectingPostgres(false);
+    }
+  };
+
   const handleSelectSource = async (source: "local" | "turso") => {
     setSwitching(true);
     try {
@@ -215,7 +267,7 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
       try {
         path = await webUploadForImport(file);
       } catch (error) {
-        toast.error(String(error));
+        setImportError(errorMessage(error));
         return;
       }
       if (file.name.toLowerCase().endsWith(".zip")) {
@@ -274,8 +326,10 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
       }
       setPendingOverwritePath(null);
       setTimeout(() => window.location.reload(), 800);
-    } catch {
-      // useDBData already toasts the failure; keep the dialog state so retry doesn't require reselecting the file
+    } catch (error) {
+      // Keep the dialog state (pendingOverwritePath) so retry doesn't
+      // require reselecting the file; the error modal explains what failed.
+      setImportError(errorMessage(error));
     } finally {
       setOverwriting(false);
       setOverwriteProgress(null);
@@ -286,8 +340,8 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
     setAnalyzing(true);
     try {
       setImportPlan(await db.importAnalyze(path, password));
-    } catch {
-      // useDB already toasts the failure
+    } catch (error) {
+      setImportError(errorMessage(error));
     } finally {
       setAnalyzing(false);
     }
@@ -311,8 +365,11 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
       );
       // Every already-loaded page was fetched from the pre-import database.
       setTimeout(() => window.location.reload(), 800);
-    } catch {
-      // useDB already toasts the failure
+    } catch (error) {
+      // The preview modal (importPlan) stays open behind the error modal so
+      // the user can retry without reselecting the file and re-choosing
+      // conflict decisions.
+      setImportError(errorMessage(error));
     } finally {
       setImporting(false);
       setImportProgress(null);
@@ -321,9 +378,12 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
 
   const startExport = async (password: string | null) => {
     if (!isDesktopHost) {
+      // Postgres export is desktop-only for now — that button is never
+      // rendered on web, so pendingExportSource can't actually be "postgres"
+      // here; the fallback is just to keep this call's type honest.
       setExporting(true);
       try {
-        await webExportBackup(password, pendingExportSource);
+        await webExportBackup(password, pendingExportSource === "postgres" ? "local" : pendingExportSource);
         toast.success(t("settings.exportOk"));
       } catch (error) {
         toast.error(typeof error === "string" ? error : String(error));
@@ -341,17 +401,23 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
     });
     if (!dest) return;
     setExporting(true);
+    setPostgresExportProgress(null);
     try {
-      await db.exportBackup(dest, password);
+      if (pendingExportSource === "postgres") {
+        await db.exportPostgresBackup(dest, password);
+      } else {
+        await db.exportBackup(dest, password);
+      }
       toast.success(t("settings.exportOk"));
     } catch {
       // useDB already toasts the failure
     } finally {
       setExporting(false);
+      setPostgresExportProgress(null);
     }
   };
 
-  const handleExport = (source: "local" | "turso" = "local") => {
+  const handleExport = (source: "local" | "turso" | "postgres" = "local") => {
     setPendingExportSource(source);
     setShowExportPassword(true);
   };
@@ -423,5 +489,5 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
       setVacuuming(false);
     }
   };
-  return { dbPath, dbSize, connection, exporting, confirmClear, pendingSwitchPath, switching, activeTab, tursoOpen, tursoUrl, tursoToken, rememberedTurso, connecting, confirmDisconnect, syncing, stuckTursoWarning, forgetting, showExportPassword, pendingExportSource, showImportPassword, pendingImportPath, importPassword, importPlan, analyzing, importing, importProgress, pendingOverwritePath, overwriting, overwriteProgress, vacuuming, remoteAccess, remoteAccessBusy, confirmRotateRemote, confirmDisableRemote, remoteAccessToken, isRemote, isOffline, canExport, canSwitchPath, canImport, canVacuum, formattedDbSize, setDbPath, setDbSize, setConnection, setExporting, setConfirmClear, setPendingSwitchPath, setSwitching, setActiveTab, setTursoOpen, setTursoUrl, setTursoToken, setRememberedTurso, setConnecting, setConfirmDisconnect, setSyncing, setStuckTursoWarning, setForgetting, setShowExportPassword, setPendingExportSource, setShowImportPassword, setPendingImportPath, setImportPassword, setImportPlan, setAnalyzing, setImporting, setPendingOverwritePath, setConfirmRotateRemote, setConfirmDisableRemote, setRemoteAccessToken, handleOpenExisting, handleNewLocation, confirmSwitch, handleConnectTurso, handleSelectSource, handleDisconnect, handleForgetSavedConnection, handleSyncNow, handleChooseImportFile, analyzeImport, handleImport, handleChooseOverwriteFile, confirmOverwrite, handleVacuum, handleEnableRemote, handleConfirmRotateRemote, handleConfirmDisableRemote, startExport, handleExport, handleClearTranslations };
+  return { dbPath, defaultLocalPath, dbSize, connection, exporting, confirmClear, pendingSwitchPath, switching, activeTab, cloudBackend, tursoOpen, tursoUrl, tursoToken, rememberedTurso, connecting, postgresOpen, postgresUrl, connectingPostgres, confirmDisconnect, syncing, stuckTursoWarning, forgetting, showExportPassword, pendingExportSource, showImportPassword, pendingImportPath, importPassword, importPlan, analyzing, importing, importProgress, importError, pendingOverwritePath, overwriting, overwriteProgress, postgresExportProgress, vacuuming, remoteAccess, remoteAccessBusy, confirmRotateRemote, confirmDisableRemote, remoteAccessToken, isRemote, isOffline, canExport, canSwitchPath, canImport, canVacuum, formattedDbSize, setDbPath, setDefaultLocalPath, setDbSize, setConnection, setExporting, setConfirmClear, setPendingSwitchPath, setSwitching, setActiveTab, setCloudBackend, setTursoOpen, setTursoUrl, setTursoToken, setRememberedTurso, setConnecting, setPostgresOpen, setPostgresUrl, setConfirmDisconnect, setSyncing, setStuckTursoWarning, setForgetting, setShowExportPassword, setPendingExportSource, setShowImportPassword, setPendingImportPath, setImportPassword, setImportPlan, setAnalyzing, setImporting, setImportError, setPendingOverwritePath, setConfirmRotateRemote, setConfirmDisableRemote, setRemoteAccessToken, handleOpenExisting, handleNewLocation, confirmSwitch, handleConnectTurso, handleConnectPostgres, handleSelectSource, handleDisconnect, handleForgetSavedConnection, handleSyncNow, handleChooseImportFile, analyzeImport, handleImport, handleChooseOverwriteFile, confirmOverwrite, handleVacuum, handleEnableRemote, handleConfirmRotateRemote, handleConfirmDisableRemote, startExport, handleExport, handleClearTranslations };
 }

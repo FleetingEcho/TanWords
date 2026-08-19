@@ -25,6 +25,7 @@ export const nav: Dict = {
     "command.analyzingHint": "{n} articles analyzing — click to view or cancel",
     "command.dbLocal": "Local database",
     "command.dbCloud": "Cloud database (Turso)",
+    "command.dbCloudPostgres": "Cloud database (Postgres)",
     "command.mcpRunning": "MCP server running",
     "command.mcpStopped": "MCP server not running",
     "command.aiConnected": "AI connected",

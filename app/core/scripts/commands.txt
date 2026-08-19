@@ -85,9 +85,12 @@ db::db_add_known_words
 db::db_get_known_words
 db::db_dashboard_stats
 db::db_get_db_path
+db::db_get_default_local_path
 db::db_get_db_size
 db::db_get_connection
 db::db_connect_turso
+db::db_connect_postgres
+db::db_export_postgres_backup
 db::db_disconnect_remote
 db::db_sync_now
 db::db_import_analyze

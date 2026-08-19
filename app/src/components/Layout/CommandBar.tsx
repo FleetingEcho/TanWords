@@ -153,6 +153,13 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
     db.getConnection().then(setConnection);
   }, []);
 
+  // Both Turso and Postgres are "remote" for this icon's purposes — only
+  // Turso has the embedded-replica "offline" concept (Postgres is a direct
+  // connection with no local fallback), so `isDbOffline` stays Turso-only.
+  const isDbRemote = connection?.kind === "turso" || connection?.kind === "postgres";
+  const isDbOffline = connection?.kind === "turso" && connection.offline;
+  const dbCloudLabel = connection?.kind === "postgres" ? t("command.dbCloudPostgres") : t("command.dbCloud");
+
   const refreshMcp = React.useCallback(() => {
     invoke<McpState>("mcp_get_config").then((result) => setMcp(result.status)).catch(() => {});
   }, []);
@@ -396,20 +403,20 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
               <Button
                 variant="ghost"
                 size="icon"
-                className={`relative h-8 w-8 rounded-lg ${connection?.kind === "turso" && connection.offline ? "text-amber-500" : "text-muted-foreground"}`}
+                className={`relative h-8 w-8 rounded-lg ${isDbOffline ? "text-amber-500" : "text-muted-foreground"}`}
               >
-                {connection?.kind === "turso"
-                  ? (connection.offline ? <CloudOff className="h-4 w-4" /> : <Cloud className="h-4 w-4" />)
+                {isDbRemote
+                  ? (isDbOffline ? <CloudOff className="h-4 w-4" /> : <Cloud className="h-4 w-4" />)
                   : <Database className="h-4 w-4" />}
-                {connection?.kind === "turso" && !connection.offline && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />}
+                {isDbRemote && !isDbOffline && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-background" />}
               </Button>
             </PopoverTrigger>
             <PopoverContent side="bottom" align="end" className="w-72 p-3">
-              <p className="font-medium text-sm">{connection?.kind === "turso" ? t("command.dbCloud") : t("command.dbLocal")}</p>
+              <p className="font-medium text-sm">{isDbRemote ? dbCloudLabel : t("command.dbLocal")}</p>
               <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
-                {connection?.kind === "turso" ? connection.remoteUrl : connection?.path}
+                {isDbRemote ? connection?.remoteUrl : connection?.path}
               </p>
-              {connection?.kind === "turso" && connection.offline && <p className="mt-1 text-xs text-amber-500">{t("settings.remoteDBOffline")}</p>}
+              {isDbOffline && <p className="mt-1 text-xs text-amber-500">{t("settings.remoteDBOffline")}</p>}
               <Button
                 variant="ghost"
                 size="sm"
