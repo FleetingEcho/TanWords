@@ -363,6 +363,18 @@ export interface OverwriteResult {
   skipped: string[];
 }
 
+/** A web account's dedicated sqld container — lets a desktop app connect
+ *  directly (Settings > Cloud tab) and share this account's data live.
+ *  Unrelated to the `turso*`/`DbConnection` types above (a user-supplied
+ *  external target) — this is server-provisioned. `token` is only present
+ *  right after `enableRemoteAccess`/`rotateRemoteAccess`, never on a plain
+ *  status read. */
+export interface RemoteAccessStatus {
+  enabled: boolean;
+  url: string | null;
+  token?: string;
+}
+
 /** Payload of the `"overwrite-progress"` event, emitted while
  *  `importOverwrite` runs. Mirrors `OverwriteProgress` in
  *  db/import/overwrite.rs. */

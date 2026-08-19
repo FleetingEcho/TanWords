@@ -23,6 +23,10 @@
 //!   POST /api/db/turso/connect       session, {"url","token"} -> descriptor
 //!   POST /api/db/turso/disconnect    session -> descriptor (back to per-user local db)
 //!   GET  /api/db/turso/remembered    session -> {"url":...,"token_present":bool}
+//!   GET  /api/db/remote/status       session -> {"enabled":bool,"url":...}
+//!   POST /api/db/remote/enable       session -> {"enabled":true,"url":...,"token":...} (provisions a dedicated sqld container for this account)
+//!   POST /api/db/remote/rotate       session -> {"enabled":true,"url":...,"token":...} (new keypair; old tokens stop working; data untouched)
+//!   POST /api/db/remote/disable      session -> {"enabled":false} (stops the container; data and the URL are kept for next enable)
 //!   POST /api/ai-proxy/{id}/{*rest}  session, upstream passthrough with injected key
 //!   GET  /*                          the SPA (built frontend), index.html fallback
 
@@ -79,6 +83,10 @@ impl WebState {
             .runtime_for(session.user_id)
             .await
             .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e))
+    }
+
+    pub(crate) fn public_host(&self) -> Option<&str> {
+        self.config.public_host.as_deref()
     }
 }
 
@@ -167,6 +175,7 @@ mod ai;
 mod auth;
 mod backup;
 mod db;
+mod sqld_remote;
 mod static_files;
 
 use self::ai::ai_proxy;
@@ -178,6 +187,7 @@ use self::backup::{export_backup, import_step, import_upload};
 use self::db::{
     db_profile, db_select_source, turso_connect, turso_disconnect, turso_forget, turso_remembered,
 };
+use self::sqld_remote::{sqld_remote_disable, sqld_remote_enable, sqld_remote_rotate, sqld_remote_status};
 use self::static_files::spa_handler;
 
 // ── core RPC (same shapes as the desktop sidecar) ─────────────────────────
@@ -501,6 +511,10 @@ pub async fn serve(
         .route("/api/db/turso/disconnect", post(turso_disconnect))
         .route("/api/db/turso/remembered", get(turso_remembered))
         .route("/api/db/turso/forget", post(turso_forget))
+        .route("/api/db/remote/status", get(sqld_remote_status))
+        .route("/api/db/remote/enable", post(sqld_remote_enable))
+        .route("/api/db/remote/rotate", post(sqld_remote_rotate))
+        .route("/api/db/remote/disable", post(sqld_remote_disable))
         .route(
             "/api/browser/proxy",
             axum::routing::any(browser_proxy::browser_proxy)

@@ -3649,6 +3649,7 @@ dependencies = [
  "rand 0.8.7",
  "regex",
  "reqwest",
+ "ring",
  "rust-embed",
  "serde",
  "serde_json",

@@ -36,6 +36,11 @@ pub struct Config {
     pub master_key: [u8; 32],
     /// Absolute JWT lifetime. Defaults to one week.
     pub jwt_ttl_secs: i64,
+    /// The same hostname/IP Caddy is configured with (`deploy/.env`'s
+    /// `TANWORDS_PUBLIC_HOST`) — needed to build the URL a per-user sqld
+    /// remote-connection is reachable at. Optional: everything else in this
+    /// server works without it, only that one feature needs it set.
+    pub public_host: Option<String>,
 }
 
 fn env(key: &str) -> Option<String> {
@@ -109,6 +114,7 @@ impl Config {
                 .map(|v| matches!(v.trim(), "1" | "true" | "yes"))
                 .unwrap_or(false),
             master_key,
+            public_host: env("TANWORDS_PUBLIC_HOST"),
         })
     }
 

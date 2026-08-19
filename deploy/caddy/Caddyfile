@@ -3,6 +3,16 @@
 {
 	# TLS clients commonly omit SNI when connecting to a literal IP.
 	default_sni {$TANWORDS_PUBLIC_HOST}
+
+	# `app` pushes per-user sqld vhosts here at runtime (server/sqld_remote.rs)
+	# instead of editing this file — Caddy's admin API defaults to binding
+	# 127.0.0.1 only, which `app` (a different container) can't reach, so this
+	# widens it to the compose network. Never published to the host (no `ports:`
+	# entry for 2019 in compose.yml) and has no authentication of its own, so
+	# this is only as safe as every other container on that network being
+	# trusted — true here (nothing runs arbitrary user-supplied code), but
+	# worth knowing before adding another service to this compose file.
+	admin 0.0.0.0:2019
 }
 
 {$TANWORDS_PUBLIC_HOST} {

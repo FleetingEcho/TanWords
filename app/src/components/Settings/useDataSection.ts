@@ -6,7 +6,7 @@ import { isDesktopHost } from "@/platform";
 import { subscribe } from "@/ipc/events";
 import type { useDB } from "@/hooks/useDB";
 import type { useT } from "@/hooks/useT";
-import { DbConnection, ImportDecisions, ImportPlan, ImportProgress, OverwriteProgress, RememberedTursoConnection } from "@/hooks/useDB.types";
+import { DbConnection, ImportDecisions, ImportPlan, ImportProgress, OverwriteProgress, RemoteAccessStatus, RememberedTursoConnection } from "@/hooks/useDB.types";
 
 export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeof useT>) {
   const [dbPath, setDbPath] = useState("");
@@ -54,6 +54,16 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
 
   const [vacuuming, setVacuuming] = useState(false);
 
+  // Web-account "remote access": a dedicated sqld container a desktop app
+  // can connect to directly, sharing this account's data live.
+  const [remoteAccess, setRemoteAccess] = useState<RemoteAccessStatus | null>(null);
+  const [remoteAccessBusy, setRemoteAccessBusy] = useState(false);
+  const [confirmRotateRemote, setConfirmRotateRemote] = useState(false);
+  const [confirmDisableRemote, setConfirmDisableRemote] = useState(false);
+  // The token is only ever returned right after enable/rotate — shown once,
+  // then cleared from memory rather than kept around indefinitely.
+  const [remoteAccessToken, setRemoteAccessToken] = useState<string | null>(null);
+
   useEffect(() => {
     if (isDesktopHost) db.getDbPath().then(setDbPath);
     db.getDbSize().then(setDbSize);
@@ -77,6 +87,7 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
       setRememberedTurso(saved);
       if (saved?.url) setTursoUrl(saved.url);
     });
+    if (!isDesktopHost) db.getRemoteAccess().then(setRemoteAccess);
   }, []);
 
   const isRemote = connection?.kind === "turso";
@@ -356,6 +367,50 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
     toast.success(t("settings.dangerClearedOk"));
   };
 
+  const handleEnableRemote = async () => {
+    setRemoteAccessBusy(true);
+    try {
+      const result = await db.enableRemoteAccess();
+      setRemoteAccess(result);
+      setRemoteAccessToken(result.token ?? null);
+      toast.success(t("settings.remoteAccessEnabledOk"));
+    } catch {
+      // useDBData already toasts the failure
+    } finally {
+      setRemoteAccessBusy(false);
+    }
+  };
+
+  const handleConfirmRotateRemote = async () => {
+    setRemoteAccessBusy(true);
+    try {
+      const result = await db.rotateRemoteAccess();
+      setRemoteAccess(result);
+      setRemoteAccessToken(result.token ?? null);
+      toast.success(t("settings.remoteAccessRotatedOk"));
+    } catch {
+      // useDBData already toasts the failure
+    } finally {
+      setRemoteAccessBusy(false);
+      setConfirmRotateRemote(false);
+    }
+  };
+
+  const handleConfirmDisableRemote = async () => {
+    setRemoteAccessBusy(true);
+    try {
+      await db.disableRemoteAccess();
+      setRemoteAccess({ enabled: false, url: remoteAccess?.url ?? null });
+      setRemoteAccessToken(null);
+      toast.success(t("settings.remoteAccessDisabledOk"));
+    } catch {
+      // useDBData already toasts the failure
+    } finally {
+      setRemoteAccessBusy(false);
+      setConfirmDisableRemote(false);
+    }
+  };
+
   const handleVacuum = async () => {
     setVacuuming(true);
     try {
@@ -368,5 +423,5 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
       setVacuuming(false);
     }
   };
-  return { dbPath, dbSize, connection, exporting, confirmClear, pendingSwitchPath, switching, activeTab, tursoOpen, tursoUrl, tursoToken, rememberedTurso, connecting, confirmDisconnect, syncing, stuckTursoWarning, forgetting, showExportPassword, pendingExportSource, showImportPassword, pendingImportPath, importPassword, importPlan, analyzing, importing, importProgress, pendingOverwritePath, overwriting, overwriteProgress, vacuuming, isRemote, isOffline, canExport, canSwitchPath, canImport, canVacuum, formattedDbSize, setDbPath, setDbSize, setConnection, setExporting, setConfirmClear, setPendingSwitchPath, setSwitching, setActiveTab, setTursoOpen, setTursoUrl, setTursoToken, setRememberedTurso, setConnecting, setConfirmDisconnect, setSyncing, setStuckTursoWarning, setForgetting, setShowExportPassword, setPendingExportSource, setShowImportPassword, setPendingImportPath, setImportPassword, setImportPlan, setAnalyzing, setImporting, setPendingOverwritePath, handleOpenExisting, handleNewLocation, confirmSwitch, handleConnectTurso, handleSelectSource, handleDisconnect, handleForgetSavedConnection, handleSyncNow, handleChooseImportFile, analyzeImport, handleImport, handleChooseOverwriteFile, confirmOverwrite, handleVacuum, startExport, handleExport, handleClearTranslations };
+  return { dbPath, dbSize, connection, exporting, confirmClear, pendingSwitchPath, switching, activeTab, tursoOpen, tursoUrl, tursoToken, rememberedTurso, connecting, confirmDisconnect, syncing, stuckTursoWarning, forgetting, showExportPassword, pendingExportSource, showImportPassword, pendingImportPath, importPassword, importPlan, analyzing, importing, importProgress, pendingOverwritePath, overwriting, overwriteProgress, vacuuming, remoteAccess, remoteAccessBusy, confirmRotateRemote, confirmDisableRemote, remoteAccessToken, isRemote, isOffline, canExport, canSwitchPath, canImport, canVacuum, formattedDbSize, setDbPath, setDbSize, setConnection, setExporting, setConfirmClear, setPendingSwitchPath, setSwitching, setActiveTab, setTursoOpen, setTursoUrl, setTursoToken, setRememberedTurso, setConnecting, setConfirmDisconnect, setSyncing, setStuckTursoWarning, setForgetting, setShowExportPassword, setPendingExportSource, setShowImportPassword, setPendingImportPath, setImportPassword, setImportPlan, setAnalyzing, setImporting, setPendingOverwritePath, setConfirmRotateRemote, setConfirmDisableRemote, setRemoteAccessToken, handleOpenExisting, handleNewLocation, confirmSwitch, handleConnectTurso, handleSelectSource, handleDisconnect, handleForgetSavedConnection, handleSyncNow, handleChooseImportFile, analyzeImport, handleImport, handleChooseOverwriteFile, confirmOverwrite, handleVacuum, handleEnableRemote, handleConfirmRotateRemote, handleConfirmDisableRemote, startExport, handleExport, handleClearTranslations };
 }

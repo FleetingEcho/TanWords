@@ -41,6 +41,15 @@ pub struct TursoProfile {
     pub token: String,
 }
 
+/// A user's dedicated sqld container: which firewall-range port it's on, its
+/// signing keypair (PKCS8 DER, decrypted), and whether it's currently meant
+/// to be running.
+pub struct SqldRemoteProfile {
+    pub port: i64,
+    pub key_der: Vec<u8>,
+    pub enabled: bool,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 struct JwtClaims {
     sub: i64,
@@ -99,6 +108,19 @@ impl UsersDb {
         // every restart.
         let _ = conn.execute("ALTER TABLE users ADD COLUMN active_db TEXT", ()).await;
         let _ = conn.execute("ALTER TABLE users ADD COLUMN app_lock_hash TEXT", ()).await;
+        // A per-user dedicated sqld container a desktop app can connect to
+        // directly, sharing this account's actual database live — separate
+        // from the turso_* columns above (a user-supplied external Turso/
+        // self-hosted target), this is a container the server itself
+        // provisions. `sqld_key_enc` seals the Ed25519 keypair (PKCS8 DER,
+        // base64'd then AES-GCM sealed) used to sign that container's
+        // bearer tokens; `sqld_port` is this user's slot in the fixed,
+        // pre-opened firewall port range (see deploy/deploy-server.sh).
+        let _ = conn.execute("ALTER TABLE users ADD COLUMN sqld_key_enc TEXT", ()).await;
+        let _ = conn.execute("ALTER TABLE users ADD COLUMN sqld_port INTEGER", ()).await;
+        let _ = conn
+            .execute("ALTER TABLE users ADD COLUMN sqld_enabled INTEGER NOT NULL DEFAULT 0", ())
+            .await;
         conn.execute(
             "UPDATE users SET active_db = CASE
                  WHEN turso_url IS NOT NULL AND turso_token_enc IS NOT NULL THEN 'turso'
@@ -528,6 +550,110 @@ impl UsersDb {
             .map_err(|e| e.to_string())?
             .is_some();
         Ok((url, has_token))
+    }
+
+    // ── Per-user dedicated sqld container ──────────────────────────────────
+
+    /// This user's provisioned sqld slot, if they've ever enabled remote
+    /// access — `enabled` distinguishes "provisioned and running" from
+    /// "provisioned, currently disabled" (the container itself may be
+    /// stopped, but the port/keypair/data are kept so re-enabling is cheap).
+    pub async fn sqld_remote_for(&self, user_id: i64) -> Result<Option<SqldRemoteProfile>, String> {
+        let conn = self.conn.lock().await;
+        let mut rows = conn
+            .query(
+                "SELECT sqld_port, sqld_key_enc, sqld_enabled FROM users WHERE id = ?",
+                libsql::params![user_id],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        let Some(row) = rows.next().await.map_err(|e| e.to_string())? else {
+            return Ok(None);
+        };
+        let port = row.get::<Option<i64>>(0).map_err(|e| e.to_string())?;
+        let enc = row.get::<Option<String>>(1).map_err(|e| e.to_string())?;
+        let enabled = row.get::<i64>(2).map_err(|e| e.to_string())? != 0;
+        match (port, enc) {
+            (Some(port), Some(enc)) => {
+                let key_b64 = self
+                    .unseal(&enc)
+                    .ok_or_else(|| "stored sqld key failed to decrypt (master key changed?)".to_string())?;
+                let key_der = base64::engine::general_purpose::STANDARD
+                    .decode(key_b64)
+                    .map_err(|e| e.to_string())?;
+                Ok(Some(SqldRemoteProfile { port, key_der, enabled }))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// Every port already claimed by some user's sqld slot, so the caller can
+    /// pick the first free one in the pre-opened range.
+    pub async fn used_sqld_ports(&self) -> Result<Vec<i64>, String> {
+        let conn = self.conn.lock().await;
+        let mut rows = conn
+            .query("SELECT sqld_port FROM users WHERE sqld_port IS NOT NULL", ())
+            .await
+            .map_err(|e| e.to_string())?;
+        let mut ports = Vec::new();
+        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
+            ports.push(row.get::<i64>(0).map_err(|e| e.to_string())?);
+        }
+        Ok(ports)
+    }
+
+    /// First-time provisioning or a key rotation: `port` only changes on
+    /// first-time provisioning (rotation re-uses the existing one — the
+    /// caller is responsible for passing the existing port back in that
+    /// case). Always leaves the slot `enabled`.
+    pub async fn set_sqld_remote(&self, user_id: i64, port: i64, key_der: &[u8]) -> Result<(), String> {
+        let key_b64 = base64::engine::general_purpose::STANDARD.encode(key_der);
+        let enc = self.seal(&key_b64);
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "UPDATE users SET sqld_port = ?, sqld_key_enc = ?, sqld_enabled = 1 WHERE id = ?",
+            libsql::params![port, enc, user_id],
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// `(user_id, port)` for every currently-enabled sqld slot — what the
+    /// Caddy config needs to route every active user's port to their
+    /// container, recomputed fresh on every enable/rotate/disable rather
+    /// than tracked incrementally.
+    pub async fn enabled_sqld_routes(&self) -> Result<Vec<(i64, i64)>, String> {
+        let conn = self.conn.lock().await;
+        let mut rows = conn
+            .query(
+                "SELECT id, sqld_port FROM users WHERE sqld_enabled = 1 AND sqld_port IS NOT NULL",
+                (),
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        let mut routes = Vec::new();
+        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
+            routes.push((
+                row.get::<i64>(0).map_err(|e| e.to_string())?,
+                row.get::<i64>(1).map_err(|e| e.to_string())?,
+            ));
+        }
+        Ok(routes)
+    }
+
+    /// Toggles the enabled flag without touching the port/keypair — the
+    /// container and its data volume are meant to be stopped, not removed,
+    /// so re-enabling later doesn't provision a second one.
+    pub async fn set_sqld_enabled(&self, user_id: i64, enabled: bool) -> Result<(), String> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "UPDATE users SET sqld_enabled = ? WHERE id = ?",
+            libsql::params![enabled as i64, user_id],
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+        Ok(())
     }
 }
 

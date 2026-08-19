@@ -103,6 +103,11 @@ if command -v ufw >/dev/null 2>&1; then
   ufw allow 443/tcp comment 'TanWords HTTPS' >/dev/null
   ufw allow 443/udp comment 'TanWords HTTP/3' >/dev/null
   ufw allow 8443/tcp comment 'TanWords sqld' >/dev/null
+  # Fixed, pre-opened range for per-user sqld remote connections
+  # (server/sqld_remote.rs) — `app` allocates ports from this range but can
+  # never open new host firewall rules itself at runtime, so the usable
+  # space has to exist up front. Must match PORT_RANGE_START/END there.
+  ufw allow 8444:8543/tcp comment 'TanWords per-user sqld' >/dev/null
 fi
 
 # Initialize absent configuration values without changing existing keys. Empty

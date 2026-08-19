@@ -25,6 +25,7 @@ const ALLOWED: &[&str] = &[
     "db_clear_search_history",
     "db_clear_translations",
     "db_delete_word",
+    "db_vacuum",
     "db_delete_words_batch",
     "db_get_all_tags",
     "db_get_due_cards",

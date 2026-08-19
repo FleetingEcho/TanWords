@@ -6,7 +6,7 @@ import { invoke } from "@/ipc/backend";
 import { webAuthFetch } from "@/platform/webClient";
 import { isDesktopHost } from "@/platform";
 import { logError, reportWriteError } from "./useDB.errors";
-import type { DbConnection, RememberedTursoConnection, ImportPlan, ImportDecisions, ImportResult, OverwriteResult } from "./useDB.types";
+import type { DbConnection, RememberedTursoConnection, ImportPlan, ImportDecisions, ImportResult, OverwriteResult, RemoteAccessStatus } from "./useDB.types";
 
 async function dbRoute<T>(path: string, method = "GET", body?: unknown): Promise<T> {
   const response = await webAuthFetch(path, {
@@ -94,6 +94,56 @@ export function useDBData() {
       return await dbRoute<DbConnection>("/api/db/source", "POST", { source });
     } catch (e) {
       reportWriteError("selectDbSource", e, "切换数据库失败");
+      throw e;
+    }
+  }, []);
+
+  /** Whether this web account has a dedicated sqld container a desktop app
+   *  can connect to directly, sharing this account's data live. Web-only —
+   *  there's no "account" on the desktop side to attach this to. */
+  const getRemoteAccess = useCallback(async (): Promise<RemoteAccessStatus> => {
+    if (isDesktopHost) return { enabled: false, url: null };
+    try {
+      return await dbRoute<RemoteAccessStatus>("/api/db/remote/status");
+    } catch (e) {
+      logError("getRemoteAccess", e);
+      return { enabled: false, url: null };
+    }
+  }, []);
+
+  /** Provisions (or restarts, if previously disabled) this account's sqld
+   *  container. Returns the token only this once per call — the caller must
+   *  show/copy it immediately. */
+  const enableRemoteAccess = useCallback(async (): Promise<RemoteAccessStatus> => {
+    if (isDesktopHost) throw new Error("Remote access is web-only");
+    try {
+      return await dbRoute<RemoteAccessStatus>("/api/db/remote/enable", "POST");
+    } catch (e) {
+      reportWriteError("enableRemoteAccess", e, "启用远程连接失败");
+      throw e;
+    }
+  }, []);
+
+  /** New keypair, same data (the container is recreated but its volume is
+   *  reused) — invalidates every previously issued token immediately. */
+  const rotateRemoteAccess = useCallback(async (): Promise<RemoteAccessStatus> => {
+    if (isDesktopHost) throw new Error("Remote access is web-only");
+    try {
+      return await dbRoute<RemoteAccessStatus>("/api/db/remote/rotate", "POST");
+    } catch (e) {
+      reportWriteError("rotateRemoteAccess", e, "刷新密钥失败");
+      throw e;
+    }
+  }, []);
+
+  /** Stops (not removes) the container — data and the URL are kept for a
+   *  cheap later re-enable. */
+  const disableRemoteAccess = useCallback(async (): Promise<void> => {
+    if (isDesktopHost) return;
+    try {
+      await dbRoute<{ enabled: boolean }>("/api/db/remote/disable", "POST");
+    } catch (e) {
+      reportWriteError("disableRemoteAccess", e, "关闭远程连接失败");
       throw e;
     }
   }, []);
@@ -264,10 +314,12 @@ export function useDBData() {
     getConnection, connectTurso, selectDbSource, disconnectRemote, syncNow,
     getStartupWarning, isSavedProfileTurso, forgetSavedProfile, getRememberedTurso,
     importAnalyze, importApply, importOverwrite, vacuumDatabase,
+    getRemoteAccess, enableRemoteAccess, rotateRemoteAccess, disableRemoteAccess,
   }), [
     getDbPath, getDbSize, exportBackup, switchDbPath, clearTranslations,
     getConnection, connectTurso, selectDbSource, disconnectRemote, syncNow,
     getStartupWarning, isSavedProfileTurso, forgetSavedProfile, getRememberedTurso,
     importAnalyze, importApply, importOverwrite, vacuumDatabase,
+    getRemoteAccess, enableRemoteAccess, rotateRemoteAccess, disableRemoteAccess,
   ]);
 }
