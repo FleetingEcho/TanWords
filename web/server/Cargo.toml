@@ -29,7 +29,11 @@ jsonwebtoken = "9"
 # direct dependency to generate per-user Ed25519 keypairs (sqld_remote.rs)
 # without adding a second crate for that.
 ring = "0.17"
-libsql = "0.9.30"
+# users.db is the web server's own credential store, separate from the app
+# data the core manages. sea-orm (same engine the core uses now) keeps a
+# single sqlite3 in the link graph — libsql bundled its own copy, which
+# collided with sqlx-sqlite's after the core migrated off libsql.
+sea-orm = { version = "2", default-features = false, features = ["sqlx-sqlite", "runtime-tokio-rustls"] }
 rand = "0.8"
 base64 = "0.22"
 uuid = { version = "1", features = ["v4"] }

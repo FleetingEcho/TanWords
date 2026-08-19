@@ -305,6 +305,7 @@ pub(super) async fn export_backup(
         match active_kind {
             tanwords_lib::db::connection::DbKind::Local => "local",
             tanwords_lib::db::connection::DbKind::Turso => "turso",
+            tanwords_lib::db::connection::DbKind::Postgres => "postgres",
         }
     } else {
         requested

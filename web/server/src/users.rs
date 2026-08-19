@@ -5,9 +5,12 @@
 //! `<data_dir>/users.db`; the app data itself is per-user under
 //! `<data_dir>/users/<id>/` (see runtime.rs).
 //!
-//! One libsql connection behind a Mutex: writes need serialization anyway
-//! and the traffic level here is a handful of invited users, not the public
-//! internet.
+//! One SeaORM (sqlx-sqlite) connection behind a Mutex: writes need
+//! serialization anyway and the traffic level here is a handful of invited
+//! users, not the public internet. Sharing the core's sea-orm/sqlx-sqlite
+//! engine keeps a single sqlite3 in the link graph — the old libsql dep
+//! bundled its own copy, which collided with sqlx-sqlite's once the core
+//! migrated off libsql.
 
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -19,6 +22,8 @@ use argon2::Argon2;
 use base64::Engine;
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use rand::RngCore;
+use sea_orm::sea_query::Value as SqValue;
+use sea_orm::{ConnectionTrait, Database, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -59,12 +64,53 @@ struct JwtClaims {
 }
 
 pub struct UsersDb {
-    conn: tokio::sync::Mutex<libsql::Conn>,
-    session_reader: libsql::Conn,
+    conn: tokio::sync::Mutex<DatabaseConnection>,
+    session_reader: DatabaseConnection,
     cipher: Aes256Gcm,
     jwt_encoding_key: EncodingKey,
     jwt_decoding_key: DecodingKey,
     jwt_ttl_secs: i64,
+}
+
+/// Coerce a Rust value into a sea-query `Value` for bound parameters. Only the
+/// handful of types users.db binds are needed (i64, String, &str); anything
+/// else is a programming error caught at compile time. NULLs are bound by
+/// passing the typed None directly (e.g. `Value::String(None)`).
+trait IntoSqValue {
+    fn into_sq(self) -> SqValue;
+}
+impl IntoSqValue for i64 {
+    fn into_sq(self) -> SqValue {
+        SqValue::BigInt(Some(self))
+    }
+}
+impl IntoSqValue for String {
+    fn into_sq(self) -> SqValue {
+        SqValue::String(Some(self))
+    }
+}
+impl IntoSqValue for &str {
+    fn into_sq(self) -> SqValue {
+        SqValue::String(Some(self.to_string()))
+    }
+}
+impl IntoSqValue for &String {
+    fn into_sq(self) -> SqValue {
+        SqValue::String(Some(self.clone()))
+    }
+}
+
+/// Build a parameterized `Statement` from a SQL string and a heterogenous
+/// list of bind values, mirroring the ergonomics of libsql's `params!` macro.
+fn stmt<Params>(sql: &str, params: Params) -> Statement
+where
+    Params: IntoIterator<Item = SqValue>,
+{
+    Statement::from_sql_and_values(
+        sea_orm::DatabaseBackend::Sqlite,
+        sql,
+        params.into_iter().collect::<Vec<_>>(),
+    )
 }
 
 impl UsersDb {
@@ -74,13 +120,16 @@ impl UsersDb {
         if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        let db = libsql::Builder::new_local(path.to_string_lossy().to_string())
-            .build()
+        // `mode=rwc` so sqlx creates the file if it doesn't exist yet (mirrors
+        // libsql's Builder::new_local, which created the file on connect).
+        let url = format!("sqlite://{}?mode=rwc", path.to_string_lossy());
+        let mut opts = sea_orm::ConnectOptions::new(url);
+        opts.max_connections(1).min_connections(1);
+        let conn = Database::connect(opts)
             .await
             .map_err(|e| format!("Failed to open users database: {e}"))?;
-        let conn = db.connect().map_err(|e| e.to_string())?;
-        let session_reader = db.connect().map_err(|e| e.to_string())?;
-        conn.execute_batch(
+        let session_reader = conn.clone();
+        conn.execute_unprepared(
             "CREATE TABLE IF NOT EXISTS users(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -106,8 +155,12 @@ impl UsersDb {
         // credentials remain on Turso; all others start local. The UPDATE only
         // touches NULL rows, so a user's later explicit local choice survives
         // every restart.
-        let _ = conn.execute("ALTER TABLE users ADD COLUMN active_db TEXT", ()).await;
-        let _ = conn.execute("ALTER TABLE users ADD COLUMN app_lock_hash TEXT", ()).await;
+        let _ = conn
+            .execute_unprepared("ALTER TABLE users ADD COLUMN active_db TEXT")
+            .await;
+        let _ = conn
+            .execute_unprepared("ALTER TABLE users ADD COLUMN app_lock_hash TEXT")
+            .await;
         // A per-user dedicated sqld container a desktop app can connect to
         // directly, sharing this account's actual database live — separate
         // from the turso_* columns above (a user-supplied external Turso/
@@ -116,17 +169,22 @@ impl UsersDb {
         // base64'd then AES-GCM sealed) used to sign that container's
         // bearer tokens; `sqld_port` is this user's slot in the fixed,
         // pre-opened firewall port range (see deploy/deploy-server.sh).
-        let _ = conn.execute("ALTER TABLE users ADD COLUMN sqld_key_enc TEXT", ()).await;
-        let _ = conn.execute("ALTER TABLE users ADD COLUMN sqld_port INTEGER", ()).await;
         let _ = conn
-            .execute("ALTER TABLE users ADD COLUMN sqld_enabled INTEGER NOT NULL DEFAULT 0", ())
+            .execute_unprepared("ALTER TABLE users ADD COLUMN sqld_key_enc TEXT")
             .await;
-        conn.execute(
+        let _ = conn
+            .execute_unprepared("ALTER TABLE users ADD COLUMN sqld_port INTEGER")
+            .await;
+        let _ = conn
+            .execute_unprepared(
+                "ALTER TABLE users ADD COLUMN sqld_enabled INTEGER NOT NULL DEFAULT 0",
+            )
+            .await;
+        conn.execute_unprepared(
             "UPDATE users SET active_db = CASE
                  WHEN turso_url IS NOT NULL AND turso_token_enc IS NOT NULL THEN 'turso'
                  ELSE 'local' END
              WHERE active_db IS NULL",
-            (),
         )
         .await
         .map_err(|e| format!("users.db active-db migration failed: {e}"))?;
@@ -184,22 +242,22 @@ impl UsersDb {
         let email = email.trim().to_lowercase();
         let hash = Self::hash_password(password)?;
         let conn = self.conn.lock().await;
-        let rows = conn
-            .execute(
+        let res = conn
+            .execute_raw(stmt(
                 "INSERT INTO users(email, password_hash, active_db) VALUES (?, ?, 'local')",
-                crate::db::params![email, hash],
-            )
+                [email.into_sq(), hash.into_sq()],
+            ))
             .await;
-        match rows {
-            Ok(_) => conn
-                .query("SELECT last_insert_rowid()", ())
-                .await
-                .map_err(|e| e.to_string())?
-                .next()
-                .await
-                .map_err(|e| e.to_string())?
-                .and_then(|r| r.get::<i64>(0).ok())
-                .ok_or_else(|| "failed to read new user id".to_string()),
+        match res {
+            Ok(_) => {
+                let id = conn
+                    .query_one_raw(stmt("SELECT last_insert_rowid()", []))
+                    .await
+                    .map_err(|e| e.to_string())?
+                    .and_then(|r| r.try_get_by_index::<i64>(0).ok())
+                    .ok_or_else(|| "failed to read new user id".to_string())?;
+                Ok(id)
+            }
             Err(e) if e.to_string().contains("UNIQUE") => {
                 Err("email already registered".to_string())
             }
@@ -210,17 +268,17 @@ impl UsersDb {
     /// (user_id, password_hash) — callers verify the hash so timing comes from argon2, not the lookup.
     async fn lookup_by_email(&self, email: &str) -> Result<Option<(i64, String)>, String> {
         let conn = self.conn.lock().await;
-        let mut rows = conn
-            .query(
+        let row = conn
+            .query_one_raw(stmt(
                 "SELECT id, password_hash FROM users WHERE email = ?",
-                crate::db::params![email.trim().to_lowercase()],
-            )
+                [email.trim().to_lowercase().into_sq()],
+            ))
             .await
             .map_err(|e| e.to_string())?;
-        match rows.next().await.map_err(|e| e.to_string())? {
-            Some(row) => {
-                let id = row.get::<i64>(0).map_err(|e| e.to_string())?;
-                let hash = row.get::<String>(1).map_err(|e| e.to_string())?;
+        match row {
+            Some(r) => {
+                let id = r.try_get_by_index::<i64>(0).map_err(|e| e.to_string())?;
+                let hash = r.try_get_by_index::<String>(1).map_err(|e| e.to_string())?;
                 Ok(Some((id, hash)))
             }
             None => Ok(None),
@@ -246,10 +304,15 @@ impl UsersDb {
         let token = self.new_session_token(id, now)?;
         let token_hash = Self::hash_token(&token);
         let conn = self.conn.lock().await;
-        conn.execute(
+        conn.execute_raw(stmt(
             "INSERT INTO sessions(token_hash, user_id, last_seen_at, expires_at) VALUES (?, ?, ?, ?)",
-            crate::db::params![token_hash, id, now, now + self.jwt_ttl_secs],
-        )
+            [
+                token_hash.into_sq(),
+                id.into_sq(),
+                now.into_sq(),
+                (now + self.jwt_ttl_secs).into_sq(),
+            ],
+        ))
         .await
         .map_err(|e| e.to_string())?;
         Ok(Some((id, token)))
@@ -289,26 +352,29 @@ impl UsersDb {
         // endpoint. Keep them off the serialized credential-write connection,
         // while still consulting the database on every request so revocation
         // remains immediate across multiple server processes.
-        let mut rows = self.session_reader
-            .query(
+        let row = self
+            .session_reader
+            .query_one_raw(stmt(
                 "SELECT s.user_id, s.expires_at, u.email
                  FROM sessions s JOIN users u ON u.id = s.user_id
                  WHERE s.token_hash = ?",
-                crate::db::params![token_hash.clone()],
-            )
+                [token_hash.clone().into_sq()],
+            ))
             .await
             .map_err(|e| e.to_string())?;
-        let Some(row) = rows.next().await.map_err(|e| e.to_string())? else {
+        let Some(r) = row else {
             return Ok(None);
         };
-        let user_id = row.get::<i64>(0).map_err(|e| e.to_string())?;
-        let expires = row.get::<i64>(1).map_err(|e| e.to_string())?;
-        let email = row.get::<String>(2).map_err(|e| e.to_string())?;
-        drop(rows);
+        let user_id = r.try_get_by_index::<i64>(0).map_err(|e| e.to_string())?;
+        let expires = r.try_get_by_index::<i64>(1).map_err(|e| e.to_string())?;
+        let email = r.try_get_by_index::<String>(2).map_err(|e| e.to_string())?;
         if claims.sub != user_id || expires < now {
             let conn = self.conn.lock().await;
             let _ = conn
-                .execute("DELETE FROM sessions WHERE token_hash = ?", crate::db::params![token_hash.clone()])
+                .execute_raw(stmt(
+                    "DELETE FROM sessions WHERE token_hash = ?",
+                    [token_hash.clone().into_sq()],
+                ))
                 .await;
             return Ok(None);
         }
@@ -316,7 +382,10 @@ impl UsersDb {
         if now % 37 == 0 {
             let conn = self.conn.lock().await;
             let _ = conn
-                .execute("DELETE FROM sessions WHERE expires_at < ?", crate::db::params![now])
+                .execute_raw(stmt(
+                    "DELETE FROM sessions WHERE expires_at < ?",
+                    [now.into_sq()],
+                ))
                 .await;
         }
         Ok(Some(UserRecord { id: user_id, email }))
@@ -324,10 +393,10 @@ impl UsersDb {
 
     pub async fn logout(&self, token: &str) -> Result<(), String> {
         let conn = self.conn.lock().await;
-        conn.execute(
+        conn.execute_raw(stmt(
             "DELETE FROM sessions WHERE token_hash = ?",
-            crate::db::params![Self::hash_token(token)],
-        )
+            [Self::hash_token(token).into_sq()],
+        ))
         .await
         .map_err(|e| e.to_string())?;
         Ok(())
@@ -340,41 +409,54 @@ impl UsersDb {
         };
         let hash = Self::hash_password(new_password)?;
         let conn = self.conn.lock().await;
-        conn.execute(
+        conn.execute_raw(stmt(
             "UPDATE users SET password_hash = ? WHERE id = ?",
-            crate::db::params![hash, id],
-        )
+            [hash.into_sq(), id.into_sq()],
+        ))
         .await
         .map_err(|e| e.to_string())?;
-        conn.execute("DELETE FROM sessions WHERE user_id = ?", crate::db::params![id])
-            .await
-            .map_err(|e| e.to_string())?;
+        conn.execute_raw(stmt(
+            "DELETE FROM sessions WHERE user_id = ?",
+            [id.into_sq()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
         Ok(true)
     }
 
     pub async fn app_lock_enabled(&self, user_id: i64) -> Result<bool, String> {
         let conn = self.conn.lock().await;
-        let mut rows = conn
-            .query("SELECT app_lock_hash FROM users WHERE id = ?", crate::db::params![user_id])
+        let row = conn
+            .query_one_raw(stmt(
+                "SELECT app_lock_hash FROM users WHERE id = ?",
+                [user_id.into_sq()],
+            ))
             .await
             .map_err(|e| e.to_string())?;
-        let Some(row) = rows.next().await.map_err(|e| e.to_string())? else {
+        let Some(r) = row else {
             return Err("user not found".to_string());
         };
-        Ok(row.get::<Option<String>>(0).map_err(|e| e.to_string())?.is_some())
+        Ok(r
+            .try_get_by_index::<Option<String>>(0)
+            .map_err(|e| e.to_string())?
+            .is_some())
     }
 
     pub async fn verify_app_lock(&self, user_id: i64, password: &str) -> Result<bool, String> {
         let existing = {
             let conn = self.conn.lock().await;
-            let mut rows = conn
-                .query("SELECT app_lock_hash FROM users WHERE id = ?", crate::db::params![user_id])
+            let row = conn
+                .query_one_raw(stmt(
+                    "SELECT app_lock_hash FROM users WHERE id = ?",
+                    [user_id.into_sq()],
+                ))
                 .await
                 .map_err(|e| e.to_string())?;
-            let Some(row) = rows.next().await.map_err(|e| e.to_string())? else {
+            let Some(r) = row else {
                 return Err("user not found".to_string());
             };
-            row.get::<Option<String>>(0).map_err(|e| e.to_string())?
+            r.try_get_by_index::<Option<String>>(0)
+                .map_err(|e| e.to_string())?
         };
         match existing {
             Some(hash) => Ok(Self::verify_password(&hash, password)),
@@ -394,14 +476,18 @@ impl UsersDb {
         }
         let existing = {
             let conn = self.conn.lock().await;
-            let mut rows = conn
-                .query("SELECT app_lock_hash FROM users WHERE id = ?", crate::db::params![user_id])
+            let row = conn
+                .query_one_raw(stmt(
+                    "SELECT app_lock_hash FROM users WHERE id = ?",
+                    [user_id.into_sq()],
+                ))
                 .await
                 .map_err(|e| e.to_string())?;
-            let Some(row) = rows.next().await.map_err(|e| e.to_string())? else {
+            let Some(r) = row else {
                 return Err("user not found".to_string());
             };
-            row.get::<Option<String>>(0).map_err(|e| e.to_string())?
+            r.try_get_by_index::<Option<String>>(0)
+                .map_err(|e| e.to_string())?
         };
         if let Some(hash) = existing {
             if !Self::verify_password(&hash, current.unwrap_or_default()) {
@@ -410,10 +496,10 @@ impl UsersDb {
         }
         let hash = Self::hash_password(next)?;
         let conn = self.conn.lock().await;
-        conn.execute(
+        conn.execute_raw(stmt(
             "UPDATE users SET app_lock_hash = ? WHERE id = ?",
-            crate::db::params![hash, user_id],
-        )
+            [hash.into_sq(), user_id.into_sq()],
+        ))
         .await
         .map_err(|e| e.to_string())?;
         Ok(())
@@ -422,14 +508,18 @@ impl UsersDb {
     pub async fn disable_app_lock(&self, user_id: i64, current: &str) -> Result<(), String> {
         let existing = {
             let conn = self.conn.lock().await;
-            let mut rows = conn
-                .query("SELECT app_lock_hash FROM users WHERE id = ?", crate::db::params![user_id])
+            let row = conn
+                .query_one_raw(stmt(
+                    "SELECT app_lock_hash FROM users WHERE id = ?",
+                    [user_id.into_sq()],
+                ))
                 .await
                 .map_err(|e| e.to_string())?;
-            let Some(row) = rows.next().await.map_err(|e| e.to_string())? else {
+            let Some(r) = row else {
                 return Err("user not found".to_string());
             };
-            row.get::<Option<String>>(0).map_err(|e| e.to_string())?
+            r.try_get_by_index::<Option<String>>(0)
+                .map_err(|e| e.to_string())?
         };
         if let Some(hash) = existing {
             if !Self::verify_password(&hash, current) {
@@ -437,10 +527,10 @@ impl UsersDb {
             }
         }
         let conn = self.conn.lock().await;
-        conn.execute(
+        conn.execute_raw(stmt(
             "UPDATE users SET app_lock_hash = NULL WHERE id = ?",
-            crate::db::params![user_id],
-        )
+            [user_id.into_sq()],
+        ))
         .await
         .map_err(|e| e.to_string())?;
         Ok(())
@@ -450,18 +540,22 @@ impl UsersDb {
     /// currently selected.
     pub async fn turso_for(&self, user_id: i64) -> Result<Option<TursoProfile>, String> {
         let conn = self.conn.lock().await;
-        let mut rows = conn
-            .query(
+        let row = conn
+            .query_one_raw(stmt(
                 "SELECT turso_url, turso_token_enc FROM users WHERE id = ?",
-                crate::db::params![user_id],
-            )
+                [user_id.into_sq()],
+            ))
             .await
             .map_err(|e| e.to_string())?;
-        let Some(row) = rows.next().await.map_err(|e| e.to_string())? else {
+        let Some(r) = row else {
             return Ok(None);
         };
-        let url = row.get::<Option<String>>(0).map_err(|e| e.to_string())?;
-        let enc = row.get::<Option<String>>(1).map_err(|e| e.to_string())?;
+        let url = r
+            .try_get_by_index::<Option<String>>(0)
+            .map_err(|e| e.to_string())?;
+        let enc = r
+            .try_get_by_index::<Option<String>>(1)
+            .map_err(|e| e.to_string())?;
         match (url, enc) {
             (Some(url), Some(enc)) => {
                 let token = self
@@ -475,17 +569,20 @@ impl UsersDb {
 
     pub async fn active_turso_for(&self, user_id: i64) -> Result<Option<TursoProfile>, String> {
         let conn = self.conn.lock().await;
-        let mut rows = conn
-            .query("SELECT active_db FROM users WHERE id = ?", crate::db::params![user_id])
+        let row = conn
+            .query_one_raw(stmt(
+                "SELECT active_db FROM users WHERE id = ?",
+                [user_id.into_sq()],
+            ))
             .await
             .map_err(|e| e.to_string())?;
-        let active = rows
-            .next()
-            .await
-            .map_err(|e| e.to_string())?
-            .and_then(|row| row.get::<Option<String>>(0).ok().flatten())
+        let active = row
+            .and_then(|r| {
+                r.try_get_by_index::<Option<String>>(0)
+                    .ok()
+                    .flatten()
+            })
             .unwrap_or_else(|| "local".to_string());
-        drop(rows);
         drop(conn);
         if active == "turso" {
             self.turso_for(user_id).await
@@ -499,10 +596,10 @@ impl UsersDb {
             return Err("database source must be `local` or `turso`".to_string());
         }
         let conn = self.conn.lock().await;
-        conn.execute(
+        conn.execute_raw(stmt(
             "UPDATE users SET active_db = ? WHERE id = ?",
-            crate::db::params![source, user_id],
-        )
+            [source.into_sq(), user_id.into_sq()],
+        ))
         .await
         .map_err(|e| e.to_string())?;
         Ok(())
@@ -511,10 +608,10 @@ impl UsersDb {
     pub async fn set_turso(&self, user_id: i64, url: &str, token: &str) -> Result<(), String> {
         let enc = self.seal(token);
         let conn = self.conn.lock().await;
-        conn.execute(
+        conn.execute_raw(stmt(
             "UPDATE users SET turso_url = ?, turso_token_enc = ?, active_db = 'turso' WHERE id = ?",
-            crate::db::params![url, enc, user_id],
-        )
+            [url.into_sq(), enc.into_sq(), user_id.into_sq()],
+        ))
         .await
         .map_err(|e| e.to_string())?;
         Ok(())
@@ -522,10 +619,10 @@ impl UsersDb {
 
     pub async fn clear_turso(&self, user_id: i64) -> Result<(), String> {
         let conn = self.conn.lock().await;
-        conn.execute(
+        conn.execute_raw(stmt(
             "UPDATE users SET turso_url = NULL, turso_token_enc = NULL, active_db = 'local' WHERE id = ?",
-            crate::db::params![user_id],
-        )
+            [user_id.into_sq()],
+        ))
         .await
         .map_err(|e| e.to_string())?;
         Ok(())
@@ -534,19 +631,21 @@ impl UsersDb {
     /// Mirrors the core's RememberedTursoConnection shape (never the token).
     pub async fn remembered_turso(&self, user_id: i64) -> Result<(Option<String>, bool), String> {
         let conn = self.conn.lock().await;
-        let mut rows = conn
-            .query(
+        let row = conn
+            .query_one_raw(stmt(
                 "SELECT turso_url, turso_token_enc FROM users WHERE id = ?",
-                crate::db::params![user_id],
-            )
+                [user_id.into_sq()],
+            ))
             .await
             .map_err(|e| e.to_string())?;
-        let Some(row) = rows.next().await.map_err(|e| e.to_string())? else {
+        let Some(r) = row else {
             return Ok((None, false));
         };
-        let url = row.get::<Option<String>>(0).map_err(|e| e.to_string())?;
-        let has_token = row
-            .get::<Option<String>>(1)
+        let url = r
+            .try_get_by_index::<Option<String>>(0)
+            .map_err(|e| e.to_string())?;
+        let has_token = r
+            .try_get_by_index::<Option<String>>(1)
             .map_err(|e| e.to_string())?
             .is_some();
         Ok((url, has_token))
@@ -560,19 +659,26 @@ impl UsersDb {
     /// stopped, but the port/keypair/data are kept so re-enabling is cheap).
     pub async fn sqld_remote_for(&self, user_id: i64) -> Result<Option<SqldRemoteProfile>, String> {
         let conn = self.conn.lock().await;
-        let mut rows = conn
-            .query(
+        let row = conn
+            .query_one_raw(stmt(
                 "SELECT sqld_port, sqld_key_enc, sqld_enabled FROM users WHERE id = ?",
-                crate::db::params![user_id],
-            )
+                [user_id.into_sq()],
+            ))
             .await
             .map_err(|e| e.to_string())?;
-        let Some(row) = rows.next().await.map_err(|e| e.to_string())? else {
+        let Some(r) = row else {
             return Ok(None);
         };
-        let port = row.get::<Option<i64>>(0).map_err(|e| e.to_string())?;
-        let enc = row.get::<Option<String>>(1).map_err(|e| e.to_string())?;
-        let enabled = row.get::<i64>(2).map_err(|e| e.to_string())? != 0;
+        let port = r
+            .try_get_by_index::<Option<i64>>(0)
+            .map_err(|e| e.to_string())?;
+        let enc = r
+            .try_get_by_index::<Option<String>>(1)
+            .map_err(|e| e.to_string())?;
+        let enabled = r
+            .try_get_by_index::<i64>(2)
+            .map_err(|e| e.to_string())?
+            != 0;
         match (port, enc) {
             (Some(port), Some(enc)) => {
                 let key_b64 = self
@@ -591,13 +697,16 @@ impl UsersDb {
     /// pick the first free one in the pre-opened range.
     pub async fn used_sqld_ports(&self) -> Result<Vec<i64>, String> {
         let conn = self.conn.lock().await;
-        let mut rows = conn
-            .query("SELECT sqld_port FROM users WHERE sqld_port IS NOT NULL", ())
+        let rows = conn
+            .query_all_raw(stmt("SELECT sqld_port FROM users WHERE sqld_port IS NOT NULL", []))
             .await
             .map_err(|e| e.to_string())?;
         let mut ports = Vec::new();
-        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
-            ports.push(row.get::<i64>(0).map_err(|e| e.to_string())?);
+        for r in rows {
+            ports.push(
+                r.try_get_by_index::<i64>(0)
+                    .map_err(|e| e.to_string())?,
+            );
         }
         Ok(ports)
     }
@@ -610,10 +719,10 @@ impl UsersDb {
         let key_b64 = base64::engine::general_purpose::STANDARD.encode(key_der);
         let enc = self.seal(&key_b64);
         let conn = self.conn.lock().await;
-        conn.execute(
+        conn.execute_raw(stmt(
             "UPDATE users SET sqld_port = ?, sqld_key_enc = ?, sqld_enabled = 1 WHERE id = ?",
-            crate::db::params![port, enc, user_id],
-        )
+            [port.into_sq(), enc.into_sq(), user_id.into_sq()],
+        ))
         .await
         .map_err(|e| e.to_string())?;
         Ok(())
@@ -625,18 +734,18 @@ impl UsersDb {
     /// than tracked incrementally.
     pub async fn enabled_sqld_routes(&self) -> Result<Vec<(i64, i64)>, String> {
         let conn = self.conn.lock().await;
-        let mut rows = conn
-            .query(
+        let rows = conn
+            .query_all_raw(stmt(
                 "SELECT id, sqld_port FROM users WHERE sqld_enabled = 1 AND sqld_port IS NOT NULL",
-                (),
-            )
+                [],
+            ))
             .await
             .map_err(|e| e.to_string())?;
         let mut routes = Vec::new();
-        while let Some(row) = rows.next().await.map_err(|e| e.to_string())? {
+        for r in rows {
             routes.push((
-                row.get::<i64>(0).map_err(|e| e.to_string())?,
-                row.get::<i64>(1).map_err(|e| e.to_string())?,
+                r.try_get_by_index::<i64>(0).map_err(|e| e.to_string())?,
+                r.try_get_by_index::<i64>(1).map_err(|e| e.to_string())?,
             ));
         }
         Ok(routes)
@@ -647,10 +756,10 @@ impl UsersDb {
     /// so re-enabling later doesn't provision a second one.
     pub async fn set_sqld_enabled(&self, user_id: i64, enabled: bool) -> Result<(), String> {
         let conn = self.conn.lock().await;
-        conn.execute(
+        conn.execute_raw(stmt(
             "UPDATE users SET sqld_enabled = ? WHERE id = ?",
-            crate::db::params![enabled as i64, user_id],
-        )
+            [(enabled as i64).into_sq(), user_id.into_sq()],
+        ))
         .await
         .map_err(|e| e.to_string())?;
         Ok(())
