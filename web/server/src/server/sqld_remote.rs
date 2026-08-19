@@ -156,8 +156,15 @@ async fn docker_container_action(state: &WebState, name: &str, action: &str) -> 
         .send()
         .await
         .map_err(|e| format!("docker-proxy unreachable: {e}"))?;
-    // 204 = did it; 304 = already in that state, both fine.
-    if resp.status().is_success() || resp.status() == reqwest::StatusCode::NOT_MODIFIED {
+    // 204 = did it; 304 = already in that state. For `stop` specifically,
+    // 404 (container already gone entirely — e.g. manually removed) counts
+    // as success too, so `disable` can't get permanently stuck; `start`
+    // deliberately keeps failing on a missing container, since silently
+    // "succeeding" there would report a working connection to nothing.
+    if resp.status().is_success()
+        || resp.status() == reqwest::StatusCode::NOT_MODIFIED
+        || (action == "stop" && resp.status() == reqwest::StatusCode::NOT_FOUND)
+    {
         Ok(())
     } else {
         let status = resp.status();
@@ -531,6 +538,17 @@ pub(super) async fn sqld_remote_rotate(
         Err(e) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, e),
     };
     let name = container_name(session.user_id);
+    // Stop (SIGTERM, graceful) before removing — `docker_container_remove`'s
+    // `force=true` is a SIGKILL against whatever's still running, and forcing
+    // a kill against a live sqld primary can lose the tail of its WAL that
+    // hadn't been checkpointed yet. Confirmed as a real data-loss bug this
+    // session: two rotations in quick succession against the real server
+    // silently dropped rows written moments earlier. Stopping first gives
+    // sqld its own shutdown path; the volume (and therefore the data) is
+    // never touched by either step regardless.
+    if let Err(e) = docker_container_action(&state, &name, "stop").await {
+        return json_error(StatusCode::INTERNAL_SERVER_ERROR, e);
+    }
     if let Err(e) = docker_container_remove(&state, &name).await {
         return json_error(StatusCode::INTERNAL_SERVER_ERROR, e);
     }
