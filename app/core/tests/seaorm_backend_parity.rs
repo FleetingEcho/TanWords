@@ -159,6 +159,79 @@ async fn shared_cycle(conn: &db::Conn) {
     .await
     .unwrap();
     assert_eq!(no_tag, 0);
+
+    // Transaction commit: insert a word inside a tx, commit, read it back.
+    let tx = conn.transaction().await.unwrap();
+    let tx_id = db::fetch_one(
+        &tx,
+        "INSERT INTO words (word, word_type, level, word_freq, source) \
+         VALUES (?1, ?2, ?3, 1, 'manual') ON CONFLICT(word) DO NOTHING RETURNING id",
+        vec!["world".to_string(), "n".to_string(), "A1".to_string()],
+        |r| r.get::<i64>(0),
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    let committed = db::scalar_i64(
+        conn,
+        "SELECT COUNT(*) FROM words WHERE word = ?1",
+        vec!["world".to_string()],
+    )
+    .await
+    .unwrap();
+    assert_eq!(committed, 1);
+    let _ = tx_id;
+
+    // Transaction rollback: insert a word, roll back, confirm it's absent.
+    let tx2 = conn.transaction().await.unwrap();
+    tx2.execute(
+        "INSERT INTO words (word, word_type, level, word_freq, source) \
+         VALUES (?1, ?2, ?3, 1, 'manual')",
+        vec!["rolledback".to_string(), "n".to_string(), "A1".to_string()],
+    )
+    .await
+    .unwrap();
+    tx2.rollback().await.unwrap();
+    let rolled = db::scalar_i64(
+        conn,
+        "SELECT COUNT(*) FROM words WHERE word = ?1",
+        vec!["rolledback".to_string()],
+    )
+    .await
+    .unwrap();
+    assert_eq!(rolled, 0);
+
+    // SRS multi-arg datetime: the translator rewrites
+    // `datetime('now', '+' || ?N || ' days')` to a Postgres interval cast.
+    // Insert an srs_record pointing at a word, set next_review_at to
+    // datetime('now', '+' || 5 || ' days'), and read it back — the value
+    // should be a TEXT timestamp ~5 days from now on both backends.
+    let srs_word_id = db::fetch_one(
+        conn,
+        "INSERT INTO words (word, word_type, level, word_freq, source) \
+         VALUES (?1, ?2, ?3, 1, 'manual') ON CONFLICT(word) DO NOTHING RETURNING id",
+        vec!["srsword".to_string(), "n".to_string(), "B1".to_string()],
+        |r| r.get::<i64>(0),
+    )
+    .await
+    .unwrap();
+    conn.execute(
+        "INSERT INTO srs_records (entity_id, entity_type, srs_level, srs_ease, review_count, last_reviewed_at, next_review_at) \
+         VALUES (?1, 'word', 1, 2.5, 0, datetime('now'), datetime('now', '+' || ?2 || ' days'))",
+        vec![Value::BigInt(Some(srs_word_id)), Value::BigInt(Some(5))],
+    )
+    .await
+    .unwrap();
+    let next_review: String = db::fetch_one(
+        conn,
+        "SELECT next_review_at FROM srs_records WHERE entity_id = ?1 AND entity_type = 'word'",
+        vec![Value::BigInt(Some(srs_word_id))],
+        |r| r.get::<String>(0),
+    )
+    .await
+    .unwrap();
+    // Both backends produce a 19-char 'YYYY-MM-DD HH:MM:SS' string.
+    assert_eq!(next_review.len(), 19, "next_review_at = {next_review:?}");
 }
 
 #[tokio::test]
