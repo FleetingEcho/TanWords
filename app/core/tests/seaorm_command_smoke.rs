@@ -201,6 +201,36 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     db_save_quiz_result(quiz_word_id, false, state.clone())
         .await
         .unwrap();
+
+    // document folders: create a nested folder chain, list, move a document
+    // into it (exercises document_folders + documents.folder update + the
+    // LIKE/transaction logic in folders.rs).
+    use tanwords_lib::db::{
+        db_create_document_folder, db_list_document_folders, db_set_documents_folder,
+        db_update_document,
+    };
+    db_create_document_folder("Study/Rust".into(), state.clone())
+        .await
+        .unwrap();
+    let folders = db_list_document_folders(state.clone()).await.unwrap();
+    assert!(folders.iter().any(|f| f.path == "Study" || f.path == "Study/Rust"));
+
+    db_update_document(
+        doc_id,
+        format!("Note {doc_id}"),
+        "{}".into(),
+        String::new(),
+        "[]".into(),
+        false,
+        0,
+        String::new(),
+        state.clone(),
+    )
+    .await
+    .unwrap();
+    db_set_documents_folder(vec![doc_id], "Study/Rust".into(), state.clone())
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
