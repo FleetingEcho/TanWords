@@ -6,7 +6,7 @@ import { invoke } from "@/ipc/backend";
 import { webAuthFetch } from "@/platform/webClient";
 import { isDesktopHost } from "@/platform";
 import { logError, reportWriteError } from "./useDB.errors";
-import type { DbConnection, RememberedTursoConnection, ImportPlan, ImportDecisions, ImportResult } from "./useDB.types";
+import type { DbConnection, RememberedTursoConnection, ImportPlan, ImportDecisions, ImportResult, OverwriteResult } from "./useDB.types";
 
 async function dbRoute<T>(path: string, method = "GET", body?: unknown): Promise<T> {
   const response = await webAuthFetch(path, {
@@ -210,6 +210,36 @@ export function useDBData() {
     []
   );
 
+  /** Wipes the active database's tables and copies another TanWords database
+   *  file's contents in verbatim — every table, original ids and all, not
+   *  just the natural-keyed subset `importApply` merges. Desktop-only: the
+   *  web host has no upload-based route for this yet. Works identically
+   *  whether the active database is local or a connected remote. */
+  const importOverwrite = useCallback(
+    async (sourcePath: string, password: string | null = null): Promise<OverwriteResult> => {
+      if (!isDesktopHost) throw new Error("Full-overwrite import is only available in the desktop app");
+      try {
+        return await invoke<OverwriteResult>("db_import_overwrite", { sourcePath, password });
+      } catch (e) {
+        reportWriteError("importOverwrite", e, "导入失败");
+        throw e;
+      }
+    },
+    []
+  );
+
+  /** Reclaims space left by deleted/updated rows (SQLite never shrinks a file
+   *  on its own). Desktop-only for now, matching importOverwrite. */
+  const vacuumDatabase = useCallback(async (): Promise<void> => {
+    if (!isDesktopHost) return;
+    try {
+      await invoke("db_vacuum");
+    } catch (e) {
+      reportWriteError("vacuumDatabase", e, "压缩数据库失败");
+      throw e;
+    }
+  }, []);
+
   /** Mounts a different SQLite file as the active DB (creating it if new). Caller must reload the app after this succeeds — every already-fetched page is stale. */
   const switchDbPath = useCallback(async (newPath: string): Promise<string> => {
     if (!isDesktopHost) return "";
@@ -233,11 +263,11 @@ export function useDBData() {
     getDbPath, getDbSize, exportBackup, switchDbPath, clearTranslations,
     getConnection, connectTurso, selectDbSource, disconnectRemote, syncNow,
     getStartupWarning, isSavedProfileTurso, forgetSavedProfile, getRememberedTurso,
-    importAnalyze, importApply,
+    importAnalyze, importApply, importOverwrite, vacuumDatabase,
   }), [
     getDbPath, getDbSize, exportBackup, switchDbPath, clearTranslations,
     getConnection, connectTurso, selectDbSource, disconnectRemote, syncNow,
     getStartupWarning, isSavedProfileTurso, forgetSavedProfile, getRememberedTurso,
-    importAnalyze, importApply,
+    importAnalyze, importApply, importOverwrite, vacuumDatabase,
   ]);
 }

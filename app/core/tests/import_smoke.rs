@@ -79,6 +79,11 @@ async fn build_source(path: &str) {
     .unwrap();
 }
 
+fn mock_handle() -> tanwords_lib::shim::AppHandle {
+    let (tx, _rx) = tokio::sync::broadcast::channel(16);
+    tanwords_lib::shim::AppHandle::new(std::sync::Arc::new(tanwords_lib::shim::Registry::default()), tx)
+}
+
 async fn app_with(path: &str) -> tanwords_lib::AppState {
     let database = open(path).await;
     tanwords_lib::AppState {
@@ -113,7 +118,7 @@ async fn importing_into_an_empty_database_brings_everything_over() {
     assert_eq!(words.new_count, 2, "both words are new");
     assert!(words.conflicts.is_empty(), "an empty target has no conflicts");
 
-    let result = tanwords_lib::db::db_import_apply(src.clone(), None, ImportDecisions::default(), state.clone())
+    let result = tanwords_lib::db::db_import_apply(mock_handle(), src.clone(), None, ImportDecisions::default(), state.clone())
         .await
         .expect("apply");
     assert!(result.added >= 5, "words, pattern, document and known word all land");
@@ -183,7 +188,7 @@ async fn conflicts_are_reported_and_skipped_by_default() {
     assert!(!conflict.existing.is_empty(), "existing side is described too");
 
     // Default decisions overwrite nothing.
-    tanwords_lib::db::db_import_apply(src.clone(), None, ImportDecisions::default(), state.clone())
+    tanwords_lib::db::db_import_apply(mock_handle(), src.clone(), None, ImportDecisions::default(), state.clone())
         .await
         .expect("apply");
 
@@ -233,6 +238,7 @@ async fn overwriting_replaces_content_but_never_review_progress() {
     let mut overwrite = HashMap::new();
     overwrite.insert("words".to_string(), vec!["blacksmith".to_string()]);
     let result = tanwords_lib::db::db_import_apply(
+        mock_handle(),
         src.clone(),
         None,
         ImportDecisions { overwrite, include_new: true },
@@ -275,14 +281,14 @@ async fn importing_the_same_file_twice_is_a_no_op() {
     let app_state = app_with(&dest).await;
     let state = tanwords_lib::shim::State::from_ref(&app_state);
 
-    tanwords_lib::db::db_import_apply(src.clone(), None, ImportDecisions::default(), state.clone())
+    tanwords_lib::db::db_import_apply(mock_handle(), src.clone(), None, ImportDecisions::default(), state.clone())
         .await
         .unwrap();
     let after_first = scalar(&state, "SELECT COUNT(*) FROM words").await;
     let defs_first = scalar(&state, "SELECT COUNT(*) FROM word_definitions").await;
     let examples_first = scalar(&state, "SELECT COUNT(*) FROM pattern_examples").await;
 
-    let second = tanwords_lib::db::db_import_apply(src.clone(), None, ImportDecisions::default(), state.clone())
+    let second = tanwords_lib::db::db_import_apply(mock_handle(), src.clone(), None, ImportDecisions::default(), state.clone())
         .await
         .unwrap();
     assert_eq!(second.added, 0, "nothing new the second time");

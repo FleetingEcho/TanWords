@@ -225,14 +225,15 @@ pub async fn db_connect_turso(
     let url = url.trim().to_string();
     let mut token = token.trim().to_string();
     if url.is_empty() {
-        return Err("Please fill in the Turso database URL".into());
+        return Err("Please fill in the database URL".into());
     }
     if token.is_empty() {
         // Reconnect path: the token was kept in the keychain on disconnect and
         // the UI deliberately never reads it back. Fall back to it so the user
-        // only has to press Connect again.
-        token = crate::secrets::turso_token_get()
-            .ok_or_else(|| "Please fill in the Turso auth token".to_string())?;
+        // only has to press Connect again. If nothing was ever saved, this is
+        // likely a self-hosted sqld/libsql-server with no auth configured, so
+        // proceed with an empty token rather than erroring.
+        token = crate::secrets::turso_token_get().unwrap_or_default();
     }
 
     let replica_path = crate::replica_db_path();
@@ -401,6 +402,25 @@ pub async fn db_export_backup(
 pub async fn db_clear_translations(conn: State<'_, AppState>) -> std::result::Result<(), String> {
     let db = db::conn(&conn)?;
     clear_translations(&db).await
+}
+
+/// Reclaims space left by deleted/updated rows. SQLite never shrinks a file on
+/// its own (no `auto_vacuum` is configured — `FULL` would add per-write
+/// overhead this workload doesn't want), so without this the file only grows,
+/// even when the amount of live data doesn't. Must run outside any
+/// transaction, which the shared connection already is.
+#[crate::shim::command]
+pub async fn db_vacuum(conn: State<'_, AppState>) -> std::result::Result<(), String> {
+    let descriptor = conn.descriptor()?;
+    if !descriptor.caps.vacuum {
+        // Not a temporary condition (unlike `!writable`, which can clear up on
+        // reconnect) — Turso/sqld's storage engine has no VACUUM at all, so
+        // retrying is never going to help. See `DbCaps::vacuum`'s doc comment.
+        return Err("Compacting isn't supported for an online (Turso/self-hosted) database".into());
+    }
+    let db = db::conn(&conn)?;
+    db.execute("VACUUM", ()).await.map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[cfg(test)]

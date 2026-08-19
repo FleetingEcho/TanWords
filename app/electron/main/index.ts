@@ -161,6 +161,37 @@ const tray = new TrayManager();
 const dshSupervisor = new DshSupervisor();
 const dshPanel = new DshPanel();
 
+/** Compacts the database in the background shortly after launch, so a local
+ *  database file doesn't just grow forever from ordinary editing (SQLite
+ *  never reclaims deleted-row space on its own — see Settings' "Compact
+ *  database"). Runs at startup rather than on quit: quit handlers only get a
+ *  bounded window before the OS/user force the process closed, so a slow
+ *  VACUUM on a large file could simply never run; startup has no such
+ *  deadline, and this never blocks window creation.
+ *
+ *  Skipped for a Turso/self-hosted connection: confirmed against a real
+ *  sqld instance that it rejects `VACUUM` outright (`unsupported statement:
+ *  VACUUM`) — its storage isn't a plain rolling SQLite file, so there is
+ *  nothing here for this to reclaim, not just something `db_vacuum` refuses.
+ *  Everything is best-effort: any failure (sidecar not up yet, the profile
+ *  check itself failing) is swallowed — this is maintenance, not a feature
+ *  the user is waiting on. */
+async function vacuumInBackground(): Promise<void> {
+  try {
+    const { port, token } = await sidecar.backendReady();
+    const headers = { "content-type": "application/json", authorization: `Bearer ${token}` };
+    const profile = await fetch(`http://127.0.0.1:${port}/invoke/db_get_connection`, {
+      method: "POST",
+      headers,
+      body: "{}",
+    }).then((r) => r.json() as Promise<{ caps?: { vacuum?: boolean } }>);
+    if (!profile?.caps?.vacuum) return;
+    await fetch(`http://127.0.0.1:${port}/invoke/db_vacuum`, { method: "POST", headers, body: "{}" });
+  } catch (error) {
+    console.error("[startup] vacuum skipped", error);
+  }
+}
+
 /** Set once the app has committed to quitting: before-quit lets the real
  *  quit pass through instead of preventDefault-ing it again. The updater's
  *  install path sets this early (its installer spawns *before* app.quit(),
@@ -595,7 +626,10 @@ if (gotLock) {
     });
 
     createWindow();
-    void sidecar.backendReady().then(() => startupMark("sidecar-ready"));
+    void sidecar.backendReady().then(() => {
+      startupMark("sidecar-ready");
+      void vacuumInBackground();
+    });
 
     app.on("activate", () => {
       // Close-means-hide leaves the window alive but hidden, so a macOS dock

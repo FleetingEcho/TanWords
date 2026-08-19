@@ -1,5 +1,5 @@
 import {
-  DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS,
+  DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_VISIBLE_TOPBAR_ITEMS,
   DEFAULT_LAYOUT_MODE, type SidebarTabId, type TopBarItemId, type RssTabSelection, type LayoutMode,
 } from "./types";
 
@@ -50,10 +50,14 @@ export function cacheSidebarTabs(tabs: SidebarTabId[]) {
 export function cachedTopBarItems(): TopBarItemId[] {
   try {
     const parsed = JSON.parse(localStorage.getItem(TOPBAR_ITEMS_CACHE_KEY) || "null");
-    if (!Array.isArray(parsed)) return DEFAULT_TOPBAR_ITEMS;
+    if (!Array.isArray(parsed)) return DEFAULT_VISIBLE_TOPBAR_ITEMS;
+    // Filtered against the *full* id list (not just the default-visible
+    // subset) so a cached list that includes something beyond the defaults —
+    // because the user turned it on — doesn't get silently dropped; this is
+    // just validating/ordering the cache, not re-applying the default.
     return DEFAULT_TOPBAR_ITEMS.filter((id) => parsed.includes(id));
   } catch {
-    return DEFAULT_TOPBAR_ITEMS;
+    return DEFAULT_VISIBLE_TOPBAR_ITEMS;
   }
 }
 

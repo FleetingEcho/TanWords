@@ -68,6 +68,21 @@ pub struct ImportOutcome {
     pub skipped: i64,
 }
 
+/// Emitted on the `"import-progress"` event as a merge import runs, so the UI
+/// has something better to show than a static "Importing…" for however long
+/// the words step takes (the one that can have thousands of rows and, against
+/// a remote target, one network round trip per row).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportProgress {
+    /// `words` | `patterns` | `articles` | `documents` | `knownWords`
+    pub step: String,
+    pub step_index: usize,
+    pub step_total: usize,
+    pub done: i64,
+    pub total: i64,
+}
+
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportResult {

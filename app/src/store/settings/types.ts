@@ -42,6 +42,12 @@ export const DEFAULT_SIDEBAR_TABS: SidebarTabId[] = [
 export const DEFAULT_TOPBAR_ITEMS: TopBarItemId[] = [
   "search", "scratch", "tools", "browser", "dsh", "terminal", "db", "mcp", "ai", "language", "theme", "updates", "github",
 ];
+/** What's visible out of the box for a database with no saved
+ *  `visible_topbar_items` row yet (a genuinely fresh install, or a freshly
+ *  created online database) — a deliberately small starting set, not "every
+ *  option". Anyone can still turn the rest on in Settings; hidden items stay
+ *  reachable via Command-K regardless. */
+export const DEFAULT_VISIBLE_TOPBAR_ITEMS: TopBarItemId[] = ["search", "dsh", "db", "theme", "updates"];
 export const DEFAULT_LAYOUT_MODE: LayoutMode = "flexible";
 
 /** Amber, matching the emphasis colour word notes used before highlights had

@@ -178,6 +178,7 @@ const BLOCKED: &[(&str, &str)] = &[
     ("db_export_backup", "writes to an arbitrary server path; see /api/export/backup"),
     ("db_import_analyze", "reads an arbitrary server path; see /api/import/analyze"),
     ("db_import_apply", "reads an arbitrary server path; see /api/import/apply"),
+    ("db_import_overwrite", "reads an arbitrary server path; not yet wired to a web route"),
     ("db_export_document_asset", "writes to an arbitrary server path"),
     ("db_export_document_assets_to_folder", "writes to an arbitrary server path"),
     ("db_export_document_assets_zip", "writes to an arbitrary server path"),

@@ -92,8 +92,10 @@ db::db_disconnect_remote
 db::db_sync_now
 db::db_import_analyze
 db::db_import_apply
+db::db_import_overwrite
 db::db_export_backup
 db::db_clear_translations
+db::db_vacuum
 db::db_add_words_batch
 db::db_get_due_cards
 db::db_review_card

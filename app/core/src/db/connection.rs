@@ -109,6 +109,15 @@ pub struct DbCaps {
     /// read-only there, so the UI should say so rather than let the user type
     /// into forms whose saves will fail.
     pub writable: bool,
+    /// Whether `VACUUM` is meaningful here. False for Turso/sqld: their
+    /// storage isn't a plain rolling SQLite file (a WAL-based replication log
+    /// plus a base snapshot instead — see sqld's `dbs/<namespace>/{data,wallog}`
+    /// layout), and `VACUUM` is rejected outright, both proxied through the
+    /// embedded replica (`Sqlite3UnsupportedStatement`) and sent directly to a
+    /// sqld primary (`unsupported statement: VACUUM`) — verified against a
+    /// real self-hosted sqld instance, not just inferred from the write-proxy
+    /// design.
+    pub vacuum: bool,
 }
 
 /// The profile as the frontend sees it — no secrets.
@@ -179,8 +188,10 @@ impl Db {
 
 /// Opens `profile` and brings the schema up to date.
 ///
-/// `token` is required for (and only used by) Turso profiles; it is passed in
-/// separately rather than living on `DbProfile` so it never lands in config.
+/// `token` is only used by Turso profiles (which also cover self-hosted
+/// sqld/libsql-server instances, where it may legitimately be empty); it is
+/// passed in separately rather than living on `DbProfile` so it never lands
+/// in config.
 pub async fn open(profile: &DbProfile, token: Option<&str>) -> Result<Db, String> {
     // `:memory:` (tests) has no parent directory to create, and neither does a
     // bare filename in the current directory.
@@ -198,7 +209,7 @@ pub async fn open(profile: &DbProfile, token: Option<&str>) -> Result<Db, String
                 .build()
                 .await
                 .map_err(|e| format!("Failed to open local database: {e}"))?;
-            (db, DbCaps { export: true, switch_path: true, sync: false, writable: true })
+            (db, DbCaps { export: true, switch_path: true, sync: false, writable: true, vacuum: true })
         }
         DbProfile::Turso { path, url } => {
             // `build()` and the initial `sync()` are both network-dependent and
@@ -206,9 +217,12 @@ pub async fn open(profile: &DbProfile, token: Option<&str>) -> Result<Db, String
             // before startup is allowed to fall back to the local database.
             let remote_deadline = tokio::time::Instant::now() + TURSO_STARTUP_TIMEOUT;
             let replica_started = std::time::Instant::now();
-            let token = token
-                .filter(|t| !t.trim().is_empty())
-                .ok_or_else(|| "Missing Turso auth token".to_string())?;
+            // Turso always requires a token, but this same profile kind is also
+            // used for self-hosted sqld/libsql-server instances, which may run
+            // without auth configured — so an empty token is passed through
+            // rather than rejected, and the server itself will reject the
+            // connection if it actually needs one.
+            let token = token.map(str::trim).unwrap_or("");
             // Whether we already hold a copy of the data decides how bad a
             // failed first sync is, so check before `build()` creates the file.
             let has_replica = std::path::Path::new(path).exists();
@@ -246,7 +260,7 @@ pub async fn open(profile: &DbProfile, token: Option<&str>) -> Result<Db, String
                 offline = true;
             }
             eprintln!("[startup] turso-initial-sync +{}ms", sync_started.elapsed().as_millis());
-            (db, DbCaps { export: true, switch_path: false, sync: true, writable: true })
+            (db, DbCaps { export: true, switch_path: false, sync: true, writable: true, vacuum: false })
         }
     };
 
@@ -311,7 +325,7 @@ async fn open_degraded(profile: &DbProfile, path: &str, reason: &str) -> Result<
                 DbProfile::Turso { url, .. } => Some(url.clone()),
                 DbProfile::Local { .. } => None,
             },
-            caps: DbCaps { export: true, switch_path: false, sync: false, writable: false },
+            caps: DbCaps { export: true, switch_path: false, sync: false, writable: false, vacuum: false },
             offline: true,
         },
     })

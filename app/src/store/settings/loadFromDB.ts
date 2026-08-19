@@ -1,7 +1,7 @@
 import type { StoreApi } from "zustand";
 import type { SettingsState } from "./state";
 import {
-  DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR,
+  DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_VISIBLE_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR,
   DEFAULT_LAYOUT_MODE, AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES,
   DEFAULT_DSH_BACKGROUND_OPACITY, DEFAULT_DSH_BACKGROUND_BLUR,
   DSH_IDLE_STOP_CHOICES, DEFAULT_DSH_IDLE_STOP_MINUTES, DEFAULT_DSH_GLOBAL_SHORTCUT,
@@ -233,31 +233,20 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
     const hadSavedTopBar = Array.isArray(values.visible_topbar_items);
     let resolvedTopBarItems = hadSavedTopBar
       ? DEFAULT_TOPBAR_ITEMS.filter((id) => (values.visible_topbar_items as unknown as string[]).includes(id))
-      : DEFAULT_TOPBAR_ITEMS;
-    // Seed the DSH and "tools"/"browser" top-bar icons ONLY when the user has
-    // no saved top-bar list yet (first run, or upgrading from a build before
-    // the top bar was customizable). The previous one-time migrations keyed
-    // off localStorage flags to seed these "exactly once" into *existing*
-    // lists that predated them — but if that flag ever failed to persist
-    // (cleared app data, a fresh profile, a wiped localStorage), the
-    // migration re-ran on EVERY load and re-added icons the user had
-    // explicitly hidden, overwriting their saved list in memory and
-    // clobbering the DB. That was the "toggle mobile browser / tool use
-    // never persists, icons reappear on restart" bug.
-    //
-    // Gating on "no saved DB list" instead makes the seeding truly one-time
-    // AND robust to localStorage loss: any saved list was created by a build
-    // where these ids were already in DEFAULT_TOPBAR_ITEMS, so a list that
-    // lacks them means the user hid them — and we respect that. (When there
-    // is no saved list, `resolvedTopBarItems` is already DEFAULT_TOPBAR_ITEMS,
-    // which includes dsh/tools/browser, so the `include*` calls below are
-    // no-ops; the only real effect is persisting the default list to the DB
-    // so the next load is a normal "saved list" load.)
+      : DEFAULT_VISIBLE_TOPBAR_ITEMS;
+    // Seed the DSH top-bar icon (desktop only) when there's no saved top-bar
+    // list yet — same one-time-seeding pattern the "tools"/"browser" backfill
+    // below used to also apply to, back when a *fresh* install defaulted to
+    // every item visible. Now that a fresh default is deliberately small
+    // (`DEFAULT_VISIBLE_TOPBAR_ITEMS`), only `dsh` still needs seeding this
+    // way — it isn't in that default, but every existing install already had
+    // it visible (it used to render unconditionally) and should keep seeing
+    // it, so this only reaches for ids that predate the toggle, not the
+    // fresh-install default.
     if (!hadSavedTopBar) {
       if (isDesktopHost) {
         resolvedTopBarItems = includeDshTopBarItem(resolvedTopBarItems);
       }
-      resolvedTopBarItems = includeTopBarItems(resolvedTopBarItems, ["tools", "browser"]);
       await invoke("db_set_setting", { key: "visible_topbar_items", value: JSON.stringify(resolvedTopBarItems) });
     }
     cacheTopBarItems(resolvedTopBarItems);

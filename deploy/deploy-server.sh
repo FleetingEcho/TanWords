@@ -20,6 +20,19 @@ if [[ ! "$PUBLIC_HOST" =~ ^[A-Za-z0-9.:-]+$ ]]; then
 fi
 TARGET=${TANWORDS_DEPLOY_TARGET:-root@$PUBLIC_HOST}
 
+# Unlike TANWORDS_MASTER_KEY/INVITE_KEY/ADMIN_KEY below (generated server-side,
+# since only the server ever needs them), the sqld auth secret must be known
+# *locally* too, to sign desktop-client tokens (deploy/sqld/sign-token.mjs).
+# So it lives in the local .env, is generated here if missing, and only its
+# derived public key (never the secret) is uploaded.
+touch "$DEPLOY_ENV"
+chmod 600 "$DEPLOY_ENV"
+if [[ -z "$(awk -F= '$1 == "TANWORDS_SQLD_AUTH_KEY" {print $2}' "$DEPLOY_ENV")" ]]; then
+  echo "==> generating TANWORDS_SQLD_AUTH_KEY in $DEPLOY_ENV"
+  printf 'TANWORDS_SQLD_AUTH_KEY=%s\n' "$(openssl rand -hex 32)" >> "$DEPLOY_ENV"
+fi
+bun "$ROOT/deploy/sqld/write-public-key.mjs"
+
 usage() {
   echo "Usage: $0 [--skip-build] [user@host]"
   echo
@@ -61,6 +74,11 @@ ssh -o ControlMaster=yes -o ControlPath="$SSH_SOCKET" -o ControlPersist=120 -Nf 
 
 echo "==> uploading compiled runtime image"
 scp "${SSH_OPTS[@]}" "$ARCHIVE" "$TARGET:/tmp/tanwords-web-linux-amd64.tar.gz"
+
+echo "==> uploading deploy configuration"
+scp "${SSH_OPTS[@]}" "$ROOT/deploy/compose.yml" "$TARGET:/tmp/tanwords-compose.yml"
+scp "${SSH_OPTS[@]}" "$ROOT/deploy/caddy/Caddyfile" "$TARGET:/tmp/tanwords-Caddyfile"
+scp "${SSH_OPTS[@]}" "$ROOT/deploy/sqld/jwt.pub" "$TARGET:/tmp/tanwords-jwt.pub"
 
 echo "==> loading image and replacing app container"
 ssh "${SSH_OPTS[@]}" "$TARGET" bash -s -- "$PUBLIC_HOST" <<'REMOTE'
@@ -118,7 +136,16 @@ if ! docker image inspect tanwords-web:latest >/dev/null 2>&1; then
   docker tag localhost/tanwords-web:latest tanwords-web:latest
 fi
 
-docker compose up -d --no-deps --force-recreate app
+# compose.yml/Caddyfile/sqld's trusted public key are the source of truth on
+# the developer machine, not the server; every deploy overwrites them here so
+# drift (an edited Caddyfile, a rotated TANWORDS_SQLD_AUTH_KEY) always takes
+# effect, not just on the first deploy.
+mkdir -p sqld
+mv /tmp/tanwords-compose.yml compose.yml
+mv /tmp/tanwords-Caddyfile caddy/Caddyfile
+mv /tmp/tanwords-jwt.pub sqld/jwt.pub
+
+docker compose up -d --no-deps --force-recreate app sqld
 
 container=$(docker compose ps -q app)
 healthy=0
@@ -141,6 +168,17 @@ if [ "$healthy" -ne 1 ]; then
   exit 1
 fi
 
+# sqld has no healthcheck (its image lacks curl/wget); a plain running check
+# is enough to catch the failure mode this deploy can actually cause — a bad
+# jwt.pub or compose edit making it crash-loop.
+sleep 2
+sqld_status=$(docker inspect --format '{{.State.Status}}' "$(docker compose ps -q sqld)")
+if [ "$sqld_status" != "running" ]; then
+  docker compose logs --no-color --tail=100 sqld
+  echo "error: sqld container is not running (status: $sqld_status)" >&2
+  exit 1
+fi
+
 # Caddy normally resolves the recreated `app` service automatically. Reloading
 # is cheap and guarantees its upstream configuration uses current Docker DNS.
 docker compose exec -T caddy \
@@ -155,7 +193,7 @@ curl --fail --silent --show-error --max-time 15 "https://$public_host/" >/dev/nu
 rm -f /tmp/tanwords-web-linux-amd64.tar.gz
 
 echo
-n=$(docker compose ps app caddy)
+n=$(docker compose ps app sqld caddy)
 printf '%s\n' "$n"
 echo
 echo "Deployment verified: https://$public_host/"
@@ -178,3 +216,8 @@ else
   echo "Server keys already existed; no keys were generated or printed."
 fi
 REMOTE
+
+echo
+echo "sqld connection for a desktop app (Settings > Cloud tab):"
+echo "  URL:   https://$PUBLIC_HOST"
+echo "  Token: $(bun "$ROOT/deploy/sqld/sign-token.mjs" 2>/dev/null)"

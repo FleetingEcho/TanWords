@@ -6,6 +6,7 @@ import {
   ImportGroup,
   ImportKind,
   ImportPlan,
+  ImportProgress,
 } from "@/hooks/useDB.types";
 
 const KIND_LABEL: Record<ImportKind, string> = {
@@ -24,12 +25,14 @@ function isEmpty(group: ImportGroup) {
 export function ImportPreviewModal({
   plan,
   importing,
+  progress,
   onCancel,
   onConfirm,
   t,
 }: {
   plan: ImportPlan;
   importing: boolean;
+  progress: ImportProgress | null;
   onCancel: () => void;
   onConfirm: (decisions: ImportDecisions) => void;
   t: ReturnType<typeof useT>;
@@ -163,6 +166,29 @@ export function ImportPreviewModal({
         </div>
 
         <div className="shrink-0 space-y-2 border-t border-border px-5 py-4">
+          {importing && progress && (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                <span>
+                  {t(KIND_LABEL[progress.step])} ({progress.stepIndex}/{progress.stepTotal})
+                  {progress.total > 0 && ` · ${progress.done}/${progress.total}`}
+                </span>
+              </div>
+              <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-primary transition-all"
+                  style={{
+                    width: `${Math.min(
+                      100,
+                      ((progress.stepIndex - 1 + (progress.total > 0 ? progress.done / progress.total : 0)) /
+                        progress.stepTotal) *
+                        100
+                    )}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
           {totalConflicts > 0 && (
             <p className="text-[11px] text-muted-foreground">
               {t("settings.importDBOverwriteHint")} {t("settings.importDBSrsNote")}

@@ -23,3 +23,34 @@
 		flush_interval -1
 	}
 }
+
+# sqld on its own port, not path-routed on the block above: sqld's own HTTP
+# server claims "/" itself (both the legacy query API and the gRPC-Web
+# replication/proxy services libsql's embedded-replica sync uses — see
+# libsql-server/src/http/user/mod.rs, `app.merge(grpc_router)` — the merged
+# router serves POST/GET "/" directly), which collides with `app`'s own SPA
+# root. A dedicated port sidesteps the collision entirely instead of trying
+# to enumerate every sqld route path.
+{$TANWORDS_PUBLIC_HOST}:8443 {
+	tls {
+		issuer acme https://acme-v02.api.letsencrypt.org/directory {
+			profile shortlived
+		}
+	}
+
+	# Caddy pools/reuses backend connections by default; sqld closes its own
+	# side of an idle connection after some interval, and a pooled connection
+	# Caddy reuses after that races a "broken pipe" — surfaced to the client as
+	# a bare 502 with no sqld-side error logged at all (confirmed: the
+	# request that failed never even shows up in sqld's log, only the prior
+	# one did). A long sequence of writes (e.g. a full-database import) means
+	# enough idle gaps between statements to hit this reliably. Disabling
+	# keepalive trades a little latency for a fresh connection per request,
+	# which sidesteps the mismatch entirely rather than trying to tune two
+	# independent idle timeouts into agreement.
+	reverse_proxy sqld:8080 {
+		transport http {
+			keepalive off
+		}
+	}
+}

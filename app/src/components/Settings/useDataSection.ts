@@ -3,9 +3,10 @@ import { toast } from "sonner";
 import { saveDialog, openDialog, pickFile } from "@/ipc/dialog";
 import { webUploadForImport, webExportBackup } from "@/platform/webClient";
 import { isDesktopHost } from "@/platform";
+import { subscribe } from "@/ipc/events";
 import type { useDB } from "@/hooks/useDB";
 import type { useT } from "@/hooks/useT";
-import { DbConnection, ImportDecisions, ImportPlan, RememberedTursoConnection } from "@/hooks/useDB.types";
+import { DbConnection, ImportDecisions, ImportPlan, ImportProgress, OverwriteProgress, RememberedTursoConnection } from "@/hooks/useDB.types";
 
 export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeof useT>) {
   const [dbPath, setDbPath] = useState("");
@@ -40,6 +41,18 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
   const [importPlan, setImportPlan] = useState<ImportPlan | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
+
+  useEffect(() => subscribe<ImportProgress>("import-progress", setImportProgress), []);
+
+  // Full-overwrite import (replaces every table, not just the merged subset)
+  const [pendingOverwritePath, setPendingOverwritePath] = useState<string | null>(null);
+  const [overwriting, setOverwriting] = useState(false);
+  const [overwriteProgress, setOverwriteProgress] = useState<OverwriteProgress | null>(null);
+
+  useEffect(() => subscribe<OverwriteProgress>("overwrite-progress", setOverwriteProgress), []);
+
+  const [vacuuming, setVacuuming] = useState(false);
 
   useEffect(() => {
     if (isDesktopHost) db.getDbPath().then(setDbPath);
@@ -73,6 +86,7 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
   const canExport = connection?.caps.export ?? true;
   const canSwitchPath = connection?.caps.switchPath ?? true;
   const canImport = connection?.caps.writable ?? true;
+  const canVacuum = connection?.caps.vacuum ?? true;
 
   const formattedDbSize = dbSize === null
     ? "…"
@@ -219,6 +233,44 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
     void analyzeImport(picked, null);
   };
 
+  /** Full-overwrite import: picks a plain .db file (no encrypted-zip support
+   *  here — this is a blunt power-user tool, not the guided merge flow) and
+   *  stages it for a destructive-action confirmation. */
+  const handleChooseOverwriteFile = async () => {
+    if (!isDesktopHost) {
+      toast.error(t("settings.importOverwriteDesktopOnly"));
+      return;
+    }
+    const picked = await openDialog({
+      multiple: false,
+      filters: [{ name: "SQLite Database", extensions: ["db"] }],
+    });
+    if (typeof picked === "string") setPendingOverwritePath(picked);
+  };
+
+  const confirmOverwrite = async () => {
+    if (!pendingOverwritePath) return;
+    setOverwriting(true);
+    setOverwriteProgress(null);
+    try {
+      const result = await db.importOverwrite(pendingOverwritePath, null);
+      toast.success(t("settings.importOverwriteOk", { tables: result.tables.length, rows: result.rowsCopied }));
+      if (result.skipped.length > 0) {
+        toast.warning(t("settings.importOverwriteSkipped", { n: result.skipped.length }), {
+          description: result.skipped.join("\n"),
+          duration: 15000,
+        });
+      }
+      setPendingOverwritePath(null);
+      setTimeout(() => window.location.reload(), 800);
+    } catch {
+      // useDBData already toasts the failure; keep the dialog state so retry doesn't require reselecting the file
+    } finally {
+      setOverwriting(false);
+      setOverwriteProgress(null);
+    }
+  };
+
   const analyzeImport = async (path: string, password: string | null) => {
     setAnalyzing(true);
     try {
@@ -233,6 +285,7 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
   const handleImport = async (decisions: ImportDecisions) => {
     if (!importPlan) return;
     setImporting(true);
+    setImportProgress(null);
     try {
       const result = await db.importApply(importPlan.sourcePath, decisions, importPassword || null);
       setImportPlan(null);
@@ -251,6 +304,7 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
       // useDB already toasts the failure
     } finally {
       setImporting(false);
+      setImportProgress(null);
     }
   };
 
@@ -301,5 +355,18 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
     setConfirmClear(false);
     toast.success(t("settings.dangerClearedOk"));
   };
-  return { dbPath, dbSize, connection, exporting, confirmClear, pendingSwitchPath, switching, activeTab, tursoOpen, tursoUrl, tursoToken, rememberedTurso, connecting, confirmDisconnect, syncing, stuckTursoWarning, forgetting, showExportPassword, pendingExportSource, showImportPassword, pendingImportPath, importPassword, importPlan, analyzing, importing, isRemote, isOffline, canExport, canSwitchPath, canImport, formattedDbSize, setDbPath, setDbSize, setConnection, setExporting, setConfirmClear, setPendingSwitchPath, setSwitching, setActiveTab, setTursoOpen, setTursoUrl, setTursoToken, setRememberedTurso, setConnecting, setConfirmDisconnect, setSyncing, setStuckTursoWarning, setForgetting, setShowExportPassword, setPendingExportSource, setShowImportPassword, setPendingImportPath, setImportPassword, setImportPlan, setAnalyzing, setImporting, handleOpenExisting, handleNewLocation, confirmSwitch, handleConnectTurso, handleSelectSource, handleDisconnect, handleForgetSavedConnection, handleSyncNow, handleChooseImportFile, analyzeImport, handleImport, startExport, handleExport, handleClearTranslations };
+
+  const handleVacuum = async () => {
+    setVacuuming(true);
+    try {
+      await db.vacuumDatabase();
+      toast.success(t("settings.vacuumDBOk"));
+      db.getDbSize().then(setDbSize);
+    } catch {
+      // useDBData already toasts the failure
+    } finally {
+      setVacuuming(false);
+    }
+  };
+  return { dbPath, dbSize, connection, exporting, confirmClear, pendingSwitchPath, switching, activeTab, tursoOpen, tursoUrl, tursoToken, rememberedTurso, connecting, confirmDisconnect, syncing, stuckTursoWarning, forgetting, showExportPassword, pendingExportSource, showImportPassword, pendingImportPath, importPassword, importPlan, analyzing, importing, importProgress, pendingOverwritePath, overwriting, overwriteProgress, vacuuming, isRemote, isOffline, canExport, canSwitchPath, canImport, canVacuum, formattedDbSize, setDbPath, setDbSize, setConnection, setExporting, setConfirmClear, setPendingSwitchPath, setSwitching, setActiveTab, setTursoOpen, setTursoUrl, setTursoToken, setRememberedTurso, setConnecting, setConfirmDisconnect, setSyncing, setStuckTursoWarning, setForgetting, setShowExportPassword, setPendingExportSource, setShowImportPassword, setPendingImportPath, setImportPassword, setImportPlan, setAnalyzing, setImporting, setPendingOverwritePath, handleOpenExisting, handleNewLocation, confirmSwitch, handleConnectTurso, handleSelectSource, handleDisconnect, handleForgetSavedConnection, handleSyncNow, handleChooseImportFile, analyzeImport, handleImport, handleChooseOverwriteFile, confirmOverwrite, handleVacuum, startExport, handleExport, handleClearTranslations };
 }

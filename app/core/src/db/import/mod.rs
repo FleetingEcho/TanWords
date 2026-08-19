@@ -37,10 +37,12 @@ mod apply;
 mod apply_documents_known;
 mod apply_patterns_articles;
 mod encrypted_zip;
+mod overwrite;
 mod source;
 mod types;
 
 pub use analyze::*;
 pub use apply::*;
 pub use encrypted_zip::*;
+pub use overwrite::*;
 pub use types::*;

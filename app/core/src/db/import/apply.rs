@@ -1,18 +1,43 @@
 use libsql::{params, Connection};
-use std::collections::HashSet;
-use crate::shim::State;
+use std::collections::{HashMap, HashSet};
+use crate::shim::{AppHandle, State};
 
 use super::apply_documents_known::{apply_documents, apply_known_words};
 use super::apply_patterns_articles::{apply_articles, apply_patterns};
-use super::source::{has_table, open_source, read_words};
-use super::types::{ImportDecisions, ImportOutcome, ImportResult};
+use super::source::{has_table, open_source, read_words, SourceWord};
+use super::types::{ImportDecisions, ImportOutcome, ImportProgress, ImportResult};
 use crate::db;
 use crate::AppState;
+
+/// Every incoming word's existing id, if any — one query for the whole
+/// import instead of one per word. `IN (?1, ?2, ...)` rather than a temp
+/// table or a join: this only ever runs against a target's own connection
+/// (never source-controlled SQL), and the placeholder count is bounded by
+/// how many words a single import step processes.
+async fn batch_lookup_word_ids(
+    tx: &Connection,
+    words: &[SourceWord],
+) -> Result<HashMap<String, i64>, String> {
+    let mut map = HashMap::with_capacity(words.len());
+    if words.is_empty() {
+        return Ok(map);
+    }
+    let placeholders =
+        (1..=words.len()).map(|i| format!("?{i}")).collect::<Vec<_>>().join(",");
+    let sql = format!("SELECT id, lower(word) FROM words WHERE lower(word) IN ({placeholders})");
+    let params: Vec<libsql::Value> = words.iter().map(|w| w.key.clone().into()).collect();
+    let rows: Vec<(i64, String)> = db::fetch_all(tx, &sql, params, |r| Ok((r.get(0)?, r.get(1)?))).await?;
+    for (id, key) in rows {
+        map.insert(key, id);
+    }
+    Ok(map)
+}
 
 // ── Apply ───────────────────────────────────────────────────────────────────
 
 #[crate::shim::command]
 pub async fn db_import_apply(
+    app: AppHandle,
     source_path: String,
     password: Option<String>,
     decisions: ImportDecisions,
@@ -43,25 +68,65 @@ pub async fn db_import_apply(
                 .collect()
         };
 
+        // Only steps that will actually run count toward the total, so the UI's
+        // "2/3" means something instead of always showing "2/5".
+        let mut steps = vec!["words"];
+        if has_table(&source, "patterns").await {
+            steps.push("patterns");
+        }
+        if has_table(&source, "reading_articles").await {
+            steps.push("articles");
+        }
+        if has_table(&source, "documents").await {
+            steps.push("documents");
+        }
+        if has_table(&source, "user_known_words").await {
+            steps.push("knownWords");
+        }
+        let step_total = steps.len();
+
         let tx = target.transaction().await.map_err(|e| e.to_string())?;
         let mut result = ImportResult::default();
+        let mut step_index = 0usize;
 
-        result
-            .outcomes
-            .push(apply_words(&source, &tx, &chosen("words"), decisions.include_new).await?);
-        if has_table(&source, "patterns").await {
+        step_index += 1;
+        result.outcomes.push(
+            apply_words(&app, step_index, step_total, &source, &tx, &chosen("words"), decisions.include_new)
+                .await?,
+        );
+        if steps.contains(&"patterns") {
+            step_index += 1;
+            let _ = app.emit(
+                "import-progress",
+                ImportProgress { step: "patterns".into(), step_index, step_total, done: 0, total: 0 },
+            );
             result.outcomes
                 .push(apply_patterns(&source, &tx, &chosen("patterns"), decisions.include_new).await?);
         }
-        if has_table(&source, "reading_articles").await {
+        if steps.contains(&"articles") {
+            step_index += 1;
+            let _ = app.emit(
+                "import-progress",
+                ImportProgress { step: "articles".into(), step_index, step_total, done: 0, total: 0 },
+            );
             result.outcomes
                 .push(apply_articles(&source, &tx, &chosen("articles"), decisions.include_new).await?);
         }
-        if has_table(&source, "documents").await {
+        if steps.contains(&"documents") {
+            step_index += 1;
+            let _ = app.emit(
+                "import-progress",
+                ImportProgress { step: "documents".into(), step_index, step_total, done: 0, total: 0 },
+            );
             result.outcomes
                 .push(apply_documents(&source, &tx, &chosen("documents"), decisions.include_new).await?);
         }
-        if has_table(&source, "user_known_words").await {
+        if steps.contains(&"knownWords") {
+            step_index += 1;
+            let _ = app.emit(
+                "import-progress",
+                ImportProgress { step: "knownWords".into(), step_index, step_total, done: 0, total: 0 },
+            );
             result.outcomes.push(apply_known_words(&source, &tx, decisions.include_new).await?);
         }
 
@@ -82,22 +147,31 @@ pub async fn db_import_apply(
 }
 
 pub(super) async fn apply_words(
+    app: &AppHandle,
+    step_index: usize,
+    step_total: usize,
     source: &Connection,
     tx: &Connection,
     overwrite: &HashSet<String>,
     include_new: bool,
 ) -> Result<ImportOutcome, String> {
     let incoming = read_words(source).await?;
+    let total = incoming.len() as i64;
     let mut outcome = ImportOutcome { kind: "words".into(), ..Default::default() };
 
-    for word in incoming {
-        let existing: Option<i64> = db::fetch_optional(
-            tx,
-            "SELECT id FROM words WHERE lower(word) = ?1",
-            [word.key.clone()],
-            |r| r.get(0),
-        )
-        .await?;
+    // One round trip instead of one per word: against a remote (Turso/sqld)
+    // target, that "SELECT ... WHERE lower(word) = ?" used to be a full
+    // network round trip *per word* — for an import the size of a real
+    // vocabulary (hundreds of words), that dominated the whole command's
+    // wall time far more than the actual writing did.
+    let existing_ids = batch_lookup_word_ids(tx, &incoming).await?;
+
+    for (done, word) in incoming.into_iter().enumerate() {
+        let _ = app.emit(
+            "import-progress",
+            ImportProgress { step: "words".into(), step_index, step_total, done: done as i64, total },
+        );
+        let existing = existing_ids.get(&word.key).copied();
 
         let word_id = match existing {
             Some(id) if overwrite.contains(&word.key) => {
@@ -170,22 +244,39 @@ pub(super) async fn apply_words(
             }
         };
 
-        for (pos, zh, en, example_en, example_zh, sort_order) in &word.definitions {
-            tx.execute(
-                "INSERT INTO word_definitions (word_id, pos, zh, en, example_en, example_zh, sort_order)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                params![
-                    word_id,
-                    pos.clone(),
-                    zh.clone(),
-                    en.clone(),
-                    example_en.clone(),
-                    example_zh.clone(),
-                    *sort_order
-                ],
-            )
-            .await
-            .map_err(|e| e.to_string())?;
+        // All of a word's definitions in one INSERT (one multi-row VALUES list,
+        // still fully parameterized — no hand-built SQL text) rather than one
+        // round trip per definition. A word can have several senses, so this
+        // is the other half of what made a real-sized import slow remotely.
+        if !word.definitions.is_empty() {
+            let mut sql = String::from(
+                "INSERT INTO word_definitions (word_id, pos, zh, en, example_en, example_zh, sort_order) VALUES ",
+            );
+            let mut values: Vec<libsql::Value> = Vec::with_capacity(word.definitions.len() * 7);
+            for (i, (pos, zh, en, example_en, example_zh, sort_order)) in word.definitions.iter().enumerate() {
+                if i > 0 {
+                    sql.push(',');
+                }
+                let base = i * 7;
+                sql.push_str(&format!(
+                    "(?{},?{},?{},?{},?{},?{},?{})",
+                    base + 1,
+                    base + 2,
+                    base + 3,
+                    base + 4,
+                    base + 5,
+                    base + 6,
+                    base + 7
+                ));
+                values.push(word_id.into());
+                values.push(pos.clone().into());
+                values.push(zh.clone().into());
+                values.push(en.clone().into());
+                values.push(example_en.clone().into());
+                values.push(example_zh.clone().into());
+                values.push((*sort_order).into());
+            }
+            tx.execute(&sql, values).await.map_err(|e| e.to_string())?;
         }
     }
     Ok(outcome)

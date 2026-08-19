@@ -280,6 +280,10 @@ export interface DbConnection {
     /** False when serving a replica offline — it is opened read-only, so any
      *  save will fail at the driver. */
     writable: boolean;
+    /** Whether VACUUM is supported. Off for Turso/self-hosted sqld — their
+     *  storage isn't a plain rolling SQLite file, and VACUUM is rejected
+     *  outright by the server itself, not just proxying. */
+    vacuum: boolean;
   };
   /** A Turso profile falling back to its local replica because the primary
    *  couldn't be reached. Reads are real (possibly stale) data. */
@@ -323,6 +327,16 @@ export interface ImportDecisions {
   includeNew: boolean;
 }
 
+/** Payload of the `"import-progress"` event, emitted while a merge import
+ *  (`importApply`) runs. Mirrors `ImportProgress` in db/import/types.rs. */
+export interface ImportProgress {
+  step: ImportKind;
+  stepIndex: number;
+  stepTotal: number;
+  done: number;
+  total: number;
+}
+
 export interface ImportOutcome {
   kind: ImportKind;
   added: number;
@@ -335,4 +349,26 @@ export interface ImportResult {
   added: number;
   overwritten: number;
   skipped: number;
+}
+
+/** Result of a full-overwrite import (`db_import_overwrite`): every table in
+ *  the source database replaced the target's, not just the natural-keyed
+ *  subset a regular import merges. */
+export interface OverwriteResult {
+  tables: string[];
+  rowsCopied: number;
+  /** Rows too large for one write to a remote target to carry (e.g. a
+   *  multi-megabyte background image in `user_settings`) — left out rather
+   *  than failing the whole import. Always empty against a local database. */
+  skipped: string[];
+}
+
+/** Payload of the `"overwrite-progress"` event, emitted while
+ *  `importOverwrite` runs. Mirrors `OverwriteProgress` in
+ *  db/import/overwrite.rs. */
+export interface OverwriteProgress {
+  phase: "clearing" | "copying" | "indexing";
+  table: string;
+  tableIndex: number;
+  tableTotal: number;
 }

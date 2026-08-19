@@ -21,3 +21,9 @@ deploy/.env
 deploy/data/
 deploy/*.tar
 deploy/*.tar.gz
+deploy/*.db
+# Derived from deploy/.env's TANWORDS_SQLD_AUTH_KEY at deploy time; see
+# deploy/sqld/write-public-key.mjs. Not a secret itself, but regenerated
+# from one, so it's not tracked to avoid drifting from .env.
+deploy/sqld/jwt.pub
+deploy/sqld/*.jwt

@@ -10,6 +10,11 @@
 
 use tanwords_lib::db::{connection, DbKind, DbProfile};
 
+fn mock_handle() -> tanwords_lib::shim::AppHandle {
+    let (tx, _rx) = tokio::sync::broadcast::channel(16);
+    tanwords_lib::shim::AppHandle::new(std::sync::Arc::new(tanwords_lib::shim::Registry::default()), tx)
+}
+
 fn credentials() -> Option<(String, String)> {
     let url = std::env::var("TURSO_DB_URL").ok()?;
     let token = std::env::var("TURSO_DB_TOKEN").ok()?;
@@ -423,6 +428,7 @@ async fn a_local_database_can_be_imported_into_turso() {
     assert_eq!(words.new_count, 1, "the seeded word should be new to the remote");
 
     let result = tanwords_lib::db::db_import_apply(
+        mock_handle(),
         source.clone(),
         None,
         tanwords_lib::db::ImportDecisions::default(),
@@ -446,6 +452,7 @@ async fn a_local_database_can_be_imported_into_turso() {
 
     // Re-running must be a no-op rather than duplicating.
     let again = tanwords_lib::db::db_import_apply(
+        mock_handle(),
         source.clone(),
         None,
         tanwords_lib::db::ImportDecisions::default(),

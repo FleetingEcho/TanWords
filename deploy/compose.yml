@@ -29,6 +29,42 @@ services:
       start_period: 20s
       retries: 5
 
+  sqld:
+    # Exposes user 1's local database over the libsql/Hrana wire protocol so
+    # a desktop Electron client can connect to it directly as a "self-hosted
+    # sqld" remote (Settings > Cloud tab), independent of the `app` service's
+    # own per-user HTTP API. Auth is a long-lived Ed25519 JWT signed offline;
+    # only the public key (deploy/sqld/jwt.pub) lives on the server.
+    image: ghcr.io/tursodatabase/libsql-server:latest
+    restart: unless-stopped
+    environment:
+      SQLD_NODE: primary
+      SQLD_AUTH_JWT_KEY_FILE: /etc/sqld/jwt.pub
+    # `--enable-namespaces` + the admin API (dump_url bulk import) was tried
+    # here and reverted: it broke ordinary writes outright — "x-proxy-authorization
+    # not set" on every write, an internal inter-node auth header namespace
+    # mode's write path expects that a single-node primary with no replicas
+    # never populates. Its actual goal (bulk-import a database server-side
+    # instead of replaying it as thousands of individual proxied writes) is
+    # also blocked separately: the dump validator rejects any dump containing
+    # the substring "attach" ANYWHERE — including inside ordinary text data,
+    # e.g. a word definition that says "attach a caveat" — which is a real
+    # sqld bug (naive string search, not an SQL-aware parse), confirmed with
+    # a minimal reproduction. Net negative for this deployment; see
+    # `db_import_overwrite`'s batched writes for the approach actually in use.
+    volumes:
+      - sqld-data:/var/lib/sqld
+      - ./sqld/jwt.pub:/etc/sqld/jwt.pub:ro
+    expose:
+      - "8080"
+    security_opt:
+      - no-new-privileges:true
+    # Unlike `app`, this upstream image's entrypoint needs root-level
+    # filesystem capabilities to initialize /var/lib/sqld on first run
+    # (observed: dropping ALL capabilities makes it fail with "mkdir:
+    # cannot create directory 'iku.db': Permission denied"), so cap_drop
+    # is intentionally omitted here.
+
   caddy:
     image: caddy:2.11.3-alpine
     restart: unless-stopped
@@ -41,6 +77,7 @@ services:
       - "80:80"
       - "443:443"
       - "443:443/udp"
+      - "8443:8443"
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
@@ -56,6 +93,8 @@ services:
 volumes:
   tanwords-data:
     name: tanwords-data
+  sqld-data:
+    name: tanwords-sqld-data
   caddy-data:
     name: tanwords-caddy-data
   caddy-config:

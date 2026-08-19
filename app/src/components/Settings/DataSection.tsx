@@ -11,7 +11,7 @@ import { DownloadIcon } from "@/components/ui/icons";
 import { SettingRow, ToggleGroup } from "./SettingsShared";
 
 export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: ReturnType<typeof useT> }) {
-  const { dbPath, dbSize, connection, exporting, confirmClear, pendingSwitchPath, switching, activeTab, tursoOpen, tursoUrl, tursoToken, rememberedTurso, connecting, confirmDisconnect, syncing, stuckTursoWarning, forgetting, showExportPassword, pendingExportSource, showImportPassword, pendingImportPath, importPassword, importPlan, analyzing, importing, isRemote, isOffline, canExport, canSwitchPath, canImport, formattedDbSize, setDbPath, setDbSize, setConnection, setExporting, setConfirmClear, setPendingSwitchPath, setSwitching, setActiveTab, setTursoOpen, setTursoUrl, setTursoToken, setRememberedTurso, setConnecting, setConfirmDisconnect, setSyncing, setStuckTursoWarning, setForgetting, setShowExportPassword, setPendingExportSource, setShowImportPassword, setPendingImportPath, setImportPassword, setImportPlan, setAnalyzing, setImporting, handleOpenExisting, handleNewLocation, confirmSwitch, handleConnectTurso, handleSelectSource, handleDisconnect, handleForgetSavedConnection, handleSyncNow, handleChooseImportFile, analyzeImport, handleImport, startExport, handleExport, handleClearTranslations } = useDataSection(db, t);
+  const { dbPath, dbSize, connection, exporting, confirmClear, pendingSwitchPath, switching, activeTab, tursoOpen, tursoUrl, tursoToken, rememberedTurso, connecting, confirmDisconnect, syncing, stuckTursoWarning, forgetting, showExportPassword, pendingExportSource, showImportPassword, pendingImportPath, importPassword, importPlan, analyzing, importing, importProgress, pendingOverwritePath, overwriting, overwriteProgress, vacuuming, isRemote, isOffline, canExport, canSwitchPath, canImport, canVacuum, formattedDbSize, setDbPath, setDbSize, setConnection, setExporting, setConfirmClear, setPendingSwitchPath, setSwitching, setActiveTab, setTursoOpen, setTursoUrl, setTursoToken, setRememberedTurso, setConnecting, setConfirmDisconnect, setSyncing, setStuckTursoWarning, setForgetting, setShowExportPassword, setPendingExportSource, setShowImportPassword, setPendingImportPath, setImportPassword, setImportPlan, setAnalyzing, setImporting, setPendingOverwritePath, handleOpenExisting, handleNewLocation, confirmSwitch, handleConnectTurso, handleSelectSource, handleDisconnect, handleForgetSavedConnection, handleSyncNow, handleChooseImportFile, analyzeImport, handleImport, handleChooseOverwriteFile, confirmOverwrite, handleVacuum, startExport, handleExport, handleClearTranslations } = useDataSection(db, t);
 
   return (
     <div className="space-y-3">
@@ -223,7 +223,7 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
                 <div className="flex justify-end">
                   <Button
                     onClick={handleConnectTurso}
-                    disabled={connecting || !tursoUrl.trim() || (!tursoToken.trim() && !rememberedTurso?.tokenPresent)}
+                    disabled={connecting || !tursoUrl.trim()}
                     className="h-8 px-4 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
                   >
                     {connecting ? t("settings.remoteDBConnecting") : t("settings.remoteDBConnect")}
@@ -297,9 +297,36 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
             </div>
           )}
         </SettingRow>
+
+        {isDesktopHost && (
+          <SettingRow
+            label={t("settings.vacuumDB")}
+            sub={canVacuum ? t("settings.vacuumDBSub") : t("settings.vacuumDBUnavailableRemote")}
+          >
+            <Button
+              variant="outline"
+              onClick={handleVacuum}
+              disabled={vacuuming || !canVacuum}
+              className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted disabled:opacity-50 transition-colors"
+            >
+              {vacuuming ? t("settings.vacuumDBWorking") : t("settings.vacuumDBChoose")}
+            </Button>
+          </SettingRow>
+        )}
       </div>
 
-      <div className="bg-destructive/5 border border-destructive/20 rounded-xl px-5">
+      <div className="bg-destructive/5 border border-destructive/20 rounded-xl px-5 divide-y divide-destructive/20">
+        <SettingRow label={t("settings.importOverwrite")} sub={t("settings.importOverwriteSub")}>
+          <Button
+            variant="ghost"
+            onClick={handleChooseOverwriteFile}
+            disabled={overwriting || !canImport}
+            className="h-8 px-4 rounded-lg text-xs font-semibold border border-destructive/40 text-destructive hover:bg-destructive/10 disabled:opacity-50 transition-colors"
+          >
+            {overwriting ? t("settings.importOverwriteWorking") : t("settings.importOverwriteChoose")}
+          </Button>
+        </SettingRow>
+
         <SettingRow label={t("settings.dangerClearTranslations")} sub={t("settings.dangerClearTranslationsSub")}>
           <Button
             variant="ghost"
@@ -314,6 +341,21 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
           </Button>
         </SettingRow>
       </div>
+
+      <ConfirmModal
+        open={pendingOverwritePath !== null}
+        title={t("settings.importOverwriteConfirmTitle")}
+        message={
+          overwriting && overwriteProgress
+            ? `${t(`settings.importOverwritePhase.${overwriteProgress.phase}`)} ${overwriteProgress.table} (${overwriteProgress.tableIndex}/${overwriteProgress.tableTotal})`
+            : t("settings.importOverwriteConfirmMessage", { path: pendingOverwritePath ?? "" })
+        }
+        confirmLabel={overwriting ? t("settings.importOverwriteWorking") : t("settings.importOverwriteConfirm")}
+        danger
+        confirmDisabled={overwriting}
+        onCancel={() => setPendingOverwritePath(null)}
+        onConfirm={confirmOverwrite}
+      />
 
       <ConfirmModal
         open={pendingSwitchPath !== null}
@@ -358,6 +400,7 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
         <ImportPreviewModal
           plan={importPlan}
           importing={importing}
+          progress={importProgress}
           onCancel={() => {
             setImportPlan(null);
             setPendingImportPath(null);
