@@ -166,7 +166,7 @@ pub async fn db_create_calendar_event(
                 title,
                 start,
                 end,
-                all_day,
+                all_day as i64,
                 description.unwrap_or_default(),
                 location.unwrap_or_default(),
                 color_name,
@@ -231,7 +231,7 @@ pub async fn db_update_calendar_event(
                 title.unwrap_or_default(),
                 start_raw,
                 end_raw,
-                all_day,
+                all_day.map(|b| b as i64),
                 description.unwrap_or_default(),
                 location.unwrap_or_default(),
             ],
@@ -332,7 +332,7 @@ pub async fn db_create_calendar_calendar(
         db.execute(
             "INSERT INTO calendar_calendars (id, name, color_name, visible, sort_order)
              VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![id, name, color_name, visible, sort_order],
+            params![id, name, color_name, visible as i64, sort_order],
         )
         .await
         .map_err(|e| e.to_string())?;
@@ -368,7 +368,7 @@ pub async fn db_update_calendar_calendar(
                 id,
                 name.unwrap_or_default(),
                 color_name.unwrap_or_default(),
-                visible,
+                visible.map(|b| b as i64),
                 sort_order,
             ],
         )

@@ -134,7 +134,7 @@ pub async fn db_set_pattern_starred(
     let db = db::conn(&conn)?;
     db.execute(
         "UPDATE patterns SET starred = ?1 WHERE id = ?2",
-        params![starred, pattern_id],
+        params![starred as i64, pattern_id],
     )
     .await
     .map_err(|e| e.to_string())?;

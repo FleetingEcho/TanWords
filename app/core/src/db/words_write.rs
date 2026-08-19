@@ -105,7 +105,7 @@ pub async fn db_set_word_starred(
     let db = db::conn(&conn)?;
     db.execute(
         "UPDATE words SET starred = ?1 WHERE id = ?2",
-        params![starred, word_id],
+        params![starred as i64, word_id],
     )
     .await
     .map_err(|e| e.to_string())?;

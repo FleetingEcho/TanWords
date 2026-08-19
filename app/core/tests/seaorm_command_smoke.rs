@@ -231,6 +231,50 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     db_set_documents_folder(vec![doc_id], "Study/Rust".into(), state.clone())
         .await
         .unwrap();
+
+    // calendar event (reserved-word columns "start"/"end" — quoted in the
+    // call-site SQL so both backends accept them). Create + list + delete.
+    use tanwords_lib::db::{
+        db_create_calendar_event, db_delete_calendar_event, db_list_calendar_events,
+    };
+    let event_id = db_create_calendar_event(
+        "Study session".into(),
+        "2025-01-15 09:00".into(),
+        "2025-01-15 10:00".into(),
+        state.clone(),
+        Some(false),
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    assert!(!event_id.is_empty());
+    let events = db_list_calendar_events(state.clone()).await.unwrap();
+    assert!(events.iter().any(|e| e.id == event_id));
+    db_delete_calendar_event(event_id, state.clone()).await.unwrap();
+
+    // translation (exercises the translations streak upsert — the
+    // daily_streaks.translations column + the
+    // ON CONFLICT DO UPDATE SET translations = daily_streaks.translations + 1
+    // fix). Save + list.
+    use tanwords_lib::db::{db_get_translations, db_save_translation};
+    let tx_id = db_save_translation(
+        "hello".into(),
+        "你好".into(),
+        Some("en".into()),
+        "zh".into(),
+        "manual".into(),
+        "text".into(),
+        state.clone(),
+    )
+    .await
+    .unwrap();
+    assert!(tx_id > 0);
+    let txs = db_get_translations(None, None, state.clone()).await.unwrap();
+    assert!(txs.iter().any(|t| t.id == tx_id));
 }
 
 #[tokio::test]
