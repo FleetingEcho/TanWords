@@ -1,6 +1,6 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use rand::RngCore;
-use libsql::{params, Connection};
+use crate::db::params; use crate::db::Conn;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -49,8 +49,8 @@ pub fn mcp_generate_token() -> String {
     URL_SAFE_NO_PAD.encode(bytes)
 }
 
-pub async fn load_config(conn: &Connection) -> McpConfig {
-    async fn get(conn: &Connection, key: &str) -> Option<String> {
+pub async fn load_config(conn: &Conn) -> McpConfig {
+    async fn get(conn: &Conn, key: &str) -> Option<String> {
         crate::db::fetch_optional(
             conn,
             "SELECT value FROM user_settings WHERE key=?1",
@@ -78,7 +78,7 @@ pub async fn load_config(conn: &Connection) -> McpConfig {
     }
 }
 
-pub async fn save_config(conn: &Connection, config: &McpConfig) -> Result<(), String> {
+pub async fn save_config(conn: &Conn, config: &McpConfig) -> Result<(), String> {
     for (key, value) in [
         ("mcp_enabled", json!(config.enabled)),
         ("mcp_port", json!(config.port.to_string())),

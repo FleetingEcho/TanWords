@@ -1,4 +1,4 @@
-use libsql::params;
+use crate::db::params;
 use crate::shim::State;
 
 use super::crypto::{decrypt_bytes, decrypt_text, encrypt_bytes, encrypt_text, random};
@@ -76,7 +76,7 @@ pub fn db_lock_document(id: i64, state: State<'_, AppState>) -> Result<(), Strin
 /// documents against one already-unlocked master, rather than asking for the
 /// password once per file.
 pub(crate) async fn protect_document_with_master(
-    database: &libsql::Connection,
+    database: &crate::db::Conn,
     privacy: &super::state::DocumentPrivacyState,
     id: i64,
     master: &[u8; 32],
@@ -119,7 +119,7 @@ pub(crate) async fn protect_document_with_master(
 /// Decrypts one document (and its assets) back to plaintext. The inverse of
 /// `protect_document_with_master`, sharing it with `db_remove_document_protection`.
 pub(crate) async fn unprotect_document_with_key(
-    database: &libsql::Connection,
+    database: &crate::db::Conn,
     privacy: &super::state::DocumentPrivacyState,
     id: i64,
     key: &[u8; 32],

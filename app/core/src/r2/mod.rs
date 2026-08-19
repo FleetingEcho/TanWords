@@ -109,7 +109,7 @@ fn seal(plaintext: &str) -> Result<String, String> {
 /// Moves a pre-existing desktop configuration out of `app_config.json` (and
 /// the keychain) into the database, once. Without it, upgrading would look
 /// like the bucket had silently disconnected.
-pub async fn migrate_from_app_config(conn: &libsql::Connection) {
+pub async fn migrate_from_app_config(conn: &crate::db::Conn) {
     if load_settings(conn).await.is_some() {
         return;
     }
@@ -122,7 +122,7 @@ pub async fn migrate_from_app_config(conn: &libsql::Connection) {
     }
 }
 
-pub async fn load_settings(conn: &libsql::Connection) -> Option<R2Settings> {
+pub async fn load_settings(conn: &crate::db::Conn) -> Option<R2Settings> {
     let sealed = crate::db::fetch_one(
         conn,
         "SELECT COALESCE(config_enc, '') FROM r2_config WHERE id = 1",
@@ -139,12 +139,12 @@ pub async fn load_settings(conn: &libsql::Connection) -> Option<R2Settings> {
     serde_json::from_str(&json).ok()
 }
 
-async fn save_settings(conn: &libsql::Connection, settings: &R2Settings) -> Result<(), String> {
+async fn save_settings(conn: &crate::db::Conn, settings: &R2Settings) -> Result<(), String> {
     let json = serde_json::to_string(settings).map_err(|e| e.to_string())?;
     conn.execute(
         "INSERT INTO r2_config (id, config_enc) VALUES (1, ?1)
          ON CONFLICT(id) DO UPDATE SET config_enc = excluded.config_enc",
-        libsql::params![seal(&json)?],
+        crate::db::params![seal(&json)?],
     )
     .await
     .map(|_| ())

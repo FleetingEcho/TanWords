@@ -1,4 +1,4 @@
-use libsql::params;
+use crate::db::params;
 use serde::{Deserialize, Serialize};
 use crate::shim::State;
 
@@ -141,7 +141,7 @@ pub async fn db_save_scene_lesson(
         &tx,
         "SELECT id FROM scene_lessons WHERE generation_key=?1",
         [input.generation_key.clone()],
-        |r| r.get(0),
+        |r| r.get::<i64>(0),
     )
     .await?
     {
@@ -158,7 +158,7 @@ pub async fn db_save_scene_lesson(
         &tx,
         "SELECT id FROM scenes WHERE scene_key=?1",
         [input.scene_key.clone()],
-        |r| r.get(0),
+        |r| r.get::<i64>(0),
     )
     .await?;
     for object in &input.objects {
@@ -170,24 +170,28 @@ pub async fn db_save_scene_lesson(
         .await
         .map_err(|e| e.to_string())?;
     }
-    tx.execute("INSERT INTO scene_lessons(scene_id,target_levels,status,prompt_version,generation_key) VALUES(?1,?2,'ready',?3,?4)",
-        params![scene_id, input.target_levels.clone(), input.prompt_version, input.generation_key.clone()])
-        .await
-        .map_err(|e| e.to_string())?;
-    let lesson_id = tx.last_insert_rowid();
+    let lesson_id = db::fetch_one(
+        &tx,
+        "INSERT INTO scene_lessons(scene_id,target_levels,status,prompt_version,generation_key) VALUES(?1,?2,'ready',?3,?4) RETURNING id",
+        params![scene_id, input.target_levels.clone(), input.prompt_version, input.generation_key.clone()],
+        |r| r.get::<i64>(0),
+    )
+    .await?;
     for word in &input.vocabulary {
         let object_id: i64 = db::fetch_one(
             &tx,
             "SELECT id FROM scene_objects WHERE scene_id=?1 AND object_key=?2",
             params![scene_id, word.object_key.clone()],
-            |r| r.get(0),
+            |r| r.get::<i64>(0),
         )
         .await?;
-        tx.execute("INSERT INTO scene_vocabulary(lesson_id,object_id,word_id,word,zh,ipa,level,category,importance,learning_status) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
-            params![lesson_id, object_id, word.word_id, word.word.to_lowercase(), word.zh.clone(), word.ipa.clone(), word.level.clone(), word.category.clone(), word.importance.clamp(1,5), word.learning_status.clone()])
-            .await
-            .map_err(|e| e.to_string())?;
-        let vocab_id = tx.last_insert_rowid();
+        let vocab_id = db::fetch_one(
+            &tx,
+            "INSERT INTO scene_vocabulary(lesson_id,object_id,word_id,word,zh,ipa,level,category,importance,learning_status) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10) RETURNING id",
+            params![lesson_id, object_id, word.word_id, word.word.to_lowercase(), word.zh.clone(), word.ipa.clone(), word.level.clone(), word.category.clone(), word.importance.clamp(1,5), word.learning_status.clone()],
+            |r| r.get::<i64>(0),
+        )
+        .await?;
         for example in &word.examples {
             tx.execute("INSERT INTO scene_examples(scene_vocabulary_id,kind,content_en,content_zh) VALUES(?1,?2,?3,?4)", params![vocab_id, example.kind.clone(), example.content_en.clone(), example.content_zh.clone()])
                 .await
@@ -321,13 +325,13 @@ pub async fn db_start_scene_session(
     conn: State<'_, AppState>,
 ) -> Result<i64, String> {
     let db = db::conn(&conn)?;
-    db.execute(
-        "INSERT INTO scene_sessions(lesson_id,mode) VALUES(?1,?2)",
+    db::fetch_one(
+        &db,
+        "INSERT INTO scene_sessions(lesson_id,mode) VALUES(?1,?2) RETURNING id",
         params![lesson_id, mode],
+        |r| r.get::<i64>(0),
     )
     .await
-    .map_err(|e| e.to_string())?;
-    Ok(db.last_insert_rowid())
 }
 
 #[crate::shim::command]
@@ -439,10 +443,13 @@ pub async fn db_add_scene_words_to_vocabulary(
             linked += 1;
             id
         } else {
-            tx.execute("INSERT INTO words(word,word_type,level,word_freq,source) VALUES(?1,NULL,?2,1,'scene-lab')",params![normalized,level])
-                .await
-                .map_err(|e|e.to_string())?;
-            let id = tx.last_insert_rowid();
+            let id = db::fetch_one(
+                &tx,
+                "INSERT INTO words(word,word_type,level,word_freq,source) VALUES(?1,NULL,?2,1,'scene-lab') RETURNING id",
+                params![normalized, level],
+                |r| r.get::<i64>(0),
+            )
+            .await?;
             tx.execute(
                 "INSERT INTO word_definitions(word_id,pos,zh,sort_order) VALUES(?1,'other',?2,0)",
                 params![id, zh],

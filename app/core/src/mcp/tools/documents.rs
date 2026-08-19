@@ -1,4 +1,4 @@
-use libsql::params;
+use crate::db::params;
 use rmcp::{handler::server::wrapper::Parameters, tool, tool_router};
 use serde_json::{json, Value};
 
@@ -123,10 +123,14 @@ impl TanWordsMcp {
             let conn = self.connect().await?;
             let tags = serde_json::to_string(&input.tags).map_err(|e| e.to_string())?;
             let count = input.content.split_whitespace().count() as i64;
-            conn.execute("INSERT INTO documents(title,content,content_text,tags,word_count) VALUES(?1,?2,?2,?3,?4)",params![input.title,input.content,tags,count])
-                .await
-                .map_err(|e|e.to_string())?;
-            Ok(json!({"id":conn.last_insert_rowid(),"created":true}))
+            let id = crate::db::fetch_one(
+                &conn,
+                "INSERT INTO documents(title,content,content_text,tags,word_count) VALUES(?1,?2,?2,?3,?4) RETURNING id",
+                params![input.title, input.content, tags, count],
+                |r| r.get::<i64>(0),
+            )
+            .await?;
+            Ok(json!({"id":id,"created":true}))
         }
         .await;
         self.notify("mcp:docs-changed");

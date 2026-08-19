@@ -1,4 +1,4 @@
-use libsql::{params, Connection};
+use crate::db::params; use crate::db::Conn;
 use std::collections::{HashMap, HashSet};
 use crate::shim::{AppHandle, State};
 
@@ -15,7 +15,7 @@ use crate::AppState;
 /// (never source-controlled SQL), and the placeholder count is bounded by
 /// how many words a single import step processes.
 async fn batch_lookup_word_ids(
-    tx: &Connection,
+    tx: &Conn,
     words: &[SourceWord],
 ) -> Result<HashMap<String, i64>, String> {
     let mut map = HashMap::with_capacity(words.len());
@@ -25,7 +25,7 @@ async fn batch_lookup_word_ids(
     let placeholders =
         (1..=words.len()).map(|i| format!("?{i}")).collect::<Vec<_>>().join(",");
     let sql = format!("SELECT id, lower(word) FROM words WHERE lower(word) IN ({placeholders})");
-    let params: Vec<libsql::Value> = words.iter().map(|w| w.key.clone().into()).collect();
+    let params: Vec<crate::db::Value> = words.iter().map(|w| w.key.clone().into()).collect();
     let rows: Vec<(i64, String)> = db::fetch_all(tx, &sql, params, |r| Ok((r.get(0)?, r.get(1)?))).await?;
     for (id, key) in rows {
         map.insert(key, id);
@@ -150,8 +150,8 @@ pub(super) async fn apply_words(
     app: &AppHandle,
     step_index: usize,
     step_total: usize,
-    source: &Connection,
-    tx: &Connection,
+    source: &Conn,
+    tx: &Conn,
     overwrite: &HashSet<String>,
     include_new: bool,
 ) -> Result<ImportOutcome, String> {
@@ -207,9 +207,10 @@ pub(super) async fn apply_words(
                     outcome.skipped += 1;
                     continue;
                 }
-                tx.execute(
+                let id = db::fetch_one(
+                    &tx,
                     "INSERT INTO words (word, word_type, level, word_freq, source, user_notes, enrichment_text)
-                     VALUES (?1, ?2, ?3, 1, 'import', ?4, ?5)",
+                     VALUES (?1, ?2, ?3, 1, 'import', ?4, ?5) RETURNING id",
                     params![
                         word.word.clone(),
                         word.word_type.clone(),
@@ -217,10 +218,9 @@ pub(super) async fn apply_words(
                         word.user_notes.clone(),
                         word.enrichment_text.clone()
                     ],
+                    |r| r.get::<i64>(0),
                 )
-                .await
-                .map_err(|e| e.to_string())?;
-                let id = tx.last_insert_rowid();
+                .await?;
                 // Only a brand-new word carries its scheduling over; see the
                 // module docs for why an overwrite never touches it.
                 if let Some((level, ease, next)) = &word.srs {
@@ -252,7 +252,7 @@ pub(super) async fn apply_words(
             let mut sql = String::from(
                 "INSERT INTO word_definitions (word_id, pos, zh, en, example_en, example_zh, sort_order) VALUES ",
             );
-            let mut values: Vec<libsql::Value> = Vec::with_capacity(word.definitions.len() * 7);
+            let mut values: Vec<crate::db::Value> = Vec::with_capacity(word.definitions.len() * 7);
             for (i, (pos, zh, en, example_en, example_zh, sort_order)) in word.definitions.iter().enumerate() {
                 if i > 0 {
                     sql.push(',');

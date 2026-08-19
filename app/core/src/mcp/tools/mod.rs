@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use libsql::Connection;
+use crate::db::Conn;
 use rmcp::{
     handler::server::router::tool::ToolRouter,
     model::{
@@ -30,12 +30,12 @@ pub type ChangeNotifier = Arc<dyn Fn(&str) + Send + Sync>;
 
 /// Hands back the app's *current* database connection.
 ///
-/// A callback rather than a stored `Connection` for the same reason the
+/// A callback rather than a stored `Conn` for the same reason the
 /// notifier is one — and because `db_switch_path` / `db_connect_turso` can
 /// swap the database underneath a long-running MCP server. Resolving per call
 /// means an outside agent always talks to the database the user is actually
 /// looking at, instead of one that was current when the server started.
-pub type ConnProvider = Arc<dyn Fn() -> Result<Connection, String> + Send + Sync>;
+pub type ConnProvider = Arc<dyn Fn() -> Result<Conn, String> + Send + Sync>;
 
 #[derive(Clone)]
 pub struct TanWordsMcp {
@@ -69,7 +69,7 @@ impl TanWordsMcp {
     /// One connection per request. The provider hands out a fresh connection
     /// (its own Hrana stream on Turso) so MCP traffic never shares a stream
     /// with the UI's commands — see `db::txn_conn` for the failure mode.
-    async fn connect(&self) -> Result<Connection, String> {
+    async fn connect(&self) -> Result<Conn, String> {
         let conn = (self.conn)()?;
         // Advisory, mirroring `connection::apply_pragmas` — a replica may
         // reject it, which is fine.

@@ -12,7 +12,7 @@
 //! of a folder would make the folder disappear under the user's cursor, and a
 //! folder could never be created before there was something to put in it.
 
-use libsql::{params, Connection};
+use crate::db::params; use crate::db::Conn;
 
 use crate::db;
 use crate::shim::State;
@@ -42,7 +42,7 @@ pub fn normalize_folder(input: &str) -> Result<String, String> {
 
 /// Records `folder` and every ancestor of it, so a nested folder created in one
 /// step still has clickable parents in the tree.
-pub async fn ensure_folder_chain(conn: &Connection, folder: &str) -> Result<(), String> {
+pub async fn ensure_folder_chain(conn: &Conn, folder: &str) -> Result<(), String> {
     let mut prefix = String::new();
     for segment in folder.split('/').filter(|s| !s.is_empty()) {
         if !prefix.is_empty() {
@@ -221,9 +221,9 @@ pub async fn db_set_documents_folder(
         .map(|i| format!("?{}", i + 2))
         .collect::<Vec<_>>()
         .join(",");
-    let mut values: Vec<libsql::Value> = Vec::with_capacity(ids.len() + 1);
+    let mut values: Vec<crate::db::Value> = Vec::with_capacity(ids.len() + 1);
     values.push(folder.clone().into());
-    values.extend(ids.iter().copied().map(libsql::Value::from));
+    values.extend(ids.iter().copied().map(crate::db::Value::from));
     db.execute(
         &format!("UPDATE documents SET folder = ?1 WHERE id IN ({placeholders})"),
         values,

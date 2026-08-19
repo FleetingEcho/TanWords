@@ -1,4 +1,4 @@
-use libsql::{params, Connection, Value};
+use crate::db::params; use crate::db::Conn; use crate::db::Value;
 use serde::Serialize;
 use crate::shim::State;
 
@@ -74,7 +74,7 @@ fn word_count_of(text: &str) -> i64 {
 /// whatever they were handed; the user re-pasting an article they already
 /// have should land back on the same entry, not a second copy.
 pub async fn upsert_article(
-    conn: &Connection,
+    conn: &Conn,
     title: &str,
     content: &str,
     source: &str,
@@ -101,14 +101,15 @@ pub async fn upsert_article(
         return Ok((id, false));
     }
 
-    conn.execute(
+    let id = db::fetch_one(
+        &conn,
         "INSERT INTO reading_articles (title, content, word_count, source, source_url, tags)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6) RETURNING id",
         params![title, content, word_count_of(content), source, source_url, tags],
+        |r| r.get::<i64>(0),
     )
-    .await
-    .map_err(|e| e.to_string())?;
-    Ok((conn.last_insert_rowid(), true))
+    .await?;
+    Ok((id, true))
 }
 
 #[crate::shim::command]
@@ -317,7 +318,7 @@ pub async fn db_list_reading_comments(
 }
 
 pub async fn insert_comment(
-    conn: &Connection,
+    conn: &Conn,
     article_id: i64,
     author: &str,
     body: &str,
@@ -333,14 +334,14 @@ pub async fn insert_comment(
     if exists == 0 {
         return Err("Article not found".into());
     }
-    conn.execute(
+    db::fetch_one(
+        &conn,
         "INSERT INTO reading_article_comments (article_id, author, body, anchor_text)
-         VALUES (?1, ?2, ?3, ?4)",
+         VALUES (?1, ?2, ?3, ?4) RETURNING id",
         params![article_id, author, body, anchor_text],
+        |r| r.get::<i64>(0),
     )
     .await
-    .map_err(|e| e.to_string())?;
-    Ok(conn.last_insert_rowid())
 }
 
 #[crate::shim::command]

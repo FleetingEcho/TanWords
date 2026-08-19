@@ -8,7 +8,7 @@
 //! cross-user bleed.
 
 use crate::shim::State;
-use libsql::params;
+use crate::db::params;
 use serde::Serialize;
 
 use crate::{db, AppState};
@@ -98,9 +98,11 @@ pub async fn db_list_calendar_events(
     let db = db::conn(&conn)?;
     db::fetch_all(
         &db,
-        "SELECT id, calendar_id, title, start, end, all_day, description, location, created_at, updated_at, color_name
+        // `start`/`end` are Postgres reserved words — quoted identifiers work
+        // on both sqlite and postgres, so the column names stay portable.
+        "SELECT id, calendar_id, title, \"start\", \"end\", all_day, description, location, created_at, updated_at, color_name
          FROM calendar_events
-         ORDER BY start ASC, id ASC",
+         ORDER BY \"start\" ASC, id ASC",
         (),
         |r| {
             Ok(CalendarEvent {
@@ -156,7 +158,7 @@ pub async fn db_create_calendar_event(
     let out_id = id.clone();
     db::await_write(&conn, async {
         db.execute(
-            "INSERT INTO calendar_events (id, calendar_id, title, start, end, all_day, description, location, color_name)
+            "INSERT INTO calendar_events (id, calendar_id, title, \"start\", \"end\", all_day, description, location, color_name)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 id,
@@ -216,8 +218,8 @@ pub async fn db_update_calendar_event(
             "UPDATE calendar_events SET
                 calendar_id = COALESCE(NULLIF(?2, ''), calendar_id),
                 title       = COALESCE(NULLIF(?3, ''), title),
-                start       = COALESCE(NULLIF(?4, ''), start),
-                end         = COALESCE(NULLIF(?5, ''), end),
+                \"start\"       = COALESCE(NULLIF(?4, ''), \"start\"),
+                \"end\"         = COALESCE(NULLIF(?5, ''), \"end\"),
                 all_day     = COALESCE(?6, all_day),
                 description = COALESCE(?7, description),
                 location    = COALESCE(?8, location),

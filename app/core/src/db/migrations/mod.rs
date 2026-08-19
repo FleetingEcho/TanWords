@@ -1,4 +1,6 @@
-use libsql::{Connection, Result as SqlResult};
+use sea_orm::DbErr;
+
+use crate::db::rows::Conn;
 
 /// A single forward-only schema change. Migrations run in order once each,
 /// tracked in `schema_migrations`. Unlike the old `ALTER ... .ok()` pattern
@@ -70,7 +72,10 @@ pub fn latest_version() -> i64 {
     MIGRATIONS.iter().map(|m| m.version).max().unwrap_or(0)
 }
 
-pub async fn run(conn: &Connection) -> SqlResult<()> {
+/// SQLite-only: replays the hand-rolled migration history. Postgres starts
+/// from a fresh current-schema DDL (`init_db_postgres`) and does not replay
+/// these SQLite-era migrations.
+pub async fn run(conn: &Conn) -> Result<(), DbErr> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS schema_migrations (
             version    INTEGER PRIMARY KEY,
@@ -79,22 +84,23 @@ pub async fn run(conn: &Connection) -> SqlResult<()> {
     )
     .await?;
 
-    let current: i64 = match conn
-        .query("SELECT COALESCE(MAX(version), 0) FROM schema_migrations", ())
+    let current: i64 = conn
+        .query_one("SELECT COALESCE(MAX(version), 0) FROM schema_migrations", ())
         .await
-    {
-        Ok(mut rows) => match rows.next().await {
-            Ok(Some(row)) => row.get(0).unwrap_or(0),
-            _ => 0,
-        },
-        Err(_) => 0,
-    };
+        .ok()
+        .flatten()
+        .and_then(|row| row.get::<i64>(0).ok())
+        .unwrap_or(0);
 
     for m in MIGRATIONS {
         if m.version <= current {
             continue;
         }
-        conn.execute_transactional_batch(&stamped(m))
+        // Each migration runs as one multi-statement batch with its own version
+        // stamp appended. `execute_batch` (sea-orm `execute_unprepared`) runs
+        // every `;`-separated statement; a failure aborts startup rather than
+        // leaving a half-applied migration that the next launch would skip.
+        conn.execute_batch(&stamped(m))
             .await
             .unwrap_or_else(|e| panic!("migration {} ({}) failed: {e}", m.version, m.description));
     }
@@ -104,16 +110,14 @@ pub async fn run(conn: &Connection) -> SqlResult<()> {
 
 /// A migration's SQL with its own version stamp appended, as one statement list.
 ///
-/// The stamp used to be a second `execute` call. That is free on a local file and
-/// expensive on a Turso profile, where every call is a network round-trip to the
-/// primary — 23 migrations × 2 trips was the bulk of the ~85s a first connect to
-/// a fresh remote database took. Running them together also makes each migration
-/// atomic: `execute_transactional_batch` wraps the lot in a transaction, so a
-/// migration can no longer half-apply and then fail without recording itself,
-/// leaving the next launch to replay statements that already ran.
+/// The stamp used to be a second `execute` call. That is free on a local file
+/// and was expensive on a Turso profile, where every call was a network
+/// round-trip — 23 migrations × 2 trips was the bulk of a first connect to a
+/// fresh remote database. Running them together also keeps each migration
+/// self-contained: the stamp lands in the same batch as the schema change.
 ///
 /// The version is an integer from a `const`, so it is interpolated rather than
-/// bound — `execute_transactional_batch` takes no parameters.
+/// bound — `execute_batch` takes no parameters.
 fn stamped(m: &Migration) -> String {
     let sql = m.sql.trim_end();
     let separator = if sql.ends_with(';') { "" } else { ";" };
@@ -127,22 +131,27 @@ fn stamped(m: &Migration) -> String {
 mod tests {
     use super::*;
 
-    /// Migrations are pure schema work, so an in-memory libsql database
-    /// exercises them exactly like the real local profile does.
-    async fn memory_conn() -> Connection {
-        libsql::Builder::new_local(":memory:")
-            .build()
-            .await
-            .unwrap()
-            .connect()
-            .unwrap()
+    /// Migrations are pure schema work, so an in-memory sqlite database
+    /// exercises them exactly like the real local profile does. This opens a
+    /// *blank* in-memory DB (no `init_db` pass) — the tests seed the legacy
+    /// schema themselves, then call `run()` to exercise the migrations in
+    /// isolation. Going through `open_memory()` would pre-create
+    /// `schema_migrations` and every table, defeating the test.
+    async fn memory_conn() -> Conn {
+        use sea_orm::ConnectionTrait;
+        let mut opts = sea_orm::ConnectOptions::new("sqlite::memory:".to_string());
+        opts.max_connections(1).min_connections(1);
+        let db = sea_orm::Database::connect(opts).await.unwrap();
+        // Match the production PRAGMA surface (foreign_keys) without the DDL.
+        let _ = db.execute_unprepared("PRAGMA foreign_keys=ON;").await;
+        Conn::new_db(db, crate::db::connection::DbKind::Local)
     }
 
     /// `run` applies *every* pending migration, not just the one under test,
     /// so a test that seeds only the table it cares about trips over a later
     /// migration altering some other table. These are the pre-existing tables
     /// that later migrations touch, in their shape as of version 15.
-    async fn seed_legacy_tables(conn: &Connection) {
+    async fn seed_legacy_tables(conn: &Conn) {
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS words (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -185,19 +194,16 @@ mod tests {
         .unwrap();
     }
 
-    async fn count(conn: &Connection, sql: &str) -> i64 {
-        let mut rows = conn.query(sql, ()).await.unwrap();
-        rows.next().await.unwrap().unwrap().get(0).unwrap()
+    async fn count(conn: &Conn, sql: &str) -> i64 {
+        conn.query_one(sql, ()).await.unwrap().unwrap().get::<i64>(0).unwrap()
     }
 
-    async fn opt_text(conn: &Connection, sql: &str) -> Option<String> {
-        let mut rows = conn.query(sql, ()).await.unwrap();
-        rows.next().await.unwrap().unwrap().get(0).unwrap()
+    async fn opt_text(conn: &Conn, sql: &str) -> Option<String> {
+        conn.query_one(sql, ()).await.unwrap().and_then(|r| r.get::<String>(0).ok())
     }
 
-    async fn opt_int(conn: &Connection, sql: &str) -> Option<i64> {
-        let mut rows = conn.query(sql, ()).await.unwrap();
-        rows.next().await.unwrap().unwrap().get(0).unwrap()
+    async fn opt_int(conn: &Conn, sql: &str) -> Option<i64> {
+        conn.query_one(sql, ()).await.unwrap().and_then(|r| r.get::<i64>(0).ok())
     }
 
     #[tokio::test]
@@ -234,7 +240,7 @@ mod tests {
         for i in 0..7 {
             conn.execute(
                 "INSERT INTO rss_feeds(title, url) VALUES (?1, ?2)",
-                libsql::params![format!("feed {i}"), format!("https://example.com/{i}")],
+                crate::db::params![format!("feed {i}"), format!("https://example.com/{i}")],
             )
             .await
             .unwrap();
@@ -277,7 +283,6 @@ mod tests {
 
         run(&conn).await.unwrap();
 
-        // extracted_items is fully superseded and dropped.
         let extracted_items_exists = count(
             &conn,
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='extracted_items'",
@@ -285,20 +290,18 @@ mod tests {
         .await;
         assert_eq!(extracted_items_exists, 0);
 
-        // articles gained analysis_markdown, defaulting to '' for existing rows.
         let markdown = opt_text(&conn, "SELECT analysis_markdown FROM articles WHERE id = 1").await;
         assert_eq!(markdown.as_deref(), Some(""));
         conn.execute(
             "UPDATE articles SET analysis_markdown = ?1 WHERE id = 1",
-            libsql::params!["## Words\n- **foo** — 中文"],
+            crate::db::params!["## Words\n- **foo** — 中文"],
         )
         .await
         .unwrap();
 
-        // saved_sentences supports the manual save flow, with article_id set null on delete.
         conn.execute(
             "INSERT INTO saved_sentences (text, zh, note, article_id, article_title) VALUES (?1, ?2, ?3, ?4, ?5)",
-            libsql::params!["A great sentence.", "一句好句子", "note", 1, "Test Article"],
+            crate::db::params!["A great sentence.", "一句好句子", "note", 1, "Test Article"],
         )
         .await
         .unwrap();
@@ -352,7 +355,7 @@ mod tests {
         let conn = memory_conn().await;
         // The whole real initialisation path, not `seed_legacy_tables`: base
         // schema, the tables init_db adds on top, then every migration in order.
-        // This is exactly what a first connect to an empty Turso database runs.
+        // This is exactly what a first connect to an empty database runs.
         crate::db::init_db(&conn).await.unwrap();
         assert_eq!(
             count(&conn, "SELECT COALESCE(MAX(version), 0) FROM schema_migrations").await,
@@ -366,7 +369,6 @@ mod tests {
         );
 
         // init_db already ran them; a second pass must find nothing left to do.
-        // An unstamped migration would replay here and fail.
         run(&conn).await.unwrap();
         assert_eq!(
             count(&conn, "SELECT COUNT(*) FROM schema_migrations").await,
@@ -379,8 +381,6 @@ mod tests {
         let trailing = Migration { version: 7, description: "", sql: "SELECT 1;\n   " };
         assert_eq!(stamped(&trailing), "SELECT 1;\nINSERT INTO schema_migrations (version) VALUES (7);");
 
-        // A body that forgot its final semicolon must still produce valid SQL
-        // rather than gluing two statements together.
         let bare = Migration { version: 8, description: "", sql: "SELECT 1" };
         assert_eq!(stamped(&bare), "SELECT 1;\nINSERT INTO schema_migrations (version) VALUES (8);");
     }

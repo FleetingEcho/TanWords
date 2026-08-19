@@ -8,7 +8,7 @@
 //! target-specific behavior is inherited from [`db::txn_conn`], same as the
 //! merge-based import.
 
-use libsql::{Connection, Value};
+use crate::db::Conn; use crate::db::Value;
 use std::collections::HashSet;
 
 use super::source::open_source;
@@ -56,6 +56,14 @@ pub async fn db_import_overwrite(
     let descriptor = conn.descriptor()?;
     if !descriptor.caps.writable {
         return Err("The current database is read-only and cannot import".into());
+    }
+    // Overwrite copies a sqlite source file's tables verbatim (original ids,
+    // `sqlite_sequence` resets, FTS5 `rebuild` commands). All of that is
+    // sqlite-specific and has no Postgres equivalent — a Postgres target
+    // would need pg_dump/restore semantics, not a row-by-row INSERT. Refuse
+    // rather than silently doing the wrong thing.
+    if descriptor.kind == db::DbKind::Postgres {
+        return Err("Overwrite-import is only supported on a local SQLite target".into());
     }
     // The 4MiB-ish message-size ceiling (see `MAX_SINGLE_ROW_BYTES`) is a
     // property of write-delegation to a remote primary, not of SQLite — a
@@ -122,8 +130,8 @@ pub async fn db_import_overwrite(
 
 async fn run_overwrite(
     app: &AppHandle,
-    source: &Connection,
-    target: &Connection,
+    source: &Conn,
+    target: &Conn,
     delete_order: &[String],
     insert_order: &[String],
     fts_tables: &[String],
@@ -176,7 +184,7 @@ async fn run_overwrite(
 
 // ── Schema introspection (always run against the local source file) ────────
 
-async fn list_real_tables(conn: &Connection) -> Result<Vec<String>, String> {
+async fn list_real_tables(conn: &Conn) -> Result<Vec<String>, String> {
     db::fetch_all(
         conn,
         "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
@@ -189,7 +197,7 @@ async fn list_real_tables(conn: &Connection) -> Result<Vec<String>, String> {
 /// FTS5 virtual tables show up as `type='table'` in `sqlite_master` too, with
 /// their `USING fts5(...)` definition in `sql` — distinguished from ordinary
 /// tables that way.
-async fn list_fts5_tables(conn: &Connection) -> Result<Vec<String>, String> {
+async fn list_fts5_tables(conn: &Conn) -> Result<Vec<String>, String> {
     db::fetch_all(
         conn,
         "SELECT name FROM sqlite_master WHERE type='table' AND sql LIKE '%USING fts5%'",
@@ -204,7 +212,7 @@ async fn list_fts5_tables(conn: &Connection) -> Result<Vec<String>, String> {
 /// nothing referencing it remains), false for a safe insert order (a row can
 /// be inserted once everything it references already exists).
 async fn fk_order(
-    conn: &Connection,
+    conn: &Conn,
     tables: &[String],
     children_first: bool,
 ) -> Result<Vec<String>, String> {
@@ -284,46 +292,112 @@ const MAX_SINGLE_ROW_BYTES: usize = 3 * 1024 * 1024;
 
 fn value_len(v: &Value) -> usize {
     match v {
-        Value::Text(s) => s.len(),
-        Value::Blob(b) => b.len(),
+        Value::String(Some(s)) => s.len(),
+        Value::Bytes(Some(b)) => b.len(),
         _ => 8,
     }
 }
 
 fn describe_value(v: &Value) -> String {
     match v {
-        Value::Integer(i) => i.to_string(),
-        Value::Text(s) => s.chars().take(60).collect(),
-        Value::Real(f) => f.to_string(),
-        Value::Blob(_) => "<blob>".to_string(),
-        Value::Null => "<null>".to_string(),
+        Value::BigInt(Some(i)) => i.to_string(),
+        Value::Int(Some(i)) => i.to_string(),
+        Value::String(Some(s)) => s.chars().take(60).collect(),
+        Value::Double(Some(f)) => f.to_string(),
+        Value::Float(Some(f)) => f.to_string(),
+        Value::Bytes(_) => "<blob>".to_string(),
+        _ => "<null>".to_string(),
+    }
+}
+
+/// Converts a decoded JSON cell back into a bindable SeaORM `Value` for the
+/// copy INSERT. The schema has no BLOB columns (verified against schema.sql),
+/// so the json-representable scalar set is exhaustive here. Numbers split
+/// into integers vs floats so SeaORM binds `BIGINT`/`DOUBLE PRECISION`
+/// correctly on Postgres (a json `1` must not be sent as a float).
+fn json_to_bind(v: &serde_json::Value) -> Value {
+    match v {
+        serde_json::Value::Null => Value::String(None),
+        serde_json::Value::Bool(b) => Value::Bool(Some(*b)),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Value::BigInt(Some(i))
+            } else if let Some(u) = n.as_u64() {
+                Value::BigUnsigned(Some(u))
+            } else if let Some(f) = n.as_f64() {
+                Value::Double(Some(f))
+            } else {
+                Value::String(None)
+            }
+        }
+        serde_json::Value::String(s) => Value::String(Some(s.clone())),
+        // Arrays/objects (json columns) round-trip as their serialized text.
+        other => Value::String(Some(other.to_string())),
     }
 }
 
 async fn copy_table(
-    source: &Connection,
-    target: &Connection,
+    source: &Conn,
+    target: &Conn,
     table: &str,
     is_remote: bool,
     skipped: &mut Vec<String>,
 ) -> Result<i64, String> {
-    let mut rows = source
-        .query(&format!("SELECT * FROM \"{table}\""), ())
+    use sea_orm::FromQueryResult;
+
+    // Read every source row as a JSON object. SeaORM's `JsonValue`
+    // `FromQueryResult` impl probes each column's declared type and decodes
+    // it into the matching json scalar, so this works on both sqlite and
+    // postgres sources without us hand-mapping column types. The schema has
+    // no BLOB columns, so the json-representable set is complete here.
+    let rows = source
+        .query_all(&format!("SELECT * FROM \"{table}\""), ())
         .await
         .map_err(|e| format!("Failed to read {table}: {e}"))?;
 
-    let column_count = rows.column_count();
-    let columns: Vec<String> = (0..column_count)
-        .map(|i| rows.column_name(i).unwrap_or_default().to_string())
-        .collect();
-    let column_list = columns.iter().map(|c| format!("\"{c}\"")).collect::<Vec<_>>().join(", ");
+    let column_list = if rows.is_empty() {
+        // No rows: derive the column list from the empty result's metadata so
+        // the INSERT skeleton still type-checks against the target (though we
+        // won't actually bind anything). `column_names()` on an empty result
+        // is backend-defined, so fall back to a PRAGMA-driven list on sqlite.
+        match source.backend() {
+            sea_orm::DbBackend::Sqlite => {
+                let cols: Vec<String> = db::fetch_all(
+                    source,
+                    "SELECT name FROM pragma_table_info(?) ORDER BY cid",
+                    [table],
+                    |r| r.get::<String>(0),
+                )
+                .await
+                .unwrap_or_default();
+                cols
+            }
+            _ => rows
+                .first()
+                .map(|r| r.column_names())
+                .unwrap_or_default(),
+        }
+    } else {
+        rows[0].column_names()
+    };
+    let column_list = column_list
+        .iter()
+        .map(|c| format!("\"{c}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let column_count = if rows.is_empty() {
+        // Re-derive from the column_list we just built (comma-separated quoted names).
+        column_list.matches('"').count() / 2
+    } else {
+        rows[0].column_names().len()
+    } as i32;
 
     let mut copied = 0i64;
     let mut batch: Vec<Vec<Value>> = Vec::new();
     let mut batch_bytes = 0usize;
 
     async fn flush(
-        target: &Connection,
+        target: &Conn,
         table: &str,
         column_list: &str,
         column_count: i32,
@@ -349,10 +423,16 @@ async fn copy_table(
         Ok(())
     }
 
-    while let Some(row) = rows.next().await.map_err(|e| format!("Failed to read {table}: {e}"))? {
-        let values: Vec<Value> = (0..column_count)
-            .map(|i| row.get_value(i).unwrap_or(Value::Null))
-            .collect();
+    for row in rows {
+        let obj = sea_orm::JsonValue::from_query_result(&row, "")
+            .map_err(|e| format!("Failed to decode row from {table}: {e}"))?;
+        let map = match obj {
+            serde_json::Value::Object(m) => m,
+            _ => return Err(format!("Unexpected row shape from {table}")),
+        };
+        // Bind in column order (map iteration is insertion-ordered in
+        // serde_json, which matches the SELECT order SeaORM used).
+        let values: Vec<Value> = map.iter().map(|(_, v)| json_to_bind(v)).collect();
         let row_bytes: usize = values.iter().map(value_len).sum();
 
         if is_remote && row_bytes > MAX_SINGLE_ROW_BYTES {

@@ -1,4 +1,4 @@
-use libsql::params;
+use crate::db::params;
 use crate::shim::State;
 
 use super::types::{DocumentDetail, DocumentListItem, DocumentListResult};
@@ -84,13 +84,13 @@ pub(super) fn build_doc_where(
 #[crate::shim::command]
 pub async fn db_create_document(conn: State<'_, AppState>) -> Result<i64, String> {
     let db = db::conn(&conn)?;
-    db.execute(
-        "INSERT INTO documents (title, content, content_text, tags) VALUES ('Untitled', '{}', '', '[]')",
+    db::fetch_one(
+        &db,
+        "INSERT INTO documents (title, content, content_text, tags) VALUES ('Untitled', '{}', '', '[]') RETURNING id",
         (),
+        |r| r.get::<i64>(0),
     )
     .await
-    .map_err(|e| e.to_string())?;
-    Ok(db.last_insert_rowid())
 }
 
 #[crate::shim::command]
@@ -106,13 +106,13 @@ pub async fn db_create_document_with_content(
     let db = db::conn(&conn)?;
     let folder = super::folders::normalize_folder(folder.as_deref().unwrap_or(""))?;
     let (task_total, task_done) = super::tasks::count_tasks(&content);
-    db.execute(
-        "INSERT INTO documents (title,content,content_text,tags,pinned,word_count,folder,task_total,task_done) VALUES (?1,?2,?3,?4,0,?5,?6,?7,?8)",
+    let id = db::fetch_one(
+        &db,
+        "INSERT INTO documents (title,content,content_text,tags,pinned,word_count,folder,task_total,task_done) VALUES (?1,?2,?3,?4,0,?5,?6,?7,?8) RETURNING id",
         params![title, content, content_text, tags, word_count, folder.clone(), task_total, task_done],
+        |r| r.get::<i64>(0),
     )
-    .await
-    .map_err(|e| e.to_string())?;
-    let id = db.last_insert_rowid();
+    .await?;
     // Importing into a folder is also how that folder comes into existence, so
     // record it — otherwise deleting the last document would drop the folder.
     if !folder.is_empty() {
@@ -341,7 +341,7 @@ pub async fn db_update_document_metadata(
 ) -> Result<(), String> {
     let status = status.map(|value| normalize_status(&value)).transpose()?;
     let mut assignments = Vec::with_capacity(5);
-    let mut values: Vec<libsql::Value> = Vec::with_capacity(5);
+    let mut values: Vec<crate::db::Value> = Vec::with_capacity(5);
 
     if let Some(title) = title {
         values.push(title.into());

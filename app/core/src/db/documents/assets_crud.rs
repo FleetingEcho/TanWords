@@ -1,5 +1,5 @@
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use libsql::params;
+use crate::db::params;
 use crate::shim::State;
 
 use super::types::{DocumentAsset, DocumentAssetSummary};

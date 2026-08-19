@@ -1,4 +1,4 @@
-use libsql::params;
+use crate::db::params;
 use crate::shim::State;
 
 use crate::db;
@@ -29,8 +29,9 @@ pub async fn db_duplicate_document(id: i64, conn: State<'_, AppState>) -> Result
         let mut content = decrypt_text(&key, &stored_content)?;
         let content_text = decrypt_text(&key, &stored_text)?;
         let (task_total, task_done) = super::tasks::count_tasks(&content);
-        db.execute(
-            "INSERT INTO documents(title,content,content_text,tags,word_count,task_total,task_done,status) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
+        let new_document_id = db::fetch_one(
+            &db,
+            "INSERT INTO documents(title,content,content_text,tags,word_count,task_total,task_done,status) VALUES(?1,?2,?3,?4,?5,?6,?7,?8) RETURNING id",
             params![
                 format!("{title} (copy)"),
                 content.clone(),
@@ -41,8 +42,9 @@ pub async fn db_duplicate_document(id: i64, conn: State<'_, AppState>) -> Result
                 task_done,
                 status
             ],
-        ).await.map_err(|e| e.to_string())?;
-        let new_document_id = db.last_insert_rowid();
+            |r| r.get::<i64>(0),
+        )
+        .await?;
         // The copy belongs beside the original, not at the library root.
         db.execute(
             "UPDATE documents SET folder=(SELECT folder FROM documents WHERE id=?1) WHERE id=?2",
@@ -84,15 +86,15 @@ pub async fn db_duplicate_document(id: i64, conn: State<'_, AppState>) -> Result
         .map_err(|e| e.to_string())?;
         return Ok(new_document_id);
     }
-    db.execute(
+    let new_document_id = db::fetch_one(
+        &db,
         "INSERT INTO documents (title, content, content_text, tags, word_count, folder, task_total, task_done, status)
          SELECT title || ' (copy)', content, content_text, tags, word_count, folder, task_total, task_done, status
-         FROM documents WHERE id = ?1",
+         FROM documents WHERE id = ?1 RETURNING id",
         params![id],
+        |r| r.get::<i64>(0),
     )
-    .await
-    .map_err(|e| e.to_string())?;
-    let new_document_id = db.last_insert_rowid();
+    .await?;
     let mut content = db::fetch_one(
         &db,
         "SELECT content FROM documents WHERE id = ?1",

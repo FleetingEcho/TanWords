@@ -1,4 +1,4 @@
-use libsql::{params, Value};
+use crate::db::params; use crate::db::Value;
 use serde::Serialize;
 use crate::shim::State;
 
@@ -31,7 +31,7 @@ pub struct ChatSessionDetail {
     pub updated_at: String,
 }
 
-fn map_item(row: &libsql::Row) -> libsql::Result<ChatSessionItem> {
+fn map_item(row: &crate::db::Row) -> crate::db::DbResult<ChatSessionItem> {
     Ok(ChatSessionItem {
         id: row.get(0)?,
         title: row.get(1)?,

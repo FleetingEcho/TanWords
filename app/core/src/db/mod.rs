@@ -1,26 +1,31 @@
-use libsql::{Connection, Result as SqlResult};
+use sea_orm::DbErr;
+
 use crate::shim::State;
 use std::future::Future;
 use std::time::Duration;
 
 use crate::AppState;
 
+// `Conn` is brought into scope by the `pub use rows::{Conn, …}` re-export below;
+// a separate `use` here would collide with it (E0252).
+
 // ── Helper ──────────────────────────────────────────────────────────────────
 
 /// The active DB connection, cloned out from under the state mutex.
 ///
-/// Returns an owned handle rather than a guard on purpose: commands `.await`
+/// Returns an owned `Conn` rather than a guard on purpose: commands `.await`
 /// on it, and holding a lock across a suspend point is both a deadlock risk
-/// and (for `std::sync::MutexGuard`) not `Send`. `libsql::Connection` is an
-/// Arc handle, so cloning is cheap and every clone talks to the same database.
-pub fn conn(state: &State<'_, AppState>) -> Result<Connection, String> {
+/// and (for `std::sync::MutexGuard`) not `Send`. The `Conn` wraps an
+/// `Arc<Pool>`, so cloning is cheap and every clone talks to the same database.
+pub fn conn(state: &State<'_, AppState>) -> Result<Conn, String> {
     Ok(state.db.lock().map_err(|e| e.to_string())?.conn())
 }
 
-/// Turso embedded-replica writes are forwarded to the primary. If that network
-/// request becomes half-open, libsql may otherwise leave the calling command
-/// pending forever — which in turn leaves editor autosave stuck on "Saving".
-const TURSO_WRITE_TIMEOUT: Duration = Duration::from_secs(10);
+/// Network-backed profiles (the retired Turso replica, and now Postgres)
+/// forward writes over a connection that can go half-open. Bound it so a
+/// stuck write surfaces as an error instead of leaving editor autosave on
+/// "Saving" forever. Local SQLite has no network hop and stays unbounded.
+const REMOTE_WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 
 async fn await_write_for_kind<T>(
     kind: connection::DbKind,
@@ -32,40 +37,29 @@ async fn await_write_for_kind<T>(
     }
     tokio::time::timeout(timeout, future)
         .await
-        .map_err(|_| format!("Turso database write timed out after {timeout:?}"))?
+        .map_err(|_| format!("Remote database write timed out after {timeout:?}"))?
 }
 
 /// Await a write using the active profile's policy. Local SQLite remains
-/// unbounded because it has no network hop; only Turso needs the deadline.
+/// unbounded because it has no network hop; Postgres gets the deadline.
 pub async fn await_write<T>(
     state: &State<'_, AppState>,
     future: impl Future<Output = Result<T, String>>,
 ) -> Result<T, String> {
     let kind = state.db.lock().map_err(|e| e.to_string())?.kind();
-    await_write_for_kind(kind, TURSO_WRITE_TIMEOUT, future).await
+    await_write_for_kind(kind, REMOTE_WRITE_TIMEOUT, future).await
 }
 
-/// A dedicated connection for commands that open an interactive transaction.
+/// A connection for commands that open an interactive transaction.
 ///
-/// The shared handle above is a single Hrana stream on a Turso profile. A
-/// transaction opened on it pins the stream into Txn state, and every command
-/// running concurrently on a clone of it then fails — "connection has reached
-/// an invalid state, started with Txn" / "Stream already in use". Giving each
-/// transaction its own connection keeps the shared stream in autocommit.
-/// Local profiles keep the shared connection: a single local handle serializes
-/// fine (and a second connection to a `:memory:` database would be a different,
-/// empty database entirely). Only Turso gets a fresh stream.
-pub async fn txn_conn(state: &State<'_, AppState>) -> Result<Connection, String> {
-    let (database, kind) = {
-        let guard = state.db.lock().map_err(|e| e.to_string())?;
-        if guard.kind() == connection::DbKind::Local {
-            return Ok(guard.conn());
-        }
-        (guard.database(), guard.kind())
-    };
-    let conn = database.connect().map_err(|e| e.to_string())?;
-    connection::apply_pragmas(&conn, kind).await;
-    Ok(conn)
+/// Under SeaORM the pool already hands each `begin()` its own dedicated
+/// connection, so a transaction no longer needs a separately-opened handle the
+/// way the libsql embedded-replica Hrana stream did. This returns a plain clone
+/// of the pool — `Conn::transaction()` then takes a connection from it for the
+/// transaction. `:memory:` databases are opened with a single-connection pool
+/// (see `connection::open`), so this clone is the same in-memory DB.
+pub async fn txn_conn(state: &State<'_, AppState>) -> Result<Conn, String> {
+    Ok(state.db.lock().map_err(|e| e.to_string())?.conn())
 }
 
 // ── Sub-modules ────────────────────────────────────────────────────────────
@@ -75,7 +69,12 @@ pub mod import;
 pub mod rows;
 pub use connection::{DbCaps, DbDescriptor, DbKind, DbProfile};
 pub use import::*;
-pub use rows::{fetch_all, fetch_one, fetch_optional, scalar_i64};
+// `params` is a crate-private `macro_rules!`, so it can only be re-exported
+// `params!` is crate-internal in practice (the web server goes through
+// `tanwords_lib`'s command functions); the backend-parity integration test
+// builds `Vec<Value>` directly instead.
+pub use rows::{Conn, DbResult, Row, Value, fetch_all, fetch_one, fetch_optional, scalar_i64};
+pub(crate) use rows::params;
 
 pub mod settings;
 pub mod words_types;
@@ -121,23 +120,23 @@ mod write_timeout_tests {
     use std::time::Duration;
 
     #[tokio::test]
-    async fn stalled_turso_write_returns_an_error() {
+    async fn stalled_remote_write_returns_an_error() {
         let error = await_write_for_kind(
-            DbKind::Turso,
+            DbKind::Postgres,
             Duration::from_millis(20),
             std::future::pending::<Result<(), String>>(),
         )
         .await
         .expect_err("a stalled remote write must time out");
 
-        assert_eq!(error, "Turso database write timed out after 20ms");
+        assert_eq!(error, "Remote database write timed out after 20ms");
     }
 
     #[tokio::test]
     async fn completed_local_write_passes_through() {
         let value = await_write_for_kind(DbKind::Local, Duration::ZERO, async { Ok(42) })
             .await
-            .expect("local writes should not use the Turso deadline");
+            .expect("local writes should not use the remote deadline");
 
         assert_eq!(value, 42);
     }
@@ -150,19 +149,24 @@ mod write_timeout_tests {
 /// query on a database that already has the schema, instead of a CREATE first.
 const SCHEMA_FINGERPRINT_KEY: &str = "__schema_fingerprint";
 
-/// Identifies "the schema `init_db` produces, as this build writes it".
-///
-/// Hashed from the source rather than a hand-maintained revision number on
-/// purpose. The whole point of the fast path below is to skip the idempotent
-/// pass entirely, and a statement added to `init_db` without a matching bump
-/// would then silently never reach databases that already exist — a column
-/// missing only on upgraded installs, which is the worst kind of bug to find.
-/// A hash cannot be forgotten. It errs the other way instead: any edit to this
-/// file re-runs the pass once, on one launch, for one user's own database.
-fn schema_fingerprint() -> String {
+/// Identifies "the schema `init_db` produces, as this build writes it". Hashed
+/// from the schema source rather than a hand-maintained revision number, so the
+/// fast path below can skip the idempotent pass entirely without risking a
+/// statement added later silently never reaching databases that already exist.
+/// The hash includes the backend's own schema file, so a Postgres DDL change
+/// re-runs the Postgres pass exactly when it should.
+fn schema_fingerprint(kind: connection::DbKind) -> String {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
-    hasher.update(include_str!("../../sql/schema.sql"));
+    match kind {
+        connection::DbKind::Local => {
+            hasher.update(include_str!("../../sql/schema.sql"));
+        }
+        connection::DbKind::Postgres => {
+            hasher.update(include_str!("../../sql/schema_postgres.sql"));
+        }
+        connection::DbKind::Turso => {}
+    }
     hasher.update(include_str!("mod.rs"));
     hasher.update(migrations::latest_version().to_le_bytes());
     format!("{:x}", hasher.finalize())
@@ -171,29 +175,38 @@ fn schema_fingerprint() -> String {
 /// The fingerprint this database was last initialised to, if any. A fresh
 /// database has no `user_settings` table yet and the query fails — which is
 /// the same answer as a stale one: run everything.
-async fn stored_fingerprint(conn: &Connection) -> Option<String> {
-    let mut rows = conn
-        .query(
-            "SELECT value FROM user_settings WHERE key = ?1",
-            libsql::params![SCHEMA_FINGERPRINT_KEY],
-        )
-        .await
-        .ok()?;
-    rows.next().await.ok()??.get::<String>(0).ok()
+async fn stored_fingerprint(conn: &Conn) -> Option<String> {
+    conn.query_one(
+        "SELECT value FROM user_settings WHERE key = ?1",
+        params![SCHEMA_FINGERPRINT_KEY],
+    )
+    .await
+    .ok()
+    .flatten()
+    .and_then(|row| row.get::<String>(0).ok())
 }
 
-/// PRAGMAs are applied by `connection::open` before this runs — they are
-/// per-connection and partly profile-dependent, unlike the schema below.
-///
-/// Everything here is idempotent, and on a local file re-running it costs
-/// nothing measurable. On a Turso profile it is the single most expensive
-/// thing the app does: writes go to the primary, so each `CREATE TABLE IF NOT
-/// EXISTS`, each expected-to-fail `ALTER`, and each `INSERT OR IGNORE` is its
-/// own network round-trip — about forty of them, ~7.4s against a us-west-2
-/// primary, on every single launch. Hence the fingerprint: one query answers
-/// "this database already has exactly this schema", and the pass is skipped.
-pub async fn init_db(conn: &Connection) -> SqlResult<()> {
-    let fingerprint = schema_fingerprint();
+/// Brings the schema up to date for whichever backend `conn` points at. The
+/// SQLite path is idempotent and fingerprint-gated (re-running it on a Turso
+/// primary was the single most expensive thing the app did, and the fingerprint
+/// skip stays valuable for cold local starts). The Postgres path runs one clean
+/// current-schema DDL — the SQLite-era migration history is not replayed against
+/// a fresh Postgres database (see the migration plan).
+pub async fn init_db(conn: &Conn) -> Result<(), DbErr> {
+    let kind = conn.kind();
+    match kind {
+        connection::DbKind::Local => init_db_sqlite(conn).await,
+        connection::DbKind::Postgres => init_db_postgres(conn).await,
+        connection::DbKind::Turso => Err(DbErr::Custom(
+            "init_db called on a Turso profile, which is no longer supported".to_string(),
+        )),
+    }
+}
+
+/// SQLite schema initialization — the existing hand-rolled runner, unchanged in
+/// shape, just routed through the new `Conn`. Idempotent and fingerprint-gated.
+async fn init_db_sqlite(conn: &Conn) -> Result<(), DbErr> {
+    let fingerprint = schema_fingerprint(connection::DbKind::Local);
     if stored_fingerprint(conn).await.as_deref() == Some(fingerprint.as_str()) {
         return Ok(());
     }
@@ -201,8 +214,12 @@ pub async fn init_db(conn: &Connection) -> SqlResult<()> {
     conn.execute_batch(include_str!("../../sql/schema.sql")).await?;
 
     // Migrations (idempotent)
-    let _ = conn.execute("ALTER TABLE words ADD COLUMN enrichment_json TEXT", ()).await;
-    let _ = conn.execute("ALTER TABLE words ADD COLUMN user_notes TEXT DEFAULT ''", ()).await;
+    let _ = conn
+        .execute("ALTER TABLE words ADD COLUMN enrichment_json TEXT", ())
+        .await;
+    let _ = conn
+        .execute("ALTER TABLE words ADD COLUMN user_notes TEXT DEFAULT ''", ())
+        .await;
     let _ = conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS word_chats (
             word_id INTEGER PRIMARY KEY,
@@ -260,11 +277,6 @@ pub async fn init_db(conn: &Connection) -> SqlResult<()> {
     ).await;
 
     // Files uploaded from the asset manager rather than from inside a document.
-    // A separate table on purpose: `document_assets.document_id` is NOT NULL
-    // with a cascading foreign key, and — more importantly — anything in that
-    // table that a document body stops referencing is deleted on the next save
-    // (db_prune_document_assets) or by "clean orphans". Uploads are the user's
-    // to keep, so they live where neither of those can reach them.
     let _ = conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS standalone_assets (
             id          TEXT PRIMARY KEY,
@@ -291,23 +303,12 @@ pub async fn init_db(conn: &Connection) -> SqlResult<()> {
         .execute("ALTER TABLE standalone_assets ADD COLUMN remote_key TEXT", ())
         .await;
 
-    // R2 bucket the uploads go to. In the database rather than app_config.json
-    // because the web server gives every user their own database — that is
-    // what makes this per-user for free, instead of one bucket shared by
-    // everyone who can log in.
-    //
-    // The whole configuration is sealed into one column, not just the secret:
-    // an account id and access key id are half of a working credential and
-    // have no business sitting in plaintext in a file that a Turso profile
-    // replicates to the cloud. Sealing the record as a unit also means a field
-    // added later cannot be forgotten.
     let _ = conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS r2_config (
             id         INTEGER PRIMARY KEY CHECK (id = 1),
             config_enc TEXT NOT NULL
         );"
     ).await;
-    // Upgrade path for the short-lived column-per-field shape.
     let _ = conn.execute("ALTER TABLE r2_config ADD COLUMN config_enc TEXT", ()).await;
     let _ = conn.execute(
         "ALTER TABLE documents ADD COLUMN protected INTEGER NOT NULL DEFAULT 0",
@@ -331,9 +332,7 @@ pub async fn init_db(conn: &Connection) -> SqlResult<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_ai_chat_sessions_updated ON ai_chat_sessions(updated_at DESC);"
     ).await;
-    // Archived conversations stay searchable but fold out of the main list.
     let _ = conn.execute("ALTER TABLE ai_chat_sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0", ()).await;
-    // Pinned conversations sort above the rest of their shelf.
     let _ = conn.execute("ALTER TABLE ai_chat_sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0", ()).await;
 
     // Reading lessons: articles + extracted items + known words
@@ -367,17 +366,7 @@ pub async fn init_db(conn: &Connection) -> SqlResult<()> {
         );"
     ).await;
 
-    // Calendar: color categories ("calendars" in schedule-x terminology) and the
-    // events themselves. Two tables rather than one so a calendar can be hidden,
-    // renamed or recoloured independently of its events, and so an event carries
-    // only a `calendar_id` foreign key instead of a duplicated color string.
-    //
-    // Times are stored as Schedule-X's wire format verbatim (`YYYY-MM-DD` for
-    // all-day events, `YYYY-MM-DD HH:mm` for timed ones) so the renderer round-
-    // trips them without a conversion layer; the boundary between "date" and
-    // "datetime" is `all_day`, not a format sniff. `calendar_id` is a TEXT
-    // foreign key into calendar_calendars.id (a uuid string the frontend mints,
-    // matching schedule-x's Record<string, CalendarType> key shape).
+    // Calendar
     let _ = conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS calendar_calendars (
             id         TEXT PRIMARY KEY,
@@ -402,16 +391,9 @@ pub async fn init_db(conn: &Connection) -> SqlResult<()> {
         CREATE INDEX IF NOT EXISTS idx_calendar_events_calendar
             ON calendar_events(calendar_id);"
     ).await;
-    // Per-event colour override, added after the initial release: NULL means
-    // "inherit the parent calendar's colour" (the original, only behaviour);
-    // a token here (one of calendarColors.ts's CALENDAR_COLOR_TOKENS) wins
-    // over the calendar's colour for that one event.
     let _ = conn.execute("ALTER TABLE calendar_events ADD COLUMN color_name TEXT", ()).await;
 
-    // Seed two default calendars on a fresh install (and on any install whose
-    // fingerprint just changed to re-run this pass): a "Personal" calendar in
-    // blue and a "Work" calendar in green. INSERT OR IGNORE keeps them from
-    // duplicating on every re-run and respects any a user already added by id.
+    // Seed two default calendars on a fresh install.
     let default_calendars = vec![
         ("default", "Personal", "blue", 0),
         ("work", "Work", "green", 1),
@@ -420,7 +402,7 @@ pub async fn init_db(conn: &Connection) -> SqlResult<()> {
         conn.execute(
             "INSERT OR IGNORE INTO calendar_calendars (id, name, color_name, sort_order)
              VALUES (?1, ?2, ?3, ?4)",
-            libsql::params![id, name, color_name, sort_order],
+            params![id, name, color_name, sort_order],
         )
         .await?;
     }
@@ -443,7 +425,7 @@ pub async fn init_db(conn: &Connection) -> SqlResult<()> {
     for (key, value) in settings {
         conn.execute(
             "INSERT OR IGNORE INTO user_settings (key, value) VALUES (?1, ?2)",
-            libsql::params![key, value],
+            params![key, value],
         )
         .await?;
     }
@@ -459,7 +441,68 @@ pub async fn init_db(conn: &Connection) -> SqlResult<()> {
     // written for a pass that failed partway.
     conn.execute(
         "INSERT OR REPLACE INTO user_settings (key, value) VALUES (?1, ?2)",
-        libsql::params![SCHEMA_FINGERPRINT_KEY, fingerprint],
+        params![SCHEMA_FINGERPRINT_KEY, fingerprint],
+    )
+    .await?;
+
+    Ok(())
+}
+
+/// Postgres schema initialization. One clean current-schema DDL — the
+/// SQLite-era migration history is not replayed against a fresh Postgres
+/// database. Fingerprint-gated the same way as the SQLite path so a repeat
+/// open skips the pass. See `sql/schema_postgres.sql` for the DDL and the
+/// backend-specific full-text search (tsvector + GIN + triggers, mirroring the
+/// FTS5 design the SQLite path uses).
+async fn init_db_postgres(conn: &Conn) -> Result<(), DbErr> {
+    let fingerprint = schema_fingerprint(connection::DbKind::Postgres);
+    if stored_fingerprint(conn).await.as_deref() == Some(fingerprint.as_str()) {
+        return Ok(());
+    }
+
+    conn.execute_batch(include_str!("../../sql/schema_postgres.sql"))
+        .await?;
+
+    // Seed the same default calendars / settings the SQLite path does, using
+    // portable SQL (ON CONFLICT DO NOTHING; CURRENT_TIMESTAMP). These run on
+    // every fresh Postgres database; the fingerprint skips them next time.
+    let default_calendars = vec![
+        ("default", "Personal", "blue", 0),
+        ("work", "Work", "green", 1),
+    ];
+    for (id, name, color_name, sort_order) in default_calendars {
+        conn.execute(
+            "INSERT INTO calendar_calendars (id, name, color_name, sort_order)
+             VALUES (?1, ?2, ?3, ?4) ON CONFLICT DO NOTHING",
+            params![id, name, color_name, sort_order],
+        )
+        .await?;
+    }
+
+    let settings = vec![
+        ("theme", r#""system""#),
+        ("hotkey", r#""CmdOrCtrl+Shift+T""#),
+        ("tts_voice", r#""en_US-lessac-high""#),
+        ("default_source_lang", r#""auto""#),
+        ("default_target_lang", r#""zh""#),
+        ("default_ai_provider", r#""openai""#),
+        ("quiz_reminder", r#""weekly""#),
+        ("ui_language", r#""en""#),
+        ("latest_version", r#""0.1.0""#),
+        ("target_level", r#""C1""#),
+        ("daily_goal", "10"),
+    ];
+    for (key, value) in settings {
+        conn.execute(
+            "INSERT INTO user_settings (key, value) VALUES (?1, ?2) ON CONFLICT DO NOTHING",
+            params![key, value],
+        )
+        .await?;
+    }
+
+    conn.execute(
+        "INSERT INTO user_settings (key, value) VALUES (?1, ?2) ON CONFLICT DO NOTHING",
+        params![SCHEMA_FINGERPRINT_KEY, fingerprint],
     )
     .await?;
 
@@ -470,45 +513,41 @@ pub async fn init_db(conn: &Connection) -> SqlResult<()> {
 mod init_db_tests {
     use super::*;
 
-    async fn memory_conn() -> Connection {
-        libsql::Builder::new_local(":memory:")
-            .build()
-            .await
-            .unwrap()
-            .connect()
-            .unwrap()
+    async fn memory_conn() -> Conn {
+        // Blank in-memory DB, no `init_db` pass — the tests call `init_db`
+        // themselves (some assert on the *absence* of a fingerprint before
+        // init). Going through `open_memory()` would pre-stamp the schema.
+        use sea_orm::ConnectionTrait;
+        let mut opts = sea_orm::ConnectOptions::new("sqlite::memory:".to_string());
+        opts.max_connections(1).min_connections(1);
+        let db = sea_orm::Database::connect(opts).await.unwrap();
+        let _ = db.execute_unprepared("PRAGMA foreign_keys=ON;").await;
+        Conn::new_db(db, connection::DbKind::Local)
     }
 
-    async fn table_exists(conn: &Connection, name: &str) -> bool {
-        let mut rows = conn
-            .query(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1",
-                libsql::params![name],
-            )
-            .await
-            .unwrap();
-        rows.next().await.unwrap().is_some()
+    async fn table_exists(conn: &Conn, name: &str) -> bool {
+        conn.query_one(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1",
+            params![name],
+        )
+        .await
+        .unwrap()
+        .is_some()
     }
 
     /// The whole point of the fingerprint: a second launch against a database
-    /// this build already initialised must not re-issue the schema pass. On a
-    /// Turso profile every one of those statements is a network round-trip, so
-    /// "did it run again" is the difference between 7 seconds and none.
+    /// this build already initialised must not re-issue the schema pass.
     #[tokio::test]
     async fn second_run_skips_the_schema_pass() {
         let conn = memory_conn().await;
         init_db(&conn).await.unwrap();
 
-        // Something init_db creates, removed behind its back. If the pass runs
-        // again it comes back; if the fingerprint short-circuits, it stays gone.
         conn.execute_batch("DROP TABLE word_chats;").await.unwrap();
         init_db(&conn).await.unwrap();
 
         assert!(!table_exists(&conn, "word_chats").await);
     }
 
-    /// ...and the short-circuit has to be keyed to *this* build's schema, so an
-    /// upgraded app still applies what it added.
     #[tokio::test]
     async fn a_different_fingerprint_runs_the_pass_again() {
         let conn = memory_conn().await;
@@ -517,7 +556,7 @@ mod init_db_tests {
 
         conn.execute(
             "UPDATE user_settings SET value = 'from-an-older-build' WHERE key = ?1",
-            libsql::params![SCHEMA_FINGERPRINT_KEY],
+            params![SCHEMA_FINGERPRINT_KEY],
         )
         .await
         .unwrap();
@@ -526,18 +565,15 @@ mod init_db_tests {
         assert!(table_exists(&conn, "word_chats").await);
     }
 
-    /// A failed pass must not leave a stamp behind claiming the schema is
-    /// current — the next launch would skip straight past the missing tables.
     #[tokio::test]
     async fn stamps_only_after_a_complete_pass() {
         let conn = memory_conn().await;
         init_db(&conn).await.unwrap();
         assert_eq!(
             stored_fingerprint(&conn).await.as_deref(),
-            Some(schema_fingerprint().as_str())
+            Some(schema_fingerprint(connection::DbKind::Local).as_str())
         );
 
-        // A database that has never been initialised has nothing to report.
         let fresh = memory_conn().await;
         assert!(stored_fingerprint(&fresh).await.is_none());
     }

@@ -5,7 +5,7 @@ use super::TanWordsMcp;
 use crate::db;
 use crate::mcp::types::{json_text, AddArticle, AddArticleComment, GetArticle, ListArticles};
 
-fn article_row(row: &libsql::Row) -> libsql::Result<Value> {
+fn article_row(row: &crate::db::Row) -> crate::db::DbResult<Value> {
     Ok(json!({
         "id": row.get::<i64>(0)?,
         "title": row.get::<String>(1)?,
@@ -60,7 +60,7 @@ impl TanWordsMcp {
                          FROM reading_articles_fts f JOIN reading_articles a ON a.id=f.rowid
                          WHERE reading_articles_fts MATCH ?1
                          ORDER BY bm25(reading_articles_fts) LIMIT ?2",
-                        libsql::params![terms, limit],
+                        crate::db::params![terms, limit],
                         article_row,
                     )
                     .await?
@@ -72,7 +72,7 @@ impl TanWordsMcp {
                                 (SELECT COUNT(*) FROM reading_article_comments c WHERE c.article_id=a.id),
                                 ''
                          FROM reading_articles a ORDER BY a.last_read_at DESC LIMIT ?1",
-                        libsql::params![limit],
+                        crate::db::params![limit],
                         article_row,
                     )
                     .await?

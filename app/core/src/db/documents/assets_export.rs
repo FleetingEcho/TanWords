@@ -1,4 +1,4 @@
-use libsql::params;
+use crate::db::params;
 use std::io::Write;
 use crate::shim::State;
 
@@ -51,7 +51,7 @@ fn safe_export_name(name: &str, id: &str) -> String {
 }
 
 async fn export_asset_rows(
-    database: &libsql::Connection,
+    database: &crate::db::Conn,
     ids: &[String],
     privacy: &document_privacy::DocumentPrivacyState,
 ) -> Result<Vec<(String, String, Vec<u8>)>, String> {

@@ -177,18 +177,12 @@ pub fn state_conn_provider(app: crate::shim::AppHandle) -> ConnProvider {
         let state = app
             .try_state::<crate::AppState>()
             .ok_or_else(|| "database is not ready".to_string())?;
-        // On Turso, a *fresh* connection per request rather than a clone of
-        // the app's shared handle: a clone is the same Hrana stream, and MCP
-        // requests (including add_words' transaction) running concurrently
-        // with UI commands on one stream fail with "Stream already in use".
-        // Local profiles keep the shared handle — one local connection
-        // serializes fine, and `:memory:` must not be reopened.
+        // SeaORM's `Conn` is pool-backed: `conn()` clones the pool, and each
+        // query checks out its own connection, so concurrent MCP requests and
+        // UI commands don't share a stream the way the old single libsql
+        // handle did. The Turso-specific "fresh connection per request" path
+        // is therefore obsolete — one cloned pool handle serves every kind.
         let guard = state.db.lock().map_err(|e| e.to_string())?;
-        if guard.kind() == crate::db::DbKind::Local {
-            return Ok(guard.conn());
-        }
-        let database = guard.database();
-        drop(guard);
-        database.connect().map_err(|e| e.to_string())
+        Ok(guard.conn())
     })
 }

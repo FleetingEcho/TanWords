@@ -1,4 +1,4 @@
-use libsql::params;
+use crate::db::params;
 use rmcp::{handler::server::wrapper::Parameters, tool, tool_router};
 use serde_json::{json, Value};
 
@@ -71,7 +71,7 @@ impl TanWordsMcp {
     }
 }
 
-fn map_entry(row: &libsql::Row) -> libsql::Result<Value> {
+fn map_entry(row: &crate::db::Row) -> crate::db::DbResult<Value> {
     Ok(json!({
         "id": row.get::<i64>(0)?,
         "feedId": row.get::<i64>(1)?,

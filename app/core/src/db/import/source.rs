@@ -1,4 +1,5 @@
-use libsql::Connection;
+use crate::db::connection::DbKind;
+use crate::db::Conn;
 
 use crate::db;
 
@@ -7,16 +8,19 @@ use crate::db;
 /// Opens the file the user picked, read-only. Read-only both because we never
 /// modify their source and because it means a half-written or in-use file can
 /// still be read rather than being migrated on the spot.
-pub(super) async fn open_source(path: &str) -> Result<Connection, String> {
+pub(super) async fn open_source(path: &str) -> Result<Conn, String> {
     if !std::path::Path::new(path).exists() {
         return Err(format!("File not found: {path}"));
     }
-    let db = libsql::Builder::new_local(path)
-        .flags(libsql::OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .build()
+    // `mode=ro` opens the file read-only (sqlx-sqlite honours it as
+    // SQLITE_OPEN_READONLY). A single-connection pool is plenty for a one-off
+    // import scan and avoids the N-empty-DBs pitfall on in-memory fixtures.
+    let mut opts = sea_orm::ConnectOptions::new(format!("sqlite://{path}?mode=ro"));
+    opts.max_connections(1);
+    let db = sea_orm::Database::connect(opts)
         .await
         .map_err(|e| format!("Failed to open database file: {e}"))?;
-    let conn = db.connect().map_err(|e| e.to_string())?;
+    let conn = Conn::new_db(db, DbKind::Local);
     // Anything without a words table isn't a TanWords database.
     db::scalar_i64(
         &conn,
@@ -32,7 +36,7 @@ pub(super) async fn open_source(path: &str) -> Result<Connection, String> {
 
 /// `true` when the source has this table at all — older databases legitimately
 /// don't, and a missing table should mean "nothing to import", not an error.
-pub(super) async fn has_table(conn: &Connection, table: &str) -> bool {
+pub(super) async fn has_table(conn: &Conn, table: &str) -> bool {
     db::scalar_i64(
         conn,
         "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
@@ -70,7 +74,7 @@ pub(super) struct SourceWord {
     pub srs: Option<(i64, f64, String)>,
 }
 
-pub(super) async fn read_words(conn: &Connection) -> Result<Vec<SourceWord>, String> {
+pub(super) async fn read_words(conn: &Conn) -> Result<Vec<SourceWord>, String> {
     let rows: Vec<(i64, String, Option<String>, Option<String>, String, Option<String>)> =
         db::fetch_all(
             conn,
@@ -125,7 +129,7 @@ pub(super) async fn read_words(conn: &Connection) -> Result<Vec<SourceWord>, Str
     Ok(out)
 }
 
-pub(super) async fn word_summary(conn: &Connection, key: &str) -> String {
+pub(super) async fn word_summary(conn: &Conn, key: &str) -> String {
     db::fetch_optional(
         conn,
         "SELECT w.word, COALESCE((SELECT zh FROM word_definitions d WHERE d.word_id = w.id ORDER BY sort_order LIMIT 1), ''),

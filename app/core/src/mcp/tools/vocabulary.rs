@@ -1,4 +1,4 @@
-use libsql::params;
+use crate::db::params;
 use rmcp::{handler::server::wrapper::Parameters, tool, tool_router};
 use serde_json::{json, Value};
 
@@ -187,10 +187,13 @@ impl TanWordsMcp {
                 }
                 let tags = serde_json::to_string(&tag.iter().collect::<Vec<_>>())
                     .unwrap_or_else(|_| "[]".into());
-                tx.execute("INSERT INTO words(word,word_type,level,word_freq,source,tags) VALUES(?1,?2,?3,1,'mcp',?4)",params![normalized.clone(),item.word_type,item.level,tags])
-                    .await
-                    .map_err(|e|e.to_string())?;
-                let id = tx.last_insert_rowid();
+                let id = crate::db::fetch_one(
+                    &tx,
+                    "INSERT INTO words(word,word_type,level,word_freq,source,tags) VALUES(?1,?2,?3,1,'mcp',?4) RETURNING id",
+                    params![normalized.clone(), item.word_type, item.level, tags],
+                    |r| r.get::<i64>(0),
+                )
+                .await?;
                 tx.execute("INSERT INTO word_definitions(word_id,pos,zh,example_en,sort_order) VALUES(?1,'other',?2,?3,0)",params![id,item.zh,item.context])
                     .await
                     .map_err(|e|e.to_string())?;

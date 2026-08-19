@@ -1,4 +1,4 @@
-use libsql::params;
+use crate::db::params;
 use crate::shim::State;
 
 use crate::db;
@@ -17,26 +17,32 @@ pub async fn db_add_word(
 ) -> Result<AddWordResult, String> {
     let db = db::conn(&conn)?;
 
-    let inserted = db
-        .execute(
-            "INSERT OR IGNORE INTO words (word, word_type, level, word_freq, source) VALUES (?1, ?2, ?3, 1, 'manual')",
-            params![word.clone(), word_type, level],
-        )
-        .await
-        .map_err(|e| e.to_string())?;
+    // `INSERT … ON CONFLICT(word) DO NOTHING RETURNING id` is the portable
+    // replacement for libsql's `INSERT OR IGNORE` + `last_insert_rowid()`: it
+    // returns the new id on insert and no row on a (word) conflict. Both
+    // SQLite ≥3.35 and Postgres support this exact shape.
+    let inserted_id = db::fetch_optional(
+        &db,
+        "INSERT INTO words (word, word_type, level, word_freq, source) VALUES (?1, ?2, ?3, 1, 'manual')
+         ON CONFLICT(word) DO NOTHING RETURNING id",
+        params![word.clone(), word_type, level],
+        |r| r.get::<i64>(0),
+    )
+    .await?;
 
-    let is_new = inserted > 0;
+    let is_new = inserted_id.is_some();
 
-    let word_id: i64 = if is_new {
-        db.last_insert_rowid()
-    } else {
-        db::fetch_one(
-            &db,
-            "SELECT id FROM words WHERE word = ?1",
-            params![word],
-            |row| row.get(0),
-        )
-        .await?
+    let word_id: i64 = match inserted_id {
+        Some(id) => id,
+        None => {
+            db::fetch_one(
+                &db,
+                "SELECT id FROM words WHERE word = ?1",
+                params![word],
+                |row| row.get(0),
+            )
+            .await?
+        }
     };
 
     db.execute(
@@ -55,8 +61,8 @@ pub async fn db_add_word(
 
     if is_new {
         db.execute(
-            "INSERT INTO daily_streaks (date, words_added) VALUES (date('now'), 1)
-             ON CONFLICT(date) DO UPDATE SET words_added = words_added + 1",
+            "INSERT INTO daily_streaks (\"date\", words_added) VALUES (date('now'), 1)
+             ON CONFLICT(\"date\") DO UPDATE SET words_added = words_added + 1",
             (),
         )
         .await
@@ -121,18 +127,19 @@ pub async fn db_add_word_enriched(
     // open transaction whenever an intermediate `?` bailed out early.
     let tx = db.transaction().await.map_err(|e| e.to_string())?;
 
-    let inserted = tx
-        .execute(
-            "INSERT OR IGNORE INTO words (word, word_type, level, word_freq, source) VALUES (?1, ?2, ?3, 1, 'ai')",
-            params![word.clone(), word_type.clone(), enrichment.level.clone()],
-        )
-        .await
-        .map_err(|e| e.to_string())?;
+    let inserted_id = db::fetch_optional(
+        &tx,
+        "INSERT INTO words (word, word_type, level, word_freq, source) VALUES (?1, ?2, ?3, 1, 'ai')
+         ON CONFLICT(word) DO NOTHING RETURNING id",
+        params![word.clone(), word_type.clone(), enrichment.level.clone()],
+        |r| r.get::<i64>(0),
+    )
+    .await?;
 
-    let is_new = inserted > 0;
+    let is_new = inserted_id.is_some();
 
-    let word_id: i64 = if is_new {
-        tx.last_insert_rowid()
+    let word_id: i64 = if let Some(id) = inserted_id {
+        id
     } else {
         db::fetch_one(
             &tx,
@@ -208,7 +215,7 @@ pub async fn db_add_word_enriched(
 
     if is_new {
         tx.execute(
-            "INSERT INTO daily_streaks (date, words_added) VALUES (date('now'), 1) ON CONFLICT(date) DO UPDATE SET words_added = words_added + 1",
+            "INSERT INTO daily_streaks (\"date\", words_added) VALUES (date('now'), 1) ON CONFLICT(\"date\") DO UPDATE SET words_added = words_added + 1",
             (),
         )
         .await
@@ -310,23 +317,23 @@ pub async fn db_add_words_batch(
         if word_lower.is_empty() {
             continue;
         }
-        let inserted = tx
-            .execute(
-                "INSERT OR IGNORE INTO words (word, word_type, level, word_freq, source, tags) VALUES (?1, ?2, ?3, 1, ?4, ?5)",
-                params![
-                    word_lower,
-                    w.word_type.clone(),
-                    w.level.clone(),
-                    source.clone(),
-                    tags_json.clone()
-                ],
-            )
-            .await
-            .map_err(|e| e.to_string())?;
+        let inserted_id = db::fetch_optional(
+            &tx,
+            "INSERT INTO words (word, word_type, level, word_freq, source, tags) VALUES (?1, ?2, ?3, 1, ?4, ?5)
+             ON CONFLICT(word) DO NOTHING RETURNING id",
+            params![
+                word_lower,
+                w.word_type.clone(),
+                w.level.clone(),
+                source.clone(),
+                tags_json.clone()
+            ],
+            |r| r.get::<i64>(0),
+        )
+        .await?;
 
-        if inserted > 0 {
+        if let Some(word_id) = inserted_id {
             added += 1;
-            let word_id = tx.last_insert_rowid();
             tx.execute(
                 "INSERT OR IGNORE INTO word_definitions (word_id, pos, zh, example_en, sort_order) VALUES (?1, 'other', ?2, ?3, 0)",
                 params![word_id, w.zh.clone(), w.context.clone()],

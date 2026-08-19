@@ -7,7 +7,7 @@
 //! anything I drop in here from now on", so the guarantee quietly lapsed exactly
 //! when the user was not thinking about it.
 
-use libsql::{params, Connection};
+use crate::db::params; use crate::db::Conn;
 
 use super::commands::{protect_document_with_master, unprotect_document_with_key};
 use super::keys::{get_or_create_master, require_key, unlock_all_master_documents,
@@ -21,7 +21,7 @@ use crate::{db, AppState};
 ///
 /// Ancestors count: locking "Private" has to cover "Private/2026" as well, or
 /// the promise fails at the first subfolder.
-pub async fn folder_chain_is_locked(database: &Connection, folder: &str) -> Result<bool, String> {
+pub async fn folder_chain_is_locked(database: &Conn, folder: &str) -> Result<bool, String> {
     if folder.is_empty() {
         return Ok(false);
     }
@@ -57,7 +57,7 @@ pub async fn folder_chain_is_locked(database: &Connection, folder: &str) -> Resu
 /// believes is sealed, and a caller that can prompt for the password is in a
 /// far better position to fix it than a silent skip here.
 pub async fn protect_if_folder_locked(
-    database: &Connection,
+    database: &Conn,
     privacy: &super::state::DocumentPrivacyState,
     id: i64,
     folder: &str,
@@ -72,7 +72,7 @@ pub async fn protect_if_folder_locked(
 }
 
 /// Every document at or below `folder`.
-async fn documents_under(database: &Connection, folder: &str) -> Result<Vec<i64>, String> {
+async fn documents_under(database: &Conn, folder: &str) -> Result<Vec<i64>, String> {
     db::fetch_all(
         database,
         "SELECT id FROM documents

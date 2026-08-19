@@ -1,4 +1,4 @@
-use libsql::params;
+use crate::db::params;
 use serde::Serialize;
 use crate::shim::State;
 
@@ -89,8 +89,8 @@ pub async fn db_save_quiz_result(
     }
 
     db.execute(
-        "INSERT INTO daily_streaks (date, quiz_done) VALUES (date('now'), 1)
-         ON CONFLICT(date) DO UPDATE SET quiz_done = quiz_done + 1",
+        "INSERT INTO daily_streaks (\"date\", quiz_done) VALUES (date('now'), 1)
+         ON CONFLICT(\"date\") DO UPDATE SET quiz_done = quiz_done + 1",
         (),
     )
     .await

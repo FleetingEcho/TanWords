@@ -16,7 +16,7 @@
 //!    another machine through sync are undecryptable there, so scoping is
 //!    enforced by cryptography and not only by the WHERE clause.
 
-use libsql::{params, Connection};
+use crate::db::params; use crate::db::Conn;
 use serde::{Deserialize, Serialize};
 
 use crate::db;
@@ -61,7 +61,7 @@ fn unseal(sealed: &str) -> String {
         .unwrap_or_default()
 }
 
-pub async fn list(conn: &Connection, device: &str) -> Result<Vec<AiProvider>, String> {
+pub async fn list(conn: &Conn, device: &str) -> Result<Vec<AiProvider>, String> {
     db::fetch_all(
         conn,
         "SELECT id, name, kind, api_base, model_id, api_key_enc <> ''
@@ -82,7 +82,7 @@ pub async fn list(conn: &Connection, device: &str) -> Result<Vec<AiProvider>, St
 }
 
 pub async fn upsert(
-    conn: &Connection,
+    conn: &Conn,
     device: &str,
     provider: &AiProvider,
     api_key: Option<&str>,
@@ -126,7 +126,7 @@ pub async fn upsert(
     Ok(())
 }
 
-pub async fn delete(conn: &Connection, device: &str, id: &str) -> Result<(), String> {
+pub async fn delete(conn: &Conn, device: &str, id: &str) -> Result<(), String> {
     conn.execute(
         "DELETE FROM ai_providers WHERE device_id = ?1 AND id = ?2",
         params![device, id],
@@ -136,7 +136,7 @@ pub async fn delete(conn: &Connection, device: &str, id: &str) -> Result<(), Str
     Ok(())
 }
 
-pub async fn key(conn: &Connection, device: &str, id: &str) -> Result<String, String> {
+pub async fn key(conn: &Conn, device: &str, id: &str) -> Result<String, String> {
     let sealed = db::fetch_optional(
         conn,
         "SELECT api_key_enc FROM ai_providers WHERE device_id = ?1 AND id = ?2",
@@ -210,7 +210,7 @@ mod tests {
     use super::*;
     use crate::db::connection::DbProfile;
 
-    async fn memory_conn() -> Connection {
+    async fn memory_conn() -> Conn {
         let path = std::env::temp_dir()
             .join(format!("tanwords-aip-{}.db", uuid::Uuid::new_v4()))
             .to_string_lossy()

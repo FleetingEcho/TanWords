@@ -1,5 +1,7 @@
-use libsql::{params, Connection, Result};
+use crate::db::params; use crate::db::Conn; use crate::db::DbResult;
 use crate::shim::State;
+
+use sea_orm::ConnectionTrait;
 
 use crate::db;
 use crate::db::connection::{DbDescriptor, DbProfile};
@@ -28,7 +30,7 @@ fn database_disk_size(path: &str) -> std::result::Result<u64, String> {
     })
 }
 
-async fn export_backup(conn: &Connection, dest: &str) -> std::result::Result<(), String> {
+async fn export_backup(conn: &Conn, dest: &str) -> std::result::Result<(), String> {
     conn.execute("VACUUM INTO ?1", params![dest])
         .await
         .map_err(|e| e.to_string())?;
@@ -40,38 +42,39 @@ async fn export_backup(conn: &Connection, dest: &str) -> std::result::Result<(),
     // WAL, so a backup handed to it as-is fails (surfaced there as a
     // confusing "group not found" rather than anything about journal mode).
     // Reopen the file we just wrote purely to flip that one pragma.
-    let backup = libsql::Builder::new_local(dest)
-        .build()
+    let mut opts = sea_orm::ConnectOptions::new(format!("sqlite://{dest}?mode=rw"));
+    opts.max_connections(1);
+    let backup = sea_orm::Database::connect(opts)
         .await
         .map_err(|e| e.to_string())?;
-    let backup_conn = backup.connect().map_err(|e| e.to_string())?;
-    backup_conn
-        .execute_batch("PRAGMA journal_mode=WAL;")
+    backup
+        .execute_unprepared("PRAGMA journal_mode=WAL;")
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-async fn clear_translations(conn: &Connection) -> std::result::Result<(), String> {
+async fn clear_translations(conn: &Conn) -> std::result::Result<(), String> {
     conn.execute("DELETE FROM translations", ())
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-pub async fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>> {
+pub async fn get_setting(conn: &Conn, key: &str) -> DbResult<Option<String>> {
     let mut rows = conn
-        .query("SELECT value FROM user_settings WHERE key = ?1", params![key])
+        .query_all("SELECT value FROM user_settings WHERE key = ?1", params![key])
         .await?;
-    match rows.next().await? {
+    match rows.pop() {
         Some(row) => Ok(Some(row.get(0)?)),
         None => Ok(None),
     }
 }
 
-pub async fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<()> {
+pub async fn set_setting(conn: &Conn, key: &str, value: &str) -> DbResult<()> {
     conn.execute(
-        "INSERT OR REPLACE INTO user_settings (key, value, updated_at) VALUES (?1, ?2, CURRENT_TIMESTAMP)",
+        "INSERT INTO user_settings (key, value, updated_at) VALUES (?1, ?2, CURRENT_TIMESTAMP)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP",
         params![key, value],
     )
     .await?;
@@ -349,19 +352,14 @@ pub async fn db_disconnect_remote(
 }
 
 /// Pulls the primary's latest changes now instead of waiting for the next
-/// background sync — for the "another device just added words" case.
+/// Triggers an immediate pull from the primary. The embedded-replica design
+/// this served is gone with the SeaORM migration (Local is a single file,
+/// Postgres is a live network connection with no local replica), so there is
+/// nothing to sync. Kept as a no-op so the frontend's existing UI/button keeps
+/// working without a command-dispatch change in this pass.
 #[crate::shim::command]
-pub async fn db_sync_now(state: State<'_, AppState>) -> std::result::Result<(), String> {
-    // Take an owned handle and drop the guard before awaiting — the state
-    // mutex is a std one and must never be held across a suspend point.
-    let handle = {
-        let database = state.db.lock().map_err(|e| e.to_string())?;
-        database.sync_handle()
-    };
-    match handle {
-        Some(database) => database.sync().await.map(|_| ()).map_err(|e| e.to_string()),
-        None => Ok(()),
-    }
+pub async fn db_sync_now(_state: State<'_, AppState>) -> std::result::Result<(), String> {
+    Ok(())
 }
 
 /// Writes a consistent snapshot of the database to `dest` via VACUUM INTO,
@@ -431,7 +429,7 @@ mod tests {
         std::env::temp_dir().join(format!("tanwords-{name}-{}.db", uuid::Uuid::new_v4()))
     }
 
-    async fn open_local(path: &std::path::Path) -> Connection {
+    async fn open_local(path: &std::path::Path) -> Conn {
         let profile = DbProfile::Local { path: path.to_string_lossy().into_owned() };
         db::connection::open(&profile, None).await.unwrap().conn()
     }

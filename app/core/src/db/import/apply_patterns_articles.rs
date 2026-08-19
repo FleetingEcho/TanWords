@@ -1,4 +1,4 @@
-use libsql::{params, Connection};
+use crate::db::params; use crate::db::Conn;
 use std::collections::HashSet;
 
 use super::source::article_key;
@@ -6,8 +6,8 @@ use super::types::ImportOutcome;
 use crate::db;
 
 pub(super) async fn apply_patterns(
-    source: &Connection,
-    tx: &Connection,
+    source: &Conn,
+    tx: &Conn,
     overwrite: &HashSet<String>,
     include_new: bool,
 ) -> Result<ImportOutcome, String> {
@@ -25,7 +25,7 @@ pub(super) async fn apply_patterns(
             tx,
             "SELECT id FROM patterns WHERE pattern = ?1",
             [pattern.clone()],
-            |r| r.get(0),
+            |r| r.get::<i64>(0),
         )
         .await?;
 
@@ -49,14 +49,15 @@ pub(super) async fn apply_patterns(
                     outcome.skipped += 1;
                     continue;
                 }
-                tx.execute(
-                    "INSERT INTO patterns (pattern, zh, function_tag, level, note) VALUES (?1, ?2, 'other', ?3, ?4)",
+                let id = db::fetch_one(
+                    &tx,
+                    "INSERT INTO patterns (pattern, zh, function_tag, level, note) VALUES (?1, ?2, 'other', ?3, ?4) RETURNING id",
                     params![pattern.clone(), zh.clone(), level.clone(), note.clone()],
+                    |r| r.get::<i64>(0),
                 )
-                .await
-                .map_err(|e| e.to_string())?;
+                .await?;
                 outcome.added += 1;
-                tx.last_insert_rowid()
+                id
             }
         };
 
@@ -91,8 +92,8 @@ pub(super) async fn apply_patterns(
 }
 
 pub(super) async fn apply_articles(
-    source: &Connection,
-    tx: &Connection,
+    source: &Conn,
+    tx: &Conn,
     overwrite: &HashSet<String>,
     include_new: bool,
 ) -> Result<ImportOutcome, String> {
@@ -123,7 +124,7 @@ pub(super) async fn apply_articles(
             tx,
             "SELECT id FROM reading_articles WHERE title = ?1 AND substr(content, 1, 200) = ?2",
             params![title.clone(), content.chars().take(200).collect::<String>()],
-            |r| r.get(0),
+            |r| r.get::<i64>(0),
         )
         .await?;
 
@@ -147,15 +148,16 @@ pub(super) async fn apply_articles(
                     outcome.skipped += 1;
                     continue;
                 }
-                tx.execute(
+                let id = db::fetch_one(
+                    &tx,
                     "INSERT INTO reading_articles (title, content, word_count, source, source_url, tags)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6) RETURNING id",
                     params![title.clone(), content.clone(), word_count, origin.clone(), url.clone(), tags.clone()],
+                    |r| r.get::<i64>(0),
                 )
-                .await
-                .map_err(|e| e.to_string())?;
+                .await?;
                 outcome.added += 1;
-                tx.last_insert_rowid()
+                id
             }
         };
 

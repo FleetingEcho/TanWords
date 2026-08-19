@@ -51,9 +51,21 @@ web = []
 tanwords-macros = { path = "macros" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# One API for both connection profiles: a plain local SQLite file, and a
-# Turso embedded replica (local file + background sync to the user's primary).
-libsql = "0.9.30"
+# The single query layer for both backends (local SQLite file and a remote
+# Postgres connection string). Raw statements go through `Statement::from_sql_and_values`
+# + `execute_raw`/`query_*_raw`; `db::rows` wraps those in libsql-shaped helpers
+# (`fetch_optional`/`fetch_one`/`fetch_all`/`scalar_i64`) and a `Conn`/`Txn`
+# newtype pair so the ~180 existing call sites keep their `.execute`/`.query`/
+# `.execute_batch`/`.transaction`/`.commit` method-call shape. Postgres
+# placeholder translation (`?`/`?N` -> `$N`) and `INSERT OR IGNORE` ->
+# `ON CONFLICT DO NOTHING` happen in the helper, not at every call site.
+# (libsql was removed: it bundled its own sqlite3, which collided with
+# sqlx-sqlite's bundled sqlite3 at link time. The last libsql call site —
+# `settings::export_backup`'s WAL-pragma flip — was rewritten to reopen the
+# file via SeaORM. The old Turso/sync path is gone; `DbProfile::Turso` stays
+# on the enum for config-file compatibility but `open()` refuses it.)
+sea-orm = { version = "2.0", features = ["sqlx-sqlite", "sqlx-postgres", "runtime-tokio-rustls", "macros", "with-chrono"] }
+sea-orm-migration = { version = "2.0", features = ["sqlx-sqlite", "sqlx-postgres", "runtime-tokio-rustls"] }
 uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
 aes-gcm = "0.10"

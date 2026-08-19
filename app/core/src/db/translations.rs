@@ -1,4 +1,4 @@
-use libsql::{params, Value};
+use crate::db::params; use crate::db::Value;
 use serde::Serialize;
 use crate::shim::State;
 
@@ -29,18 +29,17 @@ pub async fn db_save_translation(
     conn: State<'_, AppState>,
 ) -> Result<i64, String> {
     let db = db::conn(&conn)?;
-    db.execute(
-        "INSERT INTO translations (source_text, result_text, source_lang, target_lang, provider, mode) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+    let id = db::fetch_one(
+        &db,
+        "INSERT INTO translations (source_text, result_text, source_lang, target_lang, provider, mode) VALUES (?1, ?2, ?3, ?4, ?5, ?6) RETURNING id",
         params![source_text, result_text, source_lang, target_lang, provider, mode],
+        |r| r.get::<i64>(0),
     )
-    .await
-    .map_err(|e| e.to_string())?;
-
-    let id = db.last_insert_rowid();
+    .await?;
 
     db.execute(
-        "INSERT INTO daily_streaks (date, translations) VALUES (date('now'), 1)
-         ON CONFLICT(date) DO UPDATE SET translations = translations + 1",
+        "INSERT INTO daily_streaks (\"date\", translations) VALUES (date('now'), 1)
+         ON CONFLICT(\"date\") DO UPDATE SET translations = translations + 1",
         (),
     )
     .await

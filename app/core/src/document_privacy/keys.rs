@@ -1,12 +1,12 @@
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use libsql::Connection;
+use crate::db::Conn;
 
 use super::crypto::{decrypt_bytes, derive_password_key, encrypt_bytes, random};
 use super::state::{DocumentPrivacyState, INVALID_PASSWORD, LOCKED_ERROR, MASTER_CONFIG_SETTING};
 use crate::db;
 
 pub async fn document_is_protected(
-    database: &Connection,
+    database: &Conn,
     document_id: i64,
 ) -> Result<bool, String> {
     Ok(db::scalar_i64(
@@ -19,7 +19,7 @@ pub async fn document_is_protected(
 }
 
 pub async fn require_key(
-    database: &Connection,
+    database: &Conn,
     privacy: &DocumentPrivacyState,
     document_id: i64,
 ) -> Result<Option<[u8; 32]>, String> {
@@ -54,7 +54,7 @@ pub async fn require_key(
 }
 
 pub(super) async fn legacy_wrapped_key(
-    database: &Connection,
+    database: &Conn,
     document_id: i64,
 ) -> Result<(Vec<u8>, Vec<u8>), String> {
     db::fetch_one(
@@ -69,7 +69,7 @@ pub(super) async fn legacy_wrapped_key(
 }
 
 pub(super) async fn unwrap_legacy_document_key(
-    database: &Connection,
+    database: &Conn,
     document_id: i64,
     password: &str,
 ) -> Result<[u8; 32], String> {
@@ -80,7 +80,7 @@ pub(super) async fn unwrap_legacy_document_key(
         .map_err(|_| "Invalid wrapped document key".into())
 }
 
-pub(super) async fn master_config(database: &Connection) -> Result<Option<(Vec<u8>, Vec<u8>)>, String> {
+pub(super) async fn master_config(database: &Conn) -> Result<Option<(Vec<u8>, Vec<u8>)>, String> {
     let config = db::get_setting(database, MASTER_CONFIG_SETTING)
         .await
         .map_err(|e| e.to_string())?;
@@ -101,7 +101,7 @@ pub(super) async fn master_config(database: &Connection) -> Result<Option<(Vec<u
 }
 
 pub(super) async fn store_master_config(
-    database: &Connection,
+    database: &Conn,
     password: &str,
     master: &[u8; 32],
 ) -> Result<(), String> {
@@ -115,7 +115,7 @@ pub(super) async fn store_master_config(
 }
 
 pub(super) async fn unlock_master_with_password(
-    database: &Connection,
+    database: &Conn,
     privacy: &DocumentPrivacyState,
     password: &str,
 ) -> Result<[u8; 32], String> {
@@ -132,7 +132,7 @@ pub(super) async fn unlock_master_with_password(
 }
 
 pub(super) async fn get_or_create_master(
-    database: &Connection,
+    database: &Conn,
     privacy: &DocumentPrivacyState,
     password: Option<&str>,
 ) -> Result<[u8; 32], String> {
@@ -159,7 +159,7 @@ pub(super) async fn get_or_create_master(
 }
 
 pub(super) async fn unlock_all_master_documents(
-    database: &Connection,
+    database: &Conn,
     privacy: &DocumentPrivacyState,
     master: &[u8; 32],
 ) -> Result<(), String> {

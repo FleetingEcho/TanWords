@@ -1,4 +1,4 @@
-use libsql::params;
+use crate::db::params;
 use rmcp::{handler::server::wrapper::Parameters, tool, tool_router};
 use serde_json::{json, Value};
 
@@ -116,13 +116,14 @@ impl TanWordsMcp {
             let (id, created) = match existing {
                 Some(id) => (id, false),
                 None => {
-                    conn.execute(
-                        "INSERT INTO patterns(pattern,zh,note,level) VALUES(?1,?2,?3,?4)",
+                    let id = crate::db::fetch_one(
+                        &conn,
+                        "INSERT INTO patterns(pattern,zh,note,level) VALUES(?1,?2,?3,?4) RETURNING id",
                         params![input.pattern, input.zh, input.note, input.level],
+                        |r| r.get::<i64>(0),
                     )
-                    .await
-                    .map_err(|e| e.to_string())?;
-                    (conn.last_insert_rowid(), true)
+                    .await?;
+                    (id, true)
                 }
             };
             if let Some(sentence) = input.example.as_deref().map(str::trim).filter(|s| !s.is_empty()) {

@@ -1,12 +1,12 @@
-use libsql::{params, Connection};
+use crate::db::params; use crate::db::Conn;
 use std::collections::HashSet;
 
 use super::types::ImportOutcome;
 use crate::db;
 
 pub(super) async fn apply_documents(
-    source: &Connection,
-    tx: &Connection,
+    source: &Conn,
+    tx: &Conn,
     overwrite: &HashSet<String>,
     include_new: bool,
 ) -> Result<ImportOutcome, String> {
@@ -61,8 +61,8 @@ pub(super) async fn apply_documents(
 }
 
 pub(super) async fn apply_known_words(
-    source: &Connection,
-    tx: &Connection,
+    source: &Conn,
+    tx: &Conn,
     include_new: bool,
 ) -> Result<ImportOutcome, String> {
     let mut outcome = ImportOutcome { kind: "knownWords".into(), ..Default::default() };

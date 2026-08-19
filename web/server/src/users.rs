@@ -59,8 +59,8 @@ struct JwtClaims {
 }
 
 pub struct UsersDb {
-    conn: tokio::sync::Mutex<libsql::Connection>,
-    session_reader: libsql::Connection,
+    conn: tokio::sync::Mutex<libsql::Conn>,
+    session_reader: libsql::Conn,
     cipher: Aes256Gcm,
     jwt_encoding_key: EncodingKey,
     jwt_decoding_key: DecodingKey,
@@ -187,7 +187,7 @@ impl UsersDb {
         let rows = conn
             .execute(
                 "INSERT INTO users(email, password_hash, active_db) VALUES (?, ?, 'local')",
-                libsql::params![email, hash],
+                crate::db::params![email, hash],
             )
             .await;
         match rows {
@@ -213,7 +213,7 @@ impl UsersDb {
         let mut rows = conn
             .query(
                 "SELECT id, password_hash FROM users WHERE email = ?",
-                libsql::params![email.trim().to_lowercase()],
+                crate::db::params![email.trim().to_lowercase()],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -248,7 +248,7 @@ impl UsersDb {
         let conn = self.conn.lock().await;
         conn.execute(
             "INSERT INTO sessions(token_hash, user_id, last_seen_at, expires_at) VALUES (?, ?, ?, ?)",
-            libsql::params![token_hash, id, now, now + self.jwt_ttl_secs],
+            crate::db::params![token_hash, id, now, now + self.jwt_ttl_secs],
         )
         .await
         .map_err(|e| e.to_string())?;
@@ -294,7 +294,7 @@ impl UsersDb {
                 "SELECT s.user_id, s.expires_at, u.email
                  FROM sessions s JOIN users u ON u.id = s.user_id
                  WHERE s.token_hash = ?",
-                libsql::params![token_hash.clone()],
+                crate::db::params![token_hash.clone()],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -308,7 +308,7 @@ impl UsersDb {
         if claims.sub != user_id || expires < now {
             let conn = self.conn.lock().await;
             let _ = conn
-                .execute("DELETE FROM sessions WHERE token_hash = ?", libsql::params![token_hash.clone()])
+                .execute("DELETE FROM sessions WHERE token_hash = ?", crate::db::params![token_hash.clone()])
                 .await;
             return Ok(None);
         }
@@ -316,7 +316,7 @@ impl UsersDb {
         if now % 37 == 0 {
             let conn = self.conn.lock().await;
             let _ = conn
-                .execute("DELETE FROM sessions WHERE expires_at < ?", libsql::params![now])
+                .execute("DELETE FROM sessions WHERE expires_at < ?", crate::db::params![now])
                 .await;
         }
         Ok(Some(UserRecord { id: user_id, email }))
@@ -326,7 +326,7 @@ impl UsersDb {
         let conn = self.conn.lock().await;
         conn.execute(
             "DELETE FROM sessions WHERE token_hash = ?",
-            libsql::params![Self::hash_token(token)],
+            crate::db::params![Self::hash_token(token)],
         )
         .await
         .map_err(|e| e.to_string())?;
@@ -342,11 +342,11 @@ impl UsersDb {
         let conn = self.conn.lock().await;
         conn.execute(
             "UPDATE users SET password_hash = ? WHERE id = ?",
-            libsql::params![hash, id],
+            crate::db::params![hash, id],
         )
         .await
         .map_err(|e| e.to_string())?;
-        conn.execute("DELETE FROM sessions WHERE user_id = ?", libsql::params![id])
+        conn.execute("DELETE FROM sessions WHERE user_id = ?", crate::db::params![id])
             .await
             .map_err(|e| e.to_string())?;
         Ok(true)
@@ -355,7 +355,7 @@ impl UsersDb {
     pub async fn app_lock_enabled(&self, user_id: i64) -> Result<bool, String> {
         let conn = self.conn.lock().await;
         let mut rows = conn
-            .query("SELECT app_lock_hash FROM users WHERE id = ?", libsql::params![user_id])
+            .query("SELECT app_lock_hash FROM users WHERE id = ?", crate::db::params![user_id])
             .await
             .map_err(|e| e.to_string())?;
         let Some(row) = rows.next().await.map_err(|e| e.to_string())? else {
@@ -368,7 +368,7 @@ impl UsersDb {
         let existing = {
             let conn = self.conn.lock().await;
             let mut rows = conn
-                .query("SELECT app_lock_hash FROM users WHERE id = ?", libsql::params![user_id])
+                .query("SELECT app_lock_hash FROM users WHERE id = ?", crate::db::params![user_id])
                 .await
                 .map_err(|e| e.to_string())?;
             let Some(row) = rows.next().await.map_err(|e| e.to_string())? else {
@@ -395,7 +395,7 @@ impl UsersDb {
         let existing = {
             let conn = self.conn.lock().await;
             let mut rows = conn
-                .query("SELECT app_lock_hash FROM users WHERE id = ?", libsql::params![user_id])
+                .query("SELECT app_lock_hash FROM users WHERE id = ?", crate::db::params![user_id])
                 .await
                 .map_err(|e| e.to_string())?;
             let Some(row) = rows.next().await.map_err(|e| e.to_string())? else {
@@ -412,7 +412,7 @@ impl UsersDb {
         let conn = self.conn.lock().await;
         conn.execute(
             "UPDATE users SET app_lock_hash = ? WHERE id = ?",
-            libsql::params![hash, user_id],
+            crate::db::params![hash, user_id],
         )
         .await
         .map_err(|e| e.to_string())?;
@@ -423,7 +423,7 @@ impl UsersDb {
         let existing = {
             let conn = self.conn.lock().await;
             let mut rows = conn
-                .query("SELECT app_lock_hash FROM users WHERE id = ?", libsql::params![user_id])
+                .query("SELECT app_lock_hash FROM users WHERE id = ?", crate::db::params![user_id])
                 .await
                 .map_err(|e| e.to_string())?;
             let Some(row) = rows.next().await.map_err(|e| e.to_string())? else {
@@ -439,7 +439,7 @@ impl UsersDb {
         let conn = self.conn.lock().await;
         conn.execute(
             "UPDATE users SET app_lock_hash = NULL WHERE id = ?",
-            libsql::params![user_id],
+            crate::db::params![user_id],
         )
         .await
         .map_err(|e| e.to_string())?;
@@ -453,7 +453,7 @@ impl UsersDb {
         let mut rows = conn
             .query(
                 "SELECT turso_url, turso_token_enc FROM users WHERE id = ?",
-                libsql::params![user_id],
+                crate::db::params![user_id],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -476,7 +476,7 @@ impl UsersDb {
     pub async fn active_turso_for(&self, user_id: i64) -> Result<Option<TursoProfile>, String> {
         let conn = self.conn.lock().await;
         let mut rows = conn
-            .query("SELECT active_db FROM users WHERE id = ?", libsql::params![user_id])
+            .query("SELECT active_db FROM users WHERE id = ?", crate::db::params![user_id])
             .await
             .map_err(|e| e.to_string())?;
         let active = rows
@@ -501,7 +501,7 @@ impl UsersDb {
         let conn = self.conn.lock().await;
         conn.execute(
             "UPDATE users SET active_db = ? WHERE id = ?",
-            libsql::params![source, user_id],
+            crate::db::params![source, user_id],
         )
         .await
         .map_err(|e| e.to_string())?;
@@ -513,7 +513,7 @@ impl UsersDb {
         let conn = self.conn.lock().await;
         conn.execute(
             "UPDATE users SET turso_url = ?, turso_token_enc = ?, active_db = 'turso' WHERE id = ?",
-            libsql::params![url, enc, user_id],
+            crate::db::params![url, enc, user_id],
         )
         .await
         .map_err(|e| e.to_string())?;
@@ -524,7 +524,7 @@ impl UsersDb {
         let conn = self.conn.lock().await;
         conn.execute(
             "UPDATE users SET turso_url = NULL, turso_token_enc = NULL, active_db = 'local' WHERE id = ?",
-            libsql::params![user_id],
+            crate::db::params![user_id],
         )
         .await
         .map_err(|e| e.to_string())?;
@@ -537,7 +537,7 @@ impl UsersDb {
         let mut rows = conn
             .query(
                 "SELECT turso_url, turso_token_enc FROM users WHERE id = ?",
-                libsql::params![user_id],
+                crate::db::params![user_id],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -563,7 +563,7 @@ impl UsersDb {
         let mut rows = conn
             .query(
                 "SELECT sqld_port, sqld_key_enc, sqld_enabled FROM users WHERE id = ?",
-                libsql::params![user_id],
+                crate::db::params![user_id],
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -612,7 +612,7 @@ impl UsersDb {
         let conn = self.conn.lock().await;
         conn.execute(
             "UPDATE users SET sqld_port = ?, sqld_key_enc = ?, sqld_enabled = 1 WHERE id = ?",
-            libsql::params![port, enc, user_id],
+            crate::db::params![port, enc, user_id],
         )
         .await
         .map_err(|e| e.to_string())?;
@@ -649,7 +649,7 @@ impl UsersDb {
         let conn = self.conn.lock().await;
         conn.execute(
             "UPDATE users SET sqld_enabled = ? WHERE id = ?",
-            libsql::params![enabled as i64, user_id],
+            crate::db::params![enabled as i64, user_id],
         )
         .await
         .map_err(|e| e.to_string())?;

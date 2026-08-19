@@ -33,7 +33,7 @@ pub struct AppState {
     /// Swapped wholesale by `db_switch_path` / `db_connect_turso`, so a
     /// different database (or a different *kind* of database) never requires a
     /// restart. A `std::sync::Mutex` rather than an async one on purpose: it is
-    /// only ever held long enough to clone the inner `libsql::Connection` out,
+    /// only ever held long enough to clone the inner `libsql::Conn` out,
     /// never across an `.await` — see `db::conn`.
     pub db: Mutex<Db>,
     /// The active TTS engine, if one has been loaded. Loaded lazily — never
@@ -226,7 +226,7 @@ async fn open_startup_db() -> Result<(Db, Option<String>), String> {
 
     let token = match &saved {
         DbProfile::Turso { .. } => secrets::turso_token_get(),
-        DbProfile::Local { .. } => None,
+        DbProfile::Local { .. } | DbProfile::Postgres { .. } => None,
     };
     match db::connection::open(&saved, token.as_deref()).await {
         Ok(database) => Ok((database, None)),
@@ -252,5 +252,6 @@ fn describe_profile(profile: &DbProfile) -> String {
     match profile {
         DbProfile::Local { path } => path.clone(),
         DbProfile::Turso { url, .. } => format!("Turso {url}"),
+        DbProfile::Postgres { url } => format!("Postgres {url}"),
     }
 }

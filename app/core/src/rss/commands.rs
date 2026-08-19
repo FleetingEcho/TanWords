@@ -1,7 +1,7 @@
 //! `#[crate::shim::command]` entry points for feed subscription management and the
 //! `rss_entries` cache (DB reads/writes).
 
-use libsql::params;
+use crate::db::params;
 use crate::shim::State;
 
 use crate::db;
@@ -383,7 +383,7 @@ pub async fn db_sync_rss_feed(
     Ok(after - before)
 }
 
-fn map_rss_entry_row(row: &libsql::Row) -> libsql::Result<RssEntryRow> {
+fn map_rss_entry_row(row: &crate::db::Row) -> crate::db::DbResult<RssEntryRow> {
     Ok(RssEntryRow {
         id: row.get(0)?,
         feed_id: row.get(1)?,

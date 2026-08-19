@@ -1,4 +1,4 @@
-use libsql::params;
+use crate::db::params;
 use crate::shim::State;
 
 use crate::db;
@@ -16,14 +16,13 @@ pub async fn db_save_article_analysis(
 ) -> Result<i64, String> {
     let db = db::conn(&conn)?;
 
-    db.execute(
-        "INSERT INTO articles (title, source_url, origin, content, analysis_markdown, hn_item_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+    db::fetch_one(
+        &db,
+        "INSERT INTO articles (title, source_url, origin, content, analysis_markdown, hn_item_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6) RETURNING id",
         params![title, source_url, origin, content, analysis_markdown, hn_item_id],
+        |r| r.get::<i64>(0),
     )
     .await
-    .map_err(|e| e.to_string())?;
-
-    Ok(db.last_insert_rowid())
 }
 
 #[crate::shim::command]

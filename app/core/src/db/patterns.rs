@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::shim::State;
-use libsql::params;
+use crate::db::params;
 use serde::Serialize;
 
 use crate::{db, AppState};
@@ -204,13 +204,13 @@ pub async fn db_save_sentence_pattern(
     };
     let level = level.trim().to_string();
     let level_opt = if level.is_empty() { None } else { Some(level) };
-    tx.execute(
-        "INSERT INTO patterns(pattern,zh,function_tag,level,note,updated_at) VALUES(?1,?2,'other',?3,?4,CURRENT_TIMESTAMP)",
+    let pattern_id = db::fetch_one(
+        &tx,
+        "INSERT INTO patterns(pattern,zh,function_tag,level,note,updated_at) VALUES(?1,?2,'other',?3,?4,CURRENT_TIMESTAMP) RETURNING id",
         params![pattern_text, zh, level_opt, note],
+        |r| r.get::<i64>(0),
     )
-    .await
-    .map_err(|e| e.to_string())?;
-    let pattern_id = tx.last_insert_rowid();
+    .await?;
     tx.execute(
         "INSERT INTO pattern_examples(pattern_id,sentence,source) VALUES(?1,?2,?3)",
         params![pattern_id, sentence, source],
@@ -240,6 +240,7 @@ mod tests {
                 .expect("open test database");
         let app_state = crate::AppState {
             db: std::sync::Mutex::new(database),
+            #[cfg(feature = "tts")]
             tts: std::sync::Mutex::new(None).into(),
             db_fallback_warning: None,
             document_privacy: Default::default(),
