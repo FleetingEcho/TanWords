@@ -266,37 +266,29 @@ export interface RssEntryRow {
 /** Which database the app is talking to, and what that profile supports.
  *  Mirrors `DbDescriptor` in src-tauri/src/db/connection.rs. */
 export interface DbConnection {
-  kind: "local" | "turso" | "postgres";
-  /** The SQLite file. For a Turso profile this is the local replica; empty
-   *  for Postgres, which has no local file. */
+  kind: "local" | "postgres";
+  /** The SQLite file. Empty for Postgres, which has no local file. */
   path: string;
   remoteUrl: string | null;
   caps: {
-    /** VACUUM INTO backup export. Off for Turso and Postgres. */
+    /** VACUUM INTO backup export. Off for Postgres. */
     export: boolean;
     /** Whether the profile can be repointed at another file. */
     switchPath: boolean;
-    /** Whether an explicit pull-from-primary is meaningful. Off for Postgres
-     *  — it's a direct connection with no replica to sync from. */
+    /** Whether an explicit pull-from-primary is meaningful. Always false — a
+     *  Postgres profile is a direct connection with no replica to sync from. */
     sync: boolean;
     /** False when serving a replica offline — it is opened read-only, so any
      *  save will fail at the driver. */
     writable: boolean;
-    /** Whether VACUUM is supported. Off for Turso/self-hosted sqld/Postgres —
-     *  their storage isn't a plain rolling SQLite file, and VACUUM is
-     *  rejected outright by the server itself, not just proxying. */
+    /** Whether VACUUM is supported. Off for Postgres — its storage isn't a
+     *  plain rolling SQLite file, and VACUUM is rejected outright by the
+     *  server itself, not just proxying. */
     vacuum: boolean;
   };
-  /** A Turso profile falling back to its local replica because the primary
-   *  couldn't be reached. Reads are real (possibly stale) data. */
+  /** Always false today — kept on the shape for a future degraded-connection
+   *  mode. */
   offline: boolean;
-}
-
-/** Last Turso connection kept across an explicit disconnect. Mirrors
- *  `RememberedTursoConnection` in core/src/db/settings.rs. */
-export interface RememberedTursoConnection {
-  url: string | null;
-  tokenPresent: boolean;
 }
 
 /** One source row that already exists in the target, with both sides described
@@ -365,16 +357,15 @@ export interface OverwriteResult {
   skipped: string[];
 }
 
-/** A web account's dedicated sqld container — lets a desktop app connect
- *  directly (Settings > Cloud tab) and share this account's data live.
- *  Unrelated to the `turso*`/`DbConnection` types above (a user-supplied
- *  external target) — this is server-provisioned. `token` is only present
- *  right after `enableRemoteAccess`/`rotateRemoteAccess`, never on a plain
- *  status read. */
-export interface RemoteAccessStatus {
+/** A web account's self-provisioned role+database inside the shared Postgres
+ *  instance — lets a desktop app (or any Postgres client) connect directly
+ *  (Settings > Cloud tab), and is also what this account's own web session
+ *  switches onto the moment it's enabled. `url` carries the password only
+ *  right after `enablePostgresRemote`/`rotatePostgresRemote`, never on a
+ *  plain status read. */
+export interface PostgresRemoteStatus {
   enabled: boolean;
   url: string | null;
-  token?: string;
 }
 
 /** Payload of the `"overwrite-progress"` event, emitted while

@@ -159,7 +159,7 @@ pub(super) async fn apply_words(
     let total = incoming.len() as i64;
     let mut outcome = ImportOutcome { kind: "words".into(), ..Default::default() };
 
-    // One round trip instead of one per word: against a remote (Turso/sqld)
+    // One round trip instead of one per word: against a remote (Postgres)
     // target, that "SELECT ... WHERE lower(word) = ?" used to be a full
     // network round trip *per word* — for an import the size of a real
     // vocabulary (hundreds of words), that dominated the whole command's

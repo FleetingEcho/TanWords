@@ -246,7 +246,7 @@ pub(super) async fn me(request: Request) -> Response {
 /// returns the lock gate that must be known before painting private content,
 /// and starts the heavier per-user database runtime in parallel. The response
 /// deliberately does not wait for that runtime — route chunks and settings can
-/// download while Turso/local SQLite opens, and the pool's spawn gate makes the
+/// download while Postgres/local SQLite opens, and the pool's spawn gate makes the
 /// first `/invoke` naturally join the same initialization instead of duplicating it.
 pub(super) async fn bootstrap(
     State(state): State<WebState>,

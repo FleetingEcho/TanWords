@@ -168,14 +168,13 @@ const BLOCKED: &[(&str, &str)] = &[
     // Global desktop state: one process-wide database connection. Reimplemented
     // per-user by the /api/db/* routes.
     ("db_switch_path", "would repoint the process-wide database"),
-    ("db_connect_turso", "per-user replacement lives at /api/db/turso/connect"),
-    ("db_disconnect_remote", "per-user replacement lives at /api/db/turso/disconnect"),
-    ("db_forget_saved_profile", "per-user replacement lives at /api/db/turso/forget"),
-    ("db_get_remembered_turso", "reads process-wide desktop config and keychain state"),
-    ("db_saved_profile_is_turso", "per-user replacement lives at /api/db/profile"),
+    ("db_connect_postgres", "desktop-only manual connect; web accounts use /api/db/postgres/enable"),
+    ("db_disconnect_remote", "per-user replacement lives at /api/db/postgres/disable"),
+    ("db_export_postgres_backup", "writes to an arbitrary server path; desktop-only (no local replica to snapshot)"),
     // Arbitrary server-side filesystem paths. Re-exposed, validated, as the
     // /api/import/* and /api/export/* routes.
     ("db_get_db_path", "exposes server filesystem layout"),
+    ("db_get_default_local_path", "exposes server filesystem layout"),
     ("db_export_backup", "writes to an arbitrary server path; see /api/export/backup"),
     ("db_import_analyze", "reads an arbitrary server path; see /api/import/analyze"),
     ("db_import_apply", "reads an arbitrary server path; see /api/import/apply"),

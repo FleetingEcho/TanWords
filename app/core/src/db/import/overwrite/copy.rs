@@ -123,7 +123,7 @@ const BATCH_MAX_ROWS: usize = 200;
 const BATCH_MAX_BYTES: usize = 2 * 1024 * 1024;
 
 /// gRPC's default max message size is 4MiB, and sqld's write-delegation path
-/// (a Turso/self-hosted target forwards writes to the primary over gRPC-Web)
+/// (previously: a Turso/self-hosted target forwarding writes over gRPC-Web)
 /// hits it: a single row this big or bigger fails outright — observed as
 /// `Unavailable: grpc-status header missing, mapped from HTTP status code
 /// 502` on a real ~4.26MB `user_settings` value (a base64 background image)

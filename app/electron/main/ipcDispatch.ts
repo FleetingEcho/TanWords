@@ -291,7 +291,7 @@ export async function dispatch(
 
     case "process:relaunch": {
       // quit(), not exit(): exit() skips before-quit, so the old sidecar would
-      // still be draining its final Turso sync while the relaunched instance
+      // still be draining its final write while the relaunched instance
       // spawns a new one against the same SQLite data dir. Going through
       // quit() lets index.ts's before-quit run the normal graceful shutdown
       // first; Electron carries the relaunch flag across the deferred exit.

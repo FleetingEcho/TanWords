@@ -1,0 +1,18 @@
+# Shared Postgres instance for TanWords: backs `app`'s own optional Postgres
+# storage mode and every user's self-provisioned role+database (Settings >
+# Cloud tab > Postgres). Built and exported on the developer machine, loaded
+# on the server like the `app` image — see deploy/README.md.
+FROM postgres:16-alpine
+
+RUN apk add --no-cache openssl
+
+COPY pg_hba.conf /etc/postgresql/pg_hba.conf
+COPY postgres-entrypoint.sh /usr/local/bin/tanwords-postgres-entrypoint.sh
+RUN chmod +x /usr/local/bin/tanwords-postgres-entrypoint.sh
+
+ENTRYPOINT ["tanwords-postgres-entrypoint.sh"]
+CMD ["postgres", \
+     "-c", "ssl=on", \
+     "-c", "ssl_cert_file=/var/lib/postgresql/tls/server.crt", \
+     "-c", "ssl_key_file=/var/lib/postgresql/tls/server.key", \
+     "-c", "hba_file=/etc/postgresql/pg_hba.conf"]

@@ -25,10 +25,6 @@ argon2 = "0.5"
 aes-gcm = "0.10"
 sha2 = "0.10"
 jsonwebtoken = "9"
-# Already pulled in transitively via jsonwebtoken's EdDSA support; made a
-# direct dependency to generate per-user Ed25519 keypairs (sqld_remote.rs)
-# without adding a second crate for that.
-ring = "0.17"
 # users.db is the web server's own credential store, separate from the app
 # data the core manages. sea-orm (same engine the core uses now) keeps a
 # single sqlite3 in the link graph — libsql bundled its own copy, which

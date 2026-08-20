@@ -1,48 +1,35 @@
 //! Where the database actually lives, and how the rest of the app gets at it.
 //!
 //! Two live profiles, one API. `Local` is a plain SQLite file, exactly as
-//! before. `Postgres` is a direct network connection to a user-supplied
-//! Postgres (the user pastes a libpq-style connection string; the whole app's
-//! data lives in that database). Everything downstream of `AppState::conn()`
-//! is identical between the two — both go through the same SeaORM
-//! [`Conn`][crate::db::rows::Conn] and the same query helpers.
-//!
-//! The `Turso` variant is kept on the enum so existing config files and the
-//! web server's `turso_connect` path still deserialize/compile, but `open()`
-//! refuses it: the embedded-replica design is gone (the SeaORM migration
-//! retired libsql), and a Postgres connection string replaces it. The
-//! server-side sqld provisioning infrastructure is decommissioned separately.
+//! before. `Postgres` is a direct network connection (the user pastes a
+//! libpq-style connection string, or the web server builds one for a
+//! self-provisioned per-account role/database — see
+//! `server/postgres_remote`); the whole app's data lives in that database.
+//! Everything downstream of `AppState::conn()` is identical between the two —
+//! both go through the same SeaORM [`Conn`][crate::db::rows::Conn] and the
+//! same query helpers.
 
 use serde::{Deserialize, Serialize};
 
 use crate::db::rows::Conn;
 
-/// Which kind of database a profile points at. `Turso` remains only so the
-/// retired variant's bookkeeping (`await_write`'s timeout policy, config
-/// round-trips) keeps type-checking; no live connection is ever opened for it.
+/// Which kind of database a profile points at.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DbKind {
     Local,
-    Turso,
     Postgres,
 }
 
 /// A saved connection profile. Secrets are not part of this — a Postgres
 /// connection string carries its own credentials inline, so the whole
 /// credential lives in the profile (sealed at rest by the web server, see
-/// `UsersDb::seal`), not in the OS keychain the way Turso's token did.
+/// `UsersDb::seal`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum DbProfile {
     Local {
         path: String,
-    },
-    /// Kept for config/web-server compatibility; `open()` returns an error.
-    /// Decommissioning the surrounding server-side sqld infra is a follow-up.
-    Turso {
-        path: String,
-        url: String,
     },
     Postgres {
         /// Full libpq-style connection string, including credentials:
@@ -55,7 +42,6 @@ impl DbProfile {
     pub fn kind(&self) -> DbKind {
         match self {
             DbProfile::Local { .. } => DbKind::Local,
-            DbProfile::Turso { .. } => DbKind::Turso,
             DbProfile::Postgres { .. } => DbKind::Postgres,
         }
     }
@@ -65,7 +51,7 @@ impl DbProfile {
     /// directory to create".
     pub fn path(&self) -> &str {
         match self {
-            DbProfile::Local { path } | DbProfile::Turso { path, .. } => path,
+            DbProfile::Local { path } => path,
             DbProfile::Postgres { .. } => "",
         }
     }
@@ -75,7 +61,7 @@ impl DbProfile {
     /// storage layer, never round-tripped through `DbDescriptor`).
     pub fn remote_url(&self) -> Option<&str> {
         match self {
-            DbProfile::Turso { url, .. } | DbProfile::Postgres { url } => Some(url),
+            DbProfile::Postgres { url } => Some(url),
             DbProfile::Local { .. } => None,
         }
     }
@@ -148,9 +134,9 @@ impl Db {
 
 /// Opens `profile` and brings the schema up to date.
 ///
-/// `token` is accepted for signature compatibility with the old Turso flow but
-/// is no longer used: a Postgres connection string carries its own credentials,
-/// and the Turso variant is refused outright.
+/// `token` is unused — a Postgres connection string carries its own
+/// credentials inline. Kept as a parameter so callers don't need a special
+/// case for the two profile kinds.
 pub async fn open(profile: &DbProfile, _token: Option<&str>) -> Result<Db, String> {
     // A local file gets its parent directory created; `:memory:` (tests),
     // a bare filename, and Postgres (no local file) have nothing to create.
@@ -193,13 +179,6 @@ pub async fn open(profile: &DbProfile, _token: Option<&str>) -> Result<Db, Strin
                 Conn::new_db(db, DbKind::Postgres),
                 DbCaps { export: false, switch_path: false, sync: false, writable: true, vacuum: false },
             )
-        }
-        DbProfile::Turso { .. } => {
-            return Err(
-                "The Turso embedded-replica backend was removed in the SeaORM \
-                 migration. Use a Postgres connection string instead."
-                    .to_string(),
-            );
         }
     };
 

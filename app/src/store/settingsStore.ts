@@ -222,7 +222,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       appBackgroundImagePositions: positions,
       appBackgroundImagePosition: DEFAULT_BANNER_POSITION,
     });
-    // One image per settings row so a last-writer-wins sync (Turso) clobbers
+    // One image per settings row so a last-writer-wins sync (Postgres) clobbers
     // only the changed slot instead of the whole gallery — see loadFromDB.
     const fixedPositions = Array.from({ length: 5 }, () => DEFAULT_BANNER_POSITION);
     const entries: Array<[string, string]> = [
@@ -270,7 +270,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     });
     // Persist each wallpaper in its own settings row keyed by slot. Adding or
     // replacing one image writes only that slot, so a concurrent last-writer
-    // sync (Turso) can no longer overwrite the other images — the bug where a
+    // sync (Postgres) can no longer overwrite the other images — the bug where a
     // one-image device clobbered a five-image device's whole gallery. Empty
     // slots are stored as "" so a shrink clears the trailing rows. Positions
     // are kept slot-aligned in a fixed-length row so load can re-map them even
@@ -454,7 +454,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   setMusicFolderPath: (path) => {
     set({ musicFolderPath: path });
-    // Device-scoped, not synced: three machines signed into one Turso account
+    // Device-scoped, not synced: three machines signed into one Postgres account
     // each have their own music library, and a shared row means whichever one
     // saved last points the other two at a folder that isn't there.
     void import("@/ipc/backend").then(({ invoke }) =>

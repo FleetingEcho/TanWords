@@ -17,16 +17,12 @@
 //!   GET  /api/assets/{id}            session (Bearer or ?token=), document-asset bytes
 //!   POST /api/import/upload          session, multipart "file" -> {"path"}
 //!   POST /api/import/analyze|apply   session, {"path"} -> dispatch (validated under uploads/)
-//!   GET  /api/export/backup?source=  session, local|turso + optional X-Export-Password -> db file
-//!   GET  /api/db/profile             session -> {"connection":...,"remembered":{...}}
-//!   POST /api/db/source              session, {"source":"local"|"turso"} -> descriptor
-//!   POST /api/db/turso/connect       session, {"url","token"} -> descriptor
-//!   POST /api/db/turso/disconnect    session -> descriptor (back to per-user local db)
-//!   GET  /api/db/turso/remembered    session -> {"url":...,"token_present":bool}
-//!   GET  /api/db/remote/status       session -> {"enabled":bool,"url":...}
-//!   POST /api/db/remote/enable       session -> {"enabled":true,"url":...,"token":...} (provisions a dedicated sqld container for this account)
-//!   POST /api/db/remote/rotate       session -> {"enabled":true,"url":...,"token":...} (new keypair; old tokens stop working; data untouched)
-//!   POST /api/db/remote/disable      session -> {"enabled":false} (stops the container; data and the URL are kept for next enable)
+//!   GET  /api/export/backup?source=  session, local + optional X-Export-Password -> db file
+//!   GET  /api/db/profile             session -> {"connection":...}
+//!   GET  /api/db/postgres/status     session -> {"enabled":bool,"url":...}
+//!   POST /api/db/postgres/enable     session -> {"enabled":true,"url":...} (provisions this account's role+database in the shared postgres instance, switches the session onto it)
+//!   POST /api/db/postgres/rotate     session -> {"enabled":true,"url":...} (new password; old one stops working; data untouched)
+//!   POST /api/db/postgres/disable    session -> {"enabled":false} (revokes LOGIN; data and the role/database are kept for next enable; session switches back to local)
 //!   POST /api/ai-proxy/{id}/{*rest}  session, upstream passthrough with injected key
 //!   GET  /*                          the SPA (built frontend), index.html fallback
 
@@ -80,6 +76,26 @@ impl WebState {
 
     pub(crate) fn public_host(&self) -> Option<&str> {
         self.config.public_host.as_deref()
+    }
+
+    pub(crate) fn postgres_host(&self) -> &str {
+        &self.config.postgres_host
+    }
+
+    pub(crate) fn postgres_port(&self) -> u16 {
+        self.config.postgres_port
+    }
+
+    /// Admin connection string for the shared `postgres` service, used only
+    /// to provision/rotate per-user roles+databases. `None` when the
+    /// deployment never set `TANWORDS_POSTGRES_SUPERUSER_PASSWORD` (Postgres
+    /// remote access is simply unavailable then).
+    pub(crate) fn postgres_admin_url(&self) -> Option<String> {
+        let password = self.config.postgres_superuser_password.as_deref()?;
+        Some(format!(
+            "postgres://postgres:{password}@{}:{}/postgres?sslmode=require",
+            self.config.postgres_host, self.config.postgres_port,
+        ))
     }
 }
 
@@ -169,7 +185,7 @@ mod auth;
 mod backup;
 mod db;
 mod handlers;
-mod sqld_remote;
+mod postgres_remote;
 mod static_files;
 
 use self::ai::ai_proxy;
@@ -178,11 +194,9 @@ use self::auth::{
     register, reset_password,
 };
 use self::backup::{export_backup, import_step, import_upload};
-use self::db::{
-    db_profile, db_select_source, turso_connect, turso_disconnect, turso_forget, turso_remembered,
-};
+use self::db::db_profile;
 use self::handlers::{asset_handler, events_handler, invoke_handler};
-use self::sqld_remote::{sqld_remote_disable, sqld_remote_enable, sqld_remote_rotate, sqld_remote_status};
+use self::postgres_remote::{postgres_remote_disable, postgres_remote_enable, postgres_remote_rotate, postgres_remote_status};
 use self::static_files::spa_handler;
 
 /// Headers every response carries.
@@ -321,15 +335,10 @@ pub async fn serve(
         .route("/api/export/backup", get(export_backup))
         .route("/api/ai-proxy/{provider_id}/{*rest}", post(ai_proxy))
         .route("/api/db/profile", get(db_profile))
-        .route("/api/db/source", post(db_select_source))
-        .route("/api/db/turso/connect", post(turso_connect))
-        .route("/api/db/turso/disconnect", post(turso_disconnect))
-        .route("/api/db/turso/remembered", get(turso_remembered))
-        .route("/api/db/turso/forget", post(turso_forget))
-        .route("/api/db/remote/status", get(sqld_remote_status))
-        .route("/api/db/remote/enable", post(sqld_remote_enable))
-        .route("/api/db/remote/rotate", post(sqld_remote_rotate))
-        .route("/api/db/remote/disable", post(sqld_remote_disable))
+        .route("/api/db/postgres/status", get(postgres_remote_status))
+        .route("/api/db/postgres/enable", post(postgres_remote_enable))
+        .route("/api/db/postgres/rotate", post(postgres_remote_rotate))
+        .route("/api/db/postgres/disable", post(postgres_remote_disable))
         .route(
             "/api/browser/proxy",
             axum::routing::any(browser_proxy::browser_proxy)

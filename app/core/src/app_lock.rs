@@ -7,7 +7,7 @@
 //! actually encrypts content, and it is unaffected by this.
 //!
 //! Stored in `app_config.json` rather than the database: the lock belongs to
-//! this installation, so a synced Turso database must not carry it to another
+//! this installation, so a synced Postgres database must not carry it to another
 //! machine — the same reasoning as the per-device AI provider rows.
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};

@@ -28,5 +28,8 @@ esac
 echo "==> compiling production image"
 "$SCRIPT_DIR/build-image.sh" "$ARCHIVE"
 
+echo "==> compiling postgres image"
+"$SCRIPT_DIR/build-image-postgres.sh"
+
 echo "==> publishing production image"
 "$SCRIPT_DIR/deploy-server.sh" --skip-build "$@"

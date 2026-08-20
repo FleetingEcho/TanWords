@@ -46,7 +46,12 @@ async fn main() {
             exit(1);
         }
     };
-    let pool = Arc::new(runtime::RuntimePool::new(users.clone(), config.data_dir.clone()));
+    let pool = Arc::new(runtime::RuntimePool::new(
+        users.clone(),
+        config.data_dir.clone(),
+        config.postgres_host.clone(),
+        config.postgres_port,
+    ));
 
     if let Err(e) = server::serve(config, users, pool).await {
         eprintln!("[tanwords-web] server error: {e}");

@@ -1,11 +1,8 @@
 //! Tiny app-level config file (separate from the SQLite DB itself — we can't
 //! store "which database to open" inside a database we haven't opened yet).
-//! Holds the active connection profile: either a local file path or a Turso
-//! embedded-replica endpoint. Absent or unreadable means "default local file".
-//!
-//! Deliberately secret-free: a Turso profile's auth token lives in the OS
-//! keychain (`secrets::turso_token_*`), so this file stays safe to read, sync
-//! or hand to someone debugging a startup problem.
+//! Holds the active connection profile: either a local file path or a
+//! Postgres connection string. Absent or unreadable means "default local
+//! file".
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -22,17 +19,12 @@ struct AppConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     db_profile: Option<DbProfile>,
     /// Stable per-installation identity, generated on first use. Scopes rows
-    /// in `ai_providers` so a database shared between machines (Turso, or a
-    /// copied file) still shows each machine only the providers configured on
-    /// it. Lives here rather than in the database precisely because it must
+    /// in `ai_providers` so a database shared between machines (Postgres, or
+    /// a copied file) still shows each machine only the providers configured
+    /// on it. Lives here rather than in the database precisely because it must
     /// *not* travel with the data.
     #[serde(skip_serializing_if = "Option::is_none")]
     device_id: Option<String>,
-    /// Last Turso URL the user connected to, kept across an explicit
-    /// disconnect so the Settings form can prefill it. Secret-free: the auth
-    /// token stays in the OS keychain.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    last_turso_url: Option<String>,
     /// Connected R2 bucket, minus the secret access key — that one lives in
     /// the keychain, keeping this file safe to read or hand over.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -113,25 +105,6 @@ pub fn clear_db_profile() {
     let mut cfg = load();
     cfg.db_path = None;
     cfg.db_profile = None;
-    let _ = save(&cfg);
-}
-
-/// The URL of the most recent Turso connection, if the user has not explicitly
-/// forgotten it. Unlike the active profile, this does not make the app try to
-/// reconnect at startup.
-pub fn load_remembered_turso_url() -> Option<String> {
-    load().last_turso_url.filter(|url| !url.trim().is_empty())
-}
-
-pub fn save_remembered_turso_url(url: &str) -> std::io::Result<()> {
-    let mut cfg = load();
-    cfg.last_turso_url = Some(url.trim().to_string());
-    save(&cfg)
-}
-
-pub fn clear_remembered_turso_url() {
-    let mut cfg = load();
-    cfg.last_turso_url = None;
     let _ = save(&cfg);
 }
 

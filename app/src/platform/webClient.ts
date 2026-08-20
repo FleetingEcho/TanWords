@@ -173,7 +173,7 @@ export async function webPickFile(options: WebPickFileOptions = {}): Promise<Fil
  * the server derives the actual path from the authenticated user id. */
 export async function webExportBackup(
   password?: string | null,
-  source: "local" | "turso" = "local",
+  source: "local" = "local",
 ): Promise<void> {
   const headers = new Headers();
   if (password) headers.set("x-export-password", password);

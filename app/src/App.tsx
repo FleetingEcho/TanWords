@@ -229,7 +229,7 @@ function App() {
       .catch(() => {});
   }, [authState, t]);
 
-  // A saved Turso profile can open successfully but read-only — the primary
+  // A saved Postgres profile can open successfully but read-only — the primary
   // was unreachable and the app fell back to serving the local replica as-is
   // (see `open_degraded` in the backend). That connection looks completely
   // normal otherwise, so without this the first sign of trouble is a
@@ -373,7 +373,7 @@ function App() {
   if (isDshRoute) dshVisited.current = true;
   const wordId = currentWordId();
   // Dashboard owns startup readiness because its first useful paint depends on
-  // a real DB query (including Turso initialization/sync when configured). Web
+  // a real DB query (including Postgres connection setup when configured). Web
   // falls back to Dashboard for desktop-only routes, so those must wait too.
   const dashboardOwnsStartupReadiness = page === "dashboard"
     || (!isDesktopHost && page === "music")

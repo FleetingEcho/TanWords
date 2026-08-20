@@ -224,7 +224,7 @@ pub async fn serve(registry: Arc<Registry>, app_handle: AppHandle) {
 }
 
 /// Electron's supervisor asks for a graceful shutdown (rather than SIGKILL,
-/// which would cut off an in-flight Turso background sync — see migration
+/// which would cut off an in-flight write — see migration
 /// plan §8.7) by closing this process's stdin. Resolves once stdin reaches
 /// EOF, which axum uses to stop accepting new connections and let in-flight
 /// requests finish. Also resolves on SIGTERM/SIGINT (Ctrl+C, `kill`) so the

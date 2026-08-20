@@ -173,7 +173,7 @@ export async function uploadDocumentAsset(documentId: number, file: File): Promi
  *  unconfigured bucket.
  *
  *  Small files stay in the database deliberately: no network round trip, and
- *  they keep working offline. Big ones cannot stay — a Turso primary rejects a
+ *  they keep working offline. Big ones cannot stay — a large blob write can be rejected
  *  blob that size outright (SQLITE_NOMEM). The size rule is skipped entirely
  *  when the bucket is set to take everything. */
 async function uploadViaR2(file: File): Promise<string | null> {

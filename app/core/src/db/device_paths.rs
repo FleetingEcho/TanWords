@@ -1,6 +1,6 @@
 //! Settings that name a folder on *this* machine.
 //!
-//! `user_settings` travels: on a Turso profile the same row reaches every
+//! `user_settings` travels: on a Postgres profile the same row reaches every
 //! machine signed into the account. That is right for preferences and wrong for
 //! paths. The mounted local-docs vault, music library, and terminal shell are
 //! settings whose value is a filesystem path, so syncing them means the last

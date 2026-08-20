@@ -222,11 +222,8 @@ pub(super) async fn export_backup(
         args["password"] = Value::from(password);
     }
     let requested = query.source.as_deref().unwrap_or("active");
-    if !matches!(requested, "active" | "local" | "turso") {
-        return json_error(
-            StatusCode::BAD_REQUEST,
-            "export source must be `local` or `turso`",
-        );
+    if !matches!(requested, "active" | "local") {
+        return json_error(StatusCode::BAD_REQUEST, "export source must be `local`");
     }
     let runtime = match state.runtime_for(&session).await {
         Ok(r) => r,
@@ -237,45 +234,16 @@ pub(super) async fn export_backup(
         Err(e) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, e),
     };
     let use_active = requested == "active"
-        || (requested == "local" && active_kind == tanwords_lib::db::connection::DbKind::Local)
-        || (requested == "turso" && active_kind == tanwords_lib::db::connection::DbKind::Turso);
+        || (requested == "local" && active_kind == tanwords_lib::db::connection::DbKind::Local);
 
     let result = if use_active {
-        if requested == "turso" {
-            if let Err(error) = dispatch(&runtime.ctx, "db_sync_now", Args::new(Value::Null)).await
-            {
-                return json_error(StatusCode::BAD_REQUEST, error);
-            }
-        }
         dispatch(&runtime.ctx, "db_export_backup", Args::new(args)).await
     } else {
         let user_dir = state.pool.user_dir(session.user_id);
-        let database = if requested == "local" {
-            let profile = DbProfile::Local {
-                path: user_dir.join("tanwords.db").to_string_lossy().to_string(),
-            };
-            tanwords_lib::db::connection::open(&profile, None).await
-        } else {
-            let turso = match state.users.turso_for(session.user_id).await {
-                Ok(Some(profile)) => profile,
-                Ok(None) => {
-                    return json_error(
-                        StatusCode::BAD_REQUEST,
-                        "No Turso connection is saved for this account",
-                    )
-                }
-                Err(e) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, e),
-            };
-            let profile = DbProfile::Turso {
-                path: user_dir
-                    .join("turso-replica.db")
-                    .to_string_lossy()
-                    .to_string(),
-                url: turso.url,
-            };
-            tanwords_lib::db::connection::open(&profile, Some(&turso.token)).await
+        let profile = DbProfile::Local {
+            path: user_dir.join("tanwords.db").to_string_lossy().to_string(),
         };
-        match database {
+        match tanwords_lib::db::connection::open(&profile, None).await {
             Ok(database) => {
                 let (registry, app) = tanwords_lib::build_state_for(database, None).await;
                 let ctx = tanwords_lib::rpc::Ctx::new(registry, app);
@@ -304,7 +272,6 @@ pub(super) async fn export_backup(
     let source_name = if requested == "active" {
         match active_kind {
             tanwords_lib::db::connection::DbKind::Local => "local",
-            tanwords_lib::db::connection::DbKind::Turso => "turso",
             tanwords_lib::db::connection::DbKind::Postgres => "postgres",
         }
     } else {

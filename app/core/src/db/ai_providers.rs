@@ -3,7 +3,7 @@
 //! Provider metadata (name, base URL, model) and the API key both live in the
 //! `ai_providers` table, so they travel with the database instead of being
 //! stranded in the renderer's localStorage and the local OS keychain — which
-//! is why a Turso-synced second device used to come up with no providers at
+//! is why a Postgres-synced second device used to come up with no providers at
 //! all despite being "already configured".
 //!
 //! Two properties make that safe to do with secret material in it:

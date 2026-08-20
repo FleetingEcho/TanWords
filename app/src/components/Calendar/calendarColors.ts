@@ -3,7 +3,7 @@
  *
  *  The DB stores a stable `color_name` token (blue, green, …) rather than a
  *  hex value so a theme change re-tints every event without a write, and so two
- *  users sharing a Turso DB don't see each other's hand-picked hexes clash.
+ *  users sharing a Postgres DB don't see each other's hand-picked hexes clash.
  *  This module is the single source of truth for the token→colour mapping both
  *  at render time (FullCalendar event fills) and in the picker (swatches). */
 

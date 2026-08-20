@@ -13,140 +13,21 @@ import { SettingRow } from "./SettingsShared";
 
 export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: ReturnType<typeof useT> }) {
   const data = useDataSection(db, t);
-  const { dbPath, defaultLocalPath, dbSize, connection, exporting, confirmClear, pendingSwitchPath, switching, activeTab, cloudBackend, tursoOpen, tursoUrl, tursoToken, rememberedTurso, connecting, postgresOpen, postgresUrl, connectingPostgres, confirmDisconnect, syncing, stuckTursoWarning, forgetting, showExportPassword, pendingExportSource, showImportPassword, pendingImportPath, importPassword, importPlan, analyzing, importing, importProgress, importError, pendingOverwritePath, overwriting, overwriteProgress, postgresExportProgress, vacuuming, remoteAccess, remoteAccessBusy, confirmRotateRemote, confirmDisableRemote, remoteAccessToken, isRemote, isOffline, canExport, canSwitchPath, canImport, canVacuum, formattedDbSize, setDbPath, setDbSize, setConnection, setExporting, setConfirmClear, setPendingSwitchPath, setSwitching, setActiveTab, setCloudBackend, setTursoOpen, setTursoUrl, setTursoToken, setRememberedTurso, setConnecting, setPostgresOpen, setPostgresUrl, setConfirmDisconnect, setSyncing, setStuckTursoWarning, setForgetting, setShowExportPassword, setPendingExportSource, setShowImportPassword, setPendingImportPath, setImportPassword, setImportPlan, setAnalyzing, setImporting, setImportError, setPendingOverwritePath, setConfirmRotateRemote, setConfirmDisableRemote, setRemoteAccessToken, handleOpenExisting, handleNewLocation, confirmSwitch, handleConnectTurso, handleConnectPostgres, handleSelectSource, handleDisconnect, handleForgetSavedConnection, handleSyncNow, handleChooseImportFile, analyzeImport, handleImport, handleChooseOverwriteFile, confirmOverwrite, handleVacuum, handleEnableRemote, handleConfirmRotateRemote, handleConfirmDisableRemote, startExport, handleExport, handleClearTranslations } = data;
+  const { confirmClear, pendingSwitchPath, switching, isRemote, setConfirmClear, setPendingSwitchPath, showExportPassword, pendingExportSource, showImportPassword, pendingImportPath, importPassword, importPlan, analyzing, importing, importProgress, importError, pendingOverwritePath, overwriting, overwriteProgress, postgresRemoteBusy, confirmRotatePostgresRemote, setConfirmRotatePostgresRemote, confirmDisconnect, setConfirmDisconnect, handleDisconnect, confirmSwitch, analyzeImport, handleImport, confirmOverwrite, handleConfirmRotatePostgresRemote, startExport, setImportPlan, setImportPassword, setImportError, setShowExportPassword, setShowImportPassword, setPendingImportPath, handleClearTranslations } = data;
 
   return (
     <div className="space-y-3">
-      {stuckTursoWarning && !isRemote && (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-xs font-semibold text-amber-600 dark:text-amber-500">
-                {t("settings.remoteDBStuckTitle")}
-              </p>
-              <p className="mt-1 truncate text-[11px] leading-relaxed text-muted-foreground" title={stuckTursoWarning}>
-                {stuckTursoWarning}
-              </p>
-            </div>
-            <Button
-              variant="ghost"
-              onClick={handleForgetSavedConnection}
-              disabled={forgetting}
-              className="h-8 shrink-0 rounded-lg border border-destructive/40 px-3 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
-            >
-              {forgetting ? t("settings.remoteDBForgetting") : t("settings.remoteDBForget")}
-            </Button>
-          </div>
-        </div>
-      )}
-
       <DataSectionDatabaseCard data={data} t={t} />
 
-      {/* Web-only: this account's dedicated sqld container, so a desktop app
-        * can connect directly (Settings > Cloud tab there) and share this
-        * account's data live. Unrelated to the local/cloud tabs above (a
-        * user-supplied external Turso/self-hosted target) — this one the
-        * server provisions and manages per account. */}
-      {!isDesktopHost && (
-        <div className="bg-card border border-border rounded-xl px-5 py-4 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-foreground">{t("settings.remoteAccessTitle")}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">{t("settings.remoteAccessSub")}</p>
-            </div>
-            <span
-              className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                remoteAccess?.enabled ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-              }`}
-            >
-              {t(remoteAccess?.enabled ? "settings.remoteAccessOn" : "settings.remoteAccessOff")}
-            </span>
-          </div>
-
-          {remoteAccess?.enabled ? (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="min-w-0 flex-1 truncate rounded-lg border border-input bg-background px-3 py-2 font-mono text-[11px]" title={remoteAccess.url ?? ""}>
-                  {remoteAccess.url}
-                </span>
-                <Button
-                  variant="outline"
-                  onClick={() => remoteAccess.url && navigator.clipboard.writeText(remoteAccess.url)}
-                  className="h-8 shrink-0 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted transition-colors"
-                >
-                  {t("settings.remoteAccessCopyUrl")}
-                </Button>
-              </div>
-
-              {remoteAccessToken && (
-                <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5 space-y-1.5">
-                  <p className="text-[11px] font-medium text-amber-600 dark:text-amber-500">{t("settings.remoteAccessTokenWarn")}</p>
-                  <div className="flex items-center gap-2">
-                    <span className="min-w-0 flex-1 truncate rounded-lg border border-input bg-background px-3 py-1.5 font-mono text-[11px]" title={remoteAccessToken}>
-                      {remoteAccessToken}
-                    </span>
-                    <Button
-                      variant="outline"
-                      onClick={() => navigator.clipboard.writeText(remoteAccessToken)}
-                      className="h-7 shrink-0 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted transition-colors"
-                    >
-                      {t("settings.remoteAccessCopyToken")}
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setConfirmRotateRemote(true)}
-                  disabled={remoteAccessBusy}
-                  className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted disabled:opacity-50 transition-colors"
-                >
-                  {t("settings.remoteAccessRotate")}
-                </Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => setConfirmDisableRemote(true)}
-                  disabled={remoteAccessBusy}
-                  className="h-8 px-3 rounded-lg text-xs font-medium border border-destructive/40 text-destructive hover:bg-destructive/10 disabled:opacity-50 transition-colors"
-                >
-                  {t("settings.remoteAccessDisable")}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <Button
-              onClick={handleEnableRemote}
-              disabled={remoteAccessBusy}
-              className="h-8 px-4 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-            >
-              {remoteAccessBusy ? t("settings.remoteAccessWorking") : t("settings.remoteAccessEnable")}
-            </Button>
-          )}
-        </div>
-      )}
-
       <ConfirmModal
-        open={confirmRotateRemote}
+        open={confirmRotatePostgresRemote}
         title={t("settings.remoteAccessRotateConfirmTitle")}
         message={t("settings.remoteAccessRotateConfirmMessage")}
-        confirmLabel={remoteAccessBusy ? t("settings.remoteAccessWorking") : t("settings.remoteAccessRotate")}
+        confirmLabel={postgresRemoteBusy ? t("settings.remoteAccessWorking") : t("settings.remoteAccessRotate")}
         danger
-        confirmDisabled={remoteAccessBusy}
-        onCancel={() => setConfirmRotateRemote(false)}
-        onConfirm={handleConfirmRotateRemote}
-      />
-
-      <ConfirmModal
-        open={confirmDisableRemote}
-        title={t("settings.remoteAccessDisableConfirmTitle")}
-        message={t("settings.remoteAccessDisableConfirmMessage")}
-        confirmLabel={remoteAccessBusy ? t("settings.remoteAccessWorking") : t("settings.remoteAccessDisable")}
-        danger
-        confirmDisabled={remoteAccessBusy}
-        onCancel={() => setConfirmDisableRemote(false)}
-        onConfirm={handleConfirmDisableRemote}
+        confirmDisabled={postgresRemoteBusy}
+        onCancel={() => setConfirmRotatePostgresRemote(false)}
+        onConfirm={handleConfirmRotatePostgresRemote}
       />
 
       {/* Directly under the database card, outside the local/cloud tabs: the R2
@@ -196,7 +77,7 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
         confirmLabel={overwriting ? t("settings.importOverwriteWorking") : t("settings.importOverwriteConfirm")}
         danger
         confirmDisabled={overwriting}
-        onCancel={() => setPendingOverwritePath(null)}
+        onCancel={() => setPendingSwitchPath(null)}
         onConfirm={confirmOverwrite}
       />
 
@@ -278,4 +159,3 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
     </div>
   );
 }
-

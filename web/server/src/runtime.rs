@@ -2,15 +2,15 @@
 //!
 //! Every active web user gets their own core runtime — a `Registry` +
 //! `AppHandle` pair built around *their* database (per-user local file, or
-//! their Turso embedded replica when they've connected one). That's the whole
-//! multi-user trick: command code keeps reading `State<AppState>` exactly as
-//! on desktop, and isolation (data, document-privacy unlocks, SSE events)
-//! comes from the runtimes being separate objects.
+//! their self-provisioned Postgres database when they've enabled it). That's
+//! the whole multi-user trick: command code keeps reading `State<AppState>`
+//! exactly as on desktop, and isolation (data, document-privacy unlocks, SSE
+//! events) comes from the runtimes being separate objects.
 //!
 //! Capacity is deliberately small. Evicting an entry drops the last `Arc`,
-//! which drops the Registry, which drops the `Db` — closing a local file is
-//! nothing, and a Turso replica just stops its background sync; nothing is
-//! lost (the replica re-syncs from the primary on next spawn).
+//! which drops the Registry, which drops the `Db` — closing a local file or a
+//! Postgres pool is cheap; nothing is lost (a fresh connection is opened on
+//! next spawn).
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -50,17 +50,23 @@ struct RuntimeEntry {
 pub struct RuntimePool {
     users: Arc<UsersDb>,
     data_dir: PathBuf,
+    /// Host/port of the shared `postgres` service — used to build a saved
+    /// Postgres profile's connection URL at runtime spawn.
+    postgres_host: String,
+    postgres_port: u16,
     entries: Mutex<HashMap<i64, RuntimeEntry>>,
     /// Serializes spawns so two first-requests from the same user/devices
-    /// never open the same replica file twice.
+    /// never open the same database twice.
     spawn_gate: tokio::sync::Mutex<()>,
 }
 
 impl RuntimePool {
-    pub fn new(users: Arc<UsersDb>, data_dir: PathBuf) -> Self {
+    pub fn new(users: Arc<UsersDb>, data_dir: PathBuf, postgres_host: String, postgres_port: u16) -> Self {
         Self {
             users,
             data_dir,
+            postgres_host,
+            postgres_port,
             entries: Mutex::new(HashMap::new()),
             spawn_gate: tokio::sync::Mutex::new(()),
         }
@@ -92,22 +98,20 @@ impl RuntimePool {
         }
 
         let user_dir = self.user_dir(user_id);
-        let turso = self
-            .users
-            .active_turso_for(user_id)
-            .await?
-            .map(|p| (p.url.clone(), p.token));
-        // A saved Turso profile that can't be opened (primary unreachable,
-        // revoked token) must not lock the account out of the app: fall back
-        // to the per-user local database and surface the failure through the
-        // same startup-warning channel the desktop uses.
-        let (database, db_fallback_warning) = match tanwords_lib::open_user_db(&user_dir, turso.clone()).await {
+        let postgres = self.users.active_postgres_for(user_id).await?;
+        let postgres_url = postgres
+            .as_ref()
+            .map(|p| format!("postgres://{}:{}@{}:{}/{}?sslmode=require", p.role, p.password, self.postgres_host, self.postgres_port, p.db_name));
+        // A saved Postgres profile that can't be opened (endpoint unreachable,
+        // rotated password) must not lock the account out of the app: fall
+        // back to the per-user local database and surface the failure
+        // through the same startup-warning channel the desktop uses.
+        let (database, db_fallback_warning) = match tanwords_lib::open_user_db(&user_dir, postgres_url.clone()).await {
             Ok(db) => (db, None),
-            Err(e) if turso.is_some() => {
-                eprintln!("[tanwords-web] user {user_id}: Turso open failed; falling back to local db: {e}");
+            Err(e) if postgres_url.is_some() => {
+                eprintln!("[tanwords-web] user {user_id}: Postgres open failed; falling back to local db: {e}");
                 let db = tanwords_lib::open_user_db(&user_dir, None).await?;
-                let url = turso.map(|(u, _)| u).unwrap_or_default();
-                (db, Some(url))
+                (db, Some("Postgres".to_string()))
             }
             Err(e) => return Err(e),
         };

@@ -49,7 +49,7 @@ const dshPanel = new DshPanel();
  *  VACUUM on a large file could simply never run; startup has no such
  *  deadline, and this never blocks window creation.
  *
- *  Skipped for a Turso/self-hosted connection: confirmed against a real
+ *  Skipped for a Postgres connection: confirmed against a real
  *  sqld instance that it rejects `VACUUM` outright (`unsupported statement:
  *  VACUUM`) — its storage isn't a plain rolling SQLite file, so there is
  *  nothing here for this to reclaim, not just something `db_vacuum` refuses.

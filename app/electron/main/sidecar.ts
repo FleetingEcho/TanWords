@@ -1,7 +1,7 @@
 /** Supervises the `tanwords-core` sidecar: spawns it, parses the
  *  `{"port":N,"token":".."}` handshake it prints as its first stdout line
  *  (see core/src/server.rs's `serve`), restarts it if it dies, and shuts it
- *  down gracefully (not SIGKILL) on app quit so an in-flight Turso background
+ *  down gracefully (not SIGKILL) on app quit so an in-flight background
  *  sync gets to finish (migration plan §8.7). */
 import { app } from "electron";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
@@ -166,7 +166,7 @@ export class SidecarSupervisor {
 
   /** Closes the sidecar's stdin (the EOF the Rust side watches for — see
    *  `shutdown_on_stdin_eof` in core/src/server.rs) and awaits process exit,
-   *  so an in-flight Turso sync gets to finish. Falls back to SIGTERM/SIGKILL
+   *  so an in-flight write gets to finish. Falls back to SIGTERM/SIGKILL
    *  only if the process doesn't exit on its own within
    *  GRACEFUL_SHUTDOWN_TIMEOUT_MS, so a hung sidecar can't hang app quit
    *  forever. */

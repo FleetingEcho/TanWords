@@ -1,12 +1,13 @@
 /** Data management (Settings › Data): local DB path/size, backup export,
- *  Turso connect/disconnect/remembered profile, import analyze/apply, sync,
- *  and clear-translations — composed by useDB.extra.ts (see useDB.ts). */
+ *  Postgres connect/disconnect, self-provisioned Postgres remote access,
+ *  import analyze/apply, sync, and clear-translations — composed by
+ *  useDB.extra.ts (see useDB.ts). */
 import { useCallback, useMemo } from "react";
 import { invoke } from "@/ipc/backend";
 import { webAuthFetch } from "@/platform/webClient";
 import { isDesktopHost } from "@/platform";
 import { logError, reportWriteError } from "./useDB.errors";
-import type { DbConnection, RememberedTursoConnection, ImportPlan, ImportDecisions, ImportResult, OverwriteResult, RemoteAccessStatus } from "./useDB.types";
+import type { DbConnection, ImportPlan, ImportDecisions, ImportResult, OverwriteResult, PostgresRemoteStatus } from "./useDB.types";
 
 async function dbRoute<T>(path: string, method = "GET", body?: unknown): Promise<T> {
   const response = await webAuthFetch(path, {
@@ -99,31 +100,14 @@ export function useDBData() {
     }
   }, []);
 
-  /** Points the app at a Turso database as an embedded replica. The token goes
-   *  straight to the OS keychain and is never readable from here again. Caller
-   *  must reload the app afterwards — every already-fetched page is stale. */
-  const connectTurso = useCallback(async (url: string, token: string): Promise<DbConnection> => {
-    try {
-      if (!isDesktopHost) {
-        return await dbRoute<DbConnection>("/api/db/turso/connect", "POST", { url, token });
-      }
-      return await invoke<DbConnection>("db_connect_turso", { url, token });
-    } catch (e) {
-      reportWriteError("connectTurso", e, "连接 Turso 失败");
-      throw e;
-    }
-  }, []);
-
-  /** Points the app directly at a user-supplied Postgres database. Unlike
-   *  Turso there is no local replica or keychain token — the connection
-   *  string carries its own credentials and every read/write is a live
-   *  network round trip from then on. Caller must reload the app afterwards. */
+  /** Points the app directly at a user-supplied Postgres database. There is
+   *  no local replica — the connection string carries its own credentials
+   *  and every read/write is a live network round trip from then on. Caller
+   *  must reload the app afterwards. Desktop-only: on web, a Postgres
+   *  connection is provisioned server-side via `enablePostgresRemote`
+   *  instead of pasted in. */
   const connectPostgres = useCallback(async (url: string): Promise<DbConnection> => {
-    // Desktop-only for now: the web server has a per-account Turso store
-    // (`state.users.set_turso`) but no equivalent sealed-credential storage
-    // for an arbitrary Postgres connection string yet. The UI gates the
-    // Postgres tab to the desktop host so this branch isn't reachable there.
-    if (!isDesktopHost) throw new Error("Postgres connections are desktop-only for now");
+    if (!isDesktopHost) throw new Error("Pasting a Postgres connection string is desktop-only");
     try {
       return await invoke<DbConnection>("db_connect_postgres", { url });
     } catch (e) {
@@ -132,75 +116,62 @@ export function useDBData() {
     }
   }, []);
 
-  /** Web-only selection between the account's preserved local database and its
-   * remembered Turso replica. Selecting local does not erase credentials. */
-  const selectDbSource = useCallback(async (source: "local" | "turso"): Promise<DbConnection> => {
-    if (isDesktopHost) throw new Error("Per-account database selection is web-only");
-    try {
-      return await dbRoute<DbConnection>("/api/db/source", "POST", { source });
-    } catch (e) {
-      reportWriteError("selectDbSource", e, "切换数据库失败");
-      throw e;
-    }
-  }, []);
-
-  /** Whether this web account has a dedicated sqld container a desktop app
-   *  can connect to directly, sharing this account's data live. Web-only —
-   *  there's no "account" on the desktop side to attach this to. */
-  const getRemoteAccess = useCallback(async (): Promise<RemoteAccessStatus> => {
+  /** This web account's self-provisioned role+database inside the shared
+   *  Postgres instance, if it has one. Web-only — there's no "account" on
+   *  the desktop side to attach this to. */
+  const getPostgresRemote = useCallback(async (): Promise<PostgresRemoteStatus> => {
     if (isDesktopHost) return { enabled: false, url: null };
     try {
-      return await dbRoute<RemoteAccessStatus>("/api/db/remote/status");
+      return await dbRoute<PostgresRemoteStatus>("/api/db/postgres/status");
     } catch (e) {
-      logError("getRemoteAccess", e);
+      logError("getPostgresRemote", e);
       return { enabled: false, url: null };
     }
   }, []);
 
-  /** Provisions (or restarts, if previously disabled) this account's sqld
-   *  container. Returns the token only this once per call — the caller must
-   *  show/copy it immediately. */
-  const enableRemoteAccess = useCallback(async (): Promise<RemoteAccessStatus> => {
+  /** Provisions (first call) or re-enables this account's Postgres role, and
+   *  switches the account's own web session onto it. Returns the password
+   *  in `url` — show/copy it immediately, since a later status read never
+   *  includes it again. */
+  const enablePostgresRemote = useCallback(async (): Promise<PostgresRemoteStatus> => {
     if (isDesktopHost) throw new Error("Remote access is web-only");
     try {
-      return await dbRoute<RemoteAccessStatus>("/api/db/remote/enable", "POST");
+      return await dbRoute<PostgresRemoteStatus>("/api/db/postgres/enable", "POST");
     } catch (e) {
-      reportWriteError("enableRemoteAccess", e, "启用远程连接失败");
+      reportWriteError("enablePostgresRemote", e, "启用远程连接失败");
       throw e;
     }
   }, []);
 
-  /** New keypair, same data (the container is recreated but its volume is
-   *  reused) — invalidates every previously issued token immediately. */
-  const rotateRemoteAccess = useCallback(async (): Promise<RemoteAccessStatus> => {
+  /** New password, same role/database — invalidates every previously issued
+   *  credential immediately. */
+  const rotatePostgresRemote = useCallback(async (): Promise<PostgresRemoteStatus> => {
     if (isDesktopHost) throw new Error("Remote access is web-only");
     try {
-      return await dbRoute<RemoteAccessStatus>("/api/db/remote/rotate", "POST");
+      return await dbRoute<PostgresRemoteStatus>("/api/db/postgres/rotate", "POST");
     } catch (e) {
-      reportWriteError("rotateRemoteAccess", e, "刷新密钥失败");
+      reportWriteError("rotatePostgresRemote", e, "刷新密钥失败");
       throw e;
     }
   }, []);
 
-  /** Stops (not removes) the container — data and the URL are kept for a
-   *  cheap later re-enable. */
-  const disableRemoteAccess = useCallback(async (): Promise<void> => {
+  /** Revokes LOGIN (data and the role/database are kept for a cheap later
+   *  re-enable) and switches the account's web session back to local. */
+  const disablePostgresRemote = useCallback(async (): Promise<void> => {
     if (isDesktopHost) return;
     try {
-      await dbRoute<{ enabled: boolean }>("/api/db/remote/disable", "POST");
+      await dbRoute<{ enabled: boolean }>("/api/db/postgres/disable", "POST");
     } catch (e) {
-      reportWriteError("disableRemoteAccess", e, "关闭远程连接失败");
+      reportWriteError("disablePostgresRemote", e, "关闭远程连接失败");
       throw e;
     }
   }, []);
 
-  /** Desktop-compatible disconnect operation. Web Settings uses
-   * selectDbSource("local") so remembered credentials are preserved. */
+  /** Desktop-only: switches back to the default local file. On web, use
+   *  `disablePostgresRemote` instead — it also revokes remote access. */
   const disconnectRemote = useCallback(async (): Promise<DbConnection> => {
+    if (!isDesktopHost) throw new Error("Use disablePostgresRemote on web");
     try {
-      if (!isDesktopHost) {
-        return await dbRoute<DbConnection>("/api/db/turso/disconnect", "POST");
-      }
       return await invoke<DbConnection>("db_disconnect_remote");
     } catch (e) {
       reportWriteError("disconnectRemote", e, "断开在线数据库失败");
@@ -217,51 +188,6 @@ export function useDBData() {
     } catch (e) {
       logError("getStartupWarning", e);
       return null;
-    }
-  }, []);
-
-  /** Whether the profile saved on disk (independent of the live connection,
-   *  which is already the local fallback if this is relevant at all) is
-   *  Turso — gates the "forget saved connection" button. */
-  const isSavedProfileTurso = useCallback(async (): Promise<boolean> => {
-    try {
-      if (!isDesktopHost) {
-        const remembered = await dbRoute<RememberedTursoConnection>("/api/db/turso/remembered");
-        return remembered.url !== null && remembered.tokenPresent;
-      }
-      return await invoke<boolean>("db_saved_profile_is_turso");
-    } catch (e) {
-      logError("isSavedProfileTurso", e);
-      return false;
-    }
-  }, []);
-
-  /** Reads the last Turso URL and whether the keychain still has a token, so
-   *  the Settings form can prefill a reconnect without exposing the token. */
-  const getRememberedTurso = useCallback(async (): Promise<RememberedTursoConnection | null> => {
-    try {
-      if (!isDesktopHost) {
-        return await dbRoute<RememberedTursoConnection>("/api/db/turso/remembered");
-      }
-      return await invoke<RememberedTursoConnection>("db_get_remembered_turso");
-    } catch (e) {
-      logError("getRememberedTurso", e);
-      return null;
-    }
-  }, []);
-
-  /** Clears a saved Turso profile that can't be reconnected right now (lost
-   *  token, wiped keychain, …), without needing a live connection to it. */
-  const forgetSavedProfile = useCallback(async (): Promise<void> => {
-    try {
-      if (!isDesktopHost) {
-        await dbRoute("/api/db/turso/forget", "POST");
-        return;
-      }
-      await invoke("db_forget_saved_profile");
-    } catch (e) {
-      reportWriteError("forgetSavedProfile", e, "Failed to clear saved connection");
-      throw e;
     }
   }, []);
 
@@ -357,15 +283,13 @@ export function useDBData() {
 
   return useMemo(() => ({
     getDbPath, getDefaultLocalPath, getDbSize, exportBackup, exportPostgresBackup, switchDbPath, clearTranslations,
-    getConnection, connectTurso, connectPostgres, selectDbSource, disconnectRemote, syncNow,
-    getStartupWarning, isSavedProfileTurso, forgetSavedProfile, getRememberedTurso,
+    getConnection, connectPostgres, disconnectRemote, syncNow, getStartupWarning,
     importAnalyze, importApply, importOverwrite, vacuumDatabase,
-    getRemoteAccess, enableRemoteAccess, rotateRemoteAccess, disableRemoteAccess,
+    getPostgresRemote, enablePostgresRemote, rotatePostgresRemote, disablePostgresRemote,
   }), [
     getDbPath, getDefaultLocalPath, getDbSize, exportBackup, exportPostgresBackup, switchDbPath, clearTranslations,
-    getConnection, connectTurso, connectPostgres, selectDbSource, disconnectRemote, syncNow,
-    getStartupWarning, isSavedProfileTurso, forgetSavedProfile, getRememberedTurso,
+    getConnection, connectPostgres, disconnectRemote, syncNow, getStartupWarning,
     importAnalyze, importApply, importOverwrite, vacuumDatabase,
-    getRemoteAccess, enableRemoteAccess, rotateRemoteAccess, disableRemoteAccess,
+    getPostgresRemote, enablePostgresRemote, rotatePostgresRemote, disablePostgresRemote,
   ]);
 }

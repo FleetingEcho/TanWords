@@ -6,7 +6,7 @@ import { DownloadIcon } from "@/components/ui/icons";
 import { SettingRow, ToggleGroup } from "./SettingsShared";
 
 export function DataSectionDatabaseCard({ data, t }: { data: ReturnType<typeof useDataSection>; t: ReturnType<typeof useT> }) {
-  const { dbPath, defaultLocalPath, dbSize, connection, exporting, confirmClear, pendingSwitchPath, switching, activeTab, cloudBackend, tursoOpen, tursoUrl, tursoToken, rememberedTurso, connecting, postgresOpen, postgresUrl, connectingPostgres, confirmDisconnect, syncing, stuckTursoWarning, forgetting, showExportPassword, pendingExportSource, showImportPassword, pendingImportPath, importPassword, importPlan, analyzing, importing, importProgress, importError, pendingOverwritePath, overwriting, overwriteProgress, postgresExportProgress, vacuuming, remoteAccess, remoteAccessBusy, confirmRotateRemote, confirmDisableRemote, remoteAccessToken, isRemote, isOffline, canExport, canSwitchPath, canImport, canVacuum, formattedDbSize, setDbPath, setDbSize, setConnection, setExporting, setConfirmClear, setPendingSwitchPath, setSwitching, setActiveTab, setCloudBackend, setTursoOpen, setTursoUrl, setTursoToken, setRememberedTurso, setConnecting, setPostgresOpen, setPostgresUrl, setConfirmDisconnect, setSyncing, setStuckTursoWarning, setForgetting, setShowExportPassword, setPendingExportSource, setShowImportPassword, setPendingImportPath, setImportPassword, setImportPlan, setAnalyzing, setImporting, setImportError, setPendingOverwritePath, setConfirmRotateRemote, setConfirmDisableRemote, setRemoteAccessToken, handleOpenExisting, handleNewLocation, confirmSwitch, handleConnectTurso, handleConnectPostgres, handleSelectSource, handleDisconnect, handleForgetSavedConnection, handleSyncNow, handleChooseImportFile, analyzeImport, handleImport, handleChooseOverwriteFile, confirmOverwrite, handleVacuum, handleEnableRemote, handleConfirmRotateRemote, handleConfirmDisableRemote, startExport, handleExport, handleClearTranslations } = data;
+  const { dbPath, defaultLocalPath, dbSize, connection, exporting, confirmClear, pendingSwitchPath, switching, activeTab, postgresOpen, postgresUrl, connectingPostgres, confirmDisconnect, syncing, showExportPassword, pendingExportSource, showImportPassword, pendingImportPath, importPassword, importPlan, analyzing, importing, importProgress, importError, pendingOverwritePath, overwriting, overwriteProgress, postgresExportProgress, vacuuming, postgresRemote, postgresRemoteBusy, confirmRotatePostgresRemote, postgresRemoteJustRevealed, isRemote, isOffline, canExport, canSwitchPath, canImport, canVacuum, formattedDbSize, setDbPath, setDbSize, setConnection, setExporting, setConfirmClear, setPendingSwitchPath, setSwitching, setActiveTab, setPostgresOpen, setPostgresUrl, setConfirmDisconnect, setSyncing, setShowExportPassword, setPendingExportSource, setShowImportPassword, setPendingImportPath, setImportPassword, setImportPlan, setAnalyzing, setImporting, setImportError, setPendingOverwritePath, setConfirmRotatePostgresRemote, handleOpenExisting, handleNewLocation, confirmSwitch, handleConnectPostgres, handleDisablePostgresRemote, handleDisconnect, handleSyncNow, handleChooseImportFile, analyzeImport, handleImport, handleChooseOverwriteFile, confirmOverwrite, handleVacuum, handleEnablePostgresRemote, handleConfirmRotatePostgresRemote, startExport, handleExport, handleClearTranslations } = data;
 
   return (
       <div className="bg-card border border-border rounded-xl px-5 py-4 space-y-4">
@@ -27,9 +27,9 @@ export function DataSectionDatabaseCard({ data, t }: { data: ReturnType<typeof u
 
         {/* Tab-aware, not just connection-aware: this line describes
           * whichever tab is open, not always "the active connection" —
-          * otherwise the Local tab shows a Postgres/Turso URL under a
-          * heading that says "Local", which reads as contradictory next to
-          * the "not available" message the tab already shows below it. */}
+          * otherwise the Local tab shows a Postgres URL under a heading that
+          * says "Local", which reads as contradictory next to the "not
+          * available" message the tab already shows below it. */}
         <div className="flex items-center justify-between gap-3 border-t border-border/60 pt-3">
           <div className="min-w-0 flex items-center gap-2">
             <span
@@ -98,11 +98,11 @@ export function DataSectionDatabaseCard({ data, t }: { data: ReturnType<typeof u
                 {isRemote && (
                   <Button
                     variant="outline"
-                    onClick={() => void handleSelectSource("local")}
-                    disabled={switching}
+                    onClick={handleDisablePostgresRemote}
+                    disabled={postgresRemoteBusy}
                     className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted disabled:opacity-50"
                   >
-                    {switching ? t("settings.switching") : t("settings.dbUseLocal")}
+                    {postgresRemoteBusy ? t("settings.switching") : t("settings.dbUseLocal")}
                   </Button>
                 )}
               </div>
@@ -190,150 +190,128 @@ export function DataSectionDatabaseCard({ data, t }: { data: ReturnType<typeof u
           </>
         ) : (
           <div className="space-y-3">
-            {!isRemote && (
-              <ToggleGroup
-                options={[
-                  { id: "turso", label: t("settings.dbTabTurso") },
-                  { id: "postgres", label: t("settings.dbTabPostgres") },
-                ]}
-                value={cloudBackend}
-                onChange={(v) => setCloudBackend(v as "turso" | "postgres")}
-              />
-            )}
-            <SettingRow
-              label={t("settings.remoteDB")}
-              sub={isOffline ? t("settings.remoteDBOfflineNote") : t("settings.remoteDBSub")}
-            >
-              <div className="flex items-center gap-2">
-                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                  isOffline
-                    ? "bg-destructive/10 text-destructive"
-                    : isRemote
-                      ? "bg-primary/10 text-primary"
-                      : "bg-muted text-muted-foreground"
-                }`}>
-                  {isOffline
-                    ? t("settings.remoteDBOffline")
-                    : isRemote
-                      ? t("settings.remoteDBConnected")
-                      : t("settings.remoteDBLocal")}
-                </span>
-                {isRemote ? (
-                  <>
-                    <Button
-                      variant="outline"
-                      onClick={handleSyncNow}
-                      disabled={syncing || !connection?.caps.sync}
-                      className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted disabled:opacity-50 transition-colors"
-                    >
-                      {syncing ? t("settings.remoteDBSyncing") : t("settings.remoteDBSync")}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      onClick={() => setConfirmDisconnect(true)}
-                      className="h-8 px-3 rounded-lg text-xs font-medium border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
-                    >
-                      {t(isDesktopHost ? "settings.remoteDBDisconnect" : "settings.dbUseLocal")}
-                    </Button>
-                  </>
-                ) : cloudBackend === "turso" ? (
-                  <>
-                    {!isDesktopHost && rememberedTurso?.tokenPresent && rememberedTurso.url && (
+            {isDesktopHost ? (
+              <SettingRow
+                label={t("settings.remoteDB")}
+                sub={isOffline ? t("settings.remoteDBOfflineNote") : t("settings.remoteDBSub")}
+              >
+                <div className="flex items-center gap-2">
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                    isOffline
+                      ? "bg-destructive/10 text-destructive"
+                      : isRemote
+                        ? "bg-primary/10 text-primary"
+                        : "bg-muted text-muted-foreground"
+                  }`}>
+                    {isOffline
+                      ? t("settings.remoteDBOffline")
+                      : isRemote
+                        ? t("settings.remoteDBConnected")
+                        : t("settings.remoteDBLocal")}
+                  </span>
+                  {isRemote ? (
+                    <>
                       <Button
                         variant="outline"
-                        onClick={() => void handleSelectSource("turso")}
-                        disabled={switching}
-                        className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted disabled:opacity-50"
+                        onClick={handleSyncNow}
+                        disabled={syncing || !connection?.caps.sync}
+                        className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted disabled:opacity-50 transition-colors"
                       >
-                        {switching ? t("settings.switching") : t("settings.dbUseReplica")}
+                        {syncing ? t("settings.remoteDBSyncing") : t("settings.remoteDBSync")}
                       </Button>
-                    )}
+                      <Button
+                        variant="ghost"
+                        onClick={() => setConfirmDisconnect(true)}
+                        className="h-8 px-3 rounded-lg text-xs font-medium border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
+                      >
+                        {t("settings.remoteDBDisconnect")}
+                      </Button>
+                    </>
+                  ) : (
                     <Button
                       variant="outline"
-                      onClick={() => setTursoOpen((open) => !open)}
-                      aria-expanded={tursoOpen}
+                      onClick={() => setPostgresOpen((open) => !open)}
+                      aria-expanded={postgresOpen}
                       className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted transition-colors"
                     >
-                      {t(rememberedTurso?.tokenPresent ? "settings.dbChangeTurso" : "settings.remoteDBConnect")}
+                      {t("settings.remoteDBConnect")}
                     </Button>
-                  </>
+                  )}
+                </div>
+              </SettingRow>
+            ) : (
+              <div className="bg-card border border-border rounded-xl px-5 py-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">{t("settings.remoteAccessTitle")}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{t("settings.remoteAccessSub")}</p>
+                  </div>
+                  <span
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                      postgresRemote?.enabled ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {t(postgresRemote?.enabled ? "settings.remoteAccessOn" : "settings.remoteAccessOff")}
+                  </span>
+                </div>
+
+                {postgresRemote?.enabled ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="min-w-0 flex-1 truncate rounded-lg border border-input bg-background px-3 py-2 font-mono text-[11px]" title={postgresRemote.url ?? ""}>
+                        {postgresRemote.url}
+                      </span>
+                      <Button
+                        variant="outline"
+                        onClick={() => postgresRemote.url && navigator.clipboard.writeText(postgresRemote.url)}
+                        className="h-8 shrink-0 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted transition-colors"
+                      >
+                        {t("settings.remoteAccessCopyUrl")}
+                      </Button>
+                    </div>
+
+                    {postgresRemoteJustRevealed && (
+                      <p className="text-[11px] font-medium text-amber-600 dark:text-amber-500">
+                        {t("settings.remoteAccessTokenWarn")}
+                      </p>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => setConfirmRotatePostgresRemote(true)}
+                        disabled={postgresRemoteBusy}
+                        className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted disabled:opacity-50 transition-colors"
+                      >
+                        {t("settings.remoteAccessRotate")}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={() => setConfirmDisconnect(true)}
+                        disabled={postgresRemoteBusy}
+                        className="h-8 px-3 rounded-lg text-xs font-medium border border-destructive/40 text-destructive hover:bg-destructive/10 disabled:opacity-50 transition-colors"
+                      >
+                        {t("settings.remoteAccessDisable")}
+                      </Button>
+                    </div>
+                  </div>
                 ) : (
                   <Button
-                    variant="outline"
-                    onClick={() => setPostgresOpen((open) => !open)}
-                    aria-expanded={postgresOpen}
-                    disabled={!isDesktopHost}
-                    className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted disabled:opacity-50 transition-colors"
+                    onClick={handleEnablePostgresRemote}
+                    disabled={postgresRemoteBusy}
+                    className="h-8 px-4 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
                   >
-                    {t("settings.remoteDBConnect")}
+                    {postgresRemoteBusy ? t("settings.remoteAccessWorking") : t("settings.remoteAccessEnable")}
                   </Button>
                 )}
               </div>
-            </SettingRow>
-
-            {!isDesktopHost && cloudBackend === "postgres" && !isRemote && (
-              <p className="text-xs text-muted-foreground py-2">{t("settings.remoteDBPostgresDesktopOnly")}</p>
             )}
 
-            {tursoOpen && !isRemote && cloudBackend === "turso" && (
+            {postgresOpen && !isRemote && isDesktopHost && (
               <div className="space-y-3">
                 {/* Appearance settings live in user_settings, i.e. in the database
                     itself, so connecting to an empty one reads as "everything was
                     reset". Say so before they click, not after. */}
-                <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5">
-                  <p className="text-xs font-semibold text-amber-600 dark:text-amber-500">
-                    {t("settings.remoteDBWarnTitle")}
-                  </p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                    {t("settings.remoteDBWarnBody")}
-                  </p>
-                  <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-                    {t("settings.remoteDBWarnSafe")}
-                  </p>
-                </div>
-                <label className="block space-y-1">
-                  <span className="text-xs font-medium text-foreground">{t("settings.remoteDBUrl")}</span>
-                  <input
-                    value={tursoUrl}
-                    onChange={(e) => setTursoUrl(e.target.value)}
-                    placeholder={t("settings.remoteDBUrlPlaceholder")}
-                    spellCheck={false}
-                    autoComplete="off"
-                    className="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs outline-hidden focus:border-primary"
-                  />
-                </label>
-                <label className="block space-y-1">
-                  <span className="text-xs font-medium text-foreground">{t("settings.remoteDBToken")}</span>
-                  <input
-                    type="password"
-                    value={tursoToken}
-                    onChange={(e) => setTursoToken(e.target.value)}
-                    placeholder={t("settings.remoteDBTokenPlaceholder")}
-                    spellCheck={false}
-                    autoComplete="off"
-                    className="w-full rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs outline-hidden focus:border-primary"
-                  />
-                  <span className="block text-[11px] text-muted-foreground">{t("settings.remoteDBTokenHint")}</span>
-                  {rememberedTurso?.tokenPresent && !tursoToken.trim() && (
-                    <span className="mt-1 block text-[11px] font-medium text-primary">{t("settings.remoteDBTokenSaved")}</span>
-                  )}
-                </label>
-                <div className="flex justify-end">
-                  <Button
-                    onClick={handleConnectTurso}
-                    disabled={connecting || !tursoUrl.trim()}
-                    className="h-8 px-4 rounded-lg text-xs font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-                  >
-                    {connecting ? t("settings.remoteDBConnecting") : t("settings.remoteDBConnect")}
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {postgresOpen && !isRemote && cloudBackend === "postgres" && isDesktopHost && (
-              <div className="space-y-3">
-                {/* Same reset-reads-as-data-loss note as Turso above — connecting to
-                    an empty Postgres database looks like everything vanished. */}
                 <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2.5">
                   <p className="text-xs font-semibold text-amber-600 dark:text-amber-500">
                     {t("settings.remoteDBWarnTitle")}
@@ -385,20 +363,6 @@ export function DataSectionDatabaseCard({ data, t }: { data: ReturnType<typeof u
                     {analyzing ? t("settings.importDBAnalyzing") : t("settings.importDBChoose")}
                   </Button>
                 </SettingRow>
-
-                {!isDesktopHost && (
-                  <SettingRow label={t("settings.exportDB")} sub={t("settings.exportReplicaDBSub")}>
-                    <Button
-                      variant="outline"
-                      onClick={() => handleExport("turso")}
-                      disabled={exporting || !rememberedTurso?.tokenPresent}
-                      className="h-8 gap-1.5 px-3 rounded-lg text-xs font-medium disabled:opacity-50"
-                    >
-                      <DownloadIcon className="h-3.5 w-3.5" />
-                      {t("settings.exportReplicaDB")}
-                    </Button>
-                  </SettingRow>
-                )}
 
                 {isDesktopHost && connection?.kind === "postgres" && (
                   <>

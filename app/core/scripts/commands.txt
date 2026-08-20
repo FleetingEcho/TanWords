@@ -88,7 +88,6 @@ db::db_get_db_path
 db::db_get_default_local_path
 db::db_get_db_size
 db::db_get_connection
-db::db_connect_turso
 db::db_connect_postgres
 db::db_export_postgres_backup
 db::db_disconnect_remote
@@ -107,9 +106,6 @@ db::db_get_search_history
 db::db_clear_search_history
 db::db_switch_path
 db::db_get_startup_warning
-db::db_get_remembered_turso
-db::db_saved_profile_is_turso
-db::db_forget_saved_profile
 db::db_list_scenes
 db::db_get_scene_lesson
 db::db_save_scene_lesson

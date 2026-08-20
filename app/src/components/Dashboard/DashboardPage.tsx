@@ -100,7 +100,7 @@ export function DashboardPage() {
   }, []);
 
   // The route chunk being mounted is not enough to reveal the app: on both a
-  // local database and Turso, the first stats query can still be opening and
+  // local database and Postgres, the first stats query can still be opening and
   // synchronizing the real database. Signal only after that result, the
   // independently-loaded Dashboard widgets, and persisted settings have all
   // committed, so Splash never exposes skeletons that suddenly turn into data.

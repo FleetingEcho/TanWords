@@ -1,14 +1,14 @@
 //! Cloudflare R2 as the store for large attachments.
 //!
-//! Why at all: attachments normally live as blobs in the app database, and on
-//! a Turso profile that write travels to the primary in one hrana message —
-//! an 85 MB video comes back as `SQLITE_NOMEM` from the server. Object storage
-//! is what that content actually wants, so a configured R2 bucket takes
-//! anything above `R2_THRESHOLD_BYTES` and the database keeps only the row.
+//! Why at all: attachments normally live as blobs in the app database, and a
+//! large one (an 85 MB video, say) is an awkward fit for either backend —
+//! object storage is what that content actually wants, so a configured R2
+//! bucket takes anything above `R2_THRESHOLD_BYTES` and the database keeps
+//! only the row.
 //!
-//! Credentials: the secret access key goes to the OS keychain (same treatment
-//! as the Turso token — see `secrets`), everything else to `app_config.json`,
-//! which is deliberately secret-free.
+//! Credentials: the secret access key goes to the OS keychain — see
+//! `secrets` — everything else to `app_config.json`, which is deliberately
+//! secret-free.
 
 mod sigv4;
 

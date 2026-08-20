@@ -4,7 +4,7 @@
  *  key, the latter AES-256-GCM sealed by the backend with a master key held in
  *  this device's OS keychain. Previously metadata sat in localStorage and keys
  *  in the keychain, neither of which travels with the database, so a
- *  Turso-synced or copied database came up looking unconfigured.
+ *  Postgres-synced or copied database came up looking unconfigured.
  *
  *  Rows are scoped to the device that created them (the backend stamps and
  *  filters on a device id from app_config.json), so a shared database still

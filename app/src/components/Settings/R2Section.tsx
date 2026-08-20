@@ -12,9 +12,9 @@ const FIELD_CLASS =
 
 /** Cloudflare R2 as the store for large uploads.
  *
- *  Lives beside the Turso panel because it answers the same question — "where
+ *  Lives beside the Postgres panel because it answers the same question — "where
  *  does my data go" — but it is a *different* store: the database holds rows,
- *  the bucket holds bytes. A Turso primary rejects a multi-megabyte blob
+ *  the bucket holds bytes. A large multi-megabyte blob
  *  outright (SQLITE_NOMEM), which is what this exists to route around. */
 export function R2Section() {
   const t = useT();

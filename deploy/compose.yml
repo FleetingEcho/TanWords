@@ -14,14 +14,16 @@ services:
       TANWORDS_DATA_DIR: /data
       # Safe because port 8740 is not published and only Caddy can reach it.
       TANWORDS_TRUST_PROXY: 1
-      # Needed to build the URL a per-user sqld remote-connection is
-      # reachable at (server/sqld_remote.rs). Same value Caddy already gets.
+      # Needed to build the connection string shown for a user's self-hosted
+      # Postgres remote access (server/postgres_remote/mod.rs). Same value
+      # Caddy already gets.
       TANWORDS_PUBLIC_HOST: ${TANWORDS_PUBLIC_HOST:?set TANWORDS_PUBLIC_HOST in deploy/.env}
-      # `app` never touches /var/run/docker.sock directly — this points at
-      # docker-proxy's narrow allowlisted view of it, for provisioning
-      # per-user sqld containers (server/sqld_remote.rs). See that service
-      # below for exactly what's allowed.
-      DOCKER_HOST: tcp://docker-proxy:2375
+      # Admin connection to the shared `postgres` service below, used only to
+      # provision/rotate per-user roles and databases
+      # (server/postgres_remote/mod.rs) — never handed to end users.
+      TANWORDS_POSTGRES_HOST: postgres
+      TANWORDS_POSTGRES_PORT: 5432
+      TANWORDS_POSTGRES_SUPERUSER_PASSWORD: ${TANWORDS_POSTGRES_SUPERUSER_PASSWORD:?set TANWORDS_POSTGRES_SUPERUSER_PASSWORD in deploy/.env}
     volumes:
       - tanwords-data:/data
     expose:
@@ -37,67 +39,32 @@ services:
       start_period: 20s
       retries: 5
 
-  docker-proxy:
-    # Deliberately narrow view of the Docker Engine API for `app` to
-    # provision per-user sqld containers through (server/sqld_remote.rs) —
-    # never the raw socket, which is equivalent to root on the host.
-    # `POST=1` unlocks non-GET/HEAD verbs at all (needed for create/start/
-    # stop/remove); everything else not listed here — IMAGES, EXEC, BUILD,
-    # NETWORKS, SECRETS, AUTH, ... — stays at its secure-by-default `0`.
-    # `app` never calls /networks/*: the container's network is attached via
-    # HostConfig.NetworkMode in the same /containers/create call, which only
-    # needs CONTAINERS, not NETWORKS.
-    image: tecnativa/docker-socket-proxy:latest
-    restart: unless-stopped
-    privileged: true # required by this image to reach the socket even with capabilities dropped elsewhere
-    environment:
-      CONTAINERS: 1
-      ALLOW_START: 1
-      ALLOW_STOP: 1
-      VOLUMES: 1
-      POST: 1
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    expose:
-      - "2375"
-    security_opt:
-      - no-new-privileges:true
-
-  sqld:
-    # Exposes user 1's local database over the libsql/Hrana wire protocol so
-    # a desktop Electron client can connect to it directly as a "self-hosted
-    # sqld" remote (Settings > Cloud tab), independent of the `app` service's
-    # own per-user HTTP API. Auth is a long-lived Ed25519 JWT signed offline;
-    # only the public key (deploy/sqld/jwt.pub) lives on the server.
-    image: ghcr.io/tursodatabase/libsql-server:latest
+  postgres:
+    # Shared Postgres instance backing both `app`'s own optional Postgres
+    # storage mode and every user's self-provisioned role+database (Settings
+    # > Cloud tab > Postgres, enabled via server/postgres_remote/mod.rs).
+    # Built locally from Dockerfile.postgres and loaded like `app` — no
+    # `build:` section, production never compiles.
+    image: tanwords-postgres:latest
     restart: unless-stopped
     environment:
-      SQLD_NODE: primary
-      SQLD_AUTH_JWT_KEY_FILE: /etc/sqld/jwt.pub
-    # `--enable-namespaces` + the admin API (dump_url bulk import) was tried
-    # here and reverted: it broke ordinary writes outright — "x-proxy-authorization
-    # not set" on every write, an internal inter-node auth header namespace
-    # mode's write path expects that a single-node primary with no replicas
-    # never populates. Its actual goal (bulk-import a database server-side
-    # instead of replaying it as thousands of individual proxied writes) is
-    # also blocked separately: the dump validator rejects any dump containing
-    # the substring "attach" ANYWHERE — including inside ordinary text data,
-    # e.g. a word definition that says "attach a caveat" — which is a real
-    # sqld bug (naive string search, not an SQL-aware parse), confirmed with
-    # a minimal reproduction. Net negative for this deployment; see
-    # `db_import_overwrite`'s batched writes for the approach actually in use.
+      POSTGRES_PASSWORD: ${TANWORDS_POSTGRES_SUPERUSER_PASSWORD:?set TANWORDS_POSTGRES_SUPERUSER_PASSWORD in deploy/.env}
     volumes:
-      - sqld-data:/var/lib/sqld
-      - ./sqld/jwt.pub:/etc/sqld/jwt.pub:ro
+      - tanwords-postgres-data:/var/lib/postgresql/data
+    ports:
+      # Published directly — remote clients (desktop app, psql, etc.) connect
+      # straight to Postgres over its own TLS, not proxied through Caddy.
+      - "5432:5432"
     expose:
-      - "8080"
+      - "5432"
     security_opt:
       - no-new-privileges:true
-    # Unlike `app`, this upstream image's entrypoint needs root-level
-    # filesystem capabilities to initialize /var/lib/sqld on first run
-    # (observed: dropping ALL capabilities makes it fail with "mkdir:
-    # cannot create directory 'iku.db': Permission denied"), so cap_drop
-    # is intentionally omitted here.
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
 
   caddy:
     image: caddy:2.11.3-alpine
@@ -111,22 +78,10 @@ services:
       - "80:80"
       - "443:443"
       - "443:443/udp"
-      - "8443:8443"
-      # Fixed range for per-user sqld remote connections
-      # (server/sqld_remote.rs's PORT_RANGE_START/END) — Docker only forwards
-      # host traffic into a container for ports actually published here;
-      # opening the matching ufw range (deploy-server.sh) is necessary but
-      # not sufficient without this too.
-      - "8444-8543:8444-8543"
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
-    expose:
-      # Admin API — `app` pushes per-user sqld vhost config here at runtime
-      # (server/sqld_remote.rs). Not in `ports:`, so never reachable from
-      # outside this compose network.
-      - "2019"
     security_opt:
       - no-new-privileges:true
     healthcheck:
@@ -138,8 +93,8 @@ services:
 volumes:
   tanwords-data:
     name: tanwords-data
-  sqld-data:
-    name: tanwords-sqld-data
+  tanwords-postgres-data:
+    name: tanwords-postgres-data
   caddy-data:
     name: tanwords-caddy-data
   caddy-config:

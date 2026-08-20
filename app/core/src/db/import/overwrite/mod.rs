@@ -28,8 +28,10 @@ pub struct OverwriteResult {
     pub rows_copied: i64,
     /// Rows too large for a single write-delegation message to carry (see
     /// `MAX_SINGLE_ROW_BYTES`) — left out of the copy rather than failing the
-    /// whole operation. Empty against a local or Postgres target, where this
-    /// limit (a Turso/sqld write-delegation constraint) doesn't apply.
+    /// whole operation. Always empty now: both live backends (local SQLite,
+    /// Postgres) write directly, with no write-delegation message-size limit.
+    /// Kept on the response shape rather than removed outright in case a
+    /// future backend reintroduces the constraint.
     pub skipped: Vec<String>,
 }
 
@@ -43,12 +45,10 @@ struct OverwriteProgress<'a> {
     table_total: usize,
 }
 
-/// A remote (Turso/self-hosted sqld) target can drop the connection mid-copy
-/// on a large import — observed as a Caddy-proxied `502`/"broken pipe" from a
-/// reused backend connection racing sqld's own idle timeout, not anything
-/// about the data itself. The whole operation always starts by wiping the
-/// target, so it's naturally idempotent: retrying from scratch on a transient
-/// failure is safe, unlike retrying a merge import would be.
+/// A remote (Postgres) target can drop the connection mid-copy on a large
+/// import. The whole operation always starts by wiping the target, so it's
+/// naturally idempotent: retrying from scratch on a transient failure is
+/// safe, unlike retrying a merge import would be.
 const MAX_ATTEMPTS: u32 = 3;
 
 #[crate::shim::command]
@@ -62,11 +62,10 @@ pub async fn db_import_overwrite(
     if !descriptor.caps.writable {
         return Err("The current database is read-only and cannot import".into());
     }
-    // The 4MiB-ish message-size ceiling (see `MAX_SINGLE_ROW_BYTES`) is a
-    // property of write-delegation to a remote primary, not of SQLite — a
-    // local target has no such limit, and skipping oversized rows there
-    // would only lose data for no reason.
-    let is_remote = descriptor.kind == db::DbKind::Turso;
+    // The 4MiB-ish message-size ceiling (see `MAX_SINGLE_ROW_BYTES`) was a
+    // property of write-delegation to a Turso/sqld primary, which is gone.
+    // Neither live backend (local SQLite, direct Postgres) has that limit.
+    let is_remote = false;
     let temp = super::extract_encrypted_backup_to_temp(
         std::path::Path::new(&source_path),
         password.as_deref(),

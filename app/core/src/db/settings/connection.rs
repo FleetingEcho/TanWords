@@ -1,7 +1,7 @@
 //! External-database connection management and Postgres snapshot export.
 //!
 //! Split out of `settings` for size: everything that *points the app at* an
-//! external database (switching the local file, connecting to Turso/Postgres,
+//! external database (switching the local file, connecting to Postgres,
 //! disconnecting, the now-no-op sync) plus the Postgres→SQLite snapshot
 //! machinery those operations need (Postgres has no local replica, so an
 //! "export backup" there is a row-by-row copy into a freshly created local
@@ -10,7 +10,7 @@
 //! path (which collapses this private submodule back to `db::settings`) are
 //! unchanged from when these lived directly in `settings.rs`.
 
-use crate::db::params; use crate::db::Conn; use crate::db::Value;
+use crate::db::Conn; use crate::db::Value;
 use crate::shim::State;
 
 use crate::db;
@@ -55,69 +55,8 @@ pub async fn db_switch_path_without_persist(
     switch_db_path(new_path, state, false).await
 }
 
-/// Points the app at a Turso database as an embedded replica: a local file
-/// that reads at local speed and syncs to the user's primary in the
-/// background. The token goes straight to the OS keychain and is never
-/// readable from the frontend again.
-#[crate::shim::command]
-pub async fn db_connect_turso(
-    url: String,
-    token: String,
-    state: State<'_, AppState>,
-) -> std::result::Result<DbDescriptor, String> {
-    let url = url.trim().to_string();
-    let mut token = token.trim().to_string();
-    if url.is_empty() {
-        return Err("Please fill in the database URL".into());
-    }
-    if token.is_empty() {
-        // Reconnect path: the token was kept in the keychain on disconnect and
-        // the UI deliberately never reads it back. Fall back to it so the user
-        // only has to press Connect again. If nothing was ever saved, this is
-        // likely a self-hosted sqld/libsql-server with no auth configured, so
-        // proceed with an empty token rather than erroring.
-        token = crate::secrets::turso_token_get().unwrap_or_default();
-    }
-
-    let replica_path = crate::replica_db_path();
-    let profile = DbProfile::Turso { path: replica_path.clone(), url: url.clone() };
-
-    // The replica path is fixed, not derived from the URL, so a file can be
-    // sitting here from a previous connection to a *different* Turso database
-    // (or an interrupted one). Reusing it would make libsql's embedded-replica
-    // sync treat this as a continuation of that unrelated lineage — pulling
-    // only incremental frames near wherever that old sync left off instead of
-    // the new primary's full history, silently leaving most rows missing.
-    // An explicit "Connect" always means "give me everything from this
-    // database", so start from nothing rather than risk that mismatch.
-    for suffix in ["", "-wal", "-shm", "-client_wal_index", "-info"] {
-        let _ = std::fs::remove_file(format!("{replica_path}{suffix}"));
-    }
-
-    // Open before persisting anything: a bad URL or token should leave the
-    // current (working) connection and the saved profile exactly as they were.
-    let database = db::connection::open(&profile, Some(&token)).await?;
-    let descriptor = database.descriptor();
-
-    // The read-only degraded mode exists so a *launch* can keep serving data the
-    // user already has while the primary is unreachable. As the result of
-    // deliberately connecting to a database it is a trap: the profile gets
-    // saved, the UI reports success, and every write afterwards fails. Refuse it
-    // here so the user gets an error they can retry instead of a connection that
-    // silently can't store anything.
-    if !descriptor.caps.writable {
-        return Err("Connected but unable to write: the primary database is temporarily unavailable, please check your network and retry".into());
-    }
-
-    crate::secrets::turso_token_set(&token)?;
-    crate::appconfig::save_db_profile(&profile).map_err(|e| e.to_string())?;
-    crate::appconfig::save_remembered_turso_url(&url).map_err(|e| e.to_string())?;
-    state.replace_db(database)?;
-    Ok(descriptor)
-}
-
-/// Points the app directly at a user-supplied Postgres database. Unlike Turso
-/// there is no local replica — the connection string (host, credentials,
+/// Points the app directly at a user-supplied Postgres database. There is no
+/// local replica — the connection string (host, credentials,
 /// database name, all inline) goes straight to sea-orm's Postgres pool and
 /// every read/write is a live network round trip from then on.
 #[crate::shim::command]
@@ -301,100 +240,25 @@ pub async fn db_export_postgres_backup(
     }
 }
 
-/// A local path to snapshot the replica onto that isn't already in use — never
-/// the user's existing local database, which may hold unrelated data.
-fn snapshot_destination() -> String {
-    let base = std::path::Path::new(&crate::default_db_path())
-        .parent()
-        .unwrap_or_else(|| std::path::Path::new("."))
-        .join("tanwords-from-turso");
-    for attempt in 0..100 {
-        let candidate = if attempt == 0 {
-            format!("{}.db", base.display())
-        } else {
-            format!("{}-{attempt}.db", base.display())
-        };
-        if !std::path::Path::new(&candidate).exists() {
-            return candidate;
-        }
-    }
-    format!("{}-{}.db", base.display(), uuid::Uuid::new_v4())
-}
-
-/// Disconnects from Turso and keeps the data, by snapshotting the replica into
-/// a standalone local database and switching to that.
-///
-/// Deliberately *not* "switch back to the old local file": by the time someone
-/// disconnects, the Turso database is the one they have been using, and landing
-/// them on a months-old local file reads as data loss. The remote is untouched —
-/// this only stops syncing to it.
+/// Disconnects from a Postgres database and switches back to the default
+/// local file. Postgres has no local replica file to snapshot — the remote
+/// database itself is untouched, this only stops the app from talking to it.
 #[crate::shim::command]
 pub async fn db_disconnect_remote(
     state: State<'_, AppState>,
 ) -> std::result::Result<DbDescriptor, String> {
-    // Postgres has no local replica file to snapshot (`VACUUM INTO` below is
-    // SQLite-only and isn't rewritten for Postgres) — just switch back to the
-    // default local file. The remote database itself is untouched, same as
-    // the Turso path below: this only stops the app from talking to it.
-    if db::conn(&state)?.kind() == db::DbKind::Postgres {
-        let profile = DbProfile::Local { path: crate::default_db_path() };
-        let database = db::connection::open(&profile, None).await?;
-        let descriptor = database.descriptor();
-        state.replace_db(database)?;
-        crate::appconfig::save_db_profile(&profile).map_err(|e| e.to_string())?;
-        return Ok(descriptor);
-    }
-
-    let remembered_url = match crate::appconfig::load_db_profile() {
-        Some(DbProfile::Turso { url, .. }) => Some(url),
-        _ => None,
-    };
-    let replica_path = crate::replica_db_path();
-    let snapshot = snapshot_destination();
-
-    // Snapshot before anything is torn down, so a failure here leaves the
-    // working Turso connection exactly as it was.
-    let snapshotted = {
-        let conn = db::conn(&state)?;
-        match conn.execute("VACUUM INTO ?1", params![snapshot.clone()]).await {
-            Ok(_) => true,
-            Err(error) => {
-                // A degraded (read-only) replica can't always produce one. Fall
-                // back to the plain local database rather than blocking the
-                // disconnect — but then the replica is kept, not deleted.
-                eprintln!("[tanwords] could not snapshot the replica ({error}); disconnecting without it");
-                false
-            }
-        }
-    };
-
-    let profile = DbProfile::Local {
-        path: if snapshotted { snapshot } else { crate::default_db_path() },
-    };
+    let profile = DbProfile::Local { path: crate::default_db_path() };
     let database = db::connection::open(&profile, None).await?;
     let descriptor = database.descriptor();
-
     state.replace_db(database)?;
     crate::appconfig::save_db_profile(&profile).map_err(|e| e.to_string())?;
-    if let Some(url) = remembered_url {
-        crate::appconfig::save_remembered_turso_url(&url).map_err(|e| e.to_string())?;
-    }
-
-    // Only now is the replica redundant — and only if its contents were saved.
-    if snapshotted {
-        for suffix in ["", "-wal", "-shm", "-client_wal_index", "-info"] {
-            let _ = std::fs::remove_file(format!("{replica_path}{suffix}"));
-        }
-    }
     Ok(descriptor)
 }
 
-/// Pulls the primary's latest changes now instead of waiting for the next
-/// Triggers an immediate pull from the primary. The embedded-replica design
-/// this served is gone with the SeaORM migration (Local is a single file,
-/// Postgres is a live network connection with no local replica), so there is
-/// nothing to sync. Kept as a no-op so the frontend's existing UI/button keeps
-/// working without a command-dispatch change in this pass.
+/// Historically triggered an immediate pull from a Turso primary. Local is a
+/// single file and Postgres is a live network connection with no local
+/// replica, so there is nothing to sync. Kept as a no-op so the frontend's
+/// existing UI/button keeps working without a command-dispatch change.
 #[crate::shim::command]
 pub async fn db_sync_now(_state: State<'_, AppState>) -> std::result::Result<(), String> {
     Ok(())

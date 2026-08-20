@@ -30,7 +30,7 @@ pub mod shim;
 pub mod server;
 
 pub struct AppState {
-    /// Swapped wholesale by `db_switch_path` / `db_connect_turso`, so a
+    /// Swapped wholesale by `db_switch_path` / `db_connect_postgres`, so a
     /// different database (or a different *kind* of database) never requires a
     /// restart. A `std::sync::Mutex` rather than an async one on purpose: it is
     /// only ever held long enough to clone the inner `libsql::Conn` out,
@@ -62,8 +62,7 @@ impl AppState {
     }
 
     /// Replaces the live database. The old `Db` is dropped once the lock is
-    /// released, which is also what stops a replaced Turso profile's
-    /// background sync.
+    /// released, closing its connection pool.
     pub fn replace_db(&self, next: Db) -> Result<(), String> {
         *self.db.lock().map_err(|e| e.to_string())? = next;
         self.document_privacy.clear()?;
@@ -83,7 +82,7 @@ pub async fn build_state() -> (Arc<shim::Registry>, shim::AppHandle) {
 /// database. On desktop, persisted MCP state is restored in a background task
 /// so its three settings queries never delay the sidecar handshake. The web backend
 /// (`web/server`) calls this once per active user — each user gets their own
-/// registry around their own DB (per-user local file or Turso replica), so
+/// registry around their own DB (per-user local file or Postgres), so
 /// the ~15k lines of command code keep reading one `State<AppState>` while
 /// sessions stay fully isolated, including the events broadcast channel.
 pub async fn build_state_for(
@@ -148,27 +147,17 @@ pub async fn run() {
     server::serve(registry, app_handle).await;
 }
 
-/// Opens a web user's startup profile in one call: their saved Turso replica
-/// when the server has url+token on file (the web server stores them per-user,
-/// not in the keychain/global appconfig), otherwise a per-user local file.
-/// The replica path is user-scoped, unlike `replica_db_path()` — see the
-/// stale-lineage comment in `db_connect_turso` for why replica files must
-/// never be shared across connection targets.
+/// Opens a web user's startup profile in one call: their self-provisioned
+/// Postgres database when the server has a connection URL on file (the web
+/// server builds it per-user from `postgres_remote_for`, never from a
+/// client-supplied value), otherwise a per-user local file.
 pub async fn open_user_db(
     user_dir: &std::path::Path,
-    turso: Option<(String /*url*/, String /*token*/)>,
+    postgres_url: Option<String>,
 ) -> Result<Db, String> {
     std::fs::create_dir_all(user_dir).map_err(|e| e.to_string())?;
-    let profile = match turso {
-        Some((url, token)) => {
-            let path = user_dir
-                .join("turso-replica.db")
-                .to_string_lossy()
-                .to_string();
-            // A fresh connect always starts from an empty replica (same
-            // reasoning as db_connect_turso); a *stored* profile keeps it.
-            return db::connection::open(&DbProfile::Turso { path, url }, Some(&token)).await;
-        }
+    let profile = match postgres_url {
+        Some(url) => DbProfile::Postgres { url },
         None => DbProfile::Local {
             path: user_dir.join("tanwords.db").to_string_lossy().to_string(),
         },
@@ -177,7 +166,7 @@ pub async fn open_user_db(
 }
 
 /// The on-disk root for everything process-owned: the database, the app
-/// config, Turso replicas, secret files. `TANWORDS_DATA_DIR` overrides the
+/// config, secret files. `TANWORDS_DATA_DIR` overrides the
 /// platform default — set by the web server (headless boxes, containers);
 /// the desktop app never sets it and gets the platform data dir as before.
 pub fn app_data_dir() -> std::path::PathBuf {
@@ -202,21 +191,11 @@ pub fn default_db_path() -> String {
         .to_string()
 }
 
-/// Where a Turso profile keeps its local replica. Derived rather than
-/// configurable: it is a cache of the primary, not the user's own file, and
-/// keeping it out of the default DB path avoids ever confusing the two.
-pub fn replica_db_path() -> String {
-    app_data_dir()
-        .join("turso-replica.db")
-        .to_string_lossy()
-        .to_string()
-}
-
 /// Opens the saved connection profile, self-healing to the default local file
 /// if it can't be opened — e.g. the file lives on a drive that isn't mounted,
-/// or a Turso endpoint is unreachable / its token was revoked. Returns the
-/// failure alongside the fallback so the user gets a warning instead of a
-/// fresh, seemingly-empty database.
+/// or a Postgres endpoint is unreachable / its credentials were rotated.
+/// Returns the failure alongside the fallback so the user gets a warning
+/// instead of a fresh, seemingly-empty database.
 async fn open_startup_db() -> Result<(Db, Option<String>), String> {
     let default_profile = DbProfile::Local { path: default_db_path() };
 
@@ -224,21 +203,16 @@ async fn open_startup_db() -> Result<(Db, Option<String>), String> {
         return Ok((db::connection::open(&default_profile, None).await?, None));
     };
 
-    let token = match &saved {
-        DbProfile::Turso { .. } => secrets::turso_token_get(),
-        DbProfile::Local { .. } | DbProfile::Postgres { .. } => None,
-    };
-    match db::connection::open(&saved, token.as_deref()).await {
+    match db::connection::open(&saved, None).await {
         Ok(database) => Ok((database, None)),
         Err(error) => {
             let description = describe_profile(&saved);
             eprintln!("[tanwords] saved db profile {description} failed to open ({error}), falling back to default");
             // A local file that won't open won't start working on its own, so
-            // forget it rather than failing the same way every launch. A Turso
-            // endpoint usually fails for a reason that *does* resolve itself
-            // (offline, VPN, laptop lid just opened), so the profile and its
-            // token are kept and simply retried next launch — losing them to
-            // one flaky moment would mean re-entering the token by hand.
+            // forget it rather than failing the same way every launch. A
+            // Postgres endpoint usually fails for a reason that *does*
+            // resolve itself (offline, VPN, laptop lid just opened), so the
+            // profile is kept and simply retried next launch.
             if saved.kind() == db::DbKind::Local {
                 appconfig::clear_db_profile();
             }
@@ -251,7 +225,6 @@ async fn open_startup_db() -> Result<(Db, Option<String>), String> {
 fn describe_profile(profile: &DbProfile) -> String {
     match profile {
         DbProfile::Local { path } => path.clone(),
-        DbProfile::Turso { url, .. } => format!("Turso {url}"),
         DbProfile::Postgres { url } => format!("Postgres {url}"),
     }
 }

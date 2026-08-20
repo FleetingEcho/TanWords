@@ -5,17 +5,12 @@ use std::sync::Mutex;
 /// including the ones below, which are written by name from Rust only.
 const ALLOWED_PREFIX: &str = "apikey_";
 
-/// Turso auth token for the active connection profile. Outside `ALLOWED_PREFIX`
-/// on purpose: the UI can *set* it (via `db_connect_turso`) but has no way to
-/// read it back out afterwards.
-const TURSO_TOKEN_KEY: &str = "turso_auth_token";
-
-/// Master key that seals `ai_providers.api_key_enc`. Like the Turso token it
-/// sits outside `ALLOWED_PREFIX` deliberately: the webview must never be able
-/// to read it, or storing the provider keys encrypted would buy nothing.
+/// Master key that seals `ai_providers.api_key_enc`. Outside `ALLOWED_PREFIX`
+/// deliberately: the webview must never be able to read it, or storing the
+/// provider keys encrypted would buy nothing.
 const DEVICE_KEY: &str = "device_provider_key";
 
-/// R2 secret access key. Same reasoning as the Turso token: the UI can set it
+/// R2 secret access key. Same reasoning as the device key: the UI can set it
 /// but has no way to read it back.
 const R2_SECRET_KEY: &str = "r2_secret_access_key";
 
@@ -24,7 +19,6 @@ const R2_SECRET_KEY: &str = "r2_secret_access_key";
  *  device key independently — four providers could therefore produce four
  *  simultaneous prompts for one Keychain item. Hold each cache lock across its
  *  first load so concurrent callers share one authorization and one value. */
-static TURSO_TOKEN_CACHE: Mutex<Option<String>> = Mutex::new(None);
 static DEVICE_KEY_CACHE: Mutex<Option<[u8; 32]>> = Mutex::new(None);
 static R2_SECRET_CACHE: Mutex<Option<String>> = Mutex::new(None);
 
@@ -52,7 +46,7 @@ fn entry(key: &str) -> Result<keyring::Entry, String> {
 ///    macOS keychain ACL is bound to the *signature* of the program that
 ///    created the entry. A rebuilt dev binary is therefore a stranger to the
 ///    keychain and gets re-prompted for every entry it touches (provider
-///    master key, each `apikey_*`, the Turso token) — several password prompts
+///    master key, each `apikey_*`) — several password prompts
 ///    per `bun run dev`. Dev secrets go to `dev-secrets/` under the app data
 ///    dir instead. Release builds are untouched and still use the keychain.
 fn secret_dir() -> Option<std::path::PathBuf> {
@@ -130,52 +124,6 @@ fn decode_32(encoded: &str) -> Option<[u8; 32]> {
     raw.try_into().ok()
 }
 
-pub fn turso_token_get() -> Option<String> {
-    cached_value(&TURSO_TOKEN_CACHE, || {
-        if let Some(path) = secret_file("tanwords_turso_token") {
-            if let Some(value) = read_secret_file(&path) {
-                return Some(value);
-            }
-            // Fall back to the keychain and copy the value across. Without this a
-            // dev build silently loses every secret a release build stored — the
-            // UI reports "Missing Turso auth token" for a connection that is in
-            // fact fine. One prompt on the first dev run, none after that.
-            let value = entry(TURSO_TOKEN_KEY).ok()?.get_password().ok()?;
-            let _ = write_secret_file(&path, &value);
-            return Some(value);
-        }
-        entry(TURSO_TOKEN_KEY).ok()?.get_password().ok()
-    })
-}
-
-pub fn turso_token_set(token: &str) -> Result<(), String> {
-    // Serialize mutation with the first-read path above so a concurrent getter
-    // can never repopulate the cache with the value being replaced.
-    let mut cached = TURSO_TOKEN_CACHE
-        .lock()
-        .map_err(|_| "Turso token cache is unavailable".to_string())?;
-    if let Some(path) = secret_file("tanwords_turso_token") {
-        write_secret_file(&path, token)?;
-    } else {
-        entry(TURSO_TOKEN_KEY)?
-            .set_password(token)
-            .map_err(|e| e.to_string())?;
-    }
-    *cached = Some(token.to_string());
-    Ok(())
-}
-
-pub fn turso_token_clear() {
-    let Ok(mut cached) = TURSO_TOKEN_CACHE.lock() else {
-        return;
-    };
-    if let Some(path) = secret_file("tanwords_turso_token") {
-        let _ = std::fs::remove_file(path);
-    } else if let Ok(entry) = entry(TURSO_TOKEN_KEY) {
-        let _ = entry.delete_credential();
-    }
-    *cached = None;
-}
 
 pub fn r2_secret_get() -> Option<String> {
     cached_value(&R2_SECRET_CACHE, || {

@@ -96,31 +96,34 @@ async fn web_app_lock_is_per_user_and_requires_current_password() {
 }
 
 #[tokio::test]
-async fn local_selection_preserves_turso_credentials() {
+async fn local_selection_preserves_postgres_credentials() {
     let (users, dir) = test_users("db-source-test").await;
     let user_id = users
         .register("switcher@example.com", "correct-horse")
         .await
         .unwrap();
 
-    assert!(users.active_turso_for(user_id).await.unwrap().is_none());
+    assert!(users.active_postgres_for(user_id).await.unwrap().is_none());
     users
-        .set_turso(user_id, "libsql://example.turso.io", "secret")
+        .set_postgres_remote(user_id, "tanwords_user_1", "tanwords_user_1", "secret")
         .await
         .unwrap();
-    assert!(users.active_turso_for(user_id).await.unwrap().is_some());
+    users.set_active_db(user_id, "postgres").await.unwrap();
+    assert!(users.active_postgres_for(user_id).await.unwrap().is_some());
 
     users.set_active_db(user_id, "local").await.unwrap();
-    assert!(users.active_turso_for(user_id).await.unwrap().is_none());
-    let remembered = users.turso_for(user_id).await.unwrap().unwrap();
-    assert_eq!(remembered.url, "libsql://example.turso.io");
-    assert_eq!(remembered.token, "secret");
+    assert!(users.active_postgres_for(user_id).await.unwrap().is_none());
+    let remembered = users.postgres_remote_for(user_id).await.unwrap().unwrap();
+    assert_eq!(remembered.role, "tanwords_user_1");
+    assert_eq!(remembered.password, "secret");
+    assert!(remembered.enabled);
 
-    users.set_active_db(user_id, "turso").await.unwrap();
-    assert!(users.active_turso_for(user_id).await.unwrap().is_some());
-    users.clear_turso(user_id).await.unwrap();
-    assert!(users.turso_for(user_id).await.unwrap().is_none());
-    assert!(users.active_turso_for(user_id).await.unwrap().is_none());
+    users.set_active_db(user_id, "postgres").await.unwrap();
+    assert!(users.active_postgres_for(user_id).await.unwrap().is_some());
+    users.set_postgres_enabled(user_id, false).await.unwrap();
+    users.set_active_db(user_id, "local").await.unwrap();
+    let remembered = users.postgres_remote_for(user_id).await.unwrap().unwrap();
+    assert!(!remembered.enabled);
 
     drop(users);
     let _ = std::fs::remove_dir_all(dir);

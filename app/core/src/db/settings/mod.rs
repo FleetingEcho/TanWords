@@ -4,7 +4,7 @@ use crate::shim::State;
 use sea_orm::ConnectionTrait;
 
 use crate::db;
-use crate::db::connection::{DbDescriptor, DbProfile};
+use crate::db::connection::DbDescriptor;
 use crate::AppState;
 
 // External-database connection management and Postgres snapshot export —
@@ -13,13 +13,6 @@ use crate::AppState;
 // collapses this private `mod` back to `db::settings`) are unchanged.
 mod connection;
 pub use connection::*;
-
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RememberedTursoConnection {
-    pub url: Option<String>,
-    pub token_present: bool,
-}
 
 fn database_disk_size(path: &str) -> std::result::Result<u64, String> {
     [
@@ -138,8 +131,7 @@ pub fn db_get_default_local_path() -> String {
     crate::default_db_path()
 }
 
-/// Bytes on disk. For a Turso profile this measures the local replica, which
-/// is the only thing this process can actually stat.
+/// Bytes on disk. Empty for a Postgres profile, which has no local file.
 #[crate::shim::command]
 pub fn db_get_db_size(state: State<'_, AppState>) -> std::result::Result<u64, String> {
     database_disk_size(&state.db_path()?)
@@ -160,38 +152,6 @@ pub fn db_get_connection(state: State<'_, AppState>) -> std::result::Result<DbDe
 #[crate::shim::command]
 pub fn db_get_startup_warning(state: State<'_, AppState>) -> Option<String> {
     state.db_fallback_warning.clone()
-}
-
-/// Whether the profile saved on disk (not necessarily the live connection,
-/// which is already the local fallback by the time this is reachable) is
-/// Turso. A failed local profile self-heals in `open_startup_db`, but a
-/// failed Turso one is kept on purpose in case it was just a flaky network —
-/// so it can linger indefinitely if the real cause was a lost/revoked token.
-/// Gates the "Forget saved connection" button in Settings.
-#[crate::shim::command]
-pub fn db_saved_profile_is_turso() -> bool {
-    matches!(crate::appconfig::load_db_profile(), Some(DbProfile::Turso { .. }))
-}
-
-/// Clears a saved Turso profile (and its keychain token) that can't be
-/// reconnected right now. Unlike `db_disconnect_remote`, this needs no live
-/// connection to the profile being forgotten — it only touches the saved
-/// config, leaving whatever the app already fell back to untouched.
-#[crate::shim::command]
-pub fn db_forget_saved_profile() {
-    crate::appconfig::clear_db_profile();
-    crate::appconfig::clear_remembered_turso_url();
-    crate::secrets::turso_token_clear();
-}
-
-/// Returns the last Turso URL the user connected to and whether the keychain
-/// still holds an auth token for it. Never returns the token itself.
-#[crate::shim::command]
-pub fn db_get_remembered_turso() -> RememberedTursoConnection {
-    RememberedTursoConnection {
-        url: crate::appconfig::load_remembered_turso_url(),
-        token_present: crate::secrets::turso_token_get().is_some(),
-    }
 }
 
 /// Writes a consistent snapshot of the database to `dest` via VACUUM INTO,
@@ -244,9 +204,10 @@ pub async fn db_vacuum(conn: State<'_, AppState>) -> std::result::Result<(), Str
     let descriptor = conn.descriptor()?;
     if !descriptor.caps.vacuum {
         // Not a temporary condition (unlike `!writable`, which can clear up on
-        // reconnect) — Turso/sqld's storage engine has no VACUUM at all, so
-        // retrying is never going to help. See `DbCaps::vacuum`'s doc comment.
-        return Err("Compacting isn't supported for an online (Turso/self-hosted) database".into());
+        // reconnect) — Postgres has no VACUUM INTO / file-level compaction the
+        // way SQLite does, so retrying is never going to help. See
+        // `DbCaps::vacuum`'s doc comment.
+        return Err("Compacting isn't supported for a remote database".into());
     }
     let db = db::conn(&conn)?;
     db.execute("VACUUM", ()).await.map_err(|e| e.to_string())?;
@@ -256,6 +217,7 @@ pub async fn db_vacuum(conn: State<'_, AppState>) -> std::result::Result<(), Str
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::connection::DbProfile;
 
     fn temp_path(name: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!("tanwords-{name}-{}.db", uuid::Uuid::new_v4()))

@@ -165,12 +165,9 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
     db.getConnection().then(setConnection);
   }, []);
 
-  // Both Turso and Postgres are "remote" for this icon's purposes — only
-  // Turso has the embedded-replica "offline" concept (Postgres is a direct
-  // connection with no local fallback), so `isDbOffline` stays Turso-only.
-  const isDbRemote = connection?.kind === "turso" || connection?.kind === "postgres";
-  const isDbOffline = connection?.kind === "turso" && connection.offline;
-  const dbCloudLabel = connection?.kind === "postgres" ? t("command.dbCloudPostgres") : t("command.dbCloud");
+  const isDbRemote = connection?.kind === "postgres";
+  const isDbOffline = false;
+  const dbCloudLabel = t("command.dbCloud");
 
   const refreshMcp = React.useCallback(() => {
     invoke<McpState>("mcp_get_config").then((result) => setMcp(result.status)).catch(() => {});

@@ -277,7 +277,7 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
     cacheFeedsViewMode(resolvedFeedsViewMode);
 
     // Per-slot wallpaper rows: one settings row per image
-    // (`app_background_image_0` .. `_4`) so a last-writer-wins sync (Turso)
+    // (`app_background_image_0` .. `_4`) so a last-writer-wins sync (Postgres)
     // clobbers only the changed slot instead of the whole gallery. Slot 0
     // being present — even as an empty string — marks the new format; older
     // installs fall back to the legacy single-array row, then the single-image

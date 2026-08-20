@@ -4,7 +4,7 @@ import { useT } from "@/hooks/useT";
 import { uploadStandaloneAsset } from "@/lib/documentAssets";
 import { subscribe } from "@/ipc/events";
 
-/** A blob big enough to matter has to travel to the Turso primary in one
+/** A blob big enough to matter has to travel to the Postgres primary in one
  *  hrana message, and the server runs out of memory well below the local
  *  100 MB ceiling. The raw error ("Hrana: `stream error: ... SQLITE_NOMEM`")
  *  says nothing a user can act on, so name the actual constraint. */

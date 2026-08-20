@@ -21,8 +21,8 @@ pub fn conn(state: &State<'_, AppState>) -> Result<Conn, String> {
     Ok(state.db.lock().map_err(|e| e.to_string())?.conn())
 }
 
-/// Network-backed profiles (the retired Turso replica, and now Postgres)
-/// forward writes over a connection that can go half-open. Bound it so a
+/// A Postgres profile forwards writes over a connection that can go
+/// half-open. Bound it so a
 /// stuck write surfaces as an error instead of leaving editor autosave on
 /// "Saving" forever. Local SQLite has no network hop and stays unbounded.
 const REMOTE_WRITE_TIMEOUT: Duration = Duration::from_secs(10);
@@ -165,7 +165,6 @@ fn schema_fingerprint(kind: connection::DbKind) -> String {
         connection::DbKind::Postgres => {
             hasher.update(include_str!("../../sql/schema_postgres.sql"));
         }
-        connection::DbKind::Turso => {}
     }
     hasher.update(include_str!("mod.rs"));
     format!("{:x}", hasher.finalize())
@@ -185,20 +184,15 @@ async fn stored_fingerprint(conn: &Conn) -> Option<String> {
     .and_then(|row| row.get::<String>(0).ok())
 }
 
-/// Brings the schema up to date for whichever backend `conn` points at. The
-/// SQLite path is idempotent and fingerprint-gated (re-running it on a Turso
-/// primary was the single most expensive thing the app did, and the fingerprint
-/// skip stays valuable for cold local starts). The Postgres path runs one clean
-/// current-schema DDL — the SQLite-era migration history is not replayed against
-/// a fresh Postgres database (see the migration plan).
+/// Brings the schema up to date for whichever backend `conn` points at. Both
+/// paths are idempotent and fingerprint-gated so a repeat open skips the pass
+/// entirely. The Postgres path runs one clean current-schema DDL — the
+/// SQLite-era migration history is not replayed against a fresh Postgres
+/// database.
 pub async fn init_db(conn: &Conn) -> Result<(), DbErr> {
-    let kind = conn.kind();
-    match kind {
+    match conn.kind() {
         connection::DbKind::Local => init_db_sqlite(conn).await,
         connection::DbKind::Postgres => init_db_postgres(conn).await,
-        connection::DbKind::Turso => Err(DbErr::Custom(
-            "init_db called on a Turso profile, which is no longer supported".to_string(),
-        )),
     }
 }
 

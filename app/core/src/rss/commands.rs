@@ -294,7 +294,7 @@ pub async fn db_sync_rss_feed(
     conn: State<'_, AppState>,
 ) -> Result<i64, String> {
     // txn_conn, not conn: the entry upserts below run in an interactive
-    // transaction, which must not pin the shared Hrana stream on Turso.
+    // transaction, which must not hold a pooled connection open too long.
     let db = db::txn_conn(&conn).await?;
     // `is_paused` is a stored BIGINT 0/1 column, not a comparison expression
     // — decode as i64 and compare (Postgres won't decode BIGINT as bool).

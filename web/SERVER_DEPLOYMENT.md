@@ -180,8 +180,8 @@ The file is mode 0600 and contains:
 - `TANWORDS_ADMIN_KEY`
 
 Never rotate or lose `TANWORDS_MASTER_KEY` without understanding the impact. It
-seals saved Turso tokens and AI-provider keys. Back it up somewhere other than
-the server.
+seals saved Postgres passwords and AI-provider keys. Back it up somewhere
+other than the server.
 
 To inspect the invite/admin keys while logged into the server:
 

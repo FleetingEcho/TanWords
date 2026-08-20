@@ -1,9 +1,10 @@
 //! users.db — the web server's own credential store, kept entirely separate
 //! from the app's vocabulary database: emails + argon2id password hashes,
-//! signed JWT sessions (sha256'd at rest for revocation), and each user's Turso
-//! connection (its token sealed with AES-256-GCM under TANWORDS_MASTER_KEY). Lives at
-//! `<data_dir>/users.db`; the app data itself is per-user under
-//! `<data_dir>/users/<id>/` (see runtime.rs).
+//! signed JWT sessions (sha256'd at rest for revocation), and each user's
+//! self-provisioned Postgres role/database (its password sealed with
+//! AES-256-GCM under TANWORDS_MASTER_KEY). Lives at `<data_dir>/users.db`;
+//! the app data itself is per-user under `<data_dir>/users/<id>/` (see
+//! runtime.rs).
 //!
 //! One SeaORM (sqlx-sqlite) connection behind a Mutex: writes need
 //! serialization anyway and the traffic level here is a handful of invited
@@ -42,18 +43,14 @@ pub struct UserRecord {
     pub email: String,
 }
 
-/// What the runtime pool needs to open this user's database.
-pub struct TursoProfile {
-    pub url: String,
-    pub token: String,
-}
-
-/// A user's dedicated sqld container: which firewall-range port it's on, its
-/// signing keypair (PKCS8 DER, decrypted), and whether it's currently meant
-/// to be running.
-pub struct SqldRemoteProfile {
-    pub port: i64,
-    pub key_der: Vec<u8>,
+/// A user's self-provisioned role/database inside the shared `postgres`
+/// service: the role and database name (fixed for the account's lifetime)
+/// and its current password (decrypted), plus whether the role currently has
+/// `LOGIN` (vs. provisioned-but-disabled).
+pub struct PostgresRemoteProfile {
+    pub role: String,
+    pub db_name: String,
+    pub password: String,
     pub enabled: bool,
 }
 
@@ -116,8 +113,8 @@ where
 }
 
 impl UsersDb {
-    /// `master_key` seals each user's Turso token at rest. Required: without
-    /// it we'd be writing third-party DB credentials in plaintext.
+    /// `master_key` seals each user's Postgres password at rest. Required:
+    /// without it we'd be writing DB credentials in plaintext.
     pub async fn open(path: &Path, master_key: [u8; 32], jwt_ttl_secs: i64) -> Result<Self, String> {
         if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -137,8 +134,6 @@ impl UsersDb {
                 email TEXT NOT NULL UNIQUE COLLATE NOCASE,
                 password_hash TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                turso_url TEXT,
-                turso_token_enc TEXT,
                 active_db TEXT NOT NULL DEFAULT 'local',
                 app_lock_hash TEXT
             );
@@ -153,43 +148,36 @@ impl UsersDb {
         .await
         .map_err(|e| format!("users.db migration failed: {e}"))?;
         // Existing installations predate the independent active-db selector.
-        // Preserve their current behaviour: accounts with saved Turso
-        // credentials remain on Turso; all others start local. The UPDATE only
-        // touches NULL rows, so a user's later explicit local choice survives
-        // every restart.
         let _ = conn
             .execute_unprepared("ALTER TABLE users ADD COLUMN active_db TEXT")
             .await;
         let _ = conn
             .execute_unprepared("ALTER TABLE users ADD COLUMN app_lock_hash TEXT")
             .await;
-        // A per-user dedicated sqld container a desktop app can connect to
-        // directly, sharing this account's actual database live — separate
-        // from the turso_* columns above (a user-supplied external Turso/
-        // self-hosted target), this is a container the server itself
-        // provisions. `sqld_key_enc` seals the Ed25519 keypair (PKCS8 DER,
-        // base64'd then AES-GCM sealed) used to sign that container's
-        // bearer tokens; `sqld_port` is this user's slot in the fixed,
-        // pre-opened firewall port range (see deploy/deploy-server.sh).
+        // A self-provisioned role/database inside the shared `postgres`
+        // service (Settings > Cloud tab > Postgres) — `postgres_role`/
+        // `postgres_db_name` are fixed for the account's lifetime once set;
+        // `postgres_password_enc` seals the role's current password
+        // (AES-GCM); `postgres_enabled` distinguishes "provisioned and
+        // logged-in-able" from "provisioned, currently disabled" (NOLOGIN,
+        // data kept, cheap to re-enable).
         let _ = conn
-            .execute_unprepared("ALTER TABLE users ADD COLUMN sqld_key_enc TEXT")
+            .execute_unprepared("ALTER TABLE users ADD COLUMN postgres_role TEXT")
             .await;
         let _ = conn
-            .execute_unprepared("ALTER TABLE users ADD COLUMN sqld_port INTEGER")
+            .execute_unprepared("ALTER TABLE users ADD COLUMN postgres_db_name TEXT")
+            .await;
+        let _ = conn
+            .execute_unprepared("ALTER TABLE users ADD COLUMN postgres_password_enc TEXT")
             .await;
         let _ = conn
             .execute_unprepared(
-                "ALTER TABLE users ADD COLUMN sqld_enabled INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE users ADD COLUMN postgres_enabled INTEGER NOT NULL DEFAULT 0",
             )
             .await;
-        conn.execute_unprepared(
-            "UPDATE users SET active_db = CASE
-                 WHEN turso_url IS NOT NULL AND turso_token_enc IS NOT NULL THEN 'turso'
-                 ELSE 'local' END
-             WHERE active_db IS NULL",
-        )
-        .await
-        .map_err(|e| format!("users.db active-db migration failed: {e}"))?;
+        conn.execute_unprepared("UPDATE users SET active_db = 'local' WHERE active_db IS NULL")
+            .await
+            .map_err(|e| format!("users.db active-db migration failed: {e}"))?;
         Ok(Self {
             conn: tokio::sync::Mutex::new(conn),
             session_reader,

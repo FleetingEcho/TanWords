@@ -30,17 +30,26 @@ pub struct Config {
     /// True when this process sits behind a reverse proxy whose
     /// `X-Forwarded-For` can be believed. Off by default — see `from_env`.
     pub trust_proxy: bool,
-    /// AES-256-GCM key sealing each user's stored Turso token, the core's
-    /// provider/device key on headless servers, and the HMAC key signing web
-    /// JWTs. 32 bytes, hex or base64.
+    /// AES-256-GCM key sealing each user's stored Postgres password, the
+    /// core's provider/device key on headless servers, and the HMAC key
+    /// signing web JWTs. 32 bytes, hex or base64.
     pub master_key: [u8; 32],
     /// Absolute JWT lifetime. Defaults to one week.
     pub jwt_ttl_secs: i64,
     /// The same hostname/IP Caddy is configured with (`deploy/.env`'s
-    /// `TANWORDS_PUBLIC_HOST`) — needed to build the URL a per-user sqld
-    /// remote-connection is reachable at. Optional: everything else in this
-    /// server works without it, only that one feature needs it set.
+    /// `TANWORDS_PUBLIC_HOST`) — needed to build the connection string a
+    /// user's self-provisioned Postgres role/database is reachable at.
+    /// Optional: everything else in this server works without it, only that
+    /// one feature needs it set.
     pub public_host: Option<String>,
+    /// Host/port of the shared `postgres` service (`server/postgres_remote`)
+    /// — defaults match `deploy/compose.yml`'s internal service name.
+    pub postgres_host: String,
+    pub postgres_port: u16,
+    /// Admin credential for provisioning/rotating per-user roles+databases
+    /// in the shared `postgres` service. Unset in a deployment that never
+    /// enables the Postgres remote-access feature.
+    pub postgres_superuser_password: Option<String>,
 }
 
 fn env(key: &str) -> Option<String> {
@@ -75,12 +84,13 @@ fn parse_master_key(raw: &str) -> Result<[u8; 32], String> {
 }
 
 impl Config {
-    /// Fails fast: no master key, no server. Sealing user-owned Turso tokens
-    /// under a well-known/default key would be worse than refusing to run.
+    /// Fails fast: no master key, no server. Sealing user-owned Postgres
+    /// passwords under a well-known/default key would be worse than
+    /// refusing to run.
     pub fn from_env() -> Result<Self, String> {
         let master_raw = env("TANWORDS_MASTER_KEY").ok_or(
             "TANWORDS_MASTER_KEY is not set — the web server refuses to start without it.\n  \
-             It seals user Turso tokens and AI provider keys on disk.\n  \
+             It seals user Postgres passwords and AI provider keys on disk.\n  \
              Generate one with: openssl rand -hex 32",
         )?;
         let master_key = parse_master_key(&master_raw)?;
@@ -115,6 +125,11 @@ impl Config {
                 .unwrap_or(false),
             master_key,
             public_host: env("TANWORDS_PUBLIC_HOST"),
+            postgres_host: env("TANWORDS_POSTGRES_HOST").unwrap_or_else(|| "postgres".to_string()),
+            postgres_port: env("TANWORDS_POSTGRES_PORT")
+                .and_then(|p| p.parse().ok())
+                .unwrap_or(5432),
+            postgres_superuser_password: env("TANWORDS_POSTGRES_SUPERUSER_PASSWORD"),
         })
     }
 

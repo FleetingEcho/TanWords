@@ -180,7 +180,7 @@ pub fn state_conn_provider(app: crate::shim::AppHandle) -> ConnProvider {
         // SeaORM's `Conn` is pool-backed: `conn()` clones the pool, and each
         // query checks out its own connection, so concurrent MCP requests and
         // UI commands don't share a stream the way the old single libsql
-        // handle did. The Turso-specific "fresh connection per request" path
+        // handle did. The old Turso-specific "fresh connection per request" path
         // is therefore obsolete — one cloned pool handle serves every kind.
         let guard = state.db.lock().map_err(|e| e.to_string())?;
         Ok(guard.conn())

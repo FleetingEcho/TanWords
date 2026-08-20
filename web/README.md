@@ -2,8 +2,8 @@
 
 The web version: one Rust (axum) backend serving a Vite + React 19 + TSX SPA,
 usable from desktop and mobile browsers. Multi-user: email+password accounts,
-invite-key-gated registration, and each account points at its own Turso
-instance (or the per-user local DB by default).
+invite-key-gated registration, and each account can point at its own
+self-provisioned Postgres database (or the per-user local DB by default).
 
 ## Quickstart
 
@@ -63,5 +63,5 @@ TANWORDS_PORT=8740 \
 
 ## Docs
 
-- Server API, env vars, per-user Turso, deployment notes: [server/README.md](server/README.md)
+- Server API, env vars, per-user Postgres remote access, deployment notes: [server/README.md](server/README.md)
 - Design + implementation plan: [plan.md](plan.md)
