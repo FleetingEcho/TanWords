@@ -13,8 +13,11 @@
 
 use rand::RngCore;
 use sea_orm::{ConnectionTrait, Database};
+use serde_json::json;
 
 use tanwords_lib::db::connection::DbProfile;
+use tanwords_lib::rpc::dispatch::dispatch;
+use tanwords_lib::rpc::{Args, Ctx};
 use tanwords_lib::AppState;
 
 use super::{UserSession, WebState};
@@ -48,14 +51,61 @@ async fn admin_conn(state: &WebState) -> Result<sea_orm::DatabaseConnection, Str
 /// `role`/`db_name` are always this function's own `tanwords_user_{id}`
 /// output — never client-supplied — so building these statements with
 /// `format!` carries no injection risk.
+///
+/// Neither `CREATE ROLE` nor `CREATE DATABASE` support `IF NOT EXISTS` in
+/// Postgres, but this must still be safe to call twice: if a previous enable
+/// got the role/database created and then failed during the data migration
+/// below, the retry re-enters this same first-time-provisioning path. An
+/// "already exists" error from either statement is therefore expected on a
+/// retry, not a real failure — anything else still is.
 async fn create_role_and_database(conn: &sea_orm::DatabaseConnection, role: &str, db_name: &str, password: &str) -> Result<(), String> {
-    conn.execute_unprepared(&format!("CREATE ROLE \"{role}\" LOGIN PASSWORD '{password}'"))
-        .await
-        .map_err(|e| format!("Failed to create Postgres role: {e}"))?;
-    conn.execute_unprepared(&format!("CREATE DATABASE \"{db_name}\" OWNER \"{role}\""))
-        .await
-        .map_err(|e| format!("Failed to create Postgres database: {e}"))?;
+    if let Err(e) = conn.execute_unprepared(&format!("CREATE ROLE \"{role}\" LOGIN PASSWORD '{password}'")).await {
+        if !e.to_string().contains("already exists") {
+            return Err(format!("Failed to create Postgres role: {e}"));
+        }
+        // The role already existed (a retry) — still make sure it has this
+        // attempt's password and can log in.
+        conn.execute_unprepared(&format!("ALTER ROLE \"{role}\" LOGIN PASSWORD '{password}'"))
+            .await
+            .map_err(|e| format!("Failed to update existing Postgres role: {e}"))?;
+    }
+    if let Err(e) = conn.execute_unprepared(&format!("CREATE DATABASE \"{db_name}\" OWNER \"{role}\"")).await {
+        if !e.to_string().contains("already exists") {
+            return Err(format!("Failed to create Postgres database: {e}"));
+        }
+    }
     Ok(())
+}
+
+/// First-time provisioning only: copies the account's existing local
+/// `tanwords.db` into the freshly created (and by now schema-initialized)
+/// Postgres database, so enabling remote access doesn't silently strand the
+/// user's real data behind an empty cloud database. A no-op for a brand new
+/// account with no local file yet. Reuses the same wipe-then-copy machinery
+/// as a manual full-overwrite import (`db_import_overwrite`); its wipe-first
+/// design also makes this safe to retry from scratch after a failure.
+async fn migrate_local_data_to_postgres(state: &WebState, user_id: i64, url: &str) -> Result<(), String> {
+    let local_path = state.pool.user_dir(user_id).join("tanwords.db");
+    if !local_path.exists() {
+        return Ok(());
+    }
+
+    let profile = DbProfile::Postgres { url: url.to_string() };
+    let database = tanwords_lib::db::connection::open(&profile, None).await?;
+    let (registry, app) = tanwords_lib::build_state_for(database, None).await;
+    let ctx = Ctx::new(registry, app);
+
+    dispatch(
+        &ctx,
+        "db_import_overwrite",
+        Args::new(json!({
+            "sourcePath": local_path.to_string_lossy(),
+            "password": null,
+        })),
+    )
+    .await
+    .map(|_| ())
+    .map_err(|e| format!("Failed to copy your local data into Postgres: {e}"))
 }
 
 async fn set_role_login(conn: &sea_orm::DatabaseConnection, role: &str, login: bool) -> Result<(), String> {

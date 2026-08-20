@@ -6,8 +6,9 @@ use serde_json::json;
 
 use super::super::{json_error, UserSession, WebState};
 use super::{
-    admin_conn, create_role_and_database, external_url, generate_password, role_and_db_name,
-    set_role_login, set_role_password, switch_web_session_to_local, switch_web_session_to_postgres,
+    admin_conn, create_role_and_database, external_url, generate_password, internal_url,
+    migrate_local_data_to_postgres, role_and_db_name, set_role_login, set_role_password,
+    switch_web_session_to_local, switch_web_session_to_postgres,
 };
 
 pub(in crate::server) async fn postgres_remote_status(
@@ -70,6 +71,16 @@ pub(in crate::server) async fn postgres_remote_enable(
             if let Err(e) = create_role_and_database(&admin, &role, &db_name, &password).await {
                 return json_error(StatusCode::INTERNAL_SERVER_ERROR, e);
             }
+            // Before persisting anything: applies the schema to the fresh
+            // database and copies the account's existing local data into it,
+            // so enabling doesn't strand real data behind an empty cloud
+            // database. Left unpersisted on failure so a retry re-enters
+            // this same first-time path (create_role_and_database tolerates
+            // the role/database already existing).
+            let url = internal_url(&state, &role, &db_name, &password);
+            if let Err(e) = migrate_local_data_to_postgres(&state, session.user_id, &url).await {
+                return json_error(StatusCode::INTERNAL_SERVER_ERROR, e);
+            }
             if let Err(e) = state
                 .users
                 .set_postgres_remote(session.user_id, &role, &db_name, &password)
@@ -81,10 +92,6 @@ pub(in crate::server) async fn postgres_remote_enable(
         }
     };
 
-    // The database itself (schema/seed rows) is created lazily by
-    // `db::connection::open`'s `init_db` pass, run here as part of the
-    // switch — not by the admin connection above, which only owns the role
-    // and the empty CREATE DATABASE shell.
     if let Err(e) = switch_web_session_to_postgres(&state, &session, &role, &db_name, &password).await {
         return json_error(StatusCode::INTERNAL_SERVER_ERROR, e);
     }

@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { Check, Copy } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { isDesktopHost } from "@/platform";
 import { useDataSection } from "./useDataSection";
@@ -7,6 +9,14 @@ import { SettingRow, ToggleGroup } from "./SettingsShared";
 
 export function DataSectionDatabaseCard({ data, t }: { data: ReturnType<typeof useDataSection>; t: ReturnType<typeof useT> }) {
   const { dbPath, defaultLocalPath, dbSize, connection, exporting, confirmClear, pendingSwitchPath, switching, activeTab, postgresOpen, postgresUrl, connectingPostgres, confirmDisconnect, syncing, showExportPassword, pendingExportSource, showImportPassword, pendingImportPath, importPassword, importPlan, analyzing, importing, importProgress, importError, pendingOverwritePath, overwriting, overwriteProgress, postgresExportProgress, vacuuming, postgresRemote, postgresRemoteBusy, confirmRotatePostgresRemote, postgresRemoteJustRevealed, isRemote, isOffline, canExport, canSwitchPath, canImport, canVacuum, formattedDbSize, setDbPath, setDbSize, setConnection, setExporting, setConfirmClear, setPendingSwitchPath, setSwitching, setActiveTab, setPostgresOpen, setPostgresUrl, setConfirmDisconnect, setSyncing, setShowExportPassword, setPendingExportSource, setShowImportPassword, setPendingImportPath, setImportPassword, setImportPlan, setAnalyzing, setImporting, setImportError, setPendingOverwritePath, setConfirmRotatePostgresRemote, handleOpenExisting, handleNewLocation, confirmSwitch, handleConnectPostgres, handleDisablePostgresRemote, handleDisconnect, handleSyncNow, handleChooseImportFile, analyzeImport, handleImport, handleChooseOverwriteFile, confirmOverwrite, handleVacuum, handleEnablePostgresRemote, handleConfirmRotatePostgresRemote, startExport, handleExport, handleClearTranslations } = data;
+
+  const [urlCopied, setUrlCopied] = useState(false);
+  const handleCopyPostgresRemoteUrl = () => {
+    if (!postgresRemote?.url) return;
+    navigator.clipboard.writeText(postgresRemote.url);
+    setUrlCopied(true);
+    setTimeout(() => setUrlCopied(false), 1400);
+  };
 
   return (
       <div className="bg-card border border-border rounded-xl px-5 py-4 space-y-4">
@@ -263,10 +273,13 @@ export function DataSectionDatabaseCard({ data, t }: { data: ReturnType<typeof u
                       </span>
                       <Button
                         variant="outline"
-                        onClick={() => postgresRemote.url && navigator.clipboard.writeText(postgresRemote.url)}
-                        className="h-8 shrink-0 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted transition-colors"
+                        size="icon"
+                        onClick={handleCopyPostgresRemoteUrl}
+                        title={t("settings.remoteAccessCopyUrl")}
+                        aria-label={t("settings.remoteAccessCopyUrl")}
+                        className="h-8 w-8 shrink-0 rounded-lg border border-input hover:bg-muted transition-colors"
                       >
-                        {t("settings.remoteAccessCopyUrl")}
+                        {urlCopied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
                       </Button>
                     </div>
 
