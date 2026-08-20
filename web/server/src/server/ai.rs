@@ -1,6 +1,6 @@
 use axum::body::{Body, Bytes};
 use axum::extract::{Path, State};
-use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
+use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
 use axum::response::Response;
 
 use tanwords_lib::db;
@@ -18,6 +18,7 @@ use super::{json_error, UserSession, WebState};
 pub(super) async fn ai_proxy(
     State(state): State<WebState>,
     Path((provider_id, rest)): Path<(String, String)>,
+    method: Method,
     axum::Extension(session): axum::Extension<UserSession>,
     headers: HeaderMap,
     body: Bytes,
@@ -114,14 +115,15 @@ pub(super) async fn ai_proxy(
         }
     }
 
-    let upstream = match state
-        .http
-        .post(&target)
-        .headers(up_headers)
-        .body(body)
-        .send()
-        .await
-    {
+    // Forward with the caller's method, not a hardcoded POST: the settings
+    // page lists models with a GET /models call (OpenAI-compatible
+    // convention), while chat/completions is POST. Only body-carrying
+    // methods forward the request payload — a GET never has one.
+    let mut upstream_req = state.http.request(method.clone(), &target).headers(up_headers);
+    if matches!(method, Method::POST | Method::PUT | Method::PATCH) {
+        upstream_req = upstream_req.body(body);
+    }
+    let upstream = match upstream_req.send().await {
         Ok(r) => r,
         Err(e) => {
             return json_error(

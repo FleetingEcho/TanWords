@@ -23,7 +23,7 @@
 //!   POST /api/db/postgres/enable     session -> {"enabled":true,"url":...} (provisions this account's role+database in the shared postgres instance, switches the session onto it)
 //!   POST /api/db/postgres/rotate     session -> {"enabled":true,"url":...} (new password; old one stops working; data untouched)
 //!   POST /api/db/postgres/disable    session -> {"enabled":false} (revokes LOGIN; data and the role/database are kept for next enable; session switches back to local)
-//!   POST /api/ai-proxy/{id}/{*rest}  session, upstream passthrough with injected key
+//!   GET|POST /api/ai-proxy/{id}/{*rest}  session, upstream passthrough with injected key (request method is preserved upstream; GET supports the OpenAI-compatible /models listing)
 //!   GET  /*                          the SPA (built frontend), index.html fallback
 
 use std::net::{IpAddr, SocketAddr};
@@ -33,7 +33,7 @@ use axum::extract::{DefaultBodyLimit, Request, State};
 use axum::http::{header, HeaderName, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{any, get, post};
 use axum::{Json, Router};
 use serde_json::json;
 use tower_http::compression::CompressionLayer;
@@ -286,22 +286,10 @@ async fn security_headers(request: Request, next: Next) -> Response {
 
 // ── bring-up ──────────────────────────────────────────────────────────────
 
-pub async fn serve(
-    config: Config,
-    users: Arc<UsersDb>,
-    pool: Arc<RuntimePool>,
-) -> Result<(), String> {
-    let config = Arc::new(config);
-    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(());
-    let state = WebState {
-        users,
-        limiter: Arc::new(RateLimiter::new()),
-        pool,
-        config: config.clone(),
-        http: reqwest::Client::new(),
-        shutdown: shutdown_rx,
-    };
-
+/// Assemble the full axum app around a ready state. Kept separate from
+/// `serve` so tests can exercise routing (e.g. the AI proxy's method
+/// handling) with `tower::ServiceExt::oneshot` instead of a live listener.
+fn build_router(state: WebState) -> Router {
     let auth_routes = Router::new()
         .route("/api/auth/login", post(login))
         .route("/api/auth/register", post(register))
@@ -333,7 +321,7 @@ pub async fn serve(
         )
         .route("/api/import/{step}", post(import_step))
         .route("/api/export/backup", get(export_backup))
-        .route("/api/ai-proxy/{provider_id}/{*rest}", post(ai_proxy))
+        .route("/api/ai-proxy/{provider_id}/{*rest}", any(ai_proxy))
         .route("/api/db/profile", get(db_profile))
         .route("/api/db/postgres/status", get(postgres_remote_status))
         .route("/api/db/postgres/enable", post(postgres_remote_enable))
@@ -353,7 +341,7 @@ pub async fn serve(
             require_session,
         ));
 
-    let app: Router = Router::new()
+    Router::new()
         .merge(auth_routes)
         .merge(protected)
         .fallback(spa_handler)
@@ -362,7 +350,26 @@ pub async fn serve(
         // Brotli is preferred by modern browsers, with gzip as the fallback.
         .layer(CompressionLayer::new())
         .layer(middleware::from_fn(security_headers))
-        .with_state(state);
+        .with_state(state)
+}
+
+pub async fn serve(
+    config: Config,
+    users: Arc<UsersDb>,
+    pool: Arc<RuntimePool>,
+) -> Result<(), String> {
+    let config = Arc::new(config);
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(());
+    let state = WebState {
+        users,
+        limiter: Arc::new(RateLimiter::new()),
+        pool,
+        config: config.clone(),
+        http: reqwest::Client::new(),
+        shutdown: shutdown_rx,
+    };
+
+    let app = build_router(state);
 
     let ip: IpAddr = config.host.parse().map_err(|_| {
         format!(
@@ -427,3 +434,7 @@ async fn shutdown_signal() {
         let _ = ctrl_c.await;
     }
 }
+
+#[cfg(test)]
+#[path = "ai_tests.rs"]
+mod tests;

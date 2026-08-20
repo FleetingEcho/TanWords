@@ -36,3 +36,9 @@ uuid = { version = "1", features = ["v4"] }
 dirs = "5"
 rust-embed = "8"
 regex = "1"
+
+[dev-dependencies]
+# Router-level tests (server/ai_tests.rs) drive the app with oneshot
+# requests; both crates are already in the lockfile as transitive deps.
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"

@@ -42,6 +42,18 @@ export function ProviderSection() {
   const [loaded, setLoaded] = useState(false);
   const [showAddCustom, setShowAddCustom] = useState(false);
   const [newProvider, setNewProvider] = useState({ name: "", apiBase: "", apiKey: "", modelId: "" });
+  // Id the add form's provider will be saved under. Generated when the form
+  // opens so "fetch available models" and "add" reference the SAME row — on
+  // web the models fetch is proxied by the server against the saved provider,
+  // so the draft must be written (and fetched under) one stable id, not a
+  // hardcoded "custom" that never exists in the database. Refs (not state):
+  // the id only feeds event handlers, and the persisted flag must be readable
+  // from the unmount cleanup without re-running effects.
+  const draftIdRef = useRef<string | null>(null);
+  // Whether the draft was persisted to the database this session (only the
+  // web "fetch models" path writes it early) — cancel/unmount then deletes
+  // it, so a fetch-then-abandon never leaves an orphan provider behind.
+  const draftPersistedRef = useRef(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: "", apiBase: "", apiKey: "", modelId: "" });
   const [testStatus, setTestStatus] = useState<{ ok: boolean | null; text: string } | null>(null);
@@ -103,6 +115,11 @@ export function ProviderSection() {
       Object.values(persistTimers.current).forEach(clearTimeout);
       Object.values(pendingWrites.current).forEach((write) => write());
       pendingWrites.current = {};
+      // A web draft persisted for a models fetch but never "added" must not
+      // linger as a half-configured provider row.
+      if (draftPersistedRef.current && draftIdRef.current) {
+        void deleteProvider(draftIdRef.current).catch(() => {});
+      }
     };
   }, []);
 
@@ -228,7 +245,12 @@ export function ProviderSection() {
 
   const addCustom = async () => {
     if (!newProvider.name || !newProvider.apiBase || !newProvider.modelId) return;
-    const id = `custom_${Date.now()}`;
+    // Reuse the id the form has been fetching models under, so the draft row
+    // the web proxy read from is the row this save finalizes — never a fresh
+    // id that would orphan the draft (and its stored key).
+    const id = draftIdRef.current ?? `custom_${Date.now()}`;
+    draftIdRef.current = null;
+    draftPersistedRef.current = false;
     updateConfig(
       id,
       {
@@ -251,6 +273,54 @@ export function ProviderSection() {
     useSettingsStore.getState().setDefaultAiProvider(id);
   };
 
+  const openAddForm = () => {
+    draftIdRef.current = `custom_${Date.now()}`;
+    draftPersistedRef.current = false;
+    setShowAddCustom(true);
+  };
+
+  const toggleAddForm = () => {
+    // Toggle, not "open again": reopening over an open form would mint a new
+    // draft id and orphan the previous draft row (and its stored key).
+    if (showAddCustom) cancelAddForm();
+    else openAddForm();
+  };
+
+  const cancelAddForm = () => {
+    // On web the "fetch models" step wrote the draft row early (the proxy
+    // reads providers server-side); abandoning the form must remove it, or a
+    // half-configured provider shows up on the next visit.
+    if (draftPersistedRef.current && draftIdRef.current) {
+      const id = draftIdRef.current;
+      void deleteProvider(id).catch(() => {});
+    }
+    draftIdRef.current = null;
+    draftPersistedRef.current = false;
+    setShowAddCustom(false);
+  };
+
+  const fetchModelsForNew = async () => {
+    const id = draftIdRef.current;
+    if (!id || !newProvider.apiBase.trim()) return;
+    if (!isDesktopHost) {
+      // The proxy injects the key server-side, so the provider must exist
+      // (with this form's base URL and key) before models can be listed.
+      // Await the write so the fetch cannot race it.
+      await upsertProvider(
+        {
+          id,
+          name: newProvider.name || "Custom",
+          kind: "custom",
+          apiBase: newProvider.apiBase,
+          modelId: newProvider.modelId,
+        },
+        newProvider.apiKey,
+      );
+      draftPersistedRef.current = true;
+    }
+    void fetchModels(id, newProvider.apiBase, newProvider.apiKey, (model) => setNewProvider((prev) => ({ ...prev, modelId: model })), newProvider.modelId);
+  };
+
   const removeCustom = async (id: string) => {
     // Cancel any debounced write first, or it would re-create the row it is
     // still holding a copy of moments after the delete lands.
@@ -271,14 +341,20 @@ export function ProviderSection() {
 
   const saveEdit = () => {
     if (!editingId) return;
+    // On web the stored key is never exposed back to the browser (the proxy
+    // injects it server-side, see providerStore.loadProviderConfigs), so an
+    // empty key field means "leave the stored key alone" — passing "" would
+    // silently wipe it. Desktop shows the real key, so "" there still means
+    // "clear".
+    const nextKey = isDesktopHost ? editForm.apiKey : (editForm.apiKey || undefined);
     updateConfig(
       editingId,
       {
         name: editForm.name,
         apiBase: editForm.apiBase,
         modelId: editForm.modelId,
-        apiKey: editForm.apiKey,
-        hasKey: Boolean(editForm.apiKey),
+        apiKey: nextKey,
+        hasKey: nextKey ? true : Boolean(configsRef.current[editingId]?.hasKey),
       },
       true,
     );
@@ -338,7 +414,7 @@ export function ProviderSection() {
         ))}
 
         <button
-          onClick={() => setShowAddCustom((v) => !v)}
+          onClick={toggleAddForm}
           className="flex w-full items-center gap-2 border-t border-border/60 px-4 py-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
         >
           <Plus className="h-3.5 w-3.5" />
@@ -351,10 +427,10 @@ export function ProviderSection() {
           newProvider={newProvider}
           onNewProviderChange={setNewProvider}
           fetchingModels={fetchingModels}
-          onFetchModels={() => void fetchModels("custom", newProvider.apiBase, newProvider.apiKey, (model) => setNewProvider((prev) => ({ ...prev, modelId: model })), newProvider.modelId)}
+          onFetchModels={() => void fetchModelsForNew()}
           modelOptions={fetchedModels}
           onAdd={addCustom}
-          onCancel={() => setShowAddCustom(false)}
+          onCancel={cancelAddForm}
           t={t}
         />
       )}

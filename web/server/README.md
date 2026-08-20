@@ -93,7 +93,9 @@ Everything else — `POST /invoke/{command}`, `GET /events` (SSE, per-user
 broadcast), `GET /api/assets/:id`, `POST /api/import/upload`,
 `POST /api/import/analyze|apply` (uploads-dir paths only), `GET
 /api/export/backup`, the `/api/db/*` profile routes below, and
-`POST /api/ai-proxy/:id/*` — requires the session (`Authorization: Bearer`
+`GET|POST /api/ai-proxy/:id/*` (the request method is preserved upstream —
+the settings page lists models via `GET /models` and chats via
+`POST /chat/completions`) — requires the session (`Authorization: Bearer`
 or `?token=` where headers are impossible).
 
 ## Per-user data & Postgres remote access
