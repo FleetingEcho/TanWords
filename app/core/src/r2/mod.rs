@@ -100,10 +100,14 @@ fn credentials(settings: &R2Settings) -> Result<Credentials<'_>, String> {
 // ── Storage ────────────────────────────────────────────────────────────────
 
 /// Seals the whole record, so a field added later is covered automatically.
-fn seal(plaintext: &str) -> Result<String, String> {
-    let key = crate::secrets::device_key()
-        .ok_or("Cannot store the R2 key: this device has no usable keychain")?;
-    crate::document_privacy::encrypt_text(&key, plaintext)
+fn seal(key: &[u8; 32], plaintext: &str) -> Result<String, String> {
+    crate::document_privacy::encrypt_text(key, plaintext)
+}
+
+/// Unseals with the active profile's sealing key. For a Postgres profile that
+/// is the shared vault key; for local, the per-device keychain key.
+fn unseal(key: &[u8; 32], sealed: &str) -> Option<String> {
+    crate::document_privacy::decrypt_text(key, sealed).ok()
 }
 
 /// Moves a pre-existing desktop configuration out of `app_config.json` (and
@@ -122,6 +126,11 @@ pub async fn migrate_from_app_config(conn: &crate::db::Conn) {
     }
 }
 
+/// Loads the R2 settings, sealed with the active profile's sealing key.
+/// Falls back to the legacy per-device keychain key when the vault key (or
+/// the current device, pre-vault) sealed the row — and, on a successful
+/// fallback, lazily re-seals the row under the vault key so it roams from
+/// then on. `None` if there's no row or it can't be decrypted by either key.
 pub async fn load_settings(conn: &crate::db::Conn) -> Option<R2Settings> {
     let sealed = crate::db::fetch_one(
         conn,
@@ -134,17 +143,47 @@ pub async fn load_settings(conn: &crate::db::Conn) -> Option<R2Settings> {
     if sealed.is_empty() {
         return None;
     }
-    let key = crate::secrets::device_key()?;
-    let json = crate::document_privacy::decrypt_text(&key, &sealed).ok()?;
-    serde_json::from_str(&json).ok()
+
+    // Prefer the active profile's key (vault key for Postgres, device key for
+    // local); fall back to the device key for rows a pre-vault device (or the
+    // web server, under its master key) sealed before this change.
+    let primary = conn.sealing_key();
+    if let Some(ref pk) = primary {
+        if let Some(json) = unseal(pk, &sealed) {
+            return serde_json::from_str(&json).ok();
+        }
+    }
+    let device = crate::secrets::device_key()?;
+    let json = unseal(&device, &sealed)?;
+    let settings: R2Settings = serde_json::from_str(&json).ok()?;
+
+    // Lazy migration: re-seal under the active profile's key if we have one,
+    // so the row roams from now on. Best-effort — a failure here must not
+    // prevent the caller from using the settings it just decrypted.
+    if let Some(pk) = primary {
+        if let Ok(json) = serde_json::to_string(&settings) {
+            if let Ok(sealed) = seal(&pk, &json) {
+                let _ = conn
+                    .execute(
+                        "UPDATE r2_config SET config_enc = ?1 WHERE id = 1",
+                        crate::db::params![sealed],
+                    )
+                    .await;
+            }
+        }
+    }
+    Some(settings)
 }
 
 async fn save_settings(conn: &crate::db::Conn, settings: &R2Settings) -> Result<(), String> {
+    let key = conn
+        .sealing_key()
+        .ok_or("Cannot store the R2 key: this device has no usable keychain")?;
     let json = serde_json::to_string(settings).map_err(|e| e.to_string())?;
     conn.execute(
         "INSERT INTO r2_config (id, config_enc) VALUES (1, ?1)
          ON CONFLICT(id) DO UPDATE SET config_enc = excluded.config_enc",
-        crate::db::params![seal(&json)?],
+        crate::db::params![seal(&key, &json)?],
     )
     .await
     .map(|_| ())
@@ -541,4 +580,51 @@ pub async fn r2_put_asset(
     let key = object_key(&file_name);
     put_object_with_progress(&settings, &key, &mime_type, data, Some(&app), &file_name).await?;
     Ok(key)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::connection::{DbProfile, open};
+
+    /// Requires a live Postgres reachable at `TANWORDS_PG_TEST_URL` — skipped
+    /// otherwise. The R2 analogue of the AI-provider cross-device test: an
+    /// R2 config saved on one device reads back on another via the shared
+    /// vault key, so a Cloudflare account configured once roams everywhere.
+    #[tokio::test]
+    async fn r2_config_saved_on_one_device_reads_on_another_via_the_vault_key() {
+        let Ok(url) = std::env::var("TANWORDS_PG_TEST_URL") else {
+            eprintln!("skipping: TANWORDS_PG_TEST_URL not set");
+            return;
+        };
+        // Wipe only this test's row — NOT the shared `vault_key` table (stable
+        // across runs; every PG test shares the same password → same key).
+        let wipe = crate::db::connection::open_blank_postgres(&url).await.unwrap();
+        let _ = wipe.execute_batch("DELETE FROM r2_config").await;
+
+        let conn_a = open(&DbProfile::Postgres { url: url.clone() }, None).await.unwrap().conn();
+        let vault_a = conn_a.vault_key().map(|k| *k).expect("device A has a vault key");
+        let settings = R2Settings {
+            account_id: "acct".into(),
+            bucket: "bucket".into(),
+            access_key_id: "AKID".into(),
+            secret_access_key: "secret".into(),
+            public_base_url: None,
+            always_upload: false,
+        };
+        save_settings(&conn_a, &settings).await.unwrap();
+        let loaded_a = load_settings(&conn_a).await.expect("device A reads its own config");
+        assert_eq!(loaded_a.bucket, "bucket");
+
+        // A second independent open = "device B".
+        let conn_b = open(&DbProfile::Postgres { url }, None).await.unwrap().conn();
+        let vault_b = conn_b.vault_key().map(|k| *k).expect("device B has a vault key");
+        assert_eq!(vault_a, vault_b, "both devices share the vault key");
+        let loaded_b = load_settings(&conn_b).await.expect("device B reads A's config");
+        assert_eq!(loaded_b.bucket, "bucket");
+        assert_eq!(loaded_b.secret_access_key, "secret");
+
+        // Cleanup.
+        conn_b.execute("DELETE FROM r2_config", ()).await.unwrap();
+    }
 }

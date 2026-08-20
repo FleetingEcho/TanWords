@@ -2,6 +2,7 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use serde::Deserialize;
 use serde_json::json;
 
 use super::super::{json_error, UserSession, WebState};
@@ -10,6 +11,26 @@ use super::{
     migrate_local_data_to_postgres, role_and_db_name, set_role_login, set_role_password,
     snapshot_postgres_to_local, switch_web_session_to_local, switch_web_session_to_postgres,
 };
+
+#[derive(Deserialize)]
+pub(in crate::server) struct PostgresPasswordBody {
+    password: String,
+}
+
+async fn require_account_password(
+    state: &WebState,
+    user_id: i64,
+    password: &str,
+) -> Result<(), Response> {
+    match state.users.verify_account_password(user_id, password).await {
+        Ok(true) => Ok(()),
+        // The bearer session is valid; only the second-factor-style password
+        // check failed. Do not answer 401, because the web client correctly
+        // treats that as an expired session and logs the user out.
+        Ok(false) => Err(json_error(StatusCode::FORBIDDEN, "Current password is incorrect")),
+        Err(e) => Err(json_error(StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
 
 pub(in crate::server) async fn postgres_remote_status(
     State(state): State<WebState>,
@@ -28,14 +49,37 @@ pub(in crate::server) async fn postgres_remote_status(
     }
 }
 
+/// Returns the full, still-current connection string only after an explicit
+/// account-password check. The password is already sealed in users.db, so a
+/// lost browser copy never requires rotating the Postgres role and breaking
+/// every other connected client.
+pub(in crate::server) async fn postgres_remote_reveal(
+    State(state): State<WebState>,
+    axum::Extension(session): axum::Extension<UserSession>,
+    Json(body): Json<PostgresPasswordBody>,
+) -> Response {
+    if let Err(response) = require_account_password(&state, session.user_id, &body.password).await {
+        return response;
+    }
+    let profile = match state.users.postgres_remote_for(session.user_id).await {
+        Ok(profile) => profile,
+        Err(e) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, e),
+    };
+    let Some(profile) = profile.filter(|p| p.enabled) else {
+        return json_error(StatusCode::BAD_REQUEST, "Remote access isn't enabled yet");
+    };
+    match external_url(&state, &profile.role, &profile.db_name, Some(&profile.password)) {
+        Ok(url) => Json(json!({ "enabled": true, "url": url })).into_response(),
+        Err(e) => json_error(StatusCode::BAD_REQUEST, e),
+    }
+}
+
 /// Provisions on first call, re-enables (`LOGIN`) if it was disabled, and is
-/// a harmless no-op-plus-redisplay if already enabled — in every case the
-/// account's live session is switched onto this Postgres database (see the
-/// module doc) and the current password is returned. Unlike the retired
-/// sqld container's bearer token (regenerated fresh every call because
-/// nothing stored it), the password is a real stored credential, so
-/// re-displaying it on a repeat "enable" is just a convenience, not a
-/// rotation — use `postgres_remote_rotate` to actually invalidate it.
+/// a harmless no-op if already enabled — in every case the account's live
+/// session is switched onto this Postgres database (see the module doc).
+/// Only first-time provisioning returns the full credential here. Existing
+/// profiles use `postgres_remote_reveal`, which re-checks the account
+/// password without rotating the Postgres role.
 pub(in crate::server) async fn postgres_remote_enable(
     State(state): State<WebState>,
     axum::Extension(session): axum::Extension<UserSession>,
@@ -45,7 +89,7 @@ pub(in crate::server) async fn postgres_remote_enable(
         Err(e) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, e),
     };
 
-    let (role, db_name, password) = match existing {
+    let (role, db_name, password, newly_provisioned) = match existing {
         Some(profile) => {
             if !profile.enabled {
                 let admin = match admin_conn(&state).await {
@@ -59,7 +103,7 @@ pub(in crate::server) async fn postgres_remote_enable(
                     return json_error(StatusCode::INTERNAL_SERVER_ERROR, e);
                 }
             }
-            (profile.role, profile.db_name, profile.password)
+            (profile.role, profile.db_name, profile.password, false)
         }
         None => {
             let (role, db_name) = role_and_db_name(session.user_id);
@@ -88,7 +132,7 @@ pub(in crate::server) async fn postgres_remote_enable(
             {
                 return json_error(StatusCode::INTERNAL_SERVER_ERROR, e);
             }
-            (role, db_name, password)
+            (role, db_name, password, true)
         }
     };
 
@@ -96,7 +140,10 @@ pub(in crate::server) async fn postgres_remote_enable(
         return json_error(StatusCode::INTERNAL_SERVER_ERROR, e);
     }
 
-    match external_url(&state, &role, &db_name, Some(&password)) {
+    // A repeat enable must not double as an unauthenticated credential reveal.
+    // The dedicated reveal route performs the account-password check.
+    let exposed_password = newly_provisioned.then_some(password.as_str());
+    match external_url(&state, &role, &db_name, exposed_password) {
         Ok(url) => Json(json!({ "enabled": true, "url": url })).into_response(),
         Err(e) => json_error(StatusCode::BAD_REQUEST, e),
     }
@@ -109,7 +156,11 @@ pub(in crate::server) async fn postgres_remote_enable(
 pub(in crate::server) async fn postgres_remote_rotate(
     State(state): State<WebState>,
     axum::Extension(session): axum::Extension<UserSession>,
+    Json(body): Json<PostgresPasswordBody>,
 ) -> Response {
+    if let Err(response) = require_account_password(&state, session.user_id, &body.password).await {
+        return response;
+    }
     let existing = match state.users.postgres_remote_for(session.user_id).await {
         Ok(profile) => profile,
         Err(e) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, e),
@@ -132,6 +183,26 @@ pub(in crate::server) async fn postgres_remote_rotate(
         .await
     {
         return json_error(StatusCode::INTERNAL_SERVER_ERROR, e);
+    }
+
+    // Re-seal the shared vault key under the *new* password before the session
+    // is re-opened with it. The vault key seals R2 config + AI provider keys
+    // for cross-device roaming; it's unlocked by a key derived from the
+    // Postgres password, so a rotation without this re-seal would orphan every
+    // sealed row (the new connection derives a different unlock key and can't
+    // decrypt the old vault key row). Cheap — one row re-encrypted, the sealed
+    // R2/AI rows are untouched (they're sealed with the vault key itself).
+    if profile.enabled {
+        let runtime = match state.pool.runtime_for(session.user_id).await {
+            Ok(rt) => rt,
+            Err(e) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, e),
+        };
+        let app_state = runtime.ctx.state::<tanwords_lib::AppState>();
+        if let Ok(conn) = tanwords_lib::db::conn(&app_state) {
+            if let Err(e) = tanwords_lib::secrets::rekey_vault_key(&conn, &profile.password, &password).await {
+                return json_error(StatusCode::INTERNAL_SERVER_ERROR, e);
+            }
+        }
     }
 
     if profile.enabled {

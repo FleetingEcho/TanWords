@@ -167,7 +167,7 @@ pub(crate) async fn export_postgres_snapshot(
     let mut opts = sea_orm::ConnectOptions::new(format!("sqlite://{dest_path}?mode=rw"));
     opts.max_connections(1);
     let raw = sea_orm::Database::connect(opts).await.map_err(|e| e.to_string())?;
-    let dest = Conn::new_db(raw, db::DbKind::Local);
+    let dest = Conn::new_db(raw, db::DbKind::Local, None);
     dest.execute_batch("PRAGMA foreign_keys=OFF;")
         .await
         .map_err(|e| e.to_string())?;
@@ -253,13 +253,4 @@ pub async fn db_disconnect_remote(
     state.replace_db(database)?;
     crate::appconfig::save_db_profile(&profile).map_err(|e| e.to_string())?;
     Ok(descriptor)
-}
-
-/// Historically triggered an immediate pull from a Turso primary. Local is a
-/// single file and Postgres is a live network connection with no local
-/// replica, so there is nothing to sync. Kept as a no-op so the frontend's
-/// existing UI/button keeps working without a command-dispatch change.
-#[crate::shim::command]
-pub async fn db_sync_now(_state: State<'_, AppState>) -> std::result::Result<(), String> {
-    Ok(())
 }

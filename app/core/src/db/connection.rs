@@ -56,9 +56,10 @@ impl DbProfile {
         }
     }
 
-    /// The remote URL the profile points at, if any. Shown to the frontend
-    /// (no secrets stripped — a Postgres URL's credentials are handled at the
-    /// storage layer, never round-tripped through `DbDescriptor`).
+    /// The remote URL the profile points at, if any. Desktop uses the full URL
+    /// for its local masked reveal/copy field. The web server redacts this
+    /// descriptor before returning it to a browser and exposes credentials
+    /// only through its password-authenticated reveal route.
     pub fn remote_url(&self) -> Option<&str> {
         match self {
             DbProfile::Postgres { url } => Some(url),
@@ -167,7 +168,7 @@ pub async fn open(profile: &DbProfile, _token: Option<&str>) -> Result<Db, Strin
                 .await
                 .map_err(|e| format!("Failed to open local database: {e}"))?;
             (
-                Conn::new_db(url, DbKind::Local),
+                Conn::new_db(url, DbKind::Local, None),
                 DbCaps { export: true, switch_path: true, sync: false, writable: true, vacuum: true },
             )
         }
@@ -176,7 +177,7 @@ pub async fn open(profile: &DbProfile, _token: Option<&str>) -> Result<Db, Strin
                 .await
                 .map_err(|e| format!("Failed to connect to Postgres: {e}"))?;
             (
-                Conn::new_db(db, DbKind::Postgres),
+                Conn::new_db(db, DbKind::Postgres, None),
                 DbCaps { export: false, switch_path: false, sync: false, writable: true, vacuum: false },
             )
         }
@@ -188,6 +189,34 @@ pub async fn open(profile: &DbProfile, _token: Option<&str>) -> Result<Db, Strin
         .map_err(|e| format!("Failed to initialize database: {e}"))?;
     eprintln!("[startup] database-schema-ready +{}ms", schema_started.elapsed().as_millis());
 
+    // A Postgres profile seals R2 config and AI provider keys under a shared
+    // vault key, which is itself unlocked by the Postgres connection password
+    // (see `secrets::vault_key`). Resolve it now — the `vault_key` table was
+    // just created by `init_db` — and attach it to the connection so every
+    // later `Conn` clone carries it down to the deep seal/unseal helpers.
+    // Local SQLite profiles keep sealing on the per-device keychain key, so
+    // they carry no vault key.
+    let conn = if profile.kind() == DbKind::Postgres {
+        match postgres_password(profile) {
+            Some(password) => match crate::secrets::load_or_create_vault_key(&conn, &password).await {
+                Ok(key) => conn.with_vault_key(Some(std::sync::Arc::new(key))),
+                Err(e) => {
+                    // A failure to open the vault must not brick the whole
+                    // database; the user can still read unsealed data and
+                    // re-enter R2/AI credentials. Log and continue keyless.
+                    eprintln!("[startup] vault key unavailable: {e}");
+                    conn
+                }
+            },
+            None => {
+                eprintln!("[startup] Postgres connection has no password; vault key disabled");
+                conn
+            }
+        }
+    } else {
+        conn
+    };
+
     Ok(Db {
         conn,
         descriptor: DbDescriptor {
@@ -197,6 +226,15 @@ pub async fn open(profile: &DbProfile, _token: Option<&str>) -> Result<Db, Strin
             caps,
         },
     })
+}
+
+/// Extracts the password from a `postgres://user:pass@host/db` URL. Returns
+/// `None` if the URL has no password (or fails to parse).
+fn postgres_password(profile: &DbProfile) -> Option<String> {
+    let DbProfile::Postgres { url } = profile else { return None };
+    let parsed = url::Url::parse(url).ok()?;
+    let pw = parsed.password()?;
+    if pw.is_empty() { None } else { Some(pw.to_string()) }
 }
 
 /// A throwaway in-memory database with the full schema applied — for tests and
@@ -217,7 +255,7 @@ pub async fn open_blank_memory() -> Result<Conn, String> {
         .await
         .map_err(|e| e.to_string())?;
     let _ = db.execute_unprepared("PRAGMA foreign_keys=ON;").await;
-    Ok(Conn::new_db(db, DbKind::Local))
+    Ok(Conn::new_db(db, DbKind::Local, None))
 }
 
 /// Wrap a raw SeaORM Postgres pool as a `Conn` — test seam for the
@@ -228,7 +266,7 @@ pub async fn open_blank_postgres(url: &str) -> Result<Conn, String> {
     let db = sea_orm::Database::connect(url.to_string())
         .await
         .map_err(|e| e.to_string())?;
-    Ok(Conn::new_db(db, DbKind::Postgres))
+    Ok(Conn::new_db(db, DbKind::Postgres, None))
 }
 
 /// Conn PRAGMAs are advisory and SQLite-only: `journal_mode=WAL` for

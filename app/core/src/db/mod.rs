@@ -332,7 +332,7 @@ mod init_db_tests {
         opts.max_connections(1).min_connections(1);
         let db = sea_orm::Database::connect(opts).await.unwrap();
         let _ = db.execute_unprepared("PRAGMA foreign_keys=ON;").await;
-        Conn::new_db(db, connection::DbKind::Local)
+        Conn::new_db(db, connection::DbKind::Local, None)
     }
 
     async fn table_exists(conn: &Conn, name: &str) -> bool {

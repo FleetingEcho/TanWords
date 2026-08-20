@@ -20,7 +20,7 @@ pub(super) async fn open_source(path: &str) -> Result<Conn, String> {
     let db = sea_orm::Database::connect(opts)
         .await
         .map_err(|e| format!("Failed to open database file: {e}"))?;
-    let conn = Conn::new_db(db, DbKind::Local);
+    let conn = Conn::new_db(db, DbKind::Local, None);
     // Anything without a words table isn't a TanWords database.
     db::scalar_i64(
         &conn,

@@ -4,7 +4,9 @@ use aes_gcm::{
 };
 use argon2::Argon2;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
+use hkdf::Hkdf;
 use rand::{rngs::OsRng, RngCore};
+use sha2::Sha256;
 
 /// Crate-visible (not just `pub(super)`) because `secrets::device_key` mints
 /// the AI-provider master key with it.
@@ -27,6 +29,24 @@ pub(super) fn derive_password_key(password: &str, salt: &[u8]) -> Result<[u8; 32
         .hash_password_into(password.as_bytes(), salt, &mut key)
         .map_err(|e| format!("Password derivation failed: {e}"))?;
     Ok(key)
+}
+
+/// HKDF-SHA256. Used to turn a *structured credential* (the Postgres
+/// connection password) into a 32-byte key that unlocks the shared vault
+/// key — see `secrets::vault_key`. Distinct from `derive_password_key`
+/// (Argon2): Argon2 is the right tool for a slow human-typed password, but
+/// the vault unlock input is already a machine-generated secret, so the
+/// fast, deterministic HKDF is the correct choice. `info` binds the derived
+/// key to its purpose so the same password can't be replayed into another
+/// derivation.
+pub fn derive_vault_unlock_key(password: &str, salt: &[u8], info: &[u8]) -> [u8; 32] {
+    let mut key = [0_u8; 32];
+    let hkdf = Hkdf::<Sha256>::new(Some(salt), password.as_bytes());
+    // HKDF's expand is infallible for a 32-byte output (well under the
+    // 255*HashLen ceiling); a non-Ok here is a programming error.
+    hkdf.expand(info, &mut key)
+        .expect("HKDF-SHA256 expand to 32 bytes cannot fail");
+    key
 }
 
 pub fn encrypt_bytes(key: &[u8; 32], plaintext: &[u8]) -> Result<Vec<u8>, String> {
@@ -85,6 +105,31 @@ mod tests {
         assert_ne!(
             derive_password_key("secret", &salt).unwrap(),
             derive_password_key("other", &salt).unwrap()
+        );
+    }
+
+    #[test]
+    fn vault_unlock_key_is_stable_and_distinct() {
+        let salt = random::<16>();
+        let info = b"tanwords-vault";
+        // Same inputs → same key (so every device sharing one Postgres
+        // password derives the same unlock key and opens the same vault key).
+        assert_eq!(
+            derive_vault_unlock_key("db-password", &salt, info),
+            derive_vault_unlock_key("db-password", &salt, info)
+        );
+        // Different password, or different salt, or different info → different key.
+        assert_ne!(
+            derive_vault_unlock_key("db-password", &salt, info),
+            derive_vault_unlock_key("other-password", &salt, info)
+        );
+        assert_ne!(
+            derive_vault_unlock_key("db-password", &salt, info),
+            derive_vault_unlock_key("db-password", &random::<16>(), info)
+        );
+        assert_ne!(
+            derive_vault_unlock_key("db-password", &salt, info),
+            derive_vault_unlock_key("db-password", &salt, b"other-purpose")
         );
     }
 }

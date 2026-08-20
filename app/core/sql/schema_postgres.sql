@@ -409,6 +409,18 @@ CREATE TABLE IF NOT EXISTS r2_config (
   config_enc TEXT NOT NULL
 );
 
+-- The shared vault key for a Postgres profile (see the matching table in
+-- schema.sql and `secrets::vault_key`). Sealed with a key derived from the
+-- Postgres connection password, so every device/web session sharing this
+-- database opens the same vault key — R2 config and AI provider keys then
+-- roam across platforms without a per-device env var.
+CREATE TABLE IF NOT EXISTS vault_key (
+  id         BIGINT PRIMARY KEY CHECK (id = 1),
+  key_enc    TEXT NOT NULL,
+  salt       TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
+);
+
 CREATE TABLE IF NOT EXISTS translations (
   id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   source_text  TEXT NOT NULL,

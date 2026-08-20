@@ -133,16 +133,29 @@ pub struct Conn {
     inner: ConnInner,
     backend: DbBackend,
     kind: DbKind,
+    /// The shared vault key for a Postgres profile, cloned through every
+    /// `Conn` so deep helpers (which only have `&Conn`, not `AppState`) can
+    /// seal/unseal R2 config and AI provider keys without threading `state`
+    /// back up the call stack. `None` for a local SQLite profile — those keep
+    /// sealing on the per-device keychain key (`secrets::device_key`).
+    vault_key: Option<std::sync::Arc<[u8; 32]>>,
 }
 
 impl Conn {
     /// Wrap a pool connection. The `Db` held by `AppState` is always this form.
-    pub(crate) fn new_db(db: sea_orm::DatabaseConnection, kind: DbKind) -> Self {
+    /// `vault_key` is the shared Postgres vault key (see `secrets::vault_key`),
+    /// or `None` for a local SQLite profile.
+    pub(crate) fn new_db(
+        db: sea_orm::DatabaseConnection,
+        kind: DbKind,
+        vault_key: Option<std::sync::Arc<[u8; 32]>>,
+    ) -> Self {
         let backend = db.get_database_backend();
         Conn {
             inner: ConnInner::Db(db),
             backend,
             kind,
+            vault_key,
         }
     }
 
@@ -154,15 +167,37 @@ impl Conn {
         self.kind
     }
 
+    /// The shared vault key, when this connection is a Postgres profile.
+    /// `None` for local SQLite (sealing falls back to the device keychain key).
+    pub fn vault_key(&self) -> Option<&[u8; 32]> {
+        self.vault_key.as_deref()
+    }
+
+    /// The key to seal/unseal with for this connection: the shared vault key
+    /// for a Postgres profile, or the per-device keychain key for local
+    /// SQLite. The single source of truth for the seal/unseal sites (R2
+    /// config, AI provider keys) so they don't each re-derive it.
+    pub fn sealing_key(&self) -> Option<[u8; 32]> {
+        self.vault_key().map(|k| *k).or_else(|| crate::secrets::device_key())
+    }
+
     /// Cheap: clones the underlying `Arc<Pool>` (sqlite/postgres) — same shape
-    /// as the old `libsql::Conn` clone, so `db::conn` and `db::txn_conn`
-    /// hand out owned handles without holding the state mutex across an await.
+    /// as the old `libsql::Conn` clone, so `db::conn` and `db::txn_conn` hand
+    /// out owned handles without holding the state mutex across an await.
     pub fn clone_handle(&self) -> Conn {
         match &self.inner {
-            ConnInner::Db(db) => Conn::new_db(db.clone(), self.kind),
+            ConnInner::Db(db) => Conn::new_db(db.clone(), self.kind, self.vault_key.clone()),
             // A transaction handle is not clonable; callers never clone a Txn.
-            ConnInner::Txn(_) => Conn::new_db(self.expect_db().clone(), self.kind),
+            ConnInner::Txn(_) => Conn::new_db(self.expect_db().clone(), self.kind, self.vault_key.clone()),
         }
+    }
+
+    /// Returns a copy of this connection with the vault key attached. Used by
+    /// `connection::open`, which can only resolve the Postgres vault key after
+    /// the database is open and `init_db` has created the `vault_key` table —
+    /// so it builds the `Conn` first, then attaches the key here.
+    pub fn with_vault_key(self, vault_key: Option<std::sync::Arc<[u8; 32]>>) -> Self {
+        Conn { vault_key, ..self }
     }
 
     fn expect_db(&self) -> &sea_orm::DatabaseConnection {
@@ -234,6 +269,7 @@ impl Conn {
             inner: ConnInner::Txn(txn),
             backend: self.backend,
             kind: self.kind,
+            vault_key: self.vault_key.clone(),
         })
     }
 

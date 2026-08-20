@@ -240,6 +240,135 @@ fn load_device_key() -> Option<[u8; 32]> {
     }
 }
 
+// ── Vault key (shared, for a Postgres profile) ─────────────────────────────
+//
+// The device key above is *per device* — fine for a local SQLite file that
+// never leaves the machine, but the wrong choice for a shared Postgres: an
+// R2 config or AI provider key sealed by device A is unreadable on device B,
+// so a Cloudflare account or a saved OpenAI key can't roam. The vault key
+// fixes that. It is one random 32-byte key, stored in the `vault_key` table,
+// sealed with a key derived from the *Postgres connection password*. Every
+// device and the web server that reaches the same Postgres derives the same
+// unlock key from that password and opens the same vault key — so the sealed
+// R2/AI rows decrypt everywhere, with no per-device env var to set.
+//
+// Local SQLite profiles never use the vault key; they keep sealing on the
+// per-device keychain key (single machine, no roaming, at-rest protection).
+// The vault key is resolved once in `connection::open` for a Postgres profile
+// and attached to the `Conn`, so every `Conn` clone carries it to the deep
+// seal/unseal helpers that only have `&Conn`, not `AppState`.
+
+/// `info` string binding the vault unlock derivation to its purpose.
+const VAULT_INFO: &[u8] = b"tanwords-vault";
+
+/// Loads the shared vault key for a Postgres profile: reads the `vault_key`
+/// row and unseals it with the password-derived key, or mints and stores a
+/// fresh 32-byte key on first use (the first device to connect creates it;
+/// every later device finds it ready). Called from `connection::open` after
+/// `init_db` has created the `vault_key` table.
+pub async fn load_or_create_vault_key(
+    conn: &crate::db::Conn,
+    password: &str,
+) -> Result<[u8; 32], String> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+
+    let row: Option<(String, String)> = crate::db::fetch_optional(
+        conn,
+        "SELECT key_enc, salt FROM vault_key WHERE id = 1",
+        (),
+        |r| Ok((r.get::<String>(0)?, r.get::<String>(1)?)),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if let Some((key_enc, salt_b64)) = row {
+        let salt = STANDARD.decode(salt_b64.as_bytes()).map_err(|e| e.to_string())?;
+        let unlock = crate::document_privacy::derive_vault_unlock_key(password, &salt, VAULT_INFO);
+        let key_b64 = crate::document_privacy::decrypt_text(&unlock, &key_enc)
+            .map_err(|_| "The Postgres password no longer unlocks the stored vault key (the database password was rotated outside the app)".to_string())?;
+        let bytes = STANDARD.decode(key_b64.as_bytes()).map_err(|e| e.to_string())?;
+        return bytes
+            .try_into()
+            .map_err(|_| "Stored vault key is not 32 bytes".to_string());
+    }
+
+    // First use: mint and store. Fresh random salt + vault key.
+    let salt = crate::document_privacy::random::<16>();
+    let unlock = crate::document_privacy::derive_vault_unlock_key(password, &salt, VAULT_INFO);
+    let key = crate::document_privacy::random::<32>();
+    let key_b64 = STANDARD.encode(key);
+    let key_enc = crate::document_privacy::encrypt_text(&unlock, &key_b64)?;
+    let salt_b64 = STANDARD.encode(salt);
+    conn.execute(
+        // `updated_at` is left to the column default (`CURRENT_TIMESTAMP` on
+        // SQLite, `to_char(now()...)` on Postgres) — setting it inline would
+        // collide with Postgres's TIMESTAMPTZ/TEXT typing the way other tables
+        // in this schema avoid by using the default.
+        "INSERT INTO vault_key (id, key_enc, salt) VALUES (1, ?1, ?2)
+         ON CONFLICT(id) DO UPDATE SET key_enc = excluded.key_enc, salt = excluded.salt",
+        crate::db::params![key_enc, salt_b64],
+    )
+    .await
+    .map(|_| ())
+    .map_err(|e| e.to_string())?;
+    Ok(key)
+}
+
+/// Re-seals the shared vault key under a *new* Postgres password. Called by
+/// the web server's password-rotation flow after the role password is changed
+/// but before the session is re-opened with it — so the vault key the new
+/// connection will try to open is already sealed with the new password's
+/// derived key. Cheap (one row decrypt + one row encrypt + one UPDATE), and
+/// it leaves every sealed R2/AI row untouched (those are sealed with the
+/// vault key itself, not the password-derived key). The old `conn` is still
+/// connected with the *old* password and carries the vault key, so the
+/// decrypt side works; only the seal side uses the new password.
+pub async fn rekey_vault_key(
+    conn: &crate::db::Conn,
+    old_password: &str,
+    new_password: &str,
+) -> Result<(), String> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+
+    // The vault key bytes — either already on the Conn, or decrypted from the
+    // row with the old password.
+    let vault_key: [u8; 32] = if let Some(k) = conn.vault_key() {
+        *k
+    } else {
+        let row = crate::db::fetch_optional::<(String, String), _>(
+            conn,
+            "SELECT key_enc, salt FROM vault_key WHERE id = 1",
+            (),
+            |r| Ok((r.get::<String>(0)?, r.get::<String>(1)?)),
+        )
+        .await?
+        .ok_or("No vault key row to re-seal")?;
+        let salt = STANDARD.decode(row.1.as_bytes()).map_err(|e| e.to_string())?;
+        let unlock = crate::document_privacy::derive_vault_unlock_key(old_password, &salt, VAULT_INFO);
+        let key_b64 = crate::document_privacy::decrypt_text(&unlock, &row.0)
+            .map_err(|_| "The old Postgres password no longer unlocks the stored vault key".to_string())?;
+        STANDARD
+            .decode(key_b64.as_bytes())
+            .map_err(|e| e.to_string())?
+            .try_into()
+            .map_err(|_| "Stored vault key is not 32 bytes".to_string())?
+    };
+
+    // Re-seal with a fresh salt under the new password.
+    let salt = crate::document_privacy::random::<16>();
+    let unlock = crate::document_privacy::derive_vault_unlock_key(new_password, &salt, VAULT_INFO);
+    let key_b64 = STANDARD.encode(vault_key);
+    let key_enc = crate::document_privacy::encrypt_text(&unlock, &key_b64)?;
+    let salt_b64 = STANDARD.encode(salt);
+    conn.execute(
+        "UPDATE vault_key SET key_enc = ?1, salt = ?2 WHERE id = 1",
+        crate::db::params![key_enc, salt_b64],
+    )
+    .await
+    .map(|_| ())
+    .map_err(|e| e.to_string())
+}
+
 fn validate_key_name(name: &str) -> Result<(), String> {
     if !name.starts_with(ALLOWED_PREFIX) {
         return Err(format!(

@@ -287,6 +287,20 @@ CREATE TABLE IF NOT EXISTS r2_config (
   config_enc TEXT NOT NULL
 );
 
+-- The shared vault key, present only when the active profile is Postgres
+-- (see `secrets::vault_key`). Sealed with a key derived from the Postgres
+-- connection password, so every device/web session that reaches the same
+-- Postgres derives the same unlock key and opens the same vault key —
+-- letting R2 config and AI provider keys roam across platforms without a
+-- per-device env var. `salt` makes that derivation reproducible. Unused on
+-- a local SQLite profile, which keeps sealing on the per-device keychain key.
+CREATE TABLE IF NOT EXISTS vault_key (
+  id         INTEGER PRIMARY KEY CHECK (id = 1),
+  key_enc    TEXT NOT NULL,
+  salt       TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS document_folders (
   path       TEXT PRIMARY KEY,
   locked      INTEGER NOT NULL DEFAULT 0,

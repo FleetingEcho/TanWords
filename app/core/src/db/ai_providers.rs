@@ -40,25 +40,22 @@ pub struct AiProvider {
 
 const NO_KEYCHAIN: &str = "Cannot store the API key: this device's keychain is unavailable, so it could only be saved unencrypted.";
 
-fn seal(plaintext: &str) -> Result<String, String> {
+fn seal(conn: &Conn, plaintext: &str) -> Result<String, String> {
     if plaintext.is_empty() {
         return Ok(String::new());
     }
-    let key = crate::secrets::device_key().ok_or(NO_KEYCHAIN)?;
+    let key = conn.sealing_key().ok_or(NO_KEYCHAIN)?;
     encrypt_text(&key, plaintext)
 }
 
-/// An undecryptable row is reported as "no key" rather than as an error: it
-/// means the row was written by a different device (or the keychain entry was
-/// lost), and the useful response is to let the user re-enter a key, not to
-/// break the whole provider list.
-fn unseal(sealed: &str) -> String {
+/// Unseals with the active profile's sealing key (the shared vault key on
+/// Postgres, the per-device keychain key on local). Returns the plaintext on
+/// success, `None` if it can't be decrypted with this key.
+fn unseal(conn: &Conn, sealed: &str) -> Option<String> {
     if sealed.is_empty() {
-        return String::new();
+        return None;
     }
-    crate::secrets::device_key()
-        .and_then(|key| decrypt_text(&key, sealed).ok())
-        .unwrap_or_default()
+    conn.sealing_key().and_then(|key| decrypt_text(&key, sealed).ok())
 }
 
 pub async fn list(conn: &Conn, device: &str) -> Result<Vec<AiProvider>, String> {
@@ -99,7 +96,7 @@ pub async fn upsert(
     // key it never had would silently wipe it. COALESCE on the excluded value
     // keeps the existing ciphertext in that case.
     let sealed = match api_key {
-        Some(key) => Some(seal(key)?),
+        Some(key) => Some(seal(conn, key)?),
         None => None,
     };
 
@@ -147,7 +144,38 @@ pub async fn key(conn: &Conn, device: &str, id: &str) -> Result<String, String> 
         |row| row.get::<String>(0),
     )
     .await?;
-    Ok(sealed.map(|s| unseal(&s)).unwrap_or_default())
+    let Some(sealed) = sealed else {
+        return Ok(String::new());
+    };
+
+    // Prefer the active profile's key (vault key for Postgres, device key for
+    // local); fall back to the per-device keychain key for rows a pre-vault
+    // device (or the web server, under its master key) sealed before this
+    // change. An undecryptable row reads as "" so the user can re-enter it.
+    if let Some(plaintext) = unseal(conn, &sealed) {
+        return Ok(plaintext);
+    }
+    let Some(fallback_key) = crate::secrets::device_key() else {
+        return Ok(String::new());
+    };
+    let Some(plaintext) = decrypt_text(&fallback_key, &sealed).ok() else {
+        return Ok(String::new());
+    };
+
+    // Lazy migration: re-seal under the active profile's key if we have one,
+    // so the row roams from now on. Best-effort — a failure here must not
+    // prevent the caller from using the key it just decrypted.
+    if let Some(primary) = conn.sealing_key() {
+        if let Ok(resealed) = encrypt_text(&primary, &plaintext) {
+            let _ = conn
+                .execute(
+                    "UPDATE ai_providers SET api_key_enc = ?1 WHERE device_id = ?2 AND id = ?3",
+                    params![resealed, device, id],
+                )
+                .await;
+        }
+    }
+    Ok(plaintext)
 }
 
 // ── Commands ───────────────────────────────────────────────────────────────
@@ -302,5 +330,52 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(key(&conn, "d", "custom_1").await.unwrap(), "");
+    }
+
+    /// Requires a live Postgres reachable at `TANWORDS_PG_TEST_URL` — skipped
+    /// otherwise. The headline behaviour of the shared vault key: a provider
+    /// key sealed on "device A" (one `open`) is read back on "device B" (a
+    /// second, independent `open` of the same Postgres), because both derive
+    /// the same vault key from the shared connection password. Pre-vault this
+    /// returned "" on device B; now it returns the plaintext key.
+    #[tokio::test]
+    async fn a_key_sealed_on_one_device_reads_on_another_via_the_vault_key() {
+        let Ok(url) = std::env::var("TANWORDS_PG_TEST_URL") else {
+            eprintln!("skipping: TANWORDS_PG_TEST_URL not set");
+            return;
+        };
+        // Wipe only this test's rows — NOT the shared `vault_key` table (which
+        // is stable across runs: every test connects with the same Postgres
+        // password, so `load_or_create_vault_key` derives the same key). The
+        // PG tests run in parallel against one database, so dropping shared
+        // tables would break other tests.
+        let wipe = db::connection::open_blank_postgres(&url).await.unwrap();
+        let _ = wipe.execute_batch("DELETE FROM ai_providers WHERE id = 'custom_1'").await;
+
+        let conn_a = db::connection::open(&DbProfile::Postgres { url: url.clone() }, None)
+            .await
+            .unwrap()
+            .conn();
+        // The vault key must actually be attached (not a silent fallback to the
+        // per-device keychain key) for this test to mean anything.
+        let vault_a = conn_a.vault_key().map(|k| *k).expect("device A has a vault key");
+        upsert(&conn_a, "device-a", &provider("custom_1"), Some("sk-roaming-value"))
+            .await
+            .unwrap();
+        assert_eq!(key(&conn_a, "device-a", "custom_1").await.unwrap(), "sk-roaming-value");
+
+        // A second independent open = "device B". Same password → same vault
+        // key → it can decrypt what A sealed.
+        let conn_b = db::connection::open(&DbProfile::Postgres { url }, None)
+            .await
+            .unwrap()
+            .conn();
+        let vault_b = conn_b.vault_key().map(|k| *k).expect("device B has a vault key");
+        // Same shared vault key, recovered independently from the same password.
+        assert_eq!(vault_a, vault_b, "both devices share the vault key");
+        assert_eq!(key(&conn_b, "device-a", "custom_1").await.unwrap(), "sk-roaming-value");
+
+        // Cleanup.
+        conn_b.execute("DELETE FROM ai_providers WHERE id = 'custom_1'", ()).await.unwrap();
     }
 }
