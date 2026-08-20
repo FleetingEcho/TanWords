@@ -170,7 +170,7 @@ export const settings: Dict = {
     "settings.dbSourceInactive": "未使用",
     "settings.dbUseLocal": "使用本地数据库",
     "settings.dbUseLocalTitle": "切换到本地数据库",
-    "settings.dbUseLocalMessage": "切换到保留的本地 tanwords.db？你的 Postgres 角色/数据库会保留（远程访问会关闭），之后重新开启是瞬间的。两个数据库之间不会自动合并数据。",
+    "settings.dbUseLocalMessage": "切换到本地？会先把你当前 Postgres 里的数据复制回本地数据库，在线期间写入的内容不会丢失。你的 Postgres 角色/数据库会保留（只是关闭远程访问，不会删除），之后重新开启是瞬间的。",
     "settings.dbUseLocalOk": "已切换到本地数据库，正在重新加载…",
     "settings.switchDB": "切换数据库",
     "settings.switchDBSub": "切换到其他位置的数据库文件，或新建一个独立的数据库",

@@ -170,7 +170,7 @@ export const settings: Dict = {
     "settings.dbSourceInactive": "Inactive",
     "settings.dbUseLocal": "Use local database",
     "settings.dbUseLocalTitle": "Switch to local database",
-    "settings.dbUseLocalMessage": "Switch to your preserved local tanwords.db? Your Postgres role/database are kept (and remote access is disabled), so re-enabling later is instant. Data is not merged between the two databases.",
+    "settings.dbUseLocalMessage": "Switch to local? Your current Postgres data is copied back into your local database first, so nothing written while online is lost. Your Postgres role/database are kept (remote access is disabled, not deleted), so re-enabling later is instant.",
     "settings.dbUseLocalOk": "Switched to the local database, reloading…",
     "settings.switchDB": "Switch Database",
     "settings.switchDBSub": "Switch to a database file elsewhere, or create a new standalone one",

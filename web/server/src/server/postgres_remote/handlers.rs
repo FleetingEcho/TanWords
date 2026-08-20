@@ -8,7 +8,7 @@ use super::super::{json_error, UserSession, WebState};
 use super::{
     admin_conn, create_role_and_database, external_url, generate_password, internal_url,
     migrate_local_data_to_postgres, role_and_db_name, set_role_login, set_role_password,
-    switch_web_session_to_local, switch_web_session_to_postgres,
+    snapshot_postgres_to_local, switch_web_session_to_local, switch_web_session_to_postgres,
 };
 
 pub(in crate::server) async fn postgres_remote_status(
@@ -150,9 +150,10 @@ pub(in crate::server) async fn postgres_remote_rotate(
     }
 }
 
-/// Revokes `LOGIN` (data and the role/database are kept — cheap to
-/// re-enable) and switches the account's live session back to its local
-/// database so it isn't stranded on a now-unreachable connection.
+/// Copies the account's current Postgres data back into its local
+/// `tanwords.db` (no loss of anything written while Postgres was active),
+/// then revokes `LOGIN` (the role/database themselves are kept — cheap to
+/// re-enable) and switches the live session back to local.
 pub(in crate::server) async fn postgres_remote_disable(
     State(state): State<WebState>,
     axum::Extension(session): axum::Extension<UserSession>,
@@ -166,6 +167,13 @@ pub(in crate::server) async fn postgres_remote_disable(
     };
     if !profile.enabled {
         return Json(json!({ "enabled": false })).into_response();
+    }
+
+    // Snapshotted first, while the role can still log in: if this fails,
+    // remote access stays enabled and untouched rather than risking access
+    // to data that was never copied back.
+    if let Err(e) = snapshot_postgres_to_local(&state, &session).await {
+        return json_error(StatusCode::INTERNAL_SERVER_ERROR, e);
     }
 
     let admin = match admin_conn(&state).await {

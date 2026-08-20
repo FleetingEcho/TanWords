@@ -157,6 +157,32 @@ async fn switch_web_session_to_postgres(state: &WebState, session: &UserSession,
     runtime.ctx.state::<AppState>().replace_db(database)
 }
 
+/// Copies the account's *current* Postgres data back into its local
+/// `tanwords.db`, overwriting whatever's there — the mirror of
+/// `migrate_local_data_to_postgres`, run before `postgres_remote_disable`
+/// switches the session back to local so disabling never looks like data
+/// loss (any edits made while on Postgres would otherwise be left behind in
+/// a stale local file). Uses the account's own already-live Postgres
+/// runtime as the source, via the same `db_export_postgres_backup` command
+/// the desktop app's manual "export backup" uses.
+async fn snapshot_postgres_to_local(state: &WebState, session: &UserSession) -> Result<(), String> {
+    let local_path = state
+        .pool
+        .user_dir(session.user_id)
+        .join("tanwords.db")
+        .to_string_lossy()
+        .to_string();
+    let runtime = state.pool.runtime_for(session.user_id).await?;
+    dispatch(
+        &runtime.ctx,
+        "db_export_postgres_backup",
+        Args::new(json!({ "dest": local_path, "password": null })),
+    )
+    .await
+    .map(|_| ())
+    .map_err(|e| format!("Failed to copy your Postgres data back to local: {e}"))
+}
+
 async fn switch_web_session_to_local(state: &WebState, session: &UserSession) -> Result<(), String> {
     let path = state
         .pool
