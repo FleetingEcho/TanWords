@@ -21,7 +21,8 @@
 //!   GET  /api/db/profile             session -> {"connection":...}
 //!   GET  /api/db/postgres/status     session -> {"enabled":bool,"url":...}
 //!   POST /api/db/postgres/enable     session -> {"enabled":true,"url":...} (provisions this account's role+database in the shared postgres instance, switches the session onto it)
-//!   POST /api/db/postgres/rotate     session -> {"enabled":true,"url":...} (new password; old one stops working; data untouched)
+//!   POST /api/db/postgres/reveal     session + account password -> {"enabled":true,"url":...} (returns the stored full connection string)
+//!   POST /api/db/postgres/rotate     session + account password -> {"enabled":true,"url":...} (new password; old one stops working; data untouched)
 //!   POST /api/db/postgres/disable    session -> {"enabled":false} (revokes LOGIN; data and the role/database are kept for next enable; session switches back to local)
 //!   GET|POST /api/ai-proxy/{id}/{*rest}  session, upstream passthrough with injected key (request method is preserved upstream; GET supports the OpenAI-compatible /models listing)
 //!   GET  /*                          the SPA (built frontend), index.html fallback
@@ -196,7 +197,7 @@ use self::auth::{
 use self::backup::{export_backup, import_step, import_upload};
 use self::db::db_profile;
 use self::handlers::{asset_handler, events_handler, invoke_handler};
-use self::postgres_remote::{postgres_remote_disable, postgres_remote_enable, postgres_remote_rotate, postgres_remote_status};
+use self::postgres_remote::{postgres_remote_disable, postgres_remote_enable, postgres_remote_reveal, postgres_remote_rotate, postgres_remote_status};
 use self::static_files::spa_handler;
 
 /// Headers every response carries.
@@ -325,6 +326,7 @@ fn build_router(state: WebState) -> Router {
         .route("/api/db/profile", get(db_profile))
         .route("/api/db/postgres/status", get(postgres_remote_status))
         .route("/api/db/postgres/enable", post(postgres_remote_enable))
+        .route("/api/db/postgres/reveal", post(postgres_remote_reveal))
         .route("/api/db/postgres/rotate", post(postgres_remote_rotate))
         .route("/api/db/postgres/disable", post(postgres_remote_disable))
         .route(

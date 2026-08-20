@@ -126,14 +126,12 @@ const ALLOWED: &[&str] = &[
     "db_upsert_chat_session",
     // ── misc per-user state ───────────────────────────────────────────────
     "db_dashboard_stats",
-    "db_get_connection",
     "db_get_db_size",
     "db_get_device_path",
     "db_get_setting",
     "db_get_startup_warning",
     "db_set_device_path",
     "db_set_setting",
-    "db_sync_now",
     // ── AI provider config (keys stay server-side; see BLOCKED) ───────────
     "ai_provider_delete",
     "ai_provider_list",
@@ -170,6 +168,7 @@ const BLOCKED: &[(&str, &str)] = &[
     ("db_switch_path", "would repoint the process-wide database"),
     ("db_connect_postgres", "desktop-only manual connect; web accounts use /api/db/postgres/enable"),
     ("db_disconnect_remote", "per-user replacement lives at /api/db/postgres/disable"),
+    ("db_get_connection", "the generic descriptor contains credentials; web uses the redacted /api/db/profile route"),
     ("db_export_postgres_backup", "writes to an arbitrary server path; desktop-only (no local replica to snapshot)"),
     // Arbitrary server-side filesystem paths. Re-exposed, validated, as the
     // /api/import/* and /api/export/* routes.

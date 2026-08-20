@@ -57,12 +57,16 @@ export function useDBData() {
     }
   }, []);
 
-  const getDbSize = useCallback(async (): Promise<number> => {
+  /** Bytes of the active database, or `null` when the size can't be
+   *  measured (a Postgres profile whose server rejects `pg_database_size`,
+   *  or any other backend error). The Settings UI hides the size badge when
+   *  this is null rather than showing a misleading "0 B". */
+  const getDbSize = useCallback(async (): Promise<number | null> => {
     try {
       return await invoke<number>("db_get_db_size");
     } catch (e) {
       logError("getDbSize", e);
-      return 0;
+      return null;
     }
   }, []);
 
@@ -93,6 +97,10 @@ export function useDBData() {
    *  actions (export, switch file) that a remote profile can't perform. */
   const getConnection = useCallback(async (): Promise<DbConnection | null> => {
     try {
+      if (!isDesktopHost) {
+        const result = await dbRoute<{ connection: DbConnection }>("/api/db/profile");
+        return result.connection;
+      }
       return await invoke<DbConnection>("db_get_connection");
     } catch (e) {
       logError("getConnection", e);
@@ -129,10 +137,8 @@ export function useDBData() {
     }
   }, []);
 
-  /** Provisions (first call) or re-enables this account's Postgres role, and
-   *  switches the account's own web session onto it. Returns the password
-   *  in `url` — show/copy it immediately, since a later status read never
-   *  includes it again. */
+  /** Provisions (first call) or re-enables this account's Postgres role and
+   *  switches the account's own web session onto it. */
   const enablePostgresRemote = useCallback(async (): Promise<PostgresRemoteStatus> => {
     if (isDesktopHost) throw new Error("Remote access is web-only");
     try {
@@ -143,12 +149,25 @@ export function useDBData() {
     }
   }, []);
 
-  /** New password, same role/database — invalidates every previously issued
-   *  credential immediately. */
-  const rotatePostgresRemote = useCallback(async (): Promise<PostgresRemoteStatus> => {
+  /** Re-displays the stored connection string after re-authenticating the
+   * account. This recovers a lost client copy without rotating the database
+   * password and disconnecting every device that still uses it. */
+  const revealPostgresRemote = useCallback(async (password: string): Promise<PostgresRemoteStatus> => {
     if (isDesktopHost) throw new Error("Remote access is web-only");
     try {
-      return await dbRoute<PostgresRemoteStatus>("/api/db/postgres/rotate", "POST");
+      return await dbRoute<PostgresRemoteStatus>("/api/db/postgres/reveal", "POST", { password });
+    } catch (e) {
+      reportWriteError("revealPostgresRemote", e, "显示连接串失败");
+      throw e;
+    }
+  }, []);
+
+  /** New password, same role/database — invalidates every previously issued
+   *  credential immediately. */
+  const rotatePostgresRemote = useCallback(async (password: string): Promise<PostgresRemoteStatus> => {
+    if (isDesktopHost) throw new Error("Remote access is web-only");
+    try {
+      return await dbRoute<PostgresRemoteStatus>("/api/db/postgres/rotate", "POST", { password });
     } catch (e) {
       reportWriteError("rotatePostgresRemote", e, "刷新密钥失败");
       throw e;
@@ -188,17 +207,6 @@ export function useDBData() {
     } catch (e) {
       logError("getStartupWarning", e);
       return null;
-    }
-  }, []);
-
-  /** Pull the primary's latest changes now instead of waiting for the next
-   *  background sync. No-op on a local profile. */
-  const syncNow = useCallback(async (): Promise<void> => {
-    try {
-      await invoke("db_sync_now");
-    } catch (e) {
-      reportWriteError("syncNow", e, "同步失败");
-      throw e;
     }
   }, []);
 
@@ -283,13 +291,13 @@ export function useDBData() {
 
   return useMemo(() => ({
     getDbPath, getDefaultLocalPath, getDbSize, exportBackup, exportPostgresBackup, switchDbPath, clearTranslations,
-    getConnection, connectPostgres, disconnectRemote, syncNow, getStartupWarning,
+    getConnection, connectPostgres, disconnectRemote, getStartupWarning,
     importAnalyze, importApply, importOverwrite, vacuumDatabase,
-    getPostgresRemote, enablePostgresRemote, rotatePostgresRemote, disablePostgresRemote,
+    getPostgresRemote, enablePostgresRemote, revealPostgresRemote, rotatePostgresRemote, disablePostgresRemote,
   }), [
     getDbPath, getDefaultLocalPath, getDbSize, exportBackup, exportPostgresBackup, switchDbPath, clearTranslations,
-    getConnection, connectPostgres, disconnectRemote, syncNow, getStartupWarning,
+    getConnection, connectPostgres, disconnectRemote, getStartupWarning,
     importAnalyze, importApply, importOverwrite, vacuumDatabase,
-    getPostgresRemote, enablePostgresRemote, rotatePostgresRemote, disablePostgresRemote,
+    getPostgresRemote, enablePostgresRemote, revealPostgresRemote, rotatePostgresRemote, disablePostgresRemote,
   ]);
 }

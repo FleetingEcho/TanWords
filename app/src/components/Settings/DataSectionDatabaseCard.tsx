@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Eye, EyeOff } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { isDesktopHost } from "@/platform";
 import { useDataSection } from "./useDataSection";
@@ -8,14 +8,18 @@ import { DownloadIcon } from "@/components/ui/icons";
 import { SettingRow, ToggleGroup } from "./SettingsShared";
 
 export function DataSectionDatabaseCard({ data, t }: { data: ReturnType<typeof useDataSection>; t: ReturnType<typeof useT> }) {
-  const { dbPath, defaultLocalPath, dbSize, connection, exporting, confirmClear, pendingSwitchPath, switching, activeTab, postgresOpen, postgresUrl, connectingPostgres, confirmDisconnect, syncing, showExportPassword, pendingExportSource, showImportPassword, pendingImportPath, importPassword, importPlan, analyzing, importing, importProgress, importError, pendingOverwritePath, overwriting, overwriteProgress, postgresExportProgress, vacuuming, postgresRemote, postgresRemoteBusy, confirmRotatePostgresRemote, postgresRemoteJustRevealed, isRemote, isOffline, canExport, canSwitchPath, canImport, canVacuum, formattedDbSize, setDbPath, setDbSize, setConnection, setExporting, setConfirmClear, setPendingSwitchPath, setSwitching, setActiveTab, setPostgresOpen, setPostgresUrl, setConfirmDisconnect, setSyncing, setShowExportPassword, setPendingExportSource, setShowImportPassword, setPendingImportPath, setImportPassword, setImportPlan, setAnalyzing, setImporting, setImportError, setPendingOverwritePath, setConfirmRotatePostgresRemote, handleOpenExisting, handleNewLocation, confirmSwitch, handleConnectPostgres, handleDisablePostgresRemote, handleDisconnect, handleSyncNow, handleChooseImportFile, analyzeImport, handleImport, handleChooseOverwriteFile, confirmOverwrite, handleVacuum, handleEnablePostgresRemote, handleConfirmRotatePostgresRemote, startExport, handleExport, handleClearTranslations } = data;
+  const { dbPath, defaultLocalPath, connection, exporting, activeTab, postgresOpen, postgresUrl, connectingPostgres, analyzing, overwriting, postgresExportProgress, vacuuming, postgresRemote, postgresRemoteBusy, postgresRemoteUrlVisible, isRemote, isOffline, canExport, canSwitchPath, canImport, canVacuum, formattedDbSize, setActiveTab, setPostgresOpen, setPostgresUrl, setConfirmDisconnect, setPostgresRemoteAuthAction, setPostgresRemoteUrlVisible, handleOpenExisting, handleNewLocation, handleConnectPostgres, handleDisablePostgresRemote, handleChooseImportFile, handleChooseOverwriteFile, handleVacuum, handleEnablePostgresRemote, handleExport } = data;
 
   const [urlCopied, setUrlCopied] = useState(false);
-  const handleCopyPostgresRemoteUrl = () => {
-    if (!postgresRemote?.url) return;
-    navigator.clipboard.writeText(postgresRemote.url);
+  const [connectionUrlVisible, setConnectionUrlVisible] = useState(false);
+  const copyUrl = (url: string) => {
+    navigator.clipboard.writeText(url);
     setUrlCopied(true);
     setTimeout(() => setUrlCopied(false), 1400);
+  };
+  const handleCopyPostgresRemoteUrl = () => {
+    if (!postgresRemote?.url) return;
+    copyUrl(postgresRemote.url);
   };
 
   return (
@@ -50,9 +54,44 @@ export function DataSectionDatabaseCard({ data, t }: { data: ReturnType<typeof u
             />
             {activeTab === "cloud" ? (
               isRemote ? (
-                <span className="min-w-0 truncate font-mono text-[11px] text-primary" title={connection?.remoteUrl ?? ""}>
-                  {connection?.remoteUrl}
-                </span>
+                isDesktopHost ? (
+                  <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                    <input
+                      aria-label={t("settings.remoteDBPostgresUrl")}
+                      type={connectionUrlVisible ? "text" : "password"}
+                      value={connection?.remoteUrl ?? ""}
+                      readOnly
+                      spellCheck={false}
+                      className="min-w-0 w-screen flex-1 truncate rounded-md border border-input bg-background px-2.5 py-1.5 font-mono text-[11px] text-primary outline-hidden"
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setConnectionUrlVisible((visible) => !visible)}
+                      title={t(connectionUrlVisible ? "settings.remoteDBHideUrl" : "settings.remoteDBShowUrl")}
+                      aria-label={t(connectionUrlVisible ? "settings.remoteDBHideUrl" : "settings.remoteDBShowUrl")}
+                      className="h-7 w-7 shrink-0 rounded-md"
+                    >
+                      {connectionUrlVisible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    </Button>
+                    {connectionUrlVisible && connection?.remoteUrl && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => copyUrl(connection.remoteUrl!)}
+                        title={t("settings.remoteAccessCopyUrl")}
+                        aria-label={t("settings.remoteAccessCopyUrl")}
+                        className="h-7 w-7 shrink-0 rounded-md"
+                      >
+                        {urlCopied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <span className="min-w-0 truncate font-mono text-[11px] text-primary">
+                    {connection?.remoteUrl}
+                  </span>
+                )
               ) : (
                 <span className="max-w-[320px] truncate font-mono text-[11px] text-muted-foreground">
                   {t("settings.dbTabCloudNotConnected")}
@@ -71,7 +110,14 @@ export function DataSectionDatabaseCard({ data, t }: { data: ReturnType<typeof u
               </span>
             )}
           </div>
-          <span className="shrink-0 rounded-full border border-border bg-muted/60 px-2 py-0.5 font-mono text-[10px] font-medium text-foreground" title={t("settings.dbSizeIncludesAuxiliary")}>{formattedDbSize}</span>
+          {formattedDbSize !== null && (
+            <span
+              className="shrink-0 rounded-full border border-border bg-muted/60 px-2 py-0.5 font-mono text-[10px] font-medium text-foreground"
+              title={isRemote ? t("settings.dbSizeFromServer") : t("settings.dbSizeIncludesAuxiliary")}
+            >
+              {formattedDbSize}
+            </span>
+          )}
         </div>
 
         {activeTab === "local" ? (
@@ -222,14 +268,6 @@ export function DataSectionDatabaseCard({ data, t }: { data: ReturnType<typeof u
                   {isRemote ? (
                     <>
                       <Button
-                        variant="outline"
-                        onClick={handleSyncNow}
-                        disabled={syncing || !connection?.caps.sync}
-                        className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted disabled:opacity-50 transition-colors"
-                      >
-                        {syncing ? t("settings.remoteDBSyncing") : t("settings.remoteDBSync")}
-                      </Button>
-                      <Button
                         variant="ghost"
                         onClick={() => setConfirmDisconnect(true)}
                         className="h-8 px-3 rounded-lg text-xs font-medium border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
@@ -268,31 +306,45 @@ export function DataSectionDatabaseCard({ data, t }: { data: ReturnType<typeof u
                 {postgresRemote?.enabled ? (
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
-                      <span className="min-w-0 flex-1 truncate rounded-lg border border-input bg-background px-3 py-2 font-mono text-[11px]" title={postgresRemote.url ?? ""}>
-                        {postgresRemote.url}
-                      </span>
+                      <input
+                        aria-label={t("settings.remoteDBPostgresUrl")}
+                        type={postgresRemoteUrlVisible ? "text" : "password"}
+                        value={postgresRemote.url ?? ""}
+                        readOnly
+                        spellCheck={false}
+                        className="min-w-0 flex-1 truncate rounded-lg border border-input bg-background px-3 py-2 font-mono text-[11px] outline-hidden"
+                      />
                       <Button
                         variant="outline"
                         size="icon"
-                        onClick={handleCopyPostgresRemoteUrl}
-                        title={t("settings.remoteAccessCopyUrl")}
-                        aria-label={t("settings.remoteAccessCopyUrl")}
+                        onClick={() => {
+                          if (postgresRemoteUrlVisible) setPostgresRemoteUrlVisible(false);
+                          else setPostgresRemoteAuthAction("reveal");
+                        }}
+                        title={t(postgresRemoteUrlVisible ? "settings.remoteDBHideUrl" : "settings.remoteDBShowUrl")}
+                        aria-label={t(postgresRemoteUrlVisible ? "settings.remoteDBHideUrl" : "settings.remoteDBShowUrl")}
                         className="h-8 w-8 shrink-0 rounded-lg border border-input hover:bg-muted transition-colors"
                       >
-                        {urlCopied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                        {postgresRemoteUrlVisible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                       </Button>
+                      {postgresRemoteUrlVisible && (
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={handleCopyPostgresRemoteUrl}
+                          title={t("settings.remoteAccessCopyUrl")}
+                          aria-label={t("settings.remoteAccessCopyUrl")}
+                          className="h-8 w-8 shrink-0 rounded-lg border border-input hover:bg-muted transition-colors"
+                        >
+                          {urlCopied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                        </Button>
+                      )}
                     </div>
-
-                    {postgresRemoteJustRevealed && (
-                      <p className="text-[11px] font-medium text-amber-600 dark:text-amber-500">
-                        {t("settings.remoteAccessTokenWarn")}
-                      </p>
-                    )}
 
                     <div className="flex items-center gap-2">
                       <Button
                         variant="outline"
-                        onClick={() => setConfirmRotatePostgresRemote(true)}
+                        onClick={() => setPostgresRemoteAuthAction("rotate")}
                         disabled={postgresRemoteBusy}
                         className="h-8 px-3 rounded-lg text-xs font-medium border border-input hover:bg-muted disabled:opacity-50 transition-colors"
                       >

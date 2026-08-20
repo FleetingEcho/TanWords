@@ -40,7 +40,6 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
   const [postgresUrl, setPostgresUrl] = useState("");
   const [connectingPostgres, setConnectingPostgres] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [showExportPassword, setShowExportPassword] = useState(false);
   const [pendingExportSource, setPendingExportSource] = useState<"local" | "postgres">("local");
   const [showImportPassword, setShowImportPassword] = useState(false);
@@ -79,12 +78,8 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
   // account's own web session switches onto once enabled.
   const [postgresRemote, setPostgresRemote] = useState<PostgresRemoteStatus | null>(null);
   const [postgresRemoteBusy, setPostgresRemoteBusy] = useState(false);
-  const [confirmRotatePostgresRemote, setConfirmRotatePostgresRemote] = useState(false);
-  // The url returned right after enable/rotate carries the password inline
-  // (postgres://role:PASSWORD@host/db) — a plain status read never includes
-  // it again. Tracks whether the currently-shown url is one of those, so the
-  // "copy it now" warning only shows right after enable/rotate.
-  const [postgresRemoteJustRevealed, setPostgresRemoteJustRevealed] = useState(false);
+  const [postgresRemoteAuthAction, setPostgresRemoteAuthAction] = useState<"reveal" | "rotate" | null>(null);
+  const [postgresRemoteUrlVisible, setPostgresRemoteUrlVisible] = useState(false);
 
   useEffect(() => {
     if (isDesktopHost) {
@@ -108,8 +103,12 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
   const canImport = connection?.caps.writable ?? true;
   const canVacuum = connection?.caps.vacuum ?? true;
 
+  // `null` while the size is still loading or couldn't be measured — the
+  // database card hides the badge in that case rather than showing a
+  // meaningless "0 B" (the old behaviour for Postgres, whose local path
+  // is empty so the disk-measuring path reported 0).
   const formattedDbSize = dbSize === null
-    ? "…"
+    ? null
     : dbSize >= 1024 ** 3
       ? `${(dbSize / 1024 ** 3).toFixed(2)} GB`
       : dbSize >= 1024 ** 2
@@ -188,18 +187,6 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
       setTimeout(() => window.location.reload(), 600);
     } catch {
       setConfirmDisconnect(false);
-    }
-  };
-
-  const handleSyncNow = async () => {
-    setSyncing(true);
-    try {
-      await db.syncNow();
-      toast.success(t("settings.remoteDBSyncOk"));
-    } catch {
-      // useDB already toasts the failure
-    } finally {
-      setSyncing(false);
     }
   };
 
@@ -379,7 +366,7 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
     try {
       const result = await db.enablePostgresRemote();
       setPostgresRemote(result);
-      setPostgresRemoteJustRevealed(true);
+      setPostgresRemoteUrlVisible(false);
       db.getConnection().then(setConnection);
       toast.success(t("settings.remoteAccessEnabledOk"));
     } catch {
@@ -389,19 +376,26 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
     }
   };
 
-  const handleConfirmRotatePostgresRemote = async () => {
+  const handleConfirmPostgresRemoteAuth = async (password: string) => {
+    const action = postgresRemoteAuthAction;
+    if (!action) return;
     setPostgresRemoteBusy(true);
     try {
-      const result = await db.rotatePostgresRemote();
+      const result = action === "reveal"
+        ? await db.revealPostgresRemote(password)
+        : await db.rotatePostgresRemote(password);
       setPostgresRemote(result);
-      setPostgresRemoteJustRevealed(true);
-      db.getConnection().then(setConnection);
-      toast.success(t("settings.remoteAccessRotatedOk"));
+      setPostgresRemoteUrlVisible(true);
+      setPostgresRemoteAuthAction(null);
+      if (action === "rotate") {
+        db.getConnection().then(setConnection);
+        toast.success(t("settings.remoteAccessRotatedOk"));
+      }
     } catch {
-      // useDBData already toasts the failure
+      // useDBData already toasts the failure. Keep the modal open so the
+      // account password can be corrected without restarting the action.
     } finally {
       setPostgresRemoteBusy(false);
-      setConfirmRotatePostgresRemote(false);
     }
   };
 
@@ -417,5 +411,5 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
       setVacuuming(false);
     }
   };
-  return { dbPath, defaultLocalPath, dbSize, connection, exporting, confirmClear, pendingSwitchPath, switching, activeTab, postgresOpen, postgresUrl, connectingPostgres, confirmDisconnect, syncing, showExportPassword, pendingExportSource, showImportPassword, pendingImportPath, importPassword, importPlan, analyzing, importing, importProgress, importError, pendingOverwritePath, overwriting, overwriteProgress, postgresExportProgress, vacuuming, postgresRemote, postgresRemoteBusy, confirmRotatePostgresRemote, postgresRemoteJustRevealed, isRemote, isOffline, canExport, canSwitchPath, canImport, canVacuum, formattedDbSize, setDbPath, setDefaultLocalPath, setDbSize, setConnection, setExporting, setConfirmClear, setPendingSwitchPath, setSwitching, setActiveTab, setPostgresOpen, setPostgresUrl, setConfirmDisconnect, setSyncing, setShowExportPassword, setPendingExportSource, setShowImportPassword, setPendingImportPath, setImportPassword, setImportPlan, setAnalyzing, setImporting, setImportError, setPendingOverwritePath, setConfirmRotatePostgresRemote, handleOpenExisting, handleNewLocation, confirmSwitch, handleConnectPostgres, handleDisablePostgresRemote, handleDisconnect, handleSyncNow, handleChooseImportFile, analyzeImport, handleImport, handleChooseOverwriteFile, confirmOverwrite, handleVacuum, handleEnablePostgresRemote, handleConfirmRotatePostgresRemote, startExport, handleExport, handleClearTranslations };
+  return { dbPath, defaultLocalPath, dbSize, connection, exporting, confirmClear, pendingSwitchPath, switching, activeTab, postgresOpen, postgresUrl, connectingPostgres, confirmDisconnect, showExportPassword, pendingExportSource, showImportPassword, pendingImportPath, importPassword, importPlan, analyzing, importing, importProgress, importError, pendingOverwritePath, overwriting, overwriteProgress, postgresExportProgress, vacuuming, postgresRemote, postgresRemoteBusy, postgresRemoteAuthAction, postgresRemoteUrlVisible, isRemote, isOffline, canExport, canSwitchPath, canImport, canVacuum, formattedDbSize, setDbPath, setDefaultLocalPath, setDbSize, setConnection, setExporting, setConfirmClear, setPendingSwitchPath, setSwitching, setActiveTab, setPostgresOpen, setPostgresUrl, setConfirmDisconnect, setShowExportPassword, setPendingExportSource, setShowImportPassword, setPendingImportPath, setImportPassword, setImportPlan, setAnalyzing, setImporting, setImportError, setPendingOverwritePath, setPostgresRemoteAuthAction, setPostgresRemoteUrlVisible, handleOpenExisting, handleNewLocation, confirmSwitch, handleConnectPostgres, handleDisablePostgresRemote, handleDisconnect, handleChooseImportFile, analyzeImport, handleImport, handleChooseOverwriteFile, confirmOverwrite, handleVacuum, handleEnablePostgresRemote, handleConfirmPostgresRemoteAuth, startExport, handleExport, handleClearTranslations };
 }

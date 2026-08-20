@@ -10,24 +10,21 @@ import { DataSectionDatabaseCard } from "./DataSectionDatabaseCard";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { Button } from "@/components/ui/button";
 import { SettingRow } from "./SettingsShared";
+import { PostgresAccountPasswordDialog } from "./PostgresAccountPasswordDialog";
 
 export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: ReturnType<typeof useT> }) {
   const data = useDataSection(db, t);
-  const { confirmClear, pendingSwitchPath, switching, isRemote, setConfirmClear, setPendingSwitchPath, showExportPassword, pendingExportSource, showImportPassword, pendingImportPath, importPassword, importPlan, analyzing, importing, importProgress, importError, pendingOverwritePath, overwriting, overwriteProgress, postgresRemoteBusy, confirmRotatePostgresRemote, setConfirmRotatePostgresRemote, confirmDisconnect, setConfirmDisconnect, handleDisconnect, confirmSwitch, analyzeImport, handleImport, confirmOverwrite, handleConfirmRotatePostgresRemote, startExport, setImportPlan, setImportPassword, setImportError, setShowExportPassword, setShowImportPassword, setPendingImportPath, handleClearTranslations } = data;
+  const { confirmClear, pendingSwitchPath, switching, isRemote, setConfirmClear, setPendingSwitchPath, showExportPassword, pendingExportSource, showImportPassword, pendingImportPath, importPassword, importPlan, analyzing, importing, importProgress, importError, pendingOverwritePath, overwriting, overwriteProgress, postgresRemoteBusy, postgresRemoteAuthAction, setPostgresRemoteAuthAction, confirmDisconnect, setConfirmDisconnect, handleDisconnect, confirmSwitch, analyzeImport, handleImport, confirmOverwrite, handleConfirmPostgresRemoteAuth, startExport, setImportPlan, setImportPassword, setImportError, setShowExportPassword, setShowImportPassword, setPendingImportPath, handleClearTranslations } = data;
 
   return (
     <div className="space-y-3">
       <DataSectionDatabaseCard data={data} t={t} />
 
-      <ConfirmModal
-        open={confirmRotatePostgresRemote}
-        title={t("settings.remoteAccessRotateConfirmTitle")}
-        message={t("settings.remoteAccessRotateConfirmMessage")}
-        confirmLabel={postgresRemoteBusy ? t("settings.remoteAccessWorking") : t("settings.remoteAccessRotate")}
-        danger
-        confirmDisabled={postgresRemoteBusy}
-        onCancel={() => setConfirmRotatePostgresRemote(false)}
-        onConfirm={handleConfirmRotatePostgresRemote}
+      <PostgresAccountPasswordDialog
+        action={postgresRemoteAuthAction}
+        busy={postgresRemoteBusy}
+        onCancel={() => setPostgresRemoteAuthAction(null)}
+        onConfirm={(password) => void handleConfirmPostgresRemoteAuth(password)}
       />
 
       {/* Directly under the database card, outside the local/cloud tabs: the R2

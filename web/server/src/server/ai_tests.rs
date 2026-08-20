@@ -21,7 +21,9 @@ use crate::users::UsersDb;
 
 /// A fully-wired router over a throwaway data dir, with one registered user
 /// and their session token. Returns (app, token, dir).
-async fn authed_app(name: &str) -> (axum::Router, String, std::path::PathBuf) {
+async fn authed_app_with_users(
+    name: &str,
+) -> (axum::Router, String, Arc<UsersDb>, i64, std::path::PathBuf) {
     let dir = std::env::temp_dir().join(format!(
         "tanwords-ai-proxy-{name}-{}",
         uuid::Uuid::new_v4()
@@ -32,7 +34,7 @@ async fn authed_app(name: &str) -> (axum::Router, String, std::path::PathBuf) {
             .await
             .unwrap(),
     );
-    users
+    let user_id = users
         .register("proxy-test@example.com", "correct-horse")
         .await
         .unwrap();
@@ -49,7 +51,7 @@ async fn authed_app(name: &str) -> (axum::Router, String, std::path::PathBuf) {
         5432,
     ));
     let state = WebState {
-        users,
+        users: users.clone(),
         limiter: Arc::new(crate::auth::RateLimiter::new()),
         pool,
         config: Arc::new(Config {
@@ -62,7 +64,7 @@ async fn authed_app(name: &str) -> (axum::Router, String, std::path::PathBuf) {
             trust_proxy: false,
             master_key: [7; 32],
             jwt_ttl_secs: 7 * 24 * 3600,
-            public_host: None,
+            public_host: Some("db.example.com".to_string()),
             postgres_host: "127.0.0.1".to_string(),
             postgres_port: 5432,
             postgres_superuser_password: None,
@@ -70,7 +72,12 @@ async fn authed_app(name: &str) -> (axum::Router, String, std::path::PathBuf) {
         http: reqwest::Client::new(),
         shutdown: tokio::sync::watch::channel(()).1,
     };
-    (build_router(state), token, dir)
+    (build_router(state), token, users, user_id, dir)
+}
+
+async fn authed_app(name: &str) -> (axum::Router, String, std::path::PathBuf) {
+    let (app, token, _, _, dir) = authed_app_with_users(name).await;
+    (app, token, dir)
 }
 
 async fn status(app: &axum::Router, method: &str, uri: &str, token: Option<&str>) -> StatusCode {
@@ -128,5 +135,84 @@ async fn ai_proxy_still_requires_a_session() {
     let (app, _, dir) = authed_app("no-session").await;
     let code = status(&app, "GET", "/api/ai-proxy/custom/models", None).await;
     assert_eq!(code, StatusCode::UNAUTHORIZED);
+    std::fs::remove_dir_all(dir).ok();
+}
+
+#[tokio::test]
+async fn postgres_connection_string_requires_account_password_to_reveal() {
+    let (app, token, users, user_id, dir) = authed_app_with_users("postgres-reveal").await;
+    users
+        .set_postgres_remote(
+            user_id,
+            "tanwords_user_1",
+            "tanwords_user_1",
+            "stored-postgres-secret",
+        )
+        .await
+        .unwrap();
+
+    let status_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/db/postgres/status")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status_body = status_response.into_body().collect().await.unwrap().to_bytes();
+    assert!(
+        !String::from_utf8_lossy(&status_body).contains("stored-postgres-secret"),
+        "ordinary status reads must keep the credential masked"
+    );
+
+    let wrong = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/db/postgres/reveal")
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"password":"wrong-password"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(wrong.status(), StatusCode::FORBIDDEN);
+
+    let reveal = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/db/postgres/reveal")
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"password":"correct-horse"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(reveal.status(), StatusCode::OK);
+    let reveal_body = reveal.into_body().collect().await.unwrap().to_bytes();
+    assert!(String::from_utf8_lossy(&reveal_body).contains("stored-postgres-secret"));
+
+    let rotate_without_reauth = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/db/postgres/rotate")
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"password":"wrong-password"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(rotate_without_reauth.status(), StatusCode::FORBIDDEN);
+
     std::fs::remove_dir_all(dir).ok();
 }

@@ -4,7 +4,7 @@ use crate::shim::State;
 use sea_orm::ConnectionTrait;
 
 use crate::db;
-use crate::db::connection::DbDescriptor;
+use crate::db::connection::{DbDescriptor, DbKind};
 use crate::AppState;
 
 // External-database connection management and Postgres snapshot export —
@@ -131,9 +131,25 @@ pub fn db_get_default_local_path() -> String {
     crate::default_db_path()
 }
 
-/// Bytes on disk. Empty for a Postgres profile, which has no local file.
+/// Size of the active database:
+///  * **Local** — bytes on disk (the SQLite file plus its `-wal`/`-shm`
+///    sidecars, summed).
+///  * **Postgres** — the server-reported `pg_database_size(current_database())`,
+///    since a Postgres profile has no local file to stat. Requires CONNECT
+///    on the current database, which the live connection already holds.
+///
+/// Errors propagate (rather than degrading to `0`) so the frontend can hide
+/// the size badge instead of showing a misleading "0 B" when the measurement
+/// isn't available.
 #[crate::shim::command]
-pub fn db_get_db_size(state: State<'_, AppState>) -> std::result::Result<u64, String> {
+pub async fn db_get_db_size(state: State<'_, AppState>) -> std::result::Result<u64, String> {
+    if state.descriptor()?.kind == DbKind::Postgres {
+        let db = db::conn(&state)?;
+        let size = db::scalar_i64(&db, "SELECT pg_database_size(current_database())", ())
+            .await
+            .map_err(|e| e.to_string())?;
+        return Ok(size.max(0) as u64);
+    }
     database_disk_size(&state.db_path()?)
 }
 
@@ -276,6 +292,34 @@ mod tests {
         drop(backup_conn);
         let _ = std::fs::remove_file(source);
         let _ = std::fs::remove_file(backup);
+    }
+
+    /// Requires a live Postgres reachable at `TANWORDS_PG_TEST_URL` — skipped
+    /// otherwise, same convention as `seaorm_backend_parity.rs`.
+    ///
+    /// Regression: a Postgres profile has no local file, so the old
+    /// disk-measuring implementation summed three missing paths and reported
+    /// 0 — Settings then showed a meaningless "0 B". The size must come from
+    /// the server instead (any real Postgres database measures > 0).
+    #[tokio::test]
+    async fn postgres_db_size_comes_from_the_server() {
+        let Ok(url) = std::env::var("TANWORDS_PG_TEST_URL") else {
+            eprintln!("skipping: TANWORDS_PG_TEST_URL not set");
+            return;
+        };
+        let db = db::connection::open(&DbProfile::Postgres { url }, None)
+            .await
+            .unwrap();
+        let app_state = AppState {
+            db: std::sync::Mutex::new(db),
+            #[cfg(feature = "tts")]
+            tts: std::sync::Mutex::new(None).into(),
+            db_fallback_warning: None,
+            document_privacy: Default::default(),
+        };
+        let state = crate::shim::State::from_ref(Box::leak(Box::new(app_state)));
+        let size = db_get_db_size(state).await.unwrap();
+        assert!(size > 0, "Postgres size must be measured server-side, got {size}");
     }
 
     /// Requires a live Postgres reachable at `TANWORDS_PG_TEST_URL` — skipped

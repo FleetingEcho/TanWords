@@ -91,7 +91,6 @@ db::db_get_connection
 db::db_connect_postgres
 db::db_export_postgres_backup
 db::db_disconnect_remote
-db::db_sync_now
 db::db_import_analyze
 db::db_import_apply
 db::db_import_overwrite

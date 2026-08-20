@@ -23,7 +23,10 @@ use tanwords_lib::AppState;
 use super::{UserSession, WebState};
 
 mod handlers;
-pub(in crate::server) use handlers::{postgres_remote_disable, postgres_remote_enable, postgres_remote_rotate, postgres_remote_status};
+pub(in crate::server) use handlers::{
+    postgres_remote_disable, postgres_remote_enable, postgres_remote_reveal,
+    postgres_remote_rotate, postgres_remote_status,
+};
 
 fn role_and_db_name(user_id: i64) -> (String, String) {
     let name = format!("tanwords_user_{user_id}");

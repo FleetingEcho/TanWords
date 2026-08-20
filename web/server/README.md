@@ -107,8 +107,9 @@ instance (see `server/postgres_remote/`) — the password is AES-256-GCM-sealed
 under `TANWORDS_MASTER_KEY`:
 
 - `GET  /api/db/postgres/status` — `{enabled, url}` (no password).
-- `POST /api/db/postgres/enable` — provisions (first call) or re-enables, switches the session onto it, returns `{enabled: true, url}` with the password inline this once.
-- `POST /api/db/postgres/rotate` — new password; old one stops working immediately.
+- `POST /api/db/postgres/enable` — provisions (first call) or re-enables and switches the session onto it. A newly provisioned database returns its connection password inline; repeat calls do not reveal it.
+- `POST /api/db/postgres/reveal` — re-verifies the account password, then returns the stored full connection string without changing it.
+- `POST /api/db/postgres/rotate` — re-verifies the account password, then creates a new Postgres password; the old one stops working immediately.
 - `POST /api/db/postgres/disable` — revokes `LOGIN` (role/database and data are kept) and switches the session back to local.
 - `GET  /api/db/profile` — `{connection: <DbDescriptor>}`.
 - `GET  /api/export/backup?source=local` — exports the local database; paths are always derived from the authenticated user id.

@@ -308,6 +308,27 @@ impl UsersDb {
         Ok(Some((id, token)))
     }
 
+    /// Re-authenticate an already identified account before returning or
+    /// changing a long-lived external credential. This deliberately does not
+    /// create a new session; callers already passed the session middleware.
+    pub async fn verify_account_password(&self, user_id: i64, password: &str) -> Result<bool, String> {
+        let conn = self.conn.lock().await;
+        let row = conn
+            .query_one_raw(stmt(
+                "SELECT password_hash FROM users WHERE id = ?",
+                [user_id.into_sq()],
+            ))
+            .await
+            .map_err(|e| e.to_string())?;
+        let Some(row) = row else {
+            return Ok(false);
+        };
+        let hash = row
+            .try_get_by_index::<String>(0)
+            .map_err(|e| e.to_string())?;
+        Ok(Self::verify_password(&hash, password))
+    }
+
     fn new_session_token(&self, user_id: i64, now: i64) -> Result<String, String> {
         let mut nonce = [0u8; 16];
         rand::rngs::OsRng.fill_bytes(&mut nonce);

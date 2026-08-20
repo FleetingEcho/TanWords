@@ -293,7 +293,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
         <PopoverContent side="bottom" align="end" className="w-72 p-3">
           <p className="font-medium text-sm">{isDbRemote ? dbCloudLabel : t("command.dbLocal")}</p>
           <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
-            {isDbRemote ? connection?.remoteUrl : connection?.path}
+            {isDbRemote ? "••••••••" : connection?.path}
           </p>
           {isDbOffline && <p className="mt-1 text-xs text-amber-500">{t("settings.remoteDBOffline")}</p>}
           <Button

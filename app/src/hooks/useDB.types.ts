@@ -360,9 +360,9 @@ export interface OverwriteResult {
 /** A web account's self-provisioned role+database inside the shared Postgres
  *  instance — lets a desktop app (or any Postgres client) connect directly
  *  (Settings > Cloud tab), and is also what this account's own web session
- *  switches onto the moment it's enabled. `url` carries the password only
- *  right after `enablePostgresRemote`/`rotatePostgresRemote`, never on a
- *  plain status read. */
+ *  switches onto the moment it's enabled. `url` carries the password after
+ *  first-time provisioning, an authenticated reveal, or rotation; a plain
+ *  status read returns only the non-secret address. */
 export interface PostgresRemoteStatus {
   enabled: boolean;
   url: string | null;
