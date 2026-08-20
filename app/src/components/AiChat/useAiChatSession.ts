@@ -129,6 +129,7 @@ export function useAiChatSession(initialSessionId?: string) {
     enabledGroups: session.enabledGroups, toggleGroup: session.toggleGroup,
     showTools: session.showTools, setShowTools: session.setShowTools,
     clearMessages: session.clearMessages,
+    privateMode: session.privateMode, togglePrivateMode: session.togglePrivateMode,
     // composer
     input: composer.input, setInput: composer.setInput,
     attachment: composer.attachment, setAttachment: composer.setAttachment,

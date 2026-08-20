@@ -27,6 +27,16 @@ export function useChatSession(params: {
   const [isNewSession, setIsNewSession] = useState(true);
   const [streaming, setStreaming] = useState(false);
 
+  // Temporary / private chat: when on, the conversation is held in memory only
+  // and never written to the database (no session row, no streaming auto-save,
+  // no title generation). Entering it starts a fresh ephemeral conversation;
+  // startNew() / switchSession() exit it. A ref mirror lets the async send
+  // loop and the streaming-save interval read the current flag without listing
+  // it as a dependency (which would churn their identities every toggle).
+  const [privateMode, setPrivateMode] = useState(false);
+  const privateRef = useRef(false);
+  privateRef.current = privateMode;
+
   const [selectedPreset, setSelectedPreset] = useState("english-tutor");
   const [customPrompt, setCustomPrompt] = useState(() => buildPresetPrompt("english-tutor", targetLevel));
   const [selectedProviderId, setSelectedProviderId] = useState(() => providers[0]?.id ?? "");
@@ -81,6 +91,9 @@ export function useChatSession(params: {
   // without taking ownership of (or interrupting) the background request.
   useEffect(() => {
     const onExternalSessionUpdate = (event: Event) => {
+      // A private chat isn't backed by a session row, so external writes
+      // (background Reading Tutor jobs) never target it.
+      if (privateRef.current) return;
       const sessionId = (event as CustomEvent<{ sessionId?: string }>).detail?.sessionId;
       if (!sessionId) return;
       const openingInitialSession = !activeIdRef.current && initialSessionId === sessionId;
@@ -112,6 +125,8 @@ export function useChatSession(params: {
   const switchSession = useCallback(async (id: string) => {
     const epoch = ++sessionEpochRef.current;
     skipAutoRestoreRef.current = true;
+    // Opening a real session ends a temporary chat — it's backed by a row.
+    setPrivateMode(false);
     controllerRef.current?.abort();
     setStreaming(false);
     setActiveId(id);
@@ -131,6 +146,8 @@ export function useChatSession(params: {
   const startNew = () => {
     sessionEpochRef.current++;
     skipAutoRestoreRef.current = true;
+    // A fresh normal chat isn't temporary.
+    setPrivateMode(false);
     controllerRef.current?.abort();
     setStreaming(false);
     setActiveId(genId());
@@ -139,6 +156,29 @@ export function useChatSession(params: {
     setIsNewSession(true);
     sidebar.setSearchQuery("");
     sidebar.setSearchResults(null);
+  };
+
+  /** Toggles temporary-chat mode. Entering: clears the screen and holds the
+   *  conversation in memory only — nothing reaches the database. Exiting:
+   *  drops back to a fresh normal chat (which is itself unsaved until you
+   *  send, but will persist once you do). */
+  const togglePrivateMode = () => {
+    if (privateRef.current) {
+      // Leaving temporary chat → a normal new chat.
+      startNew();
+      return;
+    }
+    controllerRef.current?.abort();
+    sessionEpochRef.current++;
+    skipAutoRestoreRef.current = true;
+    setPrivateMode(true);
+    setStreaming(false);
+    setActiveId(genId());
+    setItems([]);
+    setActiveTitle("");
+    setIsNewSession(true);
+    // Don't touch the sidebar: the real session list stays as the user left
+    // it, so exiting temporary chat (or the page) restores their history.
   };
 
   /** Index of the last user message, or -1. */
@@ -159,7 +199,7 @@ export function useChatSession(params: {
   const truncateTo = useCallback((index: number) => {
     const kept = itemsRef.current.slice(0, index);
     setItems(kept);
-    if (activeId && !isNewSession) {
+    if (!privateRef.current && activeId && !isNewSession) {
       void sidebar.saveSession(activeId, activeTitle, kept, systemPrompt, selectedPreset, selectedProviderId);
     }
     return kept;
@@ -196,6 +236,8 @@ export function useChatSession(params: {
     controllerRef.current?.abort();
     setStreaming(false);
     setItems([]);
+    // A temporary chat has no row to clear; just wipe the in-memory view.
+    if (privateRef.current) return;
     if (activeId && !isNewSession) {
       await db.upsertChatSession({ id: activeId, title: activeTitle, messages: "[]", systemPrompt, presetId: selectedPreset, providerId: selectedProviderId, messageCount: 0 });
       await sidebar.loadSessions();
@@ -205,7 +247,7 @@ export function useChatSession(params: {
   // Persist partial streaming output as well as completed turns. A long AI
   // response can take minutes; closing the window must not discard it.
   useEffect(() => {
-    if (!streaming) return;
+    if (!streaming || privateMode) return;
     const timer = window.setInterval(() => {
       const { id, title } = sessionMetaRef.current;
       if (!id) return;
@@ -217,7 +259,7 @@ export function useChatSession(params: {
       });
     }, 6000);
     return () => window.clearInterval(timer);
-  }, [streaming, db, systemPrompt, selectedPreset, selectedProviderId]);
+  }, [streaming, privateMode, db, systemPrompt, selectedPreset, selectedProviderId]);
 
   const toggleGroup = (g: ToolGroupKey) => {
     setEnabledGroups((prev) => {
@@ -230,6 +272,7 @@ export function useChatSession(params: {
   const handleStop = () => {
     controllerRef.current?.abort();
     setStreaming(false);
+    if (privateRef.current) return; // nothing to save in a temporary chat
     const { id, title } = sessionMetaRef.current;
     if (id) {
       sidebar.saveSession(id, title, itemsRef.current, systemPrompt, selectedPreset, selectedProviderId);
@@ -246,6 +289,7 @@ export function useChatSession(params: {
     selectedProviderId, setSelectedProviderId,
     enabledGroups, toggleGroup, showTools, setShowTools,
     systemPrompt,
+    privateMode, privateRef, togglePrivateMode,
     controllerRef, sessionMetaRef, activeIdRef,
     switchSession, startNew, renameSession, deleteSession, clearMessages,
     truncateTo, lastUserIndex, handleStop,

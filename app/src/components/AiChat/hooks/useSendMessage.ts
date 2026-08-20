@@ -36,7 +36,7 @@ export function useSendMessage(params: {
     activeId, setActiveId, displayItems, setDisplayItems, setItems, itemsRef,
     activeTitle, setActiveTitle, setIsNewSession,
     selectedPreset, selectedProviderId, systemPrompt, enabledGroups,
-    controllerRef, sessionMetaRef, setStreaming,
+    controllerRef, sessionMetaRef, setStreaming, privateRef,
   } = session;
 
   const { generateSessionTitle } = useSessionTitle(sidebar, session);
@@ -88,7 +88,10 @@ export function useSendMessage(params: {
       : sysPrompt;
     // Save the user's turn before starting the network request. This makes a
     // new session visible in History immediately and survives app/API failure.
-    await sidebar.saveSession(sessionId, title, [...displayItems, userItem], sysPrompt, selectedPreset, selectedProviderId);
+    // Skipped in temporary-chat mode — the conversation stays in memory only.
+    if (!privateRef.current) {
+      await sidebar.saveSession(sessionId, title, [...displayItems, userItem], sysPrompt, selectedPreset, selectedProviderId);
+    }
     const controller = new AbortController();
     controllerRef.current = controller;
 
@@ -273,18 +276,22 @@ export function useSendMessage(params: {
       }
       setStreaming(false);
       setItems(currentItems);
-      await sidebar.saveSession(sessionId, title, currentItems, sysPrompt, selectedPreset, selectedProviderId);
+      // A temporary chat is never persisted — neither the final turn nor a
+      // generated title (which would write a row behind the scenes).
+      if (!privateRef.current) {
+        await sidebar.saveSession(sessionId, title, currentItems, sysPrompt, selectedPreset, selectedProviderId);
 
-      // Replace the truncated first-message title with a short AI-generated
-      // one once the exchange has content to summarize. Fire-and-forget —
-      // the truncated title already saved above is a perfectly good
-      // fallback if this fails or the provider doesn't support it.
-      if (isFirst) {
-        const lastAssistant = [...currentItems].reverse().find(
-          (i): i is { kind: "message"; msg: AiMessage } => i.kind === "message" && i.msg.role === "assistant"
-        );
-        if (lastAssistant?.msg.content) {
-          generateSessionTitle(sessionId, fullText, lastAssistant.msg.content, provider);
+        // Replace the truncated first-message title with a short AI-generated
+        // one once the exchange has content to summarize. Fire-and-forget —
+        // the truncated title already saved above is a perfectly good
+        // fallback if this fails or the provider doesn't support it.
+        if (isFirst) {
+          const lastAssistant = [...currentItems].reverse().find(
+            (i): i is { kind: "message"; msg: AiMessage } => i.kind === "message" && i.msg.role === "assistant"
+          );
+          if (lastAssistant?.msg.content) {
+            generateSessionTitle(sessionId, fullText, lastAssistant.msg.content, provider);
+          }
         }
       }
     }

@@ -2,6 +2,11 @@ import type { Dict } from "../types";
 
 export const aichat: Dict = {
     "aichat.newChat": "New Chat",
+    "aichat.tempChatTitle": "Temporary chat",
+    "aichat.tempChatHint": "Not saved — nothing here is stored",
+    "aichat.tempChatEnable": "Start a temporary chat",
+    "aichat.tempChatDisable": "Exit temporary chat",
+    "aichat.tempChatReset": "Reset temporary chat",
     "aichat.today": "Today",
     "aichat.yesterday": "Yesterday",
     "aichat.searchPlaceholder": "Search chats…",

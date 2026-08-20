@@ -11,7 +11,7 @@ import { AiChatComposer } from "./AiChatComposer";
 import { useAiChatSession, PRESET_IDS } from "./useAiChatSession";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowDown, Bot, ChevronDown, ChevronLeft, ChevronUp, Eraser, FilePlus2, PlugZap, Unplug } from "lucide-react";
+import { ArrowDown, Bot, ChevronDown, ChevronLeft, ChevronUp, Eraser, FilePlus2, MessageSquareOff, PlugZap, RotateCcw, Unplug } from "lucide-react";
 import { useNavStore } from "@/store/navStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useWordModalStore } from "@/store/wordModalStore";
@@ -168,7 +168,7 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
           >
             <ChevronLeft className="h-3.5 w-3.5" />
           </Button>
-          <div className="min-w-0 flex-1 flex items-baseline gap-2"><span className="truncate text-xs font-semibold tracking-tight text-foreground">{s.isNewSession ? t("aichat.newChat") : s.activeTitle}</span><span className="hidden shrink-0 truncate text-[10px] text-muted-foreground lg:inline">{messages.length ? t("aichat.messageCount", { count: messages.length }) : t("aichat.ready")}</span></div>
+          <div className="min-w-0 flex-1 flex items-baseline gap-2"><span className={`truncate text-xs font-semibold tracking-tight ${s.privateMode ? "text-amber-600 dark:text-amber-400" : "text-foreground"}`}>{s.privateMode ? t("aichat.tempChatTitle") : s.isNewSession ? t("aichat.newChat") : s.activeTitle}</span><span className="hidden shrink-0 truncate text-[10px] text-muted-foreground lg:inline">{s.privateMode ? t("aichat.tempChatHint") : messages.length ? t("aichat.messageCount", { count: messages.length }) : t("aichat.ready")}</span></div>
           {/* The selector is the connection indicator: it already names the
             * provider in use, so a separate "connected" light beside it said
             * the same thing twice and squeezed the model name into an
@@ -201,6 +201,30 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
                 {t("aichat.providerDisconnected")}
               </Button>
             </div>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={s.togglePrivateMode}
+            title={s.privateMode ? t("aichat.tempChatDisable") : t("aichat.tempChatEnable")}
+            aria-label={s.privateMode ? t("aichat.tempChatDisable") : t("aichat.tempChatEnable")}
+            aria-pressed={s.privateMode}
+            className={`h-6 w-6 shrink-0 rounded-lg ${s.privateMode ? "bg-amber-500/15 text-amber-600 hover:bg-amber-500/20 dark:text-amber-400" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+          >
+            <MessageSquareOff className="h-3.5 w-3.5" />
+          </Button>
+          {s.privateMode && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => { void s.clearMessages(); }}
+              title={t("aichat.tempChatReset")}
+              aria-label={t("aichat.tempChatReset")}
+              disabled={s.displayItems.length === 0}
+              className="h-6 w-6 shrink-0 rounded-lg text-amber-600 hover:bg-amber-500/20 dark:text-amber-400 disabled:opacity-40 disabled:hover:bg-transparent"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </Button>
           )}
           <Button
             variant="ghost"
@@ -299,8 +323,8 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
             <div className="mx-auto max-w-full space-y-5">
           {s.displayItems.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center">
-              <p className="text-sm font-semibold text-foreground/80">{t("aichat.emptyTitle")}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{t("aichat.emptyHint")}</p>
+              <p className="text-sm font-semibold text-foreground/80">{s.privateMode ? t("aichat.tempChatTitle") : t("aichat.emptyTitle")}</p>
+              <p className={`mt-1 text-xs ${s.privateMode ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>{s.privateMode ? t("aichat.tempChatHint") : t("aichat.emptyHint")}</p>
             </div>
           ) : (
             s.displayItems.map((item, idx) => {

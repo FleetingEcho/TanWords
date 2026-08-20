@@ -2,6 +2,11 @@ import type { Dict } from "../types";
 
 export const aichat: Dict = {
     "aichat.newChat": "新对话",
+    "aichat.tempChatTitle": "临时对话",
+    "aichat.tempChatHint": "不保存 — 此对话不会留存任何记录",
+    "aichat.tempChatEnable": "开始临时对话",
+    "aichat.tempChatDisable": "退出临时对话",
+    "aichat.tempChatReset": "重置临时对话",
     "aichat.today": "今天",
     "aichat.yesterday": "昨天",
     "aichat.searchPlaceholder": "搜索对话…",
