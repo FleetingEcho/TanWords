@@ -2,6 +2,8 @@ import type { Dict } from "../types";
 
 export const voice: Dict = {
     "voice.open": "Voice assistant",
+    "voice.minimize": "Minimize (keep conversation)",
+    "voice.endConversation": "End conversation",
     "voice.openFromChat": "Open voice chat",
     "voice.dictate": "Dictate",
     "voice.dictating": "Listening…",

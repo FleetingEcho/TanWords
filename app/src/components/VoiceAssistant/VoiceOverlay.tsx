@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Mic, Square, X, Loader2 } from "lucide-react";
+import { Mic, Square, X, Minus, Loader2 } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { useDB } from "@/hooks/useDB";
 import { Dialog } from "@/components/ui/dialog";
@@ -405,6 +405,20 @@ export function VoiceOverlay() {
     navigate("settings", undefined, "voice");
   };
 
+  // Minimize just hides the popup — stopEverything() (via the isOpen effect)
+  // already halts any in-flight recording/turn, but sessionIdRef/itemsRef/
+  // messages are untouched, so reopening continues the same conversation.
+  // Close additionally ends it: next open starts a brand-new session instead
+  // of picking the old one back up.
+  const endConversation = () => {
+    close();
+    sessionIdRef.current = null;
+    titleRef.current = "";
+    itemsRef.current = [];
+    setMessages([]);
+    setError(null);
+  };
+
   return (
     <Dialog open={isOpen} onClose={close} maxWidth="max-w-[400px]" className="!bg-transparent !border-0 !shadow-none !p-0">
       <div
@@ -413,14 +427,26 @@ export function VoiceOverlay() {
       >
         <div className="flex items-center justify-between px-4 py-3">
           <span className="text-sm font-semibold text-white/80">{t("voice.title")}</span>
-          <button
-            type="button"
-            onClick={close}
-            aria-label={t("tts.close")}
-            className="h-7 w-7 rounded-md flex items-center justify-center text-white/50 hover:bg-white/10 hover:text-white/80 transition-colors"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={close}
+              title={t("voice.minimize")}
+              aria-label={t("voice.minimize")}
+              className="h-7 w-7 rounded-md flex items-center justify-center text-white/50 hover:bg-white/10 hover:text-white/80 transition-colors"
+            >
+              <Minus className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={endConversation}
+              title={t("voice.endConversation")}
+              aria-label={t("voice.endConversation")}
+              className="h-7 w-7 rounded-md flex items-center justify-center text-white/50 hover:bg-white/10 hover:text-white/80 transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {noAsrModel ? (

@@ -2,6 +2,8 @@ import type { Dict } from "../types";
 
 export const voice: Dict = {
     "voice.open": "语音助手",
+    "voice.minimize": "最小化（保留对话）",
+    "voice.endConversation": "结束对话",
     "voice.openFromChat": "打开语音对话",
     "voice.dictate": "语音输入",
     "voice.dictating": "正在听…",
