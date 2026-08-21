@@ -93,6 +93,8 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       "tts_voice_id",
       "tts_extra_dirs",
       "tts_speed",
+      "asr_model_path",
+      "asr_extra_dirs",
       "show_github_link",
       "visible_sidebar_tabs",
       "visible_topbar_items",
@@ -250,6 +252,19 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       if (isDesktopHost) {
         resolvedTopBarItems = includeDshTopBarItem(resolvedTopBarItems);
       }
+      await invoke("db_set_setting", { key: "visible_topbar_items", value: JSON.stringify(resolvedTopBarItems) });
+    }
+    // One-time backfill for existing installs, same shape as the calendar
+    // sidebar-tab migration below: an *existing* saved top-bar list was
+    // already filtered down to only ids that predate "voice", so it never
+    // picks the new one up on its own the way a fresh install's
+    // `DEFAULT_VISIBLE_TOPBAR_ITEMS` does. Runs once regardless of
+    // `hadSavedTopBar` (a fresh install already has it via that default, so
+    // this is a harmless no-op there) and still respects a user who later
+    // hides it in Settings.
+    if (!localStorage.getItem("tanwords_voice_topbar_migrated")) {
+      if (!resolvedTopBarItems.includes("voice")) resolvedTopBarItems = [...resolvedTopBarItems, "voice"];
+      localStorage.setItem("tanwords_voice_topbar_migrated", "1");
       await invoke("db_set_setting", { key: "visible_topbar_items", value: JSON.stringify(resolvedTopBarItems) });
     }
     cacheTopBarItems(resolvedTopBarItems);
@@ -427,6 +442,8 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       ttsVoiceId: values.tts_voice_id || "0",
       ttsExtraDirs: Array.isArray(values.tts_extra_dirs) ? values.tts_extra_dirs : [],
       ttsSpeed: Number(values.tts_speed) || 1,
+      asrModelPath: values.asr_model_path || "",
+      asrExtraDirs: Array.isArray(values.asr_extra_dirs) ? values.asr_extra_dirs : [],
       // JSON.parse turns the stored string into a real boolean; default on.
       showGithubLink: (values.show_github_link as unknown) !== false && values.show_github_link !== "false",
       selectionActions: (values.selection_actions as unknown) !== false && values.selection_actions !== "false",

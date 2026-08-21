@@ -4,6 +4,7 @@ import { useDB } from "@/hooks/useDB";
 import { useNavStore } from "@/store/navStore";
 import { ProviderSection } from "./ProviderSection";
 import { TtsSection } from "./TtsSection";
+import { VoiceSection } from "./VoiceSection";
 import { GeneralSection } from "./GeneralSection";
 import { AppLockSection } from "./AppLockSection";
 import { LearningSection } from "./LearningSection";
@@ -13,14 +14,20 @@ import { TerminalSection } from "./TerminalSection";
 import { DataSection } from "./DataSection";
 import { DshSection } from "./DshSection";
 import { hostCapabilities } from "@/platform";
+import { useVoiceAssistantAvailable } from "@/store/serverCapabilitiesStore";
 
 export { SettingRow } from "./SettingsShared";
 
-const ALL_SECTIONS = ["general", "lock", "providers", "learning", "tts", "mcp", "documents", "terminal", "dsh", "data"] as const;
+const ALL_SECTIONS = ["general", "lock", "providers", "learning", "tts", "voice", "mcp", "documents", "terminal", "dsh", "data"] as const;
 type SectionId = (typeof ALL_SECTIONS)[number];
-const SECTIONS = ALL_SECTIONS.filter((id) => {
+// Everything except "voice" is a static, build-time capability — computed
+// once. "voice" also depends on a web deployment's runtime bootstrap probe
+// (see useVoiceAssistantAvailable), so it's filtered in separately, inside
+// the component, where that hook can actually be called.
+const STATIC_SECTIONS = ALL_SECTIONS.filter((id) => {
   if (id === "lock") return hostCapabilities.appLock;
   if (id === "tts") return hostCapabilities.nativeTts;
+  if (id === "voice") return true;
   if (id === "mcp") return hostCapabilities.mcp;
   if (id === "terminal") return hostCapabilities.terminal;
   if (id === "dsh") return hostCapabilities.dsh;
@@ -30,9 +37,11 @@ const SECTIONS = ALL_SECTIONS.filter((id) => {
 export function SettingsPage() {
   const t = useT();
   const db = useDB();
+  const voiceAssistantAvailable = useVoiceAssistantAvailable();
+  const SECTIONS = voiceAssistantAvailable ? STATIC_SECTIONS : STATIC_SECTIONS.filter((id) => id !== "voice");
 
   const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
-    general: null, lock: null, providers: null, learning: null, tts: null, mcp: null, documents: null, terminal: null, dsh: null, data: null,
+    general: null, lock: null, providers: null, learning: null, tts: null, voice: null, mcp: null, documents: null, terminal: null, dsh: null, data: null,
   });
   const scrollRef = useRef<HTMLDivElement>(null);
   const [activeSection, setActiveSection] = useState<SectionId>("general");
@@ -156,6 +165,11 @@ export function SettingsPage() {
           {hostCapabilities.nativeTts && <section ref={(el) => { sectionRefs.current.tts = el; }} data-section="tts" className="scroll-mt-6">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">{t("settings.section.tts")}</p>
             <TtsSection />
+          </section>}
+
+          {voiceAssistantAvailable && <section ref={(el) => { sectionRefs.current.voice = el; }} data-section="voice" className="scroll-mt-6">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">{t("settings.section.voice")}</p>
+            <VoiceSection />
           </section>}
 
           {hostCapabilities.mcp && <section ref={(el) => { sectionRefs.current.mcp = el; }} data-section="mcp" className="scroll-mt-6">

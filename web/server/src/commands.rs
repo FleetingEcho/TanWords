@@ -158,7 +158,65 @@ const ALLOWED: &[&str] = &[
     "db_create_calendar_calendar",
     "db_update_calendar_calendar",
     "db_delete_calendar_calendar",
+    // ── voice assistant: local sherpa-onnx TTS/ASR, shared model cache ──────
+    // `*_load_model`/`*_delete_model` take a caller-supplied `path` — on
+    // desktop that's a deliberate trust boundary (the "add extra directory"
+    // feature), but here it would let any account touch arbitrary server
+    // paths. `validate_model_path` (below, called from
+    // `server/handlers.rs` before dispatch) confines it to the shared models
+    // root; nothing else in this list takes a filesystem path.
+    "tts_scan_models",
+    "tts_default_models_dir",
+    "tts_load_model",
+    "tts_delete_model",
+    "tts_unload_model",
+    "tts_synthesize",
+    "tts_engine_status",
+    "tts_download_model",
+    "asr_scan_models",
+    "asr_default_models_dir",
+    "asr_load_model",
+    "asr_delete_model",
+    "asr_unload_model",
+    "asr_transcribe",
+    "asr_engine_status",
+    "asr_download_model",
 ];
+
+/// Extra guard for the handful of ALLOWED commands whose args include a raw
+/// filesystem path — `is_allowed` only classifies by command *name*, so this
+/// is the place that inspects *arguments* before letting one of those
+/// through. Canonicalizes `path` and requires it to land inside one of the
+/// shared, server-writable models roots; anything else (a bare `path`
+/// argument absent, a path outside those roots, or one that doesn't resolve
+/// at all) is rejected. Called from `server/handlers.rs` right before
+/// dispatch.
+pub fn validate_model_path(command: &str, args: &serde_json::Value) -> Result<(), &'static str> {
+    if !matches!(
+        command,
+        "tts_load_model" | "tts_delete_model" | "asr_load_model" | "asr_delete_model"
+    ) {
+        return Ok(());
+    }
+
+    let raw = args
+        .get("path")
+        .and_then(|v| v.as_str())
+        .ok_or("missing path argument")?;
+    let candidate = std::fs::canonicalize(raw).map_err(|_| "path does not exist")?;
+
+    for root in [
+        tanwords_lib::tts::models::default_models_dir(),
+        tanwords_lib::asr::models::default_models_dir(),
+    ] {
+        if let Ok(root) = std::fs::canonicalize(&root) {
+            if candidate.starts_with(&root) {
+                return Ok(());
+            }
+        }
+    }
+    Err("path is outside the shared models directory")
+}
 
 /// Refused, with the reason attached. Kept as pairs rather than a bare list so
 /// that whoever revisits one of these can see what it would cost to allow it.

@@ -7,10 +7,12 @@ description = "TanWords web backend - serves the SPA and the core command API ov
 
 # Standalone crate on purpose: its own Cargo.lock and target dir, so the
 # desktop build under app/core (electron sidecar) is untouched by whatever
-# happens here. The core is consumed as a library with desktop features off —
-# no sherpa-onnx / rodio / symphonia in this binary.
+# happens here. The core is consumed as a library with desktop features off,
+# except `tts`/`asr` (the voice assistant's local sherpa-onnx engines, which
+# this server does want) — no rodio/symphonia/portable-pty (podcast playback,
+# local terminal) in this binary, those stay desktop-only.
 [dependencies]
-tanwords_lib = { package = "tanwords", path = "../../app/core", default-features = false, features = ["web"] }
+tanwords_lib = { package = "tanwords", path = "../../app/core", default-features = false, features = ["web", "tts", "asr"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net", "sync", "time", "fs", "io-util"] }

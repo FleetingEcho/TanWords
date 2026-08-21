@@ -8,6 +8,8 @@ pub mod db;
 pub mod document_privacy;
 #[cfg(feature = "tts")]
 pub mod tts;
+#[cfg(feature = "asr")]
+pub mod asr;
 pub mod reader;
 pub mod secrets;
 pub mod r2;
@@ -44,6 +46,10 @@ pub struct AppState {
     /// worker threads that also service other IPC commands.
     #[cfg(feature = "tts")]
     pub tts: Arc<Mutex<Option<tts::LoadedEngine>>>,
+    /// The active ASR (speech-to-text) engine, if one has been loaded. Same
+    /// lazy-load / hot-swap shape as `tts` above.
+    #[cfg(feature = "asr")]
+    pub asr: Arc<Mutex<Option<asr::LoadedAsrEngine>>>,
     /// Set once at startup if a previously-saved custom DB path (via
     /// `db_switch_path`) failed to open and the app silently fell back to
     /// the default location — surfaced once to the frontend so the user
@@ -95,6 +101,8 @@ pub async fn build_state_for(
         db: Mutex::new(database),
         #[cfg(feature = "tts")]
         tts: Arc::new(Mutex::new(None)),
+        #[cfg(feature = "asr")]
+        asr: Arc::new(Mutex::new(None)),
         db_fallback_warning,
         document_privacy: document_privacy::DocumentPrivacyState::default(),
     });
@@ -182,6 +190,35 @@ pub fn app_data_dir() -> std::path::PathBuf {
         .join("tanwords");
     std::fs::create_dir_all(&dir).ok();
     dir
+}
+
+/// Root for the TTS/ASR downloaded-model caches. Deliberately *not*
+/// `app_data_dir()`: desktop already has real users with models downloaded
+/// under `dirs::cache_dir()`, and switching them to the data dir would orphan
+/// those downloads (the two differ, e.g. `~/Library/Caches` vs
+/// `~/Library/Application Support` on macOS). `TANWORDS_DATA_DIR` still wins
+/// when set — that's the web server's persistent `/data` volume, shared by
+/// every user of that deployment (one download serves everyone, rather than
+/// each account fetching its own multi-hundred-MB copy) — desktop never sets
+/// it, so its behavior here is unchanged.
+pub fn shared_models_root() -> std::path::PathBuf {
+    if let Ok(dir) = std::env::var("TANWORDS_DATA_DIR") {
+        if !dir.trim().is_empty() {
+            let dir = std::path::PathBuf::from(dir);
+            std::fs::create_dir_all(&dir).ok();
+            return dir;
+        }
+    }
+    dirs::cache_dir().unwrap_or_else(|| std::path::PathBuf::from("."))
+}
+
+/// Whether this build of the core links the local sherpa-onnx TTS/ASR
+/// engines. `web/server` calls this to report the voice assistant's
+/// availability in its bootstrap response — `cfg!(feature = "tts")` checked
+/// from that crate would test *its own* (undeclared) features, not this
+/// dependency's, and would silently always read false.
+pub fn has_voice_assistant() -> bool {
+    cfg!(all(feature = "tts", feature = "asr"))
 }
 
 pub fn default_db_path() -> String {

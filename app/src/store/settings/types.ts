@@ -12,7 +12,7 @@ export type Theme =
   | "dim"
   | "system";
 export type SidebarTabId = Exclude<NavPage, "settings">;
-export type TopBarItemId = "search" | "scratch" | "dsh" | "terminal" | "db" | "tools" | "browser" | "mcp" | "ai" | "language" | "theme" | "updates" | "github";
+export type TopBarItemId = "search" | "scratch" | "dsh" | "terminal" | "db" | "tools" | "browser" | "voice" | "mcp" | "ai" | "language" | "theme" | "updates" | "github";
 export type LayoutMode = "flexible" | "fixed";
 export type TerminalRenderer = "auto" | "webgl" | "dom";
 /** Which terminal library renders a tab's screen. `restty` (the default) is
@@ -40,14 +40,14 @@ export const DEFAULT_SIDEBAR_TABS: SidebarTabId[] = [
   "dashboard", "calendar", "feeds", "reading", "documents", "vocabulary", "chat", "music", "browser", "terminal", "dsh", "tools",
 ];
 export const DEFAULT_TOPBAR_ITEMS: TopBarItemId[] = [
-  "search", "scratch", "tools", "browser", "dsh", "terminal", "db", "mcp", "ai", "language", "theme", "updates", "github",
+  "search", "scratch", "tools", "browser", "voice", "dsh", "terminal", "db", "mcp", "ai", "language", "theme", "updates", "github",
 ];
 /** What's visible out of the box for a database with no saved
  *  `visible_topbar_items` row yet (a genuinely fresh install, or a freshly
  *  created online database) — a deliberately small starting set, not "every
  *  option". Anyone can still turn the rest on in Settings; hidden items stay
  *  reachable via Command-K regardless. */
-export const DEFAULT_VISIBLE_TOPBAR_ITEMS: TopBarItemId[] = ["search", "dsh", "db", "theme", "updates"];
+export const DEFAULT_VISIBLE_TOPBAR_ITEMS: TopBarItemId[] = ["search", "voice", "dsh", "db", "theme", "updates"];
 export const DEFAULT_LAYOUT_MODE: LayoutMode = "flexible";
 
 /** Amber, matching the emphasis colour word notes used before highlights had

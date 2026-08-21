@@ -15,6 +15,7 @@ import { settings } from "./settings";
 import { wordModal } from "./wordModal";
 import { aichat } from "./aichat";
 import { tts } from "./tts";
+import { voice } from "./voice";
 import { feeds } from "./feeds";
 import { podcast } from "./podcast";
 import { tools } from "./tools";
@@ -42,6 +43,7 @@ export const zh: Dict = {
     ...wordModal,
     ...aichat,
     ...tts,
+    ...voice,
     ...feeds,
     ...podcast,
     ...tools,

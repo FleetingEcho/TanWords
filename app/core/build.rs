@@ -136,17 +136,21 @@ fn generate_dispatch_table() {
     let mut unparsed: Vec<String> = Vec::new();
     let mut skipped: Vec<String> = Vec::new();
 
-    // Feature-aware command filtering. The heavy modules are compiled out of
-    // server builds (`--no-default-features`), so their commands cannot
-    // appear in the dispatch table either — a generated arm naming
-    // `tts::engine::..` would not compile in that configuration.
+    // Feature-aware command filtering. The heavy modules are compiled out
+    // when their feature is off, so their commands cannot appear in the
+    // dispatch table either — a generated arm naming `tts::engine::..` would
+    // not compile in that configuration.
     // `localdocs` stays compiled for every build (Tauri-era local-docs
     // folder utilities), but its filesystem-walking commands must not be
-    // reachable from the network-facing web server, which is exactly the
-    // build where both heavy features are off.
+    // reachable from the network-facing web server. That used to be inferred
+    // as "neither tts nor audio is on" — a proxy that broke the moment the
+    // web build started enabling `tts`/`asr` for the voice assistant — so it
+    // now reads the `web` marker feature directly instead of guessing from
+    // unrelated ones.
     let has_tts = std::env::var("CARGO_FEATURE_TTS").is_ok();
+    let has_asr = std::env::var("CARGO_FEATURE_ASR").is_ok();
     let has_audio = std::env::var("CARGO_FEATURE_AUDIO").is_ok();
-    let is_server_build = !has_tts && !has_audio;
+    let is_server_build = std::env::var("CARGO_FEATURE_WEB").is_ok();
 
     for entry in &wanted {
         let (module, name) = match entry.rfind("::") {
@@ -156,6 +160,7 @@ fn generate_dispatch_table() {
         let top = module.split("::").next().unwrap_or("");
         if SKIP_MODULES.contains(&top)
             || (!has_tts && top == "tts")
+            || (!has_asr && top == "asr")
             || (!has_audio && (top == "native_audio" || top == "music"))
             || (is_server_build && top == "localdocs")
         {

@@ -62,8 +62,8 @@ export async function backendToken(): Promise<string> {
  *  with the bare error *string* the command returned, because call sites match
  *  on it (e.g. `isModelNotLoaded`, and DOCUMENT_LOCKED in document_privacy).
  *  Do not wrap it in an Error with a prefix. */
-export async function invoke<T = unknown>(command: string, args: Record<string, unknown> = {}): Promise<T> {
-  if (!isDesktopHost) return webInvoke<T>(command, args);
+export async function invoke<T = unknown>(command: string, args: Record<string, unknown> = {}, signal?: AbortSignal): Promise<T> {
+  if (!isDesktopHost) return webInvoke<T>(command, args, signal);
 
   if (MAIN_PROCESS_COMMANDS.test(command)) {
     return callMain<T>(command, args);
@@ -75,6 +75,7 @@ export async function invoke<T = unknown>(command: string, args: Record<string, 
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify(args),
+      signal,
     });
   };
 
@@ -82,6 +83,10 @@ export async function invoke<T = unknown>(command: string, args: Record<string, 
   try {
     response = await send();
   } catch (error) {
+    // An intentional cancellation (e.g. closing the voice assistant mid-turn)
+    // must not be retried — that would just re-send the very request the
+    // caller asked to cancel.
+    if (signal?.aborted) throw error;
     // The sidecar died between commands; main restarts it on a new port. Retry
     // once against the refreshed handshake instead of failing every caller.
     await refreshBackendInfo();

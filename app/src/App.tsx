@@ -33,6 +33,7 @@ import * as auth from "@/platform/auth";
  *  do not keep their parser/runtime costs resident for the whole session. */
 import { LockScreen } from "@/components/Layout/LockScreen";
 import { useAppLockStore } from "@/store/appLockStore";
+import { useServerCapabilitiesStore, useVoiceAssistantAvailable } from "@/store/serverCapabilitiesStore";
 
 const DashboardPage = React.lazy(() =>
   import("@/components/Dashboard/DashboardPage").then((m) => ({ default: m.DashboardPage })));
@@ -68,6 +69,8 @@ const PodcastPlayerBar = React.lazy(() =>
   import("@/components/ui/PodcastPlayerBar").then((m) => ({ default: m.PodcastPlayerBar })));
 const SelectionAsk = React.lazy(() =>
   import("@/components/shared/SelectionAsk").then((m) => ({ default: m.SelectionAsk })));
+const VoiceOverlay = React.lazy(() =>
+  import("@/components/VoiceAssistant/VoiceOverlay").then((m) => ({ default: m.VoiceOverlay })));
 
 const PageFallback = () => (
   <div className="h-full flex items-center justify-center">
@@ -108,6 +111,7 @@ function App() {
   const wordModalWord = useWordModalStore((s) => s.word);
   const toolsModalOpen = useToolsBallStore((s) => s.isOpen);
   const podcastVisible = usePodcastPlayerStore((s) => s.status !== "idle" && !!s.track);
+  const voiceAssistantAvailable = useVoiceAssistantAvailable();
 
   const [authState, setAuthState] = React.useState<AuthState>(isWebHost ? "checking" : "ready");
   const [wordCount, setWordCount] = React.useState(0);
@@ -161,6 +165,7 @@ function App() {
         // the same gate refresh() previously raised in a second request.
         locked: session?.appLockEnabled ?? false,
       });
+      useServerCapabilitiesStore.getState().setVoiceAssistant(session?.voiceAssistant ?? false);
       setAuthState(session ? "ready" : "login");
     });
     loadSession();
@@ -486,6 +491,11 @@ function App() {
     {hostCapabilities.browser && (
       <React.Suspense fallback={null}>
         <FloatingBrowserWidget />
+      </React.Suspense>
+    )}
+    {voiceAssistantAvailable && (
+      <React.Suspense fallback={null}>
+        <VoiceOverlay />
       </React.Suspense>
     )}
     {/* Still mounted during `unlocking`: the app underneath has now had a

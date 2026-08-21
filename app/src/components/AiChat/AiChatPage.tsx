@@ -11,9 +11,11 @@ import { AiChatComposer } from "./AiChatComposer";
 import { useAiChatSession, PRESET_IDS } from "./useAiChatSession";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowDown, Bot, ChevronDown, ChevronLeft, ChevronUp, Eraser, FilePlus2, MessageSquareOff, PlugZap, RotateCcw, Unplug } from "lucide-react";
+import { ArrowDown, Bot, ChevronDown, ChevronLeft, ChevronUp, Eraser, FilePlus2, MessageSquareOff, Mic, PlugZap, RotateCcw, Unplug } from "lucide-react";
 import { useNavStore } from "@/store/navStore";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useVoiceAssistantStore } from "@/store/voiceAssistantStore";
+import { useVoiceAssistantAvailable } from "@/store/serverCapabilitiesStore";
 import { useWordModalStore } from "@/store/wordModalStore";
 import { usePendingChatSelectionStore } from "@/store/pendingChatSelectionStore";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
@@ -47,6 +49,7 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
   // ~40% of the screen, leaving the conversation itself a slot. Folded away by
   // default below `lg`, where it renders unconditionally.
   const [headerOpen, setHeaderOpen] = React.useState(false);
+  const voiceAssistantAvailable = useVoiceAssistantAvailable();
   const [promptExpanded, setPromptExpanded] = React.useState(
     () => localStorage.getItem("aichat-prompt-expanded") === "1"
   );
@@ -201,6 +204,18 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
                 {t("aichat.providerDisconnected")}
               </Button>
             </div>
+          )}
+          {voiceAssistantAvailable && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => useVoiceAssistantStore.getState().toggle()}
+              title={t("voice.openFromChat")}
+              aria-label={t("voice.openFromChat")}
+              className="h-6 w-6 shrink-0 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <Mic className="h-3.5 w-3.5" />
+            </Button>
           )}
           <Button
             variant="ghost"

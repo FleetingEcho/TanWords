@@ -31,6 +31,10 @@ export interface HostCapabilities {
   tray: boolean;
   updater: boolean;
   nativeTts: boolean;
+  /** Local speech-to-text for the push-to-talk voice assistant. Same reason
+   *  as `nativeTts`: the `asr_*` commands only exist in the desktop-feature
+   *  build of the Rust sidecar, not the web/server build. */
+  nativeAsr: boolean;
 }
 
 export const DESKTOP_CAPABILITIES: HostCapabilities = {
@@ -46,6 +50,7 @@ export const DESKTOP_CAPABILITIES: HostCapabilities = {
   tray: true,
   updater: true,
   nativeTts: true,
+  nativeAsr: true,
 };
 
 export const WEB_CAPABILITIES: HostCapabilities = {
@@ -69,6 +74,7 @@ export const WEB_CAPABILITIES: HostCapabilities = {
   tray: false,
   updater: false,
   nativeTts: false,
+  nativeAsr: false,
 };
 
 export function detectHostKind(): HostKind {

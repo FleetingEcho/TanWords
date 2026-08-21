@@ -15,6 +15,10 @@
     refuses to load them and TTS breaks silently on first launch.
   - network client: the sidecar's axum server binds 127.0.0.1 and the
     renderer/main both dial it over loopback HTTP.
+  - audio-input: the voice-assistant feature records from the microphone via
+    getUserMedia in the renderer (Chromium, not the sidecar) — without this
+    entitlement macOS denies the mic even after the user grants the
+    NSMicrophoneUsageDescription prompt (see electron-builder.yml's mac.extendInfo).
 -->
 <plist version="1.0">
 <dict>
@@ -27,6 +31,8 @@
   <key>com.apple.security.network.client</key>
   <true/>
   <key>com.apple.security.network.server</key>
+  <true/>
+  <key>com.apple.security.device.audio-input</key>
   <true/>
 </dict>
 </plist>

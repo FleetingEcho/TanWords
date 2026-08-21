@@ -19,6 +19,9 @@ export interface SettingsState {
   ttsVoiceId: string;
   ttsExtraDirs: string[];
   ttsSpeed: number;
+  /** Local speech-to-text model for the push-to-talk voice assistant. */
+  asrModelPath: string;
+  asrExtraDirs: string[];
   /** Show the project GitHub link in the sidebar footer. */
   showGithubLink: boolean;
   /** Pop the lookup/translate/save toolbar over selected English text. Off
@@ -169,6 +172,8 @@ export interface SettingsState {
   setTtsVoiceId: (id: string) => void;
   setTtsExtraDirs: (dirs: string[]) => void;
   setTtsSpeed: (speed: number) => void;
+  setAsrModelPath: (path: string) => void;
+  setAsrExtraDirs: (dirs: string[]) => void;
   setShowGithubLink: (v: boolean) => void;
   setSelectionActions: (v: boolean) => void;
   setSidebarTabVisible: (tab: SidebarTabId, visible: boolean) => void;

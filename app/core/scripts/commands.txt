@@ -127,6 +127,14 @@ tts::engine::tts_unload_model
 tts::engine::tts_synthesize
 tts::engine::tts_engine_status
 tts::download::tts_download_model
+asr::models::asr_scan_models
+asr::models::asr_default_models_dir
+asr::engine::asr_load_model
+asr::engine::asr_delete_model
+asr::engine::asr_unload_model
+asr::engine::asr_transcribe
+asr::engine::asr_engine_status
+asr::download::asr_download_model
 reader::fetch_article
 hn::fetch_hn_comments
 hn::fetch_hn_section

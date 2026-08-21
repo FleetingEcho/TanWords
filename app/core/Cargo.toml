@@ -36,12 +36,16 @@ regex = "1"
 # and portable. These features only gate *modules*; the dispatch table in
 # build.rs drops the corresponding commands in step.
 default = ["desktop"]
-desktop = ["tts", "audio", "pty"]
+desktop = ["tts", "asr", "audio", "pty"]
 # The standalone tanwords-pty binary (local-shell Terminal tool) needs a real
 # pseudo-terminal library. Gated so web/server builds — which only compile the
 # *lib* target and never the pty binary — don't pull portable-pty in.
 pty = ["dep:portable-pty"]
 tts = ["dep:sherpa-onnx", "dep:tar", "dep:bzip2"]
+# Local speech-to-text (push-to-talk voice chat). Shares the sherpa-onnx
+# dependency with `tts` — same statically-linked ONNX Runtime, no second
+# native library to worry about colliding with it at link time.
+asr = ["dep:sherpa-onnx", "dep:tar", "dep:bzip2"]
 audio = ["dep:rodio", "dep:symphonia", "dep:libloading", "dep:lofty"]
 # Marker feature for the web/server build (no code of its own yet — exists so
 # the path-dependency there has something explicit to opt into).

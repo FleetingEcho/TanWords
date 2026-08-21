@@ -137,6 +137,10 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+  # Required for getUserMedia (voice-assistant mic capture) to prompt for
+  # permission instead of crashing the renderer on first access.
+  extendInfo:
+    NSMicrophoneUsageDescription: TanWords uses your microphone for the voice assistant's push-to-talk speech input.
   # electron-builder's default deep-sign covers the .app bundle and its Node
   # native addons, but a plain Mach-O executable dropped into Resources via
   # extraResources is NOT reliably picked up by that pass with the right

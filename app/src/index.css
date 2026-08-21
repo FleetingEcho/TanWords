@@ -159,6 +159,33 @@
   .animate-radar-sweep { animation: none; }
 }
 
+/* Voice assistant orb (VoiceOverlay.tsx). `--voice-glow` (color) and
+   `--voice-level` (0-1, from the mic's live peak amplitude) are set inline
+   per status so one set of keyframes covers idle/recording/speaking. */
+@keyframes tanwords-voice-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.85; }
+  50% { transform: scale(1.04); opacity: 1; }
+}
+@keyframes tanwords-voice-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(calc(1 + var(--voice-level, 0.15) * 0.18)); }
+}
+@keyframes tanwords-voice-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes tanwords-voice-bar {
+  0%, 100% { transform: scaleY(0.3); }
+  50% { transform: scaleY(1); }
+}
+.animate-voice-breathe { animation: tanwords-voice-breathe 3.2s ease-in-out infinite; }
+.animate-voice-pulse { animation: tanwords-voice-pulse 900ms ease-in-out infinite; }
+.animate-voice-spin { animation: tanwords-voice-spin 1.6s linear infinite; }
+.animate-voice-bar { animation: tanwords-voice-bar 900ms ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .animate-voice-breathe, .animate-voice-pulse, .animate-voice-spin, .animate-voice-bar { animation: none; }
+}
+
 /* FullCalendar dark-theme overrides. FullCalendar v6 injects its own CSS via
  *  JS (`<style data-fullcalendar>`) with light defaults on `:root`. These
  *  overrides sit under the app's `.dark` class (applied to <html> by the

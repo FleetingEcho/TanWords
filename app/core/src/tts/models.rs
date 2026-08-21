@@ -13,10 +13,7 @@ pub struct TtsModelInfo {
 }
 
 pub fn default_models_dir() -> PathBuf {
-    dirs::cache_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("tanwords")
-        .join("tts_models")
+    crate::shared_models_root().join("tanwords").join("tts_models")
 }
 
 #[crate::shim::command]

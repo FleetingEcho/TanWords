@@ -81,11 +81,13 @@ export async function webBackendToken(): Promise<string> {
 export async function webInvoke<T = unknown>(
   command: string,
   args: Record<string, unknown> = {},
+  signal?: AbortSignal,
 ): Promise<T> {
   const response = await webAuthFetch(`/invoke/${command}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(args),
+    signal,
   });
 
   if (!response.ok) {

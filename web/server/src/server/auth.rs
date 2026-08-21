@@ -268,6 +268,11 @@ pub(super) async fn bootstrap(
     Json(json!({
         "email": session.email,
         "appLockEnabled": app_lock_enabled,
+        // Build-time, not per-account: whether this deployment was compiled
+        // with the local sherpa-onnx TTS/ASR engines (see web/server's
+        // Cargo.toml). Desktop never reads this — it gates its own voice
+        // assistant visibility on a static capability instead.
+        "voiceAssistant": tanwords_lib::has_voice_assistant(),
     }))
     .into_response()
 }

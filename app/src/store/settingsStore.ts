@@ -53,6 +53,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   ttsVoiceId: "0",
   ttsExtraDirs: [],
   ttsSpeed: 1,
+  asrModelPath: "",
+  asrExtraDirs: [],
   showGithubLink: true,
   selectionActions: true,
   visibleSidebarTabs: cachedSidebarTabs(),
@@ -479,6 +481,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setTtsSpeed: (speed) => {
     set({ ttsSpeed: speed });
     saveSetting("tts_speed", JSON.stringify(speed));
+  },
+
+  setAsrModelPath: (path) => {
+    set({ asrModelPath: path });
+    saveSetting("asr_model_path", JSON.stringify(path));
+  },
+
+  setAsrExtraDirs: (dirs) => {
+    set({ asrExtraDirs: dirs });
+    saveSetting("asr_extra_dirs", JSON.stringify(dirs));
   },
 
   loadFromDB: () => loadSettingsFromDB(set, get),

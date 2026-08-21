@@ -314,6 +314,8 @@ mod tests {
             db: std::sync::Mutex::new(db),
             #[cfg(feature = "tts")]
             tts: std::sync::Mutex::new(None).into(),
+            #[cfg(feature = "asr")]
+            asr: std::sync::Mutex::new(None).into(),
             db_fallback_warning: None,
             document_privacy: Default::default(),
         };

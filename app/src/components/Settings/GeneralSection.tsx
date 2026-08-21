@@ -17,6 +17,7 @@ import { WallpaperSetting } from "./WallpaperSetting";
 import { BannerPositionModal } from "./BannerPositionModal";
 import { hostCapabilities } from "@/platform";
 import { me as fetchMe, logout } from "@/platform/auth";
+import { useVoiceAssistantAvailable } from "@/store/serverCapabilitiesStore";
 
 const MAX_AVATAR_UPLOAD_BYTES = 5 * 1024 * 1024;
 const MAX_BANNER_UPLOAD_BYTES = 8 * 1024 * 1024;
@@ -394,6 +395,7 @@ export function GeneralSection() {
   }, []);
   const settings = useSettingsStore();
   const t = useT();
+  const voiceAssistantAvailable = useVoiceAssistantAvailable();
 
   return (
     <div className="space-y-4">
@@ -464,6 +466,7 @@ export function GeneralSection() {
               if (item === "terminal") return hostCapabilities.terminal;
               if (item === "updates") return hostCapabilities.updater;
               if (item === "browser") return hostCapabilities.browser;
+              if (item === "voice") return voiceAssistantAvailable;
               return true;
             })}
             isVisible={(item) => settings.visibleTopBarItems.includes(item)}

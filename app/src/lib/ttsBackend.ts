@@ -33,14 +33,19 @@ export function consumeFallbackWarning(): boolean {
 
 /** Synthesizes `text` through the embedded engine. If the model isn't
  * loaded yet, self-heals once using the persisted model choice before
- * giving up and asking the caller to fall back to webspeech. */
-export async function synthesizeBlob(text: string): Promise<Blob> {
+ * giving up and asking the caller to fall back to webspeech. `signal` lets a
+ * caller actually cancel the in-flight synthesis request (not just discard
+ * its result) — VoiceOverlay passes the same controller it uses to abort the
+ * LLM stream, so closing it mid-reply cancels every not-yet-spoken sentence
+ * still being synthesized, not only the ones already queued. */
+export async function synthesizeBlob(text: string, signal?: AbortSignal): Promise<Blob> {
   const { ttsVoiceId } = useSettingsStore.getState();
   const speakerId = Number(ttsVoiceId) || 0;
 
   try {
-    return await synthesizeOnce(text, speakerId);
+    return await synthesizeOnce(text, speakerId, signal);
   } catch (e) {
+    if (signal?.aborted) throw e;
     if (!isModelNotLoaded(e)) {
       throw new WebSpeechFallbackRequired();
     }
@@ -51,23 +56,45 @@ export async function synthesizeBlob(text: string): Promise<Blob> {
     throw new WebSpeechFallbackRequired();
   }
   try {
-    await invoke("tts_load_model", { path: ttsModelPath });
+    await invoke("tts_load_model", { path: ttsModelPath }, signal);
     markTtsActivity();
-  } catch {
+  } catch (e) {
+    if (signal?.aborted) throw e;
     throw new WebSpeechFallbackRequired();
   }
   try {
-    return await synthesizeOnce(text, speakerId);
-  } catch {
+    return await synthesizeOnce(text, speakerId, signal);
+  } catch (e) {
+    if (signal?.aborted) throw e;
     throw new WebSpeechFallbackRequired();
   }
 }
 
-async function synthesizeOnce(text: string, speakerId: number): Promise<Blob> {
-  const wavBase64 = await invoke<string>("tts_synthesize", { text, speakerId, speed: 1.0 });
+async function synthesizeOnce(text: string, speakerId: number, signal?: AbortSignal): Promise<Blob> {
+  const wavBase64 = await invoke<string>("tts_synthesize", { text, speakerId, speed: 1.0 }, signal);
   markTtsActivity();
   const bytes = Uint8Array.from(atob(wavBase64), (c) => c.charCodeAt(0));
   return new Blob([bytes], { type: "audio/wav" });
+}
+
+/** Proactively loads the persisted TTS model, if any — same reasoning as
+ *  `asrBackend.ensureAsrLoaded`, called when VoiceOverlay opens so the first
+ *  reply doesn't pay for a cold load. Returns false without throwing if
+ *  nothing is configured or loading failed. */
+export async function ensureTtsLoaded(): Promise<boolean> {
+  const { ttsModelPath } = useSettingsStore.getState();
+  if (!ttsModelPath) return false;
+
+  try {
+    const status = await invoke<{ path: string } | null>("tts_engine_status");
+    if (status?.path === ttsModelPath) return true;
+    await invoke("tts_load_model", { path: ttsModelPath });
+    markTtsActivity();
+    return true;
+  } catch (e) {
+    console.warn("TTS model preload failed", e);
+    return false;
+  }
 }
 
 function isModelNotLoaded(e: unknown): boolean {

@@ -1,13 +1,17 @@
 import React from "react";
+import { toast } from "sonner";
 import { useT } from "@/hooks/useT";
 import { TOOL_GROUPS, ToolGroupKey } from "./tools";
 import { TOOL_LABELS } from "./ToolCallCard";
 import { BookIcon, DocIcon, CloseIcon, CalendarIcon } from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
-import { ShieldCheck } from "lucide-react";
+import { ShieldCheck, Mic, Loader2 } from "lucide-react";
 import { useIsNarrow } from "@/components/Vocabulary/hooks/useMediaQuery";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useVoiceAssistantAvailable } from "@/store/serverCapabilitiesStore";
+import { MicPermissionError, PcmRecorder } from "@/lib/voiceRecorder";
+import { transcribeWav } from "@/lib/asrBackend";
 
 const GROUP_ICONS: Record<ToolGroupKey, React.FC<{ className?: string }>> = {
   vocabulary: BookIcon,
@@ -43,6 +47,43 @@ export function AiChatComposer({
   const t = useT();
   const narrow = useIsNarrow();
   const hasCustomAppBackground = useSettingsStore((state) => !!state.appBackgroundImage && state.appBackgroundVisible);
+  const voiceAssistantAvailable = useVoiceAssistantAvailable();
+
+  // Press-and-hold dictation: transcribes into the input box for the user to
+  // review/edit and send themselves — unlike VoiceOverlay's full voice-chat
+  // loop, this never auto-sends or speaks a reply back.
+  const [dictateState, setDictateState] = React.useState<"idle" | "recording" | "transcribing">("idle");
+  const recorderRef = React.useRef<PcmRecorder | null>(null);
+
+  const startDictation = async () => {
+    const recorder = new PcmRecorder();
+    try {
+      await recorder.start();
+      recorderRef.current = recorder;
+      setDictateState("recording");
+    } catch {
+      toast.error(t("voice.micFailed"));
+    }
+  };
+
+  const stopDictation = async () => {
+    const recorder = recorderRef.current;
+    recorderRef.current = null;
+    if (!recorder) return;
+    setDictateState("transcribing");
+    try {
+      const wavBase64 = await recorder.stop();
+      const text = await transcribeWav(wavBase64);
+      if (text.trim()) {
+        const needsSpace = input.length > 0 && !/\s$/.test(input);
+        onInputChange(input + (needsSpace ? " " : "") + text.trim());
+      }
+    } catch (e) {
+      toast.error(e instanceof MicPermissionError ? t("voice.micSilent") : t("voice.transcribeFailed", { error: String(e) }));
+    } finally {
+      setDictateState("idle");
+    }
+  };
 
   return (
     <div className={`shrink-0 px-2 py-2 lg:py-3 ${hasCustomAppBackground ? "bg-transparent" : "bg-background/75 backdrop-blur-xl"}`}>
@@ -98,6 +139,37 @@ export function AiChatComposer({
         />
 
         <div className="flex shrink-0 items-center gap-1 lg:gap-2">
+        {voiceAssistantAvailable && (
+          <Button
+            variant="ghost"
+            size="icon"
+            // Press-and-hold, not click-to-toggle — same reasoning as
+            // VoiceOverlay's orb: holding is what starts the recording and
+            // releasing is what ends it, so there's never ambiguity about
+            // when dictation starts/stops.
+            onPointerDown={(e) => {
+              if (dictateState !== "idle") return;
+              e.currentTarget.setPointerCapture(e.pointerId);
+              void startDictation();
+            }}
+            onPointerUp={(e) => {
+              if (dictateState !== "recording") return;
+              e.currentTarget.releasePointerCapture(e.pointerId);
+              void stopDictation();
+            }}
+            onPointerCancel={() => { if (dictateState === "recording") void stopDictation(); }}
+            disabled={dictateState === "transcribing"}
+            title={dictateState === "recording" ? t("voice.dictating") : dictateState === "transcribing" ? t("voice.dictateTranscribing") : t("voice.dictate")}
+            aria-label={t("voice.dictate")}
+            className={`h-8 w-8 shrink-0 rounded-xl select-none touch-none ${
+              dictateState === "recording"
+                ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            {dictateState === "transcribing" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mic className="h-3.5 w-3.5" />}
+          </Button>
+        )}
         <Popover open={showTools} onOpenChange={() => onToggleTools()}>
           <PopoverTrigger asChild>
             <Button

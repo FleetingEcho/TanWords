@@ -168,6 +168,13 @@ export const INLINE_ASK_SYSTEM_PROMPT = `你是一位英语老师，学习者正
 
 全文控制在 120 字以内。直接开始讲解，不要复述选中的内容，不要开场白，不要结尾的互动邀请。英文例句用 markdown blockquote（\`> \` 开头）。`;
 
+/** System prompt for the push-to-talk voice assistant (VoiceOverlay). Kept
+ * short and spoken-style since every reply gets read aloud by local TTS —
+ * markdown/lists/code blocks would just be read as literal punctuation. */
+export const VOICE_ASSISTANT_SYSTEM_PROMPT = `You are a friendly, concise voice assistant reached through a floating mic button — the user is speaking to you, not typing, and your reply will be read aloud by a text-to-speech engine.
+
+Reply in plain spoken sentences: no markdown, no bullet lists, no code blocks, no headings. Keep answers short and conversational — a couple of sentences for simple things, more only if the question genuinely needs it. Match whichever language (Chinese, English, or a mix of both) the user just spoke in.`;
+
 export function buildInlineAskUserPrompt(selection: string, context: string, targetLevel: string): string {
   const ctx = context.trim() ? `\n\n所在段落（仅供参考，不要另外讲解它）：\n"""\n${context.trim()}\n"""` : "";
   return `选中的内容："${selection}"（学习者目标水平：CEFR ${targetLevel}）${ctx}`;

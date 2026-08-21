@@ -4,7 +4,7 @@ import { openExternal as openUrl } from "@/ipc/shell";
 import { callMain } from "@/ipc/host";
 import {
   BrainCircuit, Check, ChevronsLeft, ChevronsRight, ClipboardPaste, Cloud, CloudOff, Database, Lock,
-  FilePlus2, Languages, MessageSquarePlus, Monitor, Moon, Palette, PanelLeft, Quote, Search, Server, Settings, Sun,
+  FilePlus2, Languages, Mic, MessageSquarePlus, Monitor, Moon, Palette, PanelLeft, Quote, Search, Server, Settings, Sun,
   Grid2x2Plus, Rss, Smartphone, SquareTerminal, Type, Unplug, User, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,8 @@ import { useVocabEnrichStore } from "@/store/vocabEnrichStore";
 import { DshIcon, GitHubIcon } from "@/components/ui/icons";
 import { useToolsBallStore } from "@/store/toolsBallStore";
 import { useFloatingBrowserStore } from "@/store/floatingBrowserStore";
+import { useVoiceAssistantStore } from "@/store/voiceAssistantStore";
+import { useVoiceAssistantAvailable } from "@/store/serverCapabilitiesStore";
 import { hostCapabilities, isDesktopHost } from "@/platform";
 
 type McpState = { status: { running: boolean; error: string | null } };
@@ -44,7 +46,7 @@ type McpState = { status: { running: boolean; error: string | null } };
  *  with a row of fixed-width icons, so they keep their current fixed spots
  *  regardless of where they're dragged to in Settings. */
 const ICON_GROUP_IDS: TopBarItemId[] = [
-  "tools", "browser", "dsh", "terminal", "db", "mcp", "ai", "language", "theme", "updates", "github",
+  "tools", "browser", "voice", "dsh", "terminal", "db", "mcp", "ai", "language", "theme", "updates", "github",
 ];
 
 const PAGE_IDS: NavPage[] = (["feeds", "vocabulary", "documents", "chat", "dashboard", "calendar", "music", "terminal", "dsh", "settings", "tools"] as NavPage[])
@@ -102,11 +104,13 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   };
   const userAvatar = useSettingsStore((state) => state.userAvatar);
   const hasCustomAppBackground = useSettingsStore((state) => !!state.appBackgroundImage && state.appBackgroundVisible);
+  const voiceAssistantAvailable = useVoiceAssistantAvailable();
   const visible = (item: TopBarItemId) => {
     if (!visibleItems.includes(item)) return false;
     if (item === "mcp") return hostCapabilities.mcp;
     if (item === "dsh") return hostCapabilities.dsh;
     if (item === "updates") return hostCapabilities.updater;
+    if (item === "voice") return voiceAssistantAvailable;
     return true;
   };
   const analysisJobs = useAnalysisStore((state) => state.jobs);
@@ -248,6 +252,18 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
         {floatingBrowserMinimized && (
           <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-emerald-500" />
         )}
+      </Button>
+    ),
+    voice: visible("voice") && (
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => useVoiceAssistantStore.getState().toggle()}
+        title={t("voice.open")}
+        aria-label={t("voice.open")}
+        className="h-8 w-8 rounded-lg text-muted-foreground"
+      >
+        <Mic className="h-4 w-4" />
       </Button>
     ),
     dsh: hostCapabilities.dsh && visible("dsh") && (

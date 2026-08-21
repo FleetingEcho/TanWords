@@ -63,6 +63,7 @@ export async function me(): Promise<{ email: string } | null> {
 export type WebBootstrap = {
   email: string;
   appLockEnabled: boolean;
+  voiceAssistant: boolean;
 };
 
 /** Validates the saved web session and returns every security gate needed for
