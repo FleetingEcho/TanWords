@@ -13,7 +13,10 @@ COPY app/ ./
 RUN bun run build
 
 FROM rust:bookworm AS backend
-RUN apt-get update \
+# -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false: the
+# podman VM clock can lag behind real time after the macOS host sleeps, which
+# makes apt reject Release files as "not valid yet" and fail the build.
+RUN apt-get -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false update \
     && apt-get install -y --no-install-recommends \
        build-essential clang cmake pkg-config libssl-dev libdbus-1-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -32,7 +35,7 @@ RUN --mount=type=cache,id=tanwords-cargo-registry,target=/usr/local/cargo/regist
     && cp target/release/tanwords-web-server /tmp/tanwords-web-server
 
 FROM debian:bookworm-slim AS runtime
-RUN apt-get update \
+RUN apt-get -o Acquire::Check-Valid-Until=false -o Acquire::Check-Date=false update \
     && apt-get install -y --no-install-recommends ca-certificates curl libssl3 libstdc++6 libdbus-1-3 \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 tanwords \
