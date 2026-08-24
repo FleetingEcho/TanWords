@@ -18,10 +18,11 @@ import { BannerPositionModal } from "./BannerPositionModal";
 import { hostCapabilities } from "@/platform";
 import { me as fetchMe, logout } from "@/platform/auth";
 import { useVoiceAssistantAvailable } from "@/store/serverCapabilitiesStore";
+import { useWorkspacesEnabled, setWorkspacesEnabled } from "@/pages/workspaceFeature";
 
 const MAX_AVATAR_UPLOAD_BYTES = 5 * 1024 * 1024;
 const MAX_BANNER_UPLOAD_BYTES = 8 * 1024 * 1024;
-const MAX_APP_BG_UPLOAD_BYTES = 12 * 1024 * 1024;
+const MAX_APP_BG_UPLOAD_BYTES = 10 * 1024 * 1024;
 /** The avatar is stored whole (like the banner/background) and framed at render time via
  *  object-position + scale, chosen in AvatarPositionModal — no longer baked to a fixed
  *  square at upload. Capped well above the largest on-screen avatar size so zooming in
@@ -396,6 +397,8 @@ export function GeneralSection() {
   const settings = useSettingsStore();
   const t = useT();
   const voiceAssistantAvailable = useVoiceAssistantAvailable();
+  const workspacesEnabled = useWorkspacesEnabled();
+  const setWorkspacesEnabledFlag = setWorkspacesEnabled;
 
   return (
     <div className="space-y-4">
@@ -451,6 +454,18 @@ export function GeneralSection() {
             onChange={(v) => settings.setSelectionActions(v === "on")}
           />
         </SettingRow>
+        {hostCapabilities.desktop && (
+          <SettingRow label={t("settings.workspaces")} sub={t("settings.workspacesSub")}>
+            <ToggleGroup
+              options={[
+                { id: "on", label: t("settings.on") },
+                { id: "off", label: t("settings.off") },
+              ]}
+              value={workspacesEnabled ? "on" : "off"}
+              onChange={(v) => setWorkspacesEnabledFlag(v === "on")}
+            />
+          </SettingRow>
+        )}
         <div className="py-4">
           <div className="mb-3">
             <div className="flex items-center gap-2.5">

@@ -1,50 +1,43 @@
 import React from "react";
-import { ClipboardPaste, Globe, PanelLeft, Settings, TerminalSquare, Wrench } from "lucide-react";
+import { PanelLeft, Settings } from "lucide-react";
 import { SIDEBAR_WIDTH, useLayoutStore } from "@/store/layoutStore";
 import { useT } from "@/hooks/useT";
-import {
-  GridIcon, BookIcon, DocIcon, ChatIcon,
-  FeedIcon, MusicIcon, DshIcon, CalendarIcon,
-} from "@/components/ui/icons";
 import { Button } from "@/components/ui/button";
 import { useSettingsStore, type SidebarTabId } from "@/store/settingsStore";
+import { DEFAULT_SIDEBAR_TABS } from "@/store/settings/types";
 import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
 import { CommandBar } from "@/components/Layout/CommandBar";
 import type { NavPage } from "@/store/navStore";
 import { hostCapabilities } from "@/platform";
+import { getPageDefinition, type PageDefinition } from "@/pages/pageCatalog";
 import { useIsNarrow, useMediaQuery } from "@/components/Vocabulary/hooks/useMediaQuery";
 import { MobileNavDock, type DockNavItem } from "@/components/Layout/MobileNavDock";
+import { WorkspaceNavSection } from "@/components/Layout/WorkspaceNavSection";
+import { usePageDragSource } from "@/components/Workspaces/DropZones";
+import { usePointerDragSource } from "@/components/Workspaces/usePointerDragSource";
+import { useWorkspacesEnabled } from "@/pages/workspaceFeature";
 
 interface NavItemDef {
   id: SidebarTabId;
   label: string;
-  icon: React.FC<{ className?: string }>;
+  icon: React.ComponentType<{ className?: string }>;
   badge?: string;
   showCount?: "word";
 }
 
-const BASE_NAV_ITEM_DEFS: Omit<NavItemDef, "label">[] = [
-  { id: "dashboard", icon: GridIcon },
-  { id: "calendar", icon: CalendarIcon },
-  { id: "browser", icon: Globe },
-  { id: "documents", icon: DocIcon },
-  { id: "feeds", icon: FeedIcon },
-  { id: "reading", icon: ClipboardPaste },
-  { id: "vocabulary", icon: BookIcon },
-  { id: "chat", icon: ChatIcon },
-  { id: "music", icon: MusicIcon },
-  { id: "terminal", icon: TerminalSquare },
-  { id: "dsh", icon: DshIcon },
-  { id: "tools", icon: Wrench },
-];
-
-const NAV_ITEM_DEFS = BASE_NAV_ITEM_DEFS.filter((item) => {
-  if (item.id === "browser") return hostCapabilities.browser;
-  if (item.id === "music") return hostCapabilities.music;
-  if (item.id === "terminal") return hostCapabilities.terminal;
-  if (item.id === "dsh") return hostCapabilities.dsh;
-  return true;
-});
+/** Sidebar nav items derive from the central page catalog: the icon and the
+ *  capability gate come from each page's `PageDefinition`, so this file no
+ *  longer keeps a parallel list of icons and `hostCapabilities` checks that
+ *  have to be edited in lockstep with `App.tsx` (now `pageCatalog.tsx`).
+ *
+ *  `settings` is intentionally absent — it is pinned separately below the
+ *  customizable tabs so it stays reachable regardless of `visibleSidebarTabs`,
+ *  and the catalog's `settings` entry exists for full-page navigation, not for
+ *  the sidebar row list. */
+const NAV_ITEM_DEFS: Omit<NavItemDef, "label">[] = DEFAULT_SIDEBAR_TABS
+  .map((id) => getPageDefinition(id))
+  .filter((d): d is PageDefinition => !!d && (!d.capability || hostCapabilities[d.capability]))
+  .map((d) => ({ id: d.id as SidebarTabId, icon: d.icon }));
 
 /** Shared button chrome for both the customizable nav items and the pinned Settings
  *  entry below them, so active/collapsed styling stays in one place. */
@@ -55,13 +48,18 @@ function NavButton({
   active,
   collapsed,
   onClick,
+  dragSource,
 }: {
-  icon: React.FC<{ className?: string }>;
+  icon: React.ComponentType<{ className?: string }>;
   label: string;
   badge?: string;
   active: boolean;
   collapsed: boolean;
   onClick: () => void;
+  /** When provided, the item is draggable as a page source for workspace
+   *  drop zones. Only enabled when workspaces are on and the shell is in
+   *  edit mode (so normal click-to-navigate is not intercepted). */
+  dragSource?: ReturnType<typeof usePageDragSource>;
 }) {
   return (
     <Button
@@ -69,6 +67,7 @@ function NavButton({
       onClick={onClick}
       title={collapsed ? label : undefined}
       aria-current={active ? "page" : undefined}
+      {...(dragSource ?? {})}
       // The active item is marked, not filled. A dictionary marks the sense
       // you are reading with a rule in the margin rather than by shading the
       // whole line — and a rule leaves the label at full contrast, which a
@@ -118,6 +117,36 @@ function NavButton({
   );
 }
 
+/** A nav button that is also a draggable page source for workspaces. Split
+ *  out so the hooks (`usePageDragSource` + `usePointerDragSource`) run at the
+ *  top of a component, not inside a `.map` callback (rules of hooks). */
+function DraggableNavButton(props: {
+  item: NavItemDef;
+  active: boolean;
+  collapsed: boolean;
+  onClick: () => void;
+  canDrag: boolean;
+}) {
+  const dragSource = props.canDrag ? usePageDragSource(props.item.id) : undefined;
+  // The pointer path (touch/pen + custom preview) drops via the global
+  // PointerDropDispatcher, so the source's onDrop is a no-op.
+  const pointerSource = usePointerDragSource(props.item.id, () => {});
+  return (
+    <div {...(props.canDrag ? pointerSource : {})}>
+      <NavButton
+        key={props.item.id}
+        icon={props.item.icon}
+        label={props.item.label}
+        badge={props.item.badge}
+        active={props.active}
+        collapsed={props.collapsed}
+        onClick={props.onClick}
+        dragSource={dragSource}
+      />
+    </div>
+  );
+}
+
 interface MainLayoutProps {
   children: React.ReactNode;
   activeNav: string;
@@ -152,6 +181,13 @@ export function MainLayout({
   // a list of nine links is a poor trade, and the dock costs nothing at rest.
   const isTablet = useMediaQuery("(min-width: 768px) and (max-width: 1023px)");
   const compact = effectiveMode === "flexible" && (isNarrow || isTablet);
+  // Built-in sidebar pages become draggable sources only when workspaces are
+  // enabled and a workspace is the active destination — the plan's "become
+  // draggable on desktop" while a workspace is open. Outside that, the items
+  // stay plain click-to-navigate so page-level drag (editor handles) and
+  // selection are not intercepted.
+  const workspacesEnabled = useWorkspacesEnabled();
+  const canDragPages = workspacesEnabled && !compact;
   // Rendered in the user's drag-reordered sequence (from Settings' Sidebar
   // tabs grid), not NAV_ITEM_DEFS' declaration order — sidebarTabOrder covers
   // every tab id, so ids this host lacks capabilities for (absent from
@@ -211,16 +247,20 @@ export function MainLayout({
 
         <nav className="flex-1 flex flex-col px-2 py-1 space-y-0.5 overflow-y-auto overflow-x-hidden">
           {NAV_ITEMS.map((item) => (
-            <NavButton
+            <DraggableNavButton
               key={item.id}
-              icon={item.icon}
-              label={item.label}
-              badge={item.badge}
+              item={item}
               active={activeNav === item.id}
               collapsed={collapsed}
               onClick={() => onNavigate(item.id)}
+              canDrag={canDragPages}
             />
           ))}
+
+          {/* Custom workspaces (gated behind the feature flag). Sits between
+            * the built-in pages and the pinned Settings entry so it reads as
+            * a user-managed section rather than a built-in tab. */}
+          <WorkspaceNavSection collapsed={collapsed} />
 
           {/* Pinned below the customizable tabs — unlike NAV_ITEMS, always present
             * regardless of visibleSidebarTabs, since hiding it would leave the gear

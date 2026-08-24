@@ -452,10 +452,12 @@ describe("BrowserPanelManager cosmetics", () => {
       .toEqual({ stylesheet: "", script: "" });
   });
 
-  it("clears the cosmetics cache on disable", () => {
+  it("clears cosmetic and network decisions on disable", () => {
     const { manager, state } = setup();
     state.cosmeticsCache.set("https://site.test/", { stylesheet: ".ad{", script: "" });
+    state.adBlockCache.set("script|https://site.test|https://cdn.test/app.js", { block: true });
     manager.setAdBlockEnabled(false);
     expect(state.cosmeticsCache.size).toBe(0);
+    expect(state.adBlockCache.size).toBe(0);
   });
 });

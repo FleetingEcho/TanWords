@@ -86,7 +86,7 @@ export function ImageSetting({
         continue;
       }
       if (file.size > maxBytes) {
-        toast.error(t("settings.userAvatarTooLarge"));
+        toast.error(t("settings.imageTooLarge", { size: Math.floor(maxBytes / (1024 * 1024)) }));
         continue;
       }
       try {

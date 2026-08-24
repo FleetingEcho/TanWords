@@ -109,7 +109,12 @@ export class BrowserPanelManager {
 
   setAdBlockEnabled(enabled: boolean): void {
     for (const partition of [this.partition, PRIVATE_PARTITION]) {
-      stateFor(partition).adBlockEnabled = enabled;
+      const state = stateFor(partition);
+      // A decision belongs to the blocker configuration that produced it.
+      // Keeping it across a toggle can resurrect a stale false-positive when
+      // blocking is enabled again, even after the remote lists have refreshed.
+      if (state.adBlockEnabled !== enabled) state.adBlockCache.clear();
+      state.adBlockEnabled = enabled;
       if (enabled) void enableAdBlock(partition);
       else disableAdBlock(partition);
     }

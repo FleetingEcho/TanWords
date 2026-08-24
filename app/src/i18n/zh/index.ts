@@ -25,6 +25,7 @@ import { browser } from "./browser";
 import { floatingBrowser } from "./floatingBrowser";
 import { dsh } from "./dsh";
 import { updater } from "./updater";
+import { workspaces } from "./workspaces";
 
 export const zh: Dict = {
     ...common,
@@ -53,4 +54,5 @@ export const zh: Dict = {
     ...floatingBrowser,
     ...dsh,
     ...updater,
+    ...workspaces,
 };

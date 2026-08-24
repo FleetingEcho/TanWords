@@ -48,7 +48,7 @@ function BrowserToolbar({
   rightExtras?: React.ReactNode;
 }) {
   return (
-    <div className="flex h-12 shrink-0 items-center gap-1.5 overflow-hidden border-b border-border px-3">
+    <div className="flex h-12 shrink-0 items-center gap-1.5 overflow-x-auto overflow-y-hidden border-b border-border px-3 [&>button]:shrink-0">
       <Button variant="ghost" size="icon" onClick={onBack} disabled={!opened}
         className="h-8 w-8 text-muted-foreground" title={t("browser.back")} aria-label={t("browser.back")}>
         <ArrowLeft className="h-4 w-4" />
@@ -66,7 +66,7 @@ function BrowserToolbar({
         <Home className="h-4 w-4" />
       </Button>
 
-      <div className="relative mx-1 flex-1 min-w-0">
+      <div className="relative mx-1 min-w-40 flex-1">
         <Globe className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
         <input
           value={addressInput}
@@ -112,6 +112,17 @@ function DesktopBrowserPage() {
   const [confirmClear, setConfirmClear] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [askOpen, setAskOpen] = useState(false);
+
+  const toggleAdBlock = async () => {
+    const enabled = !adBlockEnabled;
+    setAdBlockEnabled(enabled);
+    // A page does not retry resources the previous blocker state already
+    // cancelled. Wait until main has installed/removed the request hook, then
+    // reload so switching the shield off actually repairs a broken page (and
+    // switching it on applies consistently to the current document).
+    await invoke("browser_set_adblock_enabled", { enabled }).catch(() => {});
+    if (opened) await reload();
+  };
 
   const adBlockEnabled = useSettingsStore((s) => s.browserAdBlockEnabled);
   const setAdBlockEnabled = useSettingsStore((s) => s.setBrowserAdBlockEnabled);
@@ -173,7 +184,7 @@ function DesktopBrowserPage() {
             </Button>
             <Button
               variant="ghost" size="icon"
-              onClick={() => setAdBlockEnabled(!adBlockEnabled)}
+              onClick={() => void toggleAdBlock()}
               className={`h-8 w-8 ${adBlockEnabled ? "text-emerald-500" : "text-muted-foreground"}`}
               title={adBlockEnabled ? t("browser.adBlockOn") : t("browser.adBlockOff")}
               aria-label={adBlockEnabled ? t("browser.adBlockOn") : t("browser.adBlockOff")}

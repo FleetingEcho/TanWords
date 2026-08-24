@@ -2,6 +2,17 @@ import "@testing-library/jest-dom/vitest";
 import { afterEach } from "vitest";
 import { __resetForTests } from "@/ipc/events";
 
+// The harness shell exports NODE_ENV=production, which makes React load its
+// production build — and the production build does not export `act`. That
+// breaks every @testing-library/react render with "React.act is not a
+// function". Tests need React's development build (which exports `act`), so
+// force the dev build here, before any test file imports React. setup.ts runs
+// first (it is in vitest's setupFiles), so react/index.js sees this value when
+// it is first required and selects react.development.js.
+if (process.env.NODE_ENV === "production") {
+  process.env.NODE_ENV = "test";
+}
+
 // Node 22's experimental webstorage exposes a `localStorage` global only when
 // `--localstorage-file` is passed. jsdom supplies its own Storage normally,
 // but with that flag absent the global can still be undefined and tests that

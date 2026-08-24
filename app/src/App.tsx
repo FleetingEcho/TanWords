@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect } from "react";
+import React, { useEffect } from "react";
 import { Toaster, toast } from "sonner";
 import { MainLayout } from "@/components/Layout/Sidebar";
 import { AppBackground } from "@/components/Layout/AppBackground";
@@ -9,6 +9,12 @@ import { useNavStore } from "@/store/navStore";
 import { useWordModalStore } from "@/store/wordModalStore";
 import { useToolsBallStore } from "@/store/toolsBallStore";
 import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
+import { usePageHostUiStore } from "@/store/pageHostUiStore";
+import { useWorkspaceStore } from "@/store/workspaceStore";
+import { PageHost } from "@/pages/PageHost";
+import { StartupReadySignal } from "@/pages/StartupReadySignal";
+import { WorkspaceScreen } from "@/components/Workspaces/WorkspaceScreen";
+import { DragLayer } from "@/components/Workspaces/DragLayer";
 import { useDB } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { useMcpSync } from "@/hooks/useMcpSync";
@@ -18,47 +24,23 @@ import { initProviders } from "@/lib/initProviders";
 import { invoke } from "@/ipc/backend";
 import { ENRICHED_SEED_WORDS, BASIC_SEED_WORDS } from "@/data/seedWords";
 import { LOCAL_DOCS_ROOT_KEY, localDocsRootExists } from "@/lib/localDocs";
-import { markStartupReady } from "@/lib/startupReady";
 import { isDesktopHost, isWebHost, hostCapabilities } from "@/platform";
 import * as auth from "@/platform/auth";
 
-/** Every page is code-split.
+/** Every page is code-split and reached through the central page catalog +
+ *  `PageHost`. Only the landing page's chunk is needed to paint; the rest —
+ *  the editor stack behind Documents, the chat providers, the charts on
+ *  Dashboard — stay out of the startup parse. They load on first navigation
+ *  through their catalog entry's `load`; there is no idle prefetch, so unused
+ *  routes do not keep their parser/runtime costs resident.
  *
- *  Only the landing page's chunk is needed to paint, so the rest — the editor
- *  stack behind Documents, the chat providers, the charts on Dashboard — stay
- *  out of the startup parse instead of riding along in the main chunk. The
- *  named exports are re-shaped to the default export React.lazy wants.
- *
- *  They load on first navigation; there is no idle prefetch, so unused routes
- *  do not keep their parser/runtime costs resident for the whole session. */
+ *  The overlays below are still mounted by the shell directly because they are
+ *  application-global (modals, the floating browser, the podcast bar) rather
+ *  than page destinations. */
 import { LockScreen } from "@/components/Layout/LockScreen";
 import { useAppLockStore } from "@/store/appLockStore";
 import { useServerCapabilitiesStore, useVoiceAssistantAvailable } from "@/store/serverCapabilitiesStore";
 
-const DashboardPage = React.lazy(() =>
-  import("@/components/Dashboard/DashboardPage").then((m) => ({ default: m.DashboardPage })));
-const CalendarPage = React.lazy(() =>
-  import("@/components/Calendar/CalendarPage").then((m) => ({ default: m.CalendarPage })));
-const VocabularyPage = React.lazy(() =>
-  import("@/components/Vocabulary/VocabularyPage").then((m) => ({ default: m.VocabularyPage })));
-const SettingsPage = React.lazy(() =>
-  import("@/components/Settings/SettingsPage").then((m) => ({ default: m.SettingsPage })));
-const DocumentsPage = React.lazy(() =>
-  import("@/components/Documents/DocumentsPage").then((m) => ({ default: m.DocumentsPage })));
-const FeedsPage = React.lazy(() =>
-  import("@/components/Feeds/FeedsPage").then((m) => ({ default: m.FeedsPage })));
-const AiChatPage = React.lazy(() =>
-  import("@/components/AiChat/AiChatPage").then((m) => ({ default: m.AiChatPage })));
-const ReadingPage = React.lazy(() =>
-  import("@/components/Reader/ReadingPage").then((m) => ({ default: m.ReadingPage })));
-const MusicPage = React.lazy(() => import("@/components/Music/MusicPage"));
-const BrowserPage = React.lazy(() => import("@/components/Browser/BrowserPage"));
-const ToolsPage = React.lazy(() =>
-  import("@/components/Tools/ToolsPage").then((m) => ({ default: m.ToolsPage })));
-const TerminalPage = React.lazy(() =>
-  import("@/components/Terminal/TerminalPage").then((m) => ({ default: m.TerminalPage })));
-const DshPage = React.lazy(() =>
-  import("@/components/Dsh/DshPage").then((m) => ({ default: m.DshPage })));
 const WordDetailModal = React.lazy(() =>
   import("@/components/WordDetailModal").then((m) => ({ default: m.WordDetailModal })));
 const ToolsModal = React.lazy(() =>
@@ -72,30 +54,12 @@ const SelectionAsk = React.lazy(() =>
 const VoiceOverlay = React.lazy(() =>
   import("@/components/VoiceAssistant/VoiceOverlay").then((m) => ({ default: m.VoiceOverlay })));
 
-const PageFallback = () => (
-  <div className="h-full flex items-center justify-center">
-    <div className="w-8 h-8 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
-  </div>
-);
-
 // Web notifications belong above mobile browser chrome and the floating dock;
 // the desktop shell keeps its established lower-right placement.
 const APP_TOAST_POSITION = isWebHost ? "top-center" : "bottom-right";
 
 function AppToaster() {
   return <Toaster position={APP_TOAST_POSITION} richColors closeButton />;
-}
-
-/** Mounted only inside a fully committed startup destination. The splash reads
- * both the durable dataset flag and this event, so it cannot miss readiness if
- * this layout effect runs before its passive listener is attached. Keeping the
- * signal inside Suspense means a lazy route's loading spinner is never mistaken
- * for the real first screen. */
-function StartupReadySignal() {
-  useLayoutEffect(() => {
-    markStartupReady();
-  }, []);
-  return null;
 }
 
 type AuthState = "checking" | "ready" | "login";
@@ -105,34 +69,25 @@ function App() {
   const settingsLoaded = useSettingsStore((s) => s.isLoaded);
   const db = useDB();
   const t = useT();
-  const { currentPage, currentWordId, navigate } = useNavStore();
-  const chatSessionId = useNavStore((s) => s.chatSessionId);
-  const sentenceId = useNavStore((s) => s.sentenceId);
+  const { currentPage, navigate } = useNavStore();
   const wordModalWord = useWordModalStore((s) => s.word);
   const toolsModalOpen = useToolsBallStore((s) => s.isOpen);
   const podcastVisible = usePodcastPlayerStore((s) => s.status !== "idle" && !!s.track);
   const voiceAssistantAvailable = useVoiceAssistantAvailable();
+  // Workspace shell hooks. These must run on every render (not after the
+  // auth/lock early returns below) — calling hooks only on the authenticated
+  // path changes the hook count between renders and trips React's
+  // rules-of-hooks check ("Rendered more hooks than during the previous
+  // render"). `activeWorkspaceId` decides whether the workspace screen or the
+  // full-page host is visible; the host itself stays mounted so retained
+  // Terminal and DSH sessions keep running. `terminalMaximized` drives
+  // immersive mode.
+  const activeWorkspaceId = useNavStore((s) => s.activeWorkspaceId);
+  const terminalMaximized = usePageHostUiStore((s) => s.terminalMaximized);
 
   const [authState, setAuthState] = React.useState<AuthState>(isWebHost ? "checking" : "ready");
   const [wordCount, setWordCount] = React.useState(0);
   const [selectionToolsReady, setSelectionToolsReady] = React.useState(false);
-  // Lazy-load Tools on first use, then retain in-progress utility state while
-  // the user visits another route.
-  const toolsVisited = React.useRef(false);
-  // Like an editor buffer, a terminal route is hidden rather than destroyed
-  // during ordinary navigation. Explicit Back/last-tab close remains the
-  // lifecycle boundary that tears down its PTYs.
-  const terminalVisited = React.useRef(false);
-  const [terminalMaximized, setTerminalMaximized] = React.useState(false);
-  const closeTerminalPage = React.useCallback(() => {
-    terminalVisited.current = false;
-    setTerminalMaximized(false);
-    navigate("dashboard");
-  }, [navigate]);
-  // The DSH page is likewise retained once visited: its supervised Web host
-  // stays running and its embedded view is merely hidden while the user is
-  // on another page, so DSH's in-memory session state survives navigation.
-  const dshVisited = React.useRef(false);
 
   // Selection/Ask pulls in gesture handling, AI actions and its answer panel,
   // but renders nothing until the user selects text. Keep it out of the first
@@ -202,6 +157,16 @@ function App() {
       else window.clearTimeout(idle as number);
     };
   }, [authState, loadFromDB]);
+
+  // Load the durable workspace collection and reconcile it with the
+  // synchronous cache, so custom workspaces survive restart. Runs once the
+  // session is ready, alongside the settings load. Harmless when the feature
+  // flag is off (the collection may be empty); the sidebar only renders the
+  // workspace section when the flag is on.
+  useEffect(() => {
+    if (!isDesktopHost || authState !== "ready") return;
+    void useWorkspaceStore.getState().init();
+  }, [authState]);
 
   // The local Documents folder is a device path, while settings may live in a
   // database shared by Linux, macOS, and other machines. Silently discard a
@@ -371,102 +336,28 @@ function App() {
   }
 
   const page = currentPage();
-  if (page === "tools") toolsVisited.current = true;
   const isTerminalRoute = page === "terminal" && hostCapabilities.terminal;
-  if (isTerminalRoute) terminalVisited.current = true;
   const isDshRoute = page === "dsh" && hostCapabilities.dsh;
-  if (isDshRoute) dshVisited.current = true;
-  const wordId = currentWordId();
-  // Dashboard owns startup readiness because its first useful paint depends on
-  // a real DB query (including Postgres connection setup when configured). Web
-  // falls back to Dashboard for desktop-only routes, so those must wait too.
-  const dashboardOwnsStartupReadiness = page === "dashboard"
-    || (!isDesktopHost && page === "music")
-    || (!hostCapabilities.browser && page === "browser")
-    || (!hostCapabilities.terminal && page === "terminal")
-    || (!hostCapabilities.dsh && page === "dsh");
-
-  const renderPage = () => {
-    switch (page) {
-      case "dashboard":
-        return <DashboardPage />;
-      case "calendar":
-        return <CalendarPage />;
-      case "reading":
-        return <ReadingPage />;
-      case "music":
-        return isDesktopHost ? <MusicPage /> : <DashboardPage />;
-      case "browser":
-        // Gated, not just hidden from the sidebar: a persisted nav state or a
-        // deep link could still land here on a host without the capability.
-        return hostCapabilities.browser ? <BrowserPage /> : <DashboardPage />;
-      case "vocabulary":
-        return <VocabularyPage initialWordId={wordId} initialSentenceId={sentenceId} />;
-      case "documents":
-        return <DocumentsPage />;
-      case "chat":
-        return <AiChatPage initialSessionId={chatSessionId} />;
-      case "settings":
-        return <SettingsPage />;
-      case "tools":
-        // Tools owns a retained host below so an in-progress utility does not
-        // reset during ordinary navigation.
-        return null;
-      case "terminal":
-        // Terminal owns a persistent host below. A build/host that lacks the
-        // capability (none, currently — web runs a sandboxed shell instead of
-        // a real one) still safely falls back to Dashboard on a stale route.
-        return hostCapabilities.terminal ? null : <DashboardPage />;
-      case "dsh":
-        // DSH owns a persistent host below. Web builds can't spawn the local
-        // `dsh` host, so a stale route falls back to Dashboard.
-        return hostCapabilities.dsh ? null : <DashboardPage />;
-      case "feeds":
-      default:
-        return <FeedsPage />;
-    }
-  };
+  const workspaceActive = isDesktopHost && !!activeWorkspaceId;
+  // Terminal's embedded "maximize" removes app chrome without invoking the
+  // fragile browser fullscreen API or unmounting the live PTY. The state lives
+  // in `pageHostUiStore` (written by the Terminal adapter, read above with the
+  // other unconditional hooks) so the shell can compute `immersive`/
+  // `disableBlur` without a prop threaded back up through `PageHost`.
+  const immersive = !workspaceActive && isTerminalRoute && terminalMaximized;
 
   return (
     <>
-    <AppBackground disableBlur={isTerminalRoute || isDshRoute} />
+    <AppBackground disableBlur={!workspaceActive && (isTerminalRoute || isDshRoute)} />
+    {isDesktopHost && <DragLayer />}
     <MainLayout
       activeNav={page}
       onNavigate={(id) => navigate(id as any)}
       wordCount={wordCount}
-      immersive={isTerminalRoute && terminalMaximized}
+      immersive={immersive}
     >
-      {terminalVisited.current && hostCapabilities.terminal && (
-        <React.Suspense fallback={isTerminalRoute ? <PageFallback /> : null}>
-          <TerminalPage
-            visible={isTerminalRoute}
-            maximized={terminalMaximized}
-            onMaximizedChange={setTerminalMaximized}
-            onClose={closeTerminalPage}
-          />
-          {isTerminalRoute && <StartupReadySignal />}
-        </React.Suspense>
-      )}
-      {toolsVisited.current && (
-        <React.Suspense fallback={page === "tools" ? <PageFallback /> : null}>
-          <ToolsPage visible={page === "tools"} />
-          {page === "tools" && <StartupReadySignal />}
-        </React.Suspense>
-      )}
-      {dshVisited.current && hostCapabilities.dsh && (
-        <React.Suspense fallback={isDshRoute ? <PageFallback /> : null}>
-          <DshPage visible={isDshRoute} />
-          {isDshRoute && <StartupReadySignal />}
-        </React.Suspense>
-      )}
-      {page !== "tools" && !isTerminalRoute && !isDshRoute && (
-        /* Keyed on the page so switching ordinary pages shows the spinner.
-           Retained workspaces are hosted separately above. */
-        <React.Suspense key={page} fallback={<PageFallback />}>
-          {renderPage()}
-          {!dashboardOwnsStartupReadiness && <StartupReadySignal />}
-        </React.Suspense>
-      )}
+      <PageHost activePage={page} visible={!workspaceActive} />
+      {workspaceActive && <WorkspaceScreen />}
     </MainLayout>
     {wordModalWord && (
       <React.Suspense fallback={null}>
@@ -483,7 +374,7 @@ function App() {
         <ToolsModal />
       </React.Suspense>
     )}
-    {podcastVisible && !(isTerminalRoute && terminalMaximized) && (
+    {podcastVisible && !immersive && (
       <React.Suspense fallback={null}>
         <PodcastPlayerBar />
       </React.Suspense>

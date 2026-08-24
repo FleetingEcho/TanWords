@@ -6,7 +6,7 @@ import type { NavPage } from "@/store/navStore";
 export interface DockNavItem {
   id: NavPage;
   label: string;
-  icon: React.FC<{ className?: string }>;
+  icon: React.ComponentType<{ className?: string }>;
 }
 
 const BUBBLE = 46;

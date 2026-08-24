@@ -475,10 +475,12 @@ export async function enableAdBlock(partition: string): Promise<void> {
 
 export function disableAdBlock(partition: string): void {
   const state = stateFor(partition);
-  // Drop the cosmetics prewarm cache first, unconditionally — the listener
-  // below may never have been registered (e.g. a toggle before the first
-  // enable landed), but stale cosmetics must not survive a re-enable.
+  // Drop both caches first, unconditionally — the listener below may never
+  // have been registered (e.g. a toggle before the first enable landed), but
+  // decisions made by an old filter engine/configuration must not survive a
+  // re-enable and keep breaking a resource the refreshed rules now allow.
   state.cosmeticsCache.clear();
+  state.adBlockCache.clear();
   if (!state.adBlockRegistered) return;
   // onBeforeRequest(null) removes *all* listeners for that event on the
   // session — fine here, the panel session has no other onBeforeRequest
