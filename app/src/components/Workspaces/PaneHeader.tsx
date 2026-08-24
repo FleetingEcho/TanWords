@@ -7,13 +7,14 @@ import { useWorkspaceStore } from "@/store/workspaceStore";
 import { getPageDefinition } from "@/pages/pageCatalog";
 import { Button } from "@/components/ui/button";
 import { usePageDragSource } from "./DropZones";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 
 /** The pane header: a draggable page title plus replace, maximize, and close
  *  actions. Workspace-level split controls provide the non-drag layout path.
  *
- *  Maximize/restore is always available because it is a viewing action. The
- *  destructive actions appear only in Edit mode; dragging the compact title
- *  handle and maximizing remain available during ordinary use. */
+ *  Maximize/restore is always available because it is a viewing action.
+ *  Replacement appears in Edit mode; closing remains available during normal
+ *  use but requires confirmation for a populated widget. */
 export interface PaneHeaderProps {
   paneId: string;
   content: PageInstance | null;
@@ -25,6 +26,7 @@ export interface PaneHeaderProps {
 
 export function PaneHeader({ paneId, content, active, editMode, focused, onAddPage }: PaneHeaderProps) {
   const t = useT();
+  const [closeConfirmOpen, setCloseConfirmOpen] = React.useState(false);
   const closePane = useWorkspaceStore((s) => s.closePane);
   const setFocus = useWorkspaceStore((s) => s.setFocus);
   const setSelectedPane = useWorkspaceStore((s) => s.setSelectedPane);
@@ -39,8 +41,9 @@ export function PaneHeader({ paneId, content, active, editMode, focused, onAddPa
   const dragSource = usePageDragSource(content?.pageId ?? null, content ? paneId : undefined);
 
   return (
+    <>
     <div
-      className={`flex items-center gap-1 px-2 h-8 shrink-0 border-b text-xs select-none ${
+      className={`relative z-1 flex items-center gap-1 px-2 h-8 shrink-0 border-b text-xs select-none ${
         active || focused
           ? "border-primary/30 bg-primary/5 text-foreground"
           : "border-[hsl(var(--sidebar-border))] bg-[hsl(var(--muted))/40] text-muted-foreground"
@@ -68,9 +71,25 @@ export function PaneHeader({ paneId, content, active, editMode, focused, onAddPa
         />
       )}
       {(content || canCollapseEmptyPane) && (
-        <HeaderButton title={t("workspaces.pane.close")} onClick={() => closePane(paneId)} icon={<X className="h-3.5 w-3.5" />} />
+        <HeaderButton
+          title={t("workspaces.pane.close")}
+          onClick={() => content ? setCloseConfirmOpen(true) : closePane(paneId)}
+          icon={<X className="h-3.5 w-3.5" />}
+        />
       )}
     </div>
+    <ConfirmModal
+      open={closeConfirmOpen}
+      title={t("workspaces.pane.close")}
+      message={t("workspaces.pane.closeConfirm")}
+      confirmLabel={t("workspaces.pane.close")}
+      onCancel={() => setCloseConfirmOpen(false)}
+      onConfirm={() => {
+        closePane(paneId);
+        setCloseConfirmOpen(false);
+      }}
+    />
+    </>
   );
 }
 

@@ -42,6 +42,9 @@ interface NavState {
   wordId?: number;
   sentenceId?: number;
   settingsSection?: SettingsSection;
+  /** Settings is an overlay, not a page destination, so opening it preserves
+   *  the current page or workspace underneath. */
+  settingsOpen: boolean;
   /** Session the chat page should open on mount — set by openChatSession
    *  (e.g. the AI chat modal's expand button), cleared by ordinary navigate. */
   chatSessionId?: string;
@@ -57,6 +60,7 @@ interface NavState {
   currentDestination: () => NavDestination;
 
   navigate: (page: NavPage, wordId?: number, settingsSection?: SettingsSection) => void;
+  closeSettings: () => void;
   openVocabularySentence: (sentenceId: number) => void;
   openVocabularyPatterns: () => void;
   openChatSession: (sessionId?: string) => void;
@@ -73,6 +77,7 @@ export const useNavStore = create<NavState>((set, get) => ({
   wordId: undefined,
   sentenceId: undefined,
   settingsSection: undefined,
+  settingsOpen: false,
   chatSessionId: undefined,
   activeWorkspaceId: null,
 
@@ -86,13 +91,20 @@ export const useNavStore = create<NavState>((set, get) => ({
       : { kind: "page", page: s.page };
   },
 
-  navigate: (page, wordId, settingsSection) => set({
-    page, wordId, sentenceId: undefined, settingsSection, chatSessionId: undefined,
-    activeWorkspaceId: null,
-  }),
-  openVocabularySentence: (sentenceId) => set({ page: "vocabulary", wordId: undefined, sentenceId, settingsSection: undefined, chatSessionId: undefined, activeWorkspaceId: null }),
-  openVocabularyPatterns: () => set({ page: "vocabulary", wordId: undefined, sentenceId: 0, settingsSection: undefined, chatSessionId: undefined, activeWorkspaceId: null }),
-  openChatSession: (sessionId) => set({ page: "chat", wordId: undefined, sentenceId: undefined, settingsSection: undefined, chatSessionId: sessionId, activeWorkspaceId: null }),
-  openWorkspace: (workspaceId) => set({ activeWorkspaceId: workspaceId }),
+  navigate: (page, wordId, settingsSection) => {
+    if (page === "settings") {
+      set({ settingsOpen: true, settingsSection });
+      return;
+    }
+    set({
+      page, wordId, sentenceId: undefined, settingsSection: undefined, settingsOpen: false,
+      chatSessionId: undefined, activeWorkspaceId: null,
+    });
+  },
+  closeSettings: () => set({ settingsOpen: false, settingsSection: undefined }),
+  openVocabularySentence: (sentenceId) => set({ page: "vocabulary", wordId: undefined, sentenceId, settingsSection: undefined, settingsOpen: false, chatSessionId: undefined, activeWorkspaceId: null }),
+  openVocabularyPatterns: () => set({ page: "vocabulary", wordId: undefined, sentenceId: 0, settingsSection: undefined, settingsOpen: false, chatSessionId: undefined, activeWorkspaceId: null }),
+  openChatSession: (sessionId) => set({ page: "chat", wordId: undefined, sentenceId: undefined, settingsSection: undefined, settingsOpen: false, chatSessionId: sessionId, activeWorkspaceId: null }),
+  openWorkspace: (workspaceId) => set({ activeWorkspaceId: workspaceId, settingsOpen: false, settingsSection: undefined }),
   closeWorkspace: () => set({ activeWorkspaceId: null }),
 }));

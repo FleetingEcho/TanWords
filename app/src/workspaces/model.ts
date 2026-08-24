@@ -13,6 +13,26 @@ import type { NavPage } from "@/store/navStore";
 
 export const WORKSPACE_SCHEMA_VERSION = 1;
 
+export interface WorkspaceAppearance {
+  /** Backdrop blur behind each widget surface, in CSS pixels. */
+  blur: number;
+  /** Widget background tint opacity, from fully transparent to opaque. */
+  opacity: number;
+}
+
+export const DEFAULT_WORKSPACE_APPEARANCE: WorkspaceAppearance = { blur: 0, opacity: 100 };
+
+export function normalizeWorkspaceAppearance(value: unknown): WorkspaceAppearance {
+  const candidate = value && typeof value === "object" ? value as Partial<WorkspaceAppearance> : {};
+  const blur = typeof candidate.blur === "number" && Number.isFinite(candidate.blur)
+    ? Math.min(30, Math.max(0, Math.round(candidate.blur)))
+    : DEFAULT_WORKSPACE_APPEARANCE.blur;
+  const opacity = typeof candidate.opacity === "number" && Number.isFinite(candidate.opacity)
+    ? Math.min(100, Math.max(0, Math.round(candidate.opacity)))
+    : DEFAULT_WORKSPACE_APPEARANCE.opacity;
+  return { blur, opacity };
+}
+
 /** A hosted page instance inside a pane. Singleton pages are relocated rather
  *  than cloned, so at most one pane in the whole document (across all
  *  workspaces) carries a given singleton page — that cross-document rule is
@@ -44,6 +64,9 @@ export interface WorkspaceDocument {
   schemaVersion: typeof WORKSPACE_SCHEMA_VERSION;
   id: string;
   title: string;
+  /** Optional only for compatibility with workspaces saved before appearance
+   *  controls existed; decoding and every new document fill in the default. */
+  appearance?: WorkspaceAppearance;
   root: LayoutNode;
   createdAt: string;
   updatedAt: string;

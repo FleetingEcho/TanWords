@@ -5,6 +5,8 @@ import {
   type PageInstance,
   type SplitAxis,
   WORKSPACE_SCHEMA_VERSION,
+  DEFAULT_WORKSPACE_APPEARANCE,
+  normalizeWorkspaceAppearance,
   clampRatio,
   MAX_DEPTH,
 } from "./model";
@@ -60,6 +62,7 @@ export function emptyWorkspace(title: string = "", id?: string): WorkspaceDocume
     schemaVersion: WORKSPACE_SCHEMA_VERSION,
     id: id ?? newWorkspaceId(),
     title,
+    appearance: { ...DEFAULT_WORKSPACE_APPEARANCE },
     root: { kind: "pane", id: newPaneId(), content: null },
     createdAt: now,
     updatedAt: now,
@@ -141,12 +144,14 @@ export function normalizeDocument(doc: unknown): WorkspaceDocument {
   const root = normalizeNode(d.root, seenIds);
   const id = typeof d.id === "string" && d.id ? d.id : newWorkspaceId();
   const title = typeof d.title === "string" ? d.title : "";
+  const appearance = normalizeWorkspaceAppearance(d.appearance);
   const createdAt = typeof d.createdAt === "string" ? d.createdAt : now;
   const updatedAt = typeof d.updatedAt === "string" ? d.updatedAt : now;
   return {
     schemaVersion: WORKSPACE_SCHEMA_VERSION,
     id,
     title,
+    appearance,
     root,
     createdAt,
     updatedAt,

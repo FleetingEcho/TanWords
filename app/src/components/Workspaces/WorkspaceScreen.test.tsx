@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { useWorkspaceStore, isPageAvailableOnHost } from "@/store/workspaceStore";
 import { useNavStore } from "@/store/navStore";
 import { WorkspaceScreen } from "./WorkspaceScreen";
@@ -88,7 +88,7 @@ describe("WorkspaceScreen", () => {
     expect(useWorkspaceStore.getState().recoveredFromCorrupt).toBe(false);
   });
 
-  it("places a page via the picker, then closes the pane back to empty", async () => {
+  it("confirms before closing a widget, then returns the pane to empty", async () => {
     const id = useWorkspaceStore.getState().create("My ws");
     useNavStore.getState().openWorkspace(id);
     render(<WorkspaceScreen />);
@@ -96,10 +96,48 @@ describe("WorkspaceScreen", () => {
     fireEvent.click(screen.getByText("Dashboard"));
     // Dashboard is now hosted in the pane (lazy stub resolves async).
     await waitFor(() => expect(screen.getByTestId("dashboard-page")).toBeInTheDocument());
-    // Close is always available; removing a widget does not require Edit mode.
+    // Close is always available, but removing a populated widget is destructive
+    // enough to require an explicit confirmation.
     fireEvent.click(screen.getByLabelText("Close pane"));
+    expect(screen.getByTestId("dashboard-page")).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/Close this widget/)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close pane" }));
     // Closing the last pane resets to an inline card picker.
     expect(screen.getByRole("button", { name: "Dashboard" })).toBeInTheDocument();
+  });
+
+  it("renders the workspace title bar at half-height", () => {
+    const id = useWorkspaceStore.getState().create("Compact bar");
+    useNavStore.getState().openWorkspace(id);
+    render(<WorkspaceScreen />);
+
+    expect(screen.getByLabelText("Back").parentElement).toHaveClass("h-6");
+  });
+
+  it("changes and persists widget blur and background opacity from the toolbar", () => {
+    const id = useWorkspaceStore.getState().create("Glass workspace");
+    useNavStore.getState().openWorkspace(id);
+    const { container } = render(<WorkspaceScreen />);
+
+    fireEvent.click(screen.getByLabelText("Widget appearance"));
+    fireEvent.change(screen.getByLabelText("Blur"), { target: { value: "14" } });
+    fireEvent.change(screen.getByLabelText("Opacity"), { target: { value: "42" } });
+
+    expect(useWorkspaceStore.getState().activeWorkspace()?.appearance).toEqual({ blur: 14, opacity: 42 });
+    const pane = container.querySelector<HTMLElement>("[data-pane-id]")!;
+    expect(pane).toHaveAttribute("data-widget-blur", "14");
+    expect(pane).toHaveAttribute("data-widget-opacity", "42");
+    expect(pane).not.toHaveStyle({ opacity: "0.42" });
+    const surface = pane.querySelector<HTMLElement>("[data-workspace-widget-surface]")!;
+    expect(surface.style.backdropFilter).toBe("blur(14px)");
+    expect(surface.style.backgroundColor).toContain("0.42");
+    expect(pane.querySelector("[data-workspace-widget-content]")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Opacity"), { target: { value: "0" } });
+    expect(pane).not.toHaveStyle({ opacity: "0" });
+    expect(pane).toHaveAttribute("data-widget-opacity", "0");
+    expect(surface.style.backgroundColor).toContain("0");
   });
 
   it("replaces a populated pane from its header action", async () => {

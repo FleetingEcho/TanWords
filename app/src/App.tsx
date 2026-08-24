@@ -26,6 +26,7 @@ import { ENRICHED_SEED_WORDS, BASIC_SEED_WORDS } from "@/data/seedWords";
 import { LOCAL_DOCS_ROOT_KEY, localDocsRootExists } from "@/lib/localDocs";
 import { isDesktopHost, isWebHost, hostCapabilities } from "@/platform";
 import * as auth from "@/platform/auth";
+import { resolveShellActiveNav } from "@/components/Layout/shellNavigation";
 
 /** Every page is code-split and reached through the central page catalog +
  *  `PageHost`. Only the landing page's chunk is needed to paint; the rest —
@@ -53,6 +54,8 @@ const SelectionAsk = React.lazy(() =>
   import("@/components/shared/SelectionAsk").then((m) => ({ default: m.SelectionAsk })));
 const VoiceOverlay = React.lazy(() =>
   import("@/components/VoiceAssistant/VoiceOverlay").then((m) => ({ default: m.VoiceOverlay })));
+const SettingsModal = React.lazy(() =>
+  import("@/components/Settings/SettingsModal").then((m) => ({ default: m.SettingsModal })));
 
 // Web notifications belong above mobile browser chrome and the floating dock;
 // the desktop shell keeps its established lower-right placement.
@@ -83,6 +86,7 @@ function App() {
   // Terminal and DSH sessions keep running. `terminalMaximized` drives
   // immersive mode.
   const activeWorkspaceId = useNavStore((s) => s.activeWorkspaceId);
+  const settingsOpen = useNavStore((s) => s.settingsOpen);
   const terminalMaximized = usePageHostUiStore((s) => s.terminalMaximized);
 
   const [authState, setAuthState] = React.useState<AuthState>(isWebHost ? "checking" : "ready");
@@ -351,7 +355,7 @@ function App() {
     <AppBackground disableBlur={!workspaceActive && (isTerminalRoute || isDshRoute)} />
     {isDesktopHost && <DragLayer />}
     <MainLayout
-      activeNav={page}
+      activeNav={resolveShellActiveNav(page, workspaceActive, settingsOpen) ?? ""}
       onNavigate={(id) => navigate(id as any)}
       wordCount={wordCount}
       immersive={immersive}
@@ -387,6 +391,11 @@ function App() {
     {voiceAssistantAvailable && (
       <React.Suspense fallback={null}>
         <VoiceOverlay />
+      </React.Suspense>
+    )}
+    {settingsOpen && (
+      <React.Suspense fallback={null}>
+        <SettingsModal />
       </React.Suspense>
     )}
     {/* Still mounted during `unlocking`: the app underneath has now had a

@@ -7,6 +7,7 @@ beforeEach(() => {
     wordId: undefined,
     sentenceId: undefined,
     settingsSection: undefined,
+    settingsOpen: false,
     chatSessionId: undefined,
     activeWorkspaceId: null,
   });
@@ -35,6 +36,27 @@ describe("navStore destination", () => {
     const dest = useNavStore.getState().currentDestination();
     expect(dest).toEqual({ kind: "page", page: "chat" });
     expect(useNavStore.getState().activeWorkspaceId).toBeNull();
+  });
+
+  it("opens Settings as an overlay without leaving the current workspace", () => {
+    useNavStore.getState().navigate("documents");
+    useNavStore.getState().openWorkspace("ws-1");
+
+    useNavStore.getState().navigate("settings", undefined, "data");
+
+    expect(useNavStore.getState()).toMatchObject({
+      page: "documents",
+      activeWorkspaceId: "ws-1",
+      settingsOpen: true,
+      settingsSection: "data",
+    });
+    useNavStore.getState().closeSettings();
+    expect(useNavStore.getState()).toMatchObject({
+      page: "documents",
+      activeWorkspaceId: "ws-1",
+      settingsOpen: false,
+      settingsSection: undefined,
+    });
   });
 
   it("closeWorkspace leaves the workspace without changing the remembered page", () => {

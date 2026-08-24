@@ -63,6 +63,33 @@ describe("settingsStore database hydration", () => {
     expect(useSettingsStore.getInitialState().terminalFontSize).toBe(16);
   });
 
+  it("shows only Dashboard, RSS, Terminal, and DSH in a fresh navigator", async () => {
+    invoke.mockResolvedValue(null);
+
+    await useSettingsStore.getState().loadFromDB();
+
+    expect(useSettingsStore.getState().visibleSidebarTabs).toEqual([
+      "dashboard", "feeds", "terminal", "dsh",
+    ]);
+    expect(invoke).toHaveBeenCalledWith("db_set_setting", {
+      key: "visible_sidebar_tabs",
+      value: JSON.stringify(["dashboard", "feeds", "terminal", "dsh"]),
+    });
+  });
+
+  it("preserves a saved navigator selection without re-enabling hidden pages", async () => {
+    invoke.mockImplementation(async (command: string, args?: { key?: string }) => {
+      if (command === "db_get_setting" && args?.key === "visible_sidebar_tabs") {
+        return JSON.stringify(["dashboard", "reading"]);
+      }
+      return null;
+    });
+
+    await useSettingsStore.getState().loadFromDB();
+
+    expect(useSettingsStore.getState().visibleSidebarTabs).toEqual(["dashboard", "reading"]);
+  });
+
   it("restores the saved app background visibility", async () => {
     invoke.mockImplementation(async (command: string, args?: { key?: string }) => {
       if (command === "db_get_setting" && args?.key === "app_background_visible") {

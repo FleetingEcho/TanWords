@@ -23,12 +23,16 @@ export const workspaces: Dict = {
   "workspaces.recoveredDismiss": "Dismiss",
   "workspaces.edit": "Edit",
   "workspaces.done": "Done",
+  "workspaces.appearance": "Widget appearance",
+  "workspaces.appearance.blur": "Blur",
+  "workspaces.appearance.opacity": "Opacity",
   // Pane header
   "workspaces.pane.splitRight": "Split right",
   "workspaces.pane.splitBelow": "Split below",
   "workspaces.pane.maximize": "Maximize pane",
   "workspaces.pane.restore": "Restore panes",
   "workspaces.pane.close": "Close pane",
+  "workspaces.pane.closeConfirm": "Close this widget? Its page will keep its data, but it will be removed from this workspace.",
   "workspaces.pane.replace": "Replace page",
   // Blank workspace screen
   "workspaces.blank.title": "Empty workspace",

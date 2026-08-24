@@ -21,12 +21,16 @@ export const workspaces: Dict = {
   "workspaces.recoveredDismiss": "知道了",
   "workspaces.edit": "编辑",
   "workspaces.done": "完成",
+  "workspaces.appearance": "小组件外观",
+  "workspaces.appearance.blur": "模糊",
+  "workspaces.appearance.opacity": "不透明度",
   // Pane header
   "workspaces.pane.splitRight": "向右拆分",
   "workspaces.pane.splitBelow": "向下拆分",
   "workspaces.pane.maximize": "最大化窗格",
   "workspaces.pane.restore": "还原窗格",
   "workspaces.pane.close": "关闭窗格",
+  "workspaces.pane.closeConfirm": "关闭此小组件？页面数据会保留，但它将从此工作区中移除。",
   "workspaces.pane.replace": "替换页面",
   // Blank workspace screen
   "workspaces.blank.title": "空白工作区",

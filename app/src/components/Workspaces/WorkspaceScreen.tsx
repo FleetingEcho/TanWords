@@ -1,5 +1,5 @@
 import React from "react";
-import { AlertTriangle, ArrowLeft, Pencil, RotateCcw, SplitSquareHorizontal, SplitSquareVertical, Undo2, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Droplets, Pencil, RotateCcw, SplitSquareHorizontal, SplitSquareVertical, Undo2, X } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { MAX_WORKSPACE_PANES, useWorkspaceStore } from "@/store/workspaceStore";
 import { useNavStore } from "@/store/navStore";
@@ -11,14 +11,16 @@ import { collectPaneIds, findPane } from "@/workspaces/normalization";
 import type { LayoutNode } from "@/workspaces/model";
 import { DragLayer } from "./DragLayer";
 import { PointerDropDispatcher } from "./PointerDropDispatcher";
+import { DEFAULT_WORKSPACE_APPEARANCE, normalizeWorkspaceAppearance } from "@/workspaces/model";
 
 /** The workspace screen: the title bar (back, name, edit/done, reset, undo)
  *  and the recursive split layout filling the workspace.
  *
  *  Split controls live here and target the last selected pane. Widget title
- *  handles can always be dragged; Edit mode gates destructive replace/close,
- *  reset, and undo actions. Focus mode (a pane fills the workspace while the
- *  tree is retained) is driven from a pane header and rendered by `SplitLayout`.
+ *  handles can always be dragged; Edit mode gates replace, reset, and undo
+ *  actions, while closing a populated widget requires confirmation. Focus
+ *  mode (a pane fills the workspace while the tree is retained) is driven
+ *  from a pane header and rendered by `SplitLayout`.
  *
  *  Compact mode (one pane at a time with a switcher) is Phase 3 step 4; this
  *  screen renders the desktop split tree for now and defers the compact
@@ -36,6 +38,7 @@ export function WorkspaceScreen() {
   const reset = useWorkspaceStore((s) => s.reset);
   const undo = useWorkspaceStore((s) => s.undo);
   const rename = useWorkspaceStore((s) => s.rename);
+  const setAppearance = useWorkspaceStore((s) => s.setAppearance);
   const undoCheckpoint = useWorkspaceStore((s) => s.undoCheckpoint);
   const recoveredFromCorrupt = useWorkspaceStore((s) => s.recoveredFromCorrupt);
   const acknowledgeRecovery = useWorkspaceStore((s) => s.acknowledgeRecovery);
@@ -45,6 +48,7 @@ export function WorkspaceScreen() {
 
   const [renaming, setRenaming] = React.useState(false);
   const [draftTitle, setDraftTitle] = React.useState("");
+  const [appearanceControlsOpen, setAppearanceControlsOpen] = React.useState(false);
 
   if (!ws) return null;
 
@@ -55,6 +59,7 @@ export function WorkspaceScreen() {
       ? focusedPaneId!
       : paneIds[0];
   const splitDisabled = paneIds.length >= MAX_WORKSPACE_PANES || !splitTarget;
+  const appearance = normalizeWorkspaceAppearance(ws.appearance ?? DEFAULT_WORKSPACE_APPEARANCE);
 
   const startRename = () => {
     setDraftTitle(ws.title);
@@ -68,14 +73,14 @@ export function WorkspaceScreen() {
   return (
     <div className="h-full w-full flex flex-col">
       <PointerDropDispatcher />
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-[hsl(var(--sidebar-border))] shrink-0">
+      <div className="flex h-6 items-center gap-1 px-2 border-b border-[hsl(var(--sidebar-border))] shrink-0">
         <Button
           variant="ghost"
           size="icon"
           onClick={closeWorkspace}
           aria-label={t("workspaces.back")}
           title={t("workspaces.back")}
-          className="h-8 w-8"
+          className="h-6 w-6"
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
@@ -105,11 +110,22 @@ export function WorkspaceScreen() {
         <Button
           variant="ghost"
           size="icon"
+          onClick={() => setAppearanceControlsOpen((open) => !open)}
+          aria-label={t("workspaces.appearance")}
+          title={t("workspaces.appearance")}
+          aria-pressed={appearanceControlsOpen}
+          className={`h-6 w-6 ${appearanceControlsOpen ? "bg-primary/15 text-primary" : appearance.opacity < 100 || appearance.blur > 0 ? "text-primary" : ""}`}
+        >
+          <Droplets className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={() => splitTarget && splitEmpty(splitTarget, "right")}
           disabled={splitDisabled}
           aria-label={t("workspaces.pane.splitRight")}
           title={t("workspaces.pane.splitRight")}
-          className="h-8 w-8"
+          className="h-6 w-6"
         >
           <SplitSquareHorizontal className="h-4 w-4" />
         </Button>
@@ -120,7 +136,7 @@ export function WorkspaceScreen() {
           disabled={splitDisabled}
           aria-label={t("workspaces.pane.splitBelow")}
           title={t("workspaces.pane.splitBelow")}
-          className="h-8 w-8"
+          className="h-6 w-6"
         >
           <SplitSquareVertical className="h-4 w-4" />
         </Button>
@@ -128,7 +144,7 @@ export function WorkspaceScreen() {
           variant="ghost"
           size="sm"
           onClick={() => setEditMode(!editMode)}
-          className="h-8 gap-1.5 text-xs"
+          className="h-6 gap-1 text-xs px-2"
         >
           {editMode ? t("workspaces.done") : t("workspaces.edit")}
         </Button>
@@ -142,7 +158,7 @@ export function WorkspaceScreen() {
               }}
               aria-label={t("workspaces.reset")}
               title={t("workspaces.reset")}
-              className="h-8 w-8"
+              className="h-6 w-6"
             >
               <RotateCcw className="h-4 w-4" />
             </Button>
@@ -153,13 +169,19 @@ export function WorkspaceScreen() {
               disabled={!undoCheckpoint}
               aria-label={t("workspaces.undo")}
               title={t("workspaces.undo")}
-              className="h-8 w-8"
+              className="h-6 w-6"
             >
               <Undo2 className="h-4 w-4" />
             </Button>
           </>
         )}
       </div>
+      {appearanceControlsOpen && (
+        <WorkspaceAppearanceControls
+          appearance={appearance}
+          onChange={(next) => setAppearance(ws.id, next)}
+        />
+      )}
       {recoveredFromCorrupt && (
         <div
           role="status"
@@ -187,6 +209,71 @@ export function WorkspaceScreen() {
         )}
       </div>
     </div>
+  );
+}
+
+function WorkspaceAppearanceControls({
+  appearance,
+  onChange,
+}: {
+  appearance: { blur: number; opacity: number };
+  onChange: (appearance: { blur: number; opacity: number }) => void;
+}) {
+  const t = useT();
+  return (
+    <div
+      role="group"
+      aria-label={t("workspaces.appearance")}
+      className="flex shrink-0 flex-wrap items-center justify-end gap-x-5 gap-y-1 border-b border-border/70 bg-transparent px-3 py-1.5"
+    >
+      <WorkspaceAppearanceSlider
+        label={t("workspaces.appearance.blur")}
+        value={appearance.blur}
+        max={30}
+        unit="px"
+        onChange={(blur) => onChange({ ...appearance, blur })}
+      />
+      <WorkspaceAppearanceSlider
+        label={t("workspaces.appearance.opacity")}
+        value={appearance.opacity}
+        max={100}
+        unit="%"
+        onChange={(opacity) => onChange({ ...appearance, opacity })}
+      />
+    </div>
+  );
+}
+
+function WorkspaceAppearanceSlider({
+  label,
+  value,
+  max,
+  unit,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  max: number;
+  unit: string;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="flex items-center gap-2">
+      <span className="text-[11px] text-muted-foreground">{label}</span>
+      <input
+        type="range"
+        min={0}
+        max={max}
+        step={1}
+        value={value}
+        onChange={(event) => onChange(Number(event.currentTarget.value))}
+        aria-label={label}
+        className="h-5 w-24 cursor-pointer accent-primary"
+      />
+      <span className="w-9 text-right text-[11px] tabular-nums text-muted-foreground">
+        {value}{unit}
+      </span>
+    </label>
   );
 }
 

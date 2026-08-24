@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import { useWorkspaceStore } from "@/store/workspaceStore";
 import { useNavStore } from "@/store/navStore";
 import { WorkspaceNavSection } from "@/components/Layout/WorkspaceNavSection";
@@ -54,15 +54,18 @@ describe("WorkspaceNavSection", () => {
     expect(useNavStore.getState().activeWorkspaceId).toBe(id);
   });
 
-  it("deletes a workspace on the trash button", () => {
+  it("confirms before deleting a workspace", () => {
     setWorkspacesEnabled(true);
-    const id = useWorkspaceStore.getState().create("Alpha");
-    // window.confirm stub
-    vi.spyOn(window, "confirm").mockReturnValue(true);
+    useWorkspaceStore.getState().create("Alpha");
     render(<WorkspaceNavSection collapsed={false} />);
     fireEvent.click(screen.getByLabelText("Delete"));
+
+    expect(useWorkspaceStore.getState().workspaces).toHaveLength(1);
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/Delete this workspace/)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+
     expect(useWorkspaceStore.getState().workspaces).toHaveLength(0);
-    vi.restoreAllMocks();
   });
 
   it("isWorkspacesEnabled reflects the flag", () => {

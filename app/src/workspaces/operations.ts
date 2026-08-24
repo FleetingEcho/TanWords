@@ -7,6 +7,8 @@ import {
   MAX_RATIO,
   clampRatio,
   MAX_DEPTH,
+  DEFAULT_WORKSPACE_APPEARANCE,
+  normalizeWorkspaceAppearance,
 } from "./model";
 import { depth, findPane, collectPaneIds, normalizeNode } from "./normalization";
 import { newPaneId, newSplitId, newInstanceId, newWorkspaceId } from "./ids";
@@ -304,6 +306,7 @@ export function createWorkspace(title: string = ""): WorkspaceDocument {
     schemaVersion: 1,
     id: newWorkspaceId(),
     title,
+    appearance: { ...DEFAULT_WORKSPACE_APPEARANCE },
     root: { kind: "pane", id: newPaneId(), content: null },
     createdAt: now,
     updatedAt: now,
@@ -322,6 +325,7 @@ export function duplicateWorkspace(doc: WorkspaceDocument, title?: string): Work
     schemaVersion: doc.schemaVersion,
     id: newWorkspaceId(),
     title: title ?? doc.title,
+    appearance: normalizeWorkspaceAppearance(doc.appearance),
     root,
     createdAt: now,
     updatedAt: now,

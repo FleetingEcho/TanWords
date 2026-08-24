@@ -5,7 +5,9 @@ import type {
   WorkspaceCollection,
   LayoutNode,
   PageInstance,
+  WorkspaceAppearance,
 } from "@/workspaces/model";
+import { normalizeWorkspaceAppearance } from "@/workspaces/model";
 import {
   decodeCollection,
   encodeCollection,
@@ -116,6 +118,9 @@ interface WorkspaceState {
   reorder: (ids: string[]) => void;
   remove: (id: string) => void;
   reset: (id: string) => void;
+  /** Update the current workspace's widget glass appearance. Slider changes
+   *  cache immediately and debounce the durable database write. */
+  setAppearance: (id: string, appearance: WorkspaceAppearance) => void;
   undo: () => void;
 
   // ── pane operations (all on the active workspace) ───────────────────────
@@ -346,13 +351,27 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     const ws = get().workspaces.find((w) => w.id === id);
     if (!ws) return;
     const fresh = createWorkspace(ws.title);
-    const workspaces = get().workspaces.map((w) => (w.id === id ? { ...fresh, id: w.id, createdAt: w.createdAt } : w));
+    const workspaces = get().workspaces.map((w) => (w.id === id ? {
+      ...fresh,
+      id: w.id,
+      createdAt: w.createdAt,
+      appearance: normalizeWorkspaceAppearance(w.appearance),
+    } : w));
     persist(workspaces, true);
     set({
       workspaces,
       undoCheckpoint: { schemaVersion: 1, workspaces: get().workspaces },
       focusedPaneId: null,
     });
+  },
+
+  setAppearance: (id, appearance) => {
+    const normalized = normalizeWorkspaceAppearance(appearance);
+    const workspaces = get().workspaces.map((workspace) => workspace.id === id
+      ? { ...workspace, appearance: normalized, updatedAt: monotonicIso() }
+      : workspace);
+    persist(workspaces, false);
+    set({ workspaces });
   },
 
   undo: () => {

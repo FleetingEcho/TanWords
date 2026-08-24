@@ -22,7 +22,7 @@ import { useWorkspacesEnabled, setWorkspacesEnabled } from "@/pages/workspaceFea
 
 const MAX_AVATAR_UPLOAD_BYTES = 5 * 1024 * 1024;
 const MAX_BANNER_UPLOAD_BYTES = 8 * 1024 * 1024;
-const MAX_APP_BG_UPLOAD_BYTES = 10 * 1024 * 1024;
+const MAX_APP_BG_UPLOAD_BYTES = 20 * 1024 * 1024;
 /** The avatar is stored whole (like the banner/background) and framed at render time via
  *  object-position + scale, chosen in AvatarPositionModal — no longer baked to a fixed
  *  square at upload. Capped well above the largest on-screen avatar size so zooming in

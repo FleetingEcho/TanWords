@@ -5,6 +5,7 @@ import { PaneHeader } from "./PaneHeader";
 import { PanePageHost } from "./PanePageHost";
 import { PagePicker } from "./PagePicker";
 import { DropZones, PAGE_DRAG_MIME } from "./DropZones";
+import { DEFAULT_WORKSPACE_APPEARANCE, normalizeWorkspaceAppearance } from "@/workspaces/model";
 
 /** One pane of a workspace: a header, the hosted page (or the empty
  *  affordance), the page picker when adding/replacing, and the drag drop
@@ -30,6 +31,10 @@ export function WorkspacePane({ paneId, content, visible, editMode, focused }: W
   const place = useWorkspaceStore((s) => s.place);
   const selectedPaneId = useWorkspaceStore((s) => s.selectedPaneId);
   const setSelectedPane = useWorkspaceStore((s) => s.setSelectedPane);
+  const appearance = useWorkspaceStore((s) => {
+    const workspace = s.workspaces.find((candidate) => candidate.id === s.activeWorkspaceId);
+    return workspace?.appearance ?? DEFAULT_WORKSPACE_APPEARANCE;
+  });
   const [pickerOpen, setPickerOpen] = React.useState(false);
   // Drop zones show only while a page drag is hovering this pane. The native
   // dragenter/dragleave pair toggles this; the DropZones component handles
@@ -38,12 +43,15 @@ export function WorkspacePane({ paneId, content, visible, editMode, focused }: W
 
   const active = selectedPaneId === paneId;
   const pickerVisible = !content || pickerOpen;
+  const { blur, opacity } = normalizeWorkspaceAppearance(appearance);
 
   return (
     <div
       data-pane-id={paneId}
       data-pane-content={content ? "true" : "false"}
-      className="relative flex h-full w-full min-w-0 min-h-0 flex-col overflow-hidden rounded-lg border border-[hsl(var(--sidebar-border))]/60 bg-background"
+      data-widget-blur={blur}
+      data-widget-opacity={opacity}
+      className="relative flex h-full w-full min-w-0 min-h-0 flex-col overflow-hidden rounded-lg border border-[hsl(var(--sidebar-border))]/60"
       onPointerDown={() => setSelectedPane(paneId)}
       onDragEnter={(e) => {
         if (e.dataTransfer.types.includes(PAGE_DRAG_MIME)) setDragOver(true);
@@ -65,6 +73,21 @@ export function WorkspacePane({ paneId, content, visible, editMode, focused }: W
         e.preventDefault();
       }}
     >
+      <div
+        aria-hidden
+        data-workspace-widget-surface
+        className="pointer-events-none absolute inset-0"
+        style={{
+          // Match Terminal's glass behavior: only the surface tint receives
+          // alpha. The page, text, icons, and controls remain fully opaque in
+          // the composited layer above it.
+          backgroundColor: `hsl(var(--background) / ${opacity / 100})`,
+          ...(blur > 0 ? {
+            backdropFilter: `blur(${blur}px)`,
+            WebkitBackdropFilter: `blur(${blur}px)`,
+          } : {}),
+        }}
+      />
       <PaneHeader
         paneId={paneId}
         content={content}
@@ -73,7 +96,11 @@ export function WorkspacePane({ paneId, content, visible, editMode, focused }: W
         focused={focused}
         onAddPage={() => setPickerOpen(true)}
       />
-      <div className={`relative flex-1 min-h-0 overflow-x-hidden ${pickerVisible ? "overflow-hidden" : "overflow-y-auto"}`}>
+      <div
+        data-workspace-widget-content
+        className={`relative z-1 flex-1 min-h-0 overflow-x-hidden bg-transparent ${pickerVisible ? "overflow-hidden" : "overflow-y-auto"}`}
+        style={{ backgroundColor: "transparent" }}
+      >
         {content ? (
           <PanePageHost
             paneId={paneId}

@@ -1,7 +1,7 @@
 import type { StoreApi } from "zustand";
 import type { SettingsState } from "./state";
 import {
-  DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_VISIBLE_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR,
+  DEFAULT_SIDEBAR_TABS, DEFAULT_VISIBLE_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_VISIBLE_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR,
   DEFAULT_LAYOUT_MODE, AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES,
   DEFAULT_DSH_BACKGROUND_OPACITY, DEFAULT_DSH_BACKGROUND_BLUR,
   DSH_IDLE_STOP_CHOICES, DEFAULT_DSH_IDLE_STOP_MINUTES, DEFAULT_DSH_GLOBAL_SHORTCUT,
@@ -186,51 +186,13 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
     const resolvedUiLanguage = values.ui_language || "en";
     cacheUiLanguage(resolvedUiLanguage);
 
-    let resolvedSidebarTabs = Array.isArray(values.visible_sidebar_tabs)
+    const hadSavedSidebarTabs = Array.isArray(values.visible_sidebar_tabs);
+    const resolvedSidebarTabs = hadSavedSidebarTabs
       ? DEFAULT_SIDEBAR_TABS.filter((id) => (values.visible_sidebar_tabs as unknown as string[]).includes(id))
-      : DEFAULT_SIDEBAR_TABS;
-    // One-time upgrade: existing installs predate Writing Studio, so their
-    // persisted visible-tab list cannot contain it yet.
-    if (!localStorage.getItem("tanwords_writing_tab_migrated")) {
-      resolvedSidebarTabs = DEFAULT_SIDEBAR_TABS.filter((id) => resolvedSidebarTabs.includes(id));
-      localStorage.setItem("tanwords_writing_tab_migrated", "1");
-      await invoke("db_set_setting", { key: "visible_sidebar_tabs", value: JSON.stringify(resolvedSidebarTabs) });
-    }
-    // One-time upgrade: add the Tools tab for existing installs whose
-    // persisted visible-tab list predates it. Like the writing-tab upgrade
-    // above, the localStorage flag makes this run exactly once — a user who
-    // later hides Tools from Settings stays hidden.
-    if (!localStorage.getItem("tanwords_tools_tab_migrated")) {
-      if (!resolvedSidebarTabs.includes("tools")) {
-        resolvedSidebarTabs = [...resolvedSidebarTabs, "tools"];
-      }
-      localStorage.setItem("tanwords_tools_tab_migrated", "1");
-      await invoke("db_set_setting", { key: "visible_sidebar_tabs", value: JSON.stringify(resolvedSidebarTabs) });
-    }
-    // Terminal used to be a card inside Tools. Give existing desktop installs
-    // its new standalone navigation entry once, while still respecting a user
-    // who hides it later in Settings.
-    if (isDesktopHost && !localStorage.getItem("tanwords_terminal_tab_migrated")) {
-      if (!resolvedSidebarTabs.includes("terminal")) {
-        const toolsIndex = resolvedSidebarTabs.indexOf("tools");
-        resolvedSidebarTabs = [...resolvedSidebarTabs];
-        resolvedSidebarTabs.splice(toolsIndex < 0 ? resolvedSidebarTabs.length : toolsIndex, 0, "terminal");
-      }
-      localStorage.setItem("tanwords_terminal_tab_migrated", "1");
-      await invoke("db_set_setting", { key: "visible_sidebar_tabs", value: JSON.stringify(resolvedSidebarTabs) });
-    }
-    // One-time upgrade: the Calendar page is new, so an existing install's
-    // persisted visible-tab list cannot contain it yet. Seed it right after
-    // Dashboard (its canonical position in DEFAULT_SIDEBAR_TABS) exactly once,
-    // while still respecting a user who later hides it in Settings — same
-    // pattern as the tools/terminal migrations above.
-    if (!localStorage.getItem("tanwords_calendar_tab_migrated")) {
-      if (!resolvedSidebarTabs.includes("calendar")) {
-        const dashboardIndex = resolvedSidebarTabs.indexOf("dashboard");
-        resolvedSidebarTabs = [...resolvedSidebarTabs];
-        resolvedSidebarTabs.splice(dashboardIndex < 0 ? 0 : dashboardIndex + 1, 0, "calendar");
-      }
-      localStorage.setItem("tanwords_calendar_tab_migrated", "1");
+      : DEFAULT_VISIBLE_SIDEBAR_TABS;
+    // Save the small fresh-profile default once. A persisted list is always
+    // authoritative: loading must never re-enable a tab the user hid.
+    if (!hadSavedSidebarTabs) {
       await invoke("db_set_setting", { key: "visible_sidebar_tabs", value: JSON.stringify(resolvedSidebarTabs) });
     }
     cacheSidebarTabs(resolvedSidebarTabs);

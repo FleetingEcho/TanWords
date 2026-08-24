@@ -39,6 +39,10 @@ export type RssTabSelection = number | "all" | "hackernews";
 export const DEFAULT_SIDEBAR_TABS: SidebarTabId[] = [
   "dashboard", "calendar", "feeds", "reading", "documents", "vocabulary", "chat", "music", "browser", "terminal", "dsh", "tools",
 ];
+/** What's visible in the navigator for a fresh profile. The complete list
+ *  above remains the Settings order/catalog, so every hidden page can still
+ *  be enabled explicitly. */
+export const DEFAULT_VISIBLE_SIDEBAR_TABS: SidebarTabId[] = ["dashboard", "feeds", "terminal", "dsh"];
 export const DEFAULT_TOPBAR_ITEMS: TopBarItemId[] = [
   "search", "scratch", "tools", "browser", "voice", "dsh", "terminal", "db", "mcp", "ai", "language", "theme", "updates", "github",
 ];

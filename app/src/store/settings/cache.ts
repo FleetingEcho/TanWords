@@ -1,5 +1,5 @@
 import {
-  DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_VISIBLE_TOPBAR_ITEMS,
+  DEFAULT_SIDEBAR_TABS, DEFAULT_VISIBLE_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_VISIBLE_TOPBAR_ITEMS,
   DEFAULT_LAYOUT_MODE, type SidebarTabId, type TopBarItemId, type RssTabSelection, type LayoutMode,
 } from "./types";
 import { normalizeOrder } from "./reorder";
@@ -33,10 +33,10 @@ const TOPBAR_ITEMS_CACHE_KEY = "tanwords_visible_topbar_items_cache";
 export function cachedSidebarTabs(): SidebarTabId[] {
   try {
     const parsed = JSON.parse(localStorage.getItem(SIDEBAR_TABS_CACHE_KEY) || "null");
-    if (!Array.isArray(parsed)) return [];
+    if (!Array.isArray(parsed)) return DEFAULT_VISIBLE_SIDEBAR_TABS;
     return DEFAULT_SIDEBAR_TABS.filter((id) => parsed.includes(id));
   } catch {
-    return [];
+    return DEFAULT_VISIBLE_SIDEBAR_TABS;
   }
 }
 

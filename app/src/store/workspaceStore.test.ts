@@ -93,6 +93,18 @@ describe("workspaceStore CRUD", () => {
     expect(paneCount(ws.root)).toBe(1);
     expect(panesHostingPage(ws.root, "chat")).toHaveLength(0);
   });
+
+  it("persists the per-workspace widget appearance and preserves it through reset", () => {
+    const id = useWorkspaceStore.getState().create("Glass");
+    useWorkspaceStore.getState().setAppearance(id, { blur: 12, opacity: 48 });
+
+    expect(useWorkspaceStore.getState().activeWorkspace()?.appearance).toEqual({ blur: 12, opacity: 48 });
+    expect(cachedWorkspaces().collection.workspaces.find((workspace) => workspace.id === id)?.appearance)
+      .toEqual({ blur: 12, opacity: 48 });
+
+    useWorkspaceStore.getState().reset(id);
+    expect(useWorkspaceStore.getState().activeWorkspace()?.appearance).toEqual({ blur: 12, opacity: 48 });
+  });
 });
 
 describe("workspaceStore undo", () => {

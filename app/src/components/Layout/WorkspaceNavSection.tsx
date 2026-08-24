@@ -5,6 +5,7 @@ import { useWorkspaceStore } from "@/store/workspaceStore";
 import { useNavStore } from "@/store/navStore";
 import { useWorkspacesEnabled } from "@/pages/workspaceFeature";
 import { Button } from "@/components/ui/button";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 
 /** The sidebar's custom-workspace section, rendered above the pinned Settings
  *  entry. Each workspace is a row: click to open, hover for delete. The "New"
@@ -24,6 +25,7 @@ export function WorkspaceNavSection({ collapsed }: { collapsed: boolean }) {
   const selectWorkspace = useWorkspaceStore((s) => s.selectWorkspace);
   const openWorkspace = useNavStore((s) => s.openWorkspace);
   const workspacesEnabled = useWorkspacesEnabled();
+  const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(null);
 
   if (!workspacesEnabled) return null;
 
@@ -38,6 +40,7 @@ export function WorkspaceNavSection({ collapsed }: { collapsed: boolean }) {
   };
 
   return (
+    <>
     <div className="pt-3 mt-1 border-t border-[hsl(var(--sidebar-border))]/60">
       {!collapsed && (
         <div className="flex items-center justify-between px-2 pb-1">
@@ -107,7 +110,7 @@ export function WorkspaceNavSection({ collapsed }: { collapsed: boolean }) {
                   size="icon"
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (window.confirm(t("workspaces.deleteConfirm"))) remove(ws.id);
+                    setPendingDeleteId(ws.id);
                   }}
                   aria-label={t("workspaces.delete")}
                   title={t("workspaces.delete")}
@@ -121,5 +124,17 @@ export function WorkspaceNavSection({ collapsed }: { collapsed: boolean }) {
         })}
       </div>
     </div>
+    <ConfirmModal
+      open={pendingDeleteId !== null}
+      title={t("workspaces.delete")}
+      message={t("workspaces.deleteConfirm")}
+      confirmLabel={t("workspaces.delete")}
+      onCancel={() => setPendingDeleteId(null)}
+      onConfirm={() => {
+        if (pendingDeleteId) remove(pendingDeleteId);
+        setPendingDeleteId(null);
+      }}
+    />
+    </>
   );
 }

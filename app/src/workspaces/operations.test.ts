@@ -5,6 +5,7 @@ import {
   MAX_RATIO,
   MAX_DEPTH,
   clampRatio,
+  normalizeWorkspaceAppearance,
 } from "./model";
 import {
   emptyWorkspace,
@@ -58,6 +59,14 @@ describe("clampRatio", () => {
     expect(clampRatio(NaN)).toBe(0.5);
     expect(clampRatio(Infinity)).toBe(MAX_RATIO);
     expect(clampRatio(-Infinity)).toBe(MIN_RATIO);
+  });
+});
+
+describe("workspace appearance", () => {
+  it("defaults old documents and clamps persisted values", () => {
+    expect(normalizeWorkspaceAppearance(undefined)).toEqual({ blur: 0, opacity: 100 });
+    expect(normalizeWorkspaceAppearance({ blur: 99, opacity: -4 })).toEqual({ blur: 30, opacity: 0 });
+    expect(normalizeWorkspaceAppearance({ blur: 12.4, opacity: 45.6 })).toEqual({ blur: 12, opacity: 46 });
   });
 });
 
@@ -424,5 +433,6 @@ describe("normalization", () => {
     expect(c.workspaces).toHaveLength(2);
     const ids = c.workspaces.map((w) => w.id);
     expect(new Set(ids).size).toBe(2);
+    expect(c.workspaces[0].appearance).toEqual({ blur: 0, opacity: 100 });
   });
 });
