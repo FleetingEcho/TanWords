@@ -35,6 +35,9 @@ export interface PageDefinition {
   /** i18n key for the page's display name, e.g. `nav.dashboard`. */
   titleKey: string;
   icon: React.ComponentType<{ className?: string }>;
+  /** False for app destinations that are navigable but are not workspace
+   * widgets and therefore must not appear in the workspace page picker. */
+  workspaceWidget?: boolean;
   /** When set, the page is only offered on hosts with this capability. The
    *  sidebar and picker filter on it; a stale persisted nav state still falls
    *  back to Dashboard rather than rendering a page the host can't support. */
@@ -132,6 +135,7 @@ export const PAGE_CATALOG: PageDefinition[] = [
     id: "settings",
     titleKey: "nav.settings",
     icon: Settings,
+    workspaceWidget: false,
     host: "react",
     multiplicity: "singleton",
     minWidth: DEFAULT_MIN_WIDTH,

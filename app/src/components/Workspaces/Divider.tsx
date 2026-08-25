@@ -67,7 +67,7 @@ export function Divider({ splitId, axis, containerRef, ratioPct }: DividerProps)
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
-      className={`group absolute z-20 flex items-center justify-center touch-none ${
+      className={`group pointer-events-auto absolute z-20 flex items-center justify-center touch-none ${
         horizontal
           ? "top-0 bottom-0 -translate-x-1/2 w-1.5 cursor-col-resize"
           : "left-0 right-0 -translate-y-1/2 h-1.5 cursor-row-resize"

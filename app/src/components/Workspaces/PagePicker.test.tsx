@@ -50,6 +50,14 @@ describe("PagePicker", () => {
     expect(card.parentElement).toHaveStyle({ gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))" });
   });
 
+  it("does not offer Settings because it is not a workspace widget", () => {
+    render(
+      <PagePicker paneId="p1" replacing={false} onClose={() => {}} onPlace={() => {}} />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();
+  });
+
   it("marks host-unavailable pages as disabled with an explanation", () => {
     render(
       <PagePicker paneId="p1" replacing={false} onClose={() => {}} onPlace={() => {}} />,

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { useWorkspaceStore, isPageAvailableOnHost } from "@/store/workspaceStore";
@@ -11,6 +12,18 @@ import { collectPaneIds } from "@/workspaces/normalization";
 // Stub page modules so no real page chunk is fetched during render.
 vi.mock("@/components/Dashboard/DashboardPage", () => ({ DashboardPage: () => <div data-testid="dashboard-page">dashboard</div> }));
 
+const terminalLifecycle = vi.hoisted(() => ({ mounts: 0, unmounts: 0 }));
+
+vi.mock("@/components/Terminal/TerminalPage", () => ({
+  TerminalPage: () => {
+    useEffect(() => {
+      terminalLifecycle.mounts += 1;
+      return () => { terminalLifecycle.unmounts += 1; };
+    }, []);
+    return <div data-testid="terminal-page">terminal</div>;
+  },
+}));
+
 class FakeDataTransfer {
   private store = new Map<string, string>();
   types: string[] = [];
@@ -23,6 +36,8 @@ class FakeDataTransfer {
 }
 
 function reset() {
+  terminalLifecycle.mounts = 0;
+  terminalLifecycle.unmounts = 0;
   useWorkspaceStore.setState({
     workspaces: [],
     loaded: true,
@@ -180,6 +195,26 @@ describe("WorkspaceScreen", () => {
     // draggable hit area only a few pixels tall.
     const splitContainer = screen.getByRole("separator").parentElement;
     expect(splitContainer).toHaveClass("h-full", "w-full");
+  });
+
+  it.each(["Split right", "Split below"])("keeps an open terminal mounted after %s", async (splitLabel) => {
+    const id = useWorkspaceStore.getState().create("Terminal split lifecycle");
+    useWorkspaceStore.setState((state) => ({
+      workspaces: state.workspaces.map((workspace) => workspace.id === id && workspace.root.kind === "pane"
+        ? { ...workspace, root: { ...workspace.root, content: { instanceId: "terminal-test", pageId: "terminal" } } }
+        : workspace),
+    }));
+    useNavStore.getState().openWorkspace(id);
+    render(<WorkspaceScreen />);
+
+    await waitFor(() => expect(screen.getByTestId("terminal-page")).toBeInTheDocument());
+    expect(terminalLifecycle.mounts).toBe(1);
+
+    fireEvent.click(screen.getByLabelText(splitLabel));
+
+    expect(terminalLifecycle.unmounts).toBe(0);
+    expect(terminalLifecycle.mounts).toBe(1);
+    expect(screen.getByTestId("terminal-page")).toBeInTheDocument();
   });
 
   it("supports up to four widgets and disables further splitting", () => {

@@ -45,6 +45,7 @@ export function PagePicker({ paneId, replacing, onClose, onPlace, inline = false
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     return PAGE_CATALOG.filter((def) => {
+      if (def.workspaceWidget === false) return false;
       // Filter by the i18n label if a query is typed. The label is looked up
       // via the key; fall back to the id so typing "dsh" still matches.
       if (q) {
