@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   let capturedServices: { ptyTransport?: any } | null = null;
+  let capturedOptions: Record<string, any> | null = null;
   let capturedCallbacks: Record<string, ReturnType<typeof vi.fn>> | null = null;
   let spawnInfo: { id: string; shell: string; cwd: string; pid: number } | null = null;
+  let clipboardValue: unknown = null;
   const eventHandlers = new Map<string, (payload: any) => void>();
   const resttyPane = {
     applyTheme: vi.fn(),
@@ -12,6 +14,7 @@ const mocks = vi.hoisted(() => {
     setFonts: vi.fn(() => Promise.resolve()),
     copySelectionToClipboard: vi.fn(() => Promise.resolve(true)),
     pasteFromClipboard: vi.fn(() => Promise.resolve(true)),
+    sendKeyInput: vi.fn(),
     updateSize: vi.fn(),
     // Mirrors what restty's real runtime does: build its own callbacks
     // object and pass it to the transport's `connect()`.
@@ -38,6 +41,7 @@ const mocks = vi.hoisted(() => {
   };
   const callMain = vi.fn((channel: string) => {
     if (channel === "pty_spawn") return spawnInfo ? Promise.resolve(spawnInfo) : new Promise(() => {});
+    if (channel === "clipboard:readForTerminal") return Promise.resolve(clipboardValue);
     return Promise.resolve(null);
   });
   return {
@@ -50,12 +54,17 @@ const mocks = vi.hoisted(() => {
       return () => { eventHandlers.delete(event); };
     },
     setSpawnInfo: (value: typeof spawnInfo) => { spawnInfo = value; },
+    setClipboardValue: (value: unknown) => { clipboardValue = value; },
     getTransport: () => capturedServices?.ptyTransport,
+    getOptions: () => capturedOptions,
     getCallbacks: () => capturedCallbacks,
     setServices: (services: { ptyTransport?: any } | null) => { capturedServices = services; },
+    setOptions: (options: Record<string, any>) => { capturedOptions = options; },
     reset: () => {
       spawnInfo = null;
+      clipboardValue = null;
       capturedServices = null;
+      capturedOptions = null;
       capturedCallbacks = null;
       eventHandlers.clear();
     },
@@ -69,7 +78,8 @@ vi.mock("@/platform", () => ({ isDesktopHost: true }));
 
 vi.mock("restty/xterm", () => ({
   Terminal: class {
-    constructor(options: { services?: { ptyTransport?: unknown } }) {
+    constructor(options: { services?: { ptyTransport?: unknown }; surface?: unknown }) {
+      mocks.setOptions(options);
       mocks.setServices(options.services ?? null);
       return mocks.terminal;
     }
@@ -216,5 +226,59 @@ describe("TerminalToolRestty", () => {
     mocks.setSpawnInfo(null);
     render(<TerminalToolRestty onBack={() => {}} />);
     expect(screen.getByText("Starting…")).toBeInTheDocument();
+  });
+
+  it("disables Restty's built-in context menu while suppressing the browser menu", () => {
+    mocks.setSpawnInfo(null);
+    const { container } = render(<TerminalToolRestty onBack={() => {}} />);
+    const host = container.querySelector(".terminal-tool-host");
+    expect(host).not.toBeNull();
+    expect(mocks.getOptions()).toMatchObject({
+      surface: { defaultContextMenu: false },
+    });
+
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    host!.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("pastes a safely escaped temporary image path through Restty", async () => {
+    mocks.setSpawnInfo(null);
+    mocks.setClipboardValue({ kind: "image", path: "/tmp/Tan Words/image (1).png" });
+    const { container } = render(<TerminalToolRestty onBack={() => {}} />);
+    const host = container.querySelector(".terminal-tool-host");
+    expect(host).not.toBeNull();
+
+    fireEvent.paste(host!, {
+      clipboardData: { getData: () => "" },
+    });
+
+    await waitFor(() => {
+      expect(mocks.callMain).toHaveBeenCalledWith("clipboard:readForTerminal");
+      expect(mocks.resttyPane.sendKeyInput).toHaveBeenCalledWith(
+        "/tmp/Tan\\ Words/image\\ \\(1\\).png",
+        "paste",
+      );
+    });
+  });
+
+  it("leaves ordinary text paste to Restty's bracketed-paste handler", () => {
+    mocks.setSpawnInfo(null);
+    const { container } = render(<TerminalToolRestty onBack={() => {}} />);
+    const host = container.querySelector(".terminal-tool-host");
+    expect(host).not.toBeNull();
+    mocks.callMain.mockClear();
+
+    const event = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "clipboardData", {
+      value: { getData: (type: string) => type === "text/plain" ? "echo hello" : "" },
+    });
+    host!.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(mocks.callMain).not.toHaveBeenCalledWith("clipboard:readForTerminal");
+    expect(mocks.resttyPane.sendKeyInput).not.toHaveBeenCalled();
   });
 });

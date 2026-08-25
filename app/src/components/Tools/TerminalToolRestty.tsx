@@ -25,10 +25,9 @@
  *  shell-title event (so a restty tab keeps its default "Terminal N" name),
  *  no modified-Enter CSI-u key encoding (xterm 6 collapses that to plain CR;
  *  whether restty already handles it correctly is unverified), and
- *  "Select all" has no restty API to call, so it isn't offered. Copy/Paste
- *  use the underlying `Restty` pane's own clipboard methods
- *  (`copySelectionToClipboard`/`pasteFromClipboard`), which talk to the OS
- *  clipboard directly rather than through TanWords' `clipboard:*` IPC.
+ *  "Select all" has no restty API to call, so it isn't offered. Restty handles
+ *  ordinary clipboard text itself; TanWords intercepts non-text paste events
+ *  so its desktop clipboard bridge can materialize images as temporary files.
  *
  *  No background blur/transparency: restty's canvas is created with
  *  `alphaMode: "opaque"` on WebGPU and `{alpha: false}` on its WebGL2
@@ -41,7 +40,6 @@
  *  is always rendered fully opaque here. */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 import { Terminal as ResttyTerminal } from "restty/xterm";
 import { Droplets, Maximize2, Minimize2, Minus, Plus, RotateCcw, X } from "lucide-react";
 import "@/styles/terminal-tool.css";
@@ -50,11 +48,11 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useFullscreenDragExit } from "@/hooks/useFullscreenDragExit";
+import { callMain } from "@/ipc/host";
 import { isDesktopHost } from "@/platform";
 import { TerminalEngineSwitch } from "./TerminalEngineSwitch";
 import { createSandboxPtyTransport } from "./sandboxPtyTransport";
-import type { ContextMenuPosition } from "./terminalUtils";
-import { MAX_AUTOMATIC_RECOVERY_ATTEMPTS } from "./terminalUtils";
+import { MAX_AUTOMATIC_RECOVERY_ATTEMPTS, quoteTerminalPath, type TerminalClipboard } from "./terminalUtils";
 import { createElectronPtyTransport, resttyFontsFor, resttyThemeFor, type PtySessionHooks } from "./resttySupport";
 export type { PtySessionHooks } from "./resttySupport";
 
@@ -97,12 +95,9 @@ export function TerminalToolRestty({
   const onShellTitleChangeRef = useRef(onShellTitleChange);
   onShellTitleChangeRef.current = onShellTitleChange;
   const recoveryAttemptsRef = useRef(0);
-  const menuRef = useRef<HTMLDivElement>(null);
-
   const [status, setStatus] = useState<"starting" | "connected" | "closed" | "error">("starting");
   const [message, setMessage] = useState("");
   const [sessionGeneration, setSessionGeneration] = useState(0);
-  const [contextMenu, setContextMenu] = useState<ContextMenuPosition | null>(null);
   const [appearanceControlsOpen, setAppearanceControlsOpen] = useState(false);
   const terminalBackgroundColor = useSettingsStore((state) => state.terminalBackgroundColor);
   const setTerminalBackgroundColor = useSettingsStore((state) => state.setTerminalBackgroundColor);
@@ -122,45 +117,20 @@ export function TerminalToolRestty({
   const setTerminalFontSize = useSettingsStore((state) => state.setTerminalFontSize);
   const setTerminalFontWeight = useSettingsStore((state) => state.setTerminalFontWeight);
 
-  const copySelectionWithFeedback = useCallback(async () => {
-    try {
-      const copied = await terminalRef.current?.restty?.copySelectionToClipboard();
-      if (copied) toast.success(t("toolsPage.terminal.copied"));
-      else toast.error(t("toolsPage.terminal.copyFailed"));
-    } catch {
-      toast.error(t("toolsPage.terminal.copyFailed"));
-    }
-  }, [t]);
+  const pasteClipboardImage = useCallback(async (event: React.ClipboardEvent<HTMLDivElement>) => {
+    // Restty already handles text paste (including bracketed-paste mode). Its
+    // DataTransfer reader intentionally ignores non-text payloads, so only take
+    // over when no text is present and the native desktop bridge can provide a
+    // temporary image file path.
+    if (!isDesktopHost || event.clipboardData.getData("text/plain")) return;
+    event.preventDefault();
+    event.stopPropagation();
 
-  const pasteClipboard = useCallback(async () => {
-    await terminalRef.current?.restty?.pasteFromClipboard().catch(() => {});
+    const value = await callMain<TerminalClipboard>("clipboard:readForTerminal").catch(() => null);
+    if (value?.kind !== "image") return;
+    terminalRef.current?.restty?.sendKeyInput(quoteTerminalPath(value.path), "paste");
     terminalRef.current?.focus();
   }, []);
-
-  useEffect(() => {
-    if (!contextMenu) return;
-    const closeOnPointerDown = (event: MouseEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) setContextMenu(null);
-    };
-    const closeOnKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && menuRef.current?.contains(event.target as Node)) {
-        setContextMenu(null);
-      }
-    };
-    const close = () => setContextMenu(null);
-    document.addEventListener("mousedown", closeOnPointerDown, true);
-    document.addEventListener("keydown", closeOnKeyDown, true);
-    window.addEventListener("blur", close);
-    window.addEventListener("resize", close);
-    window.addEventListener("scroll", close, true);
-    return () => {
-      document.removeEventListener("mousedown", closeOnPointerDown, true);
-      document.removeEventListener("keydown", closeOnKeyDown, true);
-      window.removeEventListener("blur", close);
-      window.removeEventListener("resize", close);
-      window.removeEventListener("scroll", close, true);
-    };
-  }, [contextMenu]);
 
   useEffect(() => {
     const el = shellRef.current;
@@ -226,6 +196,10 @@ export function TerminalToolRestty({
     const term = new ResttyTerminal({
       cols: 80,
       rows: 24,
+      // TanWords is a single-pane terminal host. Restty's default menu adds
+      // its own split/close/PTY controls and consumes right-clicks that the
+      // foreground TUI (for example Herdr) needs to receive.
+      surface: { defaultContextMenu: false },
       terminal: {
         fontSize: terminalFontSize,
         fonts: resttyFontsFor(terminalFontFamily, terminalFontWeight),
@@ -295,25 +269,6 @@ export function TerminalToolRestty({
   const restartTerminal = () => {
     recoveryAttemptsRef.current = 0;
     setSessionGeneration((generation) => generation + 1);
-  };
-
-  const openContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const width = 184;
-    const height = 88;
-    setContextMenu({
-      x: Math.max(8, Math.min(event.clientX, window.innerWidth - width - 8)),
-      y: Math.max(8, Math.min(event.clientY, window.innerHeight - height - 8)),
-      // restty exposes no `hasSelection()` equivalent, so Copy is always
-      // offered and simply no-ops (via a failed/empty clipboard write) when
-      // there is nothing selected.
-      canCopy: true,
-    });
-  };
-
-  const runMenuAction = (action: () => void | Promise<void>) => {
-    setContextMenu(null);
-    void Promise.resolve(action()).catch(() => {});
   };
 
   return (
@@ -532,7 +487,8 @@ export function TerminalToolRestty({
         )}
 
         <div
-          onContextMenu={openContextMenu}
+          onPasteCapture={(event) => { void pasteClipboardImage(event); }}
+          onContextMenu={(event) => event.preventDefault()}
           className="terminal-tool-shell relative min-h-0 flex-1 overflow-hidden rounded-none border-x-0 border-b-0 border-t border-border p-2"
           // Always opaque: restty's canvas has no alpha channel, so a
           // translucent wrapper here would only hide behind it, never show
@@ -561,35 +517,6 @@ export function TerminalToolRestty({
         </div>
       </div>
 
-      {contextMenu && (
-        <div
-          ref={menuRef}
-          role="menu"
-          aria-label={t("toolsPage.terminal.contextMenu")}
-          className="fixed z-50 w-44 rounded-lg border border-border bg-popover p-1 text-xs text-popover-foreground shadow-xl"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-          onMouseDown={(event) => event.preventDefault()}
-        >
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => runMenuAction(copySelectionWithFeedback)}
-            className="flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left hover:bg-muted"
-          >
-            <span>{t("toolsPage.terminal.copy")}</span>
-            <kbd className="text-[10px] text-muted-foreground">Ctrl+C</kbd>
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => runMenuAction(pasteClipboard)}
-            className="flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left hover:bg-muted"
-          >
-            <span>{t("toolsPage.terminal.paste")}</span>
-            <kbd className="text-[10px] text-muted-foreground">Ctrl+V</kbd>
-          </button>
-        </div>
-      )}
     </div>
   );
 }
