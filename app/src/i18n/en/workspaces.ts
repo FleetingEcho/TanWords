@@ -23,6 +23,7 @@ export const workspaces: Dict = {
   "workspaces.recoveredDismiss": "Dismiss",
   "workspaces.edit": "Edit",
   "workspaces.done": "Done",
+  "workspaces.close": "Close workspace",
   "workspaces.appearance": "Widget appearance",
   "workspaces.appearance.blur": "Blur",
   "workspaces.appearance.opacity": "Opacity",

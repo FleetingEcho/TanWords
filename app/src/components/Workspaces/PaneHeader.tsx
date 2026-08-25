@@ -4,6 +4,7 @@ import { useT } from "@/hooks/useT";
 import type { PageInstance } from "@/workspaces/model";
 import { paneCount } from "@/workspaces/normalization";
 import { useWorkspaceStore } from "@/store/workspaceStore";
+import { useNavStore } from "@/store/navStore";
 import { getPageDefinition } from "@/pages/pageCatalog";
 import { Button } from "@/components/ui/button";
 import { usePageDragSource } from "./DropZones";
@@ -12,9 +13,11 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 /** The pane header: a draggable page title plus replace, maximize, and close
  *  actions. Workspace-level split controls provide the non-drag layout path.
  *
- *  Maximize/restore is always available because it is a viewing action.
+ *  Maximize/restore appears only when the workspace has another pane to hide;
+ *  for a single widget it cannot change the layout and is just dead chrome.
  *  Replacement appears in Edit mode; closing remains available during normal
- *  use but requires confirmation for a populated widget. */
+ *  use but requires confirmation for a populated widget. Closing the only
+ *  empty pane leaves the workspace because the layout must retain one pane. */
 export interface PaneHeaderProps {
   paneId: string;
   content: PageInstance | null;
@@ -28,9 +31,10 @@ export function PaneHeader({ paneId, content, active, editMode, focused, onAddPa
   const t = useT();
   const [closeConfirmOpen, setCloseConfirmOpen] = React.useState(false);
   const closePane = useWorkspaceStore((s) => s.closePane);
+  const closeWorkspace = useNavStore((s) => s.closeWorkspace);
   const setFocus = useWorkspaceStore((s) => s.setFocus);
   const setSelectedPane = useWorkspaceStore((s) => s.setSelectedPane);
-  const canCollapseEmptyPane = useWorkspaceStore((s) => {
+  const hasMultiplePanes = useWorkspaceStore((s) => {
     const workspace = s.workspaces.find((candidate) => candidate.id === s.activeWorkspaceId);
     return !!workspace && paneCount(workspace.root) > 1;
   });
@@ -62,7 +66,7 @@ export function PaneHeader({ paneId, content, active, editMode, focused, onAddPa
           <HeaderButton title={t("workspaces.pane.replace")} onClick={onAddPage} icon={<RefreshCw className="h-3.5 w-3.5" />} />
         </>
       )}
-      {content && (
+      {content && hasMultiplePanes && (
         <HeaderButton
           title={t(focused ? "workspaces.pane.restore" : "workspaces.pane.maximize")}
           onClick={() => setFocus(focused ? null : paneId)}
@@ -70,13 +74,15 @@ export function PaneHeader({ paneId, content, active, editMode, focused, onAddPa
           active={focused}
         />
       )}
-      {(content || canCollapseEmptyPane) && (
-        <HeaderButton
-          title={t("workspaces.pane.close")}
-          onClick={() => content ? setCloseConfirmOpen(true) : closePane(paneId)}
-          icon={<X className="h-3.5 w-3.5" />}
-        />
-      )}
+      <HeaderButton
+        title={t(!content && !hasMultiplePanes ? "workspaces.close" : "workspaces.pane.close")}
+        onClick={() => {
+          if (content) setCloseConfirmOpen(true);
+          else if (hasMultiplePanes) closePane(paneId);
+          else closeWorkspace();
+        }}
+        icon={<X className="h-3.5 w-3.5" />}
+      />
     </div>
     <ConfirmModal
       open={closeConfirmOpen}

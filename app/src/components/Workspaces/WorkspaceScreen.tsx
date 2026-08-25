@@ -12,6 +12,8 @@ import type { LayoutNode } from "@/workspaces/model";
 import { DragLayer } from "./DragLayer";
 import { PointerDropDispatcher } from "./PointerDropDispatcher";
 import { DEFAULT_WORKSPACE_APPEARANCE, normalizeWorkspaceAppearance } from "@/workspaces/model";
+import { usePageHostUiStore } from "@/store/pageHostUiStore";
+import { StartupReadySignal } from "@/pages/StartupReadySignal";
 
 /** The workspace screen: the title bar (back, name, edit/done, reset, undo)
  *  and the recursive split layout filling the workspace.
@@ -42,6 +44,7 @@ export function WorkspaceScreen() {
   const undoCheckpoint = useWorkspaceStore((s) => s.undoCheckpoint);
   const recoveredFromCorrupt = useWorkspaceStore((s) => s.recoveredFromCorrupt);
   const acknowledgeRecovery = useWorkspaceStore((s) => s.acknowledgeRecovery);
+  const terminalMaximized = usePageHostUiStore((s) => s.terminalMaximized);
   // Narrow screens render one pane at a time (criterion 10) instead of a
   // cramped split tree.
   const isNarrow = useIsNarrow();
@@ -60,6 +63,10 @@ export function WorkspaceScreen() {
       : paneIds[0];
   const splitDisabled = paneIds.length >= MAX_WORKSPACE_PANES || !splitTarget;
   const appearance = normalizeWorkspaceAppearance(ws.appearance ?? DEFAULT_WORKSPACE_APPEARANCE);
+  const focusedNode = focusedPaneId ? findPane(ws.root, focusedPaneId) : null;
+  const terminalImmersive = terminalMaximized
+    && focusedNode?.kind === "pane"
+    && focusedNode.content?.pageId === "terminal";
 
   const startRename = () => {
     setDraftTitle(ws.title);
@@ -72,8 +79,9 @@ export function WorkspaceScreen() {
 
   return (
     <div className="h-full w-full flex flex-col">
+      <StartupReadySignal />
       <PointerDropDispatcher />
-      <div className="flex h-6 items-center gap-1 px-2 border-b border-[hsl(var(--sidebar-border))] shrink-0">
+      <div className={`${terminalImmersive ? "hidden" : "flex"} h-6 items-center gap-1 px-2 border-b border-[hsl(var(--sidebar-border))] shrink-0`}>
         <Button
           variant="ghost"
           size="icon"
@@ -176,13 +184,13 @@ export function WorkspaceScreen() {
           </>
         )}
       </div>
-      {appearanceControlsOpen && (
+      {!terminalImmersive && appearanceControlsOpen && (
         <WorkspaceAppearanceControls
           appearance={appearance}
           onChange={(next) => setAppearance(ws.id, next)}
         />
       )}
-      {recoveredFromCorrupt && (
+      {!terminalImmersive && recoveredFromCorrupt && (
         <div
           role="status"
           className="flex items-start gap-2 px-3 py-2 border-b border-amber-500/30 bg-amber-500/10 text-xs text-amber-700 dark:text-amber-300 shrink-0"
@@ -201,8 +209,8 @@ export function WorkspaceScreen() {
           </Button>
         </div>
       )}
-      <div className="flex-1 min-h-0 p-1.5">
-        {isNarrow ? (
+      <div className={`flex-1 min-h-0 ${terminalImmersive ? "p-0" : "p-1.5"}`}>
+        {isNarrow && !terminalImmersive ? (
           <CompactPaneView root={ws.root} editMode={editMode} />
         ) : (
           <SplitLayout node={ws.root} visible />

@@ -314,7 +314,12 @@ export function createDocEditorApi(editor: Editor): DocEditorApi {
           : found.pos
         : editor.state.doc.content.size;
       const content = (blocksToPmDoc(blocks).content ?? []) as never;
-      editor.commands.insertContentAt(target, content);
+      // BlockNote's insertBlocks kept the current text selection. Tiptap's
+      // insertContentAt defaults to moving it after the inserted content,
+      // which is disastrous for the automatic trailing paragraph: typing the
+      // first character at the end appended a paragraph and moved the caret
+      // there, so every following character created another line.
+      editor.commands.insertContentAt(target, content, { updateSelection: false });
     },
 
     removeBlocks(ids) {

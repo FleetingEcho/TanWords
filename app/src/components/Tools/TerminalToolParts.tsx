@@ -39,6 +39,7 @@ export function TerminalToolbar({
   maximized,
   fullScreen,
   onToolbarMouseDown,
+  onToolbarDoubleClick,
   closeSearch,
   setSearchOpen,
   toggleAppearanceControls,
@@ -52,6 +53,7 @@ export function TerminalToolbar({
   maximized: boolean;
   fullScreen: boolean;
   onToolbarMouseDown?: MouseEventHandler<HTMLElement>;
+  onToolbarDoubleClick?: MouseEventHandler<HTMLElement>;
   closeSearch: () => void;
   setSearchOpen: Dispatch<SetStateAction<boolean>>;
   toggleAppearanceControls: () => void;
@@ -64,7 +66,12 @@ export function TerminalToolbar({
         <div
           data-testid="terminal-tab-toolbar"
           onMouseDown={onToolbarMouseDown}
-          title={fullScreen ? t("windowControls.dragToExitFullscreen") : undefined}
+          onDoubleClick={onToolbarDoubleClick}
+          title={maximized
+            ? t("toolsPage.terminal.restore")
+            : fullScreen
+              ? t("windowControls.dragToExitFullscreen")
+              : undefined}
           className={`${
             fullScreen
               ? "cursor-grab"

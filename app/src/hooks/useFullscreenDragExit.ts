@@ -6,17 +6,31 @@ import { useWindowState } from "@/hooks/useWindowState";
 const INTERACTIVE_SELECTOR =
   "button, input, textarea, select, a, [role='button'], [role='combobox']";
 
+interface FullscreenDragExitOptions {
+  /** An app-owned immersive surface, such as Terminal's chrome-free mode. */
+  immersive?: boolean;
+  onExitImmersive?: () => void;
+}
+
 /**
- * Turns a top bar into a pull-down-to-exit gesture while the OS window is
- * fullscreen. Native app drag regions cannot receive pointer events in that
- * state, so every top bar that can replace the main command bar must use this
- * behavior as well.
+ * Keeps the OS-fullscreen pull-down gesture and lets an app-owned immersive
+ * surface restore on double-click. App-level immersive bars remain native drag
+ * regions: dragging moves the window and must not restore the shell.
  */
-export function useFullscreenDragExit() {
+export function useFullscreenDragExit({
+  immersive = false,
+  onExitImmersive,
+}: FullscreenDragExitOptions = {}) {
   const { fullScreen } = useWindowState();
   const cleanupRef = useRef<(() => void) | null>(null);
+  const active = fullScreen || immersive;
 
   useEffect(() => () => cleanupRef.current?.(), []);
+
+  const exit = useCallback(() => {
+    if (immersive) onExitImmersive?.();
+    if (fullScreen) void callMain("window:toggleFullScreen").catch(() => {});
+  }, [fullScreen, immersive, onExitImmersive]);
 
   const onMouseDown = useCallback((event: React.MouseEvent<HTMLElement>) => {
     if (!fullScreen) return;
@@ -32,14 +46,26 @@ export function useFullscreenDragExit() {
     const onMove = (moveEvent: MouseEvent) => {
       if (moveEvent.clientY - startY < 4) return;
       cleanup();
-      void callMain("window:toggleFullScreen").catch(() => {});
+      exit();
     };
 
     cleanupRef.current?.();
     cleanupRef.current = cleanup;
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", cleanup);
-  }, [fullScreen]);
+  }, [exit, fullScreen]);
 
-  return { fullScreen, onMouseDown: fullScreen ? onMouseDown : undefined };
+  const onDoubleClick = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    if (!active) return;
+    const target = event.target as HTMLElement | null;
+    if (target?.closest(INTERACTIVE_SELECTOR)) return;
+    event.preventDefault();
+    exit();
+  }, [active, exit]);
+
+  return {
+    fullScreen,
+    onMouseDown: fullScreen ? onMouseDown : undefined,
+    onDoubleClick: active ? onDoubleClick : undefined,
+  };
 }

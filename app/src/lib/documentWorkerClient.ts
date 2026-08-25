@@ -1,5 +1,6 @@
 import type { Block } from "@/components/Documents/tiptap/blocks";
 import { blocksToMarkdown, blocksToStorage, blocksToText, contentToBlocks, markdownToBlocks } from "./docFormat";
+import { countDocumentWords } from "./documentWordCount";
 
 type Operation = "markdownToBlocks" | "contentToBlocks" | "contentToMarkdown" | "blocksToMarkdown" | "blocksToMarkdownWithStats" | "blocksToStorage" | "htmlToMarkdown";
 export type MarkdownWithStats = { markdown: string; wordCount: number };
@@ -197,7 +198,7 @@ export async function blocksToMarkdownWithStatsOffThread(
       ?? Promise.all([blocksToMarkdown(blocks), Promise.resolve(blocksToText(blocks))]).then(
         ([markdown, text]) => ({
           markdown,
-          wordCount: text.trim() ? text.trim().split(/\s+/).length : 0,
+          wordCount: countDocumentWords(text),
         }),
       ));
   } catch {
@@ -207,7 +208,7 @@ export async function blocksToMarkdownWithStatsOffThread(
     ]);
     return {
       markdown,
-      wordCount: text.trim() ? text.trim().split(/\s+/).length : 0,
+      wordCount: countDocumentWords(text),
     };
   }
 }

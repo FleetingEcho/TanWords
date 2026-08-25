@@ -14,6 +14,10 @@ export type Theme =
 export type SidebarTabId = Exclude<NavPage, "settings">;
 export type TopBarItemId = "search" | "scratch" | "dsh" | "terminal" | "db" | "tools" | "browser" | "voice" | "mcp" | "ai" | "language" | "theme" | "updates" | "github";
 export type LayoutMode = "flexible" | "fixed";
+export type StartupDestination =
+  | { kind: "page"; page: NavPage }
+  | { kind: "workspace"; workspaceId: string };
+export const DEFAULT_STARTUP_DESTINATION: StartupDestination = { kind: "page", page: "dashboard" };
 export type TerminalRenderer = "auto" | "webgl" | "dom";
 /** Which terminal library renders a tab's screen. `restty` (the default) is
  *  a WASM/WebGPU-WebGL2 engine — still labeled "Experimental" in the UI and

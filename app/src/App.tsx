@@ -27,6 +27,9 @@ import { LOCAL_DOCS_ROOT_KEY, localDocsRootExists } from "@/lib/localDocs";
 import { isDesktopHost, isWebHost, hostCapabilities } from "@/platform";
 import * as auth from "@/platform/auth";
 import { resolveShellActiveNav } from "@/components/Layout/shellNavigation";
+import { findPane } from "@/workspaces/normalization";
+import { isWorkspacesEnabled } from "@/pages/workspaceFeature";
+import { resolveStartupDestination } from "@/lib/startupDestination";
 
 /** Every page is code-split and reached through the central page catalog +
  *  `PageHost`. Only the landing page's chunk is needed to paint; the rest —
@@ -70,6 +73,7 @@ type AuthState = "checking" | "ready" | "login";
 function App() {
   const loadFromDB = useSettingsStore((s) => s.loadFromDB);
   const settingsLoaded = useSettingsStore((s) => s.isLoaded);
+  const startupDestination = useSettingsStore((s) => s.startupDestination);
   const db = useDB();
   const t = useT();
   const { currentPage, navigate } = useNavStore();
@@ -86,12 +90,22 @@ function App() {
   // Terminal and DSH sessions keep running. `terminalMaximized` drives
   // immersive mode.
   const activeWorkspaceId = useNavStore((s) => s.activeWorkspaceId);
+  const workspaceTerminalFocused = useWorkspaceStore((s) => {
+    if (!s.activeWorkspaceId || !s.focusedPaneId) return false;
+    const workspace = s.workspaces.find((candidate) => candidate.id === s.activeWorkspaceId);
+    const pane = workspace ? findPane(workspace.root, s.focusedPaneId) : null;
+    return pane?.kind === "pane" && pane.content?.pageId === "terminal";
+  });
   const settingsOpen = useNavStore((s) => s.settingsOpen);
   const terminalMaximized = usePageHostUiStore((s) => s.terminalMaximized);
+  const workspacesLoaded = useWorkspaceStore((s) => s.loaded);
+  const workspaces = useWorkspaceStore((s) => s.workspaces);
 
   const [authState, setAuthState] = React.useState<AuthState>(isWebHost ? "checking" : "ready");
   const [wordCount, setWordCount] = React.useState(0);
   const [selectionToolsReady, setSelectionToolsReady] = React.useState(false);
+  const [startupDestinationApplied, setStartupDestinationApplied] = React.useState(false);
+  const startupDestinationAppliedRef = React.useRef(false);
 
   // Selection/Ask pulls in gesture handling, AI actions and its answer panel,
   // but renders nothing until the user selects text. Keep it out of the first
@@ -171,6 +185,31 @@ function App() {
     if (!isDesktopHost || authState !== "ready") return;
     void useWorkspaceStore.getState().init();
   }, [authState]);
+
+  // Resolve the requested first screen only after both asynchronous preference
+  // and workspace hydration have settled. Until then the splash remains above
+  // an uncommitted shell, so Dashboard cannot flash before the chosen target.
+  useEffect(() => {
+    if (startupDestinationAppliedRef.current) return;
+    if (authState !== "ready" || !settingsLoaded) return;
+    if (isDesktopHost && !workspacesLoaded) return;
+
+    const destination = resolveStartupDestination(
+      startupDestination,
+      new Set(workspaces.map((workspace) => workspace.id)),
+      hostCapabilities,
+      isWorkspacesEnabled(),
+    );
+    startupDestinationAppliedRef.current = true;
+    if (destination.kind === "workspace") {
+      useWorkspaceStore.getState().selectWorkspace(destination.workspaceId);
+      useNavStore.getState().openWorkspace(destination.workspaceId);
+    } else {
+      useWorkspaceStore.getState().selectWorkspace(null);
+      useNavStore.getState().navigate(destination.page);
+    }
+    setStartupDestinationApplied(true);
+  }, [authState, settingsLoaded, startupDestination, workspacesLoaded, workspaces]);
 
   // The local Documents folder is a device path, while settings may live in a
   // database shared by Linux, macOS, and other machines. Silently discard a
@@ -339,6 +378,10 @@ function App() {
     );
   }
 
+  if (!startupDestinationApplied) {
+    return <AppToaster />;
+  }
+
   const page = currentPage();
   const isTerminalRoute = page === "terminal" && hostCapabilities.terminal;
   const isDshRoute = page === "dsh" && hostCapabilities.dsh;
@@ -348,11 +391,11 @@ function App() {
   // in `pageHostUiStore` (written by the Terminal adapter, read above with the
   // other unconditional hooks) so the shell can compute `immersive`/
   // `disableBlur` without a prop threaded back up through `PageHost`.
-  const immersive = !workspaceActive && isTerminalRoute && terminalMaximized;
+  const immersive = terminalMaximized && (isTerminalRoute || (workspaceActive && workspaceTerminalFocused));
 
   return (
     <>
-    <AppBackground disableBlur={!workspaceActive && (isTerminalRoute || isDshRoute)} />
+    <AppBackground disableBlur={immersive || (!workspaceActive && (isTerminalRoute || isDshRoute))} />
     {isDesktopHost && <DragLayer />}
     <MainLayout
       activeNav={resolveShellActiveNav(page, workspaceActive, settingsOpen) ?? ""}

@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { isDesktopHost } from "@/platform";
 import {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR, DEFAULT_BANNER_POSITION, BANNER_ZOOM_MIN, BANNER_ZOOM_MAX,
-  DEFAULT_LAYOUT_MODE, DEFAULT_AUTO_LOCK_MINUTES, DEFAULT_DSH_PORT, DEFAULT_DSH_BACKGROUND_OPACITY, DEFAULT_DSH_BACKGROUND_BLUR, DEFAULT_DSH_TOOLBAR_VISIBLE, DSH_IDLE_STOP_CHOICES, DEFAULT_DSH_IDLE_STOP_MINUTES, DEFAULT_DSH_GLOBAL_SHORTCUT,
+  DEFAULT_LAYOUT_MODE, DEFAULT_STARTUP_DESTINATION, DEFAULT_AUTO_LOCK_MINUTES, DEFAULT_DSH_PORT, DEFAULT_DSH_BACKGROUND_OPACITY, DEFAULT_DSH_BACKGROUND_BLUR, DEFAULT_DSH_TOOLBAR_VISIBLE, DSH_IDLE_STOP_CHOICES, DEFAULT_DSH_IDLE_STOP_MINUTES, DEFAULT_DSH_GLOBAL_SHORTCUT,
   DEFAULT_TERMINAL_BACKGROUND_BLUR, DEFAULT_TERMINAL_BACKGROUND_OPACITY, DEFAULT_TERMINAL_TRANSPARENT,
   DEFAULT_TERMINAL_BACKGROUND_COLOR, DEFAULT_TERMINAL_TEXT_COLOR,
   DEFAULT_TERMINAL_COLOR_SCHEME, TERMINAL_COLOR_SCHEME_COLORS, TERMINAL_COLOR_SCHEME_EFFECTS,
@@ -10,7 +10,7 @@ import {
   DEFAULT_TERMINAL_RENDERER, DEFAULT_TERMINAL_ENGINE,
   DEFAULT_TERMINAL_FONT_FAMILY, DEFAULT_TERMINAL_FONT_SIZE, DEFAULT_TERMINAL_FONT_WEIGHT,
   DOCUMENT_TEXT_COLOR_RE, normalizeHexColor, normalizeTerminalFontWeight,
-  type Theme, type SidebarTabId, type TopBarItemId, type RssTabSelection, type LayoutMode,
+  type Theme, type SidebarTabId, type TopBarItemId, type RssTabSelection, type LayoutMode, type StartupDestination,
   type BannerPosition, type TerminalRenderer, type TerminalEngine, type TerminalColorScheme, type TerminalCustomAppearance,
 } from "./settings/types";
 import {
@@ -26,11 +26,11 @@ import type { SettingsState } from "./settings/state";
 import { createTerminalSetters } from "./settingsStoreTerminal";
 
 export type {
-  Theme, SidebarTabId, TopBarItemId, RssTabSelection, BannerPosition, TerminalRenderer, TerminalEngine, TerminalColorScheme, TerminalCustomAppearance,
+  Theme, SidebarTabId, TopBarItemId, RssTabSelection, BannerPosition, StartupDestination, TerminalRenderer, TerminalEngine, TerminalColorScheme, TerminalCustomAppearance,
 } from "./settings/types";
 export {
   DEFAULT_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS,
-  DEFAULT_HIGHLIGHT_COLOR, HIGHLIGHT_PRESETS, DEFAULT_BANNER_POSITION, BANNER_ZOOM_MIN, BANNER_ZOOM_MAX, DEFAULT_LAYOUT_MODE,
+  DEFAULT_HIGHLIGHT_COLOR, HIGHLIGHT_PRESETS, DEFAULT_BANNER_POSITION, BANNER_ZOOM_MIN, BANNER_ZOOM_MAX, DEFAULT_LAYOUT_MODE, DEFAULT_STARTUP_DESTINATION,
   AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES, DEFAULT_DSH_PORT, DEFAULT_DSH_BACKGROUND_OPACITY, DEFAULT_DSH_BACKGROUND_BLUR, DEFAULT_DSH_TOOLBAR_VISIBLE, DSH_IDLE_STOP_CHOICES, DEFAULT_DSH_IDLE_STOP_MINUTES, DEFAULT_DSH_GLOBAL_SHORTCUT,
   DEFAULT_TERMINAL_BACKGROUND_BLUR, DEFAULT_TERMINAL_BACKGROUND_OPACITY, DEFAULT_TERMINAL_TRANSPARENT,
   DEFAULT_TERMINAL_BACKGROUND_COLOR, DEFAULT_TERMINAL_TEXT_COLOR,
@@ -62,6 +62,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   sidebarTabOrder: cachedSidebarTabOrder(),
   topBarItemOrder: cachedTopBarItemOrder(),
   layoutMode: cachedLayoutMode(),
+  startupDestination: DEFAULT_STARTUP_DESTINATION,
   defaultRssTab: cachedDefaultRssTab(),
   feedsViewMode: cachedFeedsViewMode(),
   userAvatar: "",
@@ -174,6 +175,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ layoutMode: mode });
     cacheLayoutMode(mode);
     saveSetting("layout_mode", JSON.stringify(mode));
+  },
+
+  setStartupDestination: (destination) => {
+    set({ startupDestination: destination });
+    saveSetting("startup_destination", JSON.stringify(destination));
   },
 
   setDefaultRssTab: (tab) => {

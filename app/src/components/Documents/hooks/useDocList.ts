@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useDB, DocumentListItem, DocumentFolder, DocStatus } from "@/hooks/useDB";
+import { countDocumentWords } from "@/lib/documentWordCount";
 
 export const PAGE_SIZE = 10_000;
 
@@ -65,7 +66,14 @@ export function useDocList(refreshKey: string | number) {
         db.listDocumentFolders(),
       ]);
       if (mySeq !== querySeq.current) return;
-      setDocs(result.items);
+      // `word_count` was historically whitespace-based, so an existing whole
+      // Chinese paragraph may be stored as 1. The list already carries
+      // plaintext `content_text` for unprotected documents; derive the visible
+      // count from it immediately instead of waiting for the next edit/save.
+      setDocs(result.items.map((doc) => doc.protected ? doc : {
+        ...doc,
+        word_count: countDocumentWords(doc.content_text),
+      }));
       setFolders(folderPaths);
       setTotal(result.total);
     } finally {

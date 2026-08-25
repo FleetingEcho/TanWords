@@ -123,6 +123,22 @@ describe("TerminalToolRestty", () => {
     vi.stubGlobal("cancelAnimationFrame", vi.fn());
   });
 
+  it("restores the app shell when its immersive toolbar is double-clicked", () => {
+    const onMaximizedChange = vi.fn();
+    render(
+      <TerminalToolRestty
+        onBack={() => {}}
+        maximized
+        onMaximizedChange={onMaximizedChange}
+      />,
+    );
+
+    const toolbar = screen.getByTestId("terminal-tab-toolbar");
+    expect(toolbar).toHaveClass("app-drag-region");
+    fireEvent.doubleClick(toolbar);
+    expect(onMaximizedChange).toHaveBeenCalledWith(false);
+  });
+
   it("connects through a ptyTransport (not manual write/onData) and reports connected", async () => {
     mocks.setSpawnInfo({ id: "s1", shell: "/bin/zsh", cwd: "/home", pid: 1 });
     const onSessionReady = vi.fn();

@@ -1,5 +1,5 @@
 import type {
-  Theme, SidebarTabId, TopBarItemId, RssTabSelection, BannerPosition, LayoutMode,
+  Theme, SidebarTabId, TopBarItemId, RssTabSelection, BannerPosition, LayoutMode, StartupDestination,
   TerminalRenderer, TerminalColorScheme, TerminalEngine,
 } from "./types";
 
@@ -40,6 +40,8 @@ export interface SettingsState {
   /** Responsive layout mode. Flexible adapts the shell and pages to narrow
    * viewports; fixed keeps the classic desktop chrome on wide screens. */
   layoutMode: LayoutMode;
+  /** Full page or custom workspace selected after startup data has loaded. */
+  startupDestination: StartupDestination;
   /** RSS feed tab selected by default when opening Feeds — "all" or a specific feed's id.
    *  Lets a user who mainly reads one source (e.g. Hacker News) skip loading every channel. */
   defaultRssTab: RssTabSelection;
@@ -181,6 +183,7 @@ export interface SettingsState {
   setSidebarTabOrder: (order: SidebarTabId[]) => void;
   setTopBarItemOrder: (order: TopBarItemId[]) => void;
   setLayoutMode: (mode: LayoutMode) => void;
+  setStartupDestination: (destination: StartupDestination) => void;
   setDefaultRssTab: (tab: RssTabSelection) => void;
   setFeedsViewMode: (mode: "card" | "list") => void;
   setUserAvatar: (dataUrl: string, position?: BannerPosition) => void;

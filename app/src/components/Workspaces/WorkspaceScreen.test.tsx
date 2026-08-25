@@ -8,6 +8,7 @@ import { SplitLayout } from "./SplitLayout";
 import type { LayoutNode } from "@/workspaces/model";
 import { WORKSPACES_CACHE_KEY, WORKSPACES_DURABLE_KEY } from "@/workspaces/persistence";
 import { collectPaneIds } from "@/workspaces/normalization";
+import { usePageHostUiStore } from "@/store/pageHostUiStore";
 
 // Stub page modules so no real page chunk is fetched during render.
 vi.mock("@/components/Dashboard/DashboardPage", () => ({ DashboardPage: () => <div data-testid="dashboard-page">dashboard</div> }));
@@ -15,12 +16,25 @@ vi.mock("@/components/Dashboard/DashboardPage", () => ({ DashboardPage: () => <d
 const terminalLifecycle = vi.hoisted(() => ({ mounts: 0, unmounts: 0 }));
 
 vi.mock("@/components/Terminal/TerminalPage", () => ({
-  TerminalPage: () => {
+  TerminalPage: ({
+    maximized,
+    onMaximizedChange,
+  }: {
+    maximized?: boolean;
+    onMaximizedChange?: (value: boolean) => void;
+  }) => {
     useEffect(() => {
       terminalLifecycle.mounts += 1;
       return () => { terminalLifecycle.unmounts += 1; };
     }, []);
-    return <div data-testid="terminal-page">terminal</div>;
+    return (
+      <div data-testid="terminal-page">
+        terminal
+        <button onClick={() => onMaximizedChange?.(!maximized)}>
+          {maximized ? "Restore terminal" : "Maximize terminal"}
+        </button>
+      </div>
+    );
   },
 }));
 
@@ -48,6 +62,7 @@ function reset() {
     undoCheckpoint: null,
   });
   useNavStore.setState({ activeWorkspaceId: null, page: "dashboard" });
+  usePageHostUiStore.setState({ terminalMaximized: false });
   localStorage.removeItem(WORKSPACES_CACHE_KEY);
   localStorage.removeItem(`tanwords_${WORKSPACES_DURABLE_KEY}`);
 }
@@ -69,6 +84,17 @@ describe("WorkspaceScreen", () => {
     expect(screen.getByRole("button", { name: "Calendar" })).toBeInTheDocument();
     expect(screen.queryByText("Add a page to get started.")).not.toBeInTheDocument();
     expect(screen.queryByText("Add page")).not.toBeInTheDocument();
+  });
+
+  it("leaves the workspace when closing its only empty pane", () => {
+    const id = useWorkspaceStore.getState().create("Empty ws");
+    useNavStore.getState().openWorkspace(id);
+    render(<WorkspaceScreen />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Close workspace" }));
+
+    expect(useNavStore.getState().activeWorkspaceId).toBeNull();
+    expect(useWorkspaceStore.getState().workspaces.some((workspace) => workspace.id === id)).toBe(true);
   });
 
   it("uses exactly one vertical scroll container while the widget picker is open", () => {
@@ -128,6 +154,17 @@ describe("WorkspaceScreen", () => {
     render(<WorkspaceScreen />);
 
     expect(screen.getByLabelText("Back").parentElement).toHaveClass("h-6");
+  });
+
+  it("hides pane maximize when a widget already fills a single-pane workspace", async () => {
+    const id = useWorkspaceStore.getState().create("Single widget");
+    useNavStore.getState().openWorkspace(id);
+    render(<WorkspaceScreen />);
+
+    fireEvent.click(screen.getByText("Dashboard"));
+    await waitFor(() => expect(screen.getByTestId("dashboard-page")).toBeInTheDocument());
+
+    expect(screen.queryByRole("button", { name: "Maximize pane" })).not.toBeInTheDocument();
   });
 
   it("changes and persists widget blur and background opacity from the toolbar", () => {
@@ -215,6 +252,26 @@ describe("WorkspaceScreen", () => {
     expect(terminalLifecycle.unmounts).toBe(0);
     expect(terminalLifecycle.mounts).toBe(1);
     expect(screen.getByTestId("terminal-page")).toBeInTheDocument();
+  });
+
+  it("turns a maximized terminal pane into the entire workspace surface", async () => {
+    const id = useWorkspaceStore.getState().create("Terminal immersive");
+    useWorkspaceStore.setState((state) => ({
+      workspaces: state.workspaces.map((workspace) => workspace.id === id && workspace.root.kind === "pane"
+        ? { ...workspace, root: { ...workspace.root, content: { instanceId: "terminal-immersive", pageId: "terminal" } } }
+        : workspace),
+    }));
+    useNavStore.getState().openWorkspace(id);
+    const { container } = render(<WorkspaceScreen />);
+    await waitFor(() => expect(screen.getByText("Maximize terminal")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText("Maximize terminal"));
+
+    expect(usePageHostUiStore.getState().terminalMaximized).toBe(true);
+    expect(useWorkspaceStore.getState().focusedPaneId).not.toBeNull();
+    expect(screen.getByLabelText("Back").parentElement).toHaveClass("hidden");
+    expect(screen.queryByLabelText("Close pane")).not.toBeInTheDocument();
+    expect(container.querySelector("[data-pane-id]")).toHaveClass("rounded-none", "border-0");
   });
 
   it("supports up to four widgets and disables further splitting", () => {

@@ -255,9 +255,9 @@ describe("TerminalTool PTY lifecycle and typography", () => {
     });
   }
 
-  it("exits OS fullscreen when the maximized terminal toolbar is dragged down", () => {
+  it("exits OS fullscreen when the terminal toolbar is dragged down", () => {
     mocks.setWindowState({ maximized: false, fullScreen: true });
-    render(<TerminalTool onBack={() => {}} maximized />);
+    render(<TerminalTool onBack={() => {}} />);
     const toolbar = screen.getByTestId("terminal-tab-toolbar");
 
     expect(toolbar).not.toHaveClass("app-drag-region");
@@ -265,6 +265,28 @@ describe("TerminalTool PTY lifecycle and typography", () => {
     fireEvent.mouseMove(window, { clientY: 8 });
 
     expect(mocks.callMain).toHaveBeenCalledWith("window:toggleFullScreen");
+  });
+
+  it("keeps immersive mode while its terminal toolbar is dragged", () => {
+    const onMaximizedChange = vi.fn();
+    render(<TerminalTool onBack={() => {}} maximized onMaximizedChange={onMaximizedChange} />);
+    const toolbar = screen.getByTestId("terminal-tab-toolbar");
+
+    expect(toolbar).toHaveClass("app-drag-region");
+    fireEvent.mouseDown(toolbar, { clientX: 0, clientY: 0 });
+    fireEvent.mouseMove(window, { clientX: 8, clientY: 0 });
+
+    expect(onMaximizedChange).not.toHaveBeenCalled();
+    expect(mocks.callMain).not.toHaveBeenCalledWith("window:toggleFullScreen");
+  });
+
+  it("restores the app shell when an immersive terminal toolbar is double-clicked", () => {
+    const onMaximizedChange = vi.fn();
+    render(<TerminalTool onBack={() => {}} maximized onMaximizedChange={onMaximizedChange} />);
+
+    fireEvent.doubleClick(screen.getByTestId("terminal-tab-toolbar"));
+
+    expect(onMaximizedChange).toHaveBeenCalledWith(false);
   });
 
   it("fits only once when a hidden terminal tab becomes visible", () => {

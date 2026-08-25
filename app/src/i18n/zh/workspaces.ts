@@ -21,6 +21,7 @@ export const workspaces: Dict = {
   "workspaces.recoveredDismiss": "知道了",
   "workspaces.edit": "编辑",
   "workspaces.done": "完成",
+  "workspaces.close": "关闭工作区",
   "workspaces.appearance": "小组件外观",
   "workspaces.appearance.blur": "模糊",
   "workspaces.appearance.opacity": "不透明度",

@@ -15,6 +15,7 @@ import { readClipboardImage } from "@/ipc/clipboard";
 import { useSettingsStore } from "@/store/settingsStore";
 import { promoteLocalFileLinks } from "./localFileBlocks";
 import { isEmptyParagraph, withTrailingEditorParagraph, withoutTrailingEditorParagraph } from "./trailingEditorParagraph";
+import { countDocumentWords } from "@/lib/documentWordCount";
 import { DocumentPreviewScrollArea } from "./DocumentPreviewScrollArea";
 import { DocumentContentSearch } from "./DocumentContentSearch";
 import { BlockTemplatesMenu } from "./BlockTemplatesMenu";
@@ -60,8 +61,7 @@ function fileStem(relPath: string): string {
 }
 
 function countWords(text: string): number {
-  const trimmed = text.trim();
-  return trimmed ? trimmed.split(/\s+/).length : 0;
+  return countDocumentWords(text);
 }
 
 async function readNativeClipboardImage(): Promise<File | null> {

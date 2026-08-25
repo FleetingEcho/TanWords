@@ -6,6 +6,7 @@ import { PanePageHost } from "./PanePageHost";
 import { PagePicker } from "./PagePicker";
 import { DropZones, PAGE_DRAG_MIME } from "./DropZones";
 import { DEFAULT_WORKSPACE_APPEARANCE, normalizeWorkspaceAppearance } from "@/workspaces/model";
+import { usePageHostUiStore } from "@/store/pageHostUiStore";
 
 /** One pane of a workspace: a header, the hosted page (or the empty
  *  affordance), the page picker when adding/replacing, and the drag drop
@@ -40,6 +41,9 @@ export function WorkspacePane({ paneId, content, visible, editMode, focused }: W
   // dragenter/dragleave pair toggles this; the DropZones component handles
   // the actual drop and per-zone highlighting.
   const [dragOver, setDragOver] = React.useState(false);
+  const terminalImmersive = usePageHostUiStore((s) => s.terminalMaximized)
+    && focused
+    && content?.pageId === "terminal";
 
   const active = selectedPaneId === paneId;
   const pickerVisible = !content || pickerOpen;
@@ -51,7 +55,11 @@ export function WorkspacePane({ paneId, content, visible, editMode, focused }: W
       data-pane-content={content ? "true" : "false"}
       data-widget-blur={blur}
       data-widget-opacity={opacity}
-      className="relative flex h-full w-full min-w-0 min-h-0 flex-col overflow-hidden rounded-lg border border-[hsl(var(--sidebar-border))]/60"
+      className={`relative flex h-full w-full min-w-0 min-h-0 flex-col overflow-hidden ${
+        terminalImmersive
+          ? "rounded-none border-0"
+          : "rounded-lg border border-[hsl(var(--sidebar-border))]/60"
+      }`}
       onPointerDown={() => setSelectedPane(paneId)}
       onDragEnter={(e) => {
         if (e.dataTransfer.types.includes(PAGE_DRAG_MIME)) setDragOver(true);
@@ -88,17 +96,21 @@ export function WorkspacePane({ paneId, content, visible, editMode, focused }: W
           } : {}),
         }}
       />
-      <PaneHeader
-        paneId={paneId}
-        content={content}
-        active={active}
-        editMode={editMode}
-        focused={focused}
-        onAddPage={() => setPickerOpen(true)}
-      />
+      {!terminalImmersive && (
+        <PaneHeader
+          paneId={paneId}
+          content={content}
+          active={active}
+          editMode={editMode}
+          focused={focused}
+          onAddPage={() => setPickerOpen(true)}
+        />
+      )}
       <div
         data-workspace-widget-content
-        className={`relative z-1 flex-1 min-h-0 overflow-x-hidden bg-transparent ${pickerVisible ? "overflow-hidden" : "overflow-y-auto"}`}
+        className={`relative z-1 flex-1 min-h-0 overflow-x-hidden bg-transparent ${
+          terminalImmersive || pickerVisible ? "overflow-hidden" : "overflow-y-auto"
+        }`}
         style={{ backgroundColor: "transparent" }}
       >
         {content ? (

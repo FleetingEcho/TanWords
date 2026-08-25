@@ -9,6 +9,7 @@
  */
 import type { Block } from "@/components/Documents/tiptap/blocks";
 import { blocksToMarkdown as serializeMarkdown, markdownToBlocks as parseMarkdown } from "./markdown";
+import { countDocumentWords } from "./documentWordCount";
 
 // ── Legacy Lexical → Markdown ───────────────────────────────────────────────
 
@@ -140,13 +141,13 @@ export function editorToStorage(editor: { document: readonly unknown[] }): {
 } {
   const blocks = editor.document;
   const contentText = blocksToText(blocks);
-  const wordCount = contentText.trim() ? contentText.trim().split(/\s+/).length : 0;
+  const wordCount = countDocumentWords(contentText);
   return { content: JSON.stringify(blocks), contentText, wordCount };
 }
 
 /** Serialize already-parsed blocks without requiring a mounted editor. */
 export function blocksToStorage(blocks: readonly unknown[]) {
   const contentText = blocksToText(blocks);
-  const wordCount = contentText.trim() ? contentText.trim().split(/\s+/).length : 0;
+  const wordCount = countDocumentWords(contentText);
   return { content: JSON.stringify(blocks), contentText, wordCount };
 }

@@ -81,7 +81,15 @@ export function TerminalTool({
   onMaximizedChange?: (maximized: boolean) => void;
 }) {
   const t = useT();
-  const { fullScreen, onMouseDown: onToolbarMouseDown } = useFullscreenDragExit();
+  const restoreFromToolbarGesture = useCallback(() => onMaximizedChange(false), [onMaximizedChange]);
+  const {
+    fullScreen,
+    onMouseDown: onToolbarMouseDown,
+    onDoubleClick: onToolbarDoubleClick,
+  } = useFullscreenDragExit({
+    immersive: maximized,
+    onExitImmersive: restoreFromToolbarGesture,
+  });
   const shellRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
@@ -388,6 +396,7 @@ export function TerminalTool({
           maximized={maximized}
           fullScreen={fullScreen}
           onToolbarMouseDown={onToolbarMouseDown}
+          onToolbarDoubleClick={onToolbarDoubleClick}
           closeSearch={closeSearch}
           setSearchOpen={setSearchOpen}
           toggleAppearanceControls={toggleAppearanceControls}

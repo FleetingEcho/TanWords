@@ -4,6 +4,7 @@ import { useDB, DocumentDetail, DocStatus } from "@/hooks/useDB";
 import { pruneDocumentAssets } from "@/lib/documentAssets";
 import { saveDocumentRevision } from "@/lib/documentRevisions";
 import { countTaskBlocks } from "./taskCounts";
+import { countDocumentWords } from "@/lib/documentWordCount";
 
 export type SaveStatus = "idle" | "dirty" | "saving" | "saved";
 
@@ -74,7 +75,9 @@ export function useDocumentEditor() {
       const detail = await db.getDocument(id);
       if (sequence !== loadSequence.current) return;
       if (detail) {
-        setDoc(detail);
+        // Correct counts written by older whitespace-only versions as soon as
+        // the plaintext document is available. The next save persists it.
+        setDoc({ ...detail, word_count: countDocumentWords(detail.content_text) });
         lastSavedContent.current = detail.content;
       }
     } catch (error) {

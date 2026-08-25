@@ -86,6 +86,19 @@ describe("useDocumentEditor latest-click navigation", () => {
     expect(updateDocumentContent).toHaveBeenCalledWith(1, "new-content", "new text", 2);
   });
 
+  it("corrects a legacy whitespace-only Chinese count when opening a document", async () => {
+    getDocument.mockResolvedValue({
+      ...detail(1),
+      content_text: "你好 world",
+      word_count: 2,
+    });
+    const { result } = renderHook(() => useDocumentEditor());
+
+    await act(async () => { await result.current.loadDoc(1); });
+
+    expect(result.current.doc?.word_count).toBe(3);
+  });
+
   it("keeps a failed save dirty so it can be retried", async () => {
     getDocument.mockResolvedValue(detail(1));
     updateDocumentContent.mockRejectedValueOnce(new Error("Turso database write timed out"));

@@ -19,6 +19,8 @@ import { hostCapabilities } from "@/platform";
 import { me as fetchMe, logout } from "@/platform/auth";
 import { useVoiceAssistantAvailable } from "@/store/serverCapabilitiesStore";
 import { useWorkspacesEnabled, setWorkspacesEnabled } from "@/pages/workspaceFeature";
+import { PAGE_CATALOG } from "@/pages/pageCatalog";
+import { useWorkspaceStore } from "@/store/workspaceStore";
 
 const MAX_AVATAR_UPLOAD_BYTES = 5 * 1024 * 1024;
 const MAX_BANNER_UPLOAD_BYTES = 8 * 1024 * 1024;
@@ -398,7 +400,29 @@ export function GeneralSection() {
   const t = useT();
   const voiceAssistantAvailable = useVoiceAssistantAvailable();
   const workspacesEnabled = useWorkspacesEnabled();
+  const workspaces = useWorkspaceStore((state) => state.workspaces);
   const setWorkspacesEnabledFlag = setWorkspacesEnabled;
+  const startupPages = PAGE_CATALOG.filter((definition) =>
+    definition.id !== "settings"
+    && (!definition.capability || hostCapabilities[definition.capability]));
+  const startupValue = settings.startupDestination.kind === "page"
+    ? `page:${settings.startupDestination.page}`
+    : `workspace:${settings.startupDestination.workspaceId}`;
+  const selectedStartupWorkspaceId = settings.startupDestination.kind === "workspace"
+    ? settings.startupDestination.workspaceId
+    : null;
+  const selectedWorkspaceUnavailable = selectedStartupWorkspaceId !== null
+    && (!workspacesEnabled || !workspaces.some((workspace) => workspace.id === selectedStartupWorkspaceId));
+
+  const setStartupValue = (value: string) => {
+    const [kind, id] = value.split(":", 2);
+    const page = startupPages.find((definition) => definition.id === id);
+    if (kind === "page" && page) {
+      settings.setStartupDestination({ kind: "page", page: page.id });
+    } else if (kind === "workspace" && workspaces.some((workspace) => workspace.id === id)) {
+      settings.setStartupDestination({ kind: "workspace", workspaceId: id });
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -423,6 +447,30 @@ export function GeneralSection() {
             value={settings.layoutMode === "flexible" ? "on" : "off"}
             onChange={(v) => settings.setLayoutMode(v === "on" ? "flexible" : "fixed")}
           />
+        </SettingRow>
+        <SettingRow label={t("settings.startupDestination")} sub={t("settings.startupDestinationSub")}>
+          <Select value={startupValue} onValueChange={setStartupValue}>
+            <SelectTrigger className="h-9 w-52">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {startupPages.map((definition) => (
+                <SelectItem key={definition.id} value={`page:${definition.id}`}>
+                  {t("settings.startupPage", { name: t(definition.titleKey) })}
+                </SelectItem>
+              ))}
+              {workspacesEnabled && workspaces.map((workspace) => (
+                <SelectItem key={workspace.id} value={`workspace:${workspace.id}`}>
+                  {t("settings.startupWorkspace", { name: workspace.title || t("workspaces.untitled") })}
+                </SelectItem>
+              ))}
+              {selectedWorkspaceUnavailable && (
+                <SelectItem value={startupValue} disabled>
+                  {t("settings.startupUnavailable")}
+                </SelectItem>
+              )}
+            </SelectContent>
+          </Select>
         </SettingRow>
         <SettingRow label={t("settings.theme")} sub={t("settings.themeSub")}>
           <Select value={settings.theme} onValueChange={(value) => settings.setTheme(value as Theme)}>

@@ -85,7 +85,15 @@ export function TerminalToolRestty({
   onMaximizedChange?: (maximized: boolean) => void;
 }) {
   const t = useT();
-  const { fullScreen, onMouseDown: onToolbarMouseDown } = useFullscreenDragExit();
+  const restoreFromToolbarGesture = useCallback(() => onMaximizedChange(false), [onMaximizedChange]);
+  const {
+    fullScreen,
+    onMouseDown: onToolbarMouseDown,
+    onDoubleClick: onToolbarDoubleClick,
+  } = useFullscreenDragExit({
+    immersive: maximized,
+    onExitImmersive: restoreFromToolbarGesture,
+  });
   const shellRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<ResttyTerminal | null>(null);
   const onSessionExitRef = useRef(onSessionExit);
@@ -280,7 +288,12 @@ export function TerminalToolRestty({
         <div
           data-testid="terminal-tab-toolbar"
           onMouseDown={onToolbarMouseDown}
-          title={fullScreen ? t("windowControls.dragToExitFullscreen") : undefined}
+          onDoubleClick={onToolbarDoubleClick}
+          title={maximized
+            ? t("toolsPage.terminal.restore")
+            : fullScreen
+              ? t("windowControls.dragToExitFullscreen")
+              : undefined}
           className={`${
             fullScreen
               ? "cursor-grab"

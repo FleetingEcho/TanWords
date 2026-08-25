@@ -50,10 +50,9 @@ export function PanePageHost({ paneId, content, visible, requestFocus, requestOp
 
   if (!def) return null;
 
-  // Terminal in a pane maps its embedded "maximize" to workspace focus (the
-  // pane fills the workspace) rather than the app-wide immersive mode. The
-  // maximize state stays in pageHostUiStore; the workspace focus layer reads
-  // it and decides whether to render only this pane.
+  // Terminal in a pane maps its embedded "maximize" to app-wide immersive mode:
+  // the owning pane is focused so siblings stay mounted but clipped, while the
+  // application and workspace shells hide their chrome around this terminal.
   if (content.pageId === "terminal") {
     return <TerminalPaneHost def={def} paneId={paneId} visible={visible} ctx={ctx} params={params} />;
   }
@@ -104,8 +103,18 @@ function TerminalPaneHost({
 }: { def: NonNullable<ReturnType<typeof getPageDefinition>>; paneId: string; visible: boolean; ctx: PageHostContextValue; params: any }) {
   if (!def) return null;
   const Lazy = getLazyPage(def);
-  const maximized = usePageHostUiStore((s) => s.terminalMaximized);
+  const terminalMaximized = usePageHostUiStore((s) => s.terminalMaximized);
   const setMaximized = usePageHostUiStore((s) => s.setTerminalMaximized);
+  const focusedPaneId = useWorkspaceStore((s) => s.focusedPaneId);
+  const setFocus = useWorkspaceStore((s) => s.setFocus);
+  const maximized = terminalMaximized && focusedPaneId === paneId;
+  const setTerminalImmersive = React.useCallback((value: boolean) => {
+    // The terminal's own maximize button is app-wide immersive mode. Focus the
+    // owning pane first so the split tree retains every sibling while rendering
+    // only this terminal; restoring expands the original split geometry again.
+    setFocus(value ? paneId : null);
+    setMaximized(value);
+  }, [paneId, setFocus, setMaximized]);
   // Terminal renders an xterm canvas inside the DOM (not a native
   // `WebContentsView`), so it clips behind a focused pane like any React page
   // — no native-surface hide is needed. In a pane, the terminal's embedded
@@ -113,14 +122,15 @@ function TerminalPaneHost({
   // than navigating to the full-page terminal route. The pane header's own
   // close button already calls the same store action.
   const onClose = React.useCallback(() => {
+    if (maximized) setTerminalImmersive(false);
     useWorkspaceStore.getState().closePane(paneId);
-  }, [paneId]);
+  }, [maximized, paneId, setTerminalImmersive]);
   return (
     <PageHostProvider value={ctx}>
       <Lazy
         visible={visible}
         maximized={maximized}
-        onMaximizedChange={setMaximized}
+        onMaximizedChange={setTerminalImmersive}
         onClose={onClose}
         {...(params ?? {})}
       />

@@ -126,6 +126,41 @@ describe("getTextCursorPosition", () => {
 });
 
 describe("block mutation", () => {
+  it("keeps the caret in place when inserting a trailing block", () => {
+    const { editor, api } = makeEditor([paragraph("1")]);
+    editor.commands.setTextSelection(2);
+    const before = editor.state.selection.from;
+
+    api.insertBlocks([{ type: "paragraph" }], api.document[0], "after");
+
+    expect(editor.state.selection.from).toBe(before);
+    editor.commands.insertContent(".");
+    expect(api.document[0].content).toEqual(expect.arrayContaining([
+      expect.objectContaining({ text: "1." }),
+    ]));
+  });
+
+  it("does not spread consecutive typing across newly appended paragraphs", () => {
+    const { editor, api } = makeEditor([{ type: "paragraph", props: {} }]);
+    editor.on("update", () => {
+      const cursor = api.getTextCursorPosition();
+      const hasText = Array.isArray(cursor.block.content) && cursor.block.content.length > 0;
+      if (!cursor.nextBlock && hasText) {
+        api.insertBlocks([{ type: "paragraph" }], cursor.block, "after");
+      }
+    });
+    editor.commands.setTextSelection(1);
+
+    editor.commands.insertContent("1");
+    editor.commands.insertContent(".");
+    editor.commands.insertContent(" ");
+
+    expect(api.document).toHaveLength(2);
+    expect(api.document[0].content).toEqual(expect.arrayContaining([
+      expect.objectContaining({ text: "1. " }),
+    ]));
+  });
+
   it("inserts after a reference block", () => {
     const { api } = makeEditor([paragraph("one"), paragraph("three")]);
     api.insertBlocks([paragraph("two")], api.document[0], "after");

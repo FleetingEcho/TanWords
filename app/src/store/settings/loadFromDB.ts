@@ -2,7 +2,7 @@ import type { StoreApi } from "zustand";
 import type { SettingsState } from "./state";
 import {
   DEFAULT_SIDEBAR_TABS, DEFAULT_VISIBLE_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_VISIBLE_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR,
-  DEFAULT_LAYOUT_MODE, AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES,
+  DEFAULT_LAYOUT_MODE, DEFAULT_STARTUP_DESTINATION, AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES,
   DEFAULT_DSH_BACKGROUND_OPACITY, DEFAULT_DSH_BACKGROUND_BLUR,
   DSH_IDLE_STOP_CHOICES, DEFAULT_DSH_IDLE_STOP_MINUTES, DEFAULT_DSH_GLOBAL_SHORTCUT,
   DEFAULT_TERMINAL_BACKGROUND_BLUR, DEFAULT_TERMINAL_BACKGROUND_OPACITY, DEFAULT_TERMINAL_TRANSPARENT,
@@ -15,7 +15,7 @@ import {
   TERMINAL_COLOR_SCHEME_IDS,
   DEFAULT_TERMINAL_RENDERER, DEFAULT_TERMINAL_ENGINE,
   DOCUMENT_TEXT_COLOR_RE, normalizeHexColor, type Theme, type RssTabSelection,
-  type LayoutMode, type TerminalRenderer, type TerminalEngine, type TerminalColorScheme, type TerminalCustomAppearance,
+  type LayoutMode, type StartupDestination, type TerminalRenderer, type TerminalEngine, type TerminalColorScheme, type TerminalCustomAppearance,
   type TopBarItemId, type SidebarTabId,
 } from "./types";
 import {
@@ -101,6 +101,7 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       "sidebar_tab_order",
       "topbar_item_order",
       "layout_mode",
+      "startup_destination",
       "default_rss_tab",
       "feeds_view_mode",
       "user_avatar",
@@ -387,6 +388,22 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       resolvedTerminalEngine = DEFAULT_TERMINAL_ENGINE;
     }
 
+    const savedStartupDestination = values.startup_destination as unknown;
+    const savedStartupPage = (savedStartupDestination as Partial<Extract<StartupDestination, { kind: "page" }>> | null)?.page;
+    const savedStartupWorkspaceId = (savedStartupDestination as Partial<Extract<StartupDestination, { kind: "workspace" }>> | null)?.workspaceId;
+    const resolvedStartupDestination: StartupDestination = savedStartupDestination
+      && typeof savedStartupDestination === "object"
+      && (savedStartupDestination as StartupDestination).kind === "page"
+      && (DEFAULT_SIDEBAR_TABS as readonly string[]).includes(savedStartupPage ?? "")
+        ? { kind: "page", page: savedStartupPage as SidebarTabId }
+        : savedStartupDestination
+          && typeof savedStartupDestination === "object"
+          && (savedStartupDestination as StartupDestination).kind === "workspace"
+          && typeof savedStartupWorkspaceId === "string"
+          && savedStartupWorkspaceId.length > 0
+            ? { kind: "workspace", workspaceId: savedStartupWorkspaceId }
+            : DEFAULT_STARTUP_DESTINATION;
+
     set({
       theme: (values.theme as Theme) || "system",
       defaultAiProvider: values.default_ai_provider || "openai",
@@ -414,6 +431,7 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       sidebarTabOrder: resolvedSidebarTabOrder,
       topBarItemOrder: resolvedTopBarItemOrder,
       layoutMode: resolvedLayoutMode,
+      startupDestination: resolvedStartupDestination,
       defaultRssTab: resolvedDefaultRssTab,
       feedsViewMode: resolvedFeedsViewMode,
       userAvatar: values.user_avatar || "",

@@ -2,6 +2,7 @@
 import { htmlToMarkdown } from "../lib/htmlToMarkdown";
 import { blocksToMarkdown, markdownToBlocks } from "../lib/markdown";
 import { contentToBlocks } from "../lib/docFormat";
+import { countDocumentWords } from "../lib/documentWordCount";
 import type { Block } from "../components/Documents/tiptap/blocks";
 
 type Request = {
@@ -50,7 +51,7 @@ async function handle(data: Request) {
       const contentText = blocksToText(blocks);
       result = {
         markdown: blocksToMarkdown(blocks as readonly Block[]),
-        wordCount: contentText.trim() ? contentText.trim().split(/\s+/).length : 0,
+        wordCount: countDocumentWords(contentText),
       };
     } else {
       const blocks = data.payload as readonly unknown[];
@@ -58,7 +59,7 @@ async function handle(data: Request) {
       result = {
         content: JSON.stringify(blocks),
         contentText,
-        wordCount: contentText.trim() ? contentText.trim().split(/\s+/).length : 0,
+        wordCount: countDocumentWords(contentText),
       };
     }
     self.postMessage({ id: data.id, result });
