@@ -213,6 +213,9 @@ export function TerminalTool({
   // transparent; explicit ANSI backgrounds used by full-screen TUIs still
   // render normally. Auto selects that safe combination; Settings can override
   // it for users who prefer consistent performance or rendering behaviour.
+  // A hidden retained tab keeps its Terminal and PTY alive, but has nothing to
+  // paint, so release WebGL's context/textures until that tab becomes visible
+  // again. The built-in renderer remains available throughout that interval.
   useEffect(() => {
     const term = terminalRef.current;
     if (!term) return;
@@ -227,7 +230,7 @@ export function TerminalTool({
     disposeWebgl();
     const useWebgl = terminalRenderer === "webgl"
       || (terminalRenderer === "auto" && !effectiveTransparent);
-    if (!useWebgl) return;
+    if (!visible || !useWebgl) return;
 
     try {
       const webglAddon = new WebglAddon();
@@ -240,7 +243,7 @@ export function TerminalTool({
     }
 
     return disposeWebgl;
-  }, [effectiveTransparent, sessionGeneration, terminalRenderer]);
+  }, [effectiveTransparent, sessionGeneration, terminalRenderer, visible]);
 
   // Keep xterm's idea of the default cell background aligned with the shell.
   // In particular, reverse-video cells should resolve against the selected

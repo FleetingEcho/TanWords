@@ -277,6 +277,25 @@ describe("TerminalTool PTY lifecycle and typography", () => {
     expect(mocks.fit).toHaveBeenCalledOnce();
   });
 
+  it("releases WebGL while hidden and restores it when visible again", () => {
+    const view = render(<TerminalTool onBack={() => {}} />);
+    expect(mocks.terminal.loadAddon).toHaveBeenCalledWith(mocks.webgl);
+    const initialLoads = mocks.terminal.loadAddon.mock.calls.filter(
+      ([addon]) => addon === mocks.webgl,
+    ).length;
+
+    view.rerender(<TerminalTool onBack={() => {}} visible={false} />);
+    expect(mocks.webgl.dispose).toHaveBeenCalled();
+    expect(mocks.terminal.loadAddon.mock.calls.filter(
+      ([addon]) => addon === mocks.webgl,
+    )).toHaveLength(initialLoads);
+
+    view.rerender(<TerminalTool onBack={() => {}} visible />);
+    expect(mocks.terminal.loadAddon.mock.calls.filter(
+      ([addon]) => addon === mocks.webgl,
+    )).toHaveLength(initialLoads + 1);
+  });
+
   it("passes the tab's captured shell path when spawning its PTY", () => {
     render(<TerminalTool onBack={() => {}} shellPath="/bin/fish" />);
 
