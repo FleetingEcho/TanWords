@@ -10,7 +10,7 @@ describe("web notification placement", () => {
       'const APP_TOAST_POSITION = isWebHost ? "top-center" : "bottom-right";',
     );
     expect(appSource.match(/<Toaster position=\{APP_TOAST_POSITION\}/g)).toHaveLength(1);
-    expect(appSource.match(/<AppToaster \/>/g)).toHaveLength(5);
+    expect(appSource.match(/<AppToaster \/>/g)).toHaveLength(6);
     expect(appSource).not.toContain('<Toaster position="bottom-right"');
   });
 });

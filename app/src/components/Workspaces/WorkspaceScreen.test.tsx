@@ -153,7 +153,9 @@ describe("WorkspaceScreen", () => {
     useNavStore.getState().openWorkspace(id);
     render(<WorkspaceScreen />);
 
-    expect(screen.getByLabelText("Back").parentElement).toHaveClass("h-6");
+    // The title bar (h-6) is anchored by the rename control since the old
+    // Back button was dropped in the header cleanup.
+    expect(screen.getByTitle("Rename").closest(".h-6")).toHaveClass("h-6");
   });
 
   it("hides pane maximize when a widget already fills a single-pane workspace", async () => {
@@ -269,7 +271,7 @@ describe("WorkspaceScreen", () => {
 
     expect(usePageHostUiStore.getState().terminalMaximized).toBe(true);
     expect(useWorkspaceStore.getState().focusedPaneId).not.toBeNull();
-    expect(screen.getByLabelText("Back").parentElement).toHaveClass("hidden");
+    expect(screen.getByTitle("Rename").closest(".h-6")).toHaveClass("hidden");
     expect(screen.queryByLabelText("Close pane")).not.toBeInTheDocument();
     expect(container.querySelector("[data-pane-id]")).toHaveClass("rounded-none", "border-0");
   });

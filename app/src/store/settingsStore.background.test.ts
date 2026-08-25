@@ -202,7 +202,9 @@ describe("settingsStore database hydration", () => {
 
     await useSettingsStore.getState().loadFromDB();
 
-    expect(useSettingsStore.getState().visibleTopBarItems).toEqual(["search", "ai"]);
+    // The one-time voice backfill appends the new default shortcut to an
+    // existing saved list (a fresh install gets it from the default instead).
+    expect(useSettingsStore.getState().visibleTopBarItems).toEqual(["search", "ai", "voice"]);
   });
 
   it("does not re-add hidden shortcuts when localStorage migration flags are absent", async () => {
@@ -219,7 +221,7 @@ describe("settingsStore database hydration", () => {
     await useSettingsStore.getState().loadFromDB();
 
     // tools + browser were hidden; they must stay hidden with no flag set.
-    expect(useSettingsStore.getState().visibleTopBarItems).toEqual(["search", "dsh", "theme", "updates"]);
+    expect(useSettingsStore.getState().visibleTopBarItems).toEqual(["search", "dsh", "theme", "updates", "voice"]);
   });
 
   it("adds the tools/browser top-bar icons in canonical order without re-enabling hidden items", () => {
