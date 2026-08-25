@@ -82,16 +82,6 @@ export function WorkspaceScreen() {
       <StartupReadySignal />
       <PointerDropDispatcher />
       <div className={`${terminalImmersive ? "hidden" : "flex"} h-6 items-center gap-1 px-2 border-b border-[hsl(var(--sidebar-border))] shrink-0`}>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={closeWorkspace}
-          aria-label={t("workspaces.back")}
-          title={t("workspaces.back")}
-          className="h-6 w-6"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
         {renaming ? (
           <input
             autoFocus
@@ -111,7 +101,7 @@ export function WorkspaceScreen() {
             className="flex items-center gap-1.5 flex-1 min-w-0 text-left"
             title={t("workspaces.rename")}
           >
-            <span className="font-semibold truncate">{ws.title || t("workspaces.untitled")}</span>
+            <span className="flex ml-2 font-semibold truncate">{ws.title || t("workspaces.untitled")}</span>
             <Pencil className="h-3 w-3 text-muted-foreground shrink-0" />
           </button>
         )}
