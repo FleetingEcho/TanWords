@@ -11,8 +11,6 @@ db::db_get_setting
 db::db_set_setting
 db::db_save_translation
 db::db_get_translations
-db::db_get_quiz_words
-db::db_save_quiz_result
 db::db_add_word_enriched
 db::db_get_word_extras
 db::db_save_word_notes

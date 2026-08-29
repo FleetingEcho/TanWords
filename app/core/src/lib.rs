@@ -6,6 +6,8 @@ pub mod appconfig;
 pub mod adblock;
 pub mod db;
 pub mod document_privacy;
+#[cfg(any(feature = "tts", feature = "asr"))]
+pub mod model_download;
 #[cfg(feature = "tts")]
 pub mod tts;
 #[cfg(feature = "asr")]

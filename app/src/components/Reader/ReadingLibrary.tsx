@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Bot, ChevronDown, ClipboardPaste, Filter, MessageSquareText, Rss, Search, Trash2 } from "lucide-react";
 import { useT } from "@/hooks/useT";
 import { useDB } from "@/hooks/useDB";
@@ -50,8 +50,12 @@ export function ReadingLibrary({ onOpen }: { onOpen: (id: number) => void }) {
   const [sort, setSort] = useState<"recent" | "added" | "longest">("recent");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<ReadingArticleItem | null>(null);
+  // Guards concurrent loads: the last call wins, and a stale response
+  // (earlier-started, later-finished) is dropped instead of clobbering it.
+  const loadSeqRef = useRef(0);
 
   const load = useCallback(async (targetPage = page) => {
+    const seq = ++loadSeqRef.current;
     setLoading(true);
     try {
       const result = await db.listReadingArticles({
@@ -59,10 +63,19 @@ export function ReadingLibrary({ onOpen }: { onOpen: (id: number) => void }) {
         dateFrom, dateTo, onlyCommented, sort,
         page: targetPage, limit: PAGE_SIZE,
       });
+      if (seq !== loadSeqRef.current) return;
       setItems(result.items);
       setTotal(result.total);
+      // Deleting the last item on the last page must not strand the user on
+      // an out-of-range page — that renders the "library empty" state and
+      // hides the pagination bar, so the remaining articles on earlier pages
+      // look deleted with no visible way back. Step to the last real page;
+      // the page effect reloads it.
+      if (result.items.length === 0 && targetPage > 0) {
+        setPage(Math.max(0, Math.ceil(result.total / PAGE_SIZE) - 1));
+      }
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current) setLoading(false);
     }
   }, [db, search, source, dateFrom, dateTo, onlyCommented, sort, page]);
 

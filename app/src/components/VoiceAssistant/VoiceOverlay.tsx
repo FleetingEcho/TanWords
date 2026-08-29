@@ -79,6 +79,16 @@ export function VoiceOverlay() {
   }, [isOpen, asrModelPath, ttsModelPath]);
 
   const recorderRef = useRef<PcmRecorder | null>(null);
+  // A recording whose async start (permission prompt + AudioContext + worklet)
+  // has not resolved yet. `startRecording` only flips status to "recording"
+  // afterwards, so a quick tap — down/up before that resolves — finds
+  // `recorderRef` still null and used to leak a live mic with no way to stop
+  // it. The start-side recorder is tracked separately so both an early
+  // release and `stopEverything` can cancel it.
+  const recordingStartRef = useRef<PcmRecorder | null>(null);
+  // Set when the orb is released while the async start is still in flight —
+  // the tap is treated as a normal tap-and-send once the recorder is up.
+  const releaseDuringStartRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const audioQueueRef = useRef<Blob[]>([]);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -137,6 +147,9 @@ export function VoiceOverlay() {
 
   function stopEverything() {
     stoppedRef.current = true;
+    releaseDuringStartRef.current = false;
+    recordingStartRef.current?.cancel();
+    recordingStartRef.current = null;
     recorderRef.current?.cancel();
     recorderRef.current = null;
     abortRef.current?.abort();
@@ -169,16 +182,41 @@ export function VoiceOverlay() {
     setError(null);
     const recorder = new PcmRecorder();
     recorder.onLevel = (peak) => setLevel(peak);
+    // A quick tap can release before getUserMedia resolves: arm the stop
+    // flag so the continuation below treats this start as already
+    // cancelled, and remember the recorder so `stopEverything` can cancel
+    // the pending mic.
+    recordingStartRef.current = recorder;
     try {
       await recorder.start();
-      recorderRef.current = recorder;
-      setStatus("recording");
     } catch {
+      if (recordingStartRef.current === recorder) recordingStartRef.current = null;
       setError(t("voice.micFailed"));
+      return;
+    }
+    if (recordingStartRef.current === recorder) recordingStartRef.current = null;
+    // The popup was closed (or an early release cancelled this turn) while
+    // the permission prompt was up — do not resurrect the turn.
+    if (stoppedRef.current) {
+      recorder.cancel();
+      return;
+    }
+    recorderRef.current = recorder;
+    setStatus("recording");
+    // The orb was released while the async start was in flight — treat it
+    // as a tap: the recording that just came alive is stopped right away.
+    if (releaseDuringStartRef.current) {
+      releaseDuringStartRef.current = false;
+      recorderRef.current = recorder;
+      void stopRecordingAndSend();
     }
   }
 
   async function stopRecordingAndSend() {
+    // Releasing the orb starts a new turn: clear the stop flag a previous
+    // `stopEverything` set (askLlm no longer clears it itself, so a cancelled
+    // turn cannot be resurrected by a late transcription).
+    stoppedRef.current = false;
     const recorder = recorderRef.current;
     recorderRef.current = null;
     if (!recorder) return;
@@ -193,6 +231,11 @@ export function VoiceOverlay() {
       return;
     }
 
+    // The popup was closed while the upload/transcription was in flight —
+    // do not resurrect the turn below (and let a mid-flight close win over
+    // a late-arriving transcription).
+    if (stoppedRef.current) return;
+
     let text: string;
     try {
       text = await transcribeWav(wavBase64);
@@ -201,6 +244,7 @@ export function VoiceOverlay() {
       setError(t("voice.transcribeFailed", { error: String(e) }));
       return;
     }
+    if (stoppedRef.current) return;
     if (!text.trim()) {
       setStatus("idle");
       return;
@@ -228,7 +272,12 @@ export function VoiceOverlay() {
     // a request failure, instead of only appearing once a reply exists.
     void persistSession();
 
-    stoppedRef.current = false;
+    // A late-arriving transcription for a turn the user already cancelled
+    // must not resurrect the pipeline — `stopEverything` set the stop flag,
+    // and resetting it here (as this used to) un-stopped the turn: the LLM
+    // request ran with a fresh AbortController and the reply was spoken out
+    // loud with no popup on screen.
+    if (stoppedRef.current) return;
     streamDoneRef.current = false;
     pendingSpeechRef.current = 0;
     setStatus("thinking");
@@ -499,11 +548,26 @@ export function VoiceOverlay() {
                   void startRecording();
                 }}
                 onPointerUp={(e) => {
+                  // A quick tap releases before the async start resolves and
+                  // status is still "idle" — record the release so
+                  // `startRecording` stops and sends the moment it comes up.
+                  if (status === "idle" && recordingStartRef.current) {
+                    releaseDuringStartRef.current = true;
+                    return;
+                  }
                   if (status !== "recording") return;
                   e.currentTarget.releasePointerCapture(e.pointerId);
                   void stopRecordingAndSend();
                 }}
                 onPointerCancel={() => {
+                  // A cancelled press (e.g. a system gesture takes over) must
+                  // not leave a mic running — same handling as release, minus
+                  // the send when nothing was recorded yet.
+                  if (status === "idle" && recordingStartRef.current) {
+                    recordingStartRef.current.cancel();
+                    recordingStartRef.current = null;
+                    return;
+                  }
                   if (status === "recording") void stopRecordingAndSend();
                 }}
                 disabled={!canRecord}

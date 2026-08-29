@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { invoke } from "@/ipc/backend";
 import { useT } from "@/hooks/useT";
+import { toast } from "sonner";
 import type { RssFeed } from "@/hooks/useDB.types";
 import { SearchIcon, CloseIcon } from "@/components/ui/icons";
 import { EntryGrid, type FeedViewMode } from "./EntryGrid";
@@ -145,6 +146,18 @@ export function HackerNewsSection({ viewMode, onOpen, onTranslate, translatingId
       .catch(() => { if (seq === requestSeq.current) setStatus("error"); });
   }, [section, activeQuery]);
 
+  // The sequence guard is per-instance but the store it protects is global:
+  // an unmount mid-fetch (switching away from the "hackernews" tab) leaves
+  // the in-flight closure alive, and its response would still pass its own
+  // guard and overwrite the shared list. Bumping the counter on teardown
+  // makes that stale response fail the `seq !== requestSeq.current` check —
+  // the closure keeps reading this ref object even after unmount.
+  useEffect(() => {
+    return () => {
+      requestSeq.current += 1;
+    };
+  }, []);
+
   // Explicit "more" click only — no auto-load-on-scroll. (An IntersectionObserver-based
   // sentinel used to trigger this automatically, but a collapsed date group can shrink
   // the page without the sentinel ever leaving the viewport, so it kept re-firing.)
@@ -152,7 +165,13 @@ export function HackerNewsSection({ viewMode, onOpen, onTranslate, translatingId
     if (loadingMore || !hasMore) return;
     const seq = requestSeq.current;
     setLoadingMore(true);
-    loadMore(seq, false).catch(() => {}).finally(() => setLoadingMore(false));
+    loadMore(seq, false)
+      .catch((e) => {
+        // Swallowing this silently just stopped the spinner — the page looked
+        // done when it had actually failed.
+        toast.error(t("feeds.loadMoreFailed", { error: String(e) }));
+      })
+      .finally(() => setLoadingMore(false));
   };
 
   const entries = stories.map(toEntryRow);

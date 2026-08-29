@@ -3,6 +3,7 @@ import {
   DEFAULT_LAYOUT_MODE, type SidebarTabId, type TopBarItemId, type RssTabSelection, type LayoutMode,
 } from "./types";
 import { normalizeOrder } from "./reorder";
+import { isDesktopHost } from "@/platform";
 
 /** localStorage mirrors of a handful of settings that several pages read
  * synchronously on mount, before loadFromDB()'s async round-trip resolves —
@@ -148,8 +149,16 @@ export async function saveSetting(key: string, value: string) {
   try {
     const { invoke } = await import("@/ipc/backend");
     await invoke("db_set_setting", { key, value });
-  } catch {
-    // Web mode fallback
+  } catch (e) {
+    // On desktop this is a real write failure (e.g. the documented read-only
+    // degraded Postgres connection), not "web mode": silently diverting
+    // every settings change to a localStorage mirror nothing on desktop ever
+    // reads back made changes look saved while vanishing on restart. Surface
+    // it; the mirror stays for hosts with no backend at all.
+    if (isDesktopHost) {
+      console.warn(`[settings] db_set_setting failed for ${key}:`, e);
+      return;
+    }
     localStorage.setItem(`tanwords_${key}`, value);
   }
 }
@@ -160,7 +169,11 @@ export async function saveSettings(entries: Array<[key: string, value: string]>)
   try {
     const { invoke } = await import("@/ipc/backend");
     await Promise.all(entries.map(([key, value]) => invoke("db_set_setting", { key, value })));
-  } catch {
+  } catch (e) {
+    if (isDesktopHost) {
+      console.warn("[settings] db_set_setting batch failed:", e);
+      return;
+    }
     for (const [key, value] of entries) {
       localStorage.setItem(`tanwords_${key}`, value);
     }

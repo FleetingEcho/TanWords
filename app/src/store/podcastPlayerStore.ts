@@ -357,8 +357,19 @@ export const usePodcastPlayerStore = create<PodcastPlayerState>((set, get) => ({
     } else if (status === "error") {
       const { track } = get();
       if (track) {
+        // Retry through the SAME engine the track started on: a localPath
+        // track must go through native_audio_load (playAtInner), not
+        // play() — play() only wires the HTML element, so the retry would
+        // play through the element while every transport control kept
+        // targeting a native session that no longer existed (pause/seek
+        // silently no-op against it).
         set({ track: null });
-        get().play(track);
+        if (track.localPath) {
+          usePodcastPlayerStore.setState({ playlist: [track], playlistIndex: 0 });
+          void playAt(0);
+        } else {
+          get().play(track);
+        }
       }
     }
   },

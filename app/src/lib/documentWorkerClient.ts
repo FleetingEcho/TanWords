@@ -1,5 +1,6 @@
 import type { Block } from "@/components/Documents/tiptap/blocks";
 import { blocksToMarkdown, blocksToStorage, blocksToText, contentToBlocks, markdownToBlocks } from "./docFormat";
+import { htmlToMarkdown } from "./htmlToMarkdown";
 import { countDocumentWords } from "./documentWordCount";
 
 type Operation = "markdownToBlocks" | "contentToBlocks" | "contentToMarkdown" | "blocksToMarkdown" | "blocksToMarkdownWithStats" | "blocksToStorage" | "htmlToMarkdown";
@@ -219,9 +220,15 @@ export async function blocksToStorageOffThread(blocks: readonly unknown[]) {
 }
 
 export async function htmlToMarkdownOffThread(html: string): Promise<string> {
-  const result = await run<string>("htmlToMarkdown", html);
-  if (!result) throw new Error("document worker unavailable");
-  return result;
+  // Same fallback shape as every other wrapper: a pure parse5 pipeline
+  // (no DOM dependency), so a missing/crashed worker degrades to the
+  // main-thread implementation instead of erroring the Reader for the
+  // rest of the session.
+  try {
+    return await (run<string>("htmlToMarkdown", html) ?? Promise.resolve(htmlToMarkdown(html)));
+  } catch {
+    return htmlToMarkdown(html);
+  }
 }
 
 export async function blocksToHtmlOffThread(blocks: readonly unknown[]): Promise<string> {

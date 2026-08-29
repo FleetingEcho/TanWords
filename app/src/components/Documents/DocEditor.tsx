@@ -64,6 +64,11 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
   // DocumentChromeToggle), where the chrome always renders.
   const [chromeOpen, setChromeOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  // A sidebar rename arrives as a `doc.title` prop change (via the
+  // docs-item-updated listener). Without this sync the input keeps showing
+  // the pre-rename text, and a focus+blur would write that stale text back
+  // through onTitleChange — silently undoing the rename.
+  React.useEffect(() => { setTitle(doc.title); }, [doc.title]);
 
   const content = useDocEditorContent(doc, onSave, onDirty);
   const {
@@ -332,14 +337,22 @@ export function DocEditor({ doc, onSave, onDirty, onTitleChange, onTagsChange, o
         onClose={() => setHistoryOpen(false)}
         onRestore={(revision: DocumentRevision) => {
           void (async () => {
-            if (!editor) return;
-            const blocks = await contentToBlocksOffThread(revision.content);
-            editor.replaceBlocks(
-              editor.document,
-              withTrailingEditorParagraph(liftMermaid(blocks)) as any,
-            );
-            onDirty();
-            scheduleSave();
+            if (mode === "raw") {
+              // Raw mode (the default for large documents) has no Tiptap
+              // instance to replace into — write the revision into the
+              // source editor directly. The old `if (!editor) return` made
+              // Restore a silent no-op that still closed the modal.
+              handleRawChange(revision.content);
+            } else {
+              if (!editor) return;
+              const blocks = await contentToBlocksOffThread(revision.content);
+              editor.replaceBlocks(
+                editor.document,
+                withTrailingEditorParagraph(liftMermaid(blocks)) as any,
+              );
+              onDirty();
+              scheduleSave();
+            }
             setTitle(revision.title);
             onTitleChange(revision.title);
           })().catch((error) => toast.error(String(error)));

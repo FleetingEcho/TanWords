@@ -47,36 +47,45 @@ export class PcmRecorder {
       audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
     });
 
-    this.context = new AudioContext();
-    const workletUrl = URL.createObjectURL(new Blob([WORKLET_SOURCE], { type: "application/javascript" }));
+    // Everything after getUserMedia must tear the stream back down on
+    // failure — otherwise a rejected addModule leaves the mic hot (the OS
+    // indicator stays on) with a resident AudioContext until app quit.
     try {
-      await this.context.audioWorklet.addModule(workletUrl);
-    } finally {
-      URL.revokeObjectURL(workletUrl);
+      this.context = new AudioContext();
+      const workletUrl = URL.createObjectURL(new Blob([WORKLET_SOURCE], { type: "application/javascript" }));
+      try {
+        await this.context.audioWorklet.addModule(workletUrl);
+      } finally {
+        URL.revokeObjectURL(workletUrl);
+      }
+
+      this.source = this.context.createMediaStreamSource(this.stream);
+      this.worklet = new AudioWorkletNode(this.context, "pcm-capture-processor");
+      this.chunks = [];
+      this.observedPeak = 0;
+
+      this.worklet.port.onmessage = (event: MessageEvent<Float32Array>) => {
+        const chunk = event.data;
+        this.chunks.push(chunk);
+        let peak = 0;
+        for (let i = 0; i < chunk.length; i++) peak = Math.max(peak, Math.abs(chunk[i]));
+        this.observedPeak = Math.max(this.observedPeak, peak);
+        this.onLevel?.(peak);
+      };
+
+      // A worklet node with no path to `destination` is not guaranteed to be
+      // pulled by the graph in every browser — route through a silent (gain 0)
+      // sink instead of leaving it dangling.
+      this.silentSink = this.context.createGain();
+      this.silentSink.gain.value = 0;
+      this.source.connect(this.worklet);
+      this.worklet.connect(this.silentSink);
+      this.silentSink.connect(this.context.destination);
+    } catch (err) {
+      this.teardown();
+      this.chunks = [];
+      throw err;
     }
-
-    this.source = this.context.createMediaStreamSource(this.stream);
-    this.worklet = new AudioWorkletNode(this.context, "pcm-capture-processor");
-    this.chunks = [];
-    this.observedPeak = 0;
-
-    this.worklet.port.onmessage = (event: MessageEvent<Float32Array>) => {
-      const chunk = event.data;
-      this.chunks.push(chunk);
-      let peak = 0;
-      for (let i = 0; i < chunk.length; i++) peak = Math.max(peak, Math.abs(chunk[i]));
-      this.observedPeak = Math.max(this.observedPeak, peak);
-      this.onLevel?.(peak);
-    };
-
-    // A worklet node with no path to `destination` is not guaranteed to be
-    // pulled by the graph in every browser — route through a silent (gain 0)
-    // sink instead of leaving it dangling.
-    this.silentSink = this.context.createGain();
-    this.silentSink.gain.value = 0;
-    this.source.connect(this.worklet);
-    this.worklet.connect(this.silentSink);
-    this.silentSink.connect(this.context.destination);
   }
 
   /** Stops capture and returns the recording as a base64-encoded mono

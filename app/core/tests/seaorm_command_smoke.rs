@@ -18,6 +18,8 @@ fn app_state_for(db: db::connection::Db) -> AppState {
         db: std::sync::Mutex::new(db),
         #[cfg(feature = "tts")]
         tts: std::sync::Mutex::new(None).into(),
+        #[cfg(feature = "asr")]
+        asr: std::sync::Mutex::new(None).into(),
         db_fallback_warning: None,
         document_privacy: Default::default(),
     }
@@ -200,19 +202,23 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     .unwrap();
     assert!(sessions.iter().any(|s| s.id == "chat-1"));
 
-    // quiz result → SRS multi-arg datetime (datetime('now', '+' || ?N || ' days')
-    // the translator rewrites to a Postgres interval cast). The added word's id
-    // is the quiz target; the first quiz save hits the INSERT branch (new
-    // srs_record), the second hits the UPDATE branch.
-    use tanwords_lib::db::{db_get_quiz_words, db_save_quiz_result};
-    let quiz_words = db_get_quiz_words(Some(5), state.clone()).await.unwrap();
-    let quiz_word_id = quiz_words.first().map(|w| w.id).expect("quiz words present");
-    db_save_quiz_result(quiz_word_id, true, state.clone())
+    // SRS review (FSRS path): exercises the srs_records UPSERT and the
+    // daily_streaks `date('now')` + ON CONFLICT rewrite. First review hits
+    // the INSERT-branch UPDATE of a seeded (never-scheduled) row, second
+    // the full FSRS UPDATE branch.
+    use tanwords_lib::db::{db_get_due_cards, db_review_card};
+    let due = db_get_due_cards(Some(5), state.clone()).await.unwrap();
+    let word_id = due.first().map(|c| c.word_id).expect("due cards present");
+    db_review_card(word_id, "good".into(), state.clone())
         .await
         .unwrap();
-    db_save_quiz_result(quiz_word_id, false, state.clone())
+    db_review_card(word_id, "again".into(), state.clone())
         .await
         .unwrap();
+    // After being rated the word is scheduled in the future: no longer due
+    // and no longer in the never-scheduled ("new") set.
+    let after = db_get_due_cards(Some(100), state.clone()).await.unwrap();
+    assert!(!after.iter().any(|c| c.word_id == word_id));
 
     // document folders: create a nested folder chain, list, move a document
     // into it (exercises document_folders + documents.folder update + the

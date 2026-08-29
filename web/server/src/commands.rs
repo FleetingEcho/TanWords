@@ -30,7 +30,6 @@ const ALLOWED: &[&str] = &[
     "db_get_all_tags",
     "db_get_due_cards",
     "db_get_known_words",
-    "db_get_quiz_words",
     "db_get_review_count",
     "db_get_search_history",
     "db_get_translation_count",
@@ -40,7 +39,6 @@ const ALLOWED: &[&str] = &[
     "db_get_word_extras",
     "db_get_words",
     "db_review_card",
-    "db_save_quiz_result",
     "db_save_translation",
     "db_save_word_chat",
     "db_save_word_notes",
@@ -191,7 +189,7 @@ const ALLOWED: &[&str] = &[
 /// argument absent, a path outside those roots, or one that doesn't resolve
 /// at all) is rejected. Called from `server/handlers.rs` right before
 /// dispatch.
-pub fn validate_model_path(command: &str, args: &serde_json::Value) -> Result<(), &'static str> {
+pub async fn validate_model_path(command: &str, args: &serde_json::Value) -> Result<(), &'static str> {
     if !matches!(
         command,
         "tts_load_model" | "tts_delete_model" | "asr_load_model" | "asr_delete_model"
@@ -202,18 +200,31 @@ pub fn validate_model_path(command: &str, args: &serde_json::Value) -> Result<()
     let raw = args
         .get("path")
         .and_then(|v| v.as_str())
-        .ok_or("missing path argument")?;
-    let candidate = std::fs::canonicalize(raw).map_err(|_| "path does not exist")?;
-
-    for root in [
-        tanwords_lib::tts::models::default_models_dir(),
-        tanwords_lib::asr::models::default_models_dir(),
-    ] {
-        if let Ok(root) = std::fs::canonicalize(&root) {
-            if candidate.starts_with(&root) {
-                return Ok(());
+        .ok_or("missing path argument")?
+        .to_string();
+    // Canonicalize runs on caller-controlled path strings per `/invoke`; on
+    // the blocking pool it cannot stall the async worker on a slow or
+    // network-backed filesystem.
+    let roots = tokio::task::spawn_blocking(move || {
+        let candidate = std::fs::canonicalize(&raw).ok()?;
+        let mut resolved = vec![candidate];
+        for root in [
+            tanwords_lib::tts::models::default_models_dir(),
+            tanwords_lib::asr::models::default_models_dir(),
+        ] {
+            if let Ok(r) = std::fs::canonicalize(&root) {
+                resolved.push(r);
             }
         }
+        Some(resolved)
+    })
+    .await
+    .map_err(|_| "path validation failed")?
+    .ok_or("path does not exist")?;
+
+    let (candidate, model_roots) = roots.split_first().ok_or("path does not exist")?;
+    if model_roots.iter().any(|root| candidate.starts_with(root)) {
+        return Ok(());
     }
     Err("path is outside the shared models directory")
 }

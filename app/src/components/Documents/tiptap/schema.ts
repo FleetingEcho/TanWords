@@ -43,7 +43,12 @@ const ID_BEARING_NODES = [
   "youtube",
 ];
 
-const ALIGNABLE_NODES = ["paragraph", "heading", "image"];
+// TextAlign drives the live `text-align` style. Its `types` list is also
+// the set of nodes that can *carry* the attr through setContent/getJSON —
+// anything missing here has its stored `textAlignment` silently dropped by
+// `schema.nodeFromJSON`, which is data loss for BlockNote-era documents that
+// aligned list items or table cells.
+const ALIGNABLE_NODES = ["paragraph", "heading", "image", "listItem", "taskItem", "tableCell", "tableHeader"];
 
 export interface EditorExtensionOptions {
   /** Stores a pasted/dropped file, resolving to `tanwords-asset://<id>`.
@@ -69,11 +74,30 @@ export function buildExtensions(options: EditorExtensionOptions = {}) {
       // Replaced by CodeBlockWithLanguage below, which adds the picker; the
       // highlighting itself comes from CodeBlockShiki.
       codeBlock: false,
+      // The storage format has no hardBreak representation — `pmToInline`
+      // drops the node, so a Shift+Enter "line break" would visibly vanish
+      // from the document on the next save/reload with the text joined.
+      // Disabling the node (and its Mod/Shift-Enter keymap) makes the
+      // editor match what the format can store.
+      hardBreak: false,
       link: { openOnClick: false, autolink: true },
     }),
     TaskList,
     TaskItem.configure({ nested: true }),
-    Table.configure({ resizable: true }),
+    // Tiptap's Table declares no attributes at all, so the table geometry the
+    // block adapter rides on node attrs (`columnWidths`, `headerCols`) was
+    // silently discarded by `schema.nodeFromJSON`/`getJSON` — a resized
+    // table lost its widths, and BlockNote-era header columns were dropped,
+    // on every save/load cycle.
+    Table.extend({
+      addAttributes() {
+        return {
+          ...this.parent?.(),
+          columnWidths: { default: [] as (number | null)[] },
+          headerCols: { default: null as number | null },
+        };
+      },
+    }).configure({ resizable: true }),
     TableRow,
     TableHeader,
     TableCell,

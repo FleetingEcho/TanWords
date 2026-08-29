@@ -53,7 +53,7 @@ const PROXY_PATH: &str = "/api/browser/proxy";
 pub const PROXY_BODY_LIMIT: usize = 32 * 1024 * 1024;
 
 pub async fn browser_proxy(
-    State(state): State<WebState>,
+    State(_state): State<WebState>,
     Extension(_session): Extension<UserSession>,
     request: axum::http::Request<Body>,
 ) -> Response {
@@ -90,9 +90,13 @@ pub async fn browser_proxy(
         .map(|q| !q.split('&').any(|p| p == "block=0"))
         .unwrap_or(true);
 
-    // SSRF: never let the proxy reach a private/loopback address. Reuses the
-    // same guard the AI proxy uses — the user picks the URL, so this is
-    // server-dialing-user-URL territory.
+    // SSRF: never let the proxy reach a private/loopback address. The
+    // request itself is sent through `send_guarded` below — it re-runs this
+    // check on every redirect hop and pins the connection to the address it
+    // validated, so neither a `302` to the metadata service nor a DNS server
+    // that answers the second lookup differently can escape it. (The old
+    // one-shot check followed reqwest's default 10 redirects through a
+    // shared client, making it a redirect-hop bypass.)
     if let Err(e) = tanwords_lib::http_util::guard::resolve_public(target.as_str()).await {
         return json_error(StatusCode::BAD_REQUEST, e);
     }
@@ -110,7 +114,7 @@ pub async fn browser_proxy(
         Err(e) => {
             return json_error(
                 StatusCode::PAYLOAD_TOO_LARGE,
-                &format!("request body too large or unreadable: {e}"),
+                format!("request body too large or unreadable: {e}"),
             );
         }
     };
@@ -175,15 +179,24 @@ pub async fn browser_proxy(
     }
 
     // Carry the forwarded method and body upstream. GET/HEAD get no body;
-    // everything else (POST/PUT/PATCH…) sends the page's payload whole.
-    let mut req_builder = state.http.request(method.clone(), target.as_str()).headers(up_headers);
-    if method != reqwest::Method::GET && method != reqwest::Method::HEAD {
-        req_builder = req_builder.body(body_bytes);
-    }
-
-    let upstream = match req_builder.send().await {
-        Ok(r) => r,
-        Err(e) => return json_error(StatusCode::BAD_GATEWAY, format!("upstream fetch failed: {e}")),
+    // everything else (POST/PUT/PATCH…) sends the page's payload whole. The
+    // body is re-attached per redirect hop from the in-memory copy.
+    let upstream = {
+        let method = method.clone();
+        let headers = up_headers.clone();
+        let body_for_hop = body_bytes.clone();
+        match tanwords_lib::http_util::send_guarded(target.as_str(), move |client, url| {
+            let mut req = client.request(method.clone(), url).headers(headers.clone());
+            if method != reqwest::Method::GET && method != reqwest::Method::HEAD {
+                req = req.body(body_for_hop.clone());
+            }
+            req
+        })
+        .await
+        {
+            Ok(r) => r,
+            Err(e) => return json_error(StatusCode::BAD_GATEWAY, format!("upstream fetch failed: {e}")),
+        }
     };
 
     let final_url = upstream.url().clone();

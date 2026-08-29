@@ -105,8 +105,13 @@ export function TiptapImageOptionsButton({ editor }: { editor: Editor }) {
         <div className="text-[11px] font-medium text-muted-foreground">
           {t("doc.imageAlign")}
           <Select
-            value={(attrs.textAlignment as string) ?? "left"}
-            onValueChange={(value) => update({ textAlignment: value })}
+            // `textAlign` — the TextAlign extension's attr — is what drives
+            // live alignment (and what the bubble toolbar and the storage
+            // loader read/write). The image node's similarly-named media attr
+            // `textAlignment` is inert; writing it (the old code) produced
+            // no visible change and a Select that showed the wrong value.
+            value={(attrs.textAlign as string) ?? "left"}
+            onValueChange={(value) => update({ textAlign: value })}
           >
             <SelectTrigger className="mt-1 h-8 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>

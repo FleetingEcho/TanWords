@@ -65,8 +65,10 @@ pub async fn db_get_translations(
 
     if let Some(ref s) = search {
         let idx = param_values.len() + 1;
-        sql.push_str(&format!(" AND (source_text LIKE ?{idx} OR result_text LIKE ?{idx})"));
-        param_values.push(Value::from(format!("%{}%", s)));
+        sql.push_str(&format!(
+            " AND (source_text LIKE ?{idx} ESCAPE '\\' OR result_text LIKE ?{idx} ESCAPE '\\')"
+        ));
+        param_values.push(Value::from(format!("%{}%", db::escape_like(s))));
     }
 
     if let Some(ref c) = cluster {

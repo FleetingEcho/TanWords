@@ -269,12 +269,16 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
         setMode("rich");
         requestAnimationFrame(() => { loaded.current = true; setRichLoading(false); });
       }
-    } catch {
+    } catch (error) {
       if (nextMode === "rich") {
         setMode("raw");
         setRichLoading(false);
         loaded.current = true;
       }
+      // A mode switch that fails must be visible — the toolbar still shows
+      // the mode the user tried to leave, and the click would otherwise
+      // appear to do nothing at all.
+      toast.error(String(error));
     } finally {
       setSwitchingMode(false);
     }
@@ -462,8 +466,15 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
               {initialBlocks && (
                 <LazyTiptapDocumentEditor
                   // Remount on a mode switch so the editor mounts with its
-                  // content rather than being written into afterwards.
-                  key={`${relPath}-${mode}`}
+                  // content rather than being written into afterwards. The
+                  // key deliberately does NOT include relPath: renames and
+                  // moves keep this component mounted (the outer editorKey
+                  // is not bumped for them) precisely so the editor survives
+                  // with its live state — a relPath-keyed remount would seed
+                  // a fresh editor from the stale initialBlocks and let the
+                  // next autosave write that reverted content over the file.
+                  // Real file switches remount via the outer key.
+                  key={mode}
                   initialBlocks={initialBlocks}
                   isDark={isDark}
                   onUploadFile={onUploadImage}
@@ -513,14 +524,25 @@ export function LocalDocEditor({ relPath, initialMarkdown, initialRawMarkdown, m
         onClose={() => setHistoryOpen(false)}
         onRestore={(revision: DocumentRevision) => {
           void (async () => {
-            if (!editor) return;
-            const blocks = await markdownToBlocksOffThread(revision.content);
-            editor.replaceBlocks(
-              editor.document,
-              withTrailingEditorParagraph(promoteLocalFileLinks(liftYouTube(liftMedia(liftMermaid(blocks))))) as any,
-            );
-            dirty.current = true;
-            scheduleSave();
+            if (mode === "raw") {
+              // Raw mode has no Tiptap instance to replace into — write the
+              // revision into the source editor directly. The old
+              // `if (!editor) return` made Restore a silent no-op that
+              // still closed the modal.
+              setRawMarkdown(revision.content);
+              rawMarkdownRef.current = revision.content;
+              dirty.current = true;
+              scheduleSave();
+            } else {
+              if (!editor) return;
+              const blocks = await markdownToBlocksOffThread(revision.content);
+              editor.replaceBlocks(
+                editor.document,
+                withTrailingEditorParagraph(promoteLocalFileLinks(liftYouTube(liftMedia(liftMermaid(blocks))))) as any,
+              );
+              dirty.current = true;
+              scheduleSave();
+            }
           })().catch((error) => toast.error(String(error)));
         }}
       />

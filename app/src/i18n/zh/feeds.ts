@@ -55,6 +55,7 @@ export const feeds: Dict = {
   "feeds.analyzeBackground.failed": "「{title}」分析失败",
   "feeds.loadMore": "更多",
   "feeds.loadingMore": "加载中…",
+  "feeds.loadMoreFailed": "加载更多失败：{error}",
   "feeds.section.articles": "文章",
   "feeds.section.podcasts": "播客",
   "feeds.group.today": "今天",

@@ -48,8 +48,9 @@ fn collection_name(root: &Path, file: &Path) -> String {
 /// ID3v1/v2.3 tags written by Chinese rippers are usually GBK bytes that the
 /// spec (and lofty) decode as Latin-1, yielding mojibake like "ÖÜ½ÜÂ×" for
 /// "周杰伦". If every char fits in Latin-1 and the byte string round-trips
-/// cleanly through GBK, prefer that reading; real Latin-1 text (ASCII,
-/// Western European) is left untouched.
+/// cleanly through GBK, prefer that reading. Real Latin-1 text is largely left
+/// alone: accented characters in Western words are usually followed by ASCII,
+/// which leaves an unpaired GBK trail byte and fails the round trip.
 fn fix_legacy_encoding(s: String) -> String {
     let suspicious = s.chars().any(|c| ('\u{80}'..'\u{100}').contains(&c));
     if !suspicious || s.chars().any(|c| c as u32 > 0xFF) {

@@ -172,10 +172,18 @@ pub(super) async fn unlock_all_master_documents(
     )
     .await?;
     for (id, wrapped_key) in wrapped {
-        let raw = decrypt_bytes(master, &wrapped_key)?;
-        let key: [u8; 32] = raw
-            .try_into()
-            .map_err(|_| "Invalid wrapped document key".to_string())?;
+        // A row sealed under a different master (copied in from another
+        // device, or a half-failed password change) must not turn unlocking
+        // one document into locking out all of them. Skip it here; the
+        // document itself surfaces LOCKED_ERROR when it is actually opened.
+        let raw = match decrypt_bytes(master, &wrapped_key) {
+            Ok(raw) => raw,
+            Err(_) => continue,
+        };
+        let key: [u8; 32] = match raw.try_into() {
+            Ok(key) => key,
+            Err(_) => continue,
+        };
         privacy.unlock(id, key)?;
     }
     Ok(())

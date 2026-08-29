@@ -197,20 +197,6 @@ pub(super) struct HackerNewsComments {
     pub(super) story_id: i64,
 }
 
-/// Turns a user query into an FTS5 MATCH expression: every word becomes a
-/// prefix term, ANDed together. Quoting each term keeps FTS operators and
-/// punctuation in the query from being parsed as syntax (an unbalanced quote
-/// or a bare `-` otherwise makes the whole query error out).
-pub(super) fn fts_query(query: &str) -> String {
-    query
-        .split_whitespace()
-        .map(|term| term.replace('"', ""))
-        .filter(|term| !term.is_empty())
-        .map(|term| format!("\"{term}\"*"))
-        .collect::<Vec<_>>()
-        .join(" AND ")
-}
-
 pub(super) fn default_limit() -> usize {
     20
 }

@@ -3,6 +3,7 @@ import { callMain } from "@/ipc/host";
 import { invoke } from "@/ipc/backend";
 import { isDesktopHost } from "@/platform";
 import { markdownToBlocksOffThread, blocksToHtmlOffThread } from "./documentWorkerClient";
+import { resolveDocumentAssetUrl, type DocumentAsset } from "./documentAssets";
 
 let exportCount = 0;
 const listeners = new Set<(busy: boolean) => void>();
@@ -107,10 +108,22 @@ async function inlineDocumentAssets(editor: any, html: string): Promise<string> 
 
   // Database-backed document assets are stored in the sidecar DB. Turn them
   // into data URLs so the exported HTML remains viewable without the app.
+  // R2-routed assets (bytes in the bucket, empty `data_base64`) are left as
+  // `tanwords-asset://` URLs here: inlining them produced a broken empty
+  // data URL, and the resolved presigned URL is what the export wants —
+  // `resolveAssetUrls` substitutes it in the editor paths, and this path
+  // resolves it directly when there is no editor resolver.
   const dbAssetIds = [...new Set(html.match(/tanwords-asset:\/\/([0-9a-fA-F-]{36})/g)?.map((url) => url.slice("tanwords-asset://".length)) ?? [])];
   for (const id of dbAssetIds) {
     try {
-      const asset = await invoke<{ mime_type: string; data_base64: string }>("db_get_document_asset", { id });
+      const asset = await invoke<DocumentAsset>("db_get_document_asset", { id });
+      if (asset.remote_url || !asset.data_base64) {
+        const resolved = editor
+          ? await Promise.resolve(editor.resolveFileUrl(`tanwords-asset://${id}`)).catch(() => null)
+          : await Promise.resolve(resolveDocumentAssetUrl(`tanwords-asset://${id}`)).catch(() => null);
+        if (resolved) out = out.split(`tanwords-asset://${id}`).join(resolved);
+        continue;
+      }
       out = out.split(`tanwords-asset://${id}`).join(`data:${asset.mime_type};base64,${asset.data_base64}`);
     } catch {
       // Keep the original app URL; the export still completes with the text.

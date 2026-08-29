@@ -526,6 +526,13 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
     applyDocumentParagraphSpacing(get().documentParagraphSpacing);
     applyDocumentTextColor(get().documentTextColor);
     applyHighlightColor(get().highlightColor);
+    // The TTS player store captured ttsSpeed when its module was created —
+    // before this hydration ran — so without this push a persisted 1.5x
+    // would play at 1x (and the chips would show 1x) on every fresh launch
+    // until the user re-picked a speed. Imported dynamically: ttsPlayerStore
+    // imports settingsStore, so a static import here would be a cycle.
+    const { useTtsPlayerStore } = await import("@/store/ttsPlayerStore");
+    useTtsPlayerStore.setState({ speed: get().ttsSpeed || 1 });
   } catch (e) {
     console.warn("Settings not loaded from DB (may be web mode):", e);
     applyTheme(get().theme);

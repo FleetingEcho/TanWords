@@ -162,6 +162,20 @@ export function FloatingBrowserWidget() {
     useBrowserPanelBlockStore.getState().unblock();
   };
 
+  // The `return null` below (status flip, DSH activation, detach) can yank
+  // this component out of the DOM mid-drag, before the pointerup handler
+  // that ends the native block runs. A leaked block count hides every
+  // native WebContentsView panel until app restart — the store counts, it
+  // does not track owners — so unmount releases whatever is still held.
+  useEffect(() => {
+    return () => {
+      if (blockedForDragRef.current) {
+        blockedForDragRef.current = false;
+        useBrowserPanelBlockStore.getState().unblock();
+      }
+    };
+  }, []);
+
   const onTitlePointerDown = (e: React.PointerEvent) => {
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     dragRef.current = { startX: e.clientX, startY: e.clientY, origX: pos.x, origY: pos.y };

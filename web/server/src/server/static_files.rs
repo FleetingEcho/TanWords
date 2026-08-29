@@ -65,14 +65,22 @@ pub(super) async fn spa_handler(State(state): State<WebState>, request: Request)
         if let Some(dist) = state.config.web_dist.as_ref() {
             let mut is_index = false;
             let mut is_hashed_asset = path.starts_with("/assets/");
-            let mut file = match resolve_dist(dist, &path) {
-                Some(f) if f.is_file() => f,
-                _ => {
-                    // SPA fallback: client-side routes get index.html.
-                    is_index = true;
-                    is_hashed_asset = false;
-                    dist.join("index.html")
-                }
+            // `tokio::fs::metadata`, not `Path::is_file()`: this is the
+            // hottest unauthenticated path in the server, and a blocking
+            // stat inside async stalls a tokio worker on slow/network
+            // filesystems.
+            let candidate = resolve_dist(dist, &path);
+            let is_file = match &candidate {
+                Some(f) => tokio::fs::metadata(f).await.map(|m| m.is_file()).unwrap_or(false),
+                None => false,
+            };
+            let mut file = if is_file {
+                candidate.expect("checked just above")
+            } else {
+                // SPA fallback: client-side routes get index.html.
+                is_index = true;
+                is_hashed_asset = false;
+                dist.join("index.html")
             };
             if !is_index && file == *dist {
                 is_index = true;

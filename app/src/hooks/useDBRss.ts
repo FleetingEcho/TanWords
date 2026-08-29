@@ -153,8 +153,13 @@ export function useDBRss() {
   return useMemo(() => ({
     addRssFeed, getRssFeeds, updateRssFeedTitle, updateRssFeedPreferences, setRssFeedPaused, deleteRssFeed, fetchRssFeedMeta,
     syncRssFeed, getRssEntries, markRssEntryRead, getRssUnreadCounts,
+    // The header promises feed bookmarks on this hook — the store happens to
+    // call `invoke` directly today, but the composed API must not advertise
+    // methods that come back `undefined`.
+    toggleFeedBookmark, getFeedBookmarks, removeFeedBookmark,
   }), [
     addRssFeed, getRssFeeds, updateRssFeedTitle, updateRssFeedPreferences, setRssFeedPaused, deleteRssFeed, fetchRssFeedMeta,
     syncRssFeed, getRssEntries, markRssEntryRead, getRssUnreadCounts,
+    toggleFeedBookmark, getFeedBookmarks, removeFeedBookmark,
   ]);
 }

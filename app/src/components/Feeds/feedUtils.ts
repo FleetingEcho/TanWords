@@ -39,12 +39,20 @@ export type DateGroup = "today" | "yesterday" | "thisWeek" | "earlier";
 export function dateGroupOf(dateStr: string): DateGroup {
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return "earlier";
-  const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-  const today = startOfDay(new Date());
-  const day = startOfDay(d);
-  if (day >= today) return "today";
-  if (day >= today - 86400_000) return "yesterday";
-  if (day >= today - 6 * 86400_000) return "thisWeek";
+  // Calendar-date comparison, not millisecond deltas: on a DST fall-back day
+  // the wall-clock distance between "today midnight" and "yesterday midnight"
+  // is 25h, which made yesterday's items classify as "thisWeek" when compared
+  // as fixed 86400_000 units.
+  const dateKey = (x: Date) => `${x.getFullYear()}-${x.getMonth()}-${x.getDate()}`;
+  const dayKey = dateKey(d);
+  const today = new Date();
+  if (dayKey === dateKey(today)) return "today";
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (dayKey === dateKey(yesterday)) return "yesterday";
+  const startOfLocalDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const daysAgo = Math.round((startOfLocalDay(today) - startOfLocalDay(d)) / 86400_000);
+  if (daysAgo > 0 && daysAgo < 7) return "thisWeek";
   return "earlier";
 }
 

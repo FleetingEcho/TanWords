@@ -129,7 +129,11 @@ export function DocumentsPage() {
       finishRestore();
       return () => { cancelled = true; };
     }
-    if (lastId > 0) void loadDoc(lastId).finally(finishRestore);
+    // Gate on the same source condition as the restore-intent ref: when the
+    // user last left on the local-files tab, restoring here would mount a
+    // hidden DB editor (full content parse for an invisible pane) whose
+    // window-level save listeners then run alongside LocalDocEditor's.
+    if (source === "db" && lastId > 0) void loadDoc(lastId).finally(finishRestore);
     else finishRestore();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot restore on mount only.

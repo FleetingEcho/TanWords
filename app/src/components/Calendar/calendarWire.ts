@@ -54,7 +54,10 @@ export function fcToWire(value: Date | string, allDay: boolean): string {
  *  or date input value (`YYYY-MM-DD`) when all-day. Empty in → empty out. */
 export function wireToInputValue(wire: string, allDay: boolean): string {
   if (!wire) return "";
-  if (allDay) return wire; // already YYYY-MM-DD
+  // A `<input type="date">` sanitizes anything but YYYY-MM-DD to empty — so
+  // slice rather than trusting flag and format to agree (they can diverge;
+  // see CalendarPage's all-day handling).
+  if (allDay) return wire.slice(0, 10);
   // YYYY-MM-DD HH:mm → YYYY-MM-DDTHH:mm
   return wire.length === 16 ? `${wire.slice(0, 10)}T${wire.slice(11)}` : wire.slice(0, 10);
 }

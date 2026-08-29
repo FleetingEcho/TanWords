@@ -94,7 +94,12 @@ export function CalendarPage() {
     const colorMap = new Map(calendars.map((c) => [c.id, c.color_name]));
     return events
       .map((row) => {
-        const allDay = isAllDayWire(row.start, row.end);
+        // The row's `all_day` flag is authoritative — the Rust side enforces
+        // no consistency between flag and string format, and the AI chat's
+        // `update_event` tool can flip `allDay` on a timed event while the
+        // COALESCE keeps the "YYYY-MM-DD HH:mm" strings. The length sniff
+        // stays only as a legacy fallback for pre-flag rows.
+        const allDay = row.all_day || isAllDayWire(row.start, row.end);
         const calendarId = row.calendar_id || "default";
         // A per-event override wins over the calendar's own color.
         const colorName = row.color_name ?? colorMap.get(calendarId) ?? "blue";
@@ -201,12 +206,16 @@ export function CalendarPage() {
     const allDay = ev.allDay;
     const startWire = fcToWire(ev.start ?? "", allDay);
     const endWire = ev.end ? fcToWire(ev.end, allDay) : startWire;
-    try {
-      await db.updateEvent({ id: ev.id, start: startWire, end: endWire, allDay });
-      await load();
-    } catch {
+    // `db.updateEvent` resolves `false` on failure (it toasts internally)
+    // rather than rejecting, so the boolean is what must be checked — the
+    // old `catch` was dead code and a failed write left the event visually
+    // at its dropped position.
+    const ok = await db.updateEvent({ id: ev.id, start: startWire, end: endWire, allDay });
+    if (!ok) {
       arg.revert();
+      return;
     }
+    await load();
   }, [db, load]);
 
   /** Resize: same as drop — persist the new end, revert on failure. The resize
@@ -217,18 +226,21 @@ export function CalendarPage() {
     const allDay = ev.allDay;
     const startWire = fcToWire(ev.start ?? "", allDay);
     const endWire = ev.end ? fcToWire(ev.end, allDay) : startWire;
-    try {
-      await db.updateEvent({ id: ev.id, start: startWire, end: endWire, allDay });
-      await load();
-    } catch {
+    const ok = await db.updateEvent({ id: ev.id, start: startWire, end: endWire, allDay });
+    if (!ok) {
       arg.revert();
+      return;
     }
+    await load();
   }, [db, load]);
 
   // ── dialog handlers ────────────────────────────────────────────────────────
-  const handleSaveEvent = async (draft: EventDraft) => {
+  // Returns false on a failed write (the hooks toast internally but resolve
+  // false rather than rejecting) so the dialog stays open with the draft.
+  const handleSaveEvent = async (draft: EventDraft): Promise<boolean> => {
+    let ok: boolean;
     if (draft.id) {
-      await db.updateEvent({
+      ok = await db.updateEvent({
         id: draft.id,
         title: draft.title,
         start: draft.start,
@@ -243,7 +255,7 @@ export function CalendarPage() {
         colorName: draft.colorName,
       });
     } else {
-      await db.createEvent({
+      ok = (await db.createEvent({
         title: draft.title,
         start: draft.start,
         end: draft.end,
@@ -252,14 +264,18 @@ export function CalendarPage() {
         description: draft.description,
         location: draft.location,
         colorName: draft.colorName,
-      });
+      })) !== null;
     }
+    if (!ok) return false;
     await load();
+    return true;
   };
 
-  const handleDeleteEvent = async (id: string) => {
-    await db.deleteEvent(id);
+  const handleDeleteEvent = async (id: string): Promise<boolean> => {
+    const ok = await db.deleteEvent(id);
+    if (!ok) return false;
     await load();
+    return true;
   };
 
   // ── render ─────────────────────────────────────────────────────────────────

@@ -100,6 +100,27 @@ describe("formatMarkdown", () => {
     expect(formatMarkdown("\n\n\n")).toBe("");
   });
 
+  it("does not renumber ordered-list-looking lines inside a fenced code block", () => {
+    // The module contract: nothing inside a fenced code block is ever
+    // touched. Pasted configs/changelogs using `1.` repeatedly are code.
+    const input = "1. step one\n\n```text\n5. something\n3. other\n```\n";
+    const out = formatMarkdown(input);
+    expect(out).toContain("5. something");
+    expect(out).toContain("3. other");
+  });
+
+  it("keeps fence interior lines byte-for-byte", () => {
+    // Whitespace is significant inside fences (diff context markers, Python
+    // blank-line structure) — trailing spaces must survive.
+    const out = formatMarkdown("```\n \ncontext line \n```");
+    expect(out).toContain(" \ncontext line \n");
+  });
+
+  it("is idempotent with fences containing list-like lines", () => {
+    const once = formatMarkdown("1. a\n\n```\n9. z\n9. y\n```");
+    expect(formatMarkdown(once)).toBe(once);
+  });
+
   it("never loses a non-blank line", () => {
     const source = "# H\ntext\n- a\n1. b\n> quote\n| t | u |\n```\ncode\n```\ntail";
     const before = source.split("\n").filter((line) => line.trim()).length;

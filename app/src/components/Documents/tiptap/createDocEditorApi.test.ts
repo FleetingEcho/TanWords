@@ -65,6 +65,67 @@ describe("document access", () => {
     expect(onUpdate).not.toHaveBeenCalled();
   });
 
+  it("replaces a whole list-bearing document without leaving empty wrappers behind", () => {
+    // Flat blocks (one per list item) and the editor's top-level nodes (one
+    // wrapper per list) are different index spaces — the old count-based
+    // "whole document" heuristic fell through to the range path here and the
+    // restored document kept junk empty list items.
+    const blocks: Block[] = [
+      { type: "bulletListItem", props: {}, content: [{ type: "text", text: "first item", styles: {} }] },
+      { type: "bulletListItem", props: {}, content: [{ type: "text", text: "second item", styles: {} }] },
+      paragraph("tail"),
+    ];
+    const { api } = makeEditor(blocks);
+    api.replaceBlocks(api.document, [
+      paragraph("new first"),
+      paragraph("new second"),
+    ]);
+    expect(api.document.map((block) => block.type)).toEqual(["paragraph", "paragraph"]);
+    expect(JSON.stringify(api.document)).not.toContain("bulletListItem");
+  });
+
+  it("replaces a single block inside a list without destroying its siblings", () => {
+    // One list wrapper (one top-level node, two flat blocks) used to make
+    // `target.length === doc.childCount` true for a single-block target, so
+    // promoting a link inside the list wiped the other items.
+    const blocks: Block[] = [
+      { type: "bulletListItem", props: {}, content: [{ type: "text", text: "keep me", styles: {} }] },
+      { type: "bulletListItem", props: {}, content: [{ type: "text", text: "replace me", styles: {} }] },
+    ];
+    const { api } = makeEditor(blocks);
+    api.replaceBlocks(
+      [api.document[1]],
+      [{ type: "youtube", props: { url: "https://youtu.be/aR97E7aKEgg" } }],
+    );
+    const json = JSON.stringify(api.document);
+    expect(json).toContain("keep me");
+    expect(json).toContain("youtube");
+  });
+
+});
+
+describe("getSelection", () => {
+  it("selects the flat blocks the range touches, past any list wrapper", () => {
+    // A list wrapper is one top-level node but several flat blocks; the old
+    // index-pairing read the wrong block for every selection after a list.
+    const blocks: Block[] = [
+      { type: "bulletListItem", props: {}, content: [{ type: "text", text: "item one", styles: {} }] },
+      { type: "bulletListItem", props: {}, content: [{ type: "text", text: "item two", styles: {} }] },
+      paragraph("a plain paragraph"),
+      paragraph("another paragraph"),
+    ];
+    const { editor, api } = makeEditor(blocks);
+    editor.commands.setTextSelection({ from: 0, to: editor.state.doc.content.size });
+    const selection = api.getSelection();
+    expect(selection).toBeDefined();
+    expect(selection!.blocks).toHaveLength(4);
+    expect(selection!.blocks.map((block) => block.type)).toEqual([
+      "bulletListItem",
+      "bulletListItem",
+      "paragraph",
+      "paragraph",
+    ]);
+  });
 });
 
 describe("editing history", () => {

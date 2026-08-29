@@ -254,7 +254,11 @@ export async function dispatch(
     case "shell:open": {
       const { url } = (args ?? {}) as { url: string };
       if (!isExternalUrlAllowed(url)) {
-        throw new Error(`refusing to open URL with scheme ${new URL(url).protocol}`);
+        // Do not re-parse the URL here: `isExternalUrlAllowed` also rejects
+        // strings that fail `new URL()` outright, and this template would
+        // then throw its own unrelated TypeError instead of the intended
+        // policy message reaching the renderer.
+        throw new Error(`refusing to open URL: ${url}`);
       }
       await shell.openExternal(url);
       return null;

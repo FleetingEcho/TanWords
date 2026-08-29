@@ -351,6 +351,15 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
                   !VOCAB_CARD_TOOL_NAMES.has(c.name) && !SENTENCE_CARD_TOOL_NAMES.has(c.name) && !NOTE_CARD_TOOL_NAMES.has(c.name)
                 );
                 const saveCall = otherCalls.find((c) => c.name === "save_note_as_document");
+                // The tool loop emits one block per iteration, so the
+                // `save_note_as_document` the model issues after seeing the
+                // summarize result lands in a LATER block — searching only
+                // this block's calls left the Save button active after a
+                // save, and clicking it created a duplicate document.
+                const savedInLaterBlock = s.displayItems.slice(idx + 1).some(
+                  (later) => later.kind === "tool_block"
+                    && later.calls.some((c) => c.name === "save_note_as_document" && !c.is_error)
+                );
                 // Mirrors MessageBubble's own box model exactly (avatar-width
                 // spacer + gap-3, content capped at min(82%,48rem)) so a tool call
                 // sitting between two AI messages lines up on both edges, not
@@ -376,7 +385,7 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
                         <NoteCard
                           key={c.id}
                           note={noteFromToolInput(c.input)}
-                          alreadySaved={!!saveCall && !saveCall.is_error}
+                          alreadySaved={(!!saveCall && !saveCall.is_error) || savedInLaterBlock}
                         />
                       ))}
                       {otherCalls.length > 0 && <ToolCallCard calls={otherCalls} />}

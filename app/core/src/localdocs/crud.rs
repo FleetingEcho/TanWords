@@ -3,14 +3,14 @@ use std::path::Path;
 
 use super::paths::{ensure_md, resolve};
 
-#[crate::shim::command]
+#[crate::shim::command(async)]
 pub fn localdocs_read(root: String, rel_path: String) -> Result<String, String> {
     let path = resolve(&root, &rel_path)?;
     ensure_md(&path)?;
     fs::read_to_string(&path).map_err(|e| format!("Failed to read: {e}"))
 }
 
-#[crate::shim::command]
+#[crate::shim::command(async)]
 pub fn localdocs_write(root: String, rel_path: String, content: String) -> Result<(), String> {
     let path = resolve(&root, &rel_path)?;
     ensure_md(&path)?;
@@ -19,7 +19,7 @@ pub fn localdocs_write(root: String, rel_path: String, content: String) -> Resul
 
 /// Create an empty markdown file in a vault directory, deduplicating the name
 /// ("Untitled.md" → "Untitled 2.md"). Returns the new file's relative path.
-#[crate::shim::command]
+#[crate::shim::command(async)]
 pub fn localdocs_create(
     root: String,
     name: String,
@@ -57,7 +57,7 @@ pub fn localdocs_create(
 /// `localdocs_create` deliberately refuses to invent a parent for a file, so
 /// picking "put it in a new folder" needs the folder to exist first — this is
 /// what the destination picker calls before it creates the file.
-#[crate::shim::command]
+#[crate::shim::command(async)]
 pub fn localdocs_create_folder(root: String, path: String) -> Result<String, String> {
     let rel = path.trim().trim_matches('/').to_string();
     if rel.is_empty() {
@@ -72,7 +72,7 @@ pub fn localdocs_create_folder(root: String, path: String) -> Result<String, Str
 /// Renames a directory inside the mounted root, carrying its contents.
 /// `new_name` is a leaf name, not a path, so a rename can never relocate the
 /// folder by accident — moving one is a drag, same as for a file.
-#[crate::shim::command]
+#[crate::shim::command(async)]
 pub fn localdocs_rename_folder(
     root: String,
     rel_path: String,
@@ -100,7 +100,7 @@ pub fn localdocs_rename_folder(
     if !from.is_dir() {
         return Err("Folder does not exist".into());
     }
-    if to.exists() {
+    if to.exists() && !super::paths::same_existing_entry(&from, &to) {
         return Err("A folder with that name already exists".into());
     }
     fs::rename(&from, &to).map_err(|e| format!("Failed to rename folder: {e}"))?;
@@ -112,7 +112,7 @@ pub fn localdocs_rename_folder(
 /// moves them up — this is the filesystem, and half-deleting a directory by
 /// scattering its files into the parent would surprise anyone who also opens
 /// this vault in a file manager.
-#[crate::shim::command]
+#[crate::shim::command(async)]
 pub fn localdocs_delete_folder(root: String, rel_path: String) -> Result<(), String> {
     let rel = rel_path.trim().trim_matches('/').to_string();
     if rel.is_empty() {
@@ -127,7 +127,7 @@ pub fn localdocs_delete_folder(root: String, rel_path: String) -> Result<(), Str
 
 /// Move one markdown file into an existing directory inside the mounted root.
 /// Returns the file's new relative path and never overwrites an existing file.
-#[crate::shim::command]
+#[crate::shim::command(async)]
 pub fn localdocs_move(
     root: String,
     rel_path: String,
@@ -160,7 +160,7 @@ pub fn localdocs_move(
 }
 
 /// Rename a file in place (same directory). Returns the new relative path.
-#[crate::shim::command]
+#[crate::shim::command(async)]
 pub fn localdocs_rename(
     root: String,
     rel_path: String,
@@ -181,14 +181,14 @@ pub fn localdocs_rename(
     if new_path == path {
         return Ok(new_rel);
     }
-    if new_path.exists() {
+    if new_path.exists() && !super::paths::same_existing_entry(&path, &new_path) {
         return Err("A file with the same name already exists".into());
     }
     fs::rename(&path, &new_path).map_err(|e| format!("Failed to rename: {e}"))?;
     Ok(new_rel)
 }
 
-#[crate::shim::command]
+#[crate::shim::command(async)]
 pub fn localdocs_delete(root: String, rel_path: String) -> Result<(), String> {
     let path = resolve(&root, &rel_path)?;
     ensure_md(&path)?;

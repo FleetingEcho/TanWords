@@ -98,9 +98,20 @@ export function useChatSession(params: {
       if (!sessionId) return;
       const openingInitialSession = !activeIdRef.current && initialSessionId === sessionId;
       if (!openingInitialSession && sessionId !== activeIdRef.current) return;
+      // While a foreground stream is running, replacing the displayed items
+      // with the DB snapshot makes the streaming bubble vanish and lets the
+      // next render-tick commit merge partial text into the background job's
+      // last message. Defer to the stream; the 6s interval will reconcile.
+      if (streaming) return;
       void db.getChatSession(sessionId).then((detail) => {
         if (!detail) return;
+        // Re-validate after the await: the user may have clicked another
+        // session (or New chat) while this fetch was in flight — this is the
+        // same epoch guard `switchSession` uses, applied to the one branch
+        // that used to lack it.
+        if (privateRef.current || streaming) return;
         if (openingInitialSession) {
+          if (activeIdRef.current && activeIdRef.current !== sessionId) return;
           skipAutoRestoreRef.current = true;
           setActiveId(sessionId);
           setIsNewSession(false);
@@ -116,17 +127,33 @@ export function useChatSession(params: {
     };
     window.addEventListener("tanwords:chat-session-updated", onExternalSessionUpdate);
     return () => window.removeEventListener("tanwords:chat-session-updated", onExternalSessionUpdate);
-  }, [db, initialSessionId, providers, setItems, targetLevel]);
+  }, [db, initialSessionId, providers, setItems, targetLevel, streaming]);
 
   useEffect(() => {
     if (!selectedProviderId && providers.length > 0) setSelectedProviderId(providers[0].id);
   }, [providers.length]);
+
+  /** Persists the in-flight transcript before the context moves off this
+   *  session (session switch, new chat, private toggle). The user's question
+   *  was already saved when streaming started; without this, switching away
+   *  in the first 6s (before the interval's first tick) leaves a dangling
+   *  user message with no answer at all. */
+  const saveStreamingSnapshot = useCallback(() => {
+    if (privateRef.current || !streaming) return;
+    const { id, title } = sessionMetaRef.current;
+    if (id) {
+      void sidebar.saveSession(id, title, itemsRef.current, systemPrompt, selectedPreset, selectedProviderId);
+    }
+  }, [streaming, sidebar, systemPrompt, selectedPreset, selectedProviderId]);
 
   const switchSession = useCallback(async (id: string) => {
     const epoch = ++sessionEpochRef.current;
     skipAutoRestoreRef.current = true;
     // Opening a real session ends a temporary chat — it's backed by a row.
     setPrivateMode(false);
+    // Keep whatever the outgoing session had streamed so far — aborting
+    // alone would drop the partial answer (see saveStreamingSnapshot).
+    saveStreamingSnapshot();
     controllerRef.current?.abort();
     setStreaming(false);
     setActiveId(id);
@@ -141,13 +168,15 @@ export function useChatSession(params: {
     setSelectedPreset(detail.preset_id);
     setCustomPrompt(detail.system_prompt || buildPresetPrompt(detail.preset_id, targetLevel));
     setSelectedProviderId(detail.provider_id || providers[0]?.id || "");
-  }, [db, providers, setItems, targetLevel]);
+  }, [db, providers, setItems, targetLevel, saveStreamingSnapshot]);
 
   const startNew = () => {
     sessionEpochRef.current++;
     skipAutoRestoreRef.current = true;
     // A fresh normal chat isn't temporary.
     setPrivateMode(false);
+    // Same as switchSession: persist the streamed partial before wiping it.
+    saveStreamingSnapshot();
     controllerRef.current?.abort();
     setStreaming(false);
     setActiveId(genId());
@@ -168,6 +197,9 @@ export function useChatSession(params: {
       startNew();
       return;
     }
+    // The outgoing normal chat keeps its streamed partial (see
+    // saveStreamingSnapshot) — entering temporary mode must not drop it.
+    saveStreamingSnapshot();
     controllerRef.current?.abort();
     sessionEpochRef.current++;
     skipAutoRestoreRef.current = true;

@@ -57,7 +57,11 @@ export function createTerminalSetters(
     set({ terminalBackgroundBlur: value, terminalColorScheme: "custom", terminalCustomAppearance: custom });
     saveSettingDebounced("terminal_background_blur", JSON.stringify(value));
     saveSettingDebounced("terminal_custom_appearance", JSON.stringify(custom));
-    saveSetting("terminal_color_scheme", JSON.stringify("custom"));
+    // Only persist the scheme flip when it actually changes: this runs on every
+    // slider tick, and an immediate write per tick defeats the debounce above
+    // (plus a quit inside the debounce window could persist scheme=custom
+    // with stale appearance rows).
+    if (get().terminalColorScheme !== "custom") saveSetting("terminal_color_scheme", JSON.stringify("custom"));
   },
 
   setTerminalBackgroundOpacity: (percent) => {
@@ -66,7 +70,11 @@ export function createTerminalSetters(
     set({ terminalBackgroundOpacity: value, terminalColorScheme: "custom", terminalCustomAppearance: custom });
     saveSettingDebounced("terminal_background_opacity", JSON.stringify(value));
     saveSettingDebounced("terminal_custom_appearance", JSON.stringify(custom));
-    saveSetting("terminal_color_scheme", JSON.stringify("custom"));
+    // Only persist the scheme flip when it actually changes: this runs on every
+    // slider tick, and an immediate write per tick defeats the debounce above
+    // (plus a quit inside the debounce window could persist scheme=custom
+    // with stale appearance rows).
+    if (get().terminalColorScheme !== "custom") saveSetting("terminal_color_scheme", JSON.stringify("custom"));
   },
 
   setTerminalBackgroundColor: (hex) => {
@@ -75,7 +83,11 @@ export function createTerminalSetters(
     set({ terminalBackgroundColor: value, terminalColorScheme: "custom", terminalCustomAppearance: custom });
     saveSettingDebounced("terminal_background_color", JSON.stringify(value));
     saveSettingDebounced("terminal_custom_appearance", JSON.stringify(custom));
-    saveSetting("terminal_color_scheme", JSON.stringify("custom"));
+    // Only persist the scheme flip when it actually changes: this runs on every
+    // slider tick, and an immediate write per tick defeats the debounce above
+    // (plus a quit inside the debounce window could persist scheme=custom
+    // with stale appearance rows).
+    if (get().terminalColorScheme !== "custom") saveSetting("terminal_color_scheme", JSON.stringify("custom"));
   },
 
   setTerminalTextColor: (hex) => {
@@ -84,7 +96,11 @@ export function createTerminalSetters(
     set({ terminalTextColor: value, terminalColorScheme: "custom", terminalCustomAppearance: custom });
     saveSettingDebounced("terminal_text_color", JSON.stringify(value));
     saveSettingDebounced("terminal_custom_appearance", JSON.stringify(custom));
-    saveSetting("terminal_color_scheme", JSON.stringify("custom"));
+    // Only persist the scheme flip when it actually changes: this runs on every
+    // slider tick, and an immediate write per tick defeats the debounce above
+    // (plus a quit inside the debounce window could persist scheme=custom
+    // with stale appearance rows).
+    if (get().terminalColorScheme !== "custom") saveSetting("terminal_color_scheme", JSON.stringify("custom"));
   },
 
   setTerminalColorScheme: (scheme) => {

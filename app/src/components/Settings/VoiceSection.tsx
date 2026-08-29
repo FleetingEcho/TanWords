@@ -63,6 +63,18 @@ export function VoiceSection() {
     return subscribe<AsrDownloadProgress>("asr-download-progress", setProgress);
   }, []);
 
+  // Leaving Settings (or this section) with "test mic" running must not
+  // leave the mic hot: without this, the OS indicator stays on and the
+  // stream keeps pulling audio until app restart. Null the ref first so a
+  // stop already in flight doesn't double-cancel.
+  useEffect(() => {
+    return () => {
+      const recorder = recorderRef.current;
+      recorderRef.current = null;
+      recorder?.cancel();
+    };
+  }, []);
+
   const selectModel = async (path: string) => {
     setLoadingPath(path);
     try {

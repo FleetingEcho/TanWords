@@ -35,8 +35,8 @@ pub async fn db_get_words(
     let mut param_values: Vec<Value> = vec![];
 
     if let Some(ref s) = search {
-        sql.push_str(" AND (w.word LIKE ?1 OR EXISTS (SELECT 1 FROM word_definitions wd2 WHERE wd2.word_id = w.id AND wd2.zh LIKE ?1))");
-        param_values.push(Value::from(format!("%{}%", s)));
+        sql.push_str(" AND (w.word LIKE ?1 ESCAPE '\\' OR EXISTS (SELECT 1 FROM word_definitions wd2 WHERE wd2.word_id = w.id AND wd2.zh LIKE ?1 ESCAPE '\\'))");
+        param_values.push(Value::from(format!("%{}%", db::escape_like(s))));
     }
 
     if let Some(ref lv) = level_filter {

@@ -14,7 +14,7 @@ import { PostgresAccountPasswordDialog } from "./PostgresAccountPasswordDialog";
 
 export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: ReturnType<typeof useT> }) {
   const data = useDataSection(db, t);
-  const { confirmClear, pendingSwitchPath, switching, isRemote, setConfirmClear, setPendingSwitchPath, showExportPassword, pendingExportSource, showImportPassword, pendingImportPath, importPassword, importPlan, analyzing, importing, importProgress, importError, pendingOverwritePath, overwriting, overwriteProgress, postgresRemoteBusy, postgresRemoteAuthAction, setPostgresRemoteAuthAction, confirmDisconnect, setConfirmDisconnect, handleDisconnect, confirmSwitch, analyzeImport, handleImport, confirmOverwrite, handleConfirmPostgresRemoteAuth, startExport, setImportPlan, setImportPassword, setImportError, setShowExportPassword, setShowImportPassword, setPendingImportPath, handleClearTranslations } = data;
+  const { confirmClear, pendingSwitchPath, switching, isRemote, setConfirmClear, setPendingSwitchPath, showExportPassword, pendingExportSource, showImportPassword, pendingImportPath, importPassword, importPlan, analyzing, importing, importProgress, importError, pendingOverwritePath, overwriting, overwriteProgress, postgresRemoteBusy, postgresRemoteAuthAction, setPostgresRemoteAuthAction, confirmDisconnect, setConfirmDisconnect, handleDisconnect, confirmSwitch, analyzeImport, handleImport, confirmOverwrite, handleConfirmPostgresRemoteAuth, startExport, setImportPlan, setImportPassword, setImportError, setShowExportPassword, setShowImportPassword, setPendingImportPath, setPendingOverwritePath, handleClearTranslations } = data;
 
   return (
     <div className="space-y-3">
@@ -74,7 +74,12 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
         confirmLabel={overwriting ? t("settings.importOverwriteWorking") : t("settings.importOverwriteConfirm")}
         danger
         confirmDisabled={overwriting}
-        onCancel={() => setPendingSwitchPath(null)}
+        // Clears its own state. This used to clear `pendingSwitchPath` (the
+        // switch-database flow's, already null here) — a copy-paste slip that
+        // left the "replace the entire database" confirm impossible to
+        // dismiss: Cancel/Esc/overlay all no-op'd, so the only exit was
+        // confirming the overwrite or reloading the window.
+        onCancel={() => setPendingOverwritePath(null)}
         onConfirm={confirmOverwrite}
       />
 

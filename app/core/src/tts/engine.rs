@@ -24,6 +24,10 @@ pub struct LoadedEngine {
     pub model_path: String,
     pub kind: String,
     pub sample_rate: u32,
+    /// The info `detect_model_dir` produced at load time, served verbatim by
+    /// `tts_engine_status` so a status probe never touches the disk — or the
+    /// mutex any longer than a clone takes.
+    pub info: TtsModelInfo,
     tts: OfflineTts,
     /// Non-empty only for `kind == "pocket"`, indexed by speaker id.
     voices: Vec<ReferenceVoice>,
@@ -228,6 +232,7 @@ pub async fn tts_load_model(
             model_path: path,
             kind: info.kind.clone(),
             sample_rate: engine.sample_rate() as u32,
+            info: info.clone(),
             tts: engine,
             voices,
         };
@@ -309,23 +314,11 @@ pub async fn tts_synthesize(
 pub fn tts_engine_status(
     state: crate::shim::State<'_, crate::AppState>,
 ) -> Result<Option<TtsModelInfo>, String> {
+    // The load-time `detect_model_dir` result is cached on the engine, so
+    // this is a lock-and-clone — no disk walk, and no chance of blocking
+    // behind a synthesis that's holding the engine.
     let guard = state.tts.lock().map_err(|e| e.to_string())?;
-    Ok(guard.as_ref().map(|engine| {
-        // Re-detecting rather than caching the load-time info keeps the voice
-        // list in one place (`detect_model_dir`) instead of two that can drift.
-        let dir = PathBuf::from(&engine.model_path);
-        detect_model_dir(&dir).unwrap_or_else(|| TtsModelInfo {
-            id: engine.model_path.clone(),
-            name: Path::new(&engine.model_path)
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default(),
-            kind: engine.kind.clone(),
-            path: engine.model_path.clone(),
-            num_speakers: 0,
-            voice_names: vec![],
-        })
-    }))
+    Ok(guard.as_ref().map(|engine| engine.info.clone()))
 }
 
 fn f32_samples_to_i16(samples: &[f32]) -> Vec<i16> {
@@ -402,6 +395,7 @@ mod tests {
             model_path: dir.to_string_lossy().to_string(),
             kind: info.kind.clone(),
             sample_rate: tts.sample_rate() as u32,
+            info: info.clone(),
             tts,
             voices: load_reference_voices(&dir, &info.kind),
         };

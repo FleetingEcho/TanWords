@@ -8,6 +8,22 @@ use crate::AppState;
 #[crate::shim::command]
 pub async fn db_duplicate_document(id: i64, conn: State<'_, AppState>) -> Result<i64, String> {
     let db = db::conn(&conn)?;
+    // The copy is filed beside the original, so a locked folder has to receive
+    // it protected. Resolve that before writing anything: refusing up front
+    // (no master key in the session) beats leaving a plaintext copy inside a
+    // folder the UI presents as sealed.
+    let source_folder = db::fetch_one(
+        &db,
+        "SELECT folder FROM documents WHERE id=?1",
+        [id],
+        |row| row.get::<String>(0),
+    )
+    .await?;
+    if document_privacy::folder_lock_requires_password(&db, &conn.document_privacy, &source_folder)
+        .await?
+    {
+        return Err(document_privacy::LOCKED_ERROR.to_string());
+    }
     if document_privacy::document_is_protected(&db, id).await? {
         let key = conn.document_privacy.key(id)?;
         let (title, stored_content, stored_text, tags, word_count, status) = db::fetch_one(
@@ -84,6 +100,15 @@ pub async fn db_duplicate_document(id: i64, conn: State<'_, AppState>) -> Result
         )
         .await
         .map_err(|e| e.to_string())?;
+        // The copy just arrived in the source's folder; a locked chain must
+        // receive it protected, like any other arrival.
+        document_privacy::protect_if_folder_locked(
+            &db,
+            &conn.document_privacy,
+            new_document_id,
+            &source_folder,
+        )
+        .await?;
         return Ok(new_document_id);
     }
     let new_document_id = db::fetch_one(
@@ -144,5 +169,13 @@ pub async fn db_duplicate_document(id: i64, conn: State<'_, AppState>) -> Result
     )
     .await
     .map_err(|e| e.to_string())?;
+    // Same arrival rule as the protected branch above.
+    document_privacy::protect_if_folder_locked(
+        &db,
+        &conn.document_privacy,
+        new_document_id,
+        &source_folder,
+    )
+    .await?;
     Ok(new_document_id)
 }

@@ -35,11 +35,22 @@ fn sanitize(html: &str) -> String {
 
 /// Strip footnote back-reference arrows (↩ / ↩︎ with variation selectors) that
 /// Readability carries over from footnote sections — they're link glyphs from
-/// the original page's navigation, not prose.
+/// the original page's navigation, not prose. Only the selectors *attached to
+/// the arrow* go with it: stripped globally they would also take the selectors
+/// other characters legitimately carry (emoji, CJK compatibility glyphs).
 fn strip_footnote_backrefs(text: &str) -> String {
-    text.replace('\u{21A9}', "")
-        .replace('\u{FE0E}', "")
-        .replace('\u{FE0F}', "")
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\u{21A9}' {
+            while matches!(chars.peek(), Some('\u{FE0E}') | Some('\u{FE0F}')) {
+                chars.next();
+            }
+            continue;
+        }
+        out.push(c);
+    }
+    out
 }
 
 #[crate::shim::command]

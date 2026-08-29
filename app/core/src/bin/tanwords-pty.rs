@@ -187,11 +187,16 @@ fn main() {
     }
 
     // Teardown. Ensure nothing lingers, then tell the host the shell ended.
+    // The exit code in the `X` frame is the shell's real one — the renderer
+    // shows it on the dead pane and restart flows key off non-zero exits.
+    // Reap the child *before* writing the frame so the code is known; kill()
+    // is a no-op on an already-exited child.
     let _ = child.kill();
     drop(writer);
-    let _ = write_frame(&mut out, b'X', b"{\"code\":0}");
+    let code = child.wait().ok().map(|status| status.exit_code()).unwrap_or(0);
+    let exit = serde_json::json!({ "code": code }).to_string();
+    let _ = write_frame(&mut out, b'X', exit.as_bytes());
     let _ = out.flush();
-    let _ = child.wait();
 }
 
 fn spawn_host_reader(tx: mpsc::SyncSender<Event>) {

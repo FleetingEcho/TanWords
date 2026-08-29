@@ -56,8 +56,13 @@ pub struct RuntimePool {
     postgres_port: u16,
     entries: Mutex<HashMap<i64, RuntimeEntry>>,
     /// Serializes spawns so two first-requests from the same user/devices
-    /// never open the same database twice.
-    spawn_gate: tokio::sync::Mutex<()>,
+    /// never open the same database twice. Keyed per user: a global gate
+    /// meant one user's unreachable Postgres endpoint (sqlx's default 30s
+    /// connect timeout) held the gate and queued every *other* user's first
+    /// request behind it. Entries persist for the process lifetime — a few
+    /// dozen bytes per user, and removing them on completion would let two
+    /// in-flight spawners race on different gate Arcs.
+    spawn_gates: Mutex<HashMap<i64, Arc<tokio::sync::Mutex<()>>>>,
 }
 
 impl RuntimePool {
@@ -68,7 +73,7 @@ impl RuntimePool {
             postgres_host,
             postgres_port,
             entries: Mutex::new(HashMap::new()),
-            spawn_gate: tokio::sync::Mutex::new(()),
+            spawn_gates: Mutex::new(HashMap::new()),
         }
     }
 
@@ -86,7 +91,17 @@ impl RuntimePool {
             }
         }
 
-        let _gate = self.spawn_gate.lock().await;
+        // Take this user's gate before awaiting anything: the std mutex on
+        // the gate map is released immediately, so other users' lookups
+        // never block behind a slow spawn.
+        let gate = {
+            let mut gates = self.spawn_gates.lock().map_err(|e| e.to_string())?;
+            gates
+                .entry(user_id)
+                .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+                .clone()
+        };
+        let _gate = gate.lock().await;
 
         // Re-check under the spawn gate.
         {

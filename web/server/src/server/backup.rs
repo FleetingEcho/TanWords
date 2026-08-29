@@ -158,10 +158,19 @@ pub(super) async fn import_step(
         return json_error(StatusCode::BAD_REQUEST, "missing path");
     };
     // This caller's upload directory, not the shared one: proving a path sits
-    // under uploads/ proved nothing about whose upload it was.
-    let uploads = uploads_dir(&state, session.user_id).canonicalize();
-    let candidate = std::path::Path::new(path).canonicalize();
-    let (Ok(uploads), Ok(candidate)) = (uploads, candidate) else {
+    // under uploads/ proved nothing about whose upload it was. canonicalize
+    // is a blocking syscall on a caller-supplied string, so it runs on the
+    // blocking pool, not the async worker.
+    let uploads_root = uploads_dir(&state, session.user_id);
+    let path_owned = path.to_string();
+    let validated = tokio::task::spawn_blocking(move || {
+        let uploads = uploads_root.canonicalize().ok()?;
+        let candidate = std::path::Path::new(&path_owned).canonicalize().ok()?;
+        Some((uploads, candidate))
+    })
+    .await
+    .unwrap_or_default();
+    let Some((uploads, candidate)) = validated else {
         return json_error(StatusCode::BAD_REQUEST, "unknown upload path");
     };
     if !candidate.starts_with(&uploads) {

@@ -128,17 +128,57 @@ pub async fn db_rename_document_folder(
     if new.starts_with(&format!("{old}/")) {
         return Err("cannot move a folder into itself".into());
     }
+    // Renaming onto an ancestor ("a/b" → "a") would replace that ancestor: a
+    // plain path replace silently drops the ancestor's row — locked flag
+    // included — so block it instead, like the into-subtree case above.
+    if old.starts_with(&format!("{new}/")) {
+        return Err("cannot move a folder onto its own ancestor".into());
+    }
     let db = db::conn(&conn)?;
     ensure_folder_chain(&db, &new).await?;
-    // `ensure_folder_chain` created the `new` leaf as a placeholder row so the
-    // sidebar shows it immediately. The UPDATE below renames `old` -> `new` and
-    // would collide with that placeholder on Postgres (SQLite's
-    // `UPDATE OR REPLACE` silently deleted the conflicting row first; Postgres
-    // has no such form). Drop the placeholder leaf here so the renamed row can
-    // take the `new` path — net effect matches SQLite: `new` exists (the
-    // renamed row), `old` is gone, ancestors are preserved.
+    // A locked folder is a standing instruction: everything filed under it is
+    // protected, including whatever just moved in. Snapshot the locked rows at
+    // or under `new` — the rename below replaces those rows — and resolve the
+    // master key up front so a locked destination cannot half-happen.
+    let locked_paths: Vec<String> = db::fetch_all(
+        &db,
+        "SELECT path FROM document_folders
+         WHERE locked <> 0 AND (path = ?1 OR substr(path, 1, length(?1) + 1) = ?1 || '/')",
+        params![new.clone()],
+        |row| row.get::<String>(0),
+    )
+    .await?;
+    let chain_locked =
+        crate::document_privacy::folder_chain_is_locked(&db, &new).await?;
+    let mut protect_scopes: Vec<String> = Vec::new();
+    if chain_locked {
+        protect_scopes.push(new.clone());
+    }
+    protect_scopes.extend(locked_paths.iter().filter(|p| **p != new).cloned());
+    for scope in &protect_scopes {
+        if crate::document_privacy::folder_lock_requires_password(
+            &db,
+            &conn.document_privacy,
+            scope,
+        )
+        .await?
+        {
+            return Err(crate::document_privacy::LOCKED_ERROR.to_string());
+        }
+    }
+    // `ensure_folder_chain` created the `new` leaf (and ancestors) as
+    // placeholder rows so the sidebar shows them immediately. The UPDATE below
+    // renames `old` -> `new` and would collide with that placeholder on
+    // Postgres (SQLite's `UPDATE OR REPLACE` silently deleted the conflicting
+    // row first; Postgres has no such form). Drop every placeholder at or
+    // under `new` — not just the leaf, or a same-named subfolder of `old`
+    // collides the same way — so the renamed rows can take those paths. Net
+    // effect matches SQLite: `new` and its subtree exist (renamed), `old` is
+    // gone, ancestors are preserved. The `locked` flags of replaced rows are
+    // restored below, so the standing instruction survives the merge.
     db.execute(
-        "DELETE FROM document_folders WHERE path = ?1",
+        "DELETE FROM document_folders
+         WHERE path = ?1 OR substr(path, 1, length(?1) + 1) = ?1 || '/'",
         params![new.clone()],
     )
     .await
@@ -155,6 +195,31 @@ pub async fn db_rename_document_folder(
         )
         .await
         .map_err(|e| e.to_string())?;
+    }
+    // Restore the standing instructions that the rename replaced.
+    for path in &locked_paths {
+        db.execute(
+            "INSERT INTO document_folders (path, locked) VALUES (?1, 1)
+             ON CONFLICT(path) DO UPDATE SET locked = 1",
+            params![path.clone()],
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+    // Protect what just moved into a locked chain, exactly like a drag into
+    // the same folder would. Already-protected documents are skipped by the
+    // helper, so merged-in residents are untouched.
+    for scope in &protect_scopes {
+        let ids = crate::document_privacy::documents_under(&db, scope).await?;
+        for id in ids {
+            crate::document_privacy::protect_if_folder_locked(
+                &db,
+                &conn.document_privacy,
+                id,
+                scope,
+            )
+            .await?;
+        }
     }
     Ok(new)
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,8 +33,10 @@ interface Props {
   calendars: CalendarCategoryRow[];
   /** Pre-fill defaults (e.g. clicked date/time). */
   prefill?: Partial<EventDraft> | null;
-  onSave: (draft: EventDraft) => Promise<void>;
-  onDelete?: (id: string) => Promise<void>;
+  /** Saves the draft; resolves `false` when the write failed, so the dialog
+   *  can stay open with the draft intact for a retry. */
+  onSave: (draft: EventDraft) => Promise<void | boolean>;
+  onDelete?: (id: string) => Promise<void | boolean>;
 }
 
 /** Create / edit event dialog. Owns its draft state so the calendar stays
@@ -51,12 +53,19 @@ export function CalendarEventDialog({
 
   // Reset the draft (and the delete-confirm step) whenever the dialog opens
   // or the target event changes — the same component instance is reused for
-  // create and edit.
+  // create and edit. `calendars` is deliberately NOT a dependency: the page
+  // reloads it with a fresh array identity on every fetch, so including it
+  // made any background reload while the dialog was open (e.g. an AI chat
+  // calendar tool dispatching "calendar-updated") discard the user's unsaved
+  // edits mid-typing. It's read through a ref for the default-id fallback.
+  const calendarsRef = useRef(calendars);
+  calendarsRef.current = calendars;
   useEffect(() => {
     if (!open) return;
-    setDraft(event ? rowToDraft(event) : emptyDraft(calendars, prefill));
+    setDraft(event ? rowToDraft(event) : emptyDraft(calendarsRef.current, prefill));
     setConfirmingDelete(false);
-  }, [open, event, calendars, prefill]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, event, prefill]);
 
   const canSave = draft.title.trim().length > 0 && draft.start && draft.end;
 
@@ -74,7 +83,10 @@ export function CalendarEventDialog({
     if (!canSave || saving) return;
     setSaving(true);
     try {
-      await onSave(draft);
+      // A failed write must leave the draft on screen for a retry — the
+      // close happens only when `onSave` reports success.
+      const ok = await onSave(draft);
+      if (ok === false) return;
       onClose();
     } finally {
       setSaving(false);
@@ -89,7 +101,8 @@ export function CalendarEventDialog({
     if (!event?.id || !onDelete || saving) return;
     setSaving(true);
     try {
-      await onDelete(event.id);
+      const ok = await onDelete(event.id);
+      if (ok === false) return;
       onClose();
     } finally {
       setSaving(false);

@@ -39,8 +39,13 @@ async fn word_count(conn: &db::Conn) -> i64 {
     db::scalar_i64(conn, "SELECT COUNT(*) FROM words", ()).await.unwrap()
 }
 
-async fn pattern_count(conn: &db::Conn) -> i64 {
-    db::scalar_i64(conn, "SELECT COUNT(*) FROM patterns", ()).await.unwrap()
+/// `fresh_postgres` drops and recreates the whole schema in the one shared
+/// test database, so the Postgres tests must not reset it concurrently (the
+/// harness runs `#[tokio::test]`s in parallel threads).
+static PG_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+async fn sentence_count(conn: &db::Conn) -> i64 {
+    db::scalar_i64(conn, "SELECT COUNT(*) FROM sentences", ()).await.unwrap()
 }
 
 /// The shared cycle both backends run. Exercises:
@@ -79,30 +84,31 @@ async fn shared_cycle(conn: &db::Conn) {
     assert!(dup.is_none());
     assert_eq!(word_count(&conn).await, 1);
 
-    // pattern with RETURNING id (replaces last_insert_rowid)
+    // sentence with RETURNING id (replaces last_insert_rowid). The `patterns`
+    // system this used to exercise was replaced by first-class sentences.
     let pid = db::fetch_one(
         &conn,
-        "INSERT INTO patterns(pattern,zh,function_tag,level,note,updated_at) \
-         VALUES(?1,?2,'other',?3,?4,CURRENT_TIMESTAMP) RETURNING id",
-        vec!["S + V + O".to_string(), "主谓宾".to_string(), "A2".to_string(), "".to_string()],
+        "INSERT INTO sentences (sentence, zh, level, note) \
+         VALUES(?1,?2,?3,?4) RETURNING id",
+        vec!["I love Rust".to_string(), "我爱 Rust".to_string(), "A2".to_string(), "".to_string()],
         |r| r.get::<i64>(0),
     )
     .await
     .unwrap();
     assert!(pid > 0);
-    assert_eq!(pattern_count(&conn).await, 1);
+    assert_eq!(sentence_count(&conn).await, 1);
 
     // read it back
     let (pat, zh): (String, String) = db::fetch_one(
         &conn,
-        "SELECT pattern, zh FROM patterns WHERE id = ?1",
+        "SELECT sentence, zh FROM sentences WHERE id = ?1",
         vec![pid],
         |r| Ok((r.get::<String>(0)?, r.get::<String>(1)?)),
     )
     .await
     .unwrap();
-    assert_eq!(pat, "S + V + O");
-    assert_eq!(zh, "主谓宾");
+    assert_eq!(pat, "I love Rust");
+    assert_eq!(zh, "我爱 Rust");
 
     // daily_streaks upsert: reserved-word column "date", date('now') default.
     // Runs twice to exercise the ON CONFLICT DO UPDATE branch.
@@ -236,16 +242,106 @@ async fn shared_cycle(conn: &db::Conn) {
 
 #[tokio::test]
 #[ignore]
-async fn sqlite_words_and_patterns_round_trip() {
+async fn sqlite_words_and_sentences_round_trip() {
     let conn = fresh_sqlite().await;
     shared_cycle(&conn).await;
 }
 
 #[tokio::test]
 #[ignore]
-async fn postgres_words_and_patterns_round_trip() {
+async fn postgres_words_and_sentences_round_trip() {
     let url = std::env::var("TANWORDS_PG_TEST_URL")
         .expect("set TANWORDS_PG_TEST_URL to run the Postgres parity test");
+    // All Postgres tests share one database whose `fresh_postgres` drops and
+    // recreates the schema; the default test harness runs them in parallel,
+    // and two concurrent drop/create cycles race in the pg_type catalog.
+    // Held for the whole test: releasing after the reset would let the next
+    // test drop these tables mid-test.
+    let _lock = PG_TEST_LOCK.lock().unwrap();
     let conn = fresh_postgres(&url).await;
     shared_cycle(&conn).await;
+}
+
+/// The web server's *disable remote access* flow calls
+/// `downgrade_vault_rows_to_device_key` on a vault-bearing Postgres conn and
+/// then snapshots the tables into a local file. This is the same shape in
+/// miniature: seal rows with a vault key, downgrade, then verify the rows are
+/// decryptable with the device key alone (what a local conn carries) on both
+/// backends.
+async fn shared_vault_downgrade_cycle(conn: &db::Conn) {
+    use tanwords_lib::document_privacy::{decrypt_text, encrypt_text};
+
+    // A stand-in vault key — the real one is random 32 bytes; contents are
+    // irrelevant to the downgrade logic.
+    let vault = [7u8; 32];
+    let conn = conn.clone_handle().with_vault_key(Some(std::sync::Arc::new(vault)));
+    let device = tanwords_lib::secrets::device_key()
+        .expect("test host must have a device key (secret file fallback)");
+
+    // One R2 row and one provider row, sealed under the vault key.
+    conn.execute(
+        "INSERT INTO r2_config (id, config_enc) VALUES (1, ?1)
+         ON CONFLICT(id) DO UPDATE SET config_enc = excluded.config_enc",
+        vec![encrypt_text(&vault, "{\"bucket\":\"b\"}").unwrap()],
+    )
+    .await
+    .unwrap();
+    conn.execute(
+        "INSERT INTO ai_providers (device_id, id, name, kind, api_base, model_id, api_key_enc)
+         VALUES ('dev1', 'openai', 'OpenAI', 'openai', 'https://x', 'gpt', ?1)
+         ON CONFLICT(device_id, id) DO UPDATE SET api_key_enc = excluded.api_key_enc",
+        vec![encrypt_text(&vault, "sk-test-secret").unwrap()],
+    )
+    .await
+    .unwrap();
+
+    let resealed = tanwords_lib::secrets::downgrade_vault_rows_to_device_key(&conn)
+        .await
+        .unwrap();
+    assert_eq!(resealed, 2, "one r2_config row + one ai_providers row");
+
+    // After the downgrade the rows must decrypt with the device key alone.
+    let r2: String = db::fetch_one(
+        &conn,
+        "SELECT config_enc FROM r2_config WHERE id = 1",
+        (),
+        |r| r.get::<String>(0),
+    )
+    .await
+    .unwrap();
+    assert_eq!(decrypt_text(&device, &r2).unwrap(), "{\"bucket\":\"b\"}");
+
+    let key: String = db::fetch_one(
+        &conn,
+        "SELECT api_key_enc FROM ai_providers WHERE device_id = 'dev1' AND id = 'openai'",
+        (),
+        |r| r.get::<String>(0),
+    )
+    .await
+    .unwrap();
+    assert_eq!(decrypt_text(&device, &key).unwrap(), "sk-test-secret");
+
+    // Idempotent: nothing is left that decrypts under the vault key, so a
+    // second pass re-seals nothing.
+    let again = tanwords_lib::secrets::downgrade_vault_rows_to_device_key(&conn)
+        .await
+        .unwrap();
+    assert_eq!(again, 0);
+}
+
+#[tokio::test]
+#[ignore]
+async fn sqlite_vault_downgrade_round_trip() {
+    let conn = fresh_sqlite().await;
+    shared_vault_downgrade_cycle(&conn).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn postgres_vault_downgrade_round_trip() {
+    let url = std::env::var("TANWORDS_PG_TEST_URL")
+        .expect("set TANWORDS_PG_TEST_URL to run the Postgres parity test");
+    let _lock = PG_TEST_LOCK.lock().unwrap();
+    let conn = fresh_postgres(&url).await;
+    shared_vault_downgrade_cycle(&conn).await;
 }

@@ -89,6 +89,35 @@ describe("the schema accepts everything the adapter emits", () => {
     expect(normalize(returned)).toEqual(normalize(blocks));
   });
 
+  it("keeps a list item's stored alignment through the real schema", () => {
+    // `textAlignment` on list items/cells is only carried when TextAlign's
+    // `types` include them — the schema otherwise discards the attr and
+    // BlockNote-era aligned lists silently reset on load.
+    const returned = pmDocToBlocks(intoSchema([{
+      type: "bulletListItem",
+      props: { backgroundColor: "default", textColor: "default", textAlignment: "center" },
+      content: [{ type: "text", text: "hi", styles: {} }],
+    }]).toJSON());
+    expect(returned[0].props).toMatchObject({ textAlignment: "center" });
+  });
+
+  it("keeps table column widths through the real schema", () => {
+    // The geometry rides on the table node's attrs; a Table extension that
+    // declares no attributes drops it on parse.
+    const table: Block = {
+      type: "table",
+      props: { textColor: "default" },
+      content: {
+        type: "tableContent",
+        columnWidths: [120, 240],
+        headerRows: 1,
+        rows: [{ cells: [{ type: "tableCell", content: [], props: { colspan: 1, rowspan: 1, backgroundColor: "default", textColor: "default", textAlignment: "left" } }] }],
+      },
+    };
+    const returned = pmDocToBlocks(intoSchema([table]).toJSON());
+    expect((returned[0].content as { columnWidths: number[] }).columnWidths).toEqual([120, 240]);
+  });
+
   it("does not leak the editor's id attr into stored props", () => {
     // `id` is a block-level field in the storage format. Landing it in props
     // would change the serialized content of every document the editor opens.

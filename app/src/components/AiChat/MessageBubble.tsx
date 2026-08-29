@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -53,12 +53,20 @@ export const MessageBubble = React.memo(function MessageBubble({ msg, compact = 
   const userAvatar = useSettingsStore((s) => s.userAvatar);
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  // The bubble re-keys on session switches/truncation — a copy followed
+  // immediately by either would otherwise fire setCopied on an unmounted
+  // component.
+  const copyTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+  }, []);
 
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(msg.content);
       setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = window.setTimeout(() => setCopied(false), 1500);
     } catch {
       toast.error(t("aichat.copyFailed"));
     }

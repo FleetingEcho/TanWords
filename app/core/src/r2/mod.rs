@@ -113,16 +113,21 @@ fn unseal(key: &[u8; 32], sealed: &str) -> Option<String> {
 /// Moves a pre-existing desktop configuration out of `app_config.json` (and
 /// the keychain) into the database, once. Without it, upgrading would look
 /// like the bucket had silently disconnected.
-pub async fn migrate_from_app_config(conn: &crate::db::Conn) {
+pub async fn migrate_from_app_config(conn: &crate::db::Conn) -> Result<(), String> {
     if load_settings(conn).await.is_some() {
-        return;
+        return Ok(());
     }
-    let Some(old) = crate::appconfig::load_r2_settings() else { return };
-    let Some(secret) = crate::secrets::r2_secret_get() else { return };
+    let Some(old) = crate::appconfig::load_r2_settings() else { return Ok(()) };
+    let Some(secret) = crate::secrets::r2_secret_get() else { return Ok(()) };
     let settings = R2Settings { secret_access_key: secret, ..old };
     if save_settings(conn, &settings).await.is_ok() {
         crate::appconfig::save_r2_settings(None);
         crate::secrets::r2_secret_clear();
+        Ok(())
+    } else {
+        // Surfaced to the caller so `init_db` can skip the fingerprint stamp
+        // and retry the adoption on the next open instead of losing it.
+        Err("saving the adopted R2 configuration failed".to_string())
     }
 }
 
@@ -204,6 +209,24 @@ pub async fn put_object(
 /// visibly on a slow link, large enough not to drown the event channel.
 const UPLOAD_CHUNK_BYTES: usize = 256 * 1024;
 
+/// One shared client for every R2 hop: connection pooling across commands, a
+/// connect deadline, and a read deadline so a wedged socket surfaces as an
+/// error instead of hanging the command (and the UI waiting on it) forever.
+/// Deliberately no *total* request timeout — a large upload on a slow link
+/// is not a wedge, and `read_timeout` only fires when no bytes move at all.
+fn client() -> reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(15))
+                .read_timeout(std::time::Duration::from_secs(60))
+                .build()
+                .expect("static reqwest client config is valid")
+        })
+        .clone()
+}
+
 /// As `put_object`, but streams the body so it can report bytes sent. An 85 MB
 /// upload otherwise shows a spinner for a minute with no sign of life.
 pub async fn put_object_with_progress(
@@ -231,7 +254,7 @@ pub async fn put_object_with_progress(
         sigv4::authorization_header(&creds, "PUT", &uri, "", &headers, &payload_hash, &date);
 
     let total = body.len() as u64;
-    let request = reqwest::Client::new()
+    let request = client()
         .put(format!("https://{host}{uri}"))
         .header("content-type", content_type)
         .header("x-amz-content-sha256", &payload_hash)
@@ -247,11 +270,20 @@ pub async fn put_object_with_progress(
             let app = app.clone();
             let name = file_name.to_string();
             let mut sent = 0u64;
-            let chunks = body
-                .chunks(UPLOAD_CHUNK_BYTES)
-                .map(|chunk| chunk.to_vec())
-                .collect::<Vec<_>>();
-            let stream = futures_util::stream::iter(chunks.into_iter().map(move |chunk| {
+            // `Bytes` is ref-counted: slicing it hands reqwest zero-copy views
+            // of the one body, rather than a second full copy of it (the
+            // `to_vec()` chunks this replaced doubled peak memory for the
+            // 100 MB asset ceiling).
+            let body = bytes::Bytes::from(body);
+            let mut offsets: Vec<(usize, usize)> = Vec::new();
+            let mut start = 0usize;
+            while start < body.len() {
+                let end = (start + UPLOAD_CHUNK_BYTES).min(body.len());
+                offsets.push((start, end));
+                start = end;
+            }
+            let stream = futures_util::stream::iter(offsets.into_iter().map(move |(start, end)| {
+                let chunk = body.slice(start..end);
                 sent += chunk.len() as u64;
                 let _ = app.emit(
                     "r2:upload-progress",
@@ -301,7 +333,7 @@ pub async fn delete_object(settings: &R2Settings, key: &str) -> Result<(), Strin
     let authorization =
         sigv4::authorization_header(&creds, "DELETE", &uri, "", &headers, &payload_hash, &date);
 
-    let response = reqwest::Client::new()
+    let response = client()
         .delete(format!("https://{host}{uri}"))
         .header("x-amz-content-sha256", &payload_hash)
         .header("x-amz-date", &date)
@@ -348,7 +380,7 @@ pub async fn bucket_usage(settings: &R2Settings) -> Result<(u64, u64), String> {
         let authorization =
             sigv4::authorization_header(&creds, "GET", &uri, &query, &headers, &payload_hash, &date);
 
-        let response = reqwest::Client::new()
+        let response = client()
             .get(format!("https://{host}{uri}?{query}"))
             .header("x-amz-content-sha256", &payload_hash)
             .header("x-amz-date", &date)
@@ -517,8 +549,8 @@ pub async fn r2_disconnect(state: State<'_, AppState>) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-/// Uploads a file that the renderer already holds. Kept for parity with the
-/// database path; the size ceiling is enforced by the caller.
+/// Totals the bucket via ListObjectsV2, falling back to the locally recorded
+/// floor when the listing fails (offline, token without list permission).
 #[crate::shim::command(async)]
 pub async fn r2_get_usage(state: State<'_, AppState>) -> Result<R2Usage, String> {
     let db = crate::db::conn(&state)?;

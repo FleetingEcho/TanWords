@@ -121,7 +121,10 @@ pub(crate) use params;
 /// helper — no separate transaction overload needed.
 enum ConnInner {
     Db(sea_orm::DatabaseConnection),
-    Txn(sea_orm::DatabaseTransaction),
+    // The pool rides along with the transaction so `clone_handle` stays
+    // total: cloning a Txn-backed Conn hands out a fresh *pool* connection —
+    // never a view of the transaction's uncommitted writes.
+    Txn(sea_orm::DatabaseTransaction, sea_orm::DatabaseConnection),
 }
 
 /// The connection handle the rest of the crate holds and passes around.
@@ -184,12 +187,15 @@ impl Conn {
     /// Cheap: clones the underlying `Arc<Pool>` (sqlite/postgres) — same shape
     /// as the old `libsql::Conn` clone, so `db::conn` and `db::txn_conn` hand
     /// out owned handles without holding the state mutex across an await.
+    /// On a Txn-backed Conn this is a fresh *pool* connection: the caller gets
+    /// committed state only, which is the only sane thing a "cheap handle"
+    /// can promise.
     pub fn clone_handle(&self) -> Conn {
-        match &self.inner {
-            ConnInner::Db(db) => Conn::new_db(db.clone(), self.kind, self.vault_key.clone()),
-            // A transaction handle is not clonable; callers never clone a Txn.
-            ConnInner::Txn(_) => Conn::new_db(self.expect_db().clone(), self.kind, self.vault_key.clone()),
-        }
+        let pool = match &self.inner {
+            ConnInner::Db(db) => db.clone(),
+            ConnInner::Txn(_, pool) => pool.clone(),
+        };
+        Conn::new_db(pool, self.kind, self.vault_key.clone())
     }
 
     /// Returns a copy of this connection with the vault key attached. Used by
@@ -203,7 +209,7 @@ impl Conn {
     fn expect_db(&self) -> &sea_orm::DatabaseConnection {
         match &self.inner {
             ConnInner::Db(db) => db,
-            ConnInner::Txn(_) => panic!("Conn::expect_db on a transaction handle"),
+            ConnInner::Txn(..) => panic!("Conn::expect_db on a transaction handle"),
         }
     }
 
@@ -234,7 +240,7 @@ impl Conn {
         match &self.inner {
             ConnInner::Db(db) => db.execute_unprepared(sql).await.map(|_| ()),
             // Transactions don't run schema batches; route to the inner if ever asked.
-            ConnInner::Txn(tx) => tx.execute_unprepared(sql).await.map(|_| ()),
+            ConnInner::Txn(tx, _) => tx.execute_unprepared(sql).await.map(|_| ()),
         }
     }
 
@@ -265,8 +271,10 @@ impl Conn {
     pub async fn transaction(&self) -> Result<Conn, DbErr> {
         let db = self.expect_db();
         let txn = db.begin().await?;
+        // Keep the pool (an Arc clone) with the txn so `clone_handle` on the
+        // returned Conn can still hand out pool connections.
         Ok(Conn {
-            inner: ConnInner::Txn(txn),
+            inner: ConnInner::Txn(txn, db.clone()),
             backend: self.backend,
             kind: self.kind,
             vault_key: self.vault_key.clone(),
@@ -277,7 +285,7 @@ impl Conn {
     /// consumes it, since SeaORM's `DatabaseTransaction::commit` takes `self`.
     pub async fn commit(self) -> Result<(), DbErr> {
         match self.inner {
-            ConnInner::Txn(tx) => tx.commit().await,
+            ConnInner::Txn(tx, _) => tx.commit().await,
             ConnInner::Db(_) => Err(DbErr::Custom("commit on a non-transaction Conn".into())),
         }
     }
@@ -285,7 +293,7 @@ impl Conn {
     /// `tx.rollback()` — symmetric to `commit()`; consumes the transaction.
     pub async fn rollback(self) -> Result<(), DbErr> {
         match self.inner {
-            ConnInner::Txn(tx) => tx.rollback().await,
+            ConnInner::Txn(tx, _) => tx.rollback().await,
             ConnInner::Db(_) => Err(DbErr::Custom("rollback on a non-transaction Conn".into())),
         }
     }
@@ -312,21 +320,21 @@ impl Conn {
     async fn execute_raw(&self, stmt: Statement) -> Result<ExecResult, DbErr> {
         match &self.inner {
             ConnInner::Db(db) => db.execute_raw(stmt).await,
-            ConnInner::Txn(tx) => tx.execute_raw(stmt).await,
+            ConnInner::Txn(tx, _) => tx.execute_raw(stmt).await,
         }
     }
 
     async fn query_all_raw(&self, stmt: Statement) -> Result<Vec<QueryResult>, DbErr> {
         match &self.inner {
             ConnInner::Db(db) => db.query_all_raw(stmt).await,
-            ConnInner::Txn(tx) => tx.query_all_raw(stmt).await,
+            ConnInner::Txn(tx, _) => tx.query_all_raw(stmt).await,
         }
     }
 
     async fn query_one_raw(&self, stmt: Statement) -> Result<Option<QueryResult>, DbErr> {
         match &self.inner {
             ConnInner::Db(db) => db.query_one_raw(stmt).await,
-            ConnInner::Txn(tx) => tx.query_one_raw(stmt).await,
+            ConnInner::Txn(tx, _) => tx.query_one_raw(stmt).await,
         }
     }
 }

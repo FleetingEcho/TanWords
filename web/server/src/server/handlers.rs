@@ -56,7 +56,7 @@ pub(super) async fn invoke_handler(
             }
         }
     };
-    if let Err(reason) = crate::commands::validate_model_path(&command, &parsed) {
+    if let Err(reason) = crate::commands::validate_model_path(&command, &parsed).await {
         return json_error(StatusCode::BAD_REQUEST, reason.to_string());
     }
     match dispatch(&runtime.ctx, &command, Args::new(parsed)).await {

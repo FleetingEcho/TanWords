@@ -51,21 +51,33 @@ export function useDocActions(params: {
   // useCallback on every action: memoized DocItem rows receive these as
   // props; unstable identities would defeat the memo on every parent render.
   const handleRename = useCallback(async (id: number, title: string) => {
-    const saved = await db.updateDocumentMetadata(id, { title });
-    if (saved) notifyDocItemUpdated({ id, title });
+    try {
+      const saved = await db.updateDocumentMetadata(id, { title });
+      if (saved) notifyDocItemUpdated({ id, title });
+    } catch (error) {
+      toast.error(String(error));
+    }
   }, [db]);
 
   const handlePin = useCallback(async (id: number, pinned: boolean) => {
-    const saved = await db.updateDocumentMetadata(id, { pinned });
-    if (!saved) return;
-    notifyDocItemUpdated({ id, pinned });
-    load(page);
+    try {
+      const saved = await db.updateDocumentMetadata(id, { pinned });
+      if (!saved) return;
+      notifyDocItemUpdated({ id, pinned });
+      load(page);
+    } catch (error) {
+      toast.error(String(error));
+    }
   }, [db, load, page]);
 
   const handleDuplicate = useCallback(async (id: number) => {
-    const newId = await db.duplicateDocument(id);
-    load(page);
-    onSelect(newId);
+    try {
+      const newId = await db.duplicateDocument(id);
+      load(page);
+      onSelect(newId);
+    } catch (error) {
+      toast.error(String(error));
+    }
   }, [db, load, page, onSelect]);
 
   const handleDelete = useCallback((id: number) => setPendingDeleteId(id), []);
@@ -181,10 +193,14 @@ export function useDocActions(params: {
     const id = pendingDeleteId;
     if (id === null) return;
     setPendingDeleteId(null);
-    await db.deleteDocument(id);
-    toast.success(t("doc.delete"));
-    load(page);
-    if (activeId === id) onSelect(-1);
+    try {
+      await db.deleteDocument(id);
+      toast.success(t("doc.delete"));
+      await load(page);
+      if (activeId === id) onSelect(-1);
+    } catch (error) {
+      toast.error(String(error));
+    }
   }, [db, load, page, pendingDeleteId, activeId, onSelect, t]);
 
   return {

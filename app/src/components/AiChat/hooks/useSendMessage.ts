@@ -36,7 +36,7 @@ export function useSendMessage(params: {
     activeId, setActiveId, displayItems, setDisplayItems, setItems, itemsRef,
     activeTitle, setActiveTitle, setIsNewSession,
     selectedPreset, selectedProviderId, systemPrompt, enabledGroups,
-    controllerRef, sessionMetaRef, setStreaming, privateRef,
+    controllerRef, sessionMetaRef, setStreaming, privateRef, activeIdRef,
   } = session;
 
   const { generateSessionTitle } = useSessionTitle(sidebar, session);
@@ -51,6 +51,13 @@ export function useSendMessage(params: {
 
     const sessionId = activeId ?? genId();
     if (!activeId) setActiveId(sessionId);
+    // Every write below is conditional on still owning the screen this send
+    // started on. Aborting the HTTP bridge ends the stream *gracefully* (the
+    // reader resolves done instead of rejecting), so after a session switch /
+    // new chat / private toggle the loop keeps running and would otherwise
+    // write session A's partial transcript into session B — persistable via
+    // the next save or the 6s interval.
+    const ownsSession = () => activeIdRef.current === sessionId;
 
     const userItem: DisplayItem = { kind: "message", msg: { role: "user", content: fullText } };
     const assistantItem: DisplayItem = { kind: "message", msg: { role: "assistant", content: "" } };
@@ -102,6 +109,10 @@ export function useSendMessage(params: {
     let renderTimer: number | null = null;
     const commitLastAssistant = () => {
       renderTimer = null;
+      // The render-coalescing timer can fire after the user switched away —
+      // writing then would replace the newly-displayed session's last
+      // assistant message with this one's partial text.
+      if (!ownsSession()) return;
       const content = pendingAssistant;
       setDisplayItems((prev) => {
         const next = [...prev];
@@ -146,6 +157,10 @@ export function useSendMessage(params: {
             currentApiMsgs, providerPrompt, tools, controller.signal,
             (chunk) => { textContent += chunk; updateLastAssistant(textContent); }
           );
+          // The screen moved on (session switch/new chat aborted the stream;
+          // the bridge ends gracefully rather than rejecting) — stop here
+          // instead of writing this transcript into the displayed session.
+          if (!ownsSession()) return;
           textContent = response.textContent;
           pendingAssistant = textContent;
           flushLastAssistant();
@@ -168,7 +183,13 @@ export function useSendMessage(params: {
           setItems(currentItems);
 
           // ── Execute tools ──────────────────────────────────────────────
-          const results = await Promise.all(response.toolCalls.map((tc) => executeTool(tc as ToolCall)));
+          const results = await Promise.all(response.toolCalls.map((tc) =>
+            executeTool(tc as ToolCall, { privateMode: privateRef.current })));
+
+          // A slow tool (batch word add, document write) can straddle a
+          // session switch — the setItems calls below would replace the
+          // displayed session's whole transcript with this one's.
+          if (!ownsSession()) return;
 
           const doneCalls: ToolCallDisplay[] = pendingCalls.map((pc, i) => ({
             ...pc,
@@ -262,10 +283,11 @@ export function useSendMessage(params: {
           ? { kind: "message" as const, msg: { role: "assistant" as const, content: `❌ ${friendlyMsg}` } }
           : item
       );
-      setItems(currentItems);
+      // The failure message belongs on this send's session only.
+      if (ownsSession()) setItems(currentItems);
     }
 
-    if (!controller.signal.aborted) {
+    if (!controller.signal.aborted && ownsSession()) {
       if (renderTimer !== null) window.clearTimeout(renderTimer);
       if (selectedPreset === "reading-tutor") {
         currentItems = currentItems.map((item) =>

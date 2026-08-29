@@ -148,9 +148,17 @@ export function useDocEditorContent(doc: DocumentDetail, onSave: (content: strin
       if (dirty.current) scheduleSave();
     } catch (error) {
       dirty.current = true;
+      // Re-arm at the slow retry interval, not the typing debounce: every
+      // caller of flushSave swallows this rejection, so without a timer
+      // nothing would retry the failed save until the next user event (a
+      // force-quit in between loses the edits) — but re-arming the 1s
+      // debounce would hammer a sidecar that is down every second.
+      if (!maxSaveTimer.current) {
+        maxSaveTimer.current = setTimeout(() => { void flushRef.current().catch(() => {}); }, AUTOSAVE_MAX_INTERVAL_MS);
+      }
       throw error;
     }
-  }, [editor, mode, onSave, scheduleSave]);
+  }, [editor, mode, onSave]);
   flushRef.current = flushSave;
 
   const handleChange = useCallback(() => {

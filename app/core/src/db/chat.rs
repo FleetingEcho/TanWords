@@ -226,13 +226,13 @@ pub async fn db_search_chat_sessions(
     conn: State<'_, AppState>,
 ) -> Result<Vec<ChatSessionItem>, String> {
     let db = db::conn(&conn)?;
-    let like_pat = format!("%{}%", query);
+    let like_pat = format!("%{}%", db::escape_like(&query));
 
     db::fetch_all(
         &db,
         "SELECT id, title, preset_id, provider_id, message_count, created_at, updated_at, archived, pinned
          FROM ai_chat_sessions
-         WHERE title LIKE ?1
+         WHERE title LIKE ?1 ESCAPE '\\'
          ORDER BY pinned DESC, updated_at DESC
          LIMIT 50",
         params![like_pat],

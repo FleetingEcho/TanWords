@@ -1,5 +1,6 @@
 mod config;
 mod controller;
+mod markdown_blocks;
 mod tools;
 mod types;
 

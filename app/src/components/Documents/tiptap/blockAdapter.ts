@@ -69,10 +69,36 @@ function propsToAttrs(props: Record<string, unknown> = {}): Record<string, unkno
  *
  * `uploadId` is editor-transient (see `pendingUploads`). Stripping it here is
  * what guarantees an autosave firing mid-upload cannot write it to storage.
+ *
+ * `colwidth`/`align` are prosemirror-tables' own cell geometry — the storage
+ * format spells unset attrs as *absent*, so they are dropped along with every
+ * other null-valued attr (tiptap's "unset") rather than leaking into props.
  */
 function attrsToProps(attrs: Record<string, unknown> = {}): Record<string, unknown> {
   const { textAlign, id: _id, uploadId: _uploadId, ...rest } = attrs;
-  return { ...rest, ...(textAlign ? { textAlignment: textAlign } : {}) };
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(rest)) {
+    if (value === null || key === "colwidth" || key === "align") continue;
+    out[key] = value;
+  }
+  return { ...out, ...(textAlign ? { textAlignment: textAlign } : {}) };
+}
+
+/** Style props the storage format never defined for a type, even though the
+ *  editor's schema declares them (with defaults) — `BLOCK_STYLE_PROPS` in
+ *  `blocks.ts` is the authority. Stripping them keeps schema defaults from
+ *  leaking into stored content on every save. */
+const FOREIGN_STYLE_PROPS: Record<string, readonly string[]> = {
+  image: ["textColor"],
+  table: ["backgroundColor"],
+};
+
+function withoutForeignStyleProps(type: string, props: Record<string, unknown>): Record<string, unknown> {
+  const foreign = FOREIGN_STYLE_PROPS[type];
+  if (!foreign) return props;
+  const out = { ...props };
+  for (const key of foreign) delete out[key];
+  return out;
 }
 
 /** The block-level id, when the editor has assigned one. */
@@ -194,14 +220,26 @@ export function blocksToPmDoc(blocks: readonly Block[]): PmNode {
 
 function pmTableToContent(node: PmNode): TableContent {
   const rows = (node.content ?? []) as PmNode[];
+  // `headerRows` must be the LEADING run of all-header rows: tableToPm
+  // restores header status by `rowIndex < headerRows`, so counting a
+  // mid-table all-header row (reachable via per-cell header toggling)
+  // moved the header to the top on the next load, rewriting the table.
+  // The `length > 0` clause keeps a cell-less (schema-valid, vacuously
+  // "all headers") row from counting.
   let headerRows = 0;
+  while (
+    headerRows < rows.length
+    && ((rows[headerRows].content ?? []) as PmNode[]).length > 0
+    && ((rows[headerRows].content ?? []) as PmNode[]).every((cell) => cell.type === "tableHeader")
+  ) {
+    headerRows += 1;
+  }
   const built = rows.map((row) => {
     const cells = ((row.content ?? []) as PmNode[]).map((cell) => ({
       type: "tableCell" as const,
-      content: pmToInline(firstParagraphInline(cell)),
+      content: pmToInline(blockInlineContent(cell)),
       props: attrsToProps(cell.attrs) as never,
     }));
-    if (((row.content ?? []) as PmNode[]).every((cell) => cell.type === "tableHeader")) headerRows += 1;
     return { cells };
   });
   const headerCols = node.attrs?.headerCols;
@@ -214,7 +252,24 @@ function pmTableToContent(node: PmNode): TableContent {
   };
 }
 
-/** Cells and blockquotes hold a paragraph; we store their inline content flat. */
+/** Blockquotes and table cells hold *block* content in ProseMirror; the
+ *  storage format keeps only flat inline content. This editor's Enter
+ *  creates multi-paragraph quotes and cells, so every child paragraph's
+ *  inline content is collected — keeping only the first paragraph's (what
+ *  this replaced) silently deleted the rest on save and in export. The
+ *  paragraphs are joined with no boundary, the same lossy shape the
+ *  markdown importer already produces for multi-paragraph quotes. */
+function blockInlineContent(node: PmNode): PmInline[] {
+  const out: PmInline[] = [];
+  for (const child of (node.content ?? []) as PmNode[]) {
+    out.push(...((child.content ?? []) as PmInline[]));
+  }
+  return out;
+}
+
+/** The first child paragraph's inline content — list items only: everything
+ *  after it is nested structure that `pmListItemToBlock` keeps as
+ *  `children`, so joining here would duplicate it. */
 function firstParagraphInline(node: PmNode): PmInline[] {
   const first = ((node.content ?? []) as PmNode[])[0];
   return (first?.content ?? []) as PmInline[];
@@ -227,7 +282,10 @@ function pmToBlock(node: PmNode): Block {
     return {
       ...id,
       type: "table",
-      props: withStyleDefaults("table", withoutTableGeometry(attrsToProps(node.attrs))),
+      props: withStyleDefaults(
+        "table",
+        withoutForeignStyleProps("table", withoutTableGeometry(attrsToProps(node.attrs))),
+      ),
       content: pmTableToContent(node),
     };
   }
@@ -237,11 +295,15 @@ function pmToBlock(node: PmNode): Block {
       ...id,
       type: "quote",
       props: withStyleDefaults("quote", attrsToProps(node.attrs)),
-      content: pmToInline(firstParagraphInline(node)),
+      content: pmToInline(blockInlineContent(node)),
     };
   }
   if (ATOM_BLOCKS.has(node.type)) {
-    return { ...id, type: node.type, props: withStyleDefaults(node.type, attrsToProps(node.attrs)) };
+    return {
+      ...id,
+      type: node.type,
+      props: withStyleDefaults(node.type, withoutForeignStyleProps(node.type, attrsToProps(node.attrs))),
+    };
   }
   return {
     ...id,

@@ -55,7 +55,7 @@ fn walk(dir: &Path, root: &Path, depth: usize, out: &mut Vec<LocalDocItem>) {
     }
 }
 
-#[crate::shim::command]
+#[crate::shim::command(async)]
 pub fn localdocs_list(root: String) -> Result<Vec<LocalDocItem>, String> {
     let root_p = Path::new(&root);
     if !root_p.is_absolute() || !root_p.is_dir() {
@@ -85,7 +85,7 @@ fn fuzzy_path_match(path: &str, query: &str) -> bool {
 
 /// Full-text search built from ripgrep's own matcher/searcher crates. Results
 /// are deliberately bounded so a broad query cannot flood the webview.
-#[crate::shim::command]
+#[crate::shim::command(async)]
 pub fn localdocs_search(root: String, query: String) -> Result<Vec<LocalDocSearchResult>, String> {
     let root_p = Path::new(&root);
     if !root_p.is_absolute() || !root_p.is_dir() {

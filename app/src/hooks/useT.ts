@@ -15,7 +15,10 @@ export function useT() {
       let str = dict[key] ?? translations.en[key] ?? key;
       if (vars) {
         for (const [k, v] of Object.entries(vars)) {
-          str = str.replace(`{${k}}`, String(v));
+          // Function form: a string replacement still expands `$&`, `$'`,
+          // `` $` `` and `$$` in the *value* (arbitrary user data — article
+          // titles, paths, error messages), corrupting the message.
+          str = str.replace(`{${k}}`, () => String(v));
         }
       }
       return str;

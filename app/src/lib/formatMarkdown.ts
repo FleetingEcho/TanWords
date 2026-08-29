@@ -46,6 +46,9 @@ export function formatMarkdown(source: string): string {
   const out: string[] = [];
   /** The fence currently open, if any: its marker run and indentation. */
   let fence: { marker: string; indent: string } | null = null;
+  /** Indices in `out` that are fence interiors — off-limits to every later
+   *  pass (see `renumberOrderedLists`). */
+  const fenceInterior = new Set<number>();
   /** Set by anything that wants a blank line after it. Applied lazily, when
    *  the next content arrives, so it never leaves a blank line at the end. */
   let separate = false;
@@ -66,7 +69,14 @@ export function formatMarkdown(source: string): string {
 
   for (const original of lines) {
     if (fence) {
-      out.push(original.replace(/[ \t]+$/, ""));
+      // Fence interiors are copied byte-for-byte — the module contract says
+      // nothing inside a fenced code block is ever touched (diffs, Python
+      // blank-line structure and trailing-space-significant content would
+      // all be silently altered otherwise). Each interior line is tagged so
+      // `renumberOrderedLists` (which runs over the whole output) can tell
+      // fence content from prose.
+      out.push(original);
+      fenceInterior.add(out.length - 1);
       const closing = original.match(FENCE_RE);
       if (closing && closing[2][0] === fence.marker[0] && closing[2].length >= fence.marker.length && !closing[3].trim()) {
         fence = null;
@@ -129,7 +139,7 @@ export function formatMarkdown(source: string): string {
     emit(line);
   }
 
-  renumberOrderedLists(out);
+  renumberOrderedLists(out, fenceInterior);
 
   while (out.length && out[out.length - 1] === "") out.pop();
   return out.length ? `${out.join("\n")}\n` : "";
@@ -144,10 +154,16 @@ function pushBlankBefore(out: string[], pushBlank: () => void) {
  *  number, so `1. / 1. / 1.` becomes `1. / 2. / 3.` and a list that starts at
  *  3 keeps starting at 3. A run ends at any non-blank line that is not an item
  *  at the same indent — a blank line alone does not end it, because a loose
- *  list is still one list. */
-function renumberOrderedLists(lines: string[]) {
+ *  list is still one list. Lines inside fenced code blocks are skipped: pasted
+ *  configs/changelogs that use `1.` repeatedly (or non-sequential numbers)
+ *  are *code*, and renumbering them silently alters the user's content. */
+function renumberOrderedLists(lines: string[], fenceInterior: ReadonlySet<number>) {
   let index = 0;
   while (index < lines.length) {
+    if (fenceInterior.has(index)) {
+      index += 1;
+      continue;
+    }
     const start = lines[index].match(ORDERED_RE);
     if (!start) {
       index += 1;
@@ -160,6 +176,12 @@ function renumberOrderedLists(lines: string[]) {
     let lastItem = index;
     while (cursor < lines.length) {
       const line = lines[cursor];
+      // Fence interiors (e.g. a code block indented inside a list item) are
+      // opaque: skip without reading or renumbering them.
+      if (fenceInterior.has(cursor)) {
+        cursor += 1;
+        continue;
+      }
       if (!line.trim()) {
         cursor += 1;
         continue;

@@ -69,10 +69,14 @@ async fn authed_app_with_users(
             postgres_port: 5432,
             postgres_superuser_password: None,
         }),
-        http: reqwest::Client::new(),
         shutdown: tokio::sync::watch::channel(()).1,
     };
-    (build_router(state), token, users, user_id, dir)
+    // The re-auth routes extract ConnectInfo for rate limiting; under
+    // `oneshot` there is no real socket, so feed them a mock address.
+    let app = build_router(state).layer(axum::extract::connect_info::MockConnectInfo(
+        std::net::SocketAddr::from(([127, 0, 0, 1], 50000)),
+    ));
+    (app, token, users, user_id, dir)
 }
 
 async fn authed_app(name: &str) -> (axum::Router, String, std::path::PathBuf) {

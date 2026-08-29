@@ -209,8 +209,16 @@ export function FeedsPage() {
 
   const handleAdded = async () => {
     const list = await db.getRssFeeds();
+    // A feed added while a sync is already running was dropped: the
+    // non-forced path returns immediately when `syncingRef` is held, and
+    // nothing re-queued it — the feed showed up empty until the user
+    // manually refreshed. The forced queue (which the running sync drains
+    // in its completion loop) is exactly for this, so queue the additions.
+    const previousIds = new Set(feeds.map((f) => f.id));
+    const added = list.filter((f) => !f.is_paused && !previousIds.has(f.id));
     setFeeds(list);
-    syncFeeds(list.filter((f) => !f.is_paused && isStale(f.last_fetched_at)));
+    if (added.length > 0) void syncFeeds(added, true);
+    void syncFeeds(list.filter((f) => !f.is_paused && isStale(f.last_fetched_at) && previousIds.has(f.id)));
   };
 
   const handleDelete = async (id: number) => {

@@ -61,6 +61,8 @@ const attemptedLanguages = new Set<string>();
 const loadingLanguages = new Map<string, Promise<void>>();
 /** Not in the bundle. Rendered as plain text rather than retried. */
 const unsupportedLanguages = new Set<string>();
+/** Earliest moment the highlighter load may be retried after a failure. */
+let highlighterRetryAt = 0;
 
 /**
  * Parses a code block, loading its grammar first if it needs one.
@@ -72,11 +74,29 @@ const unsupportedLanguages = new Set<string>();
  */
 const lazyParser: Parser = (options) => {
   if (!highlighter || !baseParser) {
-    highlighterLoading ??= createThemeAwareHighlighter().then((created) => {
-      highlighter = created;
-      baseParser = createParser(created);
-    });
-    return highlighterLoading;
+    // A rejected load must not latch: `highlighterLoading ??=` kept the
+    // *rejected* promise forever, so a single failed dynamic import of a
+    // shiki chunk disabled highlighting for the whole session while
+    // logging an error per transaction. On failure the slot clears and a
+    // 30s cooldown arms; during the cooldown blocks render as plain text
+    // (empty decoration set) and the next transaction after it retries.
+    if (!highlighterLoading) {
+      const now = Date.now();
+      if (now >= highlighterRetryAt) {
+        highlighterRetryAt = now + 30_000;
+        highlighterLoading = createThemeAwareHighlighter().then(
+          (created) => {
+            highlighter = created;
+            baseParser = createParser(created);
+          },
+          () => {
+            highlighterLoading = null;
+          },
+        );
+      }
+    }
+    if (highlighterLoading) return highlighterLoading;
+    return [];
   }
 
   const language = (options.language || "text").toLowerCase();

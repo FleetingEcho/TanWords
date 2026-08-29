@@ -19,14 +19,36 @@ let worker: Worker | null = null;
 let workerUnavailable = false;
 let nextId = 0;
 
+/** Requests awaiting a worker reply, by id. A worker that dies (script load
+ *  failure, uncaught throw) never answers them — without this registry
+ *  `onerror` could only disable the worker for *future* calls, leaving the
+ *  in-flight promises pending forever (a permanently stuck spinner) and
+ *  their message listeners leaking. */
+const pending = new Map<number, { onDead: () => void }>();
+
+function failAllPending() {
+  for (const request of pending.values()) request.onDead();
+  pending.clear();
+}
+
 function getWorker(): Worker | null {
   if (worker) return worker;
   if (workerUnavailable || typeof Worker === "undefined") return null;
   try {
     worker = new Worker(new URL("../workers/imageWorker.ts", import.meta.url), { type: "module" });
     worker.onerror = () => {
-      // A load error or uncaught throw — stop using this worker for the rest of
-      // the session and let the main-thread fallback take over.
+      // A load error or uncaught throw — settle everything still waiting on
+      // this worker (a dead worker never sends another message), then stop
+      // using it for the rest of the session and let the main-thread
+      // fallback take over.
+      failAllPending();
+      workerUnavailable = true;
+      worker = null;
+    };
+    worker.onmessageerror = () => {
+      // A response that failed to deserialize is equally fatal to anything
+      // waiting for it.
+      failAllPending();
       workerUnavailable = true;
       worker = null;
     };
@@ -70,6 +92,7 @@ export function quantizeOffThread(
       const response = event.data;
       if (response.id !== id) return;
       target.removeEventListener("message", onMessage);
+      pending.delete(id);
       if (response.error) {
         // The worker is now considered dead — fall back to the main thread for
         // everything after this so a broken worker can't fail a whole batch.
@@ -80,6 +103,11 @@ export function quantizeOffThread(
         resolve(response.data);
       }
     };
+    pending.set(id, {
+      // The transferred buffer is detached on this side, so the pixel data
+      // cannot be recomputed — surface this one as a failed item.
+      onDead: () => reject(new Error("image worker died")),
+    });
     target.addEventListener("message", onMessage);
     // Transfer the underlying buffer — the main side's `data` is detached
     // after this call and must not be read until the response comes back.
@@ -145,6 +173,7 @@ export function ssimOffThread(
       const response = event.data;
       if (response.id !== id) return;
       target.removeEventListener("message", onMessage);
+      pending.delete(id);
       if (response.error) {
         workerUnavailable = true;
         if (worker === target) worker = null;
@@ -156,6 +185,7 @@ export function ssimOffThread(
         resolve(response.ssim);
       }
     };
+    pending.set(id, { onDead: () => resolve(0) });
     target.addEventListener("message", onMessage);
     target.postMessage({ id, op: "ssim", a, b, width, height }, [a.buffer, b.buffer]);
   });

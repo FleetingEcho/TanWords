@@ -39,17 +39,14 @@ pub(super) fn build_doc_where(
         if !q.is_empty() {
             // Ordered-character fuzzy match: "btmk" matches "bitmask".
             // Escaping keeps LIKE metacharacters literal.
-            let fuzzy = q
-                .to_lowercase()
-                .chars()
-                .fold(String::from("%"), |mut out, ch| {
-                    if matches!(ch, '%' | '_' | '\\') {
-                        out.push('\\');
-                    }
-                    out.push(ch);
-                    out.push('%');
-                    out
-                });
+            let fuzzy = format!(
+                "%{}%",
+                db::escape_like(&q.to_lowercase())
+                    .chars()
+                    .map(|c| c.to_string())
+                    .collect::<Vec<_>>()
+                    .join("%")
+            );
             conditions.push(format!(
                 "(LOWER(d.title) LIKE ?{} ESCAPE '\\' OR (d.protected=0 AND LOWER(d.content_text) LIKE ?{} ESCAPE '\\'))",
                 params.len() + 1,

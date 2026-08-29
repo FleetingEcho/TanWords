@@ -304,13 +304,37 @@ pub async fn load_or_create_vault_key(
         // SQLite, `to_char(now()...)` on Postgres) — setting it inline would
         // collide with Postgres's TIMESTAMPTZ/TEXT typing the way other tables
         // in this schema avoid by using the default.
+        //
+        // `ON CONFLICT DO NOTHING`, not DO UPDATE: two devices bootstrapping
+        // the same fresh database both see no row; whoever inserts second must
+        // adopt the *first* key, or everything the first device already sealed
+        // (R2 config, AI provider keys) is silently re-keyed and permanently
+        // undecryptable.
         "INSERT INTO vault_key (id, key_enc, salt) VALUES (1, ?1, ?2)
-         ON CONFLICT(id) DO UPDATE SET key_enc = excluded.key_enc, salt = excluded.salt",
+         ON CONFLICT(id) DO NOTHING",
         crate::db::params![key_enc, salt_b64],
     )
     .await
-    .map(|_| ())
     .map_err(|e| e.to_string())?;
+    // A concurrent creator won the race: use its key, discard ours.
+    let winner: Option<(String, String)> = crate::db::fetch_optional(
+        conn,
+        "SELECT key_enc, salt FROM vault_key WHERE id = 1",
+        (),
+        |r| Ok((r.get::<String>(0)?, r.get::<String>(1)?)),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    if let Some((key_enc, salt_b64)) = winner {
+        let salt = STANDARD.decode(salt_b64.as_bytes()).map_err(|e| e.to_string())?;
+        let unlock = crate::document_privacy::derive_vault_unlock_key(password, &salt, VAULT_INFO);
+        let key_b64 = crate::document_privacy::decrypt_text(&unlock, &key_enc)
+            .map_err(|_| "The Postgres password no longer unlocks the stored vault key (the database password was rotated outside the app)".to_string())?;
+        let bytes = STANDARD.decode(key_b64.as_bytes()).map_err(|e| e.to_string())?;
+        return bytes
+            .try_into()
+            .map_err(|_| "Stored vault key is not 32 bytes".to_string());
+    }
     Ok(key)
 }
 
@@ -367,6 +391,85 @@ pub async fn rekey_vault_key(
     .await
     .map(|_| ())
     .map_err(|e| e.to_string())
+}
+
+/// Re-seals every vault-key-sealed secret row under the per-device key.
+///
+/// Called by the web server's *disable remote access* flow, right before it
+/// snapshots the Postgres database into the local `tanwords.db`: a local
+/// profile carries no vault key (its sealing key is the per-device keychain
+/// key), so vault-sealed `r2_config`/`ai_providers` rows copied verbatim
+/// would read as "not configured" the whole time remote access is off. With
+/// them re-sealed under the device key first, the snapshot stays readable —
+/// and the lazy migration on the read sites re-seals them under the vault
+/// key again once the account re-enables Postgres.
+///
+/// Rows that don't decrypt under the vault key are left untouched: they are
+/// either empty or already device-key-sealed (e.g. written by a pre-vault
+/// device). Returns how many rows were re-sealed. A connection without a
+/// vault key attached (already local, or keyless) is a no-op.
+pub async fn downgrade_vault_rows_to_device_key(conn: &crate::db::Conn) -> Result<usize, String> {
+    use crate::document_privacy::{decrypt_text, encrypt_text};
+
+    let Some(vault) = conn.vault_key() else {
+        return Ok(0);
+    };
+    let Some(device) = crate::secrets::device_key() else {
+        return Err("this device has no usable keychain".to_string());
+    };
+    let mut resealed = 0usize;
+
+    // r2_config: a single row (id = 1), or none at all.
+    if let Ok(Some(sealed)) = crate::db::fetch_optional::<String, _>(
+        conn,
+        "SELECT COALESCE(config_enc, '') FROM r2_config WHERE id = 1",
+        (),
+        |r| r.get::<String>(0),
+    )
+    .await
+    {
+        if !sealed.is_empty() {
+            if let Ok(plaintext) = decrypt_text(vault, &sealed) {
+                if let Ok(downgraded) = encrypt_text(&device, &plaintext) {
+                    conn.execute(
+                        "UPDATE r2_config SET config_enc = ?1 WHERE id = 1",
+                        crate::db::params![downgraded],
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?;
+                    resealed += 1;
+                }
+            }
+        }
+    }
+
+    // ai_providers: one row per (device_id, id). `updated_at` is left to its
+    // ON UPDATE trigger/default — a re-seal must not look like a user edit.
+    let rows = crate::db::fetch_all::<(String, String, String), _>(
+        conn,
+        "SELECT device_id, id, api_key_enc FROM ai_providers WHERE api_key_enc <> ''",
+        (),
+        |r| Ok((r.get::<String>(0)?, r.get::<String>(1)?, r.get::<String>(2)?)),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    for (device_id, id, sealed) in rows {
+        let Some(plaintext) = decrypt_text(vault, &sealed).ok() else {
+            continue;
+        };
+        let Ok(downgraded) = encrypt_text(&device, &plaintext) else {
+            continue;
+        };
+        conn.execute(
+            "UPDATE ai_providers SET api_key_enc = ?1 WHERE device_id = ?2 AND id = ?3",
+            crate::db::params![downgraded, device_id, id],
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+        resealed += 1;
+    }
+
+    Ok(resealed)
 }
 
 fn validate_key_name(name: &str) -> Result<(), String> {

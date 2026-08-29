@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useDB } from "@/hooks/useDB";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useT } from "@/hooks/useT";
@@ -95,11 +95,18 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
 
   // ── Initial selection ───────────────────────────────────────────────────
 
+  // One-shot for the deep-linked word: without the guard this effect re-ran
+  // on every list-length change (a `vocab-updated` event reloading words
+  // mid-browsing yanked the user back to the deep-linked word and reset
+  // their filters). The auto-select branch re-running is harmless (guarded
+  // by !detail.selected).
+  const didInitialJumpRef = useRef(false);
   useEffect(() => {
     if (detail.lookup) return;
-    if (initialWordId && list.words.length > 0) {
+    if (initialWordId && !didInitialJumpRef.current && list.words.length > 0) {
       const w = list.words.find((x) => x.id === initialWordId);
       if (w) {
+        didInitialJumpRef.current = true;
         list.setLevelFilters([]);
         list.setStarredOnly(false);
         setListCollapsed(false);

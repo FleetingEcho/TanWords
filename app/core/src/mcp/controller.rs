@@ -1,6 +1,7 @@
 use std::{
     net::SocketAddr,
     sync::{Arc, Mutex},
+    time::Duration,
 };
 
 use axum::{
@@ -11,7 +12,7 @@ use axum::{
     Router,
 };
 use rmcp::transport::streamable_http_server::{
-    session::local::LocalSessionManager, StreamableHttpService,
+    session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
 };
 use serde_json::{json, Value};
 use tokio_util::sync::CancellationToken;
@@ -50,8 +51,19 @@ impl McpController {
         } else {
             None
         };
-        if let Some(task) = task {
-            let _ = task.await;
+        if let Some(mut task) = task {
+            // The rmcp service terminates its sessions when the cancellation
+            // token fires, but axum's graceful shutdown still waits for open
+            // connections — a client holding an SSE stream open would
+            // otherwise hang `stop()` (and every restart) forever. Give it a
+            // moment, then force the server down.
+            if tokio::time::timeout(Duration::from_secs(2), &mut task)
+                .await
+                .is_err()
+            {
+                task.abort();
+                let _ = task.await;
+            }
         }
     }
 
@@ -104,7 +116,14 @@ impl McpController {
             let service = StreamableHttpService::new(
                 move || Ok(TanWordsMcp::new(conn.clone(), notifier.clone())),
                 LocalSessionManager::default().into(),
-                Default::default(),
+                // Tying the service's own cancellation to the controller's
+                // token is what makes `stop()` bounded: without it, active
+                // SSE sessions keep their connections (and axum's graceful
+                // shutdown with them) alive until the client hangs up.
+                StreamableHttpServerConfig {
+                    cancellation_token: cancellation.clone(),
+                    ..Default::default()
+                },
             );
             let router = Router::new()
                 .nest_service("/mcp", service)
@@ -166,7 +185,13 @@ pub async fn mcp_apply_config(
     let provider = state_conn_provider(app.clone());
     let status = controller.restart(config.clone(), provider, app).await?;
     let conn = crate::db::conn(&state)?;
-    save_config(&conn, &config).await?;
+    if let Err(e) = save_config(&conn, &config).await {
+        // The server is already live on the new settings; if they cannot be
+        // persisted, roll it back rather than leave it serving a config that
+        // silently reverts on the next launch.
+        controller.stop().await;
+        return Err(e);
+    }
     Ok(status)
 }
 

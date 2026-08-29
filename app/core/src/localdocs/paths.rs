@@ -97,3 +97,14 @@ pub(super) fn ensure_md(path: &Path) -> Result<(), String> {
         _ => Err("Only .md files can be used".into()),
     }
 }
+
+/// Whether two paths refer to the same *existing* entry. On a
+/// case-insensitive filesystem (macOS, Windows), the target of a case-only
+/// rename "exists" because it *is* the source — this is how callers tell
+/// that apart from a genuine collision.
+pub(super) fn same_existing_entry(a: &Path, b: &Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
+}

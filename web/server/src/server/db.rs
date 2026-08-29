@@ -19,6 +19,18 @@ fn redact_connection_password(mut connection: Value) -> Value {
         let _ = redacted.set_password(None);
         connection["remoteUrl"] = Value::String(redacted.to_string());
     }
+    // The descriptor's `path` is the server-side absolute file path
+    // (`<data_dir>/users/<id>/tanwords.db`, including the OS home directory
+    // under the default data dir) — the same layout `db_get_db_path` is
+    // blocked from web mode for. Keep only the file name; the web client
+    // never reads this field (it shows no local path on web).
+    if let Some(path) = connection.get("path").and_then(Value::as_str) {
+        let name = std::path::Path::new(path)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        connection["path"] = Value::String(name);
+    }
     connection
 }
 
@@ -60,5 +72,17 @@ mod tests {
         let url = redacted["remoteUrl"].as_str().unwrap();
         assert!(!url.contains("stored-secret"));
         assert!(url.contains("postgres://tanwords_user@postgres:5432/tanwords"));
+    }
+
+    #[test]
+    fn web_connection_descriptor_never_leaks_the_server_file_path() {
+        let connection = json!({
+            "kind": "local",
+            "path": "/home/srvuser/tanwords-data/users/42/tanwords.db",
+            "remoteUrl": null
+        });
+
+        let redacted = redact_connection_password(connection);
+        assert_eq!(redacted["path"].as_str().unwrap(), "tanwords.db");
     }
 }

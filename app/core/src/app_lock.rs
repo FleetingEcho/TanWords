@@ -59,7 +59,7 @@ pub fn app_lock_status() -> Result<AppLockStatus, String> {
 
 /// Sets the password, or changes it. `current` is required once a lock exists
 /// — otherwise anyone at an unlocked screen could silently replace it.
-#[crate::shim::command]
+#[crate::shim::command(async)]
 pub fn app_lock_set(current: Option<String>, next: String) -> Result<(), String> {
     let next = next.trim().to_string();
     if next.len() < 4 {
@@ -79,7 +79,7 @@ pub fn app_lock_set(current: Option<String>, next: String) -> Result<(), String>
     Ok(())
 }
 
-#[crate::shim::command]
+#[crate::shim::command(async)]
 pub fn app_lock_disable(current: String) -> Result<(), String> {
     let Some(existing) = crate::appconfig::load_app_lock() else {
         return Ok(());
@@ -94,7 +94,7 @@ pub fn app_lock_disable(current: String) -> Result<(), String> {
 /// Returns whether the password was right. An `Err` means something is broken
 /// (unreadable config), which the lock screen reports differently from a wrong
 /// password.
-#[crate::shim::command]
+#[crate::shim::command(async)]
 pub fn app_lock_verify(password: String) -> Result<bool, String> {
     match crate::appconfig::load_app_lock() {
         // No lock configured: nothing to check against, so nothing is locked.

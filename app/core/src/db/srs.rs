@@ -58,13 +58,15 @@ fn sql_to_dt(s: &str) -> DateTime<Utc> {
 }
 
 /// Count of cards ready for review right now: the due backlog plus a capped
-/// batch of never-reviewed words, using the same cap as db_get_due_cards'
-/// default so the Dashboard badge matches what opening the reviewer shows.
+/// batch of never-reviewed words, using the same cap and the same
+/// never-scheduled definition as `db_get_due_cards` so the Dashboard badge
+/// matches what opening the reviewer shows.
 ///
 /// Compares dates in Rust rather than SQL because next_review_at may hold
 /// either RFC3339 (written by db_review_card) or SQLite's own datetime()
-/// format (written by the older db_save_quiz_result path) — the two don't
-/// sort correctly against each other as raw strings.
+/// format (written by long-removed legacy quiz commands; real databases still
+/// carry such rows) — the two don't sort correctly against each other as raw
+/// strings.
 #[crate::shim::command]
 pub async fn db_get_review_count(conn: TauriState<'_, AppState>) -> Result<i64, String> {
     let db = db::conn(&conn)?;
@@ -81,7 +83,7 @@ pub async fn db_get_review_count(conn: TauriState<'_, AppState>) -> Result<i64, 
 
     let new_count: i64 = db::scalar_i64(
         &db,
-        "SELECT COUNT(*) FROM words w LEFT JOIN srs_records sr ON sr.entity_id = w.id AND sr.entity_type = 'word' WHERE sr.id IS NULL",
+        "SELECT COUNT(*) FROM words w LEFT JOIN srs_records sr ON sr.entity_id = w.id AND sr.entity_type = 'word' WHERE sr.id IS NULL OR sr.next_review_at IS NULL",
         (),
     )
     .await?;
@@ -112,36 +114,54 @@ pub async fn db_get_due_cards(
 
     let mut result = vec![];
 
-    // Backlog: previously-scheduled reviews that are now due.
+    // Backlog: previously-scheduled reviews that are now due. Filtered in
+    // Rust, not SQL: `next_review_at` may hold either RFC3339 (written by
+    // db_review_card) or SQLite's own datetime() format (written by
+    // long-removed legacy quiz commands; real databases still carry such
+    // rows), and the two don't compare correctly as raw strings — the same
+    // reason `db_get_review_count` filters in Rust, which is also what keeps
+    // the Dashboard badge and this list in agreement.
     let due_sql = format!(
-        "SELECT w.id, w.word, {zh_expr}, w.level, {context_expr}, sr.state
+        "SELECT w.id, w.word, {zh_expr}, w.level, {context_expr}, sr.state, sr.next_review_at
          FROM words w
          JOIN srs_records sr ON sr.entity_id = w.id AND sr.entity_type = 'word'
-         WHERE sr.next_review_at <= ?1
-         ORDER BY sr.next_review_at ASC"
+         WHERE sr.next_review_at IS NOT NULL"
     );
-    let now_str = dt_to_sql(Utc::now());
-    result.extend(
-        db::fetch_all(&db, &due_sql, params![now_str], |row| {
+    let now = Utc::now();
+    let mut backlog: Vec<(chrono::DateTime<Utc>, DueCard)> = db::fetch_all(
+        &db,
+        &due_sql,
+        (),
+        |row| {
             let state_i: i64 = row.get(5)?;
-            Ok(DueCard {
-                word_id: row.get(0)?,
-                word: row.get(1)?,
-                zh: row.get(2)?,
-                level: row.get(3)?,
-                context_sentence: row.get(4)?,
-                state: state_to_str(state_from_i64(state_i)).to_string(),
-            })
-        })
-        .await?,
-    );
+            Ok((
+                sql_to_dt(&row.get::<String>(6)?),
+                DueCard {
+                    word_id: row.get(0)?,
+                    word: row.get(1)?,
+                    zh: row.get(2)?,
+                    level: row.get(3)?,
+                    context_sentence: row.get(4)?,
+                    state: state_to_str(state_from_i64(state_i)).to_string(),
+                },
+            ))
+        },
+    )
+    .await?;
+    backlog.retain(|(due, _)| *due <= now);
+    backlog.sort_by_key(|(due, _)| *due);
+    result.extend(backlog.into_iter().map(|(_, card)| card));
 
-    // New: words never reviewed, capped so a big vocabulary doesn't flood the session.
+    // New: never-scheduled words, capped so a big vocabulary doesn't flood the
+    // session. Two shapes count as never-scheduled: no srs row at all, and the
+    // row `db_add_word`/`db_update_word` seed with `next_review_at` NULL —
+    // without the second arm, every added word carries a seeded row and the
+    // reviewer would have no way to bootstrap a first review.
     let new_sql = format!(
         "SELECT w.id, w.word, {zh_expr}, w.level, {context_expr}
          FROM words w
          LEFT JOIN srs_records sr ON sr.entity_id = w.id AND sr.entity_type = 'word'
-         WHERE sr.id IS NULL
+         WHERE sr.id IS NULL OR sr.next_review_at IS NULL
          ORDER BY w.created_at ASC
          LIMIT ?1"
     );
@@ -190,16 +210,20 @@ pub async fn db_review_card(
          FROM srs_records WHERE entity_id = ?1 AND entity_type = 'word'",
         params![word_id],
         |row| {
+            // The add-word paths seed a bare srs row (level/ease only), so
+            // every FSRS column can be NULL on a first review. Reading the
+            // NULLs as defaults keeps that first review a normal "new card"
+            // instead of a decode error.
             Ok((
-                row.get(0)?,
-                row.get(1)?,
-                row.get(2)?,
-                row.get(3)?,
-                row.get(4)?,
-                row.get(5)?,
+                row.get::<Option<f64>>(0)?.unwrap_or_default(),
+                row.get::<Option<f64>>(1)?.unwrap_or_default(),
+                row.get::<Option<i64>>(2)?.unwrap_or_default(),
+                row.get::<Option<i64>>(3)?.unwrap_or_default(),
+                row.get::<Option<i64>>(4)?.unwrap_or_default(),
+                row.get::<Option<i64>>(5)?.unwrap_or_default(),
                 row.get::<Option<String>>(6)?.unwrap_or_default(),
                 row.get::<Option<String>>(7)?.unwrap_or_default(),
-                row.get(8)?,
+                row.get::<Option<i64>>(8)?.unwrap_or_default(),
             ))
         },
     )

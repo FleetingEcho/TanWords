@@ -11,6 +11,20 @@ use crate::AppState;
 
 // ── Helper ──────────────────────────────────────────────────────────────────
 
+/// Escapes LIKE metacharacters (`%`, `_`, `\`) in user-supplied search text so
+/// a query for "50%" or "a_b" is matched literally. Every LIKE built from
+/// user input must pair this with an `ESCAPE '\'` clause.
+pub(crate) fn escape_like(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for ch in input.chars() {
+        if matches!(ch, '%' | '_' | '\\') {
+            out.push('\\');
+        }
+        out.push(ch);
+    }
+    out
+}
+
 /// The active DB connection, cloned out from under the state mutex.
 ///
 /// Returns an owned `Conn` rather than a guard on purpose: commands `.await`
@@ -82,7 +96,6 @@ pub mod words_types;
 pub mod words_query;
 pub mod words_write;
 pub mod translations;
-pub mod quiz;
 pub mod documents;
 pub mod chat;
 mod reading;
@@ -101,7 +114,6 @@ pub use words_types::*;
 pub use words_query::*;
 pub use words_write::*;
 pub use translations::*;
-pub use quiz::*;
 pub use documents::*;
 pub use chat::*;
 pub use reading::*;
@@ -245,7 +257,10 @@ async fn init_db_sqlite(conn: &Conn) -> Result<(), DbErr> {
 
     // One-time: adopt a desktop R2 configuration that predates the per-database
     // table, so upgrading does not look like the bucket disconnected itself.
-    crate::r2::migrate_from_app_config(conn).await;
+    // A failed adoption must not be papered over — stamping the fingerprint
+    // below would turn a transient failure into permanent loss, so it
+    // propagates and the whole pass (including this) retries on next open.
+    crate::r2::migrate_from_app_config(conn).await.map_err(DbErr::Custom)?;
 
     // Stamp the fingerprint — only on the path where everything above ran.
     conn.execute(

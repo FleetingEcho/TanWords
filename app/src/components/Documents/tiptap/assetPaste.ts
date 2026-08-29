@@ -126,11 +126,24 @@ export const AssetPaste = Extension.create<AssetPasteOptions>({
             if (images.length === 0 && !advertisesImage) return false;
 
             void (async () => {
-              const files = await clipboardImageFilesOrNative(
-                data,
-                options.readNativeImage ?? (async () => null),
-              );
-              for (const file of files) await insertUploadedFile(editor, file, options);
+              try {
+                const files = await clipboardImageFilesOrNative(
+                  data,
+                  options.readNativeImage ?? (async () => null),
+                );
+                // Per-file try/catch: one failing upload (native-clipboard IPC
+                // included) must not abort the rest of the batch — and the
+                // old fire-and-forget turned it into an unhandled rejection.
+                for (const file of files) {
+                  try {
+                    await insertUploadedFile(editor, file, options);
+                  } catch (error) {
+                    options.onError?.(String(error));
+                  }
+                }
+              } catch (error) {
+                options.onError?.(String(error));
+              }
             })();
             return true;
           },
@@ -140,7 +153,13 @@ export const AssetPaste = Extension.create<AssetPasteOptions>({
             if (files.length === 0 || !options.upload) return false;
             event.preventDefault();
             void (async () => {
-              for (const file of files) await insertUploadedFile(editor, file, options);
+              for (const file of files) {
+                try {
+                  await insertUploadedFile(editor, file, options);
+                } catch (error) {
+                  options.onError?.(String(error));
+                }
+              }
             })();
             return true;
           },

@@ -4861,6 +4861,7 @@ dependencies = [
  "argon2",
  "axum",
  "base64",
+ "bytes",
  "bzip2",
  "chrono",
  "dirs",

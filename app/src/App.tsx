@@ -113,10 +113,16 @@ function App() {
   // splash is still covering startup. It has no layout box, so mounting later
   // cannot move the visible page.
   useEffect(() => {
-    const idle = window.requestIdleCallback?.(() => setSelectionToolsReady(true), { timeout: 1500 })
-      ?? window.setTimeout(() => setSelectionToolsReady(true), 750);
+    // `requestIdleCallback` also returns a number, so the old type-test never
+    // took the cancelIdleCallback branch and the idle callbacks survived
+    // cleanup (firing after teardown, and stacking duplicates when the
+    // effect re-ran). Track which API was actually used instead.
+    const usedIdle = typeof window.requestIdleCallback === "function";
+    const idle = usedIdle
+      ? window.requestIdleCallback!(() => setSelectionToolsReady(true), { timeout: 1500 })
+      : window.setTimeout(() => setSelectionToolsReady(true), 750);
     return () => {
-      if (window.cancelIdleCallback && typeof idle !== "number") window.cancelIdleCallback(idle);
+      if (usedIdle) window.cancelIdleCallback?.(idle as number);
       else window.clearTimeout(idle as number);
     };
   }, []);
@@ -167,11 +173,14 @@ function App() {
   // user has even seen the app window.
   useEffect(() => {
     if (authState !== "ready") return;
-    const idle = window.requestIdleCallback?.(() => initProviders())
-      ?? window.setTimeout(() => initProviders(), 500);
+    // Same usedIdle tracking as above — see the comment there.
+    const usedIdle = typeof window.requestIdleCallback === "function";
+    const idle = usedIdle
+      ? window.requestIdleCallback!(() => initProviders())
+      : window.setTimeout(() => initProviders(), 500);
     loadFromDB();
     return () => {
-      if (window.cancelIdleCallback && typeof idle !== "number") window.cancelIdleCallback(idle);
+      if (usedIdle) window.cancelIdleCallback?.(idle as number);
       else window.clearTimeout(idle as number);
     };
   }, [authState, loadFromDB]);

@@ -99,6 +99,10 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
   const savePreferences = async (feed: RssFeed, category: "article" | "podcast" | null, pinned: boolean) => {
     setSavingId(feed.id);
     try { await onPreferences(feed.id, category, pinned); }
+    // The persistence layer rethrows after toasting; without this catch the
+    // rejection escapes the void-call handler (unhandled) and the pin/category
+    // UI silently desyncs from the DB — same shape as `setPaused` below.
+    catch { /* The persistence layer already reports the save error to the user. */ }
     finally { setSavingId(null); }
   };
 

@@ -79,10 +79,17 @@ export function BrowserAskPane({ onClose }: { onClose: () => void }) {
       handle.releasePointerCapture(e.pointerId);
       handle.removeEventListener("pointermove", onMove);
       handle.removeEventListener("pointerup", onUp);
+      handle.removeEventListener("pointercancel", onUp);
       localStorage.setItem(WIDTH_KEY, String(latest));
     };
     handle.addEventListener("pointermove", onMove);
     handle.addEventListener("pointerup", onUp);
+    // A cancelled pointer (touch taken over by an OS gesture) never fires
+    // pointerup — without this branch the move listener stays attached and
+    // merely hovering the separator resizes the pane, and the width is never
+    // persisted. The sibling resize handles (FloatingBrowser, ToolsModal)
+    // all do this.
+    handle.addEventListener("pointercancel", onUp);
   };
 
   return (

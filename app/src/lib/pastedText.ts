@@ -82,8 +82,15 @@ export function isReadableText(text: string): boolean {
   if (letters < 20 || letters / trimmed.length < 0.45) return false;
 
   // Real prose has spaces. Base64 blobs, data URLs and minified payloads run
-  // for hundreds of characters without one.
-  const longestRun = Math.max(...trimmed.split(/\s+/).map((w) => w.length));
+  // for hundreds of characters without one. Scanned with a regex rather
+  // than `Math.max(...lengths)` — the spread form hits the engine's argument
+  // limit (~125k in V8) on large pastes and throws a RangeError out of the
+  // submit handler, silently failing the import.
+  let longestRun = 0;
+  for (const match of trimmed.matchAll(/\S+/g)) {
+    if (match[0].length > longestRun) longestRun = match[0].length;
+    if (longestRun > 120) return false;
+  }
   if (longestRun > 120) return false;
 
   const words = trimmed.split(/\s+/).filter((w) => /\p{L}{2,}/u.test(w));

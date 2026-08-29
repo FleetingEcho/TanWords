@@ -55,7 +55,7 @@ fn valid_email(email: &str) -> bool {
 ///
 /// Off by default. A server that believes this header without being told to
 /// lets any caller forge a fresh identity per request and skip the limiter.
-fn client_ip(state: &WebState, headers: &HeaderMap, peer: SocketAddr) -> IpAddr {
+pub(in crate::server) fn client_ip(state: &WebState, headers: &HeaderMap, peer: SocketAddr) -> IpAddr {
     if !state.config.trust_proxy {
         return peer.ip();
     }
@@ -334,15 +334,39 @@ pub(super) async fn app_lock_disable(
 
 pub(super) async fn app_lock_verify(
     State(state): State<WebState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     axum::Extension(session): axum::Extension<UserSession>,
     Json(body): Json<AppLockPasswordBody>,
 ) -> Response {
+    // Same door, same reasoning as `require_account_password`: an app-lock
+    // guess is an argon2 verify on the server, and a holder of any session
+    // token (which also travels in `?token=` URLs and the tw_proxy cookie)
+    // could otherwise brute-force it without a budget.
+    let peer_ip = client_ip(&state, &headers, peer);
+    if state
+        .limiter
+        .limited("app-lock-verify", peer_ip, 10, std::time::Duration::from_secs(600))
+    {
+        return json_error(
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many attempts — try again later",
+        );
+    }
     match state
         .users
         .verify_app_lock(session.user_id, &body.password)
         .await
     {
-        Ok(valid) => Json(valid).into_response(),
+        Ok(true) => {
+            state.limiter.clear("app-lock-verify", peer_ip);
+            Json(true).into_response()
+        }
+        Ok(false) => {
+            state.limiter.record_failure("app-lock-verify", peer_ip);
+            eprintln!("[tanwords-web] failed app-lock verify from {peer_ip}");
+            Json(false).into_response()
+        }
         Err(e) => json_error(StatusCode::INTERNAL_SERVER_ERROR, e),
     }
 }

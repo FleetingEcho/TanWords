@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 use super::TanWordsMcp;
 use crate::db;
 use crate::mcp::types::{
-    json_text, fts_query, AppendDocument, CreateDocument, GetDocument, ListDocuments, SearchDocuments,
+    json_text, AppendDocument, CreateDocument, GetDocument, ListDocuments, SearchDocuments,
     UpdateDocument,
 };
 
@@ -24,7 +24,7 @@ impl TanWordsMcp {
                     if conn.kind() == crate::db::DbKind::Postgres {
                         return Err("Full-text search is not yet supported on the Postgres backend".into());
                     }
-                    let terms = fts_query(query);
+                    let terms = crate::db::fts_match_query(query);
                     if terms.is_empty() {
                         Vec::new()
                     } else {
@@ -77,7 +77,7 @@ impl TanWordsMcp {
             // old character-interleaved LIKE ("%a%p%i%") matched almost every
             // document for a short query and could not rank them; FTS gives
             // both relevance ordering and a snippet worth showing the agent.
-            let terms = fts_query(&input.query);
+            let terms = crate::db::fts_match_query(&input.query);
             if terms.is_empty() {
                 return Ok(json!({"items": []}));
             }
@@ -132,11 +132,15 @@ impl TanWordsMcp {
         let result: Result<Value, String> = async {
             let conn = self.connect().await?;
             let tags = serde_json::to_string(&input.tags).map_err(|e| e.to_string())?;
-            let count = input.content.split_whitespace().count() as i64;
+            // `content_text` is what the Documents list preview shows, and the
+            // word count follows the editor's convention (CJK per character,
+            // markdown structure dropped) — not a raw split on the Markdown.
+            let content_text = crate::mcp::markdown_blocks::markdown_plain_text(&input.content);
+            let count = crate::mcp::markdown_blocks::markdown_word_count(&content_text);
             let id = crate::db::fetch_one(
                 &conn,
-                "INSERT INTO documents(title,content,content_text,tags,word_count) VALUES(?1,?2,?2,?3,?4) RETURNING id",
-                params![input.title, input.content, tags, count],
+                "INSERT INTO documents(title,content,content_text,tags,word_count) VALUES(?1,?2,?3,?4,?5) RETURNING id",
+                params![input.title, input.content, content_text, tags, count],
                 |r| r.get::<i64>(0),
             )
             .await?;
@@ -162,9 +166,50 @@ impl TanWordsMcp {
     pub(in crate::mcp) async fn documents_append(&self, Parameters(input): Parameters<AppendDocument>) -> String {
         let result: Result<Value, String> = async {
             let conn = self.connect().await?;
-            let changed = conn.execute("UPDATE documents SET content=content||'\n\n'||?1,content_text=content_text||'\n\n'||?1,word_count=word_count+?2,updated_at=datetime('now') WHERE id=?3 AND protected=0",params![input.content.clone(),input.content.split_whitespace().count() as i64,input.id])
-                .await
-                .map_err(|e|e.to_string())?;
+            let (content, content_text) = db::fetch_one(
+                &conn,
+                "SELECT content,content_text FROM documents WHERE id=?1 AND protected=0",
+                [input.id],
+                |row| Ok((row.get::<String>(0)?, row.get::<String>(1)?)),
+            )
+            .await
+            .map_err(|_| "Document not found".to_string())?;
+            // Appending has to respect how the body is stored. `content` is
+            // the app's block JSON for every editor-created document;
+            // concatenating Markdown onto it makes the column un-parseable
+            // and the editor then renders (and re-saves) the whole document
+            // as a dump of raw JSON. Legacy Lexical JSON ({"root":…}) cannot
+            // be merged into at all — refuse rather than corrupt.
+            let (new_content, new_text) = match serde_json::from_str::<Value>(&content) {
+                Ok(Value::Array(mut blocks)) => {
+                    let mut appended =
+                        crate::mcp::markdown_blocks::markdown_to_blocks(&input.content);
+                    blocks.append(&mut appended);
+                    let text = format!(
+                        "{}\n{}",
+                        content_text.trim_end(),
+                        crate::mcp::markdown_blocks::markdown_plain_text(&input.content).trim()
+                    );
+                    (serde_json::to_string(&blocks).map_err(|e| e.to_string())?, text)
+                }
+                Ok(Value::Object(_)) => {
+                    return Err(
+                        "Document uses a legacy editor format; open and save it in the app once, then append"
+                            .into(),
+                    );
+                }
+                _ => (
+                    format!("{}\n\n{}", content, input.content),
+                    format!("{}\n\n{}", content_text, input.content),
+                ),
+            };
+            let count = crate::mcp::markdown_blocks::markdown_word_count(&new_text);
+            let changed = conn.execute(
+                "UPDATE documents SET content=?1,content_text=?2,word_count=?3,updated_at=datetime('now') WHERE id=?4 AND protected=0",
+                params![new_content, new_text, count, input.id],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
             if changed == 0 {
                 return Err("Document not found".into());
             }
@@ -213,23 +258,77 @@ impl TanWordsMcp {
             )
             .await
             .map_err(|_| "Document not found".to_string())?;
-            if input
-                .expected_updated_at
+            let expected = input.expected_updated_at.clone();
+            if expected
                 .as_deref()
-                .is_some_and(|expected| expected != current.3)
+                .is_some_and(|value| value != current.3)
             {
                 return Err(format!("Conflict: document was updated at {}", current.3));
             }
             let title = input.title.unwrap_or(current.0);
-            let content = input.content.unwrap_or(current.1);
             let tags = input
                 .tags
                 .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".into()))
                 .unwrap_or(current.2);
-            let count = content.split_whitespace().count() as i64;
-            conn.execute("UPDATE documents SET title=?1,content=?2,content_text=?2,tags=?3,word_count=?4,updated_at=datetime('now') WHERE id=?5",params![title,content,tags,count,input.id])
-                .await
-                .map_err(|e|e.to_string())?;
+            // A body handed back as a block array is stored verbatim (an agent
+            // round-tripping what documents_get returned); Markdown is kept as
+            // Markdown for Markdown documents, and converted to blocks when
+            // the document is in the block format, so one write cannot flip
+            // the document between formats.
+            let current_is_blocks = matches!(
+                serde_json::from_str::<Value>(&current.1),
+                Ok(Value::Array(_))
+            );
+            let content = input.content.unwrap_or(current.1);
+            let (stored_content, content_text) = match serde_json::from_str::<Value>(&content) {
+                Ok(Value::Array(blocks)) => (
+                    content,
+                    crate::mcp::markdown_blocks::blocks_plain_text(&blocks),
+                ),
+                _ if current_is_blocks => {
+                    let blocks =
+                        crate::mcp::markdown_blocks::markdown_to_blocks(&content);
+                    (
+                        serde_json::to_string(&blocks).map_err(|e| e.to_string())?,
+                        crate::mcp::markdown_blocks::blocks_plain_text(&blocks),
+                    )
+                }
+                _ => {
+                    let text = crate::mcp::markdown_blocks::markdown_plain_text(&content);
+                    (content, text)
+                }
+            };
+            let count = crate::mcp::markdown_blocks::markdown_word_count(&content_text);
+            // The expected_updated_at guard is repeated inside the UPDATE so
+            // a write landing between the SELECT and this statement cannot
+            // slip past the pre-check (TOCTOU).
+            let changed = conn.execute(
+                "UPDATE documents SET title=?1,content=?2,content_text=?3,tags=?4,word_count=?5,updated_at=datetime('now')
+                 WHERE id=?6 AND (?7 IS NULL OR updated_at=?7) AND protected=0",
+                params![
+                    title,
+                    stored_content,
+                    content_text,
+                    tags,
+                    count,
+                    input.id,
+                    expected
+                ],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+            if changed == 0 {
+                let exists = db::scalar_i64(
+                    &conn,
+                    "SELECT COUNT(*) FROM documents WHERE id=?1",
+                    [input.id],
+                )
+                .await?;
+                if exists == 0 {
+                    return Err("Document not found".into());
+                }
+                return Err("Conflict: the document was modified while it was being updated".into());
+            }
             Ok(json!({"id":input.id,"updated":true}))
         }
         .await;

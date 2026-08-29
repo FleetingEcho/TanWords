@@ -50,7 +50,7 @@ function CommentNode({ comment, depth, parentAuthor }: { comment: HnComment; dep
 
           <div
             className="reader-article-content mt-0.5 text-[14px] leading-normal text-foreground"
-            dangerouslySetInnerHTML={{ __html: comment.text }}
+            dangerouslySetInnerHTML={{ __html: safeHtml }}
           />
 
           {replyCount > 0 && (

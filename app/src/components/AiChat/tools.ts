@@ -311,8 +311,31 @@ export function getEnabledTools(groups: Set<ToolGroupKey>): ToolDef[] {
 
 // ── Tool Executor ──────────────────────────────────────────────────────────
 
-export async function executeTool(call: ToolCall): Promise<ToolResult> {
+/** Tools whose execution writes to the database. A temporary (private) chat
+ *  promises "nothing here is stored" — the UI copy says exactly that — so
+ *  these are refused in private mode rather than silently persisting data
+ *  derived from a conversation the user was told is ephemeral. Read-only
+ *  tools (search/list/stats/summarize) stay available. */
+const WRITE_TOOL_NAMES = new Set([
+  "save_word",
+  "add_words_to_vocab",
+  "save_sentences",
+  "insert_into_document",
+  "save_note_as_document",
+  "create_event",
+  "update_event",
+  "delete_event",
+]);
+
+export async function executeTool(call: ToolCall, options: { privateMode?: boolean } = {}): Promise<ToolResult> {
   const { id, name, input } = call;
+  if (options.privateMode && WRITE_TOOL_NAMES.has(name)) {
+    return {
+      tool_use_id: id,
+      content: "This is a temporary chat — nothing is saved. Ask again in a normal chat to persist this.",
+      is_error: true,
+    };
+  }
   try {
     switch (name) {
 
@@ -524,8 +547,26 @@ export async function executeTool(call: ToolCall): Promise<ToolResult> {
         const { id: eventId, title, start, end, all_day, description, location } = input as {
           id: string; title?: string; start?: string; end?: string; all_day?: boolean; description?: string; location?: string;
         };
+        let startWire = start;
+        let endWire = end;
+        if (all_day !== undefined) {
+          // The Rust update COALESCEs omitted fields, so flipping allDay
+          // while leaving start/end on the other format leaves flag and
+          // format divergent — the grid then keeps rendering the old shape.
+          // Pull the row's current strings when the model only sent allDay.
+          if (startWire === undefined || endWire === undefined) {
+            const rows = await invoke<{ id: string; start: string; end: string }[]>("db_list_calendar_events");
+            const row = rows.find((r) => r.id === eventId);
+            if (row) {
+              startWire ??= row.start;
+              endWire ??= row.end;
+            }
+          }
+          if (startWire) startWire = all_day ? startWire.slice(0, 10) : startWire.length === 10 ? `${startWire} 00:00` : startWire;
+          if (endWire) endWire = all_day ? endWire.slice(0, 10) : endWire.length === 10 ? `${endWire} 00:00` : endWire;
+        }
         await invoke("db_update_calendar_event", {
-          id: eventId, title, start, end, allDay: all_day, description, location,
+          id: eventId, title, start: startWire, end: endWire, allDay: all_day, description, location,
         });
         window.dispatchEvent(new CustomEvent("calendar-updated"));
         return { tool_use_id: id, content: `✓ Updated event ${eventId}.` };

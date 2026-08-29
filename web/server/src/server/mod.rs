@@ -51,7 +51,6 @@ pub(crate) struct WebState {
     limiter: Arc<RateLimiter>,
     pool: Arc<RuntimePool>,
     config: Arc<Config>,
-    pub(crate) http: reqwest::Client,
     shutdown: tokio::sync::watch::Receiver<()>,
 }
 
@@ -367,7 +366,6 @@ pub async fn serve(
         limiter: Arc::new(RateLimiter::new()),
         pool,
         config: config.clone(),
-        http: reqwest::Client::new(),
         shutdown: shutdown_rx,
     };
 

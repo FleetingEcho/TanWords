@@ -13,13 +13,6 @@ import type { Block, InlineContent } from "./blocks";
 import type { CursorPosition, DocEditorApi } from "./DocEditorApi";
 import { resolveDocumentAssetUrl } from "@/lib/documentAssets";
 
-/** Top-level nodes with their document positions, in order. */
-function topLevelNodes(editor: Editor): { node: PmNode; pos: number }[] {
-  const out: { node: PmNode; pos: number }[] = [];
-  editor.state.doc.forEach((node, offset) => out.push({ node, pos: offset }));
-  return out;
-}
-
 /** Finds a node anywhere in the document by its `id` attr. */
 function findById(editor: Editor, id: string): { node: PmNode; pos: number } | null {
   let found: { node: PmNode; pos: number } | null = null;
@@ -282,9 +275,19 @@ function targetToBlock(target: BlockTarget): Block {
 export function createDocEditorApi(editor: Editor): DocEditorApi {
   const api = {
     replaceBlocks(target, blocks) {
-      const whole = target === api.document || target.length === 0;
       const doc = blocksToPmDoc(blocks);
-      if (whole || target.length === editor.state.doc.childCount) {
+      // "Whole document" is decided in the flat-block space. `target` and
+      // the live document both count one entry per list item, while
+      // `doc.childCount` counts a whole list wrapper as one top-level node —
+      // the old `target.length === childCount` comparison crossed those two
+      // index spaces, so on any list-bearing document it either fired for a
+      // single-block target (a YouTube promotion wiped the list's other
+      // items) or failed to fire for a genuine whole-document replace,
+      // pushing it through the range path, which left empty list wrappers
+      // behind in the saved file. Equal flat counts means every block goes.
+      const whole = target.length === 0
+        || target.length === (api.document as Block[]).length;
+      if (whole) {
         // `emitUpdate: false` — loading content is not a user edit, and
         // treating it as one would mark a freshly opened document dirty and
         // schedule a save that rewrites the file it just read.
@@ -376,11 +379,20 @@ export function createDocEditorApi(editor: Editor): DocEditorApi {
     getSelection() {
       const { from, to } = editor.state.selection;
       if (from === to) return undefined;
+      // Select by which *flat block* the range touches, not by top-level
+      // index: `api.document` counts one entry per list item while
+      // `topLevelNodes` counts a whole list wrapper as one, so the old
+      // index-pairing read the wrong block for every selection after the
+      // first list — the attachment privacy gating keyed off `props.url` of
+      // a block that was not even selected.
       const blocks: Block[] = [];
-      const all = api.document;
-      topLevelNodes(editor).forEach(({ node, pos }, index) => {
-        if (pos + node.nodeSize > from && pos < to && all[index]) blocks.push(all[index]);
-      });
+      for (const block of api.document as Block[]) {
+        if (!block.id) continue;
+        const found = findById(editor, block.id);
+        if (found && found.pos < to && found.pos + found.node.nodeSize > from) {
+          blocks.push(block);
+        }
+      }
       return { blocks };
     },
 

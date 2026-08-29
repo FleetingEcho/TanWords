@@ -263,20 +263,23 @@ fn parse_feed_body(body: &[u8]) -> Result<RssFeedMeta, String> {
         .map(|e| {
             let links = &e.links;
             let href = links.first().map(|l| l.href.clone()).unwrap_or_default();
-            let page_url = if href.is_empty() { &site_link } else { &href };
-            let (audio_url, audio_duration) = extract_audio(e, page_url);
+            // `href` may be relative (feed_rs parses from bytes, no base URI);
+            // resolve it against the site link so the entry stays clickable
+            // and stays a valid join base for the image/audio URLs below.
+            let resolved_href = resolve_url(&href, &site_link).unwrap_or_default();
+            let page_url = if resolved_href.is_empty() {
+                site_link.clone()
+            } else {
+                resolved_href.clone()
+            };
+            let (audio_url, audio_duration) = extract_audio(e, &page_url);
             RssEntry {
                 title: e
                     .title
                     .as_ref()
                     .map(|t| t.content.clone())
                     .unwrap_or_default(),
-                // Entry URL becomes a clickable link in feeds — gate it to
-                // web schemes like every other remote URL in this module.
-                url: url::Url::parse(&href)
-                    .ok()
-                    .and_then(http_only)
-                    .unwrap_or_default(),
+                url: resolved_href,
                 author: e
                     .authors
                     .first()
@@ -292,7 +295,7 @@ fn parse_feed_body(body: &[u8]) -> Result<RssFeedMeta, String> {
                     .or(e.updated)
                     .map(|d| d.to_rfc3339())
                     .unwrap_or_default(),
-                image_url: extract_image(e, page_url),
+                image_url: extract_image(e, &page_url),
                 audio_url,
                 audio_duration,
                 hn_item_id: extract_hn_item_id(&e.id),

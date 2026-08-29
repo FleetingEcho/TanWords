@@ -72,6 +72,7 @@ sea-orm = { version = "2.0", features = ["sqlx-sqlite", "sqlx-postgres", "runtim
 sea-orm-migration = { version = "2.0", features = ["sqlx-sqlite", "sqlx-postgres", "runtime-tokio-rustls"] }
 uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
+bytes = "1"
 aes-gcm = "0.10"
 argon2 = "0.5"
 sha2 = "0.10"

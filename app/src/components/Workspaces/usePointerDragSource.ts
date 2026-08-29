@@ -47,18 +47,33 @@ export function usePointerDragSource(
         // during a touch drag.
         ev.preventDefault();
       };
-      const onUp = (ev: PointerEvent) => {
+      const cleanup = () => {
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
-        const st = useDragState.getState();
+        window.removeEventListener("pointercancel", onCancel);
+      };
+      const onUp = (ev: PointerEvent) => {
+        cleanup();
         startRef.current = null;
+        const st = useDragState.getState();
         if (st.active) {
           onDrop(pageId, ev.clientX, ev.clientY);
         }
         useDragState.getState().end();
       };
+      // `pointercancel` (an OS gesture taking over a touch/pen drag) fires
+      // instead of pointerup: without this handler the listeners leak,
+      // `active` stays true with a stale pageId, and the NEXT ordinary tap
+      // anywhere drops the stale page into a pane via the dispatcher. A
+      // cancelled gesture must tear the drag down WITHOUT dropping.
+      const onCancel = () => {
+        cleanup();
+        startRef.current = null;
+        useDragState.getState().end();
+      };
       window.addEventListener("pointermove", onMove, { passive: false });
       window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onCancel);
     },
     [pageId, onDrop],
   );

@@ -48,6 +48,19 @@ pub async fn folder_chain_is_locked(database: &Conn, folder: &str) -> Result<boo
     Ok(false)
 }
 
+/// Whether a document filed at `folder` would need the private password to
+/// land protected — the folder chain is locked but no master key is in the
+/// session. Arrival paths (duplicate, import) call this *before* writing
+/// anything, so they can refuse with `DOCUMENT_LOCKED` up front rather than
+/// leave a plaintext copy sitting inside a folder the UI presents as sealed.
+pub async fn folder_lock_requires_password(
+    database: &Conn,
+    privacy: &super::state::DocumentPrivacyState,
+    folder: &str,
+) -> Result<bool, String> {
+    Ok(folder_chain_is_locked(database, folder).await? && privacy.master_key()?.is_none())
+}
+
 /// Encrypts `id` if it just landed in a locked folder.
 ///
 /// Called from every path that files a document: create-with-content, and the
@@ -72,7 +85,7 @@ pub async fn protect_if_folder_locked(
 }
 
 /// Every document at or below `folder`.
-async fn documents_under(database: &Conn, folder: &str) -> Result<Vec<i64>, String> {
+pub(crate) async fn documents_under(database: &Conn, folder: &str) -> Result<Vec<i64>, String> {
     db::fetch_all(
         database,
         "SELECT id FROM documents

@@ -91,8 +91,12 @@ export function useDBCalendar() {
     try {
       return await invoke<CalendarEventRow[]>("db_list_calendar_events");
     } catch (e) {
+      // Unlike the write paths this rethrows: the one consumer
+      // (CalendarPage) distinguishes "no events" from "could not read" via
+      // its catch — swallowing here made that error branch dead code and a
+      // failed read render as an empty calendar (apparent data loss).
       logError("listCalendarEvents", e);
-      return [];
+      throw e;
     }
   }, []);
 
@@ -153,8 +157,9 @@ export function useDBCalendar() {
     try {
       return await invoke<CalendarCategoryRow[]>("db_list_calendar_calendars");
     } catch (e) {
+      // Rethrows for the same reason as `listEvents` — see its comment.
       logError("listCalendarCalendars", e);
-      return [];
+      throw e;
     }
   }, []);
 

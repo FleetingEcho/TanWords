@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@/ipc/backend";
 import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -32,19 +32,28 @@ export default function MusicPage() {
     localStorage.setItem("tanwords_music_view", mode);
   };
 
+  // Guards folder switches: the last scan wins. Without it, switching to a
+  // new folder while an older (larger) scan is still running lets the stale
+  // response land last and clobber the new folder's library.
+  const scanSeqRef = useRef(0);
   const scan = useCallback(async () => {
     if (!musicFolderPath) return;
+    const seq = ++scanSeqRef.current;
     setLoading(true);
     setError(null);
     try {
       const scanned = await invoke<MusicCollection[]>("music_scan_library", { root: musicFolderPath });
+      if (seq !== scanSeqRef.current) return;
       setCollections(scanned);
-      setCollections(await fillMissingDurations(scanned));
+      const withDurations = await fillMissingDurations(scanned);
+      if (seq !== scanSeqRef.current) return;
+      setCollections(withDurations);
     } catch (e) {
+      if (seq !== scanSeqRef.current) return;
       setCollections(null);
       setError(String(e));
     } finally {
-      setLoading(false);
+      if (seq === scanSeqRef.current) setLoading(false);
     }
   }, [musicFolderPath]);
 

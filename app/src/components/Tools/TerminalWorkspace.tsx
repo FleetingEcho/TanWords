@@ -142,7 +142,13 @@ export function TerminalWorkspace({
     if (index < 0) return;
     if (tabs.length === 1) {
       refreshOnNextOpenRef.current = true;
-      closeWorkspace();
+      // Only navigate when the terminal is actually on screen. The terminal
+      // page stays mounted while hidden (PTYs keep running), and its shells
+      // exit at arbitrary times — closing the workspace from here yanked the
+      // user off whatever page they were on (and `navigate()` drops them out
+      // of an open custom workspace entirely). When hidden, the refresh-on-
+      // open effect above already replaces the dead tab on the next visit.
+      if (visible) closeWorkspace();
       return;
     }
     const remaining = tabs.filter((tab) => tab.id !== id);

@@ -181,6 +181,13 @@ export function useDocumentAssetManager() {
     }
   };
 
+  // A single click's deferred action must not fire on an unmounted manager
+  // (closing the dialog inside the 220ms window) — clear it like every other
+  // timer this codebase arms.
+  useEffect(() => () => {
+    if (clickTimer.current) clearTimeout(clickTimer.current);
+  }, []);
+
   const downloadAssets = async (list: DocumentAssetSummary[], nameFor: (a: DocumentAssetSummary) => string) => {
     for (const asset of list) {
       const response = await webAuthFetch(assetUrlById(asset.id));

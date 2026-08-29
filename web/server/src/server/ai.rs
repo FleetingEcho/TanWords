@@ -70,7 +70,10 @@ pub(super) async fn ai_proxy(
     // URL of their choosing that the *server* dials — the same SSRF the core's
     // fetch guard exists for. Without this, pointing a "provider" at
     // 169.254.169.254 turns the proxy into a reader for the cloud metadata
-    // service, credentials included, and streams the answer back.
+    // service, credentials included, and streams the answer back. The request
+    // goes through `send_guarded` below, which re-runs the check on every
+    // redirect hop and pins the connection to the validated address — the
+    // one-shot check plus a redirect-following client was a redirect bypass.
     let target = format!("{base}/{rest}");
     if let Err(e) = tanwords_lib::http_util::guard::resolve_public(&target).await {
         return json_error(StatusCode::BAD_REQUEST, e);
@@ -118,18 +121,27 @@ pub(super) async fn ai_proxy(
     // Forward with the caller's method, not a hardcoded POST: the settings
     // page lists models with a GET /models call (OpenAI-compatible
     // convention), while chat/completions is POST. Only body-carrying
-    // methods forward the request payload — a GET never has one.
-    let mut upstream_req = state.http.request(method.clone(), &target).headers(up_headers);
-    if matches!(method, Method::POST | Method::PUT | Method::PATCH) {
-        upstream_req = upstream_req.body(body);
-    }
-    let upstream = match upstream_req.send().await {
-        Ok(r) => r,
-        Err(e) => {
-            return json_error(
-                StatusCode::BAD_GATEWAY,
-                format!("upstream request failed: {e}"),
-            )
+    // methods forward the request payload — a GET never has one. Sent via
+    // `send_guarded` so each redirect hop is re-checked (see above).
+    let upstream = {
+        let method = method.clone();
+        let headers = up_headers.clone();
+        match tanwords_lib::http_util::send_guarded(&target, move |client, url| {
+            let mut req = client.request(method.clone(), url).headers(headers.clone());
+            if matches!(method, Method::POST | Method::PUT | Method::PATCH) {
+                req = req.body(body.clone());
+            }
+            req
+        })
+        .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                return json_error(
+                    StatusCode::BAD_GATEWAY,
+                    format!("upstream request failed: {e}"),
+                )
+            }
         }
     };
 

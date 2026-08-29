@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useDB } from "@/hooks/useDB";
@@ -89,10 +89,16 @@ export function SentenceLibrary({ initialSentenceId, viewTabs }: {
   useEffect(() => { load(); }, []);
   useEffect(() => { setPage(0); }, [search, levelFilter, starredOnly, dateFrom, dateTo]);
 
+  // One-shot for the deep-linked sentence: without the guard this effect
+  // re-ran on every list-length change (quick-adding a sentence mid-browsing
+  // wiped the user's search/date/level filters and jumped back to the
+  // deep-linked sentence).
+  const didInitialJumpRef = useRef(false);
   useEffect(() => {
-    if (!initialSentenceId || sentences.length === 0) return;
+    if (!initialSentenceId || didInitialJumpRef.current || sentences.length === 0) return;
     const index = sentences.findIndex((item) => item.id === initialSentenceId);
     if (index < 0) return;
+    didInitialJumpRef.current = true;
     setSearch("");
     setLevelFilter("all");
     setStarredOnly(false);

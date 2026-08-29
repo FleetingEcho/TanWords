@@ -10,6 +10,9 @@ use super::models::{detect_model_dir, onnx_containing, onnx_files, onnx_prefix, 
 pub struct LoadedAsrEngine {
     pub model_path: String,
     pub kind: String,
+    /// The info `detect_model_dir` produced at load time, served verbatim by
+    /// `asr_engine_status` so a status probe never touches the disk.
+    pub info: AsrModelInfo,
     recognizer: OfflineRecognizer,
 }
 
@@ -100,7 +103,12 @@ pub async fn asr_load_model(
         let recognizer =
             OfflineRecognizer::create(&config).ok_or_else(|| "failed to load model".to_string())?;
 
-        let loaded = LoadedAsrEngine { model_path: path, kind: info.kind.clone(), recognizer };
+        let loaded = LoadedAsrEngine {
+            model_path: path,
+            kind: info.kind.clone(),
+            info: info.clone(),
+            recognizer,
+        };
 
         let mut guard = asr.lock().map_err(|e| e.to_string())?;
         *guard = Some(loaded);
@@ -164,19 +172,11 @@ pub async fn asr_transcribe(
 pub fn asr_engine_status(
     state: crate::shim::State<'_, crate::AppState>,
 ) -> Result<Option<AsrModelInfo>, String> {
+    // The load-time `detect_model_dir` result is cached on the engine, so
+    // this is a lock-and-clone — no disk walk, and no chance of blocking
+    // behind a transcription that's holding the engine.
     let guard = state.asr.lock().map_err(|e| e.to_string())?;
-    Ok(guard.as_ref().map(|engine| {
-        let dir = PathBuf::from(&engine.model_path);
-        detect_model_dir(&dir).unwrap_or_else(|| AsrModelInfo {
-            id: engine.model_path.clone(),
-            name: Path::new(&engine.model_path)
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default(),
-            kind: engine.kind.clone(),
-            path: engine.model_path.clone(),
-        })
-    }))
+    Ok(guard.as_ref().map(|engine| engine.info.clone()))
 }
 
 fn base64_decode(data: &str) -> Result<Vec<u8>, String> {
@@ -227,12 +227,14 @@ fn wav_to_pcm(bytes: &[u8]) -> Result<(Vec<f32>, i32), String> {
 
     let sample_rate = sample_rate.ok_or_else(|| "missing fmt chunk".to_string())?;
     let bits_per_sample = bits_per_sample.ok_or_else(|| "missing fmt chunk".to_string())?;
-    let channels = channels.unwrap_or(1);
+    let channels = channels.filter(|c| *c != 0).unwrap_or(1);
     let data = data.ok_or_else(|| "missing data chunk".to_string())?;
 
     if bits_per_sample != 16 {
         return Err(format!("unsupported bit depth: {bits_per_sample}"));
     }
+    // Guard against the malformed-header division-by-zero/panic: a `fmt`
+    // chunk claiming zero channels would make `chunks_exact(0)` panic.
 
     let frame_bytes = 2 * channels as usize;
     let samples: Vec<f32> = data

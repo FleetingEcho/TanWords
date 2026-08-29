@@ -37,6 +37,13 @@ export type PtySessionHooks = {
 export function createElectronPtyTransport(shellPath: string, hooks: PtySessionHooks): PtyTransport {
   let sessionId: string | null = null;
   let connected = false;
+  // Set the moment teardown runs, so a `pty_spawn` still in flight (the
+  // daemon handshake is allowed 5s) knows to close the session it is about
+  // to create instead of leaking an orphan shell plus two renderer-side
+  // event subscriptions that nothing will ever remove — the component that
+  // owns this transport is gone by then. Mirrors the guard the xterm path
+  // (`useTerminalSession.ts`) has for the same race.
+  let disposed = false;
   let offs: Array<() => void> = [];
   const decoder = new TextDecoder("utf-8");
 
@@ -94,6 +101,12 @@ export function createElectronPtyTransport(shellPath: string, hooks: PtySessionH
             "pty_spawn",
             { cols: options.cols ?? 80, rows: options.rows ?? 24, shellPath },
           );
+          if (disposed) {
+            // Teardown won the race with the spawn handshake: close the
+            // freshly-created backend session rather than adopting it.
+            void callMain("pty_close", { id: info.id }).catch(() => {});
+            return;
+          }
           sessionId = info.id;
           connected = true;
           offs.push(subscribe<{ id: string; data?: unknown }>("pty:data", ({ id, data }) => {
@@ -114,6 +127,12 @@ export function createElectronPtyTransport(shellPath: string, hooks: PtySessionH
           offs.push(subscribe<{ id: string; code?: number; error?: string }>("pty:exit", ({ id, code, error }) => {
             if (sessionId !== id) return;
             connected = false;
+            // A shell almost always writes its final bytes (the "logout"
+            // line, an error report, the tail of the last command) right
+            // before exiting, while they are still queued for the next rAF
+            // flush. Flush them synchronously so the screen doesn't end on
+            // a bisected frame — flushOutput is a no-op on an empty queue.
+            flushOutput(callbacks);
             cancelFlush();
             callbacks.onExit?.(code ?? 1);
             callbacks.onDisconnect?.();
@@ -131,6 +150,7 @@ export function createElectronPtyTransport(shellPath: string, hooks: PtySessionH
       })();
     },
     disconnect() {
+      disposed = true;
       if (sessionId) void callMain("pty_close", { id: sessionId }).catch(() => {});
       connected = false;
       sessionId = null;
@@ -157,6 +177,7 @@ export function createElectronPtyTransport(shellPath: string, hooks: PtySessionH
       return connected;
     },
     destroy() {
+      disposed = true;
       if (sessionId) void callMain("pty_close", { id: sessionId }).catch(() => {});
       connected = false;
       sessionId = null;

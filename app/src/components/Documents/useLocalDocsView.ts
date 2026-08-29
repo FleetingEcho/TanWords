@@ -427,8 +427,15 @@ export function useLocalDocsView(refreshTick: number, onRefreshingChange?: (refr
         }
         await refresh();
       } catch (e) {
-        setSaveStatus("idle");
+        // Rethrown on purpose. LocalDocEditor.flushSave clears `dirty` before
+        // awaiting onSave and restores it only in its catch — swallowing here
+        // (the old `setSaveStatus("idle")`) made a failed write advance
+        // `lastSavedRaw` anyway, erasing the unsaved-changes state and never
+        // retrying the content. "dirty" keeps the footer honest until a later
+        // save succeeds. Mirrors the DB path's contract in useDocumentEditor.
+        setSaveStatus("dirty");
         toast.error(String(e));
+        throw e;
       }
     };
     saveQueue.current = saveQueue.current.then(save, save);

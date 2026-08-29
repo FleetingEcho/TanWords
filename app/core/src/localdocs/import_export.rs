@@ -3,7 +3,7 @@ use std::path::Path;
 
 use super::paths::{ensure_md, resolve, unique_asset_path, unique_md_path};
 
-#[crate::shim::command]
+#[crate::shim::command(async)]
 pub fn localdocs_import(root: String, sources: Vec<String>) -> Result<Vec<String>, String> {
     let root_path = Path::new(&root);
     if !root_path.is_absolute() || !root_path.is_dir() {
@@ -29,7 +29,7 @@ pub fn localdocs_import(root: String, sources: Vec<String>) -> Result<Vec<String
     Ok(imported)
 }
 
-#[crate::shim::command]
+#[crate::shim::command(async)]
 pub fn localdocs_export(
     root: String,
     rel_paths: Vec<String>,

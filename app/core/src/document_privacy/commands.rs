@@ -84,15 +84,22 @@ pub(crate) async fn protect_document_with_master(
     if document_is_protected(database, id).await? {
         return Ok(());
     }
+    // One transaction across the `protected` flag and every asset
+    // re-encryption. Committing the flag before the assets (the old shape)
+    // meant any mid-loop failure left a document that claims to be protected
+    // while some of its assets are still plaintext — `db_get_document_assets`
+    // decrypts every asset, so one leftover makes the whole list error, and
+    // the unprotect path fails the same way: unreadable forever after.
+    let tx = database.transaction().await.map_err(|e| e.to_string())?;
     let (content, content_text) = db::fetch_one(
-        database,
+        &tx,
         "SELECT content,content_text FROM documents WHERE id=?1",
         [id],
         |row| Ok((row.get::<String>(0)?, row.get::<String>(1)?)),
     )
     .await?;
     let assets = db::fetch_all(
-        database,
+        &tx,
         "SELECT id,data FROM document_assets WHERE document_id=?1",
         [id],
         |row| Ok((row.get::<String>(0)?, row.get::<Vec<u8>>(1)?)),
@@ -100,19 +107,19 @@ pub(crate) async fn protect_document_with_master(
     .await?;
     let data_key = random::<32>();
     let wrapped = encrypt_bytes(master, &data_key)?;
-    database.execute(
+    tx.execute(
         "UPDATE documents SET content=?1,content_text=?2,protected=1,protection_salt=NULL,wrapped_key=?3,updated_at=datetime('now') WHERE id=?4",
         params![encrypt_text(&data_key, &content)?, encrypt_text(&data_key, &content_text)?, wrapped, id],
     ).await.map_err(|e| e.to_string())?;
     for (asset_id, data) in assets {
-        database
-            .execute(
-                "UPDATE document_assets SET data=?1 WHERE id=?2",
-                params![encrypt_bytes(&data_key, &data)?, asset_id],
-            )
-            .await
-            .map_err(|e| e.to_string())?;
+        tx.execute(
+            "UPDATE document_assets SET data=?1 WHERE id=?2",
+            params![encrypt_bytes(&data_key, &data)?, asset_id],
+        )
+        .await
+        .map_err(|e| e.to_string())?;
     }
+    tx.commit().await.map_err(|e| e.to_string())?;
     privacy.unlock(id, data_key)
 }
 
@@ -124,33 +131,37 @@ pub(crate) async fn unprotect_document_with_key(
     id: i64,
     key: &[u8; 32],
 ) -> Result<(), String> {
+    // The inverse transaction: the `protected=0` flag must not be committed
+    // while some assets are still ciphertext — those would be returned
+    // verbatim as if they were the file, permanently corrupt.
+    let tx = database.transaction().await.map_err(|e| e.to_string())?;
     let (content, content_text) = db::fetch_one(
-        database,
+        &tx,
         "SELECT content,content_text FROM documents WHERE id=?1",
         [id],
         |row| Ok((row.get::<String>(0)?, row.get::<String>(1)?)),
     )
     .await?;
     let assets = db::fetch_all(
-        database,
+        &tx,
         "SELECT id,data FROM document_assets WHERE document_id=?1",
         [id],
         |row| Ok((row.get::<String>(0)?, row.get::<Vec<u8>>(1)?)),
     )
     .await?;
-    database.execute(
+    tx.execute(
         "UPDATE documents SET content=?1,content_text=?2,protected=0,protection_salt=NULL,wrapped_key=NULL,updated_at=datetime('now') WHERE id=?3",
         params![decrypt_text(key, &content)?, decrypt_text(key, &content_text)?, id],
     ).await.map_err(|e| e.to_string())?;
     for (asset_id, data) in assets {
-        database
-            .execute(
-                "UPDATE document_assets SET data=?1 WHERE id=?2",
-                params![decrypt_bytes(key, &data)?, asset_id],
-            )
-            .await
-            .map_err(|e| e.to_string())?;
+        tx.execute(
+            "UPDATE document_assets SET data=?1 WHERE id=?2",
+            params![decrypt_bytes(key, &data)?, asset_id],
+        )
+        .await
+        .map_err(|e| e.to_string())?;
     }
+    tx.commit().await.map_err(|e| e.to_string())?;
     privacy.lock(id)
 }
 
@@ -164,41 +175,10 @@ pub async fn db_protect_document(
     if document_is_protected(&database, id).await? {
         return Err("Document is already protected".into());
     }
-    let (content, content_text) = db::fetch_one(
-        &database,
-        "SELECT content,content_text FROM documents WHERE id=?1",
-        [id],
-        |row| Ok((row.get::<String>(0)?, row.get::<String>(1)?)),
-    )
-    .await?;
-    let assets = db::fetch_all(
-        &database,
-        "SELECT id,data FROM document_assets WHERE document_id=?1",
-        [id],
-        |row| Ok((row.get::<String>(0)?, row.get::<Vec<u8>>(1)?)),
-    )
-    .await?;
     let master =
         get_or_create_master(&database, &state.document_privacy, password.as_deref()).await?;
     unlock_all_master_documents(&database, &state.document_privacy, &master).await?;
-    let data_key = random::<32>();
-    let wrapped = encrypt_bytes(&master, &data_key)?;
-    let encrypted_content = encrypt_text(&data_key, &content)?;
-    let encrypted_text = encrypt_text(&data_key, &content_text)?;
-    database.execute(
-        "UPDATE documents SET content=?1,content_text=?2,protected=1,protection_salt=NULL,wrapped_key=?3,updated_at=datetime('now') WHERE id=?4",
-        params![encrypted_content, encrypted_text, wrapped, id],
-    ).await.map_err(|e| e.to_string())?;
-    for (asset_id, data) in assets {
-        database
-            .execute(
-                "UPDATE document_assets SET data=?1 WHERE id=?2",
-                params![encrypt_bytes(&data_key, &data)?, asset_id],
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-    }
-    state.document_privacy.unlock(id, data_key)
+    protect_document_with_master(&database, &state.document_privacy, id, &master).await
 }
 
 #[crate::shim::command]
@@ -224,34 +204,7 @@ pub async fn db_remove_document_protection(
             .await?
             .ok_or_else(|| LOCKED_ERROR.to_string())?
     };
-    let (content, content_text) = db::fetch_one(
-        &database,
-        "SELECT content,content_text FROM documents WHERE id=?1",
-        [id],
-        |row| Ok((row.get::<String>(0)?, row.get::<String>(1)?)),
-    )
-    .await?;
-    let assets = db::fetch_all(
-        &database,
-        "SELECT id,data FROM document_assets WHERE document_id=?1",
-        [id],
-        |row| Ok((row.get::<String>(0)?, row.get::<Vec<u8>>(1)?)),
-    )
-    .await?;
-    database.execute(
-        "UPDATE documents SET content=?1,content_text=?2,protected=0,protection_salt=NULL,wrapped_key=NULL,updated_at=datetime('now') WHERE id=?3",
-        params![decrypt_text(&key, &content)?, decrypt_text(&key, &content_text)?, id],
-    ).await.map_err(|e| e.to_string())?;
-    for (asset_id, data) in assets {
-        database
-            .execute(
-                "UPDATE document_assets SET data=?1 WHERE id=?2",
-                params![decrypt_bytes(&key, &data)?, asset_id],
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-    }
-    state.document_privacy.lock(id)
+    unprotect_document_with_key(&database, &state.document_privacy, id, &key).await
 }
 
 #[crate::shim::command]
@@ -285,19 +238,33 @@ pub async fn db_change_document_password(
     let master = if master_config(&database).await?.is_some() {
         unlock_master_with_password(&database, &state.document_privacy, &current_password).await?
     } else {
-        random::<32>()
+        // No config yet: the legacy-migration path. Persist the freshly minted
+        // master under the *current* password before re-wrapping anything with
+        // it — if a later write fails, the master has to exist somewhere
+        // recoverable; a retry would otherwise mint a different key and the
+        // re-wrapped rows would be sealed forever.
+        let master = random::<32>();
+        store_master_config(&database, &current_password, &master).await?;
+        master
     };
-    for (id, key) in &legacy_keys {
-        database
-            .execute(
+    {
+        // Re-wrap the legacy rows and re-key the master to the new password in
+        // one transaction, so a failure halfway cannot strand half the rows.
+        let tx = database.transaction().await.map_err(|e| e.to_string())?;
+        for (id, key) in &legacy_keys {
+            tx.execute(
                 "UPDATE documents SET protection_salt=NULL,wrapped_key=?1 WHERE id=?2",
                 params![encrypt_bytes(&master, key)?, id],
             )
             .await
             .map_err(|e| e.to_string())?;
+        }
+        store_master_config(&tx, &new_password, &master).await?;
+        tx.commit().await.map_err(|e| e.to_string())?;
+    }
+    for (id, key) in &legacy_keys {
         state.document_privacy.unlock(*id, *key)?;
     }
-    store_master_config(&database, &new_password, &master).await?;
     state.document_privacy.unlock_master(master)?;
     unlock_all_master_documents(&database, &state.document_privacy, &master).await
 }

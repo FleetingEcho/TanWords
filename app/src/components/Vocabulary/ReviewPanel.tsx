@@ -22,12 +22,16 @@ export function ReviewPanel({ onExit, onFinished }: { onExit: () => void; onFini
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [grading, setGrading] = useState(false);
-  const reviewed = index;
+  // Cards successfully graded. `index` alone under-counts on the last card:
+  // the done phase is entered WITHOUT incrementing it, so the summary showed
+  // `cards.length - 1`.
+  const [reviewedCount, setReviewedCount] = useState(0);
 
   const load = useCallback(async () => {
     setPhase("loading");
     setRevealed(false);
     setIndex(0);
+    setReviewedCount(0);
     const due = await db.getDueCards();
     if (phase === "loading" && due.length === 0 && cards.length === 0) {
       // First load failed silently (getDueCards logs and returns []) vs a real
@@ -52,6 +56,7 @@ export function ReviewPanel({ onExit, onFinished }: { onExit: () => void; onFini
       toast.error(t("vocab.review.gradeFailed"));
       return;
     }
+    setReviewedCount((n) => n + 1);
     if (index + 1 >= cards.length) {
       setPhase("done");
       onFinished(cards.length);
@@ -104,7 +109,7 @@ export function ReviewPanel({ onExit, onFinished }: { onExit: () => void; onFini
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
         <p className="text-base font-semibold">{t("vocab.review.doneTitle")}</p>
-        <p className="text-sm text-muted-foreground">{t("vocab.review.doneHint", { n: reviewed })}</p>
+        <p className="text-sm text-muted-foreground">{t("vocab.review.doneHint", { n: reviewedCount })}</p>
         <div className="flex gap-2 pt-2">
           <Button variant="secondary" onClick={() => void load()} className="h-10">{t("vocab.review.againRound")}</Button>
           <Button variant="ghost" onClick={onExit} className="h-10">{t("vocab.review.backToWords")}</Button>
@@ -119,7 +124,7 @@ export function ReviewPanel({ onExit, onFinished }: { onExit: () => void; onFini
     <div className="flex min-h-0 flex-1 flex-col">
       {/* progress + exit */}
       <div className="flex shrink-0 items-center justify-between px-4 pt-3">
-        <span className="text-xs text-muted-foreground">{t("vocab.review.progress", { done: reviewed, total: cards.length })}</span>
+        <span className="text-xs text-muted-foreground">{t("vocab.review.progress", { done: Math.min(reviewedCount + 1, cards.length), total: cards.length })}</span>
         <Button variant="ghost" size="sm" onClick={onExit} className="h-9 text-xs">{t("vocab.review.backToWords")}</Button>
       </div>
 

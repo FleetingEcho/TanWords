@@ -55,6 +55,7 @@ export const feeds: Dict = {
   "feeds.analyzeBackground.failed": "Couldn't analyze \"{title}\"",
   "feeds.loadMore": "more",
   "feeds.loadingMore": "loading…",
+  "feeds.loadMoreFailed": "Loading more failed: {error}",
   "feeds.section.articles": "Articles",
   "feeds.section.podcasts": "Podcasts",
   "feeds.group.today": "Today",

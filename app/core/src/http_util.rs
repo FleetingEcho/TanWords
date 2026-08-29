@@ -58,15 +58,24 @@ pub(crate) async fn fetch_guarded(
 ) -> Result<reqwest::Response, String> {
     #[cfg(not(feature = "web"))]
     {
-        let client = reqwest::Client::builder()
-            .user_agent(user_agent)
-            .timeout(timeout)
-            .build()
-            .map_err(|e| e.to_string())?;
-        decorate(client.get(url))
-            .send()
-            .await
-            .map_err(|e| format!("Request failed: {e}"))
+        // One shared client: connection pooling across feeds/reader fetches
+        // (a per-call `Client::new()` threw the pool away every time). UA and
+        // the duration stay per-request.
+        static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+        let client = CLIENT.get_or_init(|| {
+            reqwest::Client::builder()
+                .build()
+                .expect("static reqwest client config is valid")
+        });
+        decorate(
+            client
+                .get(url)
+                .timeout(timeout)
+                .header(reqwest::header::USER_AGENT, user_agent),
+        )
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {e}"))
     }
 
     #[cfg(feature = "web")]
@@ -110,6 +119,59 @@ pub(crate) async fn fetch_guarded(
         }
         Err("Too many redirects".to_string())
     }
+}
+
+/// Sends an arbitrary server-dialed request to a user-supplied URL, guarded
+/// hop by hop.
+///
+/// This is `fetch_guarded` generalized past GET for the web server's two
+/// proxies (browser proxy, AI provider proxy): they forward a caller-chosen
+/// method, headers and body, and both must not let a redirect or a second
+/// DNS lookup escape the check. `build` receives a fresh no-redirect client
+/// pinned to the validated address and the current URL, and returns the
+/// request to send; redirects are followed by this loop, each hop re-guarded.
+/// No total timeout is applied here — the proxy routes legitimately stream
+/// long bodies — only connection setup is capped.
+#[cfg(feature = "web")]
+pub async fn send_guarded(
+    url: &str,
+    build: impl Fn(reqwest::Client, &str) -> reqwest::RequestBuilder,
+) -> Result<reqwest::Response, String> {
+    let mut current = url.to_string();
+    for _ in 0..=MAX_REDIRECTS {
+        let (host, addr) = guard::resolve_public(&current).await?;
+        let client = reqwest::Client::builder()
+            // Redirects are followed by this loop, not by reqwest: the whole
+            // point is that the next hop gets checked too.
+            .redirect(reqwest::redirect::Policy::none())
+            // Pins the name to the address just validated. Without it the
+            // check and the connection are two separate lookups, and a
+            // hostile DNS server only has to answer the second one with
+            // 169.254.169.254.
+            .resolve(&host, addr)
+            .connect_timeout(Duration::from_secs(15))
+            .build()
+            .map_err(|e| e.to_string())?;
+        let response = build(client, &current)
+            .send()
+            .await
+            .map_err(|e| format!("Request failed: {e}"))?;
+
+        if !response.status().is_redirection() {
+            return Ok(response);
+        }
+        let location = response
+            .headers()
+            .get(reqwest::header::LOCATION)
+            .and_then(|v| v.to_str().ok())
+            .ok_or_else(|| "Server sent a redirect with no destination".to_string())?;
+        let base = reqwest::Url::parse(&current).map_err(|e| e.to_string())?;
+        current = base
+            .join(location)
+            .map_err(|_| "Server redirected to an unusable address".to_string())?
+            .to_string();
+    }
+    Err("Too many redirects".to_string())
 }
 
 #[cfg(feature = "web")]

@@ -7,6 +7,16 @@ import { DashboardCard, DashboardRow, DashboardEmpty, DashboardSkeleton, Dashboa
 
 const SHOW_DOC_LIST_FLAG = "tanwords_show_doc_list";
 
+/** `updated_at` arrives as a UTC timestamp string ("YYYY-MM-DD HH:mm:ss") —
+ *  parse it as UTC and print the local date. Slicing the string (the old
+ *  code) printed UTC, off by a day for users ahead of it. */
+function formatLocalDate(updatedAt: string): string {
+  const parsed = new Date(updatedAt.includes("T") ? updatedAt : `${updatedAt.replace(" ", "T")}Z`);
+  if (isNaN(parsed.getTime())) return updatedAt.slice(0, 10);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}`;
+}
+
 /** Dashboard card: recently touched documents. `docs` comes from the parent's
  *  single shared `getDashboardStats()` call rather than fetching its own copy. */
 export function RecentDocumentsWidget({ docs, maxRows = DASHBOARD_BODY_ROWS }: {
@@ -36,7 +46,10 @@ export function RecentDocumentsWidget({ docs, maxRows = DASHBOARD_BODY_ROWS }: {
             <DashboardRow key={d.id} onClick={() => navigate("documents")}>
               <span className="flex-1 min-w-0 text-sm font-medium truncate">{d.title}</span>
               <span className="text-[10px] font-mono text-muted-foreground/70 shrink-0">
-                {d.updated_at.slice(0, 10)}
+                {/* `updated_at` is written by the backend's UTC clock — parse
+                    it as UTC and print the local date, or users ahead of UTC
+                    see yesterday's date on anything touched after 16:00. */}
+                {formatLocalDate(d.updated_at)}
               </span>
             </DashboardRow>
           ))}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useDB, DocumentListItem, DocumentFolder, DocStatus } from "@/hooks/useDB";
 import { countDocumentWords } from "@/lib/documentWordCount";
+import { toast } from "sonner";
 
 export const PAGE_SIZE = 10_000;
 
@@ -76,6 +77,12 @@ export function useDocList(refreshKey: string | number) {
       }));
       setFolders(folderPaths);
       setTotal(result.total);
+    } catch (error) {
+      // Fire-and-forget callers (filter effects, docs-updated) would turn a
+      // failed IPC call (sidecar restarting, DB locked) into an unhandled
+      // rejection with the list silently stale. Keep the previous rows and
+      // surface it.
+      if (mySeq === querySeq.current) toast.error(String(error));
     } finally {
       if (mySeq === querySeq.current) setLoading(false);
     }
@@ -125,7 +132,9 @@ export function useDocList(refreshKey: string | number) {
     window.addEventListener("docs-item-updated", onItemUpdated);
     return () => window.removeEventListener("docs-item-updated", onItemUpdated);
   }, []);
-  useEffect(() => { db.getAllTags().then(setAllTags); }, [refreshKey]);
+  useEffect(() => {
+    db.getAllTags().then(setAllTags).catch((error) => toast.error(String(error)));
+  }, [refreshKey]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 

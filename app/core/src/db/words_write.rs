@@ -45,12 +45,40 @@ pub async fn db_add_word(
         }
     };
 
-    db.execute(
-        "INSERT OR IGNORE INTO word_definitions (word_id, pos, zh, sort_order) VALUES (?1, 'other', ?2, 0)",
-        params![word_id, zh],
+    // Seed the list gloss only when the word has none yet. `word_definitions`
+    // has no uniqueness constraint, so the `INSERT OR IGNORE` this replaced
+    // never ignored anything and appended a duplicate 'other' row on every
+    // re-add. Mirrors the guard in `db_add_word_enriched`; an existing empty
+    // gloss is backfilled rather than skipped so a bad first add can be fixed
+    // by adding the word again.
+    let existing_zh: Option<String> = db::fetch_optional(
+        &db,
+        "SELECT zh FROM word_definitions WHERE word_id = ?1 ORDER BY sort_order LIMIT 1",
+        params![word_id],
+        |row| row.get(0),
     )
-    .await
-    .map_err(|e| e.to_string())?;
+    .await?;
+    let needs_gloss = existing_zh
+        .as_deref()
+        .map(|z| z.trim().is_empty())
+        .unwrap_or(true);
+    if needs_gloss {
+        if existing_zh.is_some() {
+            db.execute(
+                "UPDATE word_definitions SET zh = ?1 WHERE word_id = ?2 AND (zh IS NULL OR TRIM(zh) = '')",
+                params![zh, word_id],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        } else {
+            db.execute(
+                "INSERT INTO word_definitions (word_id, pos, zh, sort_order) VALUES (?1, 'other', ?2, 0)",
+                params![word_id, zh],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        }
+    }
 
     db.execute(
         "INSERT OR IGNORE INTO srs_records (entity_id, entity_type, srs_level, srs_ease) VALUES (?1, 'word', 0, 2.5)",

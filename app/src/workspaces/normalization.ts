@@ -36,6 +36,13 @@ export function paneCount(node: LayoutNode): number {
   return paneCount(node.first) + paneCount(node.second);
 }
 
+/** Does this subtree hold any page content at all? Used by the depth cap to
+ *  decide which child to keep when a split must be pruned. */
+function collectPaneContent(node: LayoutNode): boolean {
+  if (node.kind === "pane") return node.content !== null;
+  return collectPaneContent(node.first) || collectPaneContent(node.second);
+}
+
 /** Collect every pane id in a subtree. Used to detect duplicate ids during
  *  normalization and to find a pane by id. */
 export function collectPaneIds(node: LayoutNode, out: Set<string> = new Set()): Set<string> {
@@ -101,12 +108,15 @@ export function normalizeNode(node: unknown, seenIds: Set<string>): LayoutNode {
     if (first.kind === "pane" && second.kind === "pane" && !first.content && !second.content) {
       return first;
     }
-    // Cap depth: if this split would exceed MAX_DEPTH, replace it with its
-    // first child (already normalized). This prunes over-nested trees from
-    // corrupt or hand-edited JSON without losing the populated branch.
+    // Cap depth: if this split would exceed MAX_DEPTH, replace it with the
+    // child that holds the content (already normalized). This prunes
+    // over-nested trees from corrupt or hand-edited JSON without losing the
+    // populated branch — keeping `first` unconditionally could discard every
+    // page instance when the content lives in `second` (e.g. `first` is the
+    // empty pane a collapsed branch leaves behind).
     const splitDepth = 1 + Math.max(depth(first), depth(second));
     if (splitDepth > MAX_DEPTH) {
-      return first;
+      return collectPaneContent(second) && !collectPaneContent(first) ? second : first;
     }
     return { kind: "split", id, axis, ratio, first, second };
   }
