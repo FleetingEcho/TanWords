@@ -203,15 +203,18 @@ pub async fn tts_remote_synthesize(
 }
 
 /// One synced `user_settings` string, defaulting to "" — `get_setting` keeps
-/// JSON-encoded values (the renderer persists with `JSON.stringify`), so the
-/// parse must tolerate both quoted strings and raw text.
+/// JSON-encoded values (the renderer persists with `JSON.stringify`), while
+/// older rows may still contain raw text.
 async fn read_string_setting(conn: &db::Conn, key: &str) -> Result<String, String> {
     let raw = db::settings::get_setting(conn, key)
         .await
-        .map_err(|e| e.to_string())?
-        .unwrap_or_default();
-    Ok(serde_json::from_str::<String>(&raw)
-        .map_err(|_| format!("setting {key} is malformed"))?)
+        .map_err(|e| e.to_string())?;
+    Ok(parse_string_setting(raw))
+}
+
+fn parse_string_setting(raw: Option<String>) -> String {
+    raw.map(|value| serde_json::from_str::<String>(&value).unwrap_or(value))
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -259,12 +262,19 @@ mod tests {
     }
 
     #[test]
-    fn read_string_setting_accepts_quoted_and_raw() {
+    fn string_setting_accepts_missing_quoted_and_raw_values() {
+        // Optional settings such as `tts_remote_voice` are legitimately absent;
+        // an empty value lets OpenAI-compatible servers apply their default.
+        assert_eq!(parse_string_setting(None), "");
+
         // Synced settings arrive JSON-encoded from the renderer.
         assert_eq!(
-            serde_json::from_str::<String>("\"speaker_a\"").map_err(|_| "malformed"),
-            Ok("speaker_a".to_string())
+            parse_string_setting(Some("\"speaker_a\"".into())),
+            "speaker_a"
         );
+
+        // Keep compatibility with settings written before JSON encoding.
+        assert_eq!(parse_string_setting(Some("speaker_b".into())), "speaker_b");
     }
 
     /// Serves one canned response on an ephemeral loopback listener and
