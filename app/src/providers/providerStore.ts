@@ -15,7 +15,7 @@ import { getSecret, secretDelete } from "@/lib/secrets";
 import { BUILT_IN_API_BASE, PRESET_PROVIDERS } from "@/components/Settings/providerConstants";
 import { isDesktopHost } from "@/platform";
 
-export type ProviderKind = "builtin" | "preset" | "custom";
+export type ProviderKind = "builtin" | "preset" | "custom" | "tts";
 
 /** What the backend returns — deliberately without the key. */
 export interface StoredProvider {

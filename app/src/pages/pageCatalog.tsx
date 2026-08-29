@@ -215,6 +215,17 @@ export function getPageDefinition(id: NavPage): PageDefinition | undefined {
   return CATALOG_BY_ID.get(id);
 }
 
+/** Warm a page's lazy chunk without mounting it.
+ *
+ *  Calling `load()` fetches the same dynamic-import chunk `React.lazy` will
+ *  request later — the module registry caches by URL, so the later mount
+ *  resolves instantly. Used at boot to overlap the destination page's chunk
+ *  download with the settings round-trip; a prefetch of a page the user never
+ *  opens costs one idle fetch and no mount. */
+export function prefetchPage(id: NavPage): void {
+  void getPageDefinition(id)?.load().catch(() => {});
+}
+
 /** Every NavPage must have exactly one catalog entry. The completeness test
  *  asserts this; it is also the invariant the sidebar/picker rely on. */
 export function assertCatalogComplete(allPages: readonly NavPage[]): void {

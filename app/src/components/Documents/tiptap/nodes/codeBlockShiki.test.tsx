@@ -161,16 +161,35 @@ describe("through the React editor", () => {
 });
 
 describe("code block highlighting", () => {
+  // These run through `TiptapDocumentEditor`, not a bare `new Editor()`: since
+  // @tiptap/react 3.30, `ReactNodeViewRenderer` mounts node views through the
+  // React editor's content portal (`editor.contentComponent`), which only
+  // exists when the editor is created via `useEditor` — the exact environment
+  // the app runs in. A bare Editor never mounts the node view at all, so its
+  // code blocks render no content regardless of highlighting.
+
   it("highlights a language that is bundled but not preloaded", async () => {
     // `rust` is in the bundle; only `text` is loaded at startup. If on-demand
     // loading regresses, this comes back with zero tokens.
-    mount("rust", 'let counter = Arc::new(Mutex::new(0_i32));');
+    render(
+      <TiptapDocumentEditor
+        initialBlocks={markdownToBlocks("```rust\nlet counter = Arc::new(Mutex::new(0_i32));\n```") as Block[]}
+        isDark
+      />,
+    );
+    await waitFor(() => expect(document.querySelector(".ProseMirror")).toBeTruthy());
     const tokens = await waitForTokens();
     expect(tokens.length).toBeGreaterThan(0);
   }, 15000);
 
   it("colours the tokens it emits", async () => {
-    mount("javascript", "const answer = 42;");
+    render(
+      <TiptapDocumentEditor
+        initialBlocks={markdownToBlocks("```javascript\nconst answer = 42;\n```") as Block[]}
+        isDark
+      />,
+    );
+    await waitFor(() => expect(document.querySelector(".ProseMirror")).toBeTruthy());
     const tokens = await waitForTokens();
     expect(tokens.length).toBeGreaterThan(0);
     const styled = Array.from(tokens).some((token) =>
@@ -180,7 +199,13 @@ describe("code block highlighting", () => {
   }, 15000);
 
   it("falls back to plain text for an unknown language instead of livelocking", async () => {
-    mount("not-a-real-language", "some text");
+    render(
+      <TiptapDocumentEditor
+        initialBlocks={markdownToBlocks("```not-a-real-language\nsome text\n```") as Block[]}
+        isDark
+      />,
+    );
+    await waitFor(() => expect(document.querySelector(".ProseMirror")).toBeTruthy());
     // The parse must settle rather than retry forever; the assertion is simply
     // that the editor is still usable and the code survived.
     await new Promise((resolve) => setTimeout(resolve, 1500));

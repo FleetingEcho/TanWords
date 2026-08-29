@@ -179,7 +179,11 @@ fn schema_fingerprint(kind: connection::DbKind) -> String {
         }
     }
     hasher.update(include_str!("mod.rs"));
-    format!("{:x}", hasher.finalize())
+    // The crypto crates' 0.11 wave dropped `LowerHex` on digest output, so
+    // the fingerprint is hex-encoded explicitly — the value must stay stable
+    // byte-for-byte (existing databases store it), and hex 0.4's lowercase
+    // output matches what `{:x}` produced.
+    hex::encode(hasher.finalize())
 }
 
 /// The fingerprint this database was last initialised to, if any. A fresh

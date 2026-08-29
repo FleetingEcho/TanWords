@@ -18,11 +18,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use aes_gcm::aead::Aead;
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
-use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
+// password-hash 0.6 dropped SaltString: `hash_password` now generates its
+// own salt (getrandom), and PHC parsing lives under `phc::`.
+use argon2::password_hash::phc::PasswordHash;
+use argon2::password_hash::{PasswordHasher, PasswordVerifier};
 use argon2::Argon2;
 use base64::Engine;
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
-use rand::RngCore;
+use rand::Rng;
 use sea_orm::sea_query::Value as SqValue;
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
@@ -189,9 +192,8 @@ impl UsersDb {
     }
 
     pub fn hash_password(password: &str) -> Result<String, String> {
-        let salt = SaltString::generate(&mut rand::rngs::OsRng);
         Argon2::default()
-            .hash_password(password.as_bytes(), &salt)
+            .hash_password(password.as_bytes())
             .map(|h| h.to_string())
             .map_err(|e| e.to_string())
     }
@@ -207,10 +209,10 @@ impl UsersDb {
 
     fn seal(&self, plaintext: &str) -> String {
         let mut nonce = [0u8; 12];
-        rand::rngs::OsRng.fill_bytes(&mut nonce);
+        rand::rng().fill_bytes(&mut nonce);
         let ct = self
             .cipher
-            .encrypt(Nonce::from_slice(&nonce), plaintext.as_bytes())
+            .encrypt(&Nonce::from(nonce), plaintext.as_bytes())
             .expect("aes-gcm encrypt infaillible for in-memory data");
         let mut out = nonce.to_vec();
         out.extend_from_slice(&ct);
@@ -222,7 +224,10 @@ impl UsersDb {
         let (nonce, ct) = raw.split_at_checked(12)?;
         let plain = self
             .cipher
-            .decrypt(Nonce::from_slice(nonce), ct)
+            .decrypt(
+                Nonce::try_from(nonce).ok()?.as_ref(),
+                ct,
+            )
             .ok()?;
         String::from_utf8(plain).ok()
     }
@@ -331,7 +336,7 @@ impl UsersDb {
 
     fn new_session_token(&self, user_id: i64, now: i64) -> Result<String, String> {
         let mut nonce = [0u8; 16];
-        rand::rngs::OsRng.fill_bytes(&mut nonce);
+        rand::rng().fill_bytes(&mut nonce);
         encode(
             &Header::new(Algorithm::HS256),
             &JwtClaims {

@@ -359,12 +359,17 @@ fn decide(engine: &Engine, url: &str, source: &str, rtype: &str) -> BlockDecisio
     {
         return BlockDecision::Allow;
     }
-    let request = match AdRequest::new(url, source, rtype) {
+    // adblock 0.13 grew an HTTP-method argument (for `$method=` rules). The
+    // browser never tells us one here, so "get" keeps the pre-0.13 behaviour
+    // of matching every request as if it were a GET.
+    let request = match AdRequest::new(url, source, rtype, "get") {
         Ok(r) => r,
         Err(_) => return BlockDecision::Allow,
     };
     let result = engine.check_network_request(&request);
-    if result.matched {
+    // 0.13 replaced the `matched` bool with `should_block()`, which folds in
+    // matched exception rules — exactly the decision the caller needs.
+    if result.should_block() {
         BlockDecision::Block
     } else if let Some(redirect) = result.redirect {
         BlockDecision::Redirect(redirect)
@@ -391,7 +396,7 @@ async fn fetch_and_build() -> Option<Engine> {
         match client.get(*url).send().await {
             Ok(resp) if resp.status().is_success() => match resp.text().await {
                 Ok(text) => {
-                    let _ = filter_set.add_filter_list(&text, Default::default());
+                    let _ = filter_set.add_filter_list(text, Default::default());
                     loaded_any = true;
                 }
                 Err(e) => eprintln!("[adblock] list {url} read failed: {e}"),
@@ -404,7 +409,7 @@ async fn fetch_and_build() -> Option<Engine> {
         eprintln!("[adblock] all lists failed to load; engine unavailable");
         return None;
     }
-    let engine = Engine::from_filter_set(filter_set, true);
+    let engine = Engine::new_with_filter_set(filter_set);
     Some(with_resources(engine))
 }
 

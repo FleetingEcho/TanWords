@@ -19,6 +19,14 @@ export interface SettingsState {
   ttsVoiceId: string;
   ttsExtraDirs: string[];
   ttsSpeed: number;
+  /** Id of the remote (OpenAI-compatible) TTS provider row in "tts" mode.
+   *  Empty = the local sherpa-onnx engine, exactly as before — the local and
+   *  remote paths never both run. See lib/ttsBackend.ts. */
+  ttsRemoteProviderId: string;
+  /** Voice name sent to the remote endpoint ("speaker_a" for Audio8,
+   *  "alloy"… for OpenAI). Free text: voice names live in the remote
+   *  service, not in our DB. */
+  ttsRemoteVoice: string;
   /** Local speech-to-text model for the push-to-talk voice assistant. */
   asrModelPath: string;
   asrExtraDirs: string[];
@@ -172,6 +180,8 @@ export interface SettingsState {
   setMusicFolderPath: (path: string) => void;
   setTtsModelPath: (path: string) => void;
   setTtsVoiceId: (id: string) => void;
+  setTtsRemoteProviderId: (id: string) => void;
+  setTtsRemoteVoice: (voice: string) => void;
   setTtsExtraDirs: (dirs: string[]) => void;
   setTtsSpeed: (speed: number) => void;
   setAsrModelPath: (path: string) => void;

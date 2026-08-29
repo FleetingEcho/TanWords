@@ -28,6 +28,31 @@ export function cacheUiLanguage(lang: string) {
   }
 }
 
+/** The page the next launch should prefetch its chunk for. Written whenever
+ *  the resolved startup destination is known; read by the app's boot path to
+ *  warm the route's lazy chunk during the splash, so the destination commits
+ *  without paying the chunk download after settings land. Workspace
+ *  destinations store `"workspace"` — their pane pages aren't known until the
+ *  workspace store hydrates, so they prefetch nothing (falls back naturally).
+ */
+const STARTUP_PAGE_CACHE_KEY = "tanwords_startup_page_cache";
+
+export function cachedStartupPage(): string | null {
+  try {
+    return localStorage.getItem(STARTUP_PAGE_CACHE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function cacheStartupPage(page: string) {
+  try {
+    localStorage.setItem(STARTUP_PAGE_CACHE_KEY, page);
+  } catch {
+    // Same tolerance as every other cache here.
+  }
+}
+
 const SIDEBAR_TABS_CACHE_KEY = "tanwords_visible_sidebar_tabs_cache";
 const TOPBAR_ITEMS_CACHE_KEY = "tanwords_visible_topbar_items_cache";
 

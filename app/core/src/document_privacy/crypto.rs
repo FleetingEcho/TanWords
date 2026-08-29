@@ -5,14 +5,14 @@ use aes_gcm::{
 use argon2::Argon2;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use hkdf::Hkdf;
-use rand::{rngs::OsRng, RngCore};
+use rand::Rng;
 use sha2::Sha256;
 
 /// Crate-visible (not just `pub(super)`) because `secrets::device_key` mints
 /// the AI-provider master key with it.
 pub fn random<const N: usize>() -> [u8; N] {
     let mut bytes = [0_u8; N];
-    OsRng.fill_bytes(&mut bytes);
+    rand::rng().fill_bytes(&mut bytes);
     bytes
 }
 
@@ -53,7 +53,7 @@ pub fn encrypt_bytes(key: &[u8; 32], plaintext: &[u8]) -> Result<Vec<u8>, String
     let nonce = random::<12>();
     let cipher = Aes256Gcm::new_from_slice(key).map_err(|e| e.to_string())?;
     let ciphertext = cipher
-        .encrypt(Nonce::from_slice(&nonce), plaintext)
+        .encrypt(&Nonce::from(nonce), plaintext)
         .map_err(|_| "Document encryption failed")?;
     let mut out = nonce.to_vec();
     out.extend(ciphertext);
@@ -66,7 +66,12 @@ pub fn decrypt_bytes(key: &[u8; 32], encrypted: &[u8]) -> Result<Vec<u8>, String
     }
     let cipher = Aes256Gcm::new_from_slice(key).map_err(|e| e.to_string())?;
     cipher
-        .decrypt(Nonce::from_slice(&encrypted[..12]), &encrypted[12..])
+        .decrypt(
+            // TryFrom keeps the length check — a malformed blob is an error
+            // rather than a panic, and hybrid-array deprecated from_slice.
+            Nonce::try_from(&encrypted[..12]).map_err(|_| "Invalid encrypted document data")?.as_ref(),
+            &encrypted[12..],
+        )
         .map_err(|_| "Document decryption failed".into())
 }
 

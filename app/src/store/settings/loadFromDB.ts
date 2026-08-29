@@ -20,7 +20,7 @@ import {
 } from "./types";
 import {
   cacheUiLanguage, cacheSidebarTabs, cacheTopBarItems, cacheDefaultRssTab, cacheFeedsViewMode,
-  cacheLayoutMode, cacheSidebarTabOrder, cacheTopBarItemOrder,
+  cacheLayoutMode, cacheSidebarTabOrder, cacheTopBarItemOrder, cacheStartupPage,
 } from "./cache";
 import { normalizeOrder } from "./reorder";
 import { applyTheme, applyDocumentFontSize, applyDocumentLineHeight, applyDocumentParagraphSpacing, applyDocumentTextColor, applyHighlightColor, parseBannerPosition } from "./domEffects";
@@ -91,6 +91,8 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       "custom_enrich_prompt",
       "tts_model_path",
       "tts_voice_id",
+      "tts_remote_provider_id",
+      "tts_remote_voice",
       "tts_extra_dirs",
       "tts_speed",
       "asr_model_path",
@@ -169,18 +171,52 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
     };
     // Read on its own, unencoded, because it is stored per device — see
     // db/device_paths.rs.
-    const musicFolderPath = await readDevicePath("music_folder_path");
-    const terminalShellPath = await readDevicePath("terminal_shell_path");
-    for (const key of keys) {
+    // All reads below are independent backend round trips, so they all
+    // start before the first await lands: against a remote database profile
+    // each is a network RTT, and awaiting them back-to-back puts their summed
+    // latency on the startup critical path.
+    //
+    // One round-trip for the whole synced-settings key list. The per-key
+    // version cost an invoke per key — ~60 sequential
+    // renderer→main→sidecar trips that were the single largest slice of
+    // cold-start time (~2s).
+    const batchPromise = (async () => {
       try {
-        const val = await invoke<string | null>("db_get_setting", { key });
-        if (val) {
-          values[key] = JSON.parse(val);
-        }
+        return await invoke<(string | null)[]>("db_get_settings", { keys });
       } catch (error) {
-        // Settings are independent rows. A legacy or damaged value should
-        // fall back on its own default instead of hiding every valid setting.
-        console.warn(`Setting ${key} could not be loaded:`, error);
+        // Older sidecar predating the bulk command: fall back to the per-key
+        // reads rather than losing settings entirely. (A mismatched dev core
+        // is the usual way to land here.)
+        console.warn("Bulk settings read unavailable, falling back:", error);
+        return null;
+      }
+    })();
+    // Device-only preferences, read unencoded — see db/device_paths.rs.
+    const devicePathsPromise = Promise.all([
+      readDevicePath("music_folder_path"),
+      readDevicePath("terminal_shell_path"),
+    ]);
+    const [batch, [musicFolderPath, terminalShellPath]] = await Promise.all([
+      batchPromise,
+      devicePathsPromise,
+    ]);
+    const valuesList = batch && batch.length === keys.length ? batch : null;
+    for (const [index, key] of keys.entries()) {
+      const val = valuesList ? valuesList[index] : null;
+      if (val !== null && val !== undefined) {
+        try {
+          values[key] = JSON.parse(val);
+        } catch {
+          // A legacy or damaged value falls back to its own default rather
+          // than hiding every valid setting.
+        }
+      } else if (!valuesList) {
+        try {
+          const single = await invoke<string | null>("db_get_setting", { key });
+          if (single) values[key] = JSON.parse(single);
+        } catch (error) {
+          console.warn(`Setting ${key} could not be loaded:`, error);
+        }
       }
     }
 
@@ -404,6 +440,13 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
             ? { kind: "workspace", workspaceId: savedStartupWorkspaceId }
             : DEFAULT_STARTUP_DESTINATION;
 
+    // Mirrored to localStorage so the next launch can prefetch the right
+    // route chunk before the settings round-trip resolves. Workspaces cache
+    // a marker rather than a page id — their panes aren't known yet.
+    cacheStartupPage(
+      resolvedStartupDestination.kind === "page" ? resolvedStartupDestination.page : "workspace",
+    );
+
     set({
       theme: (values.theme as Theme) || "system",
       defaultAiProvider: values.default_ai_provider || "openai",
@@ -419,6 +462,8 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       musicFolderPath,
       ttsModelPath: values.tts_model_path || "",
       ttsVoiceId: values.tts_voice_id || "0",
+      ttsRemoteProviderId: values.tts_remote_provider_id || "",
+      ttsRemoteVoice: values.tts_remote_voice || "",
       ttsExtraDirs: Array.isArray(values.tts_extra_dirs) ? values.tts_extra_dirs : [],
       ttsSpeed: Number(values.tts_speed) || 1,
       asrModelPath: values.asr_model_path || "",

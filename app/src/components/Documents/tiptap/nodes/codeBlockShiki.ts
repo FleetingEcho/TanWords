@@ -119,8 +119,15 @@ const lazyParser: Parser = (options) => {
 
   if (needsGrammar) {
     attemptedLanguages.add(language);
-    const pending = highlighter
-      .loadLanguage(language as never)
+    // `Promise.resolve().then` on purpose: shiki ≥4.4 throws *synchronously*
+    // from `loadLanguage` for a language outside the bundle (resolveLang
+    // raises before any promise exists). A bare `highlighter.loadLanguage(
+    // …).then(…)` lets that throw escape `lazyParser` mid-transaction —
+    // prosemirror-highlight calls the parser synchronously inside
+    // `Plugin.apply`, so the exception rips the whole editor mount apart
+    // instead of degrading one block to plain text.
+    const pending = Promise.resolve()
+      .then(() => highlighter!.loadLanguage(language as never))
       .then(() => undefined)
       .catch(() => { unsupportedLanguages.add(language); })
       .finally(() => loadingLanguages.delete(language));

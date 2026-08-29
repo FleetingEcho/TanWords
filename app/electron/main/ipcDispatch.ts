@@ -25,6 +25,34 @@ import { isExternalUrlAllowed, recordSavePath, recordSaveDir, isAllowedWritePath
 
 type DialogFilter = { name: string; extensions: string[] };
 
+/** Reads the clipboard's image as PNG bytes, or null when it has none.
+ *
+ *  Electron 44 replaced `clipboard.readImage()` (NativeImage) with the
+ *  W3C-shaped async model: `read()` yields `ClipboardItem`s whose payloads
+ *  arrive as Blobs. PNG is what every consumer here wants — the renderer
+ *  embeds it as a data URL and the terminal paste writes a .png file — so
+ *  the first image-flavoured item is taken as-is. */
+async function clipboardImagePng(): Promise<Buffer | null> {
+  let items: Electron.ClipboardItem[];
+  try {
+    items = await clipboard.read();
+  } catch {
+    return null;
+  }
+  for (const item of items) {
+    const type = item.types.find((t) => t.startsWith("image/"));
+    if (!type) continue;
+    try {
+      const payload = await item.getType(type);
+      if (!(payload instanceof Blob)) continue;
+      return Buffer.from(await payload.arrayBuffer());
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
 export async function dispatch(
   channel: string,
   args: unknown,
@@ -265,13 +293,13 @@ export async function dispatch(
     }
 
     case "clipboard:readImage": {
-      const image = clipboard.readImage();
-      if (image.isEmpty()) return null;
-      return image.toDataURL();
+      const png = await clipboardImagePng();
+      if (!png || png.length === 0) return null;
+      return `data:image/png;base64,${png.toString("base64")}`;
     }
     case "clipboard:writeText": {
       const { text } = (args ?? {}) as { text: string };
-      clipboard.writeText(text ?? "");
+      await clipboard.writeText(text ?? "");
       return null;
     }
     case "clipboard:readText": {
@@ -281,15 +309,15 @@ export async function dispatch(
       // A shell cannot consume image pixels directly. Materialize clipboard
       // images as temporary PNGs and let the renderer paste the resulting path,
       // matching what desktop terminals do for dragged/pasted files.
-      const image = clipboard.readImage();
-      if (!image.isEmpty()) {
+      const png = await clipboardImagePng();
+      if (png && png.length > 0) {
         const directory = path.join(app.getPath("temp"), "tanwords-terminal-paste");
         await mkdir(directory, { recursive: true });
         const imagePath = path.join(directory, `clipboard-${Date.now()}-${randomUUID()}.png`);
-        await writeFile(imagePath, image.toPNG());
+        await writeFile(imagePath, png);
         return { kind: "image", path: imagePath };
       }
-      const text = clipboard.readText();
+      const text = await clipboard.readText();
       return text ? { kind: "text", text } : null;
     }
 

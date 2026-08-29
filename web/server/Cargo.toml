@@ -17,25 +17,25 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net", "sync", "time", "fs", "io-util"] }
 axum = { version = "0.8", features = ["multipart"] }
-tower-http = { version = "0.6", features = ["fs", "compression-br", "compression-gzip"] }
+tower-http = { version = "0.7", features = ["fs", "compression-br", "compression-gzip"] }
 futures-util = "0.3"
 tokio-stream = { version = "0.1", features = ["sync"] }
-reqwest = { version = "0.12", features = ["stream", "json"] }
+reqwest = { version = "0.13", features = ["stream", "json"] }
 url = "2"
 lol_html = "3"
-argon2 = "0.5"
-aes-gcm = "0.10"
-sha2 = "0.10"
-jsonwebtoken = "9"
+argon2 = "0.6"
+aes-gcm = "0.11"
+sha2 = "0.11"
+jsonwebtoken = { version = "11", features = ["rust_crypto"] }
 # users.db is the web server's own credential store, separate from the app
 # data the core manages. sea-orm (same engine the core uses now) keeps a
 # single sqlite3 in the link graph — libsql bundled its own copy, which
 # collided with sqlx-sqlite's after the core migrated off libsql.
 sea-orm = { version = "2", default-features = false, features = ["sqlx-sqlite", "runtime-tokio-rustls"] }
-rand = "0.8"
-base64 = "0.22"
+rand = "0.10"
+base64 = "0.23"
 uuid = { version = "1", features = ["v4"] }
-dirs = "5"
+dirs = "6"
 rust-embed = "8"
 regex = "1"
 

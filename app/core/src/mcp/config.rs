@@ -1,5 +1,5 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use rand::RngCore;
+use rand::Rng;
 use crate::db::params; use crate::db::Conn;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -45,7 +45,7 @@ impl Default for McpStatus {
 #[crate::shim::command]
 pub fn mcp_generate_token() -> String {
     let mut bytes = [0_u8; 32];
-    rand::thread_rng().fill_bytes(&mut bytes);
+    rand::rng().fill_bytes(&mut bytes);
     URL_SAFE_NO_PAD.encode(bytes)
 }
 

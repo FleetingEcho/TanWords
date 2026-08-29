@@ -7,7 +7,7 @@
 //! R2 specifics: region is always `auto`, service is `s3`, and the endpoint is
 //! `https://<account>.r2.cloudflarestorage.com`.
 
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use sha2::{Digest, Sha256};
 
 type HmacSha256 = Hmac<Sha256>;

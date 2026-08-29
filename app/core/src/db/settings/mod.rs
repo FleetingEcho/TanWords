@@ -106,6 +106,63 @@ pub async fn db_get_setting(
     get_setting(&db, &key).await.map_err(|e| e.to_string())
 }
 
+/// Bulk settings read, one IPC round-trip for any number of keys.
+///
+/// The renderer used to fetch each key with its own `db_get_setting` invoke —
+/// ~60 sequential renderer→main→HTTP→sidecar trips that together cost ~2s of
+/// every cold start. The per-key queries here stay on one connection inside
+/// the process and answer in microseconds each, so the loop is deliberately
+/// simple; only the transport was the problem, not the query count.
+///
+/// The result is positional: `result[i]` is the value for `keys[i]`
+/// (`None` when the key has never been written), so callers need no map
+/// rebuild and no reordering logic.
+#[crate::shim::command]
+pub async fn db_get_settings(
+    keys: Vec<String>,
+    conn: State<'_, AppState>,
+) -> std::result::Result<Vec<Option<String>>, String> {
+    if keys.is_empty() {
+        // `IN ()` is invalid SQL on both backends; an empty request needs no
+        // query anyway.
+        return Ok(Vec::new());
+    }
+    let db = db::conn(&conn)?;
+
+    // One statement, one round trip. The obvious loop — one `get_setting` per
+    // key — was fine on local SQLite but cost a network RTT per key against a
+    // remote Postgres profile: ~70 keys × ~17ms ≈ 1.2s of every cold start,
+    // all before the first screen could commit.
+    //
+    // Duplicates in `keys` are harmless: the map keeps the last occurrence's
+    // value, and the positional result below yields it for every index that
+    // asked for that key. Keys missing from the table are `None`.
+    let distinct: Vec<&String> = {
+        let mut seen = std::collections::HashSet::new();
+        keys.iter().filter(|k| seen.insert(*k)).collect()
+    };
+    let placeholders: Vec<String> =
+        (1..=distinct.len()).map(|i| format!("?{i}")).collect();
+    let sql = format!(
+        "SELECT key, value FROM user_settings WHERE key IN ({})",
+        placeholders.join(", ")
+    );
+    let bind: Vec<String> = distinct.into_iter().cloned().collect();
+    let rows = db.query_all(sql.as_str(), bind).await.map_err(|e| e.to_string())?;
+    let found: std::collections::HashMap<String, String> = rows
+        .into_iter()
+        .map(|row| {
+            let key: String = row.try_get_by_index::<String>(0).unwrap_or_default();
+            let value: String = row.try_get_by_index::<String>(1).unwrap_or_default();
+            (key, value)
+        })
+        .collect();
+    Ok(keys
+        .iter()
+        .map(|key| found.get(key).cloned())
+        .collect())
+}
+
 #[crate::shim::command]
 pub async fn db_set_setting(
     key: String,

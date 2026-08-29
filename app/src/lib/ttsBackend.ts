@@ -39,6 +39,15 @@ export function consumeFallbackWarning(): boolean {
  * LLM stream, so closing it mid-reply cancels every not-yet-spoken sentence
  * still being synthesized, not only the ones already queued. */
 export async function synthesizeBlob(text: string, signal?: AbortSignal): Promise<Blob> {
+  // The remote engine takes precedence when selected. Unlike the local path
+  // it has nothing to self-heal (no model files, nothing to preload — the
+  // endpoint is dialed per request) and its failures propagate as hard
+  // errors instead of a webspeech fallback: the user picked a specific
+  // remote voice, and silently substituting the browser's would read as
+  // "the voice changed" rather than as degraded output.
+  const { ttsRemoteProviderId } = useSettingsStore.getState();
+  if (ttsRemoteProviderId) return synthesizeRemoteBlob(text, signal);
+
   const { ttsVoiceId } = useSettingsStore.getState();
   const speakerId = Number(ttsVoiceId) || 0;
 
@@ -70,6 +79,15 @@ export async function synthesizeBlob(text: string, signal?: AbortSignal): Promis
   }
 }
 
+/** Synthesizes through the configured OpenAI-compatible endpoint
+ *  (`tts_remote_synthesize`). Remote errors deliberately do NOT trigger the
+ *  webspeech fallback — see `synthesizeBlob`. */
+async function synthesizeRemoteBlob(text: string, signal?: AbortSignal): Promise<Blob> {
+  const wavBase64 = await invoke<string>("tts_remote_synthesize", { text, speed: 1.0 }, signal);
+  const bytes = Uint8Array.from(atob(wavBase64), (c) => c.charCodeAt(0));
+  return new Blob([bytes], { type: "audio/wav" });
+}
+
 async function synthesizeOnce(text: string, speakerId: number, signal?: AbortSignal): Promise<Blob> {
   const wavBase64 = await invoke<string>("tts_synthesize", { text, speakerId, speed: 1.0 }, signal);
   markTtsActivity();
@@ -82,6 +100,10 @@ async function synthesizeOnce(text: string, speakerId: number, signal?: AbortSig
  *  reply doesn't pay for a cold load. Returns false without throwing if
  *  nothing is configured or loading failed. */
 export async function ensureTtsLoaded(): Promise<boolean> {
+  // Remote needs no preload; report "configured" so VoiceOverlay's ready
+  // check doesn't mark TTS unavailable.
+  if (useSettingsStore.getState().ttsRemoteProviderId) return true;
+
   const { ttsModelPath } = useSettingsStore.getState();
   if (!ttsModelPath) return false;
 

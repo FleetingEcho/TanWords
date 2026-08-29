@@ -8,6 +8,7 @@ db::db_delete_word
 db::db_delete_words_batch
 db::db_set_word_starred
 db::db_get_setting
+db::db_get_settings
 db::db_set_setting
 db::db_save_translation
 db::db_get_translations
@@ -125,6 +126,7 @@ tts::engine::tts_unload_model
 tts::engine::tts_synthesize
 tts::engine::tts_engine_status
 tts::download::tts_download_model
+tts_remote::tts_remote_synthesize
 asr::models::asr_scan_models
 asr::models::asr_default_models_dir
 asr::engine::asr_load_model

@@ -10,6 +10,9 @@ pub mod document_privacy;
 pub mod model_download;
 #[cfg(feature = "tts")]
 pub mod tts;
+/// Remote (OpenAI-compatible HTTP) TTS — no sherpa/ONNX dependency, so it is
+/// compiled regardless of the local-engine feature.
+pub mod tts_remote;
 #[cfg(feature = "asr")]
 pub mod asr;
 pub mod reader;

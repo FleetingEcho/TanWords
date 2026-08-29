@@ -53,6 +53,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   ttsVoiceId: "0",
   ttsExtraDirs: [],
   ttsSpeed: 1,
+  ttsRemoteProviderId: "",
+  ttsRemoteVoice: "",
   asrModelPath: "",
   asrExtraDirs: [],
   showGithubLink: true,
@@ -477,6 +479,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setTtsVoiceId: (id) => {
     set({ ttsVoiceId: id });
     saveSetting("tts_voice_id", JSON.stringify(id));
+  },
+
+  setTtsRemoteProviderId: (id) => {
+    set({ ttsRemoteProviderId: id });
+    saveSetting("tts_remote_provider_id", JSON.stringify(id));
+  },
+
+  setTtsRemoteVoice: (voice) => {
+    set({ ttsRemoteVoice: voice });
+    saveSetting("tts_remote_voice", JSON.stringify(voice));
   },
 
   setTtsExtraDirs: (dirs) => {

@@ -30,6 +30,9 @@ import { resolveShellActiveNav } from "@/components/Layout/shellNavigation";
 import { findPane } from "@/workspaces/normalization";
 import { isWorkspacesEnabled } from "@/pages/workspaceFeature";
 import { resolveStartupDestination } from "@/lib/startupDestination";
+import { prefetchPage } from "@/pages/pageCatalog";
+import { cachedStartupPage } from "@/store/settings/cache";
+import type { NavPage } from "@/store/navStore";
 
 /** Every page is code-split and reached through the central page catalog +
  *  `PageHost`. Only the landing page's chunk is needed to paint; the rest —
@@ -44,6 +47,20 @@ import { resolveStartupDestination } from "@/lib/startupDestination";
 import { LockScreen } from "@/components/Layout/LockScreen";
 import { useAppLockStore } from "@/store/appLockStore";
 import { useServerCapabilitiesStore, useVoiceAssistantAvailable } from "@/store/serverCapabilitiesStore";
+
+// Warm the launch destination's chunk while the splash is up. The settings
+// round-trip (plus the backend handshake behind it) dominates the splash
+// window; fetching the destination page's chunk during that dead time means
+// the route commits as soon as settings land, instead of paying the download
+// after. The cached value is the page the *last* launch resolved to — right
+// every time except the one launch after the setting changes, where it merely
+// prefetches a chunk that stays unused. "workspace" and unknown values fall
+// back to the default destination's chunk.
+{
+  const cached = cachedStartupPage();
+  const page = (cached && cached !== "workspace" ? cached : "dashboard") as NavPage;
+  prefetchPage(page);
+}
 
 const WordDetailModal = React.lazy(() =>
   import("@/components/WordDetailModal").then((m) => ({ default: m.WordDetailModal })));

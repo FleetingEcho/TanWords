@@ -11,7 +11,7 @@
 //! `CREATE ROLE`/`CREATE DATABASE` against the shared instance is the entire
 //! "provisioning" step, and `ALTER ROLE ... NOLOGIN` is "disable".
 
-use rand::RngCore;
+use rand::Rng;
 use sea_orm::{ConnectionTrait, Database};
 use serde_json::json;
 
@@ -38,7 +38,7 @@ fn role_and_db_name(user_id: i64) -> (String, String) {
 /// no character that's special to either.
 fn generate_password() -> String {
     let mut bytes = [0u8; 32];
-    rand::rngs::OsRng.fill_bytes(&mut bytes);
+    rand::rng().fill_bytes(&mut bytes);
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
