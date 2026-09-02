@@ -127,6 +127,7 @@ tts::engine::tts_synthesize
 tts::engine::tts_engine_status
 tts::download::tts_download_model
 tts_remote::tts_remote_synthesize
+ntfy::ntfy_test_notification
 asr::models::asr_scan_models
 asr::models::asr_default_models_dir
 asr::engine::asr_load_model

@@ -13,6 +13,8 @@ pub mod tts;
 /// Remote (OpenAI-compatible HTTP) TTS — no sherpa/ONNX dependency, so it is
 /// compiled regardless of the local-engine feature.
 pub mod tts_remote;
+/// ntfy push reminders for calendar events — pure HTTP, no feature gate.
+pub mod ntfy;
 #[cfg(feature = "asr")]
 pub mod asr;
 pub mod reader;

@@ -9,6 +9,13 @@ import {
 import { useT } from "@/hooks/useT";
 import { CALENDAR_COLOR_TOKENS, colorTokenToSwatch } from "./calendarColors";
 import { addDaysWire, inputValueToWire, todayWire, wireToInputValue } from "./calendarWire";
+import {
+  DEFAULT_TIMED_REMINDER,
+  TIMED_REMINDER_OPTIONS,
+  reminderForAllDay,
+  reminderMinutesToOption,
+  reminderOptionToMinutes,
+} from "./reminderOptions";
 import type { CalendarCategoryRow, CalendarEventRow } from "@/hooks/useDB.calendar";
 
 export interface EventDraft {
@@ -23,6 +30,9 @@ export interface EventDraft {
   /** A per-event colour override token, or '' to inherit the calendar's
    *  colour (the only behaviour before this field existed). */
   colorName: string;
+  /** ntfy reminder: minutes-before for timed events (null = off), or 0 for
+   *  all-day events (= remind at the configured morning time). */
+  reminderMinutes: number | null;
 }
 
 interface Props {
@@ -75,7 +85,10 @@ export function CalendarEventDialog({
       // datetime-local value to an all-day event or vice-versa.
       const startWire = d.start ? (allDay ? d.start.slice(0, 10) : timedFromAllDay(d.start)) : "";
       const endWire = d.end ? (allDay ? d.end.slice(0, 10) : timedFromAllDay(d.end)) : "";
-      return { ...d, allDay, start: startWire, end: endWire };
+      // The reminder's stored shape depends on the event's shape — see
+      // reminderOptions.ts.
+      const reminderMinutes = reminderForAllDay(d.reminderMinutes, allDay);
+      return { ...d, allDay, start: startWire, end: endWire, reminderMinutes };
     });
   };
 
@@ -223,6 +236,38 @@ export function CalendarEventDialog({
         </div>
 
         <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-muted-foreground">{t("calendar.reminder")}</label>
+          {draft.allDay ? (
+            // All-day reminders are binary — they fire at the configured
+            // morning time (settings → ntfy), so a lead-time picker would be
+            // a lie. A checkbox says what actually happens.
+            <label className="flex items-center gap-2 text-sm select-none cursor-pointer">
+              <Checkbox
+                checked={draft.reminderMinutes !== null}
+                onCheckedChange={(v) => setDraft((d) => ({ ...d, reminderMinutes: v === true ? 0 : null }))}
+              />
+              {t("calendar.reminderMorning")}
+            </label>
+          ) : (
+            <Select
+              value={reminderMinutesToOption(draft.reminderMinutes)}
+              onValueChange={(v) => setDraft((d) => ({ ...d, reminderMinutes: reminderOptionToMinutes(v) }))}
+            >
+              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="off">{t("calendar.reminderOff")}</SelectItem>
+                {TIMED_REMINDER_OPTIONS.map((minutes) => (
+                  <SelectItem key={minutes} value={String(minutes)}>
+                    {t("calendar.reminderMinutesBefore", { minutes: String(minutes) })}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <p className="text-xs text-muted-foreground">{t("calendar.reminderHint")}</p>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
           <label className="text-xs font-medium text-muted-foreground">{t("calendar.description")}</label>
           <textarea
             value={draft.description}
@@ -270,6 +315,10 @@ function emptyDraft(calendars: CalendarCategoryRow[], prefill?: Partial<EventDra
     description: prefill?.description ?? "",
     location: prefill?.location ?? "",
     colorName: prefill?.colorName ?? "",
+    // New timed events default to a 30-minute reminder (user decision);
+    // new all-day events to a morning one. An explicit prefill (or null)
+    // wins.
+    reminderMinutes: prefill?.reminderMinutes ?? (allDay ? 0 : DEFAULT_TIMED_REMINDER),
   };
 }
 
@@ -284,6 +333,7 @@ function rowToDraft(row: CalendarEventRow): EventDraft {
     description: row.description,
     location: row.location,
     colorName: row.color_name ?? "",
+    reminderMinutes: row.reminder_minutes,
   };
 }
 

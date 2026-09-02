@@ -47,4 +47,9 @@ export const calendar: Dict = {
     "color.orange": "橙色",
     "color.teal": "青色",
     "color.gray": "灰色",
+    "calendar.reminder": "提醒",
+    "calendar.reminderOff": "关闭",
+    "calendar.reminderMinutesBefore": "提前 {minutes} 分钟",
+    "calendar.reminderMorning": "当天早上提醒",
+    "calendar.reminderHint": "通过 ntfy 推送到手机（设置 → 通知）—— 由常驻的 web 服务器发送，本应用关着也会响。",
 };

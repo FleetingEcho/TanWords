@@ -47,4 +47,9 @@ export const calendar: Dict = {
     "color.orange": "Orange",
     "color.teal": "Teal",
     "color.gray": "Gray",
+    "calendar.reminder": "Reminder",
+    "calendar.reminderOff": "Off",
+    "calendar.reminderMinutesBefore": "{minutes} minutes before",
+    "calendar.reminderMorning": "Morning reminder on the day",
+    "calendar.reminderHint": "Pushed to your phone via ntfy (Settings → Notifications) — the always-on web server sends it, so it fires even when this app is closed.",
 };

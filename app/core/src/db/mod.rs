@@ -223,6 +223,15 @@ async fn init_db_sqlite(conn: &Conn) -> Result<(), DbErr> {
 
     conn.execute_batch(include_str!("../../sql/schema.sql")).await?;
 
+    // The clean-DDL pass above only shapes *fresh* databases —
+    // `CREATE TABLE IF NOT EXISTS` no-ops on a table that already exists, so
+    // a database created before a column was added to the schema would
+    // silently miss it and every query naming it would fail. These
+    // idempotent ALTERs close that gap for live databases (see
+    // `ensure_column`).
+    ensure_column(conn, "calendar_events", "reminder_minutes", "INTEGER").await?;
+    ensure_column(conn, "calendar_events", "reminder_sent_at", "TEXT").await?;
+
     // Seed default calendars.
     let default_calendars = vec![
         ("default", "Personal", "blue", 0),
@@ -292,6 +301,12 @@ async fn init_db_postgres(conn: &Conn) -> Result<(), DbErr> {
     conn.execute_batch(include_str!("../../sql/schema_postgres.sql"))
         .await?;
 
+    // Same reason as the SQLite path: `CREATE TABLE IF NOT EXISTS` cannot add
+    // a column to an existing table. Postgres has native
+    // `ADD COLUMN IF NOT EXISTS`, so this is one statement per column.
+    ensure_column(conn, "calendar_events", "reminder_minutes", "BIGINT").await?;
+    ensure_column(conn, "calendar_events", "reminder_sent_at", "TEXT").await?;
+
     // Seed the same default calendars / settings the SQLite path does, using
     // portable SQL (ON CONFLICT DO NOTHING; CURRENT_TIMESTAMP). These run on
     // every fresh Postgres database; the fingerprint skips them next time.
@@ -336,6 +351,26 @@ async fn init_db_postgres(conn: &Conn) -> Result<(), DbErr> {
     .await?;
 
     Ok(())
+}
+
+/// Idempotently add one column to an existing table, for databases created
+/// before the column entered the schema. Postgres has native
+/// `ADD COLUMN IF NOT EXISTS`; SQLite does not, so its only "already exists"
+/// signal — the `duplicate column name` error — is recognized and treated as
+/// success. Any other failure propagates (the fingerprint is stamped only
+/// after the whole pass succeeds, so a real failure retries on next open).
+async fn ensure_column(conn: &Conn, table: &str, column: &str, decl: &str) -> Result<(), DbErr> {
+    let sql = match conn.kind() {
+        connection::DbKind::Postgres => {
+            format!("ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {decl}")
+        }
+        connection::DbKind::Local => format!("ALTER TABLE {table} ADD COLUMN {column} {decl}"),
+    };
+    match conn.execute(&sql, ()).await {
+        Ok(_) => Ok(()),
+        Err(e) if conn.kind() == connection::DbKind::Local && e.to_string().contains("duplicate column") => Ok(()),
+        Err(e) => Err(e),
+    }
 }
 
 #[cfg(test)]
@@ -405,5 +440,64 @@ mod init_db_tests {
 
         let fresh = memory_conn().await;
         assert!(stored_fingerprint(&fresh).await.is_none());
+    }
+
+    async fn column_exists(conn: &Conn, table: &str, column: &str) -> bool {
+        conn.query_one(
+            &format!("SELECT 1 FROM pragma_table_info('{table}') WHERE name = ?1",),
+            params![column],
+        )
+        .await
+        .unwrap()
+        .is_some()
+    }
+
+    /// A database created before a column entered the schema must gain it on
+    /// the next open: `CREATE TABLE IF NOT EXISTS` alone cannot (the table
+    /// already exists), which is exactly what `ensure_column` exists for.
+    /// Simulated by rebuilding `calendar_events` in its pre-reminder shape and
+    /// forcing the pass with a stale fingerprint.
+    #[tokio::test]
+    async fn an_old_database_gains_newly_added_columns() {
+        let conn = memory_conn().await;
+        init_db(&conn).await.unwrap();
+        // Rewind the table to the shape it had before ntfy reminders.
+        conn.execute_batch(
+            "DROP TABLE calendar_events;
+             CREATE TABLE calendar_events (
+               id TEXT PRIMARY KEY,
+               calendar_id TEXT NOT NULL DEFAULT 'default',
+               title TEXT NOT NULL DEFAULT '',
+               start TEXT NOT NULL,
+               \"end\" TEXT NOT NULL,
+               all_day INTEGER NOT NULL DEFAULT 0,
+               color_name TEXT,
+               description TEXT NOT NULL DEFAULT '',
+               location TEXT NOT NULL DEFAULT '',
+               created_at TEXT NOT NULL DEFAULT (datetime('now')),
+               updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+               FOREIGN KEY(calendar_id) REFERENCES calendar_calendars(id) ON DELETE SET NULL
+             );",
+        )
+        .await
+        .unwrap();
+        // Make the next open look like an upgrade from an older build.
+        conn.execute(
+            "UPDATE user_settings SET value = 'from-an-older-build' WHERE key = ?1",
+            params![SCHEMA_FINGERPRINT_KEY],
+        )
+        .await
+        .unwrap();
+
+        init_db(&conn).await.unwrap();
+
+        assert!(column_exists(&conn, "calendar_events", "reminder_minutes").await);
+        assert!(column_exists(&conn, "calendar_events", "reminder_sent_at").await);
+        // And the rest of the pass still ran — the fingerprint is current,
+        // so a second open is a no-op.
+        assert_eq!(
+            stored_fingerprint(&conn).await.as_deref(),
+            Some(schema_fingerprint(connection::DbKind::Local).as_str())
+        );
     }
 }

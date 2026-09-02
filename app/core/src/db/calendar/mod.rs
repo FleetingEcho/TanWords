@@ -58,6 +58,11 @@ pub struct CalendarEvent {
     /// `None` means "inherit the parent calendar's colour"; `Some(token)` is
     /// a per-event override (see calendarColors.ts's CALENDAR_COLOR_TOKENS).
     pub color_name: Option<String>,
+    /// ntfy reminder lead time in minutes for timed events; `None` = no
+    /// reminder. All-day events carry `Some(0)` as "remind at the configured
+    /// morning time" — the value itself is not a lead time for them (see
+    /// `crate::ntfy`).
+    pub reminder_minutes: Option<i64>,
 }
 
 /// Validate a Schedule-X datetime string. Accepts `YYYY-MM-DD` (all-day) or
@@ -112,7 +117,7 @@ pub async fn db_list_calendar_events(
         &db,
         // `start`/`end` are Postgres reserved words — quoted identifiers work
         // on both sqlite and postgres, so the column names stay portable.
-        "SELECT id, calendar_id, title, \"start\", \"end\", all_day, description, location, created_at, updated_at, color_name
+        "SELECT id, calendar_id, title, \"start\", \"end\", all_day, description, location, created_at, updated_at, color_name, reminder_minutes
          FROM calendar_events
          ORDER BY \"start\" ASC, id ASC",
         (),
@@ -129,6 +134,7 @@ pub async fn db_list_calendar_events(
                 created_at: r.get(8)?,
                 updated_at: r.get(9)?,
                 color_name: r.get::<Option<String>>(10)?,
+                reminder_minutes: r.get::<Option<i64>>(11)?,
             })
         },
     )
@@ -149,6 +155,7 @@ pub async fn db_create_calendar_event(
     location: Option<String>,
     color_name: Option<String>,
     id: Option<String>,
+    reminder_minutes: Option<i64>,
 ) -> Result<String, String> {
     let title = title.trim().to_string();
     let start = start.trim().to_string();
@@ -170,8 +177,8 @@ pub async fn db_create_calendar_event(
     let out_id = id.clone();
     db::await_write(&conn, async {
         db.execute(
-            "INSERT INTO calendar_events (id, calendar_id, title, \"start\", \"end\", all_day, description, location, color_name)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            "INSERT INTO calendar_events (id, calendar_id, title, \"start\", \"end\", all_day, description, location, color_name, reminder_minutes)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 id,
                 calendar_id,
@@ -182,6 +189,7 @@ pub async fn db_create_calendar_event(
                 description.unwrap_or_default(),
                 location.unwrap_or_default(),
                 color_name,
+                reminder_minutes,
             ],
         )
         .await
@@ -204,6 +212,7 @@ pub async fn db_update_calendar_event(
     description: Option<String>,
     location: Option<String>,
     color_name: Option<String>,
+    reminder_minutes: Option<Option<i64>>,
 ) -> Result<(), String> {
     let id = sanitize_id(&id);
     if id.is_empty() {
@@ -220,6 +229,39 @@ pub async fn db_update_calendar_event(
 
     let db = db::conn(&conn)?;
     db::await_write(&conn, async {
+        // Read the pre-edit row FIRST, before the statements below overwrite
+        // it: the re-arm rule at the bottom decides whether an already-fired
+        // reminder (`reminder_sent_at` set) should fire again, and "did the
+        // start time actually change?" is only answerable against the old
+        // value. Computed here as well so `start_raw` is compared before the
+        // UPDATE below moves it.
+        //
+        // reminder_minutes has the same three-way shape as color_name, but as
+        // `Option<Option<i64>>` because numbers have no spare ""-like
+        // sentinel: absent = untouched (drag/resize never touches reminders),
+        // null = off, number = set.
+        let rearm = match reminder_minutes {
+            Some(value) => {
+                let current = db::fetch_optional(
+                    &db,
+                    "SELECT \"start\", reminder_minutes FROM calendar_events WHERE id = ?1",
+                    params![id.clone()],
+                    |r| Ok((r.get::<String>(0)?, r.get::<Option<i64>>(1)?)),
+                )
+                .await
+                .map_err(|e| e.to_string())?;
+                current.map(|(old_start, old_reminder)| {
+                    // A reminder that already fired fires again only when the
+                    // *reason* it fired changed — the start time moved, or the
+                    // reminder setting itself changed. Comparing against the
+                    // stored row rather than trusting the client to know keeps
+                    // a no-op modal save from re-notifying.
+                    let start_changed = !start_raw.is_empty() && start_raw != old_start;
+                    (value, start_changed || value != old_reminder)
+                })
+            }
+            None => None,
+        };
         // COALESCE keeps omitted fields at their current value: drag-to-move
         // sends only start/end, the modal sends only title/description, and a
         // calendar switch sends only calendar_id. One command serves all three
@@ -262,6 +304,22 @@ pub async fn db_update_calendar_event(
             let value = if value.is_empty() { None } else { Some(value) };
             db.execute(
                 "UPDATE calendar_events SET color_name = ?2, updated_at = datetime('now') WHERE id = ?1",
+                params![id.clone(), value],
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        }
+        if let Some((value, should_rearm)) = rearm {
+            if should_rearm {
+                db.execute(
+                    "UPDATE calendar_events SET reminder_sent_at = NULL WHERE id = ?1",
+                    params![id.clone()],
+                )
+                .await
+                .map_err(|e| e.to_string())?;
+            }
+            db.execute(
+                "UPDATE calendar_events SET reminder_minutes = ?2, updated_at = datetime('now') WHERE id = ?1",
                 params![id, value],
             )
             .await

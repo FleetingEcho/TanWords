@@ -413,6 +413,14 @@ CREATE TABLE IF NOT EXISTS calendar_events (
   location     TEXT NOT NULL DEFAULT '',
   created_at   TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  -- ntfy reminders (see src/ntfy.rs): NULL = no reminder. For timed events
+  -- the value is minutes-before-start; for all-day events any non-NULL value
+  -- means "remind at the configured morning time" and the stored value is 0.
+  reminder_minutes INTEGER,
+  -- When this event's reminder last fired, so it fires exactly once per
+  -- (event, start-time) even across scheduler restarts. Cleared by
+  -- db_update_calendar_event whenever start or reminder_minutes changes.
+  reminder_sent_at TEXT,
   FOREIGN KEY(calendar_id) REFERENCES calendar_calendars(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS idx_calendar_events_calendar ON calendar_events(calendar_id);

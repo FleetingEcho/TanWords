@@ -185,6 +185,7 @@ mod auth;
 mod backup;
 mod db;
 mod handlers;
+mod ntfy;
 mod postgres_remote;
 mod static_files;
 
@@ -361,6 +362,7 @@ pub async fn serve(
 ) -> Result<(), String> {
     let config = Arc::new(config);
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(());
+    let scheduler_pool = pool.clone();
     let state = WebState {
         users,
         limiter: Arc::new(RateLimiter::new()),
@@ -381,6 +383,12 @@ pub async fn serve(
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .map_err(|e| format!("cannot bind {addr}: {e}"))?;
+
+    // Spawned only after the bind succeeds — a server that failed to start
+    // must not push reminders for a port it never owned. The task owns its
+    // own Arc to the pool, not the (moved) WebState, so it outlives the
+    // router.
+    ntfy::spawn_ntfy_scheduler(scheduler_pool);
 
     eprintln!("[tanwords-web] listening on http://{addr}");
     eprintln!("[tanwords-web] data dir: {}", config.data_dir.display());

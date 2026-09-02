@@ -272,6 +272,7 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
         None,
         None,
         None,
+        None,
     )
     .await
     .unwrap();

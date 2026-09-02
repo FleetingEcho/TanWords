@@ -253,6 +253,10 @@ export function CalendarPage() {
         // override back to inheriting the calendar's color — see the Rust
         // command's own comment on why this field needs that distinction.
         colorName: draft.colorName,
+        // Same three-way reason as colorName: always sent so an explicit
+        // null can turn a reminder off (the Rust side re-arms a fired
+        // reminder only when the value actually changed).
+        reminderMinutes: draft.reminderMinutes,
       });
     } else {
       ok = (await db.createEvent({
@@ -264,6 +268,7 @@ export function CalendarPage() {
         description: draft.description,
         location: draft.location,
         colorName: draft.colorName,
+        reminderMinutes: draft.reminderMinutes,
       })) !== null;
     }
     if (!ok) return false;

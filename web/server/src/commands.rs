@@ -173,6 +173,10 @@ const ALLOWED: &[&str] = &[
     "tts_remote_synthesize",
     "tts_engine_status",
     "tts_download_model",
+    // ── ntfy reminders: per-user settings + one explicit test push ─────────
+    // Sends a single notification to the caller's own configured server;
+    // the scheduler's recurring sends never route through /invoke.
+    "ntfy_test_notification",
     "asr_scan_models",
     "asr_default_models_dir",
     "asr_load_model",

@@ -33,6 +33,10 @@ export interface CalendarEventRow {
   /** A per-event colour override token, or `null` to inherit the parent
    *  calendar's colour (see calendarColors.ts's CALENDAR_COLOR_TOKENS). */
   color_name: string | null;
+  /** ntfy reminder lead time in minutes for timed events; `null` = no
+   *  reminder. All-day events carry `0` = "remind at the configured morning
+   *  time" (see the Rust ntfy module). */
+  reminder_minutes: number | null;
 }
 
 /** The subset of fields the create command accepts; `id` is optional so the
@@ -48,6 +52,8 @@ export interface CalendarEventInput {
   location?: string;
   /** '' (or omitted) inherits the calendar's colour. */
   colorName?: string;
+  /** Reminder lead in minutes (`null` = off); all-day events use 0. */
+  reminderMinutes?: number | null;
 }
 
 /** Partial update — every field except `id` is optional so drag-to-move sends
@@ -55,7 +61,8 @@ export interface CalendarEventInput {
  *  `colorName` is special: omitting it leaves the event's colour untouched,
  *  but an explicit `''` clears an existing override back to "inherit" (see
  *  the Rust command's own comment on why this one field needs that
- *  three-way distinction). */
+ *  three-way distinction). `reminderMinutes` has the same shape: omitted
+ *  leaves it untouched, explicit `null` turns it off, a number sets it. */
 export interface CalendarEventUpdate {
   id: string;
   calendarId?: string;
@@ -66,6 +73,7 @@ export interface CalendarEventUpdate {
   description?: string;
   location?: string;
   colorName?: string;
+  reminderMinutes?: number | null;
 }
 
 export interface CalendarCategoryInput {
@@ -111,6 +119,7 @@ export function useDBCalendar() {
         description: input.description,
         location: input.location,
         colorName: input.colorName,
+        reminderMinutes: input.reminderMinutes ?? null,
         id: input.id,
       });
     } catch (e) {
@@ -133,6 +142,7 @@ export function useDBCalendar() {
         description: update.description,
         location: update.location,
         colorName: update.colorName,
+        reminderMinutes: update.reminderMinutes,
       });
       return true;
     } catch (e) {

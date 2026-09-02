@@ -81,6 +81,12 @@ impl RuntimePool {
         self.data_dir.join("users").join(user_id.to_string())
     }
 
+    /// The credential store — the ntfy scheduler walks its user list each
+    /// pass (see `server/ntfy.rs`).
+    pub(crate) fn users(&self) -> &Arc<UsersDb> {
+        &self.users
+    }
+
     pub async fn runtime_for(&self, user_id: i64) -> Result<Arc<UserRuntime>, String> {
         // Fast path: already spawned.
         {

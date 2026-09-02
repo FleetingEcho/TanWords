@@ -70,6 +70,11 @@ CREATE TABLE IF NOT EXISTS calendar_events (
             location     TEXT NOT NULL DEFAULT '',
             created_at   TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')),
             updated_at   TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')), color_name TEXT,
+            -- ntfy reminders (see src/ntfy.rs): NULL = no reminder. Timed
+            -- events store minutes-before-start; all-day events store 0 and
+            -- remind at the configured morning time.
+            reminder_minutes BIGINT,
+            reminder_sent_at TEXT,
             FOREIGN KEY(calendar_id) REFERENCES calendar_calendars(id) ON DELETE SET NULL
         );
 

@@ -440,6 +440,20 @@ impl UsersDb {
         Ok(true)
     }
 
+    /// Every user id, ascending. The ntfy reminder scheduler walks this list
+    /// each pass (see `server::spawn_ntfy_scheduler`), so it stays a plain
+    /// read — no per-user work happens here.
+    pub async fn list_user_ids(&self) -> Result<Vec<i64>, String> {
+        let conn = self.conn.lock().await;
+        let rows = conn
+            .query_all_raw(stmt("SELECT id FROM users ORDER BY id ASC", []))
+            .await
+            .map_err(|e| e.to_string())?;
+        rows.iter()
+            .map(|r| r.try_get_by_index::<i64>(0).map_err(|e| e.to_string()))
+            .collect()
+    }
+
     pub async fn app_lock_enabled(&self, user_id: i64) -> Result<bool, String> {
         let conn = self.conn.lock().await;
         let row = conn
