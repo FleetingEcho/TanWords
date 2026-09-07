@@ -70,7 +70,7 @@ TANWORDS_PORT=8740 \
 | Var | Required | Default | Meaning |
 |---|---|---|---|
 | `TANWORDS_MASTER_KEY` | **yes** | — | 32 bytes, hex or base64. Seals each user's Postgres password + AI provider keys on disk and signs web JWTs. Generate: `openssl rand -hex 32`. |
-| `TANWORDS_JWT_TTL_SECS` | no | `604800` | Absolute JWT lifetime in seconds (one week by default). |
+| `TANWORDS_JWT_TTL_SECS` | no | `2592000` | Session lifetime in seconds. Every authenticated request renews it to now + TTL (30 days by default), so an active user stays logged in indefinitely; an idle one is logged out on schedule. |
 | `TANWORDS_INVITE_KEY` | no | unset | Gates **register** only. This is the one you hand to people you invite. Unset = registration closed (existing logins still work). |
 | `TANWORDS_ADMIN_KEY` | no | unset | Gates **reset-password**. Keep it to yourself — it can set any account's password from its email address alone. **Must not equal the invite key**: sharing one secret between the two doors gives every invited user the ability to take over every other account, including yours. Unset = password reset closed. |
 | `TANWORDS_TRUST_PROXY` | no | `false` | Set to `1` only when nothing can reach this port except your reverse proxy. Makes the rate limiter read the last hop of `X-Forwarded-For` instead of the peer address. Leaving it off behind a proxy means every user shares one rate-limit bucket, so ten failed logins from anyone lock out everyone. Turning it on while the port is directly reachable lets any caller forge a fresh identity per request and skip the limiter entirely. |

@@ -114,7 +114,7 @@ impl Config {
                         .ok_or_else(|| "TANWORDS_JWT_TTL_SECS must be a positive integer".to_string())
                 })
                 .transpose()?
-                .unwrap_or(7 * 24 * 3600),
+                .unwrap_or(30 * 24 * 3600),
             // Reverse proxies replace the peer address with their own, so the
             // per-IP limiter needs to be told when to read X-Forwarded-For —
             // and told explicitly, because a server that trusts that header

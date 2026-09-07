@@ -356,8 +356,12 @@ impl UsersDb {
     }
 
     /// Validates both the signed JWT and its revocable server-side session row.
+    /// The session row is the sole expiry authority and slides forward on
+    /// activity (see the renewal below), so the JWT's own exp claim — frozen at
+    /// issuance — must not cap the session at the original TTL.
     pub async fn validate(&self, token: &str) -> Result<Option<UserRecord>, String> {
-        let validation = Validation::new(Algorithm::HS256);
+        let mut validation = Validation::new(Algorithm::HS256);
+        validation.validate_exp = false;
         let claims = match decode::<JwtClaims>(token, &self.jwt_decoding_key, &validation) {
             Ok(data) => data.claims,
             Err(_) => return Ok(None),
@@ -393,6 +397,25 @@ impl UsersDb {
                 ))
                 .await;
             return Ok(None);
+        }
+        // Sliding renewal: every authenticated request pushes the absolute
+        // expiry back to now + TTL, so an active user never has to log in
+        // again while an abandoned token still dies on schedule. Runs on the
+        // read connection — the single-connection pool serializes it with
+        // other statements, and validation must not queue behind the
+        // credential-write mutex (the property the
+        // jwt_session_is_valid_and_revocable test asserts). A failed bump is
+        // not fatal: the previous expiry still applies until the next request
+        // retries it.
+        let target = now + self.jwt_ttl_secs;
+        if expires < target {
+            let _ = self
+                .session_reader
+                .execute_raw(stmt(
+                    "UPDATE sessions SET expires_at = ?, last_seen_at = ? WHERE token_hash = ?",
+                    [target.into_sq(), now.into_sq(), token_hash.into_sq()],
+                ))
+                .await;
         }
         // Opportunistic sweep of expired rows, ~1% of validations.
         if now % 37 == 0 {

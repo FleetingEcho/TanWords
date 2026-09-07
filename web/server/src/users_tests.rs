@@ -56,6 +56,50 @@ async fn jwt_session_is_valid_and_revocable() {
 }
 
 #[tokio::test]
+async fn session_expiry_slides_on_activity() {
+    // A 2-second TTL: short enough to sleep past in a test, long enough for
+    // the two 1.3s sleeps below to land with margin on either side of it.
+    let dir = std::env::temp_dir().join(format!(
+        "tanwords-slide-test-{}",
+        uuid::Uuid::new_v4()
+    ));
+    let users = UsersDb::open(&dir.join("users.db"), [7; 32], 2)
+        .await
+        .unwrap();
+    let user_id = users
+        .register("slider@example.com", "correct-horse")
+        .await
+        .unwrap();
+    let (_, active) = users
+        .login("slider@example.com", "correct-horse")
+        .await
+        .unwrap()
+        .unwrap();
+    // A second session that is never validated again — it must die on its
+    // original schedule, proving renewal is per-request activity, not global.
+    let (_, idle) = users
+        .login("slider@example.com", "correct-horse")
+        .await
+        .unwrap()
+        .unwrap();
+
+    // t0: both sessions expire at t0+2.
+    tokio::time::sleep(Duration::from_millis(1300)).await; // t0+1.3
+    assert_eq!(
+        users.validate(&active).await.unwrap().unwrap().id,
+        user_id
+    ); // active slid to ~t0+3.3
+    tokio::time::sleep(Duration::from_millis(1300)).await; // t0+2.6, past the ORIGINAL expiry
+    // Would be logged out here without the slide from the request above.
+    assert!(users.validate(&active).await.unwrap().is_some());
+    // The never-used session kept its t0+2 expiry and is gone.
+    assert!(users.validate(&idle).await.unwrap().is_none());
+
+    drop(users);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[tokio::test]
 async fn web_app_lock_is_per_user_and_requires_current_password() {
     let (users, dir) = test_users("app-lock-test").await;
     let first = users
