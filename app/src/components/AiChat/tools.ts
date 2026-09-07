@@ -267,6 +267,10 @@ const ALL_TOOL_DEFS: Record<string, ToolDef> = {
         all_day:     { type: "boolean", description: "True for an all-day event. Default false." },
         description: { type: "string", description: "Optional notes/description" },
         location:    { type: "string", description: "Optional location" },
+        reminder_minutes: {
+          type: ["number", "null"],
+          description: "ntfy push reminder for this event. Timed event: minutes before start to notify (e.g. 30). All-day event: 0 = notify at the configured morning time (default 09:00). Pass null for no reminder. If omitted, timed events default to a 30-minute reminder and all-day events to the morning one — so say so explicitly when the user does NOT want to be reminded.",
+        },
       },
       required: ["title", "start", "end"],
     },
@@ -285,6 +289,10 @@ const ALL_TOOL_DEFS: Record<string, ToolDef> = {
         all_day:     { type: "boolean", description: "Switch between timed and all-day" },
         description: { type: "string", description: "New notes/description" },
         location:    { type: "string", description: "New location" },
+        reminder_minutes: {
+          type: ["number", "null"],
+          description: "New reminder setting: minutes before start for a timed event, 0 for the all-day morning reminder, or null to turn the reminder off. Omit to leave the reminder unchanged.",
+        },
       },
       required: ["id"],
     },
@@ -521,7 +529,7 @@ export async function executeTool(call: ToolCall, options: { privateMode?: boole
         if (filtered.length === 0) return { tool_use_id: id, content: "No matching events." };
         const page = filtered.slice(0, safeLimit);
         const lines = page.map((e) =>
-          `- [${e.id}] "${e.title}" ${e.start} → ${e.end}${e.all_day ? " (all day)" : ""}${e.location ? ` @ ${e.location}` : ""}`
+          `- [${e.id}] "${e.title}" ${e.start} → ${e.end}${e.all_day ? " (all day)" : ""}${e.location ? ` @ ${e.location}` : ""}${e.reminder_minutes != null ? (e.all_day ? " [morning reminder]" : ` [reminder ${e.reminder_minutes}m before]`) : " [no reminder]"}`
         ).join("\n");
         return {
           tool_use_id: id,
@@ -530,22 +538,33 @@ export async function executeTool(call: ToolCall, options: { privateMode?: boole
       }
 
       case "create_event": {
-        const { title, start, end, all_day, description, location } = input as {
+        const { title, start, end, all_day, description, location, reminder_minutes } = input as {
           title: string; start: string; end: string; all_day?: boolean; description?: string; location?: string;
+          reminder_minutes?: number | null;
         };
+        const allDay = all_day ?? false;
+        // Same defaults the event dialog uses for a new event: timed = 30
+        // minutes before, all-day = the configured morning time. An explicit
+        // null from the model opts out; ntfy only pushes when configured.
+        const reminderMinutes = reminder_minutes === undefined ? (allDay ? 0 : 30) : reminder_minutes;
         const eventId: string = await invoke("db_create_calendar_event", {
           title, start, end,
-          allDay: all_day ?? false,
+          allDay,
           description: description ?? "",
           location: location ?? "",
+          reminderMinutes,
         });
         window.dispatchEvent(new CustomEvent("calendar-updated"));
-        return { tool_use_id: id, content: `✓ Created "${title}" (${start} → ${end}), id ${eventId}.` };
+        const reminderNote = reminderMinutes == null
+          ? "no reminder"
+          : allDay ? "morning reminder" : `reminder ${reminderMinutes} min before`;
+        return { tool_use_id: id, content: `✓ Created "${title}" (${start} → ${end}), id ${eventId}, ${reminderNote}.` };
       }
 
       case "update_event": {
-        const { id: eventId, title, start, end, all_day, description, location } = input as {
+        const { id: eventId, title, start, end, all_day, description, location, reminder_minutes } = input as {
           id: string; title?: string; start?: string; end?: string; all_day?: boolean; description?: string; location?: string;
+          reminder_minutes?: number | null;
         };
         let startWire = start;
         let endWire = end;
@@ -567,6 +586,10 @@ export async function executeTool(call: ToolCall, options: { privateMode?: boole
         }
         await invoke("db_update_calendar_event", {
           id: eventId, title, start: startWire, end: endWire, allDay: all_day, description, location,
+          // Three-way: key omitted = leave the reminder untouched, null =
+          // turn it off, number = set it. Spreading keeps the key absent
+          // from the JSON body entirely (the Rust side distinguishes).
+          ...(reminder_minutes === undefined ? {} : { reminderMinutes: reminder_minutes }),
         });
         window.dispatchEvent(new CustomEvent("calendar-updated"));
         return { tool_use_id: id, content: `✓ Updated event ${eventId}.` };
