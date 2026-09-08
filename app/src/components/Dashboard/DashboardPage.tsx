@@ -34,20 +34,20 @@ function StatTile({
     <button
       type="button"
       onClick={onClick}
-      className={`group rounded-2xl border border-border px-5 py-4 text-left transition-[transform,border-color,background-color,box-shadow] hover:-translate-y-0.5 hover:border-primary/35 hover:bg-muted/20 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:translate-y-0 ${
+      className={`group rounded-2xl border border-border px-5 py-4 max-lg:px-4 max-lg:py-3.5 text-left transition-[transform,border-color,background-color,box-shadow] hover:-translate-y-0.5 hover:border-primary/35 hover:bg-muted/20 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:translate-y-0 ${
         transparent ? "bg-transparent" : "bg-card"
       }`}
     >
       {value === null ? (
-        <div className="h-[30px] flex items-center" aria-hidden>
-          <div className="h-6 w-14 rounded-lg bg-muted animate-pulse" />
+        <div className="h-[30px] max-lg:h-6 flex items-center" aria-hidden>
+          <div className="h-6 max-lg:h-5 w-14 rounded-lg bg-muted animate-pulse" />
         </div>
       ) : (
-        <p className={`text-3xl font-bold leading-none tabular-nums h-[30px] ${accent ? "text-primary" : ""}`}>
+        <p className={`text-3xl max-lg:text-2xl font-bold leading-none tabular-nums h-[30px] max-lg:h-6 ${accent ? "text-primary" : ""}`}>
           {value}
         </p>
       )}
-      <p className="mt-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground transition-colors group-hover:text-foreground">
+      <p className="mt-2 max-lg:mt-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground transition-colors group-hover:text-foreground">
         {label}
       </p>
     </button>
@@ -119,7 +119,7 @@ export function DashboardPage() {
   });
 
   return (
-    <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 animate-fade-in w-full">
+    <div className="p-3 sm:p-6 space-y-3 sm:space-y-5 animate-fade-in w-full">
       {dashboardBanner && dashboardBannerVisible && (
         <div className="w-full h-[200px] rounded-2xl overflow-hidden border border-border">
           {/* The banner is far wider than most photos, so `cover` always discards
@@ -142,10 +142,10 @@ export function DashboardPage() {
         </div>
       )}
 
-      {/* Greeting */}
+      {/* Greeting — kept tight on phones so the first screen reaches content */}
       <div>
-        <h1 className="text-2xl font-bold">{greeting}</h1>
-        <p className="text-sm text-muted-foreground mt-1">{dateLabel}</p>
+        <h1 className="text-xl sm:text-2xl font-bold">{greeting}</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">{dateLabel}</p>
       </div>
 
       {/* Stat tiles: how much of each thing the app collects, not how
@@ -160,16 +160,18 @@ export function DashboardPage() {
       {/* Navigation, not a "recent" anything — hence outside the grid below */}
       <QuickActionsBar />
 
-      {/* Files land in the same standalone store the asset manager lists, so
-        * dropping something here and opening Docs › assets shows the same file. */}
-      <UploadsCard />
-
-      {/* Recents — six cards, every one the same height (see DashboardCard) */}
+      {/* Recents — six cards, every one the same height (see DashboardCard).
+        * Sits ahead of the upload card: on a phone the first screen should
+        * reach continuable content before an upload affordance. */}
       <DashboardWidgetGrid
         stats={stats}
         statsFailed={statsSettled && !stats}
         onInitialDataSettled={handleWidgetsSettled}
       />
+
+      {/* Files land in the same standalone store the asset manager lists, so
+        * dropping something here and opening Docs › assets shows the same file. */}
+      <UploadsCard />
     </div>
   );
 }

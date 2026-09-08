@@ -156,6 +156,13 @@
   width: 100%;
   border-collapse: collapse;
   font-size: 0.9em;
+  /* Wide tables scroll inside their own box instead of stretching the
+    * article column past the phone viewport. */
+  display: block;
+  overflow-x: auto;
+}
+.reader-article-content iframe {
+  max-width: 100%;
 }
 .reader-article-content th,
 .reader-article-content td {

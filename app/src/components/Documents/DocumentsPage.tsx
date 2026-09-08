@@ -205,7 +205,7 @@ export function DocumentsPage() {
             onClick={() => setShowMobileEditor(false)}
             title={t("doc.collapseFiles")}
             aria-label={t("doc.collapseFiles")}
-            className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+            className="h-11 w-11 lg:h-7 lg:w-7 shrink-0 text-muted-foreground hover:text-foreground"
           >
             <ChevronsLeft className="h-4 w-4" />
           </Button>
@@ -213,9 +213,9 @@ export function DocumentsPage() {
       )}
 
       <div className="relative flex-1 overflow-hidden">
-        <div className={`absolute inset-0 ${source === "db" ? "flex" : "hidden"} overflow-hidden ${dbZenMode ? `fixed inset-0 z-50 ${hasCustomAppBackground ? "" : "bg-background"}` : ""}`}>
+        <div className={`absolute inset-0 ${source === "db" ? "flex" : "hidden"} overflow-hidden ${dbZenMode ? `fixed inset-0 z-[60] ${hasCustomAppBackground ? "" : "bg-background"}` : ""}`}>
             {!dbZenMode && (
-            <div className={`relative flex h-full shrink-0 ${showMobileEditor ? "max-lg:hidden" : ""}`}>
+            <div className={`relative flex h-full shrink-0 max-lg:w-full max-lg:shrink ${showMobileEditor ? "max-lg:hidden" : ""}`}>
               {dbSidebarOpen && (
                 <DocSelector
                   sourceTabs={sourceTabs}
@@ -229,13 +229,18 @@ export function DocumentsPage() {
                   beforeLock={flushActiveDocument}
                 />
               )}
-              <ListPanelEdgeHandle
-                edge="leading"
-                collapsed={!dbSidebarOpen}
-                onClick={() => setDbSidebarOpen(!dbSidebarOpen)}
-                label={dbSidebarOpen ? t("doc.collapseFiles") : t("doc.expandFiles")}
-                top="top-3"
-              />
+              {/* Phones switch list/editor through the top toggle; the desktop
+                * collapse pull-tab has no counterpart there, so it stays off
+                * the narrow layout entirely instead of being CSS-hidden. */}
+              {!isNarrow && (
+                <ListPanelEdgeHandle
+                  edge="leading"
+                  collapsed={!dbSidebarOpen}
+                  onClick={() => setDbSidebarOpen(!dbSidebarOpen)}
+                  label={dbSidebarOpen ? t("doc.collapseFiles") : t("doc.expandFiles")}
+                  top="top-3"
+                />
+              )}
             </div>
             )}
 

@@ -337,8 +337,8 @@ export function TerminalSection() {
               step={1}
               value={blur}
               onChange={(event) => setBlur(Number(event.target.value))}
+              aria-label={t("settings.terminalBackgroundBlur")}
               className="w-full accent-primary"
-              aria-label={t("toolsPage.terminal.blurLabel")}
             />
           </div>
         </SettingRow>
@@ -362,8 +362,8 @@ export function TerminalSection() {
               step={1}
               value={opacity}
               onChange={(event) => setOpacity(Number(event.target.value))}
+              aria-label={t("settings.terminalBackgroundOpacity")}
               className="w-full accent-primary"
-              aria-label={t("toolsPage.terminal.opacityLabel")}
             />
           </div>
         </SettingRow>

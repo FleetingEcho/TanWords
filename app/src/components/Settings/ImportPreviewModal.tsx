@@ -75,7 +75,7 @@ export function ImportPreviewModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4">
       <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border border-border bg-background shadow-xl">
         <div className="shrink-0 border-b border-border px-5 py-4">
           <h2 className="text-sm font-semibold text-foreground">{t("settings.importDBTitle")}</h2>

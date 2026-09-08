@@ -27,7 +27,7 @@ export function LocalDocsView({
   return (
     <div className={`flex h-full overflow-hidden ${
       zenMode
-        ? `fixed inset-0 z-50 ${hasCustomAppBackground ? "" : "bg-background"}`
+        ? `fixed inset-0 z-[60] ${hasCustomAppBackground ? "" : "bg-background"}`
         : "bg-transparent"
     }`}>
       {/* Sidebar */}
@@ -81,7 +81,7 @@ export function LocalDocsView({
                 disabled={importing || selectedPaths.size === 0}
                 title={t("doc.importToLibrary")}
                 aria-label={t("doc.importToLibrary")}
-                className="h-6 w-6 shrink-0 rounded-md text-primary hover:bg-primary/10 disabled:opacity-40"
+                className="h-10 w-10 lg:h-6 lg:w-6 shrink-0 rounded-md text-primary hover:bg-primary/10 disabled:opacity-40"
               >
                 {importing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FolderInput className="h-3.5 w-3.5" />}
               </Button>
@@ -92,14 +92,14 @@ export function LocalDocsView({
                 disabled={selectedPaths.size === 0}
                 title={t("doc.exportSelected")}
                 aria-label={t("doc.exportSelected")}
-                className="h-6 w-6 shrink-0 rounded-md text-primary hover:bg-primary/10 disabled:opacity-40"
+                className="h-10 w-10 lg:h-6 lg:w-6 shrink-0 rounded-md text-primary hover:bg-primary/10 disabled:opacity-40"
               >
                 <Download className="h-3.5 w-3.5" />
               </Button>
               <Button
                 variant="ghost"
                 onClick={exitSelectionMode}
-                className="h-6 shrink-0 rounded-md px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                className="h-10 lg:h-6 shrink-0 rounded-md px-2 text-[11px] text-muted-foreground hover:text-foreground"
               >
                 {t("doc.exitSelection")}
               </Button>
@@ -111,12 +111,12 @@ export function LocalDocsView({
       {/* Editor pane */}
       <div className={`flex-1 min-w-0 flex flex-col ${isNarrow && !showMobileEditor ? "max-lg:hidden" : ""}`}>
         {isNarrow && showMobileEditor && (
-          <div className="flex h-10 shrink-0 items-center border-b border-border/60 px-2">
+          <div className="flex h-12 shrink-0 items-center border-b border-border/60 px-2">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setShowMobileEditor(false)}
-              className="h-9 gap-1 rounded-lg px-2 text-xs text-muted-foreground hover:text-foreground"
+              className="h-11 gap-1 rounded-lg px-2 text-xs text-muted-foreground hover:text-foreground"
             >
               <ChevronLeft className="h-4 w-4" />
               {t("doc.collapseFiles")}

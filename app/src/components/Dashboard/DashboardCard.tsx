@@ -48,7 +48,9 @@ export function DashboardCard({
   );
   return (
     <div className={`${hasCustomAppBackground ? "bg-transparent" : "bg-card"} border border-border rounded-2xl overflow-hidden flex flex-col h-full`}>
-      <div className="h-10 shrink-0 flex items-center gap-2 px-4 border-b border-border">
+      {/* 44px tall below `lg` so the "View all" tap target inside it clears
+        * the 44px minimum; the row itself stays desktop-compact at h-10. */}
+      <div className="h-11 lg:h-10 shrink-0 flex items-center gap-2 px-4 border-b border-border">
         <h2 className="text-sm font-semibold inline-flex items-center gap-1.5 shrink-0">
           {icon}
           {title}
@@ -59,7 +61,7 @@ export function DashboardCard({
           <Button
             variant="link"
             onClick={onViewAll}
-            className="h-auto p-0 shrink-0 text-[11px] font-semibold text-primary hover:underline"
+            className="h-full max-lg:px-2 shrink-0 p-0 text-[11px] font-semibold text-primary hover:underline"
           >
             {t("dash.viewAll")}
           </Button>

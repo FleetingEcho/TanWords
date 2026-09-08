@@ -74,12 +74,14 @@ export function DocPanelHeader({
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <input
-            type="text"
+            type="search"
+            enterKeyHint="search"
+            autoComplete="off"
             value={search}
             onChange={(event) => onSearchChange(event.target.value)}
             placeholder={searchPlaceholder}
             aria-label={searchAriaLabel}
-            className={`h-7 w-full rounded-lg border border-border bg-card text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-1 focus:ring-primary/40 ${
+            className={`h-9 max-lg:text-base lg:h-7 w-full rounded-lg border border-border bg-card text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-1 focus:ring-primary/40 [&::-webkit-search-cancel-button]:hidden ${
               filters ? "pl-7 pr-8" : "pl-7 pr-2.5"
             }`}
           />
@@ -90,7 +92,7 @@ export function DocPanelHeader({
               title={filters.label}
               aria-label={filters.label}
               aria-expanded={filters.open}
-              className={`absolute right-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-md transition-colors ${
+              className={`absolute right-0.5 top-1/2 flex h-7 w-7 lg:h-5 lg:w-5 -translate-y-1/2 items-center justify-center rounded-md transition-colors ${
                 filters.open || filters.activeCount > 0
                   ? "text-primary hover:bg-primary/10"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -117,7 +119,7 @@ export function DocPanelHeader({
             // Outlined and tinted rather than a filled slab. Filled, this was
             // the loudest element on the screen for a control used a few times
             // a day, and it drowned out the document titles it sits above.
-            className="h-7 w-7 shrink-0 rounded-lg border border-primary/40 bg-primary/10 p-0 text-primary shadow-none hover:bg-primary/20 hover:text-primary"
+            className="h-11 w-11 max-lg:mr-1 lg:h-7 lg:w-7 shrink-0 rounded-lg border border-primary/40 bg-primary/10 p-0 text-primary shadow-none hover:bg-primary/20 hover:text-primary"
           >
             <Plus className="h-3.5 w-3.5" />
           </Button>

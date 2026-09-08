@@ -57,7 +57,7 @@ export function DocSelectorHeader({
             variant="ghost"
             size="icon"
             onClick={onOpenImages}
-            className="h-6 w-6 shrink-0 text-muted-foreground hover:text-primary"
+            className="h-11 w-11 lg:h-6 lg:w-6 shrink-0 text-muted-foreground hover:text-primary"
             title={t("doc.manageDatabaseImages")}
             aria-label={t("doc.manageDatabaseImages")}
           >
@@ -65,7 +65,7 @@ export function DocSelectorHeader({
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground" title={t("doc.more")} aria-label={t("doc.more")}>
+              <Button variant="ghost" size="icon" className="h-11 w-11 lg:h-6 lg:w-6 shrink-0 text-muted-foreground hover:text-foreground" title={t("doc.more")} aria-label={t("doc.more")}>
                 <MoreHorizontal className="h-3.5 w-3.5" />
               </Button>
             </DropdownMenuTrigger>
@@ -90,7 +90,7 @@ export function DocSelectorHeader({
               * own line, is legible at any panel width. */}
             <div className="flex flex-wrap gap-1.5">
               <Select value={sort} onValueChange={setSort}>
-                <SelectTrigger className="h-6 min-w-[7.5rem] flex-1 gap-1 rounded-lg border border-border bg-card px-1.5 text-[11px] text-foreground focus:outline-hidden [&_svg]:h-3 [&_svg]:w-3">
+                <SelectTrigger className="h-9 lg:h-6 min-w-[7.5rem] flex-1 gap-1 rounded-lg border border-border bg-card px-1.5 text-[11px] text-foreground focus:outline-hidden [&_svg]:h-3 [&_svg]:w-3">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -101,7 +101,7 @@ export function DocSelectorHeader({
               </Select>
               {allTags.length > 0 && (
                 <Select value={tagFilter || "__all__"} onValueChange={(v) => setTagFilter(v === "__all__" ? "" : v)}>
-                  <SelectTrigger className="h-6 min-w-[7.5rem] flex-1 gap-1 rounded-lg border border-border bg-card px-1.5 text-[11px] text-foreground focus:outline-hidden [&_svg]:h-3 [&_svg]:w-3">
+                  <SelectTrigger className="h-9 lg:h-6 min-w-[7.5rem] flex-1 gap-1 rounded-lg border border-border bg-card px-1.5 text-[11px] text-foreground focus:outline-hidden [&_svg]:h-3 [&_svg]:w-3">
                     {tagFilter && (
                       <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: `hsl(${tagHue(tagFilter)} 55% var(--tag-chip-l, 38%))` }} />
                     )}
@@ -127,7 +127,7 @@ export function DocSelectorHeader({
                 </Select>
               )}
               <Select value={statusFilter || "__all__"} onValueChange={(v) => setStatusFilter(v === "__all__" ? "" : v)}>
-                <SelectTrigger className="h-6 min-w-[7.5rem] flex-1 gap-1 rounded-lg border border-border bg-card px-1.5 text-[11px] text-foreground focus:outline-hidden [&_svg]:h-3 [&_svg]:w-3">
+                <SelectTrigger className="h-9 lg:h-6 min-w-[7.5rem] flex-1 gap-1 rounded-lg border border-border bg-card px-1.5 text-[11px] text-foreground focus:outline-hidden [&_svg]:h-3 [&_svg]:w-3">
                   {statusFilter && <StatusIcon status={statusFilter as DocStatus} className="h-3 w-3" />}
                   <SelectValue placeholder={t("doc.allStatuses")} />
                 </SelectTrigger>
@@ -169,7 +169,7 @@ export function DocSelectorHeader({
                   type="button"
                   onClick={() => onDensityChange(value)}
                   aria-pressed={density === value}
-                  className={`h-6 rounded-md px-2 text-[10px] font-medium transition-colors ${
+                  className={`h-10 lg:h-6 rounded-md px-2 text-[10px] font-medium transition-colors ${
                     density === value
                       ? "bg-card text-foreground shadow-xs"
                       : "text-muted-foreground hover:text-foreground"

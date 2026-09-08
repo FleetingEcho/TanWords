@@ -17,7 +17,7 @@ export function SettingsModal() {
       open={open}
       onClose={closeSettings}
       maxWidth="max-w-6xl"
-      className="flex h-[min(92vh,960px)] flex-col overflow-hidden"
+      className="flex h-[min(92vh,960px)] flex-col overflow-hidden max-sm:m-1 max-sm:h-[100dvh] max-sm:max-h-none max-sm:w-[calc(100%-0.5rem)] max-sm:rounded-lg"
     >
       <div className="flex h-11 shrink-0 items-center justify-between border-b border-border px-4">
         <DialogTitle className="text-sm font-semibold">{t("nav.settings")}</DialogTitle>
@@ -27,7 +27,7 @@ export function SettingsModal() {
           onClick={closeSettings}
           aria-label={t("common.close")}
           title={t("common.close")}
-          className="h-8 w-8"
+          className="h-11 w-11 max-sm:h-11 max-sm:w-11 sm:h-8 sm:w-8"
         >
           <X className="h-4 w-4" />
         </Button>

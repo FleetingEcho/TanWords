@@ -125,8 +125,13 @@ export function AiChatComposer({
           onPaste={onPaste}
           // Stays editable while the answer streams — you can line up the next
           // message instead of waiting. Enter is swallowed until the turn
-          // finishes (sendMessage would refuse it anyway).
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!streaming) onSend(); } }}
+          // finishes (sendMessage would refuse it anyway). During IME
+          // composition Enter confirms candidates, not the message.
+          onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing) return;
+            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!streaming) onSend(); }
+          }}
+          enterKeyHint="send"
           // The long form wraps to three lines on a phone, so the resting
           // composer reads as a wall of grey placeholder rather than an input.
           placeholder={
@@ -161,7 +166,7 @@ export function AiChatComposer({
             disabled={dictateState === "transcribing"}
             title={dictateState === "recording" ? t("voice.dictating") : dictateState === "transcribing" ? t("voice.dictateTranscribing") : t("voice.dictate")}
             aria-label={t("voice.dictate")}
-            className={`h-8 w-8 shrink-0 rounded-xl select-none touch-none ${
+            className={`h-11 w-11 lg:h-8 lg:w-8 shrink-0 rounded-xl select-none touch-none ${
               dictateState === "recording"
                 ? "bg-destructive/10 text-destructive hover:bg-destructive/15"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -176,8 +181,8 @@ export function AiChatComposer({
               variant="ghost"
               title={t("aichat.accessTitle")}
               aria-label={t("aichat.accessTitle")}
-              className={`relative h-8 rounded-xl text-[11px] font-medium transition-colors ${
-                narrow ? "w-8 shrink-0 p-0" : "gap-1.5 px-2.5"
+              className={`relative h-11 rounded-xl text-[11px] font-medium transition-colors ${
+                narrow ? "w-11 shrink-0 p-0" : "h-8 gap-1.5 px-2.5"
               } ${
                 enabledGroups.size > 0
                   ? "bg-primary/8 text-primary hover:bg-primary/12"
@@ -237,8 +242,8 @@ export function AiChatComposer({
             onClick={onStop}
             title={t("aichat.stop")}
             aria-label={t("aichat.stop")}
-            className={`h-8 shrink-0 rounded-xl bg-destructive/10 text-xs font-semibold text-destructive hover:bg-destructive/15 ${
-              narrow ? "w-8 p-0" : "gap-2 px-3"
+            className={`h-11 shrink-0 rounded-xl bg-destructive/10 text-xs font-semibold text-destructive hover:bg-destructive/15 ${
+              narrow ? "w-11 p-0" : "h-8 gap-2 px-3"
             }`}
           >
             <span className="w-2.5 h-2.5 rounded-[2px] bg-destructive" />
@@ -250,8 +255,8 @@ export function AiChatComposer({
             disabled={!input.trim() && !attachment}
             title={t("aichat.send")}
             aria-label={t("aichat.send")}
-            className={`h-8 shrink-0 rounded-xl text-xs font-semibold shadow-xs shadow-primary/20 disabled:shadow-none ${
-              narrow ? "w-8 p-0" : "gap-1.5 px-3.5"
+            className={`h-11 shrink-0 rounded-xl text-xs font-semibold shadow-xs shadow-primary/20 disabled:shadow-none ${
+              narrow ? "w-11 p-0" : "h-8 gap-1.5 px-3.5"
             }`}
           >
             {!narrow && t("aichat.send")}

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useT } from "@/hooks/useT";
 import { useDB } from "@/hooks/useDB";
 import { useNavStore } from "@/store/navStore";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ProviderSection } from "./ProviderSection";
 import { TtsSection } from "./TtsSection";
 import { VoiceSection } from "./VoiceSection";
@@ -127,6 +128,28 @@ export function SettingsPage() {
             {t(`settings.section.${id}`)}
           </button>
         ))}
+      </div>
+      {/* Phone category picker: the horizontal pills don't fit a 360px row,
+        * so below `sm` a single Select lists the same sections (same labels,
+        * same capability filtering) and jumps on change. It sits outside the
+        * scroll container, so like the pills it stays visible while content
+        * scrolls. */}
+      <div className="sm:hidden shrink-0 border-b border-border px-3 py-2">
+        <Select value={activeSection} onValueChange={(v) => jumpTo(v as SectionId)}>
+          <SelectTrigger
+            aria-label={t("settings.jumpToSection")}
+            className="h-11 w-full rounded-lg text-sm"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SECTIONS.map((id) => (
+              <SelectItem key={id} value={id} className="text-sm">
+                {t(`settings.section.${id}`)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       {/* Content */}
       {/* `relative` makes this the sections' offsetParent, so their offsetTop

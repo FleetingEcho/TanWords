@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { useT } from "@/hooks/useT";
+import { useMobileVisualViewport } from "@/hooks/useMobileVisualViewport";
 import type { NavPage } from "@/store/navStore";
 
 export interface DockNavItem {
@@ -75,6 +76,7 @@ export function MobileNavDock({
   const [sweepKey, setSweepKey] = useState(0);
   const [focused, setFocused] = useState<string | null>(null);
   const { w: vw, h: vh } = useViewport();
+  const vp = useMobileVisualViewport();
 
   const active = items.find((i) => i.id === activeNav) ?? items[0];
 
@@ -88,6 +90,12 @@ export function MobileNavDock({
   }, [open]);
 
   if (!active) return null;
+
+  // The soft keyboard owns the bottom of the screen while it is up; the dock
+  // stands down entirely so it never crowds the input it overlaps, and
+  // restores as soon as the keyboard closes. The shared viewport module keeps
+  // the shell's padding in step through `--mobile-nav-band`.
+  if (vp.keyboardOpen) return null;
 
   const { start, span } = ARC[align];
   // Radius follows the head count. The arc has to be long enough for every gap

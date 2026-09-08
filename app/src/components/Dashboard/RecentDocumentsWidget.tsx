@@ -45,7 +45,7 @@ export function RecentDocumentsWidget({ docs, maxRows = DASHBOARD_BODY_ROWS }: {
           {shown.map((d) => (
             <DashboardRow key={d.id} onClick={() => navigate("documents")}>
               <span className="flex-1 min-w-0 text-sm font-medium truncate">{d.title}</span>
-              <span className="text-[10px] font-mono text-muted-foreground/70 shrink-0">
+              <span className="text-[10px] font-mono text-muted-foreground shrink-0">
                 {/* `updated_at` is written by the backend's UTC clock — parse
                     it as UTC and print the local date, or users ahead of UTC
                     see yesterday's date on anything touched after 16:00. */}

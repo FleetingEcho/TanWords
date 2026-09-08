@@ -284,6 +284,9 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
       <div ref={anchorRef} className="relative">
         <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
         <input
+          type="search"
+          enterKeyHint="search"
+          autoComplete="off"
           autoFocus={!inline}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -299,7 +302,7 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
             runSearch();
           }}
           placeholder={t("vocab.sentences.quickSearchPlaceholder")}
-          className="w-full h-8 pl-8 pr-7 rounded-lg border border-input bg-background text-xs focus:outline-hidden focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground"
+          className="w-full h-9 max-lg:text-base lg:h-8 pl-8 pr-7 rounded-lg border border-input bg-background text-xs focus:outline-hidden focus:ring-2 focus:ring-primary/30 placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:hidden"
         />
         {q && (
           <kbd className="absolute right-2 top-1/2 -translate-y-1/2 rounded border border-border bg-muted px-1 py-0.5 font-mono text-[9px] leading-none text-muted-foreground pointer-events-none">

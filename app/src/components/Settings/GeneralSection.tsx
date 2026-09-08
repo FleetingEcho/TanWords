@@ -205,6 +205,7 @@ function UserAvatarSetting() {
         processFile={(file) => fileToDownscaledDataUrl(file, AVATAR_MAX_DIMENSION, 0.9)}
         maxBytes={MAX_AVATAR_UPLOAD_BYTES}
         thumbClassName="w-16 h-16 rounded-xl"
+        emptyAriaLabel={t("settings.userAvatar")}
         empty={
           <svg viewBox="0 0 16 16" fill="currentColor" className="h-6 w-6 text-muted-foreground">
             <path fillRule="evenodd" d="M8 8a3 3 0 100-6 3 3 0 000 6zm-4.5 8a4.5 4.5 0 019 0H3.5z" />
@@ -268,6 +269,7 @@ function DashboardBannerSetting() {
             type="button"
             role="switch"
             aria-checked={visible}
+            aria-label={t("settings.dashboardBannerVisible")}
             disabled={!dashboardBanner}
             onClick={() => setVisible(!visible)}
             className={`relative h-[18px] w-8 shrink-0 rounded-full transition-colors disabled:opacity-40 ${
@@ -311,7 +313,7 @@ function DefaultRssTabSetting() {
         value={String(defaultRssTab)}
         onValueChange={(v) => setDefaultRssTab(v === "all" || v === "hackernews" ? v : Number(v))}
       >
-        <SelectTrigger className="h-8 w-52 rounded-lg border-border bg-background text-xs focus:outline-hidden">
+        <SelectTrigger aria-label={t("settings.defaultRssTab")} className="h-8 w-52 rounded-lg border-border bg-background text-xs focus:outline-hidden">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -450,7 +452,7 @@ export function GeneralSection() {
         </SettingRow>
         <SettingRow label={t("settings.startupDestination")} sub={t("settings.startupDestinationSub")}>
           <Select value={startupValue} onValueChange={setStartupValue}>
-            <SelectTrigger className="h-9 w-52">
+            <SelectTrigger aria-label={t("settings.startupDestination")} className="h-9 w-52">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -474,7 +476,7 @@ export function GeneralSection() {
         </SettingRow>
         <SettingRow label={t("settings.theme")} sub={t("settings.themeSub")}>
           <Select value={settings.theme} onValueChange={(value) => settings.setTheme(value as Theme)}>
-            <SelectTrigger className="h-9 w-52">
+            <SelectTrigger aria-label={t("settings.theme")} className="h-9 w-52">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

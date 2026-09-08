@@ -5,7 +5,7 @@ import { callMain } from "@/ipc/host";
 import {
   BrainCircuit, Check, ChevronsLeft, ChevronsRight, ClipboardPaste, Cloud, CloudOff, Database, Lock,
   FilePlus2, Languages, Mic, MessageSquarePlus, Monitor, Moon, Palette, PanelLeft, Quote, Search, Server, Settings, Sun,
-  Grid2x2Plus, Rss, Smartphone, SquareTerminal, Type, Unplug, User, X,
+  Grid2x2Plus, Smartphone, SquareTerminal, Type, Unplug, User, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,6 +22,7 @@ import { useT } from "@/hooks/useT";
 import { useFullscreenDragExit } from "@/hooks/useFullscreenDragExit";
 import { useDB } from "@/hooks/useDB";
 import type { DbConnection } from "@/hooks/useDB.types";
+import type { Theme } from "@/store/settings/types";
 import { useProviderStatus } from "@/hooks/useProviderStatus";
 import { NavPage, useNavStore } from "@/store/navStore";
 import { UpdateButton } from "@/components/Layout/UpdateButton";
@@ -56,6 +57,21 @@ const PAGE_IDS: NavPage[] = (["feeds", "vocabulary", "documents", "chat", "dashb
     if (id === "dsh") return hostCapabilities.dsh;
     return true;
   });
+
+/** Every selectable theme, for the command palette entries. Keys match the
+ *  `Theme` union in store/settings/types.ts; labels reuse Settings' own keys. */
+const THEME_CHOICES: { id: Theme; labelKey: string }[] = [
+  { id: "light", labelKey: "settings.light" },
+  { id: "dark", labelKey: "settings.dark" },
+  { id: "catppuccin-latte", labelKey: "settings.catppuccinLatte" },
+  { id: "catppuccin-mocha", labelKey: "settings.catppuccinMocha" },
+  { id: "dracula", labelKey: "settings.dracula" },
+  { id: "tokyo-night", labelKey: "settings.tokyoNight" },
+  { id: "tokyo-night-day", labelKey: "settings.tokyoNightDay" },
+  { id: "tokyo-night-storm", labelKey: "settings.tokyoNightStorm" },
+  { id: "dim", labelKey: "settings.dim" },
+  { id: "system", labelKey: "settings.system" },
+];
 
 /** The icon standing in for the active theme. One definition: the top bar
  *  renders a wide and a narrow copy of this menu, and keeping two `theme ===`
@@ -213,6 +229,13 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
     { label: t("command.newDocument"), icon: FilePlus2, run: newDocument },
     { label: t("command.newChat"), icon: MessageSquarePlus, run: newChat },
     { label: t("scratch.open"), icon: ClipboardPaste, run: openScratch },
+    // Theme lives here on phones since the compact header dropped its theme
+    // shortcut — the palette is reachable from any page via Ctrl/Cmd+K.
+    ...THEME_CHOICES.map((choice) => ({
+      label: `${t("settings.theme")} · ${t(choice.labelKey)}`,
+      icon: Palette,
+      run: () => setTheme(choice.id),
+    })),
   ].filter((command) => command.label.toLowerCase().includes(query.toLowerCase()));
 
   // Three states, not two: until the keychain read finishes there is no
@@ -396,7 +419,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
       <header
         onMouseDown={onBannerMouseDown}
         title={fullScreen ? t("windowControls.dragToExitFullscreen") : undefined}
-        className={`${fullScreen ? "cursor-grab " : "app-drag-region "}relative z-30 flex min-h-12 shrink-0 select-none flex-col lg:flex-row lg:items-center gap-x-1.5 gap-y-2 border-b border-border/80 px-3 py-2 ${
+        className={`${fullScreen ? "cursor-grab " : "app-drag-region "}relative z-30 flex min-h-13 shrink-0 select-none flex-row items-center gap-x-1.5 border-b border-border/80 px-3 py-1 lg:py-2 ${
           hasCustomAppBackground ? "bg-transparent" : "bg-background/90 backdrop-blur-xl"
         }`}>
         {/* Expand-sidebar control: always the first item on the left. Shown
@@ -417,8 +440,21 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
             <PanelLeft className="h-4 w-4" />
           </Button>
         )}
+        {/* Mobile avatar: phones have no icon group, so the profile/settings
+          * entry leads the single-row bar instead. Desktop keeps its avatar in
+          * the trailing icon group below. */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => navigate("settings")}
+          title={t("command.profile")}
+          aria-label={t("command.profile")}
+          className="lg:hidden h-11 w-11 shrink-0 rounded-full p-0 overflow-hidden ring-1 ring-border/60 text-muted-foreground"
+        >
+          {userAvatar ? <UserAvatarImage /> : <User className="h-4 w-4" />}
+        </Button>
         {visible("search") && (
-          <div className="flex min-w-0 order-2 w-full lg:order-none lg:w-auto lg:max-w-2xl lg:flex-1 lg:shrink items-center gap-1">
+          <div className="flex min-w-0 flex-1 items-center gap-1 lg:w-auto lg:max-w-2xl lg:shrink">
             <div className="min-w-0 flex-1">
               {searchMode === "word" ? <WordSearchBox variant="inline" /> : <SentenceSearchBox variant="inline" />}
             </div>
@@ -427,7 +463,7 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
               size="icon"
               onClick={toggleSearchMode}
               title={searchMode === "word" ? t("command.switchToSentenceSearch") : t("command.switchToWordSearch")}
-              className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground"
+              className="h-11 w-11 shrink-0 rounded-lg text-muted-foreground lg:h-8 lg:w-8"
             >
               {searchMode === "word" ? <Type className="h-4 w-4" /> : <Quote className="h-4 w-4" />}
             </Button>
@@ -439,10 +475,10 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
           spans the header. With `flex-none` it was only as wide as its content,
           so hiding the search box (which used to be the thing stretching the
           header) left the controls floating mid-bar. */}
-        {/* Below `lg` the header stacks, so this wrapper keeps the icon row and
-          * the window controls on one line instead of giving the controls a
-          * row of their own. `lg:contents` dissolves it above that. */}
-        <div className="flex w-full min-w-0 items-center gap-1.5 lg:contents">
+        {/* Below `lg` this row continues the single-line header (temporary
+          * TTS/analyze states sit right of the search box); `lg:contents`
+          * dissolves it above that. */}
+        <div className="flex min-w-0 items-center gap-1 lg:contents">
         <div className="rss-tabs-scroll flex min-w-0 w-full items-center gap-1.5 overflow-x-auto lg:w-auto lg:flex-1">
 
         {/* Any speech in the app — the reader's article playback and the
@@ -533,39 +569,9 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
             {userAvatar ? <UserAvatarImage /> : <User className="h-4 w-4" />}
           </Button>
         </div>
-        {visible("theme") && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                title={t("settings.theme")}
-                aria-label={t("settings.theme")}
-                className="lg:hidden h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                <ThemeIcon theme={theme} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
-              <DropdownMenuItem onClick={() => setTheme("light")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.light")}</span>{theme === "light" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setTheme("dark")}><Moon className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.dark")}</span>{theme === "dark" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setTheme("catppuccin-latte")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.catppuccinLatte")}</span>{theme === "catppuccin-latte" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setTheme("catppuccin-mocha")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.catppuccinMocha")}</span>{theme === "catppuccin-mocha" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setTheme("dracula")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.dracula")}</span>{theme === "dracula" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setTheme("tokyo-night")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.tokyoNight")}</span>{theme === "tokyo-night" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setTheme("tokyo-night-day")}><Sun className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.tokyoNightDay")}</span>{theme === "tokyo-night-day" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setTheme("tokyo-night-storm")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.tokyoNightStorm")}</span>{theme === "tokyo-night-storm" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setTheme("dim")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.dim")}</span>{theme === "dim" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setTheme("system")}><Monitor className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.system")}</span>{theme === "system" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-        <Button variant="ghost" size="icon" onClick={() => navigate("feeds")} title={t("nav.feeds")} aria-label={t("nav.feeds")} className="lg:hidden h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground">
-          <Rss className="h-4 w-4" />
-        </Button>
-        <Button variant="ghost" size="icon" onClick={() => navigate("settings")} title={t("command.profile")} className="lg:hidden order-first h-8 w-8 shrink-0 rounded-full p-0 overflow-hidden ring-1 ring-border/60 text-muted-foreground">
-          {userAvatar ? <UserAvatarImage /> : <User className="h-4 w-4" />}
-        </Button>
+        {/* Phones lose the per-item theme/RSS shortcuts the stacked header
+          * used to carry: navigation lives in the dock, and the theme lives in
+          * the command palette (see the theme entries in `commands`). */}
         </div>
 
         {/* Outside the scrolling row above, and shrink-0: window controls must

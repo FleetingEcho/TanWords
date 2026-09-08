@@ -96,6 +96,15 @@ export function TiptapDocumentEditor({
     // React 19 + StrictMode double-invokes effects; without this the editor
     // renders its DOM immediately and the second pass finds it already there.
     immediatelyRender: false,
+    // The ProseMirror div is a real text input surface — give it a name so
+    // screen readers (and axe) see it as one.
+    editorProps: {
+      attributes: {
+        role: "textbox",
+        "aria-label": "document",
+        "aria-multiline": "true",
+      },
+    },
     onUpdate: reportChange,
   });
 

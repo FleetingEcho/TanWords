@@ -60,7 +60,7 @@ export function NowPlayingOverlay({ onClose }: { onClose: () => void }) {
   const ModeIcon = MODE_ICONS[playMode];
 
   return (
-    <div className="fixed inset-0 z-50 app-region-no-drag animate-fade-in overflow-hidden" style={{ backgroundImage: cover.css }}>
+    <div className="fixed inset-0 z-[60] app-region-no-drag animate-fade-in overflow-hidden" style={{ backgroundImage: cover.css }}>
       {/* Native browser/DSH panels must step aside — see browserPanelStore / dshPanelBlockStore. */}
       <BrowserPanelBlocker />
       <DshPanelBlocker />

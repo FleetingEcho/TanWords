@@ -20,12 +20,14 @@ import { useWordModalStore } from "@/store/wordModalStore";
 import { usePendingChatSelectionStore } from "@/store/pendingChatSelectionStore";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { buildPresetPrompt } from "./aiChatHelpers";
+import { mobileVisualViewportStyle, useMobileVisualViewport } from "@/hooks/useMobileVisualViewport";
 
 const lookupWord = (word: string) => useWordModalStore.getState().openWordModal(word);
 
 export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSessionId?: string; onActiveIdChange?: (id: string | null) => void } = {}) {
   const t = useT();
   const s = useAiChatSession(initialSessionId);
+  const vp = useMobileVisualViewport();
   // Lets a wrapping modal know which session is actually on screen (the user
   // may switch sessions inside it), e.g. for its expand-to-full-page button.
   React.useEffect(() => { onActiveIdChange?.(s.activeId); }, [s.activeId, onActiveIdChange]);
@@ -107,7 +109,24 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
     };
   }, [s.startNew, s.startWithArticle, s.switchSession]);
 
-  const closeMobileSidebar = () => setMobileSidebarOpen(false);
+  const sessionsButtonRef = React.useRef<HTMLButtonElement>(null);
+  const closeMobileSidebar = () => {
+    setMobileSidebarOpen(false);
+    // The drawer opened from the toolbar's Sessions button — hand focus back
+    // to it so keyboard and screen-reader users aren't stranded after closing.
+    sessionsButtonRef.current?.focus();
+  };
+
+  // Escape closes the drawer, matching the backdrop click and the close button.
+  React.useEffect(() => {
+    if (!mobileSidebarOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeMobileSidebar();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- closeMobileSidebar reads only refs/state setters.
+  }, [mobileSidebarOpen]);
 
   // Shared by the desktop column and the mobile drawer; drawer callables wrap
   // these so picking a session also closes the overlay.
@@ -128,7 +147,13 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
   } as const;
 
   return (
-    <div className={`flex h-full overflow-hidden overscroll-none ${hasCustomAppBackground ? "" : "bg-background"}`}>
+    <div
+      className={`flex overflow-hidden overscroll-none ${hasCustomAppBackground ? "" : "bg-background"} ${vp.height === null ? "h-full" : ""}`}
+      // On a phone the root tracks the *visual* viewport: it shrinks to the
+      // height above the soft keyboard and pans with it, so the composer and
+      // the newest message stay on screen (see mobileVisualViewportStyle).
+      style={mobileVisualViewportStyle(vp)}
+    >
       {/* Desktop column */}
       <div className="hidden lg:flex h-full shrink-0">
         <AiChatSidebar
@@ -141,11 +166,12 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
         />
       </div>
 
-      {/* Mobile drawer */}
+      {/* Mobile drawer — above the mobile nav dock (z-50, later in the DOM):
+        * while it is open the dock must be neither visible nor clickable. */}
       {mobileSidebarOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label={t("aichat.sessions")}>
+        <div className="fixed inset-0 z-[60] lg:hidden" role="dialog" aria-modal="true" aria-label={t("aichat.sessions")}>
           <div className="absolute inset-0 bg-black/45" onClick={closeMobileSidebar} />
-          <div className="absolute inset-y-0 left-0 w-[min(85vw,320px)] max-w-full shadow-2xl">
+          <div className="absolute inset-y-0 left-0 w-[min(85vw,320px)] max-w-full shadow-2xl overscroll-contain">
             <AiChatSidebar
               {...sidebarProps}
               variant="drawer"
@@ -161,13 +187,14 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
 
       <main className="min-w-0 flex-1 flex flex-col overflow-hidden">
         {/* Compact icon-led session toolbar */}
-        <div className={`flex items-center gap-2 px-3 lg:px-5 h-6 lg:h-8 border-b border-border/60 shrink-0 ${hasCustomAppBackground ? "bg-transparent" : "bg-background/65 backdrop-blur-xl"}`}>
+        <div className={`flex items-center gap-1 max-lg:gap-0.5 px-2 lg:px-5 h-11 lg:h-8 border-b border-border/60 shrink-0 ${hasCustomAppBackground ? "bg-transparent" : "bg-background/65 backdrop-blur-xl"}`}>
           <Button
+            ref={sessionsButtonRef}
             variant="ghost"
             onClick={() => setMobileSidebarOpen(true)}
             title={t("aichat.sessions")}
             aria-label={t("aichat.sessions")}
-            className="h-6 gap-1 rounded-lg px-2 text-muted-foreground hover:bg-muted hover:text-foreground shrink-0 lg:hidden"
+            className="h-11 w-11 justify-center rounded-lg p-0 text-muted-foreground hover:bg-muted hover:text-foreground shrink-0 lg:hidden"
           >
             <ChevronLeft className="h-3.5 w-3.5" />
           </Button>
@@ -212,7 +239,7 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
               onClick={() => useVoiceAssistantStore.getState().toggle()}
               title={t("voice.openFromChat")}
               aria-label={t("voice.openFromChat")}
-              className="h-6 w-6 shrink-0 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="h-11 w-11 lg:h-8 lg:w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
             >
               <Mic className="h-3.5 w-3.5" />
             </Button>
@@ -224,7 +251,7 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
             title={s.privateMode ? t("aichat.tempChatDisable") : t("aichat.tempChatEnable")}
             aria-label={s.privateMode ? t("aichat.tempChatDisable") : t("aichat.tempChatEnable")}
             aria-pressed={s.privateMode}
-            className={`h-6 w-6 shrink-0 rounded-lg ${s.privateMode ? "bg-amber-500/15 text-amber-600 hover:bg-amber-500/20 dark:text-amber-400" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+            className={`h-11 w-11 lg:h-8 lg:w-8 shrink-0 rounded-lg ${s.privateMode ? "bg-amber-500/15 text-amber-600 hover:bg-amber-500/20 dark:text-amber-400" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
           >
             <MessageSquareOff className="h-3.5 w-3.5" />
           </Button>
@@ -236,7 +263,7 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
               title={t("aichat.tempChatReset")}
               aria-label={t("aichat.tempChatReset")}
               disabled={s.displayItems.length === 0}
-              className="h-6 w-6 shrink-0 rounded-lg text-amber-600 hover:bg-amber-500/20 dark:text-amber-400 disabled:opacity-40 disabled:hover:bg-transparent"
+              className="h-11 w-11 lg:h-8 lg:w-8 shrink-0 rounded-lg text-amber-600 hover:bg-amber-500/20 dark:text-amber-400 disabled:opacity-40 disabled:hover:bg-transparent"
             >
               <RotateCcw className="h-3.5 w-3.5" />
             </Button>
@@ -248,7 +275,7 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
             title={headerOpen ? t("aichat.headerHide") : t("aichat.headerShow")}
             aria-label={headerOpen ? t("aichat.headerHide") : t("aichat.headerShow")}
             aria-expanded={headerOpen}
-            className="h-6 w-6 shrink-0 rounded-lg text-muted-foreground"
+            className="h-11 w-11 lg:h-8 lg:w-8 shrink-0 rounded-lg text-muted-foreground"
           >
             {headerOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
           </Button>
@@ -259,12 +286,12 @@ export function AiChatPage({ initialSessionId, onActiveIdChange }: { initialSess
                 onClick={s.summarizeAndSave}
                 disabled={s.streaming}
                 title={t("aichat.summarizeAndSaveHint")}
-                className="h-6 gap-1.5 rounded-lg px-2 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground shrink-0"
+                className="h-11 max-lg:px-3 gap-1.5 rounded-lg px-2 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground shrink-0"
               >
                 <FilePlus2 className="h-3 w-3" />
                 <span className="hidden md:inline">{t("aichat.summarizeAndSave")}</span>
               </Button>
-              <Button variant="ghost" onClick={() => setConfirmClear(true)} title={t("aichat.clear")} aria-label={t("aichat.clear")} className="h-6 w-6 rounded-lg p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive shrink-0">
+              <Button variant="ghost" onClick={() => setConfirmClear(true)} title={t("aichat.clear")} aria-label={t("aichat.clear")} className="h-11 w-11 lg:h-6 lg:w-6 rounded-lg p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive shrink-0">
                 <Eraser className="h-3.5 w-3.5" />
               </Button>
             </>

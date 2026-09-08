@@ -67,7 +67,7 @@ export function AddFeedDialog({ open, onClose, onAdded, subscribedUrls }: Props)
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center animate-fade-in"
+      className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center animate-fade-in"
       onClick={onClose}
       role="dialog"
       aria-modal="true"

@@ -188,7 +188,7 @@ export function DocSelector({ activeId, onSelect, onNewDoc, onNewDocIn, refreshK
               disabled={selectedIds.size === 0}
               title={t("doc.moveToFolder")}
               aria-label={t("doc.moveToFolder")}
-              className="h-6 w-6 shrink-0 rounded-md text-primary hover:bg-primary/10 disabled:opacity-40"
+              className="h-10 w-10 lg:h-6 lg:w-6 shrink-0 rounded-md text-primary hover:bg-primary/10 disabled:opacity-40"
             >
               <FolderInput className="h-3.5 w-3.5" />
             </Button>
@@ -199,14 +199,14 @@ export function DocSelector({ activeId, onSelect, onNewDoc, onNewDocIn, refreshK
               disabled={selectedIds.size === 0}
               title={t("doc.exportSelected")}
               aria-label={t("doc.exportSelected")}
-              className="h-6 w-6 shrink-0 rounded-md text-primary hover:bg-primary/10 disabled:opacity-40"
+              className="h-10 w-10 lg:h-6 lg:w-6 shrink-0 rounded-md text-primary hover:bg-primary/10 disabled:opacity-40"
             >
               <Download className="h-3.5 w-3.5" />
             </Button>
             <Button
               variant="ghost"
               onClick={exitSelection}
-              className="h-6 shrink-0 rounded-md px-2 text-[11px] text-muted-foreground hover:text-foreground"
+              className="h-10 lg:h-6 shrink-0 rounded-md px-2 text-[11px] text-muted-foreground hover:text-foreground"
             >
               {t("doc.exitSelection")}
             </Button>

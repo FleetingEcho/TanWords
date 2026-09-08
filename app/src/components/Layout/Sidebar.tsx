@@ -12,6 +12,7 @@ import { hostCapabilities } from "@/platform";
 import { getPageDefinition, type PageDefinition } from "@/pages/pageCatalog";
 import { useIsNarrow, useMediaQuery } from "@/components/Vocabulary/hooks/useMediaQuery";
 import { MobileNavDock, type DockNavItem } from "@/components/Layout/MobileNavDock";
+import { MobileViewportCssVars, MOBILE_PAGE_PB, MOBILE_PAGE_PB_RAISED } from "@/hooks/useMobileVisualViewport";
 import { WorkspaceNavSection } from "@/components/Layout/WorkspaceNavSection";
 import { usePageDragSource } from "@/components/Workspaces/DropZones";
 import { usePointerDragSource } from "@/components/Workspaces/usePointerDragSource";
@@ -209,6 +210,9 @@ export function MainLayout({
       data-layout-mode={effectiveMode}
       className={`app-viewport-height flex overflow-hidden overscroll-none ${hasCustomAppBackground ? "" : "bg-background"}`}
     >
+      {/* Publishes the shared visible-viewport CSS variables (--mobile-bottom-inset
+        * and friends) that the main padding below and the nav dock consume. */}
+      <MobileViewportCssVars />
       <aside
         aria-hidden={immersive || undefined}
         style={collapsed ? undefined : { width: SIDEBAR_WIDTH }}
@@ -287,16 +291,17 @@ export function MainLayout({
         // widths only reserve enough for its own height plus the player bar
         // when that is docked underneath it. `lg:` can't express this: the
         // breakpoint is 768px and tablets up to 1023px are compact too.
+        //
+        // The numbers come from the shared viewport module's CSS variables
+        // (--mobile-bottom-inset[-raised]), so the same band also collapses
+        // when the soft keyboard opens and the dock stands down.
         className={`flex min-w-0 flex-1 flex-col overflow-hidden box-border transition-[padding-bottom] duration-200 ${
           immersive
             ? "pb-0"
             : compact
             ? podcastActive
-              // 64px player + dock button + 5px breathing room on each side.
-              ? "pb-[calc(7.125rem+env(safe-area-inset-bottom))] sm:pb-[calc(8.125rem+env(safe-area-inset-bottom))]"
-              // The phone button is 40px; from sm upward it is 56px. Keep the
-              // reserved band to exactly button height + roughly 5px above/below.
-              : "pb-[calc(3.125rem+env(safe-area-inset-bottom))] sm:pb-[calc(4.125rem+env(safe-area-inset-bottom))]"
+              ? MOBILE_PAGE_PB_RAISED
+              : MOBILE_PAGE_PB
             : podcastActive
               ? "pb-16"
               : "pb-0"

@@ -123,7 +123,7 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
         onClick={() => void setPaused(feed)}
         title={pending ? t("feeds.updatingPauseState") : label}
         aria-label={pending ? t("feeds.updatingPauseState") : label}
-        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md hover:bg-background ${feed.is_paused ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
+        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md hover:bg-background relative after:absolute after:-inset-1.5 after:rounded-md after:content-[''] ${feed.is_paused ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
       >
         {pending ? (
           <LoaderCircle
@@ -230,14 +230,14 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
                             {failedFeeds.has(f.id) && <span className="shrink-0 text-xs text-amber-500">⚠</span>}
                             <UnreadBadge n={unreadByFeed.get(f.id) ?? 0} />
                           </button>
-                          <button disabled={savingId === f.id} onClick={() => savePreferences(f, f.category_override, !f.is_pinned)} title={t(f.is_pinned ? "feeds.unpin" : "feeds.pin")} className={`h-7 w-7 shrink-0 rounded-md text-sm hover:bg-background ${f.is_pinned ? "text-amber-500" : "text-muted-foreground"}`}>
+                          <button disabled={savingId === f.id} onClick={() => savePreferences(f, f.category_override, !f.is_pinned)} title={t(f.is_pinned ? "feeds.unpin" : "feeds.pin")} className={`relative h-7 w-7 shrink-0 rounded-md text-sm hover:bg-background after:absolute after:-inset-1.5 after:rounded-md after:content-[''] ${f.is_pinned ? "text-amber-500" : "text-muted-foreground"}`}>
                             {f.is_pinned ? "★" : "☆"}
                           </button>
                           {pauseButton(f)}
                           <button
                             onClick={() => { setPendingDelete(f); setSourceOpen(false); }}
                             title={t("feeds.deleteFeed")}
-                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/15 hover:text-destructive"
+                            className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/15 hover:text-destructive after:absolute after:-inset-1.5 after:rounded-md after:content-['']"
                           >
                             <CloseIcon className="h-2.5 w-2.5" />
                           </button>
@@ -332,14 +332,14 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
                             <button onClick={() => { onSelect(f.id); setMoreOpen(false); }} className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left">
                               <span className="truncate text-xs font-medium">{f.title || domainOf(f.url)}</span><UnreadBadge n={unreadByFeed.get(f.id) ?? 0} />
                             </button>
-                            <button disabled={savingId === f.id} onClick={() => savePreferences(f, f.category_override, !f.is_pinned)} title={t(f.is_pinned ? "feeds.unpin" : "feeds.pin")} className={`h-7 w-7 rounded-md text-sm hover:bg-background ${f.is_pinned ? "text-amber-500" : "text-muted-foreground"}`}>
+                            <button disabled={savingId === f.id} onClick={() => savePreferences(f, f.category_override, !f.is_pinned)} title={t(f.is_pinned ? "feeds.unpin" : "feeds.pin")} className={`relative h-7 w-7 rounded-md text-sm hover:bg-background after:absolute after:-inset-1.5 after:rounded-md after:content-[''] ${f.is_pinned ? "text-amber-500" : "text-muted-foreground"}`}>
                               {f.is_pinned ? "★" : "☆"}
                             </button>
                             <button disabled={savingId === f.id} onClick={() => savePreferences(f, f.category === "article" ? "podcast" : "article", f.is_pinned)} title={t("feeds.changeCategory")} className="h-7 rounded-md px-1.5 text-[10px] text-muted-foreground hover:bg-background hover:text-foreground">
                               {f.category === "podcast" ? "🎧" : "A"}
                             </button>
                             {pauseButton(f)}
-                            <button onClick={() => setPendingDelete(f)} title={t("feeds.deleteFeed")} className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/15 hover:text-destructive">
+                            <button onClick={() => setPendingDelete(f)} title={t("feeds.deleteFeed")} className="relative flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/15 hover:text-destructive after:absolute after:-inset-1.5 after:rounded-md after:content-['']">
                               <CloseIcon className="h-2.5 w-2.5" />
                             </button>
                           </div>
@@ -360,7 +360,7 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
               title={t("feeds.bookmarks.title")}
               aria-label={t("feeds.bookmarks.title")}
               aria-pressed={bookmarkOpen}
-              className={`relative flex h-7 w-7 items-center justify-center rounded-md p-0 transition-colors ${
+              className={`relative flex h-7 w-7 items-center justify-center rounded-md p-0 transition-colors after:absolute after:-inset-1.5 after:rounded-md after:content-[''] ${
                 bookmarkOpen || bookmarks.length > 0
                   ? "bg-primary/10 text-primary hover:bg-primary/15"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -424,7 +424,7 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
               title={t("feeds.recentlyRead.button")}
               aria-label={t("feeds.recentlyRead.button")}
               aria-pressed={recentOpen}
-              className={`flex h-7 w-7 items-center justify-center rounded-md p-0 transition-colors ${
+              className={`relative flex h-7 w-7 items-center justify-center rounded-md p-0 transition-colors after:absolute after:-inset-1.5 after:rounded-md after:content-[''] ${
                 recentOpen ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
               }`}
             >
@@ -477,7 +477,7 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
           title={t("feeds.translateTitles")}
           aria-label={t("feeds.translateTitles")}
           aria-pressed={showTitleTranslations}
-          className={`flex h-7 w-7 items-center justify-center rounded-md p-0 transition-colors ${
+          className={`relative flex h-7 w-7 items-center justify-center rounded-md p-0 transition-colors after:absolute after:-inset-1.5 after:rounded-md after:content-[''] ${
             showTitleTranslations ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
           }`}
         >
@@ -494,7 +494,7 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
             title={t("feeds.viewCard")}
             aria-label={t("feeds.viewCard")}
             aria-pressed={viewMode === "card"}
-            className={`flex h-6 w-6 items-center justify-center rounded-md p-0 transition-colors hover:bg-transparent ${
+            className={`relative flex h-6 w-6 items-center justify-center rounded-md p-0 transition-colors hover:bg-transparent after:absolute after:-inset-2 after:rounded-md after:content-[''] ${
               viewMode === "card" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -506,7 +506,7 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
             title={t("feeds.viewList")}
             aria-label={t("feeds.viewList")}
             aria-pressed={viewMode === "list"}
-            className={`flex h-6 w-6 items-center justify-center rounded-md p-0 transition-colors hover:bg-transparent ${
+            className={`relative flex h-6 w-6 items-center justify-center rounded-md p-0 transition-colors hover:bg-transparent after:absolute after:-inset-2 after:rounded-md after:content-[''] ${
               viewMode === "list" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -522,7 +522,7 @@ export function FeedTabs({ feeds, unreadByFeed, failedFeeds, selected, syncing, 
           onClick={onRefresh}
           disabled={syncing || feeds.length === 0}
           title={t("feeds.refresh")}
-          className="flex h-7 w-7 items-center justify-center rounded-md p-0 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+          className="relative flex h-7 w-7 items-center justify-center rounded-md p-0 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40 after:absolute after:-inset-1.5 after:rounded-md after:content-['']"
         >
           <RefreshIcon className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
         </Button>

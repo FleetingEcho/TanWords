@@ -77,7 +77,7 @@ export function AssetDropzone({
           if (!disabled && !busy) pick(event.dataTransfer?.files ?? null);
         }}
         className={`group w-full rounded-2xl border-2 border-dashed text-left transition-colors disabled:opacity-60 ${
-          card ? "flex items-center gap-4 px-5 py-4" : "flex flex-col items-center justify-center gap-1.5 px-4 py-6"
+          card ? "flex items-center gap-4 px-5 py-4 max-lg:gap-3 max-lg:px-4 max-lg:py-3" : "flex flex-col items-center justify-center gap-1.5 px-4 py-6"
         } ${
           hot
             ? "border-primary bg-primary/5"
@@ -104,7 +104,10 @@ export function AssetDropzone({
                 : t("settings.documentAssetsUploading")
             ) : (
               <>
-                {t("settings.documentAssetsDropzone")}{" "}
+                {/* Touch users don't drag: the tap phrasing leads below `lg`,
+                  * the drag phrasing only where drag actually works. */}
+                <span className="lg:hidden">{t("settings.documentAssetsTapToUpload")} </span>
+                <span className="hidden lg:inline">{t("settings.documentAssetsDropzone")} </span>
                 <span className="text-primary underline underline-offset-2">
                   {t("settings.documentAssetsBrowse")}
                 </span>
@@ -119,12 +122,12 @@ export function AssetDropzone({
                   style={{ width: `${progress.bytes ? Math.min(100, (progress.sent / progress.bytes) * 100) : 0}%` }}
                 />
               </span>
-              <span className="mt-0.5 block text-[10px] tabular-nums text-muted-foreground/70">
+              <span className="mt-0.5 block text-[10px] tabular-nums text-muted-foreground">
                 {formatBytes(progress.sent)} / {formatBytes(progress.bytes)}
               </span>
             </>
           ) : (
-            <span className="mt-0.5 block text-[10px] text-muted-foreground/70">
+            <span className="mt-0.5 block text-[10px] text-muted-foreground">
               {t("settings.documentAssetsDropHint")}
             </span>
           )}

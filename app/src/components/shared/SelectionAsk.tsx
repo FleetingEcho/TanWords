@@ -156,7 +156,14 @@ export function SelectionAsk() {
         toolbarSize,
         window.innerWidth,
         nativeTouchSelection
-          ? { preferBelow: true, viewportHeight: window.innerHeight }
+          ? {
+              preferBelow: true,
+              // The keyboard shrinks the visible band, not the layout viewport.
+              viewportHeight: window.visualViewport?.height ?? window.innerHeight,
+              visibleBand: window.visualViewport
+                ? { top: window.visualViewport.offsetTop, height: window.visualViewport.height }
+                : undefined,
+            }
           : undefined,
       )
     : null;

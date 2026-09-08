@@ -94,7 +94,7 @@ export function DocumentTagBar({ tags: raw, onChange, disabled = false }: {
           <PopoverTrigger asChild>
             <button
               type="button"
-              className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] leading-4 text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+              className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] leading-4 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
             >
               <Plus className="h-3 w-3" /> {t("doc.addTag")}
             </button>

@@ -25,7 +25,14 @@ export function positionSelectionToolbar(
   anchor: Point,
   size: Size,
   viewportWidth: number,
-  options?: { preferBelow?: boolean; viewportHeight?: number },
+  options?: {
+    preferBelow?: boolean;
+    viewportHeight?: number;
+    /** The *visible* viewport band (the visual viewport while a soft keyboard
+     *  or browser chrome shifts it). The result is clamped into it so the
+     *  toolbar never lands behind the keyboard. */
+    visibleBand?: { top: number; height: number };
+  },
 ): Point {
   const maxLeft = Math.max(8, viewportWidth - size.width - 8);
   const above = Math.max(8, anchor.top - 8 - size.height);
@@ -35,8 +42,17 @@ export function positionSelectionToolbar(
   // remain independently usable; near the viewport bottom, fall back above.
   const hasRoomBelow = options?.viewportHeight == null
     || below + size.height <= options.viewportHeight - 8;
+  let top = Math.round(options?.preferBelow && hasRoomBelow ? below : above);
+  // Keep the toolbar inside the visible band — on a phone with the keyboard
+  // up, the visual viewport no longer spans the layout viewport, and a
+  // toolbar clamped only to the layout viewport would land behind it.
+  if (options?.visibleBand) {
+    const { top: bandTop, height: bandHeight } = options.visibleBand;
+    top = Math.min(Math.max(top, bandTop + 8), bandTop + bandHeight - size.height - 8);
+    top = Math.max(top, bandTop + 8);
+  }
   return {
-    top: Math.round(options?.preferBelow && hasRoomBelow ? below : above),
+    top,
     left: Math.round(Math.min(Math.max(anchor.left - size.width / 2, 8), maxLeft)),
   };
 }

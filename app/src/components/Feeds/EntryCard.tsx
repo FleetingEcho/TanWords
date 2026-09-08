@@ -441,7 +441,7 @@ export function EntryListRow({ entry, feedTitle, onOpen, onPlay, onTranslate, tr
           onClick={analyzeBackground}
           title={t("feeds.analyzeBackgroundDone")}
           aria-label={t("feeds.analyzeBackgroundDone")}
-          className="h-6 w-6 p-0 rounded-full flex items-center justify-center shrink-0 text-emerald-500 hover:bg-emerald-500/10 transition-colors"
+          className="relative h-6 w-6 p-0 rounded-full flex items-center justify-center shrink-0 text-emerald-500 hover:bg-emerald-500/10 transition-colors after:absolute after:-inset-2 after:rounded-full after:content-['']"
         >
           <CheckIcon className="w-3 h-3" />
         </Button>
@@ -459,7 +459,7 @@ export function EntryListRow({ entry, feedTitle, onOpen, onPlay, onTranslate, tr
             title={bookmarked ? t("feeds.unbookmark") : t("feeds.bookmark")}
             aria-label={bookmarked ? t("feeds.unbookmark") : t("feeds.bookmark")}
             aria-pressed={bookmarked}
-            className={`h-6 w-6 p-0 rounded-full flex items-center justify-center transition-colors ${
+            className={`relative h-6 w-6 p-0 rounded-full flex items-center justify-center transition-colors after:absolute after:-inset-2 after:rounded-full after:content-[''] ${
               bookmarked
                 ? "text-primary hover:bg-primary/10"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted"
@@ -478,7 +478,7 @@ export function EntryListRow({ entry, feedTitle, onOpen, onPlay, onTranslate, tr
             onClick={play}
             title={t("feeds.playEpisode")}
             aria-label={t("feeds.playEpisode")}
-            className="h-6 w-6 p-0 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            className="relative h-6 w-6 p-0 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors after:absolute after:-inset-2 after:rounded-full after:content-['']"
           >
             <PlayIcon className="w-3 h-3" />
           </Button>
@@ -490,7 +490,7 @@ export function EntryListRow({ entry, feedTitle, onOpen, onPlay, onTranslate, tr
             disabled={translating}
             title={t("feeds.translate")}
             aria-label={t("feeds.translate")}
-            className="h-6 w-6 p-0 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+            className="relative h-6 w-6 p-0 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50 after:absolute after:-inset-2 after:rounded-full after:content-['']"
           >
             {translating ? (
               <span className="w-3 h-3 rounded-full border-2 border-muted-foreground/30 border-t-foreground animate-spin" />
@@ -506,7 +506,7 @@ export function EntryListRow({ entry, feedTitle, onOpen, onPlay, onTranslate, tr
             disabled={backgroundRunning}
             title={t("feeds.analyzeBackground")}
             aria-label={t("feeds.analyzeBackground")}
-            className="h-6 w-6 p-0 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+            className="relative h-6 w-6 p-0 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50 after:absolute after:-inset-2 after:rounded-full after:content-['']"
           >
             {backgroundRunning ? (
               <span className="w-3 h-3 rounded-full border-2 border-muted-foreground/30 border-t-foreground animate-spin" />

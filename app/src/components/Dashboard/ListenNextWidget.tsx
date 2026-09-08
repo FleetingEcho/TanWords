@@ -128,7 +128,7 @@ export function ListenNextWidget({ maxRows = DASHBOARD_BODY_ROWS, onInitialDataS
                   {feedsById.get(e.feed_id)?.title ?? ""}
                 </span>
               </span>
-              <span className="shrink-0 text-[10px] font-mono text-muted-foreground/70">
+              <span className="shrink-0 text-[10px] font-mono text-muted-foreground">
                 {formatDuration(e.audio_duration)}
               </span>
             </DashboardRow>

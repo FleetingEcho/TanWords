@@ -11,6 +11,7 @@ import { ListPanelEdgeHandle } from "@/components/shared/ListPanelEdgeHandle";
 import { DocPanelHeader } from "./DocPanelHeader";
 import { toast } from "sonner";
 import { useSettingsStore } from "@/store/settingsStore";
+import { useIsNarrow } from "@/components/Vocabulary/hooks/useMediaQuery";
 
 interface Props {
   sidebarOpen: boolean;
@@ -87,10 +88,11 @@ export function LocalDocsSidebar({
   sourceTabs,
 }: Props) {
   const t = useT();
+  const isNarrow = useIsNarrow();
   const hasCustomAppBackground = useSettingsStore((state) => !!state.appBackgroundImage && state.appBackgroundVisible);
 
   return (
-    <div className="relative flex h-full shrink-0">
+    <div className="relative flex h-full shrink-0 max-lg:w-full max-lg:shrink">
       {sidebarOpen && (
       <div className={`${LIST_PANEL_WIDTH} h-full shrink-0 border-r border-border ${hasCustomAppBackground ? "bg-transparent" : "bg-[var(--document-list-surface)]"} max-lg:w-full max-lg:shrink`}>
         <div className="flex flex-col h-full">
@@ -110,7 +112,7 @@ export function LocalDocsSidebar({
           actions={root ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground" title={t("doc.more")} aria-label={t("doc.more")}>
+                <Button variant="ghost" size="icon" className="h-11 w-11 lg:h-6 lg:w-6 shrink-0 text-muted-foreground hover:text-foreground" title={t("doc.more")} aria-label={t("doc.more")}>
                   <MoreHorizontal className="h-3.5 w-3.5" />
                 </Button>
               </DropdownMenuTrigger>
@@ -222,13 +224,17 @@ export function LocalDocsSidebar({
         </div>
       </div>
       )}
-      <ListPanelEdgeHandle
-        edge="leading"
-        collapsed={!sidebarOpen}
-        onClick={() => onSidebarOpenChange(!sidebarOpen)}
-        label={sidebarOpen ? t("doc.collapseFiles") : t("doc.expandFiles")}
-        top="top-3"
-      />
+      {/* Same as DocumentsPage: phones toggle list/editor themselves, so the
+        * desktop collapse pull-tab only renders where it does something. */}
+      {!isNarrow && (
+        <ListPanelEdgeHandle
+          edge="leading"
+          collapsed={!sidebarOpen}
+          onClick={() => onSidebarOpenChange(!sidebarOpen)}
+          label={sidebarOpen ? t("doc.collapseFiles") : t("doc.expandFiles")}
+          top="top-3"
+        />
+      )}
     </div>
   );
 }

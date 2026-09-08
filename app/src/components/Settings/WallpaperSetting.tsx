@@ -95,6 +95,7 @@ export function WallpaperSetting({
             type="button"
             role="switch"
             aria-checked={visible}
+            aria-label={t("settings.appBackgroundVisible")}
             disabled={!image}
             onClick={() => setVisible(!visible)}
             className={`relative h-[18px] w-8 shrink-0 rounded-full transition-colors disabled:opacity-40 ${
@@ -163,6 +164,7 @@ function Slider({
         value={value}
         disabled={disabled}
         onChange={(event) => onChange(Number(event.target.value))}
+        aria-label={label}
         className="w-full accent-primary disabled:opacity-40"
       />
     </div>

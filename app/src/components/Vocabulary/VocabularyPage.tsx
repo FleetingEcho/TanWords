@@ -237,14 +237,14 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
       {/* Mobile (<lg): selection pushes a full-screen detail overlay with a
         * back affordance, hiding the bottom tab bar beneath it for space. */}
       {narrow && (selected || lookup) && (
-        <div className={`fixed inset-0 z-50 flex flex-col overflow-hidden lg:hidden ${
+        <div className={`fixed inset-0 z-[60] flex flex-col overflow-hidden lg:hidden ${
           hasCustomAppBackground ? "bg-background/70 backdrop-blur-xl" : "bg-background"
         }`}>
           <div className="flex h-12 shrink-0 items-center border-b border-border px-2">
             <button
               type="button"
               onClick={() => (lookup ? detail.setLookup(null) : detail.setSelected(null))}
-              className="flex h-10 items-center gap-1 rounded-lg px-2 pr-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="flex h-11 items-center gap-1 rounded-lg px-2 pr-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               <ChevronLeft className="h-4 w-4" />
               {t("vocab.detailBack")}

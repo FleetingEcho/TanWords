@@ -127,6 +127,7 @@ export function LearningSection() {
           type="button"
           role="switch"
           aria-checked={settings.showLevelBadges}
+          aria-label={t("settings.showLevelBadges")}
           onClick={() => settings.setShowLevelBadges(!settings.showLevelBadges)}
           className={`relative h-[18px] w-8 shrink-0 rounded-full transition-colors ${
             settings.showLevelBadges ? "bg-primary" : "bg-muted-foreground/30"

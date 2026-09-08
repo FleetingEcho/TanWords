@@ -41,6 +41,9 @@ interface Props {
   thumbOverlay?: React.ReactNode;
   /** Shown in the empty tile: a short label, or an icon for the avatar. */
   empty: React.ReactNode;
+  /** Accessible name for the empty tile's pick button. Required when `empty`
+   *  is an icon (an SVG alone gives the button no name). */
+  emptyAriaLabel?: string;
   /** Sizing for the preview dialog and the image inside it. */
   previewClassName: string;
   previewImgClassName: string;
@@ -69,7 +72,7 @@ interface Props {
  */
 export function ImageSetting({
   label, sub, value, onChange, processFile, onPicked, onAdjust, objectPosition, imageScale, maxBytes,
-  thumbClassName, thumbImgStyle, thumbOverlay, empty, previewClassName, previewImgClassName, children, gallery,
+  thumbClassName, thumbImgStyle, thumbOverlay, empty, emptyAriaLabel, previewClassName, previewImgClassName, children, gallery,
 }: Props) {
   const t = useT();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -165,6 +168,7 @@ export function ImageSetting({
               <button
                 type="button"
                 onClick={() => inputRef.current?.click()}
+                aria-label={emptyAriaLabel}
                 className="flex h-full w-full items-center justify-center text-[11px] text-muted-foreground transition-colors hover:bg-muted"
               >
                 {empty}

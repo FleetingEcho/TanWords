@@ -114,7 +114,7 @@ export function ReaderView({ url, title, domain, onBack, onOpenExternal, audio, 
   };
 
   return (
-    <div className={`flex flex-col animate-fade-in ${zenMode ? `fixed inset-0 z-50 ${hasCustomAppBackground ? "" : "bg-background"}` : "h-full"}`}>
+    <div className={`flex flex-col animate-fade-in ${zenMode ? `fixed inset-0 z-[60] ${hasCustomAppBackground ? "" : "bg-background"}` : "h-full"}`}>
       {/* Reader bar */}
       {!hideBar && <div className="flex flex-wrap items-center gap-2 px-3 py-2 min-h-12 border-b border-border shrink-0">
         <Button

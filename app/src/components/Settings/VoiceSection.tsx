@@ -171,7 +171,7 @@ export function VoiceSection() {
             onValueChange={(v) => selectModel(v)}
             disabled={loadingPath !== null || models.length === 0}
           >
-            <SelectTrigger className="h-8 px-2 rounded-lg border border-input bg-background text-xs text-foreground focus:outline-hidden max-w-[220px]">
+            <SelectTrigger aria-label={t("voice.model")} className="h-8 px-2 rounded-lg border border-input bg-background text-xs text-foreground focus:outline-hidden max-w-[220px]">
               <SelectValue placeholder={models.length ? t("voice.model") : t("voice.noModels")} />
             </SelectTrigger>
             <SelectContent>
