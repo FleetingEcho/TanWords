@@ -169,6 +169,7 @@ export function MainLayout({
   const collapsed = useLayoutStore((s) => s.sidebarCollapsed);
   const toggleCollapsed = useLayoutStore((s) => s.toggleSidebar);
   const visibleSidebarTabs = useSettingsStore((s) => s.visibleSidebarTabs);
+  const visibleDockTabs = useSettingsStore((s) => s.visibleDockTabs);
   const sidebarTabOrder = useSettingsStore((s) => s.sidebarTabOrder);
   const hasCustomAppBackground = useSettingsStore((s) => !!s.appBackgroundImage && s.appBackgroundVisible);
   const podcastActive = usePodcastPlayerStore((s) => s.status !== "idle" && s.track !== null);
@@ -208,7 +209,7 @@ export function MainLayout({
   const dockDefs = new Map(NAV_ITEM_DEFS.map((d) => [d.id, d]));
   const dockOrder = [...new Set([...sidebarTabOrder, ...NAV_ITEM_DEFS.map((d) => d.id)])];
   const DOCK_ITEMS: DockNavItem[] = [
-    ...dockOrder.flatMap((id) => {
+    ...dockOrder.filter((id) => visibleDockTabs.includes(id)).flatMap((id) => {
       const d = dockDefs.get(id);
       return d ? [{ id: id as NavPage, label: t(`nav.${d.id}`), icon: d.icon }] : [];
     }),

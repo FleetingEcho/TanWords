@@ -37,6 +37,10 @@ export interface SettingsState {
   selectionActions: boolean;
   /** Main navigation tabs visible in the sidebar. Settings is always visible. */
   visibleSidebarTabs: SidebarTabId[];
+  /** Pages shown on the phone/tablet fan dock. Independent of the desktop
+   *  sidebar's visible set — the dock is a small screen's only navigator.
+   *  Settings is always present, and host capabilities gate the rest. */
+  visibleDockTabs: SidebarTabId[];
   /** User-selected controls visible in the global command bar. */
   visibleTopBarItems: TopBarItemId[];
   /** Display order over *every* sidebar tab id (visible or not) — drag-reordered
@@ -189,6 +193,7 @@ export interface SettingsState {
   setShowGithubLink: (v: boolean) => void;
   setSelectionActions: (v: boolean) => void;
   setSidebarTabVisible: (tab: SidebarTabId, visible: boolean) => void;
+  setDockTabVisible: (tab: SidebarTabId, visible: boolean) => void;
   setTopBarItemVisible: (item: TopBarItemId, visible: boolean) => void;
   setSidebarTabOrder: (order: SidebarTabId[]) => void;
   setTopBarItemOrder: (order: TopBarItemId[]) => void;

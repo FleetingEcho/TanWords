@@ -33,6 +33,10 @@ describe("MainLayout mobile dock items", () => {
       // A minimal visible set, like a fresh profile: everything else is
       // hidden from the desktop sidebar and reachable only via Command-K.
       visibleSidebarTabs: ["dashboard", "feeds"],
+      visibleDockTabs: [
+        "dashboard", "calendar", "feeds", "reading", "documents", "vocabulary",
+        "chat", "music", "browser", "terminal", "dsh", "tools",
+      ],
       sidebarTabOrder: [
         "dashboard", "calendar", "feeds", "reading", "documents", "vocabulary",
         "chat", "music", "browser", "terminal", "dsh", "tools",
@@ -61,6 +65,20 @@ describe("MainLayout mobile dock items", () => {
     for (const page of ["terminal", "dsh", "browser", "music"]) {
       expect(ids).not.toContain(page);
     }
+  });
+
+  it("honours the dock's own visibility list, independent of the sidebar's", () => {
+    useSettingsStore.setState({ visibleDockTabs: ["dashboard", "chat"] });
+    render(
+      <MainLayout activeNav="dashboard" onNavigate={() => {}}>
+        <div>content</div>
+      </MainLayout>,
+    );
+
+    const ids = dockItems.map((i) => i.id);
+    expect(ids).toEqual(["dashboard", "chat", "settings"]);
+    // The desktop sidebar's visible set is a different list and stays untouched.
+    expect(useSettingsStore.getState().visibleSidebarTabs).toEqual(["dashboard", "feeds"]);
   });
 
   it("follows the user's sidebar order for the pages it shows", () => {

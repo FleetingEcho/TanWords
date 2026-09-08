@@ -1,5 +1,6 @@
 import {
-  DEFAULT_SIDEBAR_TABS, DEFAULT_VISIBLE_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_VISIBLE_TOPBAR_ITEMS,
+  DEFAULT_SIDEBAR_TABS, DEFAULT_VISIBLE_SIDEBAR_TABS,
+  DEFAULT_VISIBLE_DOCK_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_VISIBLE_TOPBAR_ITEMS,
   DEFAULT_LAYOUT_MODE, type SidebarTabId, type TopBarItemId, type RssTabSelection, type LayoutMode,
 } from "./types";
 import { normalizeOrder } from "./reorder";
@@ -54,6 +55,7 @@ export function cacheStartupPage(page: string) {
 }
 
 const SIDEBAR_TABS_CACHE_KEY = "tanwords_visible_sidebar_tabs_cache";
+const DOCK_TABS_CACHE_KEY = "tanwords_visible_dock_tabs_cache";
 const TOPBAR_ITEMS_CACHE_KEY = "tanwords_visible_topbar_items_cache";
 
 export function cachedSidebarTabs(): SidebarTabId[] {
@@ -63,6 +65,24 @@ export function cachedSidebarTabs(): SidebarTabId[] {
     return DEFAULT_SIDEBAR_TABS.filter((id) => parsed.includes(id));
   } catch {
     return DEFAULT_VISIBLE_SIDEBAR_TABS;
+  }
+}
+
+export function cachedDockTabs(): SidebarTabId[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(DOCK_TABS_CACHE_KEY) || "null");
+    if (!Array.isArray(parsed)) return DEFAULT_VISIBLE_DOCK_TABS;
+    return DEFAULT_SIDEBAR_TABS.filter((id) => parsed.includes(id));
+  } catch {
+    return DEFAULT_VISIBLE_DOCK_TABS;
+  }
+}
+
+export function cacheDockTabs(tabs: SidebarTabId[]) {
+  try {
+    localStorage.setItem(DOCK_TABS_CACHE_KEY, JSON.stringify(tabs));
+  } catch {
+    // The DB remains authoritative when localStorage is unavailable.
   }
 }
 

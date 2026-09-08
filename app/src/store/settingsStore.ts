@@ -14,7 +14,7 @@ import {
   type BannerPosition, type TerminalRenderer, type TerminalEngine, type TerminalColorScheme, type TerminalCustomAppearance,
 } from "./settings/types";
 import {
-  cachedUiLanguage, cacheUiLanguage, cachedSidebarTabs, cacheSidebarTabs,
+  cachedUiLanguage, cacheUiLanguage, cachedDockTabs, cachedSidebarTabs, cacheDockTabs, cacheSidebarTabs,
   cachedTopBarItems, cacheTopBarItems,
   cachedSidebarTabOrder, cacheSidebarTabOrder, cachedTopBarItemOrder, cacheTopBarItemOrder,
   cachedDefaultRssTab, cacheDefaultRssTab, cachedFeedsViewMode, cacheFeedsViewMode, saveSetting, saveSettings, saveSettingDebounced,
@@ -60,6 +60,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   showGithubLink: true,
   selectionActions: true,
   visibleSidebarTabs: cachedSidebarTabs(),
+  visibleDockTabs: cachedDockTabs(),
   visibleTopBarItems: cachedTopBarItems(),
   sidebarTabOrder: cachedSidebarTabOrder(),
   topBarItemOrder: cachedTopBarItemOrder(),
@@ -149,6 +150,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ visibleSidebarTabs: next });
     cacheSidebarTabs(next);
     saveSetting("visible_sidebar_tabs", JSON.stringify(next));
+  },
+
+  setDockTabVisible: (tab, visible) => {
+    const current = get().visibleDockTabs;
+    const next = visible
+      ? DEFAULT_SIDEBAR_TABS.filter((id) => id === tab || current.includes(id))
+      : current.filter((id) => id !== tab);
+    set({ visibleDockTabs: next });
+    cacheDockTabs(next);
+    saveSetting("visible_dock_tabs", JSON.stringify(next));
   },
 
   setTopBarItemVisible: (item, visible) => {

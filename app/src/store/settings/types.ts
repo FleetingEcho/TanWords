@@ -47,6 +47,11 @@ export const DEFAULT_SIDEBAR_TABS: SidebarTabId[] = [
  *  above remains the Settings order/catalog, so every hidden page can still
  *  be enabled explicitly. */
 export const DEFAULT_VISIBLE_SIDEBAR_TABS: SidebarTabId[] = ["dashboard", "feeds", "terminal", "dsh"];
+/** The phone's fan dock is the *only* navigator on a small screen, so a fresh
+ *  profile shows every tab there (capability gates still apply at render).
+ *  Unlike the desktop sidebar there is no Command palette habit to lean on,
+ *  and the user controls membership explicitly in Settings. */
+export const DEFAULT_VISIBLE_DOCK_TABS: SidebarTabId[] = DEFAULT_SIDEBAR_TABS;
 export const DEFAULT_TOPBAR_ITEMS: TopBarItemId[] = [
   "search", "scratch", "tools", "browser", "voice", "dsh", "terminal", "db", "mcp", "ai", "language", "theme", "updates", "github",
 ];

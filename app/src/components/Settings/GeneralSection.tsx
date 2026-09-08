@@ -336,13 +336,16 @@ function DefaultRssTabSetting() {
  *  hidden pill can still be dragged to where you want it before you ever
  *  turn it on. */
 function SortablePillGrid<T extends string>({
-  items, isVisible, labelFor, onToggle, onReorder, widthClass = "w-32",
+  items, isVisible, labelFor, onToggle, onReorder, reorderable = true, widthClass = "w-32",
 }: {
   items: T[];
   isVisible: (id: T) => boolean;
   labelFor: (id: T) => string;
   onToggle: (id: T, visible: boolean) => void;
   onReorder: (order: T[]) => void;
+  /** Membership-only grids (the mobile dock follows the sidebar's order)
+   *  render plain toggle pills with no drag affordance. */
+  reorderable?: boolean;
   widthClass?: string;
 }) {
   const [dragId, setDragId] = useState<T | null>(null);
@@ -368,14 +371,14 @@ function SortablePillGrid<T extends string>({
         return (
           <label
             key={id}
-            draggable
-            onDragStart={(e) => { setDragId(id); e.dataTransfer.effectAllowed = "move"; }}
-            onDragOver={(e) => { e.preventDefault(); if (dragId && dragId !== id) setOverId(id); }}
-            onDragLeave={() => setOverId((cur) => (cur === id ? null : cur))}
-            onDrop={(e) => { e.preventDefault(); handleDrop(id); }}
-            onDragEnd={() => { setDragId(null); setOverId(null); }}
             title={labelFor(id)}
-            className={`flex h-8 ${widthClass} cursor-grab items-center gap-2 rounded-full border px-3 text-xs font-medium transition-colors active:cursor-grabbing ${
+            draggable={reorderable}
+            onDragStart={reorderable ? (e) => { setDragId(id); e.dataTransfer.effectAllowed = "move"; } : undefined}
+            onDragOver={reorderable ? (e) => { e.preventDefault(); if (dragId && dragId !== id) setOverId(id); } : undefined}
+            onDragLeave={reorderable ? () => setOverId((cur) => (cur === id ? null : cur)) : undefined}
+            onDrop={reorderable ? (e) => { e.preventDefault(); handleDrop(id); } : undefined}
+            onDragEnd={reorderable ? () => { setDragId(null); setOverId(null); } : undefined}
+            className={`flex h-8 ${widthClass} items-center gap-2 rounded-full border px-3 text-xs font-medium transition-colors ${reorderable ? "cursor-grab active:cursor-grabbing" : "cursor-default"} ${
               visible
                 ? "border-primary/30 bg-primary/[0.07] text-foreground"
                 : "border-transparent bg-muted/50 text-muted-foreground hover:bg-muted"
@@ -388,6 +391,19 @@ function SortablePillGrid<T extends string>({
       })}
     </div>
   );
+}
+
+/** Tabs the fan dock can actually render on this host — the dock grid and
+ *  its "n visible" badge both count from this, so a web build never offers
+ *  (or counts) the desktop-only terminal/dsh/browser/music pages. */
+function dockableTabs(settings: { sidebarTabOrder: SidebarTabId[] }): SidebarTabId[] {
+  return settings.sidebarTabOrder.filter((tab) => {
+    if (tab === "music") return hostCapabilities.music;
+    if (tab === "browser") return hostCapabilities.browser;
+    if (tab === "terminal") return hostCapabilities.terminal;
+    if (tab === "dsh") return hostCapabilities.dsh;
+    return true;
+  });
 }
 
 export function GeneralSection() {
@@ -561,6 +577,25 @@ export function GeneralSection() {
             labelFor={(tab) => t(`nav.${tab}`)}
             onToggle={(tab, visible) => settings.setSidebarTabVisible(tab, visible)}
             onReorder={(order: SidebarTabId[]) => settings.setSidebarTabOrder(mergeReorderedSubset(settings.sidebarTabOrder, order))}
+          />
+        </div>
+        <div className="py-4">
+          <div className="mb-3">
+            <div className="flex items-center gap-2.5">
+              <p className="text-sm font-medium">{t("settings.dockTabs")}</p>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                {t("settings.dockTabsSelected", { n: dockableTabs(settings).filter((tab) => settings.visibleDockTabs.includes(tab)).length })}
+              </span>
+            </div>
+            <p className="mt-0.5 text-xs text-muted-foreground">{t("settings.dockTabsSub")}</p>
+          </div>
+          <SortablePillGrid
+            reorderable={false}
+            items={dockableTabs(settings)}
+            isVisible={(tab) => settings.visibleDockTabs.includes(tab)}
+            labelFor={(tab) => t(`nav.${tab}`)}
+            onToggle={(tab, visible) => settings.setDockTabVisible(tab, visible)}
+            onReorder={() => {}}
           />
         </div>
 

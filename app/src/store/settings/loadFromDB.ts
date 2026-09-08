@@ -1,7 +1,7 @@
 import type { StoreApi } from "zustand";
 import type { SettingsState } from "./state";
 import {
-  DEFAULT_SIDEBAR_TABS, DEFAULT_VISIBLE_SIDEBAR_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_VISIBLE_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR,
+  DEFAULT_SIDEBAR_TABS, DEFAULT_VISIBLE_SIDEBAR_TABS, DEFAULT_VISIBLE_DOCK_TABS, DEFAULT_TOPBAR_ITEMS, DEFAULT_VISIBLE_TOPBAR_ITEMS, DEFAULT_HIGHLIGHT_COLOR,
   DEFAULT_LAYOUT_MODE, DEFAULT_STARTUP_DESTINATION, AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES,
   DEFAULT_DSH_BACKGROUND_OPACITY, DEFAULT_DSH_BACKGROUND_BLUR,
   DSH_IDLE_STOP_CHOICES, DEFAULT_DSH_IDLE_STOP_MINUTES, DEFAULT_DSH_GLOBAL_SHORTCUT,
@@ -19,7 +19,7 @@ import {
   type TopBarItemId, type SidebarTabId,
 } from "./types";
 import {
-  cacheUiLanguage, cacheSidebarTabs, cacheTopBarItems, cacheDefaultRssTab, cacheFeedsViewMode,
+  cacheUiLanguage, cacheDockTabs, cacheSidebarTabs, cacheTopBarItems, cacheDefaultRssTab, cacheFeedsViewMode,
   cacheLayoutMode, cacheSidebarTabOrder, cacheTopBarItemOrder, cacheStartupPage,
 } from "./cache";
 import { normalizeOrder } from "./reorder";
@@ -233,6 +233,17 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       await invoke("db_set_setting", { key: "visible_sidebar_tabs", value: JSON.stringify(resolvedSidebarTabs) });
     }
     cacheSidebarTabs(resolvedSidebarTabs);
+
+    const hadSavedDockTabs = Array.isArray(values.visible_dock_tabs);
+    const resolvedDockTabs = hadSavedDockTabs
+      ? DEFAULT_SIDEBAR_TABS.filter((id) => (values.visible_dock_tabs as unknown as string[]).includes(id))
+      : DEFAULT_VISIBLE_DOCK_TABS;
+    // Same one-time seeding as the sidebar tabs: persist the default once so
+    // a later default change never re-enables a tab the user dock-hid.
+    if (!hadSavedDockTabs) {
+      await invoke("db_set_setting", { key: "visible_dock_tabs", value: JSON.stringify(resolvedDockTabs) });
+    }
+    cacheDockTabs(resolvedDockTabs);
 
     const hadSavedTopBar = Array.isArray(values.visible_topbar_items);
     let resolvedTopBarItems = hadSavedTopBar
@@ -472,6 +483,7 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       showGithubLink: (values.show_github_link as unknown) !== false && values.show_github_link !== "false",
       selectionActions: (values.selection_actions as unknown) !== false && values.selection_actions !== "false",
       visibleSidebarTabs: resolvedSidebarTabs,
+      visibleDockTabs: resolvedDockTabs,
       visibleTopBarItems: resolvedTopBarItems,
       sidebarTabOrder: resolvedSidebarTabOrder,
       topBarItemOrder: resolvedTopBarItemOrder,
