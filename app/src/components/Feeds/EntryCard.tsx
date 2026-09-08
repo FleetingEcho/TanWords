@@ -80,7 +80,7 @@ function PlayButton({ onPlay, label }: { onPlay: (e: React.MouseEvent) => void; 
       onClick={onPlay}
       className="h-8 px-3 inline-flex items-center gap-1.5 rounded-full text-xs font-semibold shadow-xs transition-all
         bg-card/90 text-foreground border border-border hover:bg-card
-        opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+        opacity-100 xl:opacity-0 xl:group-hover:opacity-100 focus-visible:opacity-100"
     >
       <PlayIcon className="w-3.5 h-3.5" />
       {label}
@@ -120,7 +120,7 @@ function TranslateButton({ translating, onTranslate, label }: { translating: boo
       aria-label={label}
       className="h-8 w-8 p-0 inline-flex items-center justify-center rounded-full shadow-xs transition-all
         bg-card/90 text-foreground border border-border hover:bg-card disabled:opacity-60
-        opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+        opacity-100 xl:opacity-0 xl:group-hover:opacity-100 focus-visible:opacity-100"
     >
       {translating ? (
         <span className="w-3.5 h-3.5 rounded-full border-2 border-muted-foreground/30 border-t-foreground animate-spin" />
@@ -189,7 +189,7 @@ function AnalyzeBackgroundButton({ url, analyzing, onAnalyze, analyzeLabel, done
           ? "bg-emerald-500 text-white border-emerald-600 hover:bg-emerald-500/90 opacity-100"
           : running
             ? "bg-card/90 text-foreground border-border opacity-100"
-            : "bg-card/90 text-foreground border-border hover:bg-card opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+            : "bg-card/90 text-foreground border-border hover:bg-card opacity-100 xl:opacity-0 xl:group-hover:opacity-100 focus-visible:opacity-100"
       }`}
     >
       {running ? (
