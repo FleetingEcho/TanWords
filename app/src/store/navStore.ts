@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { hostCapabilities, isWebHost } from "@/platform";
 
 export type NavPage =
   | "dashboard"
@@ -37,6 +38,50 @@ export type NavDestination =
   | { kind: "page"; page: NavPage }
   | { kind: "workspace"; workspaceId: string };
 
+/* ---- URL hash sync (web host only) -------------------------------------
+ * The shell predates the web version and keeps navigation in memory, which is
+ * invisible on the desktop (the window never reloads). In a browser it made a
+ * refresh land back on Dashboard and turned the back button into "leave the
+ * app". Syncing the top-level page to `#/<page>` fixes both: the store
+ * initializer consumes the hash at load, `navigate` writes it (a history
+ * entry per page, so back walks pages), and `hashchange` adopts back/forward
+ * and manual edits. Overlay state (settings, word detail, chat session) and
+ * workspaces stay out of the URL on purpose.
+ * ---------------------------------------------------------------------- */
+
+const HASHABLE_PAGES: readonly NavPage[] = [
+  "dashboard", "calendar", "feeds", "reading", "music", "vocabulary",
+  "documents", "chat", "browser", "terminal", "tools", "dsh",
+];
+
+/** Pages a host cannot render fall back to Dashboard instead of restoring
+ *  into a blank screen — web builds have no terminal/dsh/browser/music. */
+function hostCanRender(page: NavPage): boolean {
+  switch (page) {
+    case "browser": return hostCapabilities.browser;
+    case "music": return hostCapabilities.music;
+    case "terminal": return hostCapabilities.terminal;
+    case "dsh": return hostCapabilities.dsh;
+    default: return true;
+  }
+}
+
+/** The page named by the current URL hash, or null when the hash is absent,
+ *  unknown, or names a page this host cannot render. */
+export function pageFromHash(): NavPage | null {
+  if (!isWebHost || typeof window === "undefined") return null;
+  const raw = window.location.hash.replace(/^#\/?/, "");
+  if (!(HASHABLE_PAGES as readonly string[]).includes(raw)) return null;
+  const page = raw as NavPage;
+  return hostCanRender(page) ? page : null;
+}
+
+function syncHash(page: NavPage): void {
+  if (!isWebHost || typeof window === "undefined") return;
+  const target = `#/${page}`;
+  if (window.location.hash !== target) window.location.hash = target;
+}
+
 interface NavState {
   page: NavPage;
   wordId?: number;
@@ -73,7 +118,7 @@ interface NavState {
 }
 
 export const useNavStore = create<NavState>((set, get) => ({
-  page: "dashboard",
+  page: pageFromHash() ?? "dashboard",
   wordId: undefined,
   sentenceId: undefined,
   settingsSection: undefined,
@@ -100,6 +145,7 @@ export const useNavStore = create<NavState>((set, get) => ({
       page, wordId, sentenceId: undefined, settingsSection: undefined, settingsOpen: false,
       chatSessionId: undefined, activeWorkspaceId: null,
     });
+    syncHash(page);
   },
   closeSettings: () => set({ settingsOpen: false, settingsSection: undefined }),
   openVocabularySentence: (sentenceId) => set({ page: "vocabulary", wordId: undefined, sentenceId, settingsSection: undefined, settingsOpen: false, chatSessionId: undefined, activeWorkspaceId: null }),
@@ -108,3 +154,13 @@ export const useNavStore = create<NavState>((set, get) => ({
   openWorkspace: (workspaceId) => set({ activeWorkspaceId: workspaceId, settingsOpen: false, settingsSection: undefined }),
   closeWorkspace: () => set({ activeWorkspaceId: null }),
 }));
+
+if (isWebHost && typeof window !== "undefined") {
+  window.addEventListener("hashchange", () => {
+    const page = pageFromHash();
+    // Writing the hash inside navigate would push a duplicate history entry,
+    // but by the time this runs the hash already names `page`, so the write
+    // is a no-op. Unknown hashes (cleared URL, garbage) keep the current page.
+    if (page && page !== useNavStore.getState().page) useNavStore.getState().navigate(page);
+  });
+}

@@ -5,7 +5,7 @@ import { AppBackground } from "@/components/Layout/AppBackground";
 import { AuthGate } from "@/components/Layout/AuthGate";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useUpdaterStore } from "@/store/updaterStore";
-import { useNavStore } from "@/store/navStore";
+import { pageFromHash, useNavStore } from "@/store/navStore";
 import { useWordModalStore } from "@/store/wordModalStore";
 import { useToolsBallStore } from "@/store/toolsBallStore";
 import { usePodcastPlayerStore } from "@/store/podcastPlayerStore";
@@ -57,8 +57,9 @@ import { useServerCapabilitiesStore, useVoiceAssistantAvailable } from "@/store/
 // prefetches a chunk that stays unused. "workspace" and unknown values fall
 // back to the default destination's chunk.
 {
+  const hashPage = pageFromHash();
   const cached = cachedStartupPage();
-  const page = (cached && cached !== "workspace" ? cached : "dashboard") as NavPage;
+  const page = (hashPage ?? (cached && cached !== "workspace" ? cached : "dashboard")) as NavPage;
   prefetchPage(page);
 }
 
@@ -227,6 +228,15 @@ function App() {
       isWorkspacesEnabled(),
     );
     startupDestinationAppliedRef.current = true;
+    // A URL hash (#/feeds from a refresh or a shared link) names the first
+    // screen explicitly and wins over the startup-destination preference.
+    // The navStore initializer has already consumed it; just keep workspaces
+    // closed and skip the automatic navigation.
+    if (pageFromHash()) {
+      useWorkspaceStore.getState().selectWorkspace(null);
+      setStartupDestinationApplied(true);
+      return;
+    }
     if (destination.kind === "workspace") {
       useWorkspaceStore.getState().selectWorkspace(destination.workspaceId);
       useNavStore.getState().openWorkspace(destination.workspaceId);

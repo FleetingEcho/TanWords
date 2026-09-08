@@ -10,6 +10,7 @@ import { WORKSPACES_DURABLE_KEY } from "@/workspaces/persistence";
 // behavior explicitly; the complementary web-host gate has its own test.
 vi.mock("@/platform", () => ({
   isDesktopHost: true,
+  isWebHost: false,
   hostCapabilities: { desktop: true },
 }));
 
