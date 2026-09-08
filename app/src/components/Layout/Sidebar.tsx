@@ -198,10 +198,20 @@ export function MainLayout({
     .map((id) => navItemDefsById.get(id))
     .filter((d): d is Omit<NavItemDef, "label"> => !!d && visibleSidebarTabs.includes(d.id))
     .map((d) => ({ ...d, label: t(`nav.${d.id}`) }));
-  // Settings rides along in the dock: without it the CommandBar gear is the
-  // only way in, since there is no sidebar to pin it below.
+  // The dock is the phone's *only* navigator, so it shows every page this
+  // host can render — not just the tabs the desktop sidebar currently
+  // displays. The fresh-profile visible set is deliberately small
+  // (DEFAULT_VISIBLE_SIDEBAR_TABS) and desktops hide pages behind Command-K;
+  // a phone has no Command palette habit, and inheriting the hidden set
+  // stranded Vocabulary/Documents/Chat behind Dashboard widgets. Order
+  // follows the user's sidebar order, then any tab that list omits.
+  const dockDefs = new Map(NAV_ITEM_DEFS.map((d) => [d.id, d]));
+  const dockOrder = [...new Set([...sidebarTabOrder, ...NAV_ITEM_DEFS.map((d) => d.id)])];
   const DOCK_ITEMS: DockNavItem[] = [
-    ...NAV_ITEMS.map((d) => ({ id: d.id as NavPage, label: d.label, icon: d.icon })),
+    ...dockOrder.flatMap((id) => {
+      const d = dockDefs.get(id);
+      return d ? [{ id: id as NavPage, label: t(`nav.${d.id}`), icon: d.icon }] : [];
+    }),
     { id: "settings" as NavPage, label: t("nav.settings"), icon: Settings },
   ];
 
