@@ -373,6 +373,95 @@ pub async fn tick(conn: &Conn) -> Result<usize, String> {
     Ok(sent)
 }
 
+// ── in-app reminders ────────────────────────────────────────────────────────
+
+/// One reminder the renderer should surface in-app right now.
+#[derive(Serialize)]
+pub struct InAppReminder {
+    pub id: String,
+    pub title: String,
+    pub all_day: bool,
+    /// Signed minutes from now to the event's start (negative once it has
+    /// begun; meaningless for all-day). The renderer renders the localized
+    /// "in N minutes" phrase from it — unlike the push, whose body is
+    /// pre-rendered English in [`message_body`], the app UI is bilingual.
+    pub starts_in_minutes: i64,
+    /// When the reminder became due, wire `YYYY-MM-DD HH:mm` local time. The
+    /// renderer drops anything that went stale while the app was closed.
+    pub due_at: String,
+}
+
+/// The query behind `ntfy_due_in_app_reminders`. Unlike [`due_events`] this
+/// deliberately ignores `reminder_sent_at`: the ntfy push is claimed by
+/// whichever process owns sending (the web server — see the module docs), and
+/// the in-app alert must still fire — including when ntfy is not configured
+/// at all, since in-app delivery needs no settings. The renderer dedupes per
+/// session, so an event is alerted once per app run even though the window
+/// stays open.
+pub(crate) async fn due_in_app(
+    conn: &Conn,
+    cfg: &NtfyConfig,
+    now: NaiveDateTime,
+) -> Result<Vec<InAppReminder>, String> {
+    let rows = db::fetch_all(
+        conn,
+        "SELECT id, title, \"start\", all_day, reminder_minutes
+         FROM calendar_events
+         WHERE reminder_minutes IS NOT NULL
+         ORDER BY \"start\" ASC, id ASC",
+        (),
+        |r| {
+            Ok(DueEvent {
+                id: r.get(0)?,
+                title: r.get(1)?,
+                start: r.get(2)?,
+                all_day: r.get::<i64>(3)? != 0,
+                reminder_minutes: r.get::<i64>(4)?,
+            })
+        },
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(rows
+        .into_iter()
+        .filter(|ev| is_due(ev, cfg, now))
+        .map(|ev| {
+            let starts_in_minutes =
+                NaiveDateTime::parse_from_str(ev.start.trim(), "%Y-%m-%d %H:%M")
+                    .map(|start| start.signed_duration_since(now).num_minutes())
+                    .unwrap_or(0);
+            let due_at = reminder_due_at(
+                &ev.start,
+                ev.all_day,
+                ev.reminder_minutes,
+                &cfg.all_day_time,
+            )
+            .map(|due| due.format("%Y-%m-%d %H:%M").to_string())
+            .unwrap_or_default();
+            InAppReminder {
+                id: ev.id,
+                title: ev.title,
+                all_day: ev.all_day,
+                starts_in_minutes,
+                due_at,
+            }
+        })
+        .collect())
+}
+
+/// The renderer's poll: every reminder whose in-app window is open right now.
+/// Desktop and web renderers share this command, so both alert the same way;
+/// the web server's push claim never suppresses the local alert.
+#[crate::shim::command]
+pub async fn ntfy_due_in_app_reminders(
+    conn: State<'_, crate::AppState>,
+) -> Result<Vec<InAppReminder>, String> {
+    let db = db::conn(&conn)?;
+    let cfg = load_config(&db).await?;
+    let now = chrono::Local::now().naive_local();
+    due_in_app(&db, &cfg, now).await
+}
+
 // ── command ─────────────────────────────────────────────────────────────────
 
 /// Fires one "it works" push through the configured server+topic, so the
@@ -651,5 +740,65 @@ mod tests {
         assert_eq!(pushes.load(std::sync::atomic::Ordering::SeqCst), 1);
 
         server.abort();
+    }
+
+    /// The in-app list ignores `reminder_sent_at` — the web server may have
+    /// claimed the push, and the local alert must still fire — and drops
+    /// reminders whose window has closed or that have no reminder at all. It
+    /// also runs with ntfy completely unconfigured, because in-app delivery
+    /// needs no settings.
+    #[tokio::test]
+    async fn in_app_lists_due_even_when_already_claimed() {
+        let database = crate::db::connection::open_memory().await.expect("memory db");
+        let conn = database.conn();
+        crate::db::init_db(&conn).await.expect("init");
+
+        // Minute-granular "now": the wire strings this query is compared
+        // against truncate seconds, and the assertions want exact minutes.
+        use chrono::Timelike;
+        let local = chrono::Local::now();
+        let now = local
+            .date_naive()
+            .and_hms_opt(local.hour(), local.minute(), 0)
+            .unwrap();
+        let due_start = (now + chrono::Duration::minutes(10))
+            .format("%Y-%m-%d %H:%M")
+            .to_string();
+        let past_start = (now - chrono::Duration::hours(2))
+            .format("%Y-%m-%d %H:%M")
+            .to_string();
+        for (id, title, start, reminder, sent) in [
+            ("a", "Unsent", due_start.as_str(), Some(30), false),
+            ("b", "Already claimed", due_start.as_str(), Some(30), true),
+            ("c", "Window closed", past_start.as_str(), Some(30), true),
+            ("d", "No reminder", due_start.as_str(), None, false),
+        ] {
+            conn.execute(
+                "INSERT INTO calendar_events (id, calendar_id, title, \"start\", \"end\", all_day, reminder_minutes, reminder_sent_at)
+                 VALUES (?1, 'default', ?2, ?3, ?3, 0, ?4, ?5)",
+                crate::db::params![
+                    id,
+                    title,
+                    start,
+                    reminder,
+                    if sent { Some("2026-01-01 00:00:00") } else { None },
+                ],
+            )
+            .await
+            .unwrap();
+        }
+
+        let out = due_in_app(&conn, &cfg("09:00"), now).await.expect("due_in_app");
+        let ids: Vec<&str> = out.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec!["a", "b"],
+            "an open window wins over the sent stamp; closed windows and reminder-less events stay out"
+        );
+        let b = out.iter().find(|r| r.id == "b").unwrap();
+        assert_eq!(b.starts_in_minutes, 10);
+        let start_dt = NaiveDateTime::parse_from_str(&due_start, "%Y-%m-%d %H:%M").unwrap();
+        let due_dt = NaiveDateTime::parse_from_str(&b.due_at, "%Y-%m-%d %H:%M").unwrap();
+        assert_eq!(due_dt, start_dt - chrono::Duration::minutes(30));
     }
 }

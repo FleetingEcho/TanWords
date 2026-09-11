@@ -20,6 +20,7 @@ import { useT } from "@/hooks/useT";
 import { useMcpSync } from "@/hooks/useMcpSync";
 import { useTraySync } from "@/hooks/useTraySync";
 import { useAutoLock } from "@/hooks/useAutoLock";
+import { useReminderAlerts } from "@/hooks/useReminderAlerts";
 import { initProviders } from "@/lib/initProviders";
 import { invoke } from "@/ipc/backend";
 import { ENRICHED_SEED_WORDS, BASIC_SEED_WORDS } from "@/data/seedWords";
@@ -148,6 +149,9 @@ function App() {
   if (hostCapabilities.mcp) useMcpSync();
   if (hostCapabilities.tray) useTraySync();
   useAutoLock();
+  // Calendar reminder toasts + system notifications. Gated on the auth state:
+  // web polls only with a session; desktop is ready immediately.
+  useReminderAlerts(authState === "ready");
 
   // Session gate for the web host. api/client-style auth events land here
   // regardless of which component started the transition.

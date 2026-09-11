@@ -19,6 +19,7 @@ import {
 import { wireWindowDevTools } from "./devtools";
 import { rememberedWindowBackground } from "./windowBackground";
 import { requestWindowHide, restoreAndFocusWindow, showWindow } from "./windowVisibility";
+import { closeAllAppNotifications } from "./appNotification";
 import { abortAllFor } from "./http";
 import { registerYouTubeEmbedIdentity } from "./youtubeEmbed";
 import { startupMark, gotLock } from "./earlyInit";
@@ -383,8 +384,12 @@ function createWindow() {
   // Focusing the window means the user has returned to the app and can see
   // its state directly — close any outstanding "session finished"
   // notifications so the launcher badge clears (Linux daemons badge the icon
-  // by unread-notification count). See notifyDshTaskFinished.
-  win.on("focus", () => closeAllDshNotifications());
+  // by unread-notification count). See notifyDshTaskFinished. Reminder
+  // notifications from appNotification.ts share the same treatment.
+  win.on("focus", () => {
+    closeAllDshNotifications();
+    closeAllAppNotifications();
+  });
   // Parity with the Tauri-era tray (core's CloseRequested handler): clicking
   // the title-bar X hides the app into the tray, it does not quit — playback
   // and the tray menu keep working behind it. Only the tray's Quit (or an
@@ -543,8 +548,10 @@ if (gotLock) {
     quitting = true;
     // Close outstanding DSH notifications before exit: Linux notification
     // daemons keep notifications from exited processes, so without this the
-    // launcher badge would survive a restart.
+    // launcher badge would survive a restart. Reminder notifications
+    // (appNotification.ts) get the same treatment.
     closeAllDshNotifications();
+    closeAllAppNotifications();
     terminalShutdownAll();
     void sidecar.shutdown().finally(() => {
       // The DSH host has no stdin-EOF shutdown path; the supervisor SIGTERMs

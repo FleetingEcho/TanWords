@@ -51,5 +51,11 @@ export const calendar: Dict = {
     "calendar.reminderOff": "关闭",
     "calendar.reminderMinutesBefore": "提前 {minutes} 分钟",
     "calendar.reminderMorning": "当天早上提醒",
-    "calendar.reminderHint": "通过 ntfy 推送到手机（设置 → 通知）—— 由常驻的 web 服务器发送，本应用关着也会响。",
+    "calendar.reminderHint": "提醒会在应用内显示（弹窗 + 系统通知），并通过 ntfy 推送到手机（设置 → 通知）—— 推送由常驻的 web 服务器发送，本应用关着也会响。",
+    "calendar.reminderToday": "今天",
+    "calendar.reminderInMinutes": "{minutes} 分钟后",
+    "calendar.reminderStarting": "即将开始",
+    "calendar.reminderEnableTitle": "开启系统通知？",
+    "calendar.reminderEnableBody": "日历提醒目前只在应用内显示。",
+    "calendar.reminderEnableAction": "开启",
 };

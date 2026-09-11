@@ -13,6 +13,7 @@ import {
 import { abortFetch, startFetch } from "./http";
 import { rememberWindowBackground } from "./windowBackground";
 import { requestWindowHide, showWindow } from "./windowVisibility";
+import { showAppNotification } from "./appNotification";
 import {
   terminalClose,
   terminalDefaultShell,
@@ -423,6 +424,15 @@ export async function dispatch(
     case "window_get_bounds": {
       const win = BrowserWindow.fromWebContents(sender);
       return win ? win.getBounds() : null;
+    }
+    // A real OS notification for a renderer-side alert (calendar reminders).
+    // The renderer already showed its in-app toast; main only raises the
+    // system notification (skipped while the window is focused — see
+    // appNotification.ts) and focuses the window on click.
+    case "window_show_notification": {
+      const { title, body, openEvent } = (args ?? {}) as { title: string; body: string; openEvent?: string };
+      showAppNotification(deps, { title, body, openEvent });
+      return null;
     }
     case "floating_browser_window_set_bounds": {
       const win = BrowserWindow.fromWebContents(sender);

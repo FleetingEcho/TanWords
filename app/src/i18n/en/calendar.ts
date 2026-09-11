@@ -51,5 +51,11 @@ export const calendar: Dict = {
     "calendar.reminderOff": "Off",
     "calendar.reminderMinutesBefore": "{minutes} minutes before",
     "calendar.reminderMorning": "Morning reminder on the day",
-    "calendar.reminderHint": "Pushed to your phone via ntfy (Settings → Notifications) — the always-on web server sends it, so it fires even when this app is closed.",
+    "calendar.reminderHint": "Alerts appear inside the app (toast + system notification) and are pushed to your phone via ntfy (Settings → Notifications) — the always-on web server sends the push, so it fires even when this app is closed.",
+    "calendar.reminderToday": "Today",
+    "calendar.reminderInMinutes": "In {minutes} minutes",
+    "calendar.reminderStarting": "Starting now",
+    "calendar.reminderEnableTitle": "Enable system notifications?",
+    "calendar.reminderEnableBody": "Calendar reminders currently appear only inside the app.",
+    "calendar.reminderEnableAction": "Enable",
 };
