@@ -82,16 +82,17 @@ const TERMINAL_CUSTOMIZATION_WITNESS_KEYS = [
 export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"], get: StoreApi<SettingsState>["getState"]) {
   try {
     const { invoke } = await import("@/ipc/backend");
+    // Per-device selections never ride the shared batch below — they are
+    // stored per machine (see db/device_paths.rs) and read through their own
+    // command with the shared-key fallback built in.
     const keys = [
       "theme",
-      "default_ai_provider",
       "ui_language",
       "target_level",
       "show_level_badges",
       "custom_enrich_prompt",
       "tts_model_path",
       "tts_voice_id",
-      "tts_remote_provider_id",
       "tts_remote_voice",
       "tts_extra_dirs",
       "tts_speed",
@@ -196,10 +197,27 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       readDevicePath("music_folder_path"),
       readDevicePath("terminal_shell_path"),
     ]);
-    const [batch, [musicFolderPath, terminalShellPath]] = await Promise.all([
-      batchPromise,
-      devicePathsPromise,
+    // Device-scoped selections (JSON-encoded like every other setting; the
+    // backend falls back to the shared key until this machine writes its own).
+    const readDeviceSelection = async (key: string): Promise<string> => {
+      try {
+        const raw = await invoke<string | null>("db_get_device_setting", { key });
+        if (!raw) return "";
+        const parsed = JSON.parse(raw);
+        return typeof parsed === "string" ? parsed : "";
+      } catch (error) {
+        // A device-only selection must never prevent synced preferences from
+        // hydrating (an older sidecar will not know the command yet).
+        console.warn(`Device setting ${key} could not be loaded:`, error);
+        return "";
+      }
+    };
+    const deviceSelectionsPromise = Promise.all([
+      readDeviceSelection("default_ai_provider"),
+      readDeviceSelection("tts_remote_provider_id"),
     ]);
+    const [batch, [musicFolderPath, terminalShellPath], [defaultAiProvider, ttsRemoteProviderId]] =
+      await Promise.all([batchPromise, devicePathsPromise, deviceSelectionsPromise]);
     const valuesList = batch && batch.length === keys.length ? batch : null;
     for (const [index, key] of keys.entries()) {
       const val = valuesList ? valuesList[index] : null;
@@ -460,7 +478,7 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
 
     set({
       theme: (values.theme as Theme) || "system",
-      defaultAiProvider: values.default_ai_provider || "openai",
+      defaultAiProvider: defaultAiProvider || "openai",
       uiLanguage: resolvedUiLanguage,
       // Legacy installs stored a single string ("C1"); newer ones an array.
       targetLevels: Array.isArray(values.target_level)
@@ -473,7 +491,7 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       musicFolderPath,
       ttsModelPath: values.tts_model_path || "",
       ttsVoiceId: values.tts_voice_id || "0",
-      ttsRemoteProviderId: values.tts_remote_provider_id || "",
+      ttsRemoteProviderId: ttsRemoteProviderId || "",
       ttsRemoteVoice: values.tts_remote_voice || "",
       ttsExtraDirs: Array.isArray(values.tts_extra_dirs) ? values.tts_extra_dirs : [],
       ttsSpeed: Number(values.tts_speed) || 1,

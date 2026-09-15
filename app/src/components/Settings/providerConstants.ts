@@ -5,6 +5,27 @@ export interface ProviderDef {
   dot: string;
   isCustom?: boolean;
   apiBase?: string;
+  /** Where this provider was added — the origin badge ("Windows · OFFICE-PC").
+   *  An empty platform renders as "another device": the row came from a
+   *  device that never registered (pre-registry database). */
+  origin?: { label: string; platform: string };
+  /** A stored key this device cannot decrypt (a provider whose key another
+   *  machine's keychain sealed — copied local databases). The row shows but
+   *  is marked "key needed" instead of pretending it will work. */
+  keyNeeded?: boolean;
+}
+
+/** Human names for the platform strings the devices registry stores
+ *  (`std::env::consts::OS`, or "web" for the web server build). */
+export function platformDisplayName(platform: string): string {
+  switch (platform) {
+    case "windows": return "Windows";
+    case "macos": return "macOS";
+    case "linux": return "Linux";
+    case "web": return "Web";
+    case "": return "";
+    default: return platform.charAt(0).toUpperCase() + platform.slice(1);
+  }
 }
 
 /** Built-ins don't let you edit the base URL, so it lives in code rather than

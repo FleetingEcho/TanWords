@@ -1,4 +1,4 @@
-//! Device-scoped AI provider configuration.
+//! AI provider configuration — one shared list, per-origin keys.
 //!
 //! Provider metadata (name, base URL, model) and the API key both live in the
 //! `ai_providers` table, so they travel with the database instead of being
@@ -6,15 +6,25 @@
 //! is why a Postgres-synced second device used to come up with no providers at
 //! all despite being "already configured".
 //!
-//! Two properties make that safe to do with secret material in it:
+//! Rows are a single shared list: every device on the database sees every
+//! provider, and an edit from any device updates the one row. `device_id`
+//! records which installation *added* a row (the origin badge, resolved
+//! against the `devices` registry) — it no longer hides anything. What
+//! actually gates secret material is the sealing:
 //!
-//! 1. Every row is stamped with `device_id` (see `appconfig::device_id`) and
-//!    every query here filters on the current one. A device only ever sees
-//!    what was configured on it.
-//! 2. `api_key_enc` is AES-256-GCM sealed with a master key held in this
-//!    device's OS keychain and never exposed to the webview. Rows that reach
-//!    another machine through sync are undecryptable there, so scoping is
-//!    enforced by cryptography and not only by the WHERE clause.
+//! 1. On a Postgres profile every device derives the same vault key from the
+//!    shared connection password, so a key sealed on one machine decrypts on
+//!    all of them — config roams the way its owner expects.
+//! 2. On a local file profile the sealing key is this device's keychain, so a
+//!    row that reaches another machine through a *copied* file decrypts to
+//!    nothing there. That device still sees the row's metadata, but `key()`
+//!    reads as unconfigured and `list()` reports `key_available: false`, so
+//!    the UI says "key needed" instead of failing silently at call time.
+//!
+//! Rows whose key was sealed by a pre-vault device fall back to that device's
+//! keychain key and are lazily re-sealed under the active profile's key (see
+//! `key`), which is how an upgrading install starts roaming without a
+//! re-entry ritual.
 
 use crate::db::params; use crate::db::Conn;
 use serde::{Deserialize, Serialize};
@@ -25,7 +35,9 @@ use crate::shim::State;
 use crate::AppState;
 
 /// A provider as the settings UI sees it: everything except the key itself.
-/// `has_key` is what the UI needs to render "configured"; the plaintext is a
+/// `has_key` says a key is stored; `key_available` says this device can
+/// actually decrypt it — the two differ for a row sealed by another
+/// machine's keychain (the copied-local-file case). The plaintext is a
 /// separate, explicit call so listing providers never moves secrets around.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -36,6 +48,15 @@ pub struct AiProvider {
     pub api_base: String,
     pub model_id: String,
     pub has_key: bool,
+    /// The installation that added this row — the origin badge. Empty
+    /// label/platform mean the adding device never registered (a row from
+    /// before the `devices` table existed); the UI falls back to "another
+    /// device".
+    pub origin_device_id: String,
+    pub origin_label: String,
+    pub origin_platform: String,
+    /// Whether this device can decrypt the stored key right now.
+    pub key_available: bool,
 }
 
 const NO_KEYCHAIN: &str = "Cannot store the API key: this device's keychain is unavailable, so it could only be saved unencrypted.";
@@ -58,27 +79,56 @@ fn unseal(conn: &Conn, sealed: &str) -> Option<String> {
     conn.sealing_key().and_then(|key| decrypt_text(&key, sealed).ok())
 }
 
-pub async fn list(conn: &Conn, device: &str) -> Result<Vec<AiProvider>, String> {
-    db::fetch_all(
+/// Every provider on this database, from all devices, oldest first. Origin
+/// columns are resolved against the `devices` registry; `key_available` is
+/// answered by actually attempting the decrypt, so the UI never promises a
+/// key this device cannot produce.
+pub async fn list(conn: &Conn) -> Result<Vec<AiProvider>, String> {
+    let rows = db::fetch_all(
         conn,
-        "SELECT id, name, kind, api_base, model_id, api_key_enc <> ''
-           FROM ai_providers WHERE device_id = ?1 ORDER BY created_at",
-        params![device],
+        "SELECT p.id, p.name, p.kind, p.api_base, p.model_id, p.api_key_enc,
+                p.device_id, COALESCE(d.label, ''), COALESCE(d.platform, '')
+           FROM ai_providers p
+           LEFT JOIN devices d ON d.device_id = p.device_id
+          ORDER BY p.created_at, p.device_id, p.id",
+        (),
         |row| {
-            Ok(AiProvider {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                kind: row.get(2)?,
-                api_base: row.get(3)?,
-                model_id: row.get(4)?,
-                // `api_key_enc <> ''` is a comparison — BOOL on Postgres, 0/1
-                // on SQLite; read as bool (portable both ways, like the EXISTS
-                // and `IS NOT NULL` reads).
-                has_key: row.get::<bool>(5)?,
-            })
+            Ok((
+                row.get::<String>(0)?,
+                row.get::<String>(1)?,
+                row.get::<String>(2)?,
+                row.get::<String>(3)?,
+                row.get::<String>(4)?,
+                row.get::<String>(5)?,
+                row.get::<String>(6)?,
+                row.get::<String>(7)?,
+                row.get::<String>(8)?,
+            ))
         },
     )
-    .await
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(
+            |(id, name, kind, api_base, model_id, sealed, origin_device_id, origin_label, origin_platform)| {
+                let has_key = !sealed.is_empty();
+                let key_available = has_key && unseal(conn, &sealed).is_some();
+                AiProvider {
+                    id,
+                    name,
+                    kind,
+                    api_base,
+                    model_id,
+                    has_key,
+                    origin_device_id,
+                    origin_label,
+                    origin_platform,
+                    key_available,
+                }
+            },
+        )
+        .collect())
 }
 
 pub async fn upsert(
@@ -93,24 +143,42 @@ pub async fn upsert(
 
     // `api_key: None` means "leave whatever is stored alone" — the settings UI
     // saves name/model edits without re-sending the secret, and re-sealing a
-    // key it never had would silently wipe it. COALESCE on the excluded value
-    // keeps the existing ciphertext in that case.
+    // key it never had would silently wipe it. COALESCE keeps the existing
+    // ciphertext in that case.
     let sealed = match api_key {
         Some(key) => Some(seal(conn, key)?),
         None => None,
     };
 
+    // Providers are one shared list: an edit from any device updates the one
+    // row wherever it was created. Only the insert path — a genuinely new
+    // provider — stamps this device as the origin.
+    let updated = conn
+        .execute(
+            "UPDATE ai_providers
+                SET name = ?2, kind = ?3, api_base = ?4, model_id = ?5,
+                    api_key_enc = COALESCE(?6, api_key_enc),
+                    updated_at = CURRENT_TIMESTAMP
+              WHERE id = ?1",
+            params![
+                provider.id.clone(),
+                provider.name.clone(),
+                provider.kind.clone(),
+                provider.api_base.clone(),
+                provider.model_id.clone(),
+                sealed.clone(),
+            ],
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    if updated > 0 {
+        return Ok(());
+    }
+
     conn.execute(
         "INSERT INTO ai_providers
             (device_id, id, name, kind, api_base, model_id, api_key_enc, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, COALESCE(?7, ''), CURRENT_TIMESTAMP)
-         ON CONFLICT(device_id, id) DO UPDATE SET
-            name        = excluded.name,
-            kind        = excluded.kind,
-            api_base    = excluded.api_base,
-            model_id    = excluded.model_id,
-            api_key_enc = COALESCE(?7, ai_providers.api_key_enc),
-            updated_at  = CURRENT_TIMESTAMP",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, COALESCE(?7, ''), CURRENT_TIMESTAMP)",
         params![
             device,
             provider.id.clone(),
@@ -126,21 +194,24 @@ pub async fn upsert(
     Ok(())
 }
 
-pub async fn delete(conn: &Conn, device: &str, id: &str) -> Result<(), String> {
+/// Removes the provider everywhere — it is one shared row, not this device's
+/// copy. (Two devices that independently created the same id keep two rows;
+/// deleting removes whichever matches first, and a repeat call gets the rest.)
+pub async fn delete(conn: &Conn, id: &str) -> Result<(), String> {
     conn.execute(
-        "DELETE FROM ai_providers WHERE device_id = ?1 AND id = ?2",
-        params![device, id],
+        "DELETE FROM ai_providers WHERE id = ?1",
+        params![id],
     )
     .await
     .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-pub async fn key(conn: &Conn, device: &str, id: &str) -> Result<String, String> {
+pub async fn key(conn: &Conn, id: &str) -> Result<String, String> {
     let sealed = db::fetch_optional(
         conn,
-        "SELECT api_key_enc FROM ai_providers WHERE device_id = ?1 AND id = ?2",
-        params![device, id],
+        "SELECT api_key_enc FROM ai_providers WHERE id = ?1",
+        params![id],
         |row| row.get::<String>(0),
     )
     .await?;
@@ -169,8 +240,8 @@ pub async fn key(conn: &Conn, device: &str, id: &str) -> Result<String, String> 
         if let Ok(resealed) = encrypt_text(&primary, &plaintext) {
             let _ = conn
                 .execute(
-                    "UPDATE ai_providers SET api_key_enc = ?1 WHERE device_id = ?2 AND id = ?3",
-                    params![resealed, device, id],
+                    "UPDATE ai_providers SET api_key_enc = ?1 WHERE id = ?2",
+                    params![resealed, id],
                 )
                 .await;
         }
@@ -181,27 +252,23 @@ pub async fn key(conn: &Conn, device: &str, id: &str) -> Result<String, String> 
 // ── Commands ───────────────────────────────────────────────────────────────
 
 #[crate::shim::command]
-pub async fn ai_provider_list(
-    state: State<'_, AppState>,
-) -> Result<Vec<AiProvider>, String> {
+pub async fn ai_provider_list(state: State<'_, AppState>) -> Result<Vec<AiProvider>, String> {
     let conn = db::conn(&state)?;
-    list(&conn, &crate::appconfig::device_id()).await
+    list(&conn).await
 }
 
 /// The plaintext key for one provider. The renderer genuinely needs it — it
 /// calls the provider HTTP APIs directly — but requesting it per provider
 /// keeps the secret off the list response that the settings page renders.
 #[crate::shim::command]
-pub async fn ai_provider_key(
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<String, String> {
+pub async fn ai_provider_key(id: String, state: State<'_, AppState>) -> Result<String, String> {
     let conn = db::conn(&state)?;
-    key(&conn, &crate::appconfig::device_id(), &id).await
+    key(&conn, &id).await
 }
 
 /// Creates or updates a provider. Omit `apiKey` to preserve the stored key;
-/// pass `""` to clear it.
+/// pass `""` to clear it. Editing an existing provider works from any device
+/// (one shared row); a new provider is stamped with this device as origin.
 #[crate::shim::command]
 pub async fn ai_provider_upsert(
     id: String,
@@ -220,6 +287,10 @@ pub async fn ai_provider_upsert(
         api_base,
         model_id,
         has_key: false,
+        origin_device_id: String::new(),
+        origin_label: String::new(),
+        origin_platform: String::new(),
+        key_available: false,
     };
     upsert(
         &conn,
@@ -233,7 +304,7 @@ pub async fn ai_provider_upsert(
 #[crate::shim::command]
 pub async fn ai_provider_delete(id: String, state: State<'_, AppState>) -> Result<(), String> {
     let conn = db::conn(&state)?;
-    delete(&conn, &crate::appconfig::device_id(), &id).await
+    delete(&conn, &id).await
 }
 
 #[cfg(test)]
@@ -260,27 +331,40 @@ mod tests {
             api_base: "http://localhost:11434/v1".into(),
             model_id: "llama3".into(),
             has_key: false,
+            origin_device_id: String::new(),
+            origin_label: String::new(),
+            origin_platform: String::new(),
+            key_available: false,
         }
     }
 
     #[tokio::test]
-    async fn providers_are_scoped_to_the_device_that_added_them() {
+    async fn list_is_shared_across_devices_and_stamps_the_origin() {
         let conn = memory_conn().await;
         upsert(&conn, "device-a", &provider("custom_1"), Some("")).await.unwrap();
         upsert(&conn, "device-b", &provider("custom_2"), Some("")).await.unwrap();
 
-        let a = list(&conn, "device-a").await.unwrap();
-        assert_eq!(a.len(), 1);
-        assert_eq!(a[0].id, "custom_1");
+        // Every device sees the whole list, each row tagged with its origin.
+        let all = list(&conn).await.unwrap();
+        assert_eq!(all.len(), 2);
+        let first = all.iter().find(|p| p.id == "custom_1").unwrap();
+        assert_eq!(first.origin_device_id, "device-a");
+        assert!(!first.key_available); // no key stored at all
 
-        let b = list(&conn, "device-b").await.unwrap();
-        assert_eq!(b.len(), 1);
-        assert_eq!(b[0].id, "custom_2");
+        // The registry may not know the adding device (no row in `devices`),
+        // and that must degrade to empty strings, not an error.
+        assert_eq!(first.origin_label, "");
+        assert_eq!(first.origin_platform, "");
 
-        // Same provider id on two devices is two independent rows, not a clash.
+        // A second device editing the same id updates the ONE shared row
+        // instead of forking a private copy — the origin stays where the
+        // provider was born.
         upsert(&conn, "device-b", &provider("custom_1"), Some("")).await.unwrap();
-        assert_eq!(list(&conn, "device-a").await.unwrap().len(), 1);
-        assert_eq!(list(&conn, "device-b").await.unwrap().len(), 2);
+        let all = list(&conn).await.unwrap();
+        assert_eq!(all.len(), 2);
+        let edited = all.iter().find(|p| p.id == "custom_1").unwrap();
+        assert_eq!(edited.name, "Ollama");
+        assert_eq!(edited.origin_device_id, "device-a");
     }
 
     #[tokio::test]
@@ -303,24 +387,26 @@ mod tests {
         .await
         .unwrap();
         assert!(!stored.contains("sk-secret-value"));
-        assert_eq!(key(&conn, "d", "custom_1").await.unwrap(), "sk-secret-value");
-        assert!(list(&conn, "d").await.unwrap()[0].has_key);
+        assert_eq!(key(&conn, "custom_1").await.unwrap(), "sk-secret-value");
+        assert!(list(&conn).await.unwrap()[0].has_key);
+        assert!(list(&conn).await.unwrap()[0].key_available);
 
         // A metadata-only save (api_key = None) must not wipe the key.
         let mut renamed = provider("custom_1");
         renamed.name = "Renamed".into();
         upsert(&conn, "d", &renamed, None).await.unwrap();
-        assert_eq!(key(&conn, "d", "custom_1").await.unwrap(), "sk-secret-value");
-        assert_eq!(list(&conn, "d").await.unwrap()[0].name, "Renamed");
+        assert_eq!(key(&conn, "custom_1").await.unwrap(), "sk-secret-value");
+        assert_eq!(list(&conn).await.unwrap()[0].name, "Renamed");
 
         // An explicit empty string clears it.
         upsert(&conn, "d", &renamed, Some("")).await.unwrap();
-        assert_eq!(key(&conn, "d", "custom_1").await.unwrap(), "");
-        assert!(!list(&conn, "d").await.unwrap()[0].has_key);
+        assert_eq!(key(&conn, "custom_1").await.unwrap(), "");
+        assert!(!list(&conn).await.unwrap()[0].has_key);
+        assert!(!list(&conn).await.unwrap()[0].key_available);
     }
 
     #[tokio::test]
-    async fn a_row_sealed_by_another_device_reads_as_unconfigured() {
+    async fn a_row_sealed_by_another_device_is_visible_but_reads_unconfigured() {
         let conn = memory_conn().await;
         conn.execute(
             "INSERT INTO ai_providers (device_id, id, name, kind, api_base, model_id, api_key_enc)
@@ -329,7 +415,15 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(key(&conn, "d", "custom_1").await.unwrap(), "");
+        // The key is undecryptable here, so the plaintext reads as "" and the
+        // user can re-enter it — but the row itself is no longer hidden: the
+        // list shows it, with has_key (a key exists) distinct from
+        // key_available (this device can produce it).
+        assert_eq!(key(&conn, "custom_1").await.unwrap(), "");
+        let row = &list(&conn).await.unwrap()[0];
+        assert!(row.has_key);
+        assert!(!row.key_available);
+        assert_eq!(row.origin_device_id, "d");
     }
 
     /// Requires a live Postgres reachable at `TANWORDS_PG_TEST_URL` — skipped
@@ -362,7 +456,7 @@ mod tests {
         upsert(&conn_a, "device-a", &provider("custom_1"), Some("sk-roaming-value"))
             .await
             .unwrap();
-        assert_eq!(key(&conn_a, "device-a", "custom_1").await.unwrap(), "sk-roaming-value");
+        assert_eq!(key(&conn_a, "custom_1").await.unwrap(), "sk-roaming-value");
 
         // A second independent open = "device B". Same password → same vault
         // key → it can decrypt what A sealed.
@@ -373,7 +467,14 @@ mod tests {
         let vault_b = conn_b.vault_key().map(|k| *k).expect("device B has a vault key");
         // Same shared vault key, recovered independently from the same password.
         assert_eq!(vault_a, vault_b, "both devices share the vault key");
-        assert_eq!(key(&conn_b, "device-a", "custom_1").await.unwrap(), "sk-roaming-value");
+        assert_eq!(key(&conn_b, "custom_1").await.unwrap(), "sk-roaming-value");
+
+        // And the shared list means B sees A's provider as fully usable —
+        // this is the property the settings badges are built on.
+        let seen_by_b = list(&conn_b).await.unwrap();
+        let roaming = seen_by_b.iter().find(|p| p.id == "custom_1").unwrap();
+        assert_eq!(roaming.origin_device_id, "device-a");
+        assert!(roaming.key_available);
 
         // Cleanup.
         conn_b.execute("DELETE FROM ai_providers WHERE id = 'custom_1'", ()).await.unwrap();

@@ -490,9 +490,13 @@ CREATE INDEX IF NOT EXISTS idx_search_history_searched_at ON search_history(sear
 CREATE UNIQUE INDEX IF NOT EXISTS idx_search_history_word ON search_history(word);
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- 11. AI providers (device-scoped, encrypted keys)
+-- 11. AI providers (one shared list, keys still encrypted)
 -- ═══════════════════════════════════════════════════════════════════════════
 
+-- Rows are visible to every device on the database: `device_id` records which
+-- machine *added* the provider (the origin badge in Settings), it no longer
+-- hides it. Keys stay sealed — see db/ai_providers.rs for what a device that
+-- cannot decrypt a row's key is told.
 CREATE TABLE IF NOT EXISTS ai_providers (
   device_id   TEXT NOT NULL,
   id          TEXT NOT NULL,
@@ -506,6 +510,23 @@ CREATE TABLE IF NOT EXISTS ai_providers (
   PRIMARY KEY (device_id, id)
 );
 CREATE INDEX IF NOT EXISTS idx_ai_providers_device ON ai_providers(device_id);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 11b. Devices (who else uses this database)
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- One row per installation that opened this database, written on open (see
+-- `build_state_for`). Gives the opaque `device_id` a human name and a
+-- platform, so origin badges ("added on Windows") can be rendered anywhere
+-- per-device data shows up. The table never syncs identities by itself —
+-- device ids come from each machine's app_config.json, which does not travel.
+CREATE TABLE IF NOT EXISTS devices (
+  device_id    TEXT PRIMARY KEY,
+  label        TEXT NOT NULL DEFAULT '',
+  platform     TEXT NOT NULL DEFAULT '',
+  created_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- 12. Scene Lab

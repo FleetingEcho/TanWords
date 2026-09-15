@@ -28,6 +28,10 @@ function blankConfig(id: string): ProviderConfig {
     modelId: "",
     hasKey: false,
     apiKey: "",
+    originDeviceId: "",
+    originLabel: "",
+    originPlatform: "",
+    keyAvailable: false,
   };
 }
 
@@ -123,7 +127,8 @@ export function ProviderSection() {
     };
   }, []);
 
-  // Load this device's providers once.
+  // Load the shared provider list once — every machine's providers, each
+  // tagged with the device that added it.
   useEffect(() => {
     (async () => {
       let loadedConfigs: Record<string, ProviderConfig> = {};
@@ -164,7 +169,6 @@ export function ProviderSection() {
   }, [loaded, configs]);
 
   const configFor = (id: string): ProviderConfig => configs[id] ?? blankConfig(id);
-  const keyFor = (id: string): string => configs[id]?.apiKey || "";
 
   const testConnection = async (providerId: string, apiBase: string, apiKey: string, modelId?: string) => {
     setTestStatus({ ok: null, text: t("settings.testing") });
@@ -261,6 +265,9 @@ export function ProviderSection() {
         modelId: newProvider.modelId,
         apiKey: newProvider.apiKey,
         hasKey: Boolean(newProvider.apiKey),
+        // A key typed on THIS device is sealed with this device's key —
+        // usable here immediately.
+        keyAvailable: Boolean(newProvider.apiKey),
       },
       true,
     );
@@ -355,6 +362,9 @@ export function ProviderSection() {
         modelId: editForm.modelId,
         apiKey: nextKey,
         hasKey: nextKey ? true : Boolean(configsRef.current[editingId]?.hasKey),
+        // A key entered here is sealed by THIS device — usable here from now
+        // on, even if the row's previous key was added on another machine.
+        keyAvailable: nextKey ? true : Boolean(configsRef.current[editingId]?.keyAvailable),
       },
       true,
     );
@@ -364,7 +374,18 @@ export function ProviderSection() {
   const allCards: ProviderDef[] = [
     ...Object.values(configs)
       .filter((c) => c.kind === "custom")
-      .map((c) => ({ id: c.id, name: c.name, model: c.modelId, dot: "#6366f1", isCustom: true, apiBase: c.apiBase })),
+      .map((c) => ({
+        id: c.id,
+        name: c.name,
+        model: c.modelId,
+        dot: "#6366f1",
+        isCustom: true,
+        apiBase: c.apiBase,
+        // The list is shared across machines — each row badges where it was
+        // added, and a key this device cannot decrypt shows as "key needed".
+        origin: { label: c.originLabel, platform: c.originPlatform },
+        keyNeeded: c.hasKey && !c.keyAvailable,
+      })),
   ];
 
   const panelFor = (id: string) => {
@@ -402,7 +423,13 @@ export function ProviderSection() {
           <ProviderRow
             key={provider.id}
             provider={provider}
-            connected={!!keyFor(provider.id)}
+            connected={(() => {
+              const config = configs[provider.id];
+              // "Connected" = a key this device can actually produce. On web
+              // the plaintext never reaches the browser (the proxy injects
+              // it server-side), so the server-side keyAvailable is the truth.
+              return Boolean(config?.hasKey && config.keyAvailable);
+            })()}
             isDefault={provider.id === globalDefaultProvider}
             expanded={expandedId === provider.id}
             onToggleExpanded={() => setExpandedId((current) => (current === provider.id ? null : provider.id))}

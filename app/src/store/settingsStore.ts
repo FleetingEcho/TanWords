@@ -123,7 +123,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   setDefaultAiProvider: (provider) => {
     set({ defaultAiProvider: provider });
-    saveSetting("default_ai_provider", JSON.stringify(provider));
+    // Per-device selection, not a synced preference: the provider list is
+    // shared across this account's machines, but which one is active is each
+    // machine's own choice (see db/device_paths.rs). The old shared row made
+    // switching on the laptop switch the desktop too — and pointed at
+    // providers the other machine could not see at all.
+    void import("@/ipc/backend").then(({ invoke }) =>
+      invoke("db_set_device_setting", { key: "default_ai_provider", value: JSON.stringify(provider) })
+    ).catch((e) => console.warn("[settings] default provider save failed:", e));
   },
 
   setUiLanguage: (lang) => {
@@ -494,7 +501,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   setTtsRemoteProviderId: (id) => {
     set({ ttsRemoteProviderId: id });
-    saveSetting("tts_remote_provider_id", JSON.stringify(id));
+    // Device-scoped like the AI default: the shared provider list roams, the
+    // choice of which endpoint voices this machine does not.
+    void import("@/ipc/backend").then(({ invoke }) =>
+      invoke("db_set_device_setting", { key: "tts_remote_provider_id", value: JSON.stringify(id) })
+    ).catch((e) => console.warn("[settings] tts provider save failed:", e));
   },
 
   setTtsRemoteVoice: (voice) => {

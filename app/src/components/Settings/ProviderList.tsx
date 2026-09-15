@@ -1,11 +1,12 @@
 import React from "react";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ProviderDef } from "./providerConstants";
+import { ProviderDef, platformDisplayName } from "./providerConstants";
 
 /** One provider, with everything you'd otherwise have to open a dropdown and
  *  click through to find out: whether it has a key, which model it will use,
- *  and whether it's the one the app reaches for by default. */
+ *  whether it's the one the app reaches for by default — and, now that the
+ *  list is shared across machines, which platform added it. */
 export function ProviderRow({
   provider,
   connected,
@@ -26,6 +27,16 @@ export function ProviderRow({
   /** The provider's config form, rendered only while expanded. */
   children: React.ReactNode;
 }) {
+  // The origin badge: platform name plus, when known, the adding machine's
+  // own label. A blank platform means the row predates the devices registry.
+  const originName = provider.origin
+    ? [
+        platformDisplayName(provider.origin.platform) || t("settings.anotherDevice"),
+        provider.origin.label,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
   return (
     <div className={`border-b border-border/60 last:border-b-0 ${expanded ? "bg-muted/20" : ""}`}>
       <div className="flex items-center gap-3 px-4 py-3">
@@ -37,12 +48,33 @@ export function ProviderRow({
           <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${expanded ? "" : "-rotate-90"}`} />
           <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: provider.dot }} />
           <span className="min-w-0">
-            <span className="block truncate text-sm font-medium text-foreground">{provider.name}</span>
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="truncate text-sm font-medium text-foreground">{provider.name}</span>
+              {originName && (
+                <span
+                  title={t("settings.addedOn", { device: originName })}
+                  className="shrink-0 rounded-full bg-muted px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-muted-foreground"
+                >
+                  {originName}
+                </span>
+              )}
+            </span>
             <span className="block truncate font-mono text-[10px] text-muted-foreground">{provider.model || t("settings.noModel")}</span>
           </span>
         </button>
 
-        {connected ? (
+        {provider.keyNeeded ? (
+          // A key is stored but this device cannot decrypt it (the adding
+          // machine's keychain sealed it). Expand and re-enter it once — the
+          // save re-seals under this device's key.
+          <span
+            className="hidden shrink-0 items-center gap-1 text-[11px] font-medium text-amber-600 dark:text-amber-400 sm:flex"
+            title={t("settings.keyNeededHint")}
+          >
+            <KeyRound className="h-3 w-3" />
+            {t("settings.keyNeeded")}
+          </span>
+        ) : connected ? (
           <span className="hidden shrink-0 items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 sm:flex">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
             {t("settings.connected")}

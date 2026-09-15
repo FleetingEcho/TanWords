@@ -15,12 +15,13 @@ import { DocumentsSection } from "./DocumentsSection";
 import { TerminalSection } from "./TerminalSection";
 import { DataSection } from "./DataSection";
 import { DshSection } from "./DshSection";
+import { DevicesSection } from "./DevicesSection";
 import { hostCapabilities } from "@/platform";
 import { useVoiceAssistantAvailable } from "@/store/serverCapabilitiesStore";
 
 export { SettingRow } from "./SettingsShared";
 
-const ALL_SECTIONS = ["general", "lock", "providers", "learning", "tts", "voice", "ntfy", "mcp", "documents", "terminal", "dsh", "data"] as const;
+const ALL_SECTIONS = ["general", "lock", "providers", "learning", "tts", "voice", "ntfy", "mcp", "documents", "terminal", "dsh", "devices", "data"] as const;
 type SectionId = (typeof ALL_SECTIONS)[number];
 // Everything except "voice" is a static, build-time capability — computed
 // once. "voice" also depends on a web deployment's runtime bootstrap probe
@@ -43,7 +44,7 @@ export function SettingsPage() {
   const SECTIONS = voiceAssistantAvailable ? STATIC_SECTIONS : STATIC_SECTIONS.filter((id) => id !== "voice");
 
   const sectionRefs = useRef<Record<SectionId, HTMLElement | null>>({
-    general: null, lock: null, providers: null, learning: null, tts: null, voice: null, ntfy: null, mcp: null, documents: null, terminal: null, dsh: null, data: null,
+    general: null, lock: null, providers: null, learning: null, tts: null, voice: null, ntfy: null, mcp: null, documents: null, terminal: null, dsh: null, devices: null, data: null,
   });
   const scrollRef = useRef<HTMLDivElement>(null);
   const [activeSection, setActiveSection] = useState<SectionId>("general");
@@ -223,6 +224,13 @@ export function SettingsPage() {
           {hostCapabilities.dsh && <section ref={(el) => { sectionRefs.current.dsh = el; }} data-section="dsh" className="scroll-mt-6">
             <DshSection />
           </section>}
+
+          {/* Who else opens this database — the human side of the per-device
+            * machinery (provider origin badges, per-machine paths). */}
+          <section ref={(el) => { sectionRefs.current.devices = el; }} data-section="devices" className="scroll-mt-6">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">{t("settings.section.devices")}</p>
+            <DevicesSection />
+          </section>
 
           <section ref={(el) => { sectionRefs.current.data = el; }} data-section="data" className="scroll-mt-6">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">{t("settings.section.data")}</p>

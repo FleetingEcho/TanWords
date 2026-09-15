@@ -157,8 +157,9 @@ async fn read_response(response: reqwest::Response) -> Result<Vec<u8>, String> {
 /// care which engine produced the bytes.
 ///
 /// Configuration lives in two places:
-/// * provider row `tts_remote_provider_id` (kind `"tts"`, device-scoped,
-///   sealed key) — base URL and model;
+/// * provider row `tts_remote_provider_id` (kind `"tts"`, sealed key) — base
+///   URL and model; the selection itself is per device (see
+///   `db::device_paths`);
 /// * synced settings `tts_remote_voice` — voice name (see the module docs).
 #[crate::shim::command]
 pub async fn tts_remote_synthesize(
@@ -167,7 +168,6 @@ pub async fn tts_remote_synthesize(
     speed: f32,
 ) -> Result<String, String> {
     let conn = db::conn(&state)?;
-    let device = crate::appconfig::device_id();
 
     let provider_id = read_string_setting(&conn, "tts_remote_provider_id").await?;
     if provider_id.is_empty() {
@@ -175,15 +175,15 @@ pub async fn tts_remote_synthesize(
     }
     let voice = read_string_setting(&conn, "tts_remote_voice").await?;
 
-    let providers = db::ai_providers::list(&conn, &device).await?;
+    // The provider list is shared across devices now — a TTS endpoint added
+    // on any machine synthesizes on all of them.
+    let providers = db::ai_providers::list(&conn).await?;
     let provider = providers
         .into_iter()
         .find(|p| p.id == provider_id)
-        .ok_or_else(|| {
-            format!("TTS provider `{provider_id}` is not configured on this device")
-        })?;
+        .ok_or_else(|| format!("TTS provider `{provider_id}` is not configured"))?;
 
-    let api_key = db::ai_providers::key(&conn, &device, &provider_id).await?;
+    let api_key = db::ai_providers::key(&conn, &provider_id).await?;
 
     let req = build_request(&provider.api_base, &provider.model_id, &voice, &text, speed)?;
     let wav = send_request(&req, &api_key).await?;

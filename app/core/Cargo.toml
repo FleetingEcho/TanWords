@@ -81,7 +81,7 @@ hmac = "0.13"
 hkdf = "0.13"
 rand = "0.10"
 dirs = "6"
-reqwest = { version = "0.13", features = ["gzip", "brotli", "stream", "query"] }
+reqwest = { version = "0.13", features = ["gzip", "brotli", "stream", "query", "json"] }
 dom_smoothie = "0.18"
 ammonia = "4"
 rs-fsrs = "1"

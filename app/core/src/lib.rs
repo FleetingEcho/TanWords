@@ -102,6 +102,17 @@ pub async fn build_state_for(
     database: Db,
     db_fallback_warning: Option<String>,
 ) -> (Arc<shim::Registry>, shim::AppHandle) {
+    // Introduce this installation to the database's `devices` registry — the
+    // table that turns opaque per-device rows ("added by 8f3a…") into badges
+    // a human can read. The schema exists already: `open()` ran `init_db`.
+    // Best-effort: a registry failure must never keep the app from starting.
+    {
+        let conn = database.conn();
+        if let Err(e) = db::devices::register_current(&conn).await {
+            eprintln!("[startup] device registration failed: {e}");
+        }
+    }
+
     let mcp_controller = mcp::McpController::default();
     let mut registry = shim::Registry::default();
     registry.manage(AppState {

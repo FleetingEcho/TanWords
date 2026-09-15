@@ -1,14 +1,17 @@
 /** Persistence for AI provider configuration.
  *
  *  Everything lives in the `ai_providers` table now — metadata *and* the API
- *  key, the latter AES-256-GCM sealed by the backend with a master key held in
- *  this device's OS keychain. Previously metadata sat in localStorage and keys
- *  in the keychain, neither of which travels with the database, so a
- *  Postgres-synced or copied database came up looking unconfigured.
+ *  key, the latter AES-256-GCM sealed by the backend (the shared vault key on
+ *  Postgres, the device keychain key on a local file). Previously metadata sat
+ *  in localStorage and keys in the keychain, neither of which travels with the
+ *  database, so a Postgres-synced or copied database came up looking
+ *  unconfigured.
  *
- *  Rows are scoped to the device that created them (the backend stamps and
- *  filters on a device id from app_config.json), so a shared database still
- *  shows each machine only its own providers. */
+ *  Rows form one shared list across every device on the database — a provider
+ *  added on Windows is usable and editable from macOS. `originDeviceId`
+ *  records which machine added a row (the Settings badge, resolved against
+ *  the devices registry), and `keyAvailable` says whether THIS device can
+ *  actually decrypt its key. */
 
 import { invoke } from "@/ipc/backend";
 import { getSecret, secretDelete } from "@/lib/secrets";
@@ -25,6 +28,17 @@ export interface StoredProvider {
   apiBase: string;
   modelId: string;
   hasKey: boolean;
+  /** The installation that added this row — the origin badge in Settings.
+   *  Empty label/platform mean the adding device never registered (a row
+   *  from before the devices registry existed). */
+  originDeviceId: string;
+  originLabel: string;
+  originPlatform: string;
+  /** Whether THIS device can actually decrypt the stored key. A row sealed
+   *  by another machine's keychain (a copied local database) has hasKey but
+   *  not keyAvailable — the UI shows "key needed" instead of a provider
+   *  that would fail at call time. */
+  keyAvailable: boolean;
 }
 
 /** A provider plus its decrypted key, as the UI and the provider registry
@@ -43,9 +57,11 @@ export async function providerKey(id: string): Promise<string> {
 }
 
 /** Creates or updates a provider. Omit `apiKey` to leave the stored key
- *  untouched (metadata-only saves); pass `""` to clear it. */
+ *  untouched (metadata-only saves); pass `""` to clear it. Editing an
+ *  existing provider works from any device — one shared row; only a new
+ *  id is stamped with this device as its origin. */
 export async function upsertProvider(
-  provider: Omit<StoredProvider, "hasKey">,
+  provider: Omit<StoredProvider, "hasKey" | "originDeviceId" | "originLabel" | "originPlatform" | "keyAvailable">,
   apiKey?: string,
 ): Promise<void> {
   await invoke("ai_provider_upsert", {
@@ -78,7 +94,11 @@ export async function loadProviderConfigs(): Promise<Record<string, ProviderConf
     }
     return out;
   }
-  const keys = await Promise.all(rows.map((row) => (row.hasKey ? providerKey(row.id) : "")));
+  const keys = await Promise.all(
+    // A key this device cannot decrypt reads as "" anyway — skip the
+    // round-trip for it (the row shows "key needed" instead).
+    rows.map((row) => (row.hasKey && row.keyAvailable ? providerKey(row.id) : "")),
+  );
   const out: Record<string, ProviderConfig> = {};
   rows.forEach((row, i) => {
     out[row.id] = { ...row, apiKey: keys[i] };

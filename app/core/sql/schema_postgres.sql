@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS ai_chat_sessions (
             updated_at    TEXT DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
         , archived BIGINT NOT NULL DEFAULT 0, pinned BIGINT NOT NULL DEFAULT 0);
 
+-- Rows are visible to every device on the database: `device_id` records which
+-- machine *added* the provider (the origin badge in Settings), it no longer
+-- hides it. Keys stay sealed — see db/ai_providers.rs.
 CREATE TABLE IF NOT EXISTS ai_providers (
                 device_id   TEXT NOT NULL,
                 id          TEXT NOT NULL,
@@ -570,6 +573,19 @@ CREATE OR REPLACE VIEW all_document_assets AS
 CREATE INDEX IF NOT EXISTS idx_ai_chat_sessions_updated ON ai_chat_sessions(updated_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_ai_providers_device ON ai_providers(device_id);
+
+-- One row per installation that opened this database, written on open (see
+-- `build_state_for` and the runtime db-switch commands). Gives the opaque
+-- `device_id` a human name and a platform, so origin badges ("added on
+-- Windows") can be rendered anywhere per-device data shows up. Device ids
+-- come from each machine's app_config.json, which deliberately does not sync.
+CREATE TABLE IF NOT EXISTS devices (
+                device_id    TEXT PRIMARY KEY,
+                label        TEXT NOT NULL DEFAULT '',
+                platform     TEXT NOT NULL DEFAULT '',
+                created_at   TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+                last_seen_at TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+            );
 
 CREATE INDEX IF NOT EXISTS idx_calendar_events_calendar
             ON calendar_events(calendar_id);

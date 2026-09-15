@@ -38,6 +38,12 @@ async fn switch_db_path(
     let profile = DbProfile::Local { path: new_path.clone() };
     let database = db::connection::open(&profile, None).await?;
     state.replace_db(database)?;
+    // The new database's device registry has never seen this machine — same
+    // first-contact rule as startup. Best-effort: a registry failure must
+    // not fail the switch.
+    if let Err(e) = db::devices::register_current(&db::conn(&state)?).await {
+        eprintln!("[db-switch] device registration failed: {e}");
+    }
 
     if persist_profile {
         crate::appconfig::save_db_profile(&profile).map_err(|e| e.to_string())?;
@@ -77,6 +83,10 @@ pub async fn db_connect_postgres(
     let descriptor = database.descriptor();
 
     state.replace_db(database)?;
+    // First contact with this database's device registry — same as startup.
+    if let Err(e) = db::devices::register_current(&db::conn(&state)?).await {
+        eprintln!("[db-switch] device registration failed: {e}");
+    }
     crate::appconfig::save_db_profile(&profile).map_err(|e| e.to_string())?;
     Ok(descriptor)
 }
@@ -251,6 +261,11 @@ pub async fn db_disconnect_remote(
     let database = db::connection::open(&profile, None).await?;
     let descriptor = database.descriptor();
     state.replace_db(database)?;
+    // Back on the local file — its registry knows this machine, but refresh
+    // last_seen anyway after the stretch connected to Postgres.
+    if let Err(e) = db::devices::register_current(&db::conn(&state)?).await {
+        eprintln!("[db-switch] device registration failed: {e}");
+    }
     crate::appconfig::save_db_profile(&profile).map_err(|e| e.to_string())?;
     Ok(descriptor)
 }

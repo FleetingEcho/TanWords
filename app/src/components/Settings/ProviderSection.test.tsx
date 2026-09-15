@@ -149,6 +149,10 @@ describe("ProviderSection add-form model fetch", () => {
               apiBase: "http://localhost:11434/v1",
               modelId: "model-x",
               hasKey: true,
+              originDeviceId: "dev-1",
+              originLabel: "OFFICE-PC",
+              originPlatform: "windows",
+              keyAvailable: true,
             },
           ]
         : null,
@@ -179,5 +183,50 @@ describe("ProviderSection add-form model fetch", () => {
         }),
       );
     });
+  });
+
+  it("badges each row with the platform that added it and flags undecryptable keys", async () => {
+    invoke.mockImplementation(async (command: string) =>
+      command === "ai_provider_list"
+        ? [
+            {
+              id: "custom_here",
+              name: "Added Here",
+              kind: "custom",
+              apiBase: "https://here.test/v1",
+              modelId: "m",
+              hasKey: true,
+              originDeviceId: "dev-1",
+              originLabel: "OFFICE-PC",
+              originPlatform: "windows",
+              keyAvailable: true,
+            },
+            {
+              id: "custom_far",
+              name: "Added Elsewhere",
+              kind: "custom",
+              apiBase: "https://far.test/v1",
+              modelId: "m",
+              hasKey: true,
+              originDeviceId: "dev-2",
+              originLabel: "",
+              originPlatform: "macos",
+              keyAvailable: false,
+            },
+          ]
+        : null,
+    );
+    render(<ProviderSection />);
+
+    // Both rows are visible — the shared list spans devices — each badged
+    // with its origin (label when known, bare platform otherwise).
+    await screen.findByText("Added Here");
+    expect(screen.getByText("Windows · OFFICE-PC")).toBeTruthy();
+    expect(screen.getByText("macOS")).toBeTruthy();
+
+    // A stored key this device cannot decrypt shows "key needed" instead of
+    // the green connected dot — and the row is not "connected".
+    expect(screen.getByText("settings.keyNeeded")).toBeTruthy();
+    expect(screen.queryByText("Added Elsewhere")).toBeTruthy();
   });
 });
