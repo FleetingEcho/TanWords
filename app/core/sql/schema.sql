@@ -339,7 +339,9 @@ CREATE TABLE IF NOT EXISTS stickies (
   opacity       INTEGER NOT NULL DEFAULT 80,
   always_on_top INTEGER NOT NULL DEFAULT 1,
   font_family   TEXT,
-  font_size     INTEGER
+  font_size     INTEGER,
+  -- 1 = the user renamed the note; saves must not re-derive the title.
+  custom_title  INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS sticky_windows (
@@ -349,7 +351,7 @@ CREATE TABLE IF NOT EXISTS sticky_windows (
   device_id    TEXT NOT NULL,
   x INTEGER,
   y INTEGER,
-  w            INTEGER NOT NULL DEFAULT 260,
+  w            INTEGER NOT NULL DEFAULT 500,
   h            INTEGER NOT NULL DEFAULT 480,
   collapsed    INTEGER NOT NULL DEFAULT 0,
   is_open      INTEGER NOT NULL DEFAULT 0,

@@ -21,6 +21,8 @@ export const sticky: Dict = {
     "sticky.goneClose": "Close this window",
     "sticky.locked": "Protected note — locked.",
     "sticky.words": "{n} words",
+    "sticky.saving": "Saving…",
+    "sticky.renameTitle": "Note title",
     "sticky.trash": "Trash",
     "sticky.trashEmpty": "The trash is empty.",
     "sticky.restore": "Restore",

@@ -232,3 +232,4 @@ db::calendar::db_list_calendar_calendars
 db::calendar::db_create_calendar_calendar
 db::calendar::db_update_calendar_calendar
 db::calendar::db_delete_calendar_calendar
+db::sticky_set_title

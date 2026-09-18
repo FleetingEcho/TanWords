@@ -40,7 +40,7 @@ const DEFAULT_COLOR: &str = "yellow";
 const DEFAULT_OPACITY: i64 = 100;
 
 /// New-sticky window size, tanNotes parity (its `create_note` defaults).
-const DEFAULT_W: i64 = 260;
+const DEFAULT_W: i64 = 500;
 const DEFAULT_H: i64 = 480;
 
 /// The sticky title is derived state, never user-edited: the first non-empty
@@ -76,6 +76,9 @@ async fn read_setting(conn: &Conn, key: &str) -> Option<String> {
 pub struct StickyListItem {
     pub id: i64,
     pub title: String,
+    /// True once the user renamed the note; saves then stop re-deriving.
+    #[serde(default)]
+    pub custom_title: bool,
     /// Plaintext preview; empty while the note is protected and locked.
     pub preview: String,
     pub word_count: i64,
@@ -179,8 +182,8 @@ fn default_h() -> i64 {
 const LIST_COLUMNS: &str = "d.id, d.title, \
      CASE WHEN d.protected=1 THEN '' ELSE d.content_text END, d.word_count, \
      s.color, s.corner, s.opacity, s.always_on_top, s.font_family, s.font_size, \
-     w.x, w.y, COALESCE(w.w, 260), COALESCE(w.h, 480), COALESCE(w.collapsed, 0), COALESCE(w.is_open, 0), \
-     d.created_at, d.updated_at";
+     w.x, w.y, COALESCE(w.w, 500), COALESCE(w.h, 480), COALESCE(w.collapsed, 0), COALESCE(w.is_open, 0), \
+     d.created_at, d.updated_at, COALESCE(s.custom_title, 0)";
 
 fn list_item(row: &db::Row) -> Result<StickyListItem, sea_orm::DbErr> {
     Ok(StickyListItem {
@@ -202,6 +205,7 @@ fn list_item(row: &db::Row) -> Result<StickyListItem, sea_orm::DbErr> {
         is_open: row.get::<i64>(15)? != 0,
         created_at: row.get(16)?,
         updated_at: row.get(17)?,
+        custom_title: row.get::<i64>(18)? != 0,
     })
 }
 
@@ -459,7 +463,10 @@ pub(crate) async fn save_content(
         None => (content.to_string(), content_text.to_string()),
     };
     conn.execute(
-        "UPDATE documents SET title=?1, content=?2, content_text=?3, word_count=?4,
+        "UPDATE documents SET
+           title = CASE WHEN COALESCE((SELECT custom_title FROM stickies WHERE document_id=?7), 0) = 1
+                        THEN title ELSE ?1 END,
+           content=?2, content_text=?3, word_count=?4,
          updated_at=datetime('now'), task_total=?5, task_done=?6
          WHERE id=?7 AND kind='sticky' AND deleted_at IS NULL",
         params![title, content, content_text, word_count, task_total, task_done, id],
@@ -607,7 +614,7 @@ pub(crate) async fn bundle_export(conn: &Conn, device_id: &str) -> Result<Vec<St
         conn,
         "SELECT d.id, d.title, d.content, d.content_text, COALESCE(d.word_count,0), \
                 s.color, s.corner, s.opacity, s.always_on_top, s.font_family, s.font_size, \
-                w.x, w.y, COALESCE(w.w, 260), COALESCE(w.h, 480), COALESCE(w.collapsed, 0), \
+                w.x, w.y, COALESCE(w.w, 500), COALESCE(w.h, 480), COALESCE(w.collapsed, 0), \
                 d.created_at, d.updated_at, d.deleted_at
          FROM documents d
          JOIN stickies s ON s.document_id = d.id
@@ -798,6 +805,81 @@ pub async fn sticky_save_content(
     save_content(&db, id, &content, &content_text, word_count, key.as_ref()).await
 }
 
+/// Inner rename, testable without State. `Some(t)` with a non-empty trimmed
+/// value marks the note custom-titled (saves stop re-deriving); `None` or a
+/// blank string clears the rename and re-derives from the current body.
+/// `cipher` is the note's privacy key (may be absent).
+pub(crate) async fn set_title(
+    conn: &Conn,
+    id: i64,
+    title: Option<String>,
+    cipher: Option<&[u8; 32]>,
+) -> Result<(), String> {
+    let trimmed = title.as_deref().map(str::trim).unwrap_or("");
+    if !trimmed.is_empty() {
+        // Cap at 200 — generous beyond the 80-char derived default, sane
+        // against pathological pastes.
+        let custom: String = trimmed.chars().take(200).collect();
+        conn.execute(
+            "UPDATE documents SET title=?1,
+               updated_at=datetime('now')
+             WHERE id=?2 AND kind='sticky' AND deleted_at IS NULL",
+            params![custom, id],
+        )
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE stickies SET custom_title=1 WHERE document_id=?1",
+            params![id],
+        )
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())?;
+    } else {
+        // Back to derived: rebuild from the (possibly encrypted) body.
+        let stored = db::fetch_one(
+            conn,
+            "SELECT content_text FROM documents WHERE id = ?1",
+            params![id],
+            |row| Ok(row.get::<String>(0)?),
+        )
+        .await?;
+        let content_text = match cipher {
+            Some(key) => decrypt_text(key, &stored)?,
+            None => stored,
+        };
+        conn.execute(
+            "UPDATE documents SET title=?1,
+               updated_at=datetime('now')
+             WHERE id=?2 AND kind='sticky' AND deleted_at IS NULL",
+            params![derive_title(&content_text), id],
+        )
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE stickies SET custom_title=0 WHERE document_id=?1",
+            params![id],
+        )
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[crate::shim::command]
+pub async fn sticky_set_title(
+    id: i64,
+    title: Option<String>,
+    conn: State<'_, AppState>,
+) -> Result<(), String> {
+    let db = db::conn(&conn)?;
+    let key = document_privacy::require_key(&db, &conn.document_privacy, id).await?;
+    set_title(&db, id, title, key.as_ref()).await
+}
+
 /// Updates the shared sticky identity. `font_family` of `Some("")` clears the
 /// per-note font (back to inherit); `None` leaves it untouched — same for
 /// `font_size` via `Some(0)`.
@@ -943,6 +1025,7 @@ mod tests {
             is_open: false,
             created_at: "2026-01-01 00:00:00".into(),
             updated_at: "2026-01-01 00:00:00".into(),
+            custom_title: false,
         };
         let value = serde_json::to_value(StickyDetail { item, content: "[]".into() }).unwrap();
         assert_eq!(value["id"], json!(7), "id must be top-level");
@@ -1020,6 +1103,48 @@ mod tests {
         assert_eq!(item.title, "new first line");
         assert_eq!(item.word_count, 3);
         assert_eq!(item.preview, "new first line\nrest");
+    }
+
+    #[tokio::test]
+    async fn rename_marks_custom_and_survives_save() {
+        let db = memory_db().await;
+        let id = create(&db, DEV_A, "{}", "", 0, None).await.unwrap();
+        set_title(&db, id, Some("  QA list  ".into()), None).await.unwrap();
+        let item = get_for_device(&db, id, DEV_A).await.unwrap().unwrap();
+        assert_eq!(item.title, "QA list", "renamed title is trimmed, not derived");
+        assert!(item.custom_title, "rename sets the flag");
+        // A later save must NOT clobber the custom title.
+        save_content(&db, id, "{}", "typed first line", 3, None)
+            .await
+            .unwrap();
+        let item = get_for_device(&db, id, DEV_A).await.unwrap().unwrap();
+        assert_eq!(item.title, "QA list");
+        assert!(item.custom_title);
+    }
+
+    #[tokio::test]
+    async fn clearing_rename_rederives_from_body() {
+        let db = memory_db().await;
+        let id = create(&db, DEV_A, "{}", "", 0, None).await.unwrap();
+        save_content(&db, id, "{}", "first body line\nmore", 2, None)
+            .await
+            .unwrap();
+        set_title(&db, id, Some("custom".into()), None).await.unwrap();
+        set_title(&db, id, None, None).await.unwrap();
+        let item = get_for_device(&db, id, DEV_A).await.unwrap().unwrap();
+        assert_eq!(item.title, "first body line", "back to derived");
+        assert!(!item.custom_title);
+    }
+
+    #[tokio::test]
+    async fn rename_flag_round_trips_through_the_list() {
+        let db = memory_db().await;
+        let id = create(&db, DEV_A, "{}", "body", 1, None).await.unwrap();
+        set_title(&db, id, Some("renamed".into()), None).await.unwrap();
+        let rows = list_for_device(&db, DEV_A).await.unwrap();
+        let row = rows.iter().find(|r| r.id == id).unwrap();
+        assert!(row.custom_title);
+        assert_eq!(row.title, "renamed");
     }
 
     #[tokio::test]

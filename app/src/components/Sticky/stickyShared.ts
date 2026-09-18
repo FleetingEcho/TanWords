@@ -3,7 +3,7 @@
  *
  *  Deliberately dependency-light: both entry points import this, so anything
  *  heavy belongs elsewhere. */
-import type { CSSProperties } from "react";
+import { useEffect, type CSSProperties, type RefObject } from "react";
 
 /** The sticky window is just its header row when collapsed (must match
  *  STICKY_HEADER_HEIGHT in electron/main/stickyWindows.ts). */
@@ -76,6 +76,8 @@ export function stickyDerivedTitle(plainText: string): string {
 export interface StickyListItem {
   id: number;
   title: string;
+  /** True once the user renamed the note; saves stop re-deriving. */
+  custom_title?: boolean;
   preview: string;
   word_count: number;
   color: string;
@@ -94,3 +96,28 @@ export interface StickyListItem {
   updated_at: string;
 }
 export type StickyDetail = StickyListItem & { content: string };
+
+/** Dismiss a popover when a pointer lands outside it. Document-level
+ *  `pointerdown` (capture) so the dismissal wins over the outside click's own
+ *  handlers. `ignoreRef` optionally names a trigger element whose presses
+ *  must NOT dismiss — lets the trigger keep its natural toggle behavior when
+ *  the menu lives apart from it. */
+export function useDismissOnOutsideClick(
+  ref: RefObject<HTMLElement | null>,
+  active: boolean,
+  onDismiss: () => void,
+  ignoreRef?: RefObject<HTMLElement | null>,
+): void {
+  useEffect(() => {
+    if (!active) return;
+    const handler = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (ref.current?.contains(target)) return;
+      if (ignoreRef?.current?.contains(target)) return;
+      onDismiss();
+    };
+    document.addEventListener("pointerdown", handler, true);
+    return () => document.removeEventListener("pointerdown", handler, true);
+  }, [ref, active, onDismiss, ignoreRef]);
+}

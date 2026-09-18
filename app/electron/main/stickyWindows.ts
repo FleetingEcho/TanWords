@@ -28,7 +28,7 @@ import { rendererEntryUrl } from "./protocol";
 export const STICKY_HEADER_HEIGHT = 44;
 const MIN_W = 180;
 const MIN_H = 140;
-const DEFAULT_W = 260;
+const DEFAULT_W = 500;
 const DEFAULT_H = 480;
 /** Cascade placement for notes with no saved geometry: offset each window
  *  by this much so opening several at once reads as a fan, not a stack. */
@@ -319,8 +319,11 @@ export function openStickyManagerWindow(): void {
     minWidth: 320,
     minHeight: 420,
     frame: false,
-    // Opaque window — unlike sticky notes this is a control surface and uses
-    // normal app chrome, so no transparency gymnastics.
+    // Transparent like the notes: the manager root paints its own rounded
+    // corners, and an opaque window background would show as black outside
+    // them.
+    transparent: true,
+    backgroundColor: "#00000000",
     hasShadow: true,
     skipTaskbar: true,
     show: false,

@@ -718,13 +718,31 @@ export async function dispatch(
     }
     case "stickywin_capture_image": {
       // tanNotes F41: snapshot the note as it looks onto the clipboard.
-      // Electron 44's clipboard is the W3C-shaped async model (see
-      // ipcDispatch's own clipboardImagePng) — write takes ClipboardItems.
+      // The note usually scrolls (long text), and capturePage only
+      // rasterises the viewport — so grow the frameless window to the full
+      // page height for the shot, then restore. The renderer measures
+      // `fullHeight` (chrome + scrolled content); programmatic setBounds
+      // works on these resizable:false windows (the 8-way resize handles
+      // already drive them).
       const win = BrowserWindow.fromWebContents(sender);
       if (!win || win.isDestroyed()) return null;
-      const image = await win.webContents.capturePage();
-      const blob = new Blob([new Uint8Array(image.toPNG())], { type: "image/png" });
-      await clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      const args_ = (args ?? {}) as { fullHeight?: number | null };
+      const old = win.getBounds();
+      // Chromium's texture ceiling; beyond this a single PNG is impractical.
+      const MAX_CAPTURE_HEIGHT = 16384;
+      const wanted = Math.min(Math.max(Math.ceil(args_.fullHeight ?? 0), old.height), MAX_CAPTURE_HEIGHT);
+      try {
+        if (wanted > old.height) {
+          win.setBounds({ ...old, height: wanted });
+          // Give the compositor a frame to lay out + paint the taller page.
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        }
+        const image = await win.webContents.capturePage();
+        const blob = new Blob([new Uint8Array(image.toPNG())], { type: "image/png" });
+        await clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      } finally {
+        if (wanted > old.height) win.setBounds(old);
+      }
       return null;
     }
     case "stickywin_read_tannotes_asset": {

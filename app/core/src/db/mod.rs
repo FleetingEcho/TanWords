@@ -241,8 +241,15 @@ async fn init_db_sqlite(conn: &Conn) -> Result<(), DbErr> {
     // a soft-delete column; live databases predate both.
     ensure_column(conn, "documents", "kind", "TEXT NOT NULL DEFAULT 'document'").await?;
     ensure_column(conn, "documents", "deleted_at", "TEXT").await?;
+    ensure_column(conn, "stickies", "custom_title", "INTEGER NOT NULL DEFAULT 0").await?;
 
     conn.execute_batch(include_str!("../../sql/schema.sql")).await?;
+
+    // One-time (fingerprint-gated) normalization: notes created before the
+    // 2026-09 width bump opened at 260px — too narrow to be useful. Only the
+    // stored width moves; anything the user resizes afterwards is theirs.
+    conn.execute_batch("UPDATE sticky_windows SET w = 500 WHERE w < 500")
+        .await?;
 
     // Seed default calendars.
     let default_calendars = vec![
@@ -317,11 +324,16 @@ async fn init_db_postgres(conn: &Conn) -> Result<(), DbErr> {
     // missing-table error is tolerated and the batch creates everything.
     ensure_column(conn, "calendar_events", "reminder_minutes", "BIGINT").await?;
     ensure_column(conn, "calendar_events", "reminder_sent_at", "TEXT").await?;
+    ensure_column(conn, "stickies", "custom_title", "BIGINT NOT NULL DEFAULT 0").await?;
     // Same additions as the SQLite path (see the comment there).
     ensure_column(conn, "documents", "kind", "TEXT NOT NULL DEFAULT 'document'").await?;
     ensure_column(conn, "documents", "deleted_at", "TEXT").await?;
 
     conn.execute_batch(include_str!("../../sql/schema_postgres.sql"))
+        .await?;
+
+    // Same one-time width normalization as the SQLite path.
+    conn.execute_batch("UPDATE sticky_windows SET w = 500 WHERE w < 500")
         .await?;
 
     // Seed the same default calendars / settings the SQLite path does, using

@@ -10,8 +10,9 @@
  *  Active states re-render on the editor's own transaction events — cheap,
  *  and the toolbar is the only subscriber on this window.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/core";
+import { useDismissOnOutsideClick } from "./stickyShared";
 import {
   Bold, ChevronDown, Code, Italic, List, ListOrdered, ListTodo,
   Strikethrough, Underline as UnderlineIcon,
@@ -83,10 +84,25 @@ function SwatchPopover({
   );
 }
 
-export function StickyToolbar({ editor }: { editor: Editor | null }) {
+export function StickyToolbar({
+  editor,
+  noteFontSize,
+  onNoteFontSize,
+}: {
+  editor: Editor | null;
+  /** The note-wide font size (sticky_windows/font_size on the DB row) — the
+   *  sticky applies it on the editor container, so list markers, spacing and
+   *  every block scale together. */
+  noteFontSize: number | null;
+  onNoteFontSize: (size: number | null) => void;
+}) {
   // Bumped on editor transactions so active states stay honest.
   const [, setTick] = useState(0);
   const [palette, setPalette] = useState<"highlight" | "color" | "size" | null>(null);
+  // Any press outside the open palette closes it; the wrapper includes the
+  // trigger, so toggling via the trigger still works naturally.
+  const paletteWrapRef = useRef<HTMLDivElement | null>(null);
+  useDismissOnOutsideClick(paletteWrapRef, palette !== null, () => setPalette(null));
 
   useEffect(() => {
     if (!editor) return;
@@ -106,7 +122,7 @@ export function StickyToolbar({ editor }: { editor: Editor | null }) {
 
   const currentHighlight = (editor.getAttributes("highlight").color as string | undefined) ?? undefined;
   const currentColor = (editor.getAttributes("textStyle").color as string | undefined) ?? undefined;
-  const currentSize = (editor.getAttributes("textStyle").fontSize as string | undefined) ?? "";
+  const currentSize = noteFontSize ? `${noteFontSize}px` : "";
 
   return (
     <div className="relative flex shrink-0 flex-wrap items-center gap-0.5 border-b border-black/10 px-1.5 py-0.5">
@@ -128,7 +144,7 @@ export function StickyToolbar({ editor }: { editor: Editor | null }) {
 
       <span className="mx-0.5 h-4 w-px bg-black/15" />
 
-      <div className="relative">
+      <div className="relative" ref={palette === "highlight" ? paletteWrapRef : undefined}>
         <ToolButton
           title="Highlight"
           active={!!currentHighlight}
@@ -150,7 +166,7 @@ export function StickyToolbar({ editor }: { editor: Editor | null }) {
           })}
         />
       </div>
-      <div className="relative">
+      <div className="relative" ref={palette === "color" ? paletteWrapRef : undefined}>
         <ToolButton
           title="Text color"
           active={!!currentColor}
@@ -170,7 +186,7 @@ export function StickyToolbar({ editor }: { editor: Editor | null }) {
         />
       </div>
 
-      <div className="relative">
+      <div className="relative" ref={palette === "size" ? paletteWrapRef : undefined}>
         <button
           type="button"
           title="Font size"
@@ -188,11 +204,10 @@ export function StickyToolbar({ editor }: { editor: Editor | null }) {
                 key={size}
                 type="button"
                 className={`block w-full rounded-md px-2 py-1 text-left text-xs hover:bg-neutral-100 ${currentSize === `${size}px` ? "bg-neutral-200" : ""}`}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => run(() => {
-                  editor.chain().focus().setFontSize(`${size}px`).run();
+                onClick={() => {
+                  onNoteFontSize(size);
                   setPalette(null);
-                })}
+                }}
               >
                 {size}
               </button>
@@ -200,11 +215,10 @@ export function StickyToolbar({ editor }: { editor: Editor | null }) {
             <button
               type="button"
               className="block w-full rounded-md px-2 py-1 text-left text-xs text-neutral-500 hover:bg-neutral-100"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => run(() => {
-                editor.chain().focus().unsetFontSize().run();
+              onClick={() => {
+                onNoteFontSize(null);
                 setPalette(null);
-              })}
+              }}
             >
               default
             </button>

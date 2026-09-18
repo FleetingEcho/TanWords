@@ -15,12 +15,12 @@
  *    (manager/launch-reopen), cleared here on the close flow, and corrected
  *    by main's `closed` handler if the window dies out from under us.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   ChevronDown, ChevronUp, ClipboardCopy, Copy, EllipsisVertical, FileText,
   Loader2, Pin, PinOff, Printer, SlidersHorizontal, SwatchBook, X,
 } from "lucide-react";
-import { invoke } from "@/ipc/backend";
+import { backendOrigin, backendToken, invoke } from "@/ipc/backend";
 import { subscribe } from "@/ipc/events";
 import { readClipboardImage } from "@/ipc/clipboard";
 import { useT } from "@/hooks/useT";
@@ -39,6 +39,7 @@ import { StickyFindBar } from "./StickyFindBar";
 import {
   STICKY_HEADER_HEIGHT, STICKY_MIN_H, STICKY_MIN_W,
   STICKY_COLORS, stickyColorHex, stickyCornerClass, stickyDerivedTitle, stickySurfaceStyle,
+  useDismissOnOutsideClick,
   type StickyDetail,
 } from "./stickyShared";
 
@@ -47,8 +48,8 @@ import {
 
 type Bounds = { x: number; y: number; width: number; height: number };
 
-const SAVE_DEBOUNCE_MS = 400;
-const SAVE_MAX_INTERVAL_MS = 4_000;
+const SAVE_DEBOUNCE_MS = 300;
+const SAVE_MAX_INTERVAL_MS = 2_000;
 
 async function windowBounds(): Promise<Bounds | null> {
   try {
@@ -72,7 +73,10 @@ export function StickyWindowApp() {
   const [locked, setLocked] = useState(false);
   const [unlockPassword, setUnlockPassword] = useState("");
   const [blocks, setBlocks] = useState<Block[] | null>(null);
-  const [title, setTitle] = useState("");
+  const [title, setTitle] = useState(""); // derived from the body
+  const [customTitle, setCustomTitle] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [renameDraft, setRenameDraft] = useState("");
   const [color, setColor] = useState("yellow");
   const [corner, setCorner] = useState("rounded");
   const [opacity, setOpacity] = useState(100);
@@ -84,10 +88,22 @@ export function StickyWindowApp() {
   const [showOpacity, setShowOpacity] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const [showFind, setShowFind] = useState(false);
+  // Popovers dismiss on any outside pointer press; the palette/opacity menus
+  // float away from their triggers, so those triggers are ignored by the
+  // dismissal and keep their natural toggle.
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
+  const paletteRef = useRef<HTMLDivElement | null>(null);
+  const paletteBtnRef = useRef<HTMLButtonElement | null>(null);
+  const opacityRef = useRef<HTMLDivElement | null>(null);
+  const opacityBtnRef = useRef<HTMLButtonElement | null>(null);
+  useDismissOnOutsideClick(moreMenuRef, showMore, () => setShowMore(false));
+  useDismissOnOutsideClick(paletteRef, showPalette, () => setShowPalette(false), paletteBtnRef);
+  useDismissOnOutsideClick(opacityRef, showOpacity, () => setShowOpacity(false), opacityBtnRef);
   const [saved, setSaved] = useState(true);
   const [savedWordCount, setSavedWordCount] = useState<number | null>(null);
 
   const editorApi = useRef<DocEditorApi | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   /** The live Tiptap editor, captured through `toolbarExtras` (the sanctioned
    *  render prop that receives the instance) for the fixed toolbar row. */
   const [toolbarEditor, setToolbarEditor] = useState<TiptapEditor | null>(null);
@@ -137,6 +153,7 @@ export function StickyWindowApp() {
   const applyDetail = (detail: StickyDetail) => {
     // Flat wire shape (serde-flattened item) — see stickyShared.ts.
     setTitle(detail.title);
+    setCustomTitle(detail.custom_title && detail.title ? detail.title : null);
     setColor(detail.color);
     setCorner(detail.corner);
     setOpacity(detail.opacity);
@@ -202,11 +219,40 @@ export function StickyWindowApp() {
   }, [flushSave]);
 
   // Persist before unload as a final net (the close button has its own
-  // ordered flow; this covers native window destruction and reloads).
+  // ordered flow; this covers native window destruction and reloads). The
+  // async flush usually loses the race with window destruction, so a
+  // synchronous XHR rides along — deprecated for general use, but exactly
+  // right for one last tiny write during unload.
   useEffect(() => {
-    const handler = () => { void flushSave(); };
+    const handler = () => {
+      void flushSave();
+      try {
+        if (!dirty.current || !editorApi.current) return;
+        const { content, contentText, wordCount } = blocksToStorage(editorApi.current.document);
+        dirty.current = false;
+        void (async () => {
+          const origin = await backendOrigin();
+          const token = await backendToken();
+          const xhr = new XMLHttpRequest();
+          xhr.open("POST", `${origin}/invoke/sticky_save_content`, false);
+          xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+          xhr.setRequestHeader("Content-Type", "application/json");
+          xhr.send(JSON.stringify({ id, content, contentText, wordCount }));
+        })();
+      } catch {
+        // Best-effort by design — the debounced saves are the real net.
+      }
+    };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
+  }, [flushSave, id]);
+
+  // Switching away from the note is a natural checkpoint — flush immediately
+  // rather than waiting out the debounce.
+  useEffect(() => {
+    const handler = () => { void flushSave(); };
+    window.addEventListener("blur", handler);
+    return () => window.removeEventListener("blur", handler);
   }, [flushSave]);
 
   // ── Window geometry ─────────────────────────────────────────────────────
@@ -324,6 +370,19 @@ export function StickyWindowApp() {
     void persistGeometry();
   }, [persistGeometry]);
 
+  // ── Rename (double-click the header title) ─────────────────────────────
+  const commitRename = useCallback(() => {
+    const next = renameDraft.trim().slice(0, 200);
+    setRenaming(false);
+    if (next === (customTitle ?? "")) return; // unchanged (incl. empty draft)
+    setCustomTitle(next || null);
+    if (next) setTitle(next);
+    // Blank clears the rename: core re-derives from the body and flags it off.
+    void invoke("sticky_set_title", { id, title: next }).catch(() => {});
+  }, [customTitle, id, renameDraft]);
+
+  const displayTitle = customTitle ?? title;
+
   // ── Close ───────────────────────────────────────────────────────────────
   const closeNote = useCallback(() => {
     void (async () => {
@@ -373,7 +432,17 @@ export function StickyWindowApp() {
 
   const copyAsImage = useCallback(async () => {
     setShowMore(false);
-    await invoke("stickywin_capture_image").catch(() => {});
+    // Main captures by temporarily growing the window to the FULL content
+    // height (capturePage only rasterises the viewport), so hand it the
+    // complete page height: everything above the scroller (header/toolbar)
+    // + the scrolled content + footer/padding below.
+    let fullHeight: number | null = null;
+    const scroller = scrollRef.current;
+    if (scroller) {
+      const top = scroller.getBoundingClientRect().top;
+      fullHeight = Math.ceil(top + scroller.scrollHeight + 32);
+    }
+    await invoke("stickywin_capture_image", { fullHeight }).catch(() => {});
   }, []);
 
   // ── Render ──────────────────────────────────────────────────────────────
@@ -414,6 +483,7 @@ export function StickyWindowApp() {
           style={{ height: STICKY_HEADER_HEIGHT }}
         >
           <button
+            ref={paletteBtnRef}
             type="button"
             title={t("sticky.color")}
             className="app-region-no-drag rounded-md p-1.5 hover:bg-black/10"
@@ -422,6 +492,7 @@ export function StickyWindowApp() {
             <SwatchBook className="size-4" />
           </button>
           <button
+            ref={opacityBtnRef}
             type="button"
             title={t("sticky.opacity")}
             className="app-region-no-drag rounded-md p-1.5 hover:bg-black/10"
@@ -429,10 +500,32 @@ export function StickyWindowApp() {
           >
             <SlidersHorizontal className="size-4" />
           </button>
-          <div className="app-region-no-drag min-w-0 flex-1 px-1 text-center">
-            <span className="block truncate text-[13px] font-medium leading-none" title={title}>
-              {title || "…"}
-            </span>
+          <div className="min-w-0 flex-1 px-1 text-center">
+            {renaming ? (
+              <input
+                autoFocus
+                value={renameDraft}
+                placeholder={t("sticky.renameTitle")}
+                className="app-region-no-drag w-full min-w-0 rounded-md border border-neutral-300 bg-white px-1.5 py-0.5 text-[12px] text-neutral-900 outline-none focus:border-neutral-500"
+                onChange={(e) => setRenameDraft(e.target.value)}
+                onBlur={commitRename}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitRename();
+                  if (e.key === "Escape") setRenaming(false);
+                }}
+              />
+            ) : (
+              <span
+                className="block cursor-text truncate text-[13px] font-medium leading-none"
+                title={displayTitle || undefined}
+                onDoubleClick={() => {
+                  setRenameDraft(displayTitle);
+                  setRenaming(true);
+                }}
+              >
+                {displayTitle || "…"}
+              </span>
+            )}
           </div>
           <button
             type="button"
@@ -450,7 +543,7 @@ export function StickyWindowApp() {
           >
             {collapsed ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
           </button>
-          <div className="relative">
+          <div className="relative" ref={moreMenuRef}>
             <button
               type="button"
               title="More"
@@ -508,7 +601,7 @@ export function StickyWindowApp() {
 
         {/* Palettes (anchored under the header buttons) */}
         {showPalette && (
-          <div className="app-region-no-drag absolute top-12 left-2 z-50 rounded-xl border border-black/10 bg-white/95 p-2 shadow-lg">
+          <div ref={paletteRef} className="app-region-no-drag absolute top-12 left-2 z-50 rounded-xl border border-black/10 bg-white/95 p-2 shadow-lg">
             <div className="grid grid-cols-4 gap-2">
               {STICKY_COLORS.map((c) => (
                 <button
@@ -528,7 +621,7 @@ export function StickyWindowApp() {
           </div>
         )}
         {showOpacity && (
-          <div className="app-region-no-drag absolute top-12 left-2 z-50 w-44 rounded-xl border border-black/10 bg-white/95 p-3 shadow-lg">
+          <div ref={opacityRef} className="app-region-no-drag absolute top-12 left-2 z-50 w-44 rounded-xl border border-black/10 bg-white/95 p-3 shadow-lg">
             <label className="block text-xs text-neutral-600">{t("sticky.opacity")}: {opacity}%</label>
             <input
               type="range"
@@ -549,8 +642,28 @@ export function StickyWindowApp() {
         {/* Editor body (hidden entirely when collapsed) */}
         {!collapsed && (
           <div className="flex min-h-0 flex-1 flex-col">
-            {!locked && <StickyToolbar editor={toolbarEditor} />}
-            <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-2" style={{ fontFamily: editorFont, fontSize: fontSize ? `${fontSize}px` : undefined }}>
+            {!locked && (
+              <StickyToolbar
+                editor={toolbarEditor}
+                noteFontSize={fontSize}
+                onNoteFontSize={(size) => {
+                  setFontSize(size);
+                  void updateMeta({ font_size: size });
+                }}
+              />
+            )}
+            <div
+              ref={scrollRef}
+              className="min-h-0 flex-1 overflow-y-auto px-3 pb-2"
+              style={{
+                fontFamily: editorFont,
+                // .ProseMirror re-asserts font-size via this var, overriding
+                // plain inheritance — so the sticky's own font_size must ride
+                // the variable. Scoped here, it also pins the default to the
+                // sticky's 16px instead of leaking the app's Documents slider.
+                "--document-font-size": `${fontSize ?? 16}px`,
+              } as CSSProperties}
+            >
               {locked ? (
                 <div className="pt-4">
                   <p className="text-xs text-neutral-600">{t("sticky.locked")}</p>
@@ -593,7 +706,7 @@ export function StickyWindowApp() {
               ? savedWordCount !== null && savedWordCount > 0
                 ? t("sticky.words", { n: savedWordCount })
                 : ""
-              : "…"}
+              : t("sticky.saving")}
           </div>
         )}
       </div>

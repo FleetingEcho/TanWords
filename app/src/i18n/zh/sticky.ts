@@ -21,6 +21,8 @@ export const sticky: Dict = {
     "sticky.goneClose": "关闭此窗口",
     "sticky.locked": "受保护便签 — 已锁定。",
     "sticky.words": "{n} 字",
+    "sticky.saving": "保存中…",
+    "sticky.renameTitle": "便签标题",
     "sticky.trash": "回收站",
     "sticky.trashEmpty": "回收站是空的。",
     "sticky.restore": "恢复",

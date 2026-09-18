@@ -40,3 +40,18 @@ describe("StickyManagerApp has no settings surface", () => {
     expect(container.textContent).not.toMatch(/hotkey|translucent/i);
   });
 });
+
+describe("StickyManagerApp popovers dismiss on outside press", () => {
+  it("closes the templates popover when pressing elsewhere", () => {
+    const { container } = render(<StickyManagerApp />);
+    const chevron = screen.queryByTitle(/template/i) ?? screen.queryByTitle(/模板/i);
+    expect(chevron).not.toBeNull();
+    fireEvent.click(chevron!);
+    expect(screen.queryByText("Blank note")).not.toBeNull();
+    // A pointer press outside the popover (here: the search box) closes it.
+    const search = container.querySelector("input");
+    expect(search).not.toBeNull();
+    fireEvent.pointerDown(search!);
+    expect(screen.queryByText("Blank note")).toBeNull();
+  });
+});

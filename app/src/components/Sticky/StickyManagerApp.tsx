@@ -26,7 +26,7 @@ import {
   blocksToMarkdownOffThread, markdownToBlocksOffThread,
 } from "@/lib/documentWorkerClient";
 import { exportMarkdownAsHtml } from "@/lib/documentExport";
-import { stickyColorHex, type StickyDetail, type StickyListItem } from "./stickyShared";
+import { stickyColorHex, useDismissOnOutsideClick, type StickyDetail, type StickyListItem } from "./stickyShared";
 import { STICKY_TEMPLATES } from "./stickyTemplates";
 import type { Block } from "@/components/Documents/tiptap/blocks";
 
@@ -62,6 +62,13 @@ export function StickyManagerApp() {
   const [showHelp, setShowHelp] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [exportMenuFor, setExportMenuFor] = useState<number | null>(null);
+  // Popovers dismiss on any outside pointer press (2026-09 user report).
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
+  const templatesRef = useRef<HTMLDivElement | null>(null);
+  const exportMenuRef = useRef<HTMLDivElement | null>(null);
+  useDismissOnOutsideClick(moreMenuRef, showMore, () => setShowMore(false));
+  useDismissOnOutsideClick(templatesRef, showTemplates, () => setShowTemplates(false));
+  useDismissOnOutsideClick(exportMenuRef, exportMenuFor !== null, () => setExportMenuFor(null));
   const [busyId, setBusyId] = useState<number | null>(null);
   const [createBusy, setCreateBusy] = useState(false);
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -269,7 +276,7 @@ export function StickyManagerApp() {
         >
           <ArrowUpToLine className="size-4" />
         </button>
-        <div className="relative">
+        <div className="relative" ref={moreMenuRef}>
           <button
             type="button"
             title={t("sticky.more")}
@@ -347,7 +354,7 @@ export function StickyManagerApp() {
                 className="w-full rounded-md border border-border bg-background py-1.5 pr-2 pl-7 text-sm outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
-            <div className="relative">
+            <div className="relative" ref={templatesRef}>
               <button
                 type="button"
                 title={t("sticky.newNote")}
@@ -431,7 +438,7 @@ export function StickyManagerApp() {
                       >
                         <Eye className="size-4" />
                       </button>
-                      <div className="relative">
+                      <div className="relative" ref={exportMenuFor === item.id ? exportMenuRef : undefined}>
                         <button
                           type="button"
                           title={t("sticky.exportNote")}
