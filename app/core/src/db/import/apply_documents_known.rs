@@ -1,6 +1,7 @@
 use crate::db::params; use crate::db::Conn;
 use std::collections::HashSet;
 
+use super::source::has_column;
 use super::types::ImportOutcome;
 use crate::db;
 
@@ -10,10 +11,21 @@ pub(super) async fn apply_documents(
     overwrite: &HashSet<String>,
     include_new: bool,
 ) -> Result<ImportOutcome, String> {
+    // Mirror the analyze pass: filter stickies/trash out of new-format sources
+    // only — old bundles don't have the columns to filter on.
+    let doc_filter = if has_column(source, "documents", "kind").await
+        && has_column(source, "documents", "deleted_at").await
+    {
+        " WHERE COALESCE(kind,'document')='document' AND deleted_at IS NULL"
+    } else {
+        ""
+    };
     let incoming: Vec<(String, String, String, String, i64)> = db::fetch_all(
         source,
-        "SELECT title, content, COALESCE(content_text,''), COALESCE(tags,'[]'), COALESCE(word_count,0)
-         FROM documents ORDER BY id",
+        &format!(
+            "SELECT title, content, COALESCE(content_text,''), COALESCE(tags,'[]'), COALESCE(word_count,0)
+             FROM documents{doc_filter} ORDER BY id"
+        ),
         (),
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
     )
@@ -23,7 +35,9 @@ pub(super) async fn apply_documents(
     for (title, content, content_text, tags, word_count) in incoming {
         let existing: Option<i64> = db::fetch_optional(
             tx,
-            "SELECT id FROM documents WHERE title = ?1 ORDER BY id LIMIT 1",
+            "SELECT id FROM documents WHERE title = ?1 \
+             AND COALESCE(kind,'document')='document' AND deleted_at IS NULL \
+             ORDER BY id LIMIT 1",
             [title.clone()],
             |r| r.get(0),
         )

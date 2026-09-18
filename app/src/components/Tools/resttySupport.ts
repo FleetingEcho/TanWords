@@ -29,7 +29,7 @@ export type PtySessionHooks = {
   onExit: (code: number, error?: string) => void;
 };
 
-/** Bridges restty's `PtyTransport` contract to TanWords' existing PTY IPC
+/** Bridges restty's `PtyTransport` contract to TanNotes' existing PTY IPC
  *  channels (`pty_spawn`/`pty_write`/`pty_resize`/`pty_close`,
  *  `pty:data`/`pty:exit`) — the same channels `TerminalTool.tsx` (xterm) uses.
  *  `electron/main/terminal.ts` has no renderer-specific assumptions, so this

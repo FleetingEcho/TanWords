@@ -17,7 +17,7 @@ export { AI_MESSAGE_ATTR };
 
 /**
  * Floating toolbar over any selected English text, anywhere in the app —
- * mounted once, globally. English shows up all over TanWords (AI notes, the
+ * mounted once, globally. English shows up all over TanNotes (AI notes, the
  * translation pane, vocabulary cards, documents, chat), and a lookup
  * affordance that only existed on two of those surfaces meant the answer to
  * "what does this mean" depended on which screen you happened to be on.

@@ -295,6 +295,17 @@ export async function loadSettingsFromDB(set: StoreApi<SettingsState>["setState"
       localStorage.setItem("tanwords_voice_topbar_migrated", "1");
       await invoke("db_set_setting", { key: "visible_topbar_items", value: JSON.stringify(resolvedTopBarItems) });
     }
+    // Same one-time backfill for the sticky-notes-list button (2026-09):
+    // existing installs' saved lists predate the id, so seed it visibly on
+    // desktop — it opens the sticky manager OS window, meaningless on web —
+    // and let anyone hide it in Settings afterwards.
+    if (!localStorage.getItem("tanwords_quicksticky_topbar_migrated")) {
+      if (isDesktopHost) {
+        resolvedTopBarItems = includeTopBarItems(resolvedTopBarItems, ["quickSticky"]);
+      }
+      localStorage.setItem("tanwords_quicksticky_topbar_migrated", "1");
+      await invoke("db_set_setting", { key: "visible_topbar_items", value: JSON.stringify(resolvedTopBarItems) });
+    }
     cacheTopBarItems(resolvedTopBarItems);
 
     const resolvedSidebarTabOrder: SidebarTabId[] = Array.isArray(values.sidebar_tab_order)

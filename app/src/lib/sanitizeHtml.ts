@@ -1,4 +1,4 @@
-/** TanWords injects a little remote-provided HTML into the app window —
+/** TanNotes injects a little remote-provided HTML into the app window —
  *  Hacker News comment text, today. That window carries the privileged
  *  preload bridge (sidecar bearer token, file:write), so an injected
  *  <script> or <img onerror> here is a data and local-file compromise, not

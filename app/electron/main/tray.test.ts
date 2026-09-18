@@ -17,7 +17,7 @@ const trayInstances: Array<{
 }> = [];
 
 vi.mock("electron", () => ({
-  app: { getName: () => "TanWords", isPackaged: false, getAppPath: () => "/app", quit: vi.fn() },
+  app: { getName: () => "TanNotes", isPackaged: false, getAppPath: () => "/app", quit: vi.fn() },
   BrowserWindow: class {},
   Menu: {
     buildFromTemplate: (template: Item[]) => {
@@ -105,8 +105,8 @@ describe("TrayManager menu", () => {
 
     expect(labels()).toEqual([
       "Open main window",
-      "DeepSeek Harness",
-      "Terminal",
+      "New Sticky Note",
+      "Manage Stickies",
       "Music Control",
       undefined, // separator
       "Refresh RSS",
@@ -122,8 +122,8 @@ describe("TrayManager menu", () => {
 
     expect(labels()).toEqual([
       "打开主窗口",
-      "DeepSeek Harness",
-      "终端",
+      "新建便签",
+      "便签管理",
       "音乐控制",
       undefined,
       "刷新 RSS",
@@ -204,14 +204,16 @@ describe("TrayManager menu", () => {
   it("emits the events useTraySync listens for", () => {
     const { events } = makeTray();
 
-    latest().find((i) => i.label === "DeepSeek Harness")!.click?.();
-    latest().find((i) => i.label === "Terminal")!.click?.();
+    // DSH/Terminal rows were removed from the tray (user request 2026-09);
+    // the sticky rows are main-handled events with no window coming forward.
+    latest().find((i) => i.label === "New Sticky Note")!.click?.();
+    latest().find((i) => i.label === "Manage Stickies")!.click?.();
     musicRows().forEach((row) => row.click?.());
     latest().find((i) => i.label?.includes("Refresh RSS"))!.click?.();
 
     expect(events).toEqual([
-      "tray://open-dsh",
-      "tray://open-terminal",
+      "tray://new-sticky",
+      "tray://manage-stickies",
       "tray://toggle-play",
       "tray://prev",
       "tray://next",

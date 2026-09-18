@@ -58,7 +58,7 @@ export const toolsPage: Dict = {
     "toolsPage.terminal.restart": "Restart terminal",
     "toolsPage.terminal.outputTruncated": "Output truncated to keep the terminal responsive.",
     "toolsPage.terminal.crashedTitle": "Terminal view stopped",
-    "toolsPage.terminal.crashedMessage": "The terminal UI hit an unexpected error. The rest of TanWords is still available.",
+    "toolsPage.terminal.crashedMessage": "The terminal UI hit an unexpected error. The rest of TanNotes is still available.",
     "toolsPage.terminal.restartAfterCrash": "Restart terminal",
     "toolsPage.terminal.backToApp": "Back to app",
     "toolsPage.terminal.maximize": "Maximize terminal",

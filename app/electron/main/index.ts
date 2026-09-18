@@ -10,6 +10,10 @@ import { PANEL_PARTITION } from "./browserPanel";
 import { DshSupervisor } from "./dshSupervisor";
 import { DshPanel } from "./dshPanel";
 import { resetFloatingBrowserWindow } from "./floatingBrowserWindow";
+import {
+  initStickyWindows, openStickyWindow, openStickyManagerWindow,
+  showAllStickies, hideAllStickies, flushStickiesForQuit, destroyAllStickyWindows, setStickyReopener, hasStickyWindow,
+} from "./stickyWindows";
 import { TrayManager, trayIconPath } from "./tray";
 import {
   setTerminalEventSink,
@@ -157,7 +161,7 @@ function notifyDshTaskFinished() {
   notification.show();
 }
 
-/** The one global shortcut TanWords registers: jump straight to the DSH page
+/** The one global shortcut TanNotes registers: jump straight to the DSH page
  *  from anywhere, even with the window unfocused/hidden/minimized. Configured
  *  in Settings (renderer) and pushed here over `dsh_set_global_shortcut`;
  *  empty string disables it. Re-registering always unregisters the previous
@@ -171,6 +175,116 @@ function registerDshShortcut(accelerator: string): boolean {
   if (!accelerator) return true;
   const ok = globalShortcut.register(accelerator, revealDshPage);
   if (ok) dshShortcutAccelerator = accelerator;
+  return ok;
+}
+
+// ── Stickies (tanNotes parity, plan S1) ────────────────────────────────────
+// Main owns the OS windows (stickyWindows.ts) and needs to reach the sidecar
+// for the few data-side actions that start OUTSIDE any renderer: the tray's
+// "New Sticky", the global hotkey, and the launch-reopen sweep. Renderers
+// talk to the sidecar directly; this helper is the main-process equivalent.
+
+async function sidecarInvoke<T>(command: string, args: Record<string, unknown> = {}): Promise<T> {
+  const { port, token } = await sidecar.backendReady();
+  const res = await fetch(`http://127.0.0.1:${port}/invoke/${command}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    body: JSON.stringify(args),
+  });
+  if (!res.ok) throw new Error(`sidecar ${command}: ${await res.text()}`);
+  return res.json() as Promise<T>;
+}
+
+/** Shape of the geometry fields `sticky_list`/`sticky_get` return (snake_case
+ *  JSON — the core's sticky structs don't rename). */
+type StickyGeom = {
+  id: number;
+  is_open: boolean;
+  always_on_top: boolean;
+  collapsed: boolean;
+  opacity: number;
+  x: number | null;
+  y: number | null;
+  w: number;
+  h: number;
+};
+
+/** Creates a fresh sticky and pops its window — the tray row and the global
+ *  hotkey both land here. */
+async function createAndOpenSticky(): Promise<void> {
+  try {
+    // Flat wire shape: StickyDetail serde-flattens its item, so `id` is
+    // top-level (see stickyShared.ts — verified against the live sidecar).
+    const created = await sidecarInvoke<StickyGeom & { content?: string }>("sticky_create", { content: "[]" });
+    await openStickyFromDb(created.id);
+  } catch (error) {
+    console.error("[sticky] create failed", error);
+  }
+}
+
+/** Opens (or focuses) the OS window for a sticky using its saved geometry. */
+async function openStickyFromDb(id: number): Promise<void> {
+  try {
+    const detail = await sidecarInvoke<StickyGeom & { content?: string }>("sticky_get", { id });
+    if (!detail) return;
+    openStickyWindow({
+      id,
+      bounds: detail.x != null && detail.y != null ? { x: detail.x, y: detail.y, width: detail.w, height: detail.h } : null,
+      alwaysOnTop: detail.always_on_top,
+      collapsed: detail.collapsed,
+      opacity: detail.opacity,
+    });
+    void sidecarInvoke("sticky_update_window_state", { id, is_open: true }).catch(() => {});
+  } catch (error) {
+    console.error("[sticky] open failed", error);
+  }
+}
+
+/** Launch-reopen (tanNotes parity): every sticky whose `is_open` was left set
+ *  on THIS device comes back at startup, at its last position. */
+async function reopenStickies(): Promise<void> {
+  try {
+    // sticky_list returns a bare array (no envelope).
+    const list = await sidecarInvoke<StickyGeom[]>("sticky_list");
+    for (const s of list.filter((i) => i.is_open)) {
+      openStickyWindow({
+        id: s.id,
+        bounds: s.x != null && s.y != null ? { x: s.x, y: s.y, width: s.w, height: s.h } : null,
+        alwaysOnTop: s.always_on_top,
+        collapsed: s.collapsed,
+        opacity: s.opacity,
+      });
+    }
+  } catch (error) {
+    console.error("[sticky] reopen failed", error);
+  }
+}
+
+// Manager "Show all" (and the tray sink, which routes here too): closed
+// notes reopen through the same path as a manager open — full detail fetch,
+// window creation, is_open persisted.
+setStickyReopener(async () => {
+  try {
+    const list = await sidecarInvoke<StickyGeom[]>("sticky_list");
+    for (const s of list) {
+      if (!hasStickyWindow(s.id)) await openStickyFromDb(s.id);
+    }
+  } catch (error) {
+    console.error("[sticky] show-all reopen failed", error);
+  }
+});
+
+/** The second global shortcut: a new sticky from anywhere (tanNotes' Ctrl+
+ *  Alt+N parity). Configured/pushed by the manager window's settings panel
+ *  via `stickywin_set_shortcut`; empty string disables. Same re-register
+ *  discipline as the DSH shortcut above. */
+let stickyShortcutAccelerator: string | null = null;
+function registerStickyShortcut(accelerator: string): boolean {
+  if (stickyShortcutAccelerator) globalShortcut.unregister(stickyShortcutAccelerator);
+  stickyShortcutAccelerator = null;
+  if (!accelerator) return true;
+  const ok = globalShortcut.register(accelerator, () => void createAndOpenSticky());
+  if (ok) stickyShortcutAccelerator = accelerator;
   return ok;
 }
 
@@ -472,7 +586,16 @@ if (gotLock) {
       }
     });
 
-    tray.setEventSink(broadcastEvent);
+    tray.setEventSink((name, payload) => {
+      // Sticky tray rows are handled entirely in main — they don't need (or
+      // want) the main window to come forward. Everything else flows on to
+      // the renderer's tray:// listeners as before.
+      if (name === "tray://new-sticky") return void createAndOpenSticky();
+      if (name === "tray://manage-stickies") return openStickyManagerWindow();
+      if (name === "tray://show-stickies") return showAllStickies();
+      if (name === "tray://hide-stickies") return hideAllStickies();
+      broadcastEvent(name, payload);
+    });
 
     setTerminalEventSink(broadcastEvent);
 
@@ -508,12 +631,45 @@ if (gotLock) {
       dshSupervisor,
       dshPanel,
       setDshShortcut: registerDshShortcut,
+      setStickyShortcut: registerStickyShortcut,
+    });
+
+    // Sticky windows persist geometry through the sidecar like every other
+    // piece of sticky data — main only nudges the renderer after native
+    // moves/resizes and flushes once more at quit.
+    initStickyWindows({
+      broadcastEvent,
+      persistGeometry: (id, g, isOpen) => {
+        void sidecarInvoke("sticky_update_window_state", {
+          id, x: g.x, y: g.y, w: g.width, h: g.height,
+          ...(isOpen ? {} : { is_open: false }),
+        }).catch(() => {});
+      },
     });
 
     createWindow();
     void sidecar.backendReady().then(() => {
       startupMark("sidecar-ready");
       void vacuumInBackground();
+      // Stickies reopen at launch (tanNotes parity) and the global hotkey is
+      // restored from settings — both only make sense once the sidecar is up.
+      void reopenStickies();
+      void sidecarInvoke<string | null>("db_get_setting", { key: "sticky_shortcut" })
+        .then((raw) => {
+          let accelerator = "CommandOrControl+Alt+N";
+          if (typeof raw === "string" && raw.trim()) {
+            try { accelerator = JSON.parse(raw); } catch { accelerator = raw; }
+          }
+          registerStickyShortcut(accelerator);
+        })
+        .catch(() => {});
+      // Restore the login-item choice (openAtLogin is OS state that an app
+      // update/reinstall can drop — settings is the source of truth).
+      void sidecarInvoke<string | null>("db_get_setting", { key: "sticky_autostart" })
+        .then((raw) => {
+          if (raw === "true") app.setLoginItemSettings({ openAtLogin: true });
+        })
+        .catch(() => {});
     });
 
     app.on("activate", () => {
@@ -553,6 +709,10 @@ if (gotLock) {
     closeAllDshNotifications();
     closeAllAppNotifications();
     terminalShutdownAll();
+    // Last-chance geometry flush for open stickies, then tear the windows
+    // down so nothing redraws during sidecar shutdown.
+    flushStickiesForQuit();
+    destroyAllStickyWindows();
     void sidecar.shutdown().finally(() => {
       // The DSH host has no stdin-EOF shutdown path; the supervisor SIGTERMs
       // it (then SIGKILLs after a timeout) so an ungraceful app exit can't

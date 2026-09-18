@@ -82,7 +82,7 @@ export function WordmarkEntry({ gloss, compact = false }: { gloss: string; compa
           compact ? "text-[clamp(2rem,7vw,2.75rem)]" : "text-[clamp(2.75rem,9vw,5rem)]"
         }`}
       >
-        TanWords
+        TanNotes
       </h1>
       <p className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span className="font-mono text-sm tracking-[0.08em] text-muted-foreground">/ˈtan wɜːdz/</span>

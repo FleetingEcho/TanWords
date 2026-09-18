@@ -22,6 +22,18 @@ export interface InlineStyles {
   underline?: boolean;
   strike?: boolean;
   code?: boolean;
+  /** Text-run highlight color (multicolor Highlight mark, tanNotes parity).
+   *  Stored as the CSS color the user picked; `""` unset. Not representable
+   *  in markdown — dropped by the md serializers, like `underline`. */
+  highlight?: string;
+  /** Text-run color (TextStyle mark's `color` attr). */
+  textColor?: string;
+  /** Text-run font family (TextStyle mark's `fontFamily` attr) — what
+   *  tanNotes' FontFamily extension stored per run; imported bundles
+   *  round-trip through here. */
+  fontFamily?: string;
+  /** Text-run font size, CSS length form ("16px"), as FontSize stores it. */
+  fontSize?: string;
 }
 
 export interface TextInline {

@@ -97,6 +97,8 @@ pub mod words_query;
 pub mod words_write;
 pub mod translations;
 pub mod documents;
+pub mod stickies;
+pub mod tannotes_import;
 pub mod chat;
 mod reading;
 pub mod articles;
@@ -116,6 +118,8 @@ pub use words_query::*;
 pub use words_write::*;
 pub use translations::*;
 pub use documents::*;
+pub use stickies::*;
+pub use tannotes_import::*;
 pub use chat::*;
 pub use reading::*;
 pub use articles::*;
@@ -223,16 +227,22 @@ async fn init_db_sqlite(conn: &Conn) -> Result<(), DbErr> {
         return Ok(());
     }
 
-    conn.execute_batch(include_str!("../../sql/schema.sql")).await?;
-
-    // The clean-DDL pass above only shapes *fresh* databases —
-    // `CREATE TABLE IF NOT EXISTS` no-ops on a table that already exists, so
-    // a database created before a column was added to the schema would
-    // silently miss it and every query naming it would fail. These
-    // idempotent ALTERs close that gap for live databases (see
-    // `ensure_column`).
+    // The column ALTERs MUST run BEFORE the schema batch: the batch itself
+    // references the new columns (`CREATE INDEX idx_documents_kind ON
+    // documents(kind)`, FTS triggers over deleted_at), so on a database
+    // created before those columns existed the batch would die with
+    // "no such column" before the migration could land (the 2026-09 startup
+    // crash on live databases — see init_db_tests regression). Fresh
+    // databases have no tables yet, so ensure_column tolerates the
+    // missing-table error and the batch creates everything right after.
     ensure_column(conn, "calendar_events", "reminder_minutes", "INTEGER").await?;
     ensure_column(conn, "calendar_events", "reminder_sent_at", "TEXT").await?;
+    // Stickies (see the schema 5b section): documents gain a `kind` marker and
+    // a soft-delete column; live databases predate both.
+    ensure_column(conn, "documents", "kind", "TEXT NOT NULL DEFAULT 'document'").await?;
+    ensure_column(conn, "documents", "deleted_at", "TEXT").await?;
+
+    conn.execute_batch(include_str!("../../sql/schema.sql")).await?;
 
     // Seed default calendars.
     let default_calendars = vec![
@@ -300,14 +310,19 @@ async fn init_db_postgres(conn: &Conn) -> Result<(), DbErr> {
         return Ok(());
     }
 
-    conn.execute_batch(include_str!("../../sql/schema_postgres.sql"))
-        .await?;
-
-    // Same reason as the SQLite path: `CREATE TABLE IF NOT EXISTS` cannot add
-    // a column to an existing table. Postgres has native
-    // `ADD COLUMN IF NOT EXISTS`, so this is one statement per column.
+    // Same ordering as the SQLite path: the ALTERs must land BEFORE the batch,
+    // because the batch itself references the new columns (the
+    // idx_documents_kind index) and would die with `column "kind" does not
+    // exist` on live databases. Fresh databases have no tables yet — the
+    // missing-table error is tolerated and the batch creates everything.
     ensure_column(conn, "calendar_events", "reminder_minutes", "BIGINT").await?;
     ensure_column(conn, "calendar_events", "reminder_sent_at", "TEXT").await?;
+    // Same additions as the SQLite path (see the comment there).
+    ensure_column(conn, "documents", "kind", "TEXT NOT NULL DEFAULT 'document'").await?;
+    ensure_column(conn, "documents", "deleted_at", "TEXT").await?;
+
+    conn.execute_batch(include_str!("../../sql/schema_postgres.sql"))
+        .await?;
 
     // Seed the same default calendars / settings the SQLite path does, using
     // portable SQL (ON CONFLICT DO NOTHING; CURRENT_TIMESTAMP). These run on
@@ -359,8 +374,12 @@ async fn init_db_postgres(conn: &Conn) -> Result<(), DbErr> {
 /// before the column entered the schema. Postgres has native
 /// `ADD COLUMN IF NOT EXISTS`; SQLite does not, so its only "already exists"
 /// signal — the `duplicate column name` error — is recognized and treated as
-/// success. Any other failure propagates (the fingerprint is stamped only
-/// after the whole pass succeeds, so a real failure retries on next open).
+/// success. A missing TABLE is also success: the migration ALTERs run before
+/// the schema batch (which needs the columns in place for its indexes), so on
+/// a fresh database the table simply does not exist yet and the batch creates
+/// it with the column already in its DDL. Any other failure propagates (the
+/// fingerprint is stamped only after the whole pass succeeds, so a real
+/// failure retries on next open).
 async fn ensure_column(conn: &Conn, table: &str, column: &str, decl: &str) -> Result<(), DbErr> {
     let sql = match conn.kind() {
         connection::DbKind::Postgres => {
@@ -371,6 +390,9 @@ async fn ensure_column(conn: &Conn, table: &str, column: &str, decl: &str) -> Re
     match conn.execute(&sql, ()).await {
         Ok(_) => Ok(()),
         Err(e) if conn.kind() == connection::DbKind::Local && e.to_string().contains("duplicate column") => Ok(()),
+        Err(e) if conn.kind() == connection::DbKind::Local && e.to_string().contains("no such table") => Ok(()),
+        // Postgres spells it `relation "…" does not exist`.
+        Err(e) if conn.kind() == connection::DbKind::Postgres && e.to_string().contains("does not exist") => Ok(()),
         Err(e) => Err(e),
     }
 }
@@ -389,6 +411,61 @@ mod init_db_tests {
         let db = sea_orm::Database::connect(opts).await.unwrap();
         let _ = db.execute_unprepared("PRAGMA foreign_keys=ON;").await;
         Conn::new_db(db, connection::DbKind::Local, None)
+    }
+
+    /// Regression test for the startup crash on pre-stickies databases
+    /// (2026-09): schema.sql gained `CREATE INDEX idx_documents_kind ON
+    /// documents(kind)`, but the ensure_column ALTERs that add the column to
+    /// existing databases ran only AFTER the batch — so any database created
+    /// before the stickies feature died in init with "no such column: kind"
+    /// (the saved Postgres profile AND the local fallback, crash-looping the
+    /// sidecar). The migration ALTERs must land BEFORE the schema batch.
+    #[tokio::test]
+    async fn init_upgrades_a_pre_stickies_database_in_place() {
+        use sea_orm::ConnectionTrait;
+        let conn = memory_conn().await;
+
+        // Shape a database the way the PRE-stickies build left it: full
+        // current DDL, then strip the stickies-era pieces.
+        conn.execute_batch(include_str!("../../sql/schema.sql")).await.unwrap();
+        conn.execute_batch(
+            "DROP INDEX IF EXISTS idx_documents_kind;
+             ALTER TABLE documents DROP COLUMN kind;
+             ALTER TABLE documents DROP COLUMN deleted_at;
+             DROP TABLE IF EXISTS sticky_windows;
+             DROP TABLE IF EXISTS stickies;",
+        )
+        .await
+        .unwrap();
+        // A legacy row the upgrade must stamp as a normal document.
+        conn.execute(
+            "INSERT INTO documents (title, content, content_text) VALUES ('legacy', '[]', 'legacy')",
+            (),
+        )
+        .await
+        .unwrap();
+
+        // The whole pass must succeed against this shape.
+        init_db(&conn).await.expect("init_db must upgrade pre-stickies databases");
+
+        // The legacy row lands in the default kind, and the sticky tables exist.
+        let kind: String = fetch_one(
+            &conn,
+            "SELECT kind FROM documents WHERE title = 'legacy'",
+            (),
+            |r| r.get::<String>(0),
+        )
+        .await
+        .unwrap();
+        assert_eq!(kind, "document");
+        let sticky_tables: i64 = scalar_i64(
+            &conn,
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('stickies','sticky_windows')",
+            (),
+        )
+        .await
+        .unwrap();
+        assert_eq!(sticky_tables, 2);
     }
 
     async fn table_exists(conn: &Conn, name: &str) -> bool {

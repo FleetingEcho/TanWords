@@ -1,4 +1,4 @@
-# TanWords Web
+# TanNotes Web
 
 The web version: one Rust (axum) backend serving a Vite + React 19 + TSX SPA,
 usable from desktop and mobile browsers. Multi-user: email+password accounts,

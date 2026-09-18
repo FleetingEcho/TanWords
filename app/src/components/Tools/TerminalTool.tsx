@@ -361,7 +361,7 @@ export function TerminalTool({
     const term = terminalRef.current;
     if (!term?.hasSelection()) {
       // Full-screen terminal programs can draw and handle their own mouse menus.
-      // With no xterm selection there is nothing for TanWords to copy, so keep
+      // With no xterm selection there is nothing for TanNotes to copy, so keep
       // our overlay out of the way while still suppressing Chromium's menu.
       setContextMenu(null);
       return;

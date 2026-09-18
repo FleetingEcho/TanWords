@@ -223,10 +223,19 @@ CREATE TABLE IF NOT EXISTS documents (
   task_total      INTEGER NOT NULL DEFAULT 0,
   task_done       INTEGER NOT NULL DEFAULT 0,
   status          TEXT    NOT NULL DEFAULT '',
+  -- Document kind. 'document' (default) = a normal Documents-page document;
+  -- 'sticky' = a sticky note whose content happens to live in this table so
+  -- search/tags/revisions/lock come for free. Every normal-Documents query
+  -- must filter on this (see the sweep in db/stickies.rs).
+  kind            TEXT    NOT NULL DEFAULT 'document',
+  -- Soft delete (trash). NULL = live; a timestamp = in the trash. Purge is a
+  -- separate explicit command, so a delete is always recoverable.
+  deleted_at      TEXT,
   created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
   updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_documents_folder ON documents(folder);
+CREATE INDEX IF NOT EXISTS idx_documents_kind ON documents(kind);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
   title,
@@ -306,6 +315,48 @@ CREATE TABLE IF NOT EXISTS document_folders (
   locked      INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 5b. Stickies (floating sticky notes; content lives in `documents`)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- A sticky is a `documents` row with kind='sticky', so full-text search, tags,
+-- revisions and privacy protection come for free. What is split out here is
+-- the two kinds of state a document does not carry:
+--   * `stickies`      — the shared sticky identity (color, opacity, pin).
+--                       Travels with the database, so Postgres users see the
+--                       same sticky on every machine.
+--   * `sticky_windows`— machine-bound window state, one row per (note, device).
+--                       A Windows layout is meaningless on macOS, so geometry
+--                       and open-state never cross devices.
+-- See `db/stickies.rs` for the command surface.
+
+CREATE TABLE IF NOT EXISTS stickies (
+  document_id   INTEGER NOT NULL PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+  color         TEXT    NOT NULL DEFAULT 'yellow',
+  corner        TEXT    NOT NULL DEFAULT 'rounded',
+  -- 10–100 percent; applied as the note surface's CSS alpha so text stays
+  -- crisp over a translucent window (the tanNotes approach).
+  opacity       INTEGER NOT NULL DEFAULT 80,
+  always_on_top INTEGER NOT NULL DEFAULT 1,
+  font_family   TEXT,
+  font_size     INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS sticky_windows (
+  document_id  INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  -- The devices-registry id from app_config.json; the web server registers
+  -- one id of its own (never a window surface, so its rows stay is_open=0).
+  device_id    TEXT NOT NULL,
+  x INTEGER,
+  y INTEGER,
+  w            INTEGER NOT NULL DEFAULT 260,
+  h            INTEGER NOT NULL DEFAULT 480,
+  collapsed    INTEGER NOT NULL DEFAULT 0,
+  is_open      INTEGER NOT NULL DEFAULT 0,
+  updated_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (document_id, device_id)
+);
+CREATE INDEX IF NOT EXISTS idx_sticky_windows_device ON sticky_windows(device_id);
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- 6. AI Chat

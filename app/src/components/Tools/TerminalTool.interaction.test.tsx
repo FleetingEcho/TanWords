@@ -302,7 +302,7 @@ describe("TerminalTool interaction: context menu, search, and transparency", () 
     expect(mocks.toastSuccess).not.toHaveBeenCalled();
   });
 
-  it("passes terminal keys through without assigning TanWords shortcuts", () => {
+  it("passes terminal keys through without assigning TanNotes shortcuts", () => {
     renderTerminal();
     const handler = mocks.getKeyHandler();
     expect(handler).not.toBeNull();

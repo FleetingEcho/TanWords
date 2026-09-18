@@ -32,8 +32,9 @@ pub(super) async fn ai_proxy(
         Ok(c) => c,
         Err(e) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, e),
     };
-    let device = tanwords_lib::appconfig::device_id();
-    let providers = match db::ai_providers::list(&conn, &device).await {
+    // Providers are shared across devices since the devices-registry feature —
+    // the list and the sealed key no longer take a device id (db/ai_providers.rs).
+    let providers = match db::ai_providers::list(&conn).await {
         Ok(p) => p,
         Err(e) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, e),
     };
@@ -43,7 +44,7 @@ pub(super) async fn ai_proxy(
             format!("unknown provider `{provider_id}`"),
         );
     };
-    let api_key = match db::ai_providers::key(&conn, &device, &provider_id).await {
+    let api_key = match db::ai_providers::key(&conn, &provider_id).await {
         Ok(k) => k,
         Err(e) => return json_error(StatusCode::INTERNAL_SERVER_ERROR, e),
     };

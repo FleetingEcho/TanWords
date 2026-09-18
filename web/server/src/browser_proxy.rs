@@ -123,7 +123,7 @@ pub async fn browser_proxy(
     let mut up_headers = reqwest::header::HeaderMap::new();
     up_headers.insert(
         reqwest::header::USER_AGENT,
-        HeaderValue::from_static("TanWordsBrowser/1.0 (web proxy)"),
+        HeaderValue::from_static("TanNotesBrowser/1.0 (web proxy)"),
     );
     up_headers.insert(reqwest::header::ACCEPT, HeaderValue::from_static("*/*"));
     if let Some(src) = &source_url {

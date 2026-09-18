@@ -12,7 +12,7 @@ export type Theme =
   | "dim"
   | "system";
 export type SidebarTabId = Exclude<NavPage, "settings">;
-export type TopBarItemId = "search" | "scratch" | "dsh" | "terminal" | "db" | "tools" | "browser" | "voice" | "mcp" | "ai" | "language" | "theme" | "updates" | "github";
+export type TopBarItemId = "quickSticky" | "search" | "scratch" | "dsh" | "terminal" | "db" | "tools" | "browser" | "voice" | "mcp" | "ai" | "language" | "theme" | "updates" | "github";
 export type LayoutMode = "flexible" | "fixed";
 export type StartupDestination =
   | { kind: "page"; page: NavPage }
@@ -41,7 +41,7 @@ export interface TerminalCustomAppearance {
 export type RssTabSelection = number | "all" | "hackernews";
 
 export const DEFAULT_SIDEBAR_TABS: SidebarTabId[] = [
-  "dashboard", "calendar", "feeds", "reading", "documents", "vocabulary", "chat", "music", "browser", "terminal", "dsh", "tools",
+  "dashboard", "stickies", "calendar", "feeds", "reading", "documents", "vocabulary", "chat", "music", "browser", "terminal", "dsh", "tools",
 ];
 /** What's visible in the navigator for a fresh profile. The complete list
  *  above remains the Settings order/catalog, so every hidden page can still
@@ -53,14 +53,14 @@ export const DEFAULT_VISIBLE_SIDEBAR_TABS: SidebarTabId[] = ["dashboard", "feeds
  *  and the user controls membership explicitly in Settings. */
 export const DEFAULT_VISIBLE_DOCK_TABS: SidebarTabId[] = DEFAULT_SIDEBAR_TABS;
 export const DEFAULT_TOPBAR_ITEMS: TopBarItemId[] = [
-  "search", "scratch", "tools", "browser", "voice", "dsh", "terminal", "db", "mcp", "ai", "language", "theme", "updates", "github",
+  "quickSticky", "search", "scratch", "tools", "browser", "voice", "dsh", "terminal", "db", "mcp", "ai", "language", "theme", "updates", "github",
 ];
 /** What's visible out of the box for a database with no saved
  *  `visible_topbar_items` row yet (a genuinely fresh install, or a freshly
  *  created online database) — a deliberately small starting set, not "every
  *  option". Anyone can still turn the rest on in Settings; hidden items stay
  *  reachable via Command-K regardless. */
-export const DEFAULT_VISIBLE_TOPBAR_ITEMS: TopBarItemId[] = ["search", "voice", "dsh", "db", "theme", "updates"];
+export const DEFAULT_VISIBLE_TOPBAR_ITEMS: TopBarItemId[] = ["quickSticky", "search", "voice", "dsh", "db", "theme", "updates"];
 export const DEFAULT_LAYOUT_MODE: LayoutMode = "flexible";
 
 /** Amber, matching the emphasis colour word notes used before highlights had

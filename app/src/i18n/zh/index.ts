@@ -23,6 +23,7 @@ import { toolsPage } from "./toolsPage";
 import { music } from "./music";
 import { browser } from "./browser";
 import { floatingBrowser } from "./floatingBrowser";
+import { sticky } from "./sticky";
 import { dsh } from "./dsh";
 import { updater } from "./updater";
 import { workspaces } from "./workspaces";
@@ -52,6 +53,7 @@ export const zh: Dict = {
     ...music,
     ...browser,
     ...floatingBrowser,
+    ...sticky,
     ...dsh,
     ...updater,
     ...workspaces,

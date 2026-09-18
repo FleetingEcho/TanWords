@@ -5,7 +5,7 @@ import { callMain } from "@/ipc/host";
 import {
   BrainCircuit, Check, ChevronsLeft, ChevronsRight, ClipboardPaste, Cloud, CloudOff, Database, Lock,
   FilePlus2, Languages, Mic, MessageSquarePlus, Monitor, Moon, Palette, PanelLeft, Quote, Search, Server, Settings, Sun,
-  Grid2x2Plus, Smartphone, SquareTerminal, Type, Unplug, User, X,
+  Grid2x2Plus, Smartphone, SquareTerminal, StickyNote, Type, Unplug, User, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,7 +47,7 @@ type McpState = { status: { running: boolean; error: string | null } };
  *  with a row of fixed-width icons, so they keep their current fixed spots
  *  regardless of where they're dragged to in Settings. */
 const ICON_GROUP_IDS: TopBarItemId[] = [
-  "tools", "browser", "voice", "dsh", "terminal", "db", "mcp", "ai", "language", "theme", "updates", "github",
+  "quickSticky", "tools", "browser", "voice", "dsh", "terminal", "db", "mcp", "ai", "language", "theme", "updates", "github",
 ];
 
 const PAGE_IDS: NavPage[] = (["feeds", "vocabulary", "documents", "chat", "dashboard", "calendar", "music", "terminal", "dsh", "settings", "tools"] as NavPage[])
@@ -123,6 +123,9 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   const voiceAssistantAvailable = useVoiceAssistantAvailable();
   const visible = (item: TopBarItemId) => {
     if (!visibleItems.includes(item)) return false;
+    // The quick-open button opens the stickies manager (an OS window) —
+    // desktop only.
+    if (item === "quickSticky") return isDesktopHost;
     if (item === "mcp") return hostCapabilities.mcp;
     if (item === "dsh") return hostCapabilities.dsh;
     if (item === "updates") return hostCapabilities.updater;
@@ -252,6 +255,21 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
   // drag-reordered sequence — same JSX each icon always had, just addressed
   // by id instead of appearing in a fixed source order.
   const iconGroupItems: Partial<Record<TopBarItemId, React.ReactNode>> = {
+    quickSticky: (
+      <Button
+        variant="ghost"
+        size="icon"
+        title={t("settings.topBar.quickSticky")}
+        className="h-8 w-8 rounded-lg text-muted-foreground"
+        onClick={() => {
+          // Always the notes LIST: main shows+focuses the manager window if
+          // it exists, else creates it docked to the work area's top-right.
+          void invoke("stickywin_open_manager").catch(() => {});
+        }}
+      >
+        <StickyNote className="h-4 w-4" />
+      </Button>
+    ),
     tools: visible("tools") && (
       <Button
         variant="ghost"

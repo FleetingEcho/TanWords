@@ -44,7 +44,7 @@ export function hardenPanelSession(partition: string) {
 }
 
 /** Electron's default User-Agent is Chrome's, plus two extra product tokens:
- *  `TanWords/<appVersion>` and `Electron/<electronVersion>`. Those tokens are
+ *  `TanNotes/<appVersion>` and `Electron/<electronVersion>`. Those tokens are
  *  a loud "this is not a browser" signal — Google in particular treats an
  *  Electron UA as automation and answers with sign-in walls, interstitial
  *  "verify you're human" checks, and eventually rate limits on the address

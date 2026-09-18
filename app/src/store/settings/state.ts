@@ -120,7 +120,7 @@ export interface SettingsState {
   dshPort: number;
   /** Opacity of DSH's page and sidebar background layers, as a percentage. */
   dshBackgroundOpacity: number;
-  /** Blur strength for the TanWords canvas visible behind DSH, from 0–100. */
+  /** Blur strength for the TanNotes canvas visible behind DSH, from 0–100. */
   dshBackgroundBlur: number;
   /** Whether the DSH page shows its own toolbar (DSH label, Restart, Reload,
    *  Open-external). Hidden by default so the embedded agent UI gets the full
@@ -157,7 +157,7 @@ export interface SettingsState {
   terminalFontSize: number;
   /** Default xterm glyph weight, in CSS's 100–900 scale. */
   terminalFontWeight: number;
-  /** Device-local executable override. Empty lets TanWords select the platform default. */
+  /** Device-local executable override. Empty lets TanNotes select the platform default. */
   terminalShellPath: string;
   /** Body font size, in pixels, for full-size document editors. */
   documentFontSize: number;

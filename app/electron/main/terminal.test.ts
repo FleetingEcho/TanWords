@@ -113,7 +113,7 @@ afterEach(() => {
 });
 
 describe("terminal main-process failure isolation", () => {
-  it("advertises TanWords capabilities instead of inheriting its launcher terminal", async () => {
+  it("advertises TanNotes capabilities instead of inheriting its launcher terminal", async () => {
     vi.stubEnv("TERM", "screen-256color");
     vi.stubEnv("TERM_PROGRAM", "Apple_Terminal");
     vi.stubEnv("TMUX", "/tmp/tmux/default,1,0");
@@ -125,7 +125,7 @@ describe("terminal main-process failure isolation", () => {
     expect(options.env).toMatchObject({
       TERM: "xterm-256color",
       COLORTERM: "truecolor",
-      TERM_PROGRAM: "TanWords",
+      TERM_PROGRAM: "TanNotes",
       TERM_PROGRAM_VERSION: "1.18.8",
       PTY_COLS: "80",
       PTY_ROWS: "24",

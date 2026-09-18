@@ -1,6 +1,6 @@
 /** `tanwords:call` channel dispatch — moved verbatim from ipc.ts so that file
  *  stays under 600 lines. The switch body is byte-identical to the original. */
-import { app, BrowserWindow, clipboard, dialog, shell, type WebContents } from "electron";
+import { app, BrowserWindow, clipboard, ClipboardItem, dialog, shell, type WebContents } from "electron";
 import { mkdir, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
@@ -10,6 +10,11 @@ import {
   createFloatingBrowserWindow, dockFloatingBrowserWindow,
   hideFloatingBrowserWindow, showFloatingBrowserWindow,
 } from "./floatingBrowserWindow";
+import {
+  closeAllStickyWindows, closeStickyManagerWindow,
+  closeStickyWindow, focusStickyWindow, openStickyManagerWindow, openStickyWindow,
+  setStickyAlwaysOnTop, showAllStickies, hideAllStickies,
+} from "./stickyWindows";
 import { abortFetch, startFetch } from "./http";
 import { rememberWindowBackground } from "./windowBackground";
 import { requestWindowHide, showWindow } from "./windowVisibility";
@@ -628,6 +633,144 @@ export async function dispatch(
     case "dsh_set_global_shortcut": {
       const { accelerator } = (args ?? {}) as { accelerator?: string };
       return deps.setDshShortcut(String(accelerator ?? ""));
+    }
+
+    // ── Sticky-note windows (plan S1). The OS-window half of the stickies
+    //    feature: every DATA operation goes to the sidecar (`sticky_*`
+    //    commands); these channels only create/focus/move the actual windows.
+    //    `stickywin_` is deliberately distinct from `window_*` so the
+    //    renderer's MAIN_PROCESS_COMMANDS regex can route it here without
+    //    widening that rule.
+    case "stickywin_open": {
+      const { id, bounds, alwaysOnTop, collapsed, opacity } = (args ?? {}) as {
+        id?: number; bounds?: { x: number; y: number; width: number; height: number } | null;
+        alwaysOnTop?: boolean; collapsed?: boolean; opacity?: number;
+      };
+      openStickyWindow({ id: Number(id), bounds: bounds ?? null, alwaysOnTop, collapsed, opacity });
+      return null;
+    }
+    case "stickywin_close": {
+      closeStickyWindow(Number((args as { id?: number } | null)?.id));
+      return null;
+    }
+    case "stickywin_close_all": {
+      closeAllStickyWindows();
+      return null;
+    }
+    case "stickywin_focus": {
+      focusStickyWindow(Number((args as { id?: number } | null)?.id));
+      return null;
+    }
+    case "stickywin_set_always_on_top": {
+      const { id, on } = (args ?? {}) as { id?: number; on?: boolean };
+      setStickyAlwaysOnTop(Number(id), !!on);
+      return null;
+    }
+    case "stickywin_set_bounds": {
+      // Sender-scoped: only ever resizes the caller's own window (the sticky
+      // renderer's 8-way drag handles drive this — native resize is off for
+      // transparent frameless windows, same as the floating-browser popout).
+      const win = BrowserWindow.fromWebContents(sender);
+      if (!win || win.isDestroyed()) return null;
+      const { x, y, width, height } = (args ?? {}) as { x: number; y: number; width: number; height: number };
+      win.setBounds({ x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) });
+      return null;
+    }
+    case "stickywin_show_all": {
+      showAllStickies();
+      return null;
+    }
+    case "stickywin_hide_all": {
+      hideAllStickies();
+      return null;
+    }
+    case "stickywin_open_manager": {
+      openStickyManagerWindow();
+      return null;
+    }
+    case "stickywin_close_manager": {
+      closeStickyManagerWindow();
+      return null;
+    }
+    case "stickywin_set_shortcut": {
+      const { accelerator } = (args ?? {}) as { accelerator?: string };
+      return deps.setStickyShortcut(String(accelerator ?? ""));
+    }
+    case "stickywin_set_autostart": {
+      // OS-level login item — a renderer can't reach `app` itself. The
+      // manager's settings toggle drives this; the choice is also persisted
+      // in settings (`sticky_autostart`) so it survives reinstalls.
+      const { enabled } = (args ?? {}) as { enabled?: boolean };
+      try {
+        app.setLoginItemSettings({ openAtLogin: !!enabled });
+        return true;
+      } catch (error) {
+        console.error("[sticky] setLoginItemSettings failed", error);
+        return false;
+      }
+    }
+    case "stickywin_print": {
+      // tanNotes F40: the note window's own print dialog.
+      const win = BrowserWindow.fromWebContents(sender);
+      if (!win || win.isDestroyed()) return null;
+      win.webContents.print({ silent: false, printBackground: true });
+      return null;
+    }
+    case "stickywin_capture_image": {
+      // tanNotes F41: snapshot the note as it looks onto the clipboard.
+      // Electron 44's clipboard is the W3C-shaped async model (see
+      // ipcDispatch's own clipboardImagePng) — write takes ClipboardItems.
+      const win = BrowserWindow.fromWebContents(sender);
+      if (!win || win.isDestroyed()) return null;
+      const image = await win.webContents.capturePage();
+      const blob = new Blob([new Uint8Array(image.toPNG())], { type: "image/png" });
+      await clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      return null;
+    }
+    case "stickywin_read_tannotes_asset": {
+      // tanNotes migration phase 2: an attachment file from the source app's
+      // data dir. Path is pinned to <dbDir>/attachments/<noteId>/<rel> with a
+      // traversal guard — the renderer never names arbitrary files.
+      const { dbDir, noteId, rel } = (args ?? {}) as { dbDir?: string; noteId?: string; rel?: string };
+      if (!dbDir || !noteId || !rel) throw new Error("dbDir, noteId and rel are required");
+      if (rel.includes("..")) throw new Error("invalid attachment path");
+      const { readFile } = await import("node:fs/promises");
+      const assetPath = path.join(dbDir, "attachments", noteId, ...rel.split("/").filter((s) => s && s !== "."));
+      if (!assetPath.startsWith(path.join(dbDir, "attachments"))) {
+        throw new Error("attachment escapes the tanNotes data directory");
+      }
+      const bytes = await readFile(assetPath);
+      const ext = path.extname(assetPath).toLowerCase();
+      const mime = ext === ".png" ? "image/png"
+        : ext === ".jpg" || ext === ".jpeg" ? "image/jpeg"
+        : ext === ".gif" ? "image/gif"
+        : ext === ".webp" ? "image/webp"
+        : "application/octet-stream";
+      return { base64: bytes.toString("base64"), mime };
+    }
+    case "stickywin_import_text": {
+      // tanNotes F46 (md/txt → note) + bundle import: main picks AND reads —
+      // there is deliberately no generic renderer-reachable file-read channel
+      // to widen for this. `filters` scopes what the dialog offers; the
+      // return is {fileName, content} or null when the user cancels.
+      const { dialog } = await import("electron");
+      const { filters } = (args ?? {}) as {
+        filters?: { name: string; extensions: string[] }[];
+      };
+      const result = await dialog.showOpenDialog({
+        properties: ["openFile"],
+        filters: filters?.length
+          ? filters
+          : [
+              { name: "Markdown / Text", extensions: ["md", "markdown", "txt"] },
+              { name: "All files", extensions: ["*"] },
+            ],
+      });
+      if (result.canceled || result.filePaths.length === 0) return null;
+      const filePath = result.filePaths[0];
+      const { readFile } = await import("node:fs/promises");
+      const content = await readFile(filePath, "utf8");
+      return { fileName: path.basename(filePath), content };
     }
 
     default: {

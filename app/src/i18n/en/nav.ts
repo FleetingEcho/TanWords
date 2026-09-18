@@ -5,6 +5,7 @@ export const nav: Dict = {
     "nav.dashboard": "Dashboard",
     "nav.search": "Search",
     "nav.vocabulary": "Words",
+    "nav.stickies": "Stickies",
     "nav.documents": "Docs",
     "nav.chat": "Chat",
     "nav.editDoc": "Edit Doc",

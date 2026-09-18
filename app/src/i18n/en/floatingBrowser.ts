@@ -1,7 +1,7 @@
 import type { Dict } from "../types";
 
 export const floatingBrowser: Dict = {
-    "floatingBrowser.toggleLabel": "TanWords",
+    "floatingBrowser.toggleLabel": "TanNotes",
     "floatingBrowser.minimize": "Minimize",
     "floatingBrowser.dock": "Dock into app",
     "floatingBrowser.close": "Close",

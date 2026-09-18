@@ -31,7 +31,12 @@ pub(super) fn build_doc_where(
     tag: &Option<String>,
     status: &Option<String>,
 ) -> (String, Vec<String>) {
-    let mut conditions = vec!["1=1".to_string()];
+    let mut conditions = vec![
+        // Stickies live in this table too (db/stickies.rs) but are never part
+        // of the Documents page; soft-deleted rows wait in the trash.
+        "COALESCE(d.kind, 'document') = 'document'".to_string(),
+        "d.deleted_at IS NULL".to_string(),
+    ];
     let mut params: Vec<String> = vec![];
 
     if let Some(q) = search {
@@ -135,7 +140,8 @@ pub async fn db_document_title_exists(
     // is portable across both (scalar_i64 would fail on Postgres's native BOOL).
     Ok(db::fetch_one(
         &db,
-        "SELECT EXISTS(SELECT 1 FROM documents WHERE LOWER(title) = LOWER(?1))",
+        "SELECT EXISTS(SELECT 1 FROM documents WHERE LOWER(title) = LOWER(?1) \
+         AND COALESCE(kind,'document')='document' AND deleted_at IS NULL)",
         [title],
         |r| r.get::<bool>(0),
     )
@@ -382,21 +388,67 @@ pub async fn db_update_document_metadata(
     Ok(())
 }
 
+/// Soft-deletes: the row moves to the trash (`deleted_at` set) and vanishes
+/// from every list, but nothing is destroyed — `db_restore_document` brings
+/// it back and `db_purge_document` finishes the job (tanNotes' trash parity).
 #[crate::shim::command]
 pub async fn db_delete_document(id: i64, conn: State<'_, AppState>) -> Result<(), String> {
     let db = db::conn(&conn)?;
     document_privacy::require_key(&db, &conn.document_privacy, id).await?;
+    db::await_write(&conn, async {
+        db.execute(
+            "UPDATE documents SET deleted_at=datetime('now'), updated_at=datetime('now') \
+             WHERE id=?1 AND deleted_at IS NULL",
+            params![id],
+        )
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+    })
+    .await?;
+    conn.document_privacy.lock(id)?;
+    Ok(())
+}
+
+/// Puts a trashed document back into the live set. Returns whether a trashed
+/// row with this id existed.
+#[crate::shim::command]
+pub async fn db_restore_document(id: i64, conn: State<'_, AppState>) -> Result<bool, String> {
+    let db = db::conn(&conn)?;
+    document_privacy::require_key(&db, &conn.document_privacy, id).await?;
+    let n = db.execute(
+        "UPDATE documents SET deleted_at=NULL, updated_at=datetime('now') \
+         WHERE id=?1 AND deleted_at IS NOT NULL",
+        params![id],
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(n > 0)
+}
+
+/// Destroys a *trashed* document for real: assets first (explicit, not
+/// FK-CASCADE, so the order reads the same on both backends), then the row.
+#[crate::shim::command]
+pub async fn db_purge_document(id: i64, conn: State<'_, AppState>) -> Result<bool, String> {
+    let db = db::conn(&conn)?;
+    document_privacy::require_key(&db, &conn.document_privacy, id).await?;
+    let n = db.execute(
+        "DELETE FROM documents WHERE id=?1 AND deleted_at IS NOT NULL",
+        params![id],
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    if n == 0 {
+        return Ok(false);
+    }
     db.execute(
         "DELETE FROM document_assets WHERE document_id = ?1",
         params![id],
     )
     .await
     .map_err(|e| e.to_string())?;
-    db.execute("DELETE FROM documents WHERE id = ?1", params![id])
-        .await
-        .map_err(|e| e.to_string())?;
     conn.document_privacy.lock(id)?;
-    Ok(())
+    Ok(true)
 }
 
 #[crate::shim::command]
@@ -404,7 +456,8 @@ pub async fn db_get_all_tags(conn: State<'_, AppState>) -> Result<Vec<String>, S
     let db = db::conn(&conn)?;
     db::fetch_all(
         &db,
-        "SELECT DISTINCT value FROM documents, json_each(documents.tags) ORDER BY value",
+        "SELECT DISTINCT value FROM documents, json_each(documents.tags) \
+         WHERE COALESCE(kind,'document')='document' AND deleted_at IS NULL ORDER BY value",
         (),
         |row| row.get::<String>(0),
     )

@@ -89,6 +89,8 @@ export default defineConfig({
       input: {
         main: path.resolve(import.meta.dirname, "index.html"),
         floatingBrowser: path.resolve(import.meta.dirname, "floating-browser.html"),
+        sticky: path.resolve(import.meta.dirname, "sticky.html"),
+        stickyManager: path.resolve(import.meta.dirname, "sticky-manager.html"),
       },
     },
     chunkSizeWarningLimit: 1600,

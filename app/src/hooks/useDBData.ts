@@ -210,7 +210,7 @@ export function useDBData() {
     }
   }, []);
 
-  /** Reads another TanWords database and reports what would be added and what
+  /** Reads another TanNotes database and reports what would be added and what
    *  already exists. Writes nothing — the source is opened read-only. */
   const importAnalyze = useCallback(async (sourcePath: string, password: string | null = null): Promise<ImportPlan> => {
     try {
@@ -240,7 +240,7 @@ export function useDBData() {
     []
   );
 
-  /** Wipes the active database's tables and copies another TanWords database
+  /** Wipes the active database's tables and copies another TanNotes database
    *  file's contents in verbatim — every table, original ids and all, not
    *  just the natural-keyed subset `importApply` merges. Desktop-only: the
    *  web host has no upload-based route for this yet. Works identically

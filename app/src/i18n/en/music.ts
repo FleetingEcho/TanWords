@@ -18,7 +18,7 @@ export const music: Dict = {
   "music.shuffle": "Shuffle",
   "music.back": "Back to library",
   "music.emptyTitle": "No music folder yet",
-  "music.emptyBody": "Point TanWords at a folder of mp3 / wav files or recordings, and they'll show up here as collections.",
+  "music.emptyBody": "Point TanNotes at a folder of mp3 / wav files or recordings, and they'll show up here as collections.",
   "music.emptyCta": "Set music folder",
   "music.scanErrorTitle": "Couldn't read the music folder",
   "music.scanErrorCta": "Open settings",

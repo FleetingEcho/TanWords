@@ -335,10 +335,11 @@ pub async fn db_delete_orphan_document_assets(conn: State<'_, AppState>) -> Resu
     let db = db::conn(&conn)?;
     db.execute(
         "DELETE FROM document_assets
-             WHERE document_id IN (SELECT id FROM documents WHERE protected=0)
+             WHERE document_id IN (SELECT id FROM documents WHERE protected=0 AND deleted_at IS NULL)
                AND NOT EXISTS (
              SELECT 1 FROM documents d
              WHERE d.id = document_assets.document_id
+               AND d.deleted_at IS NULL
                AND instr(d.content, 'tanwords-asset://' || document_assets.id) > 0
          )",
         (),

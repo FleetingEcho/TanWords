@@ -1,4 +1,4 @@
-//! TanWords web backend.
+//! TanNotes web backend.
 //!
 //! One binary: per-user core command API (`/invoke/*`, the same dispatch
 //! table the desktop sidecar uses) backed by per-user runtime pool, email +

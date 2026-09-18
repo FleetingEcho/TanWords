@@ -213,7 +213,7 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
     const picked = await openDialog({
       multiple: false,
       filters: [
-        { name: "TanWords Backup", extensions: ["db", "zip"] },
+        { name: "TanNotes Backup", extensions: ["db", "zip"] },
         { name: "SQLite Database", extensions: ["db"] },
         { name: "Encrypted ZIP", extensions: ["zip"] },
       ],

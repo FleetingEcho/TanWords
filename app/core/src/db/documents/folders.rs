@@ -80,7 +80,8 @@ pub async fn db_list_document_folders(
         "SELECT path, MAX(locked) FROM (
              SELECT path, locked FROM document_folders
              UNION ALL
-             SELECT folder, 0 FROM documents WHERE folder <> ''
+             SELECT folder, 0 FROM documents
+              WHERE folder <> '' AND deleted_at IS NULL
          ) GROUP BY path ORDER BY path",
         (),
         |row| {
@@ -248,7 +249,8 @@ pub async fn db_delete_document_folder(
          WHERE path = ?1 OR substr(path, 1, length(?1) + 1) = ?1 || '/'
          UNION
          SELECT DISTINCT folder FROM documents
-         WHERE folder = ?1 OR substr(folder, 1, length(?1) + 1) = ?1 || '/'",
+         WHERE deleted_at IS NULL
+           AND (folder = ?1 OR substr(folder, 1, length(?1) + 1) = ?1 || '/')",
         params![path.clone()],
         |row| row.get::<String>(0),
     )

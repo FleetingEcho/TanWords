@@ -18,7 +18,7 @@ import {
  *  `browser_*`, which SKIP_MODULES excludes from the sidecar's generated
  *  dispatch table) — they're handled entirely in BrowserPanelManager /
  *  dshPanel + ipc.ts, so nothing needs adding on the build.rs side for them. */
-const MAIN_PROCESS_COMMANDS = /^(browser|floating_browser|window|tray|pty|dsh)_/;
+const MAIN_PROCESS_COMMANDS = /^(browser|floating_browser|window|tray|pty|dsh|stickywin)_/;
 
 let cached: { port: number; token: string } | null = null;
 let cachedPromise: Promise<{ port: number; token: string }> | null = null;

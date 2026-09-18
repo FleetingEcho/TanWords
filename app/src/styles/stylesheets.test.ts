@@ -34,6 +34,27 @@ const rawMarkdownCss = readFileSync(join(STYLES_DIR, "raw-markdown-editor.css"),
 const themeCss = readFileSync(join(STYLES_DIR, "theme-vars.css"), "utf8");
 const terminalCss = readFileSync(join(STYLES_DIR, "terminal-tool.css"), "utf8");
 
+describe("sticky window theming", () => {
+  // Sticky windows are always pastel surfaces; they must never run the app's
+  // dark theme. Regression 2026-09: sticky.html copied the auto-dark script,
+  // and the dark theme's --foreground is near-white — note text rendered
+  // unreadable white-on-yellow.
+  const stickyHtml = readFileSync(join(STYLES_DIR, "..", "..", "sticky.html"), "utf8");
+
+  it("never adds the dark class in the sticky window", () => {
+    expect(stickyHtml).not.toContain('classList.add("dark")');
+    expect(stickyHtml).not.toContain('colorScheme = isDark');
+  });
+
+  it("pins the editor ink to dark so the default is always black", () => {
+    // Specificity above the shared rule (var(--foreground)); user-chosen
+    // TextStyle marks are inline styles and still win over this default.
+    const rule = stickyHtml.match(/#root \.tanwords-tiptap \.ProseMirror\s*\{([^}]*)\}/)?.[1];
+    expect(rule).toBeTruthy();
+    expect(rule).toContain("color: #1f2937");
+  });
+});
+
 describe("terminal fullscreen canvas", () => {
   it("paints the active theme behind the fullscreen toolbar", () => {
     const fullscreenRule = terminalCss.match(/\.terminal-tool-outer:fullscreen\s*\{([^}]*)\}/s)?.[1];

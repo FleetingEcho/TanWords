@@ -9,7 +9,7 @@ vi.mock("electron", () => ({
   WebContentsView: class {},
   app: {
     userAgentFallback:
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) TanWords/1.11.2 Chrome/140.0.0.0 Electron/43.2.0 Safari/537.36",
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) TanNotes/1.11.2 Chrome/140.0.0.0 Electron/43.2.0 Safari/537.36",
     getPath: () => "/tmp",
     whenReady: () => Promise.resolve(),
   },
@@ -88,7 +88,7 @@ describe("BrowserPanelManager.hide", () => {
 });
 
 describe("panel identity", () => {
-  // Electron's default UA appends `TanWords/<ver>` and `Electron/<ver>` to
+  // Electron's default UA appends `TanNotes/<ver>` and `Electron/<ver>` to
   // Chrome's. Both are "this is not a browser" tells that get Google's
   // sign-in and bot interstitials thrown at ordinary browsing, so the panel
   // presents the real Chromium underneath instead.

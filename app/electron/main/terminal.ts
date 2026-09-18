@@ -41,7 +41,7 @@ const HANDSHAKE_TIMEOUT_MS = 5_000;
 const MAX_FRAME_BYTES = 1024 * 1024;
 const MAX_INPUT_BASE64_CHARS = 2 * 1024 * 1024;
 const MAX_PTY_DIMENSION = 65_535;
-// A TanWords PTY is a new terminal boundary, not a child pane of whichever
+// A TanNotes PTY is a new terminal boundary, not a child pane of whichever
 // terminal happened to launch Electron during development. Leaking these
 // markers makes capability-driven apps (notably Yazi) select Apple Terminal,
 // tmux, Kitty, etc. and emit the wrong graphics protocol.
@@ -205,7 +205,7 @@ function terminalEnvironment(
     ...(hasUtf8Locale ? {} : { LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8" }),
     TERM: "xterm-256color",
     COLORTERM: "truecolor",
-    TERM_PROGRAM: "TanWords",
+    TERM_PROGRAM: "TanNotes",
     TERM_PROGRAM_VERSION: app.getVersion(),
     PTY_COLS: String(cols),
     PTY_ROWS: String(rows),

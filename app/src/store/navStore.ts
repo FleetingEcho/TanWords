@@ -3,6 +3,7 @@ import { hostCapabilities, isWebHost } from "@/platform";
 
 export type NavPage =
   | "dashboard"
+  | "stickies"
   | "calendar"
   | "feeds"
   | "reading"

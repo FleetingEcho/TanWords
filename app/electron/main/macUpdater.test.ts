@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { generateKeyPairSync, sign as edSign, verify as edVerify, createPublicKey } from "node:crypto";
 
 vi.mock("electron", () => ({
-  app: { getVersion: () => "1.1.0", getPath: () => "/Applications/TanWords.app/Contents/MacOS/TanWords", quit: vi.fn() },
+  app: { getVersion: () => "1.1.0", getPath: () => "/Applications/TanNotes.app/Contents/MacOS/TanNotes", quit: vi.fn() },
 }));
 
 import { __isNewerForTests as isNewer } from "./macUpdater";

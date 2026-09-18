@@ -46,7 +46,7 @@ export const aichat: Dict = {
     "aichat.toolsNone": "未启用工具——纯对话模式",
     "aichat.accessButton": "AI 权限",
     "aichat.accessTitle": "AI 应用权限",
-    "aichat.accessSubtitle": "控制 AI 可以使用的 TanWords 功能",
+    "aichat.accessSubtitle": "控制 AI 可以使用的 TanNotes 功能",
     "aichat.access.vocabulary.title": "访问 Vocabulary",
     "aichat.access.vocabulary.description": "允许 AI 统计和列出词库、查询保存单词、批量添加词汇、保存例句",
     "aichat.access.documents.title": "访问 Documents",

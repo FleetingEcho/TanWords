@@ -21,7 +21,7 @@ export const browser: Dict = {
     "browser.clearDataDone": "浏览数据已清除",
     "browser.adBlockOn": "广告拦截已开启",
     "browser.adBlockOff": "广告拦截已关闭",
-    "browser.emptyTitle": "无需离开 TanWords 即可浏览",
+    "browser.emptyTitle": "无需离开 TanNotes 即可浏览",
     "browser.emptyBody": "在上方粘贴任意链接，或从下面几个网站开始。",
     "browser.history": "历史记录",
     "browser.historyEmpty": "本次会话还没有历史记录。",

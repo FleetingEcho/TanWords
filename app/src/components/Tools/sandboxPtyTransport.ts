@@ -16,7 +16,7 @@ import type { PtySessionHooks } from "./TerminalToolRestty";
 const SANDBOX_SHELL_NAME = "just-bash (sandbox)";
 
 const WELCOME_BANNER = [
-  "\x1b[1;36mTanWords Web Terminal\x1b[0m — sandboxed shell (just-bash)",
+  "\x1b[1;36mTanNotes Web Terminal\x1b[0m — sandboxed shell (just-bash)",
   "This runs entirely in your browser: an in-memory filesystem, no network,",
   "no access to this device or the server. Try `ls`, `cd`, `cat`, `echo`.",
   "",
@@ -24,11 +24,11 @@ const WELCOME_BANNER = [
 
 const DEFAULT_FILES = {
   "/home/user/README.md": [
-    "# TanWords web terminal",
+    "# TanNotes web terminal",
     "",
     "This shell runs in your browser via just-bash — a sandboxed bash",
     "implementation with its own virtual filesystem. It cannot reach your",
-    "real device or the TanWords server. The desktop app offers a real",
+    "real device or the TanNotes server. The desktop app offers a real",
     "local shell instead; this is the web build's substitute.",
     "",
   ].join("\n"),

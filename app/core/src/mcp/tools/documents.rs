@@ -34,6 +34,7 @@ impl TanWordsMcp {
                                     snippet(documents_fts,1,'','','…',24)
                              FROM documents_fts f JOIN documents d ON d.id=f.rowid
                              WHERE documents_fts MATCH ?1 AND d.protected=0
+                               AND COALESCE(d.kind,'document')='document' AND d.deleted_at IS NULL
                                AND (?2 IS NULL OR EXISTS(SELECT 1 FROM json_each(d.tags) WHERE value=?2))
                              ORDER BY d.pinned DESC, bm25(documents_fts)
                              LIMIT ?3 OFFSET ?4",
@@ -48,6 +49,7 @@ impl TanWordsMcp {
                         &conn,
                         "SELECT id,title,tags,pinned,word_count,updated_at,'' FROM documents
                          WHERE protected=0
+                           AND COALESCE(kind,'document')='document' AND deleted_at IS NULL
                            AND (?1 IS NULL OR EXISTS(SELECT 1 FROM json_each(tags) WHERE value=?1))
                          ORDER BY pinned DESC, updated_at DESC LIMIT ?2 OFFSET ?3",
                         params![input.tag, limit, offset],
@@ -89,6 +91,7 @@ impl TanWordsMcp {
                  JOIN documents d ON d.id = f.rowid
                  WHERE documents_fts MATCH ?1
                    AND d.protected=0
+                   AND COALESCE(d.kind,'document')='document' AND d.deleted_at IS NULL
                    AND (?2 IS NULL OR EXISTS(SELECT 1 FROM json_each(d.tags) WHERE value=?2))
                  ORDER BY d.pinned DESC, bm25(documents_fts)
                  LIMIT ?3",
@@ -112,7 +115,8 @@ impl TanWordsMcp {
             let conn = self.connect().await?;
             db::fetch_one(
                 &conn,
-                "SELECT id,title,content,content_text,tags,pinned,word_count,created_at,updated_at FROM documents WHERE id=?1 AND protected=0",
+                "SELECT id,title,content,content_text,tags,pinned,word_count,created_at,updated_at FROM documents WHERE id=?1 AND protected=0 \
+                 AND COALESCE(kind,'document')='document' AND deleted_at IS NULL",
                 [input.id],
                 |row| Ok(json!({"id":row.get::<i64>(0)?,"title":row.get::<String>(1)?,"content":row.get::<String>(2)?,"text":row.get::<String>(3)?,"tags":serde_json::from_str::<Value>(&row.get::<String>(4)?).unwrap_or(json!([])),"pinned":row.get::<i64>(5)?!=0,"wordCount":row.get::<i64>(6)?,"createdAt":row.get::<String>(7)?,"updatedAt":row.get::<String>(8)?})),
             )

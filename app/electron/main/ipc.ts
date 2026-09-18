@@ -29,6 +29,9 @@ export type IpcDeps = {
    *  Returns whether registration succeeded (an accelerator already claimed
    *  by the OS or another app fails). */
   setDshShortcut: (accelerator: string) => boolean;
+  /** Same discipline as `setDshShortcut`, for the sticky global hotkey (a new
+   *  sticky from anywhere — tanNotes' Ctrl+Alt+N parity). */
+  setStickyShortcut: (accelerator: string) => boolean;
 };
 
 /** Schemes `shell:open` will actually hand to `shell.openExternal` — an

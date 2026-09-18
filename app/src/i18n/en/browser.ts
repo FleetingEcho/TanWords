@@ -21,7 +21,7 @@ export const browser: Dict = {
     "browser.clearDataDone": "Browsing data cleared",
     "browser.adBlockOn": "Ad blocker on",
     "browser.adBlockOff": "Ad blocker off",
-    "browser.emptyTitle": "Browse without leaving TanWords",
+    "browser.emptyTitle": "Browse without leaving TanNotes",
     "browser.emptyBody": "Paste any link above, or start from one of these.",
     "browser.history": "History",
     "browser.historyEmpty": "No history yet this session.",

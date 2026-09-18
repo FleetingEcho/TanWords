@@ -42,8 +42,8 @@ const GLYPH_PAUSE = "⏸";
 const STRINGS = {
   en: {
     showWindow: "Open main window",
-    openDsh: "DeepSeek Harness",
-    openTerminal: "Terminal",
+    newSticky: "New Sticky Note",
+    manageStickies: "Manage Stickies",
     musicControl: "Music Control",
     play: "Play",
     prev: "Previous",
@@ -53,8 +53,8 @@ const STRINGS = {
   },
   zh: {
     showWindow: "打开主窗口",
-    openDsh: "DeepSeek Harness",
-    openTerminal: "终端",
+    newSticky: "新建便签",
+    manageStickies: "便签管理",
     musicControl: "音乐控制",
     play: "播放",
     prev: "上一首",
@@ -91,7 +91,7 @@ export class TrayManager {
   }
 
   /** macOS reads its icon as a template mask and recolours it for the current
-   *  menu bar. Windows and Linux receive the full-colour TanWords icon instead
+   *  menu bar. Windows and Linux receive the full-colour TanNotes icon instead
    *  (see trayIconPath), so their tray matches the installed application. */
   create(iconPath: string) {
     if (this.tray) return;
@@ -166,20 +166,12 @@ export class TrayManager {
 
     this.menu = Menu.buildFromTemplate([
       { label: s.showWindow, click: () => this.showMainWindow() },
-      {
-        label: s.openDsh,
-        click: () => {
-          this.showMainWindow();
-          emit("tray://open-dsh");
-        },
-      },
-      {
-        label: s.openTerminal,
-        click: () => {
-          this.showMainWindow();
-          emit("tray://open-terminal");
-        },
-      },
+      // Sticky notes (tanNotes parity): these rows are handled entirely in
+      // main (see index.ts's tray sink) — no main window comes forward.
+      // Per user request (2026-09): DSH/Terminal rows and the show/hide-all
+      // rows are REMOVED — new sticky + manager only.
+      { label: s.newSticky, click: () => emit("tray://new-sticky") },
+      { label: s.manageStickies, click: () => emit("tray://manage-stickies") },
       {
         id: "music",
         label: s.musicControl,

@@ -46,7 +46,7 @@ export const aichat: Dict = {
     "aichat.toolsNone": "No tools enabled — plain chat mode",
     "aichat.accessButton": "AI access",
     "aichat.accessTitle": "AI app access",
-    "aichat.accessSubtitle": "Choose which TanWords features AI may use",
+    "aichat.accessSubtitle": "Choose which TanNotes features AI may use",
     "aichat.access.vocabulary.title": "Access Vocabulary",
     "aichat.access.vocabulary.description": "Query vocabulary stats and lists, search and save words, add word lists, and save example sentences",
     "aichat.access.documents.title": "Access Documents",

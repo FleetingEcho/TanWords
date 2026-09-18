@@ -197,6 +197,41 @@ describe("edge cases", () => {
  * without explicit handling every one is dropped and the block arrives empty —
  * which is what a "broken template" looks like from the outside.
  */
+/** Sticky-note text-run marks (Stickies plan §4.5): the tanNotes mark set —
+ *  underline, multicolor highlight, text color, font family/size — rides the
+ *  same `InlineStyles` shape. None of these are representable in markdown
+ *  (like underline before them), so they're exercised as block literals. */
+describe("sticky text-run marks", () => {
+  it.each([
+    ["underline", { underline: true }],
+    ["highlight", { highlight: "#fef08a" }],
+    ["text color", { textColor: "#dc2626" }],
+    ["font family", { fontFamily: "Georgia, serif" }],
+    ["font size", { fontSize: "18px" }],
+    ["everything at once", { bold: true, underline: true, highlight: "#bfdbfe", textColor: "#2563eb", fontFamily: "Arial", fontSize: "20px" }],
+  ])("round-trips %s on a text run", (_label, styles) => {
+    const block: Block = {
+      type: "paragraph",
+      props: {},
+      content: [
+        { type: "text", text: "plain ", styles: {} },
+        { type: "text", text: "styled", styles: styles as never },
+      ],
+    };
+    const out = roundTrip([block]);
+    const runs = out[0].content as { type: string; text: string; styles: Record<string, unknown> }[];
+    expect(runs).toHaveLength(2);
+    expect(runs[1].text).toBe("styled");
+    expect(runs[1].styles).toEqual(styles);
+  });
+
+  it("keeps unstyled runs free of empty-valued style keys", () => {
+    const out = roundTrip([{ type: "paragraph", props: {}, content: [{ type: "text", text: "x", styles: {} }] }]);
+    const runs = out[0].content as unknown as { styles: Record<string, unknown> }[];
+    expect(runs[0].styles).toEqual({});
+  });
+});
+
 describe("plain-string content shorthand", () => {
   it("keeps the text of a string-content block", () => {
     const out = roundTrip([{ type: "paragraph", props: {}, content: "hello" } as Block]);

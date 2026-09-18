@@ -35,6 +35,10 @@ export interface HostCapabilities {
    *  as `nativeTts`: the `asr_*` commands only exist in the desktop-feature
    *  build of the Rust sidecar, not the web/server build. */
   nativeAsr: boolean;
+  /** Web Stickies board (Stickies plan S5). Desktop instead gets the floating
+   *  manager window + per-note OS windows, so the in-app board page is web
+   *  only — same sticky data, different surface. */
+  stickyBoard: boolean;
 }
 
 export const DESKTOP_CAPABILITIES: HostCapabilities = {
@@ -51,6 +55,7 @@ export const DESKTOP_CAPABILITIES: HostCapabilities = {
   updater: true,
   nativeTts: true,
   nativeAsr: true,
+  stickyBoard: false,
 };
 
 export const WEB_CAPABILITIES: HostCapabilities = {
@@ -75,6 +80,7 @@ export const WEB_CAPABILITIES: HostCapabilities = {
   updater: false,
   nativeTts: false,
   nativeAsr: false,
+  stickyBoard: true,
 };
 
 export function detectHostKind(): HostKind {

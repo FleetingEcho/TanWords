@@ -42,7 +42,14 @@ pub async fn db_dashboard_stats(conn: State<'_, AppState>) -> Result<DashboardSt
     let word_count = db::scalar_i64(&db, "SELECT COUNT(*) FROM words", ()).await?;
     let sentence_count = db::scalar_i64(&db, "SELECT COUNT(*) FROM sentences", ()).await?;
     let chat_count = db::scalar_i64(&db, "SELECT COUNT(*) FROM ai_chat_sessions", ()).await?;
-    let doc_count = db::scalar_i64(&db, "SELECT COUNT(*) FROM documents", ()).await?;
+    // Stickies and trashed documents are not Documents-page content (see
+    // db/stickies.rs), so the dashboard's tiles and Recent card skip both.
+    let doc_count = db::scalar_i64(
+        &db,
+        "SELECT COUNT(*) FROM documents WHERE COALESCE(kind,'document')='document' AND deleted_at IS NULL",
+        (),
+    )
+    .await?;
 
     // A `resume` field used to be computed here from a JOIN on extracted_items.
     // Migration 20 dropped that table (it replaced the candidate/accept
@@ -78,7 +85,9 @@ pub async fn db_dashboard_stats(conn: State<'_, AppState>) -> Result<DashboardSt
         // 5, matching DASHBOARD_BODY_ROWS in the renderer's DashboardCard — the
         // grid's cards are a fixed five rows tall, so a lower limit here just
         // leaves this one looking half-empty next to its neighbours.
-        "SELECT id, title, updated_at FROM documents ORDER BY updated_at DESC LIMIT 5",
+        "SELECT id, title, updated_at FROM documents \
+         WHERE COALESCE(kind,'document')='document' AND deleted_at IS NULL \
+         ORDER BY updated_at DESC LIMIT 5",
         (),
         |row| {
             Ok(RecentDoc {

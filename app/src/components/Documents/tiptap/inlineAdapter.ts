@@ -19,9 +19,10 @@ export interface PmInline {
   marks?: PmMark[];
 }
 
-/** Style flag ⇄ mark name. Identical today, but named so the two vocabularies
- *  stay decoupled — a schema rename must not silently change stored content. */
-const STYLE_MARKS: Record<keyof InlineStyles, string> = {
+/** Boolean style flag ⇄ mark name. Identical today, but named so the two
+ *  vocabularies stay decoupled — a schema rename must not silently change
+ *  stored content. */
+const STYLE_MARKS: Record<"bold" | "italic" | "underline" | "strike" | "code", string> = {
   bold: "bold",
   italic: "italic",
   underline: "underline",
@@ -29,18 +30,40 @@ const STYLE_MARKS: Record<keyof InlineStyles, string> = {
   code: "code",
 };
 
+/** Value-carrying styles map to marks with attrs. All three of
+ *  textColor/fontFamily/fontSize ride ONE `textStyle` mark (Tiptap's TextStyle
+ *  model), so `stylesToMarks` folds them together. */
 function stylesToMarks(styles: InlineStyles | undefined): PmMark[] {
   if (!styles) return [];
-  return (Object.keys(STYLE_MARKS) as (keyof InlineStyles)[])
-    .filter((style) => styles[style])
-    .map((style) => ({ type: STYLE_MARKS[style] }));
+  const marks: PmMark[] = [];
+  for (const style of Object.keys(STYLE_MARKS) as (keyof typeof STYLE_MARKS)[]) {
+    if (styles[style]) marks.push({ type: STYLE_MARKS[style] });
+  }
+  if (styles.highlight) marks.push({ type: "highlight", attrs: { color: styles.highlight } });
+  const textStyle: Record<string, unknown> = {};
+  if (styles.textColor) textStyle.color = styles.textColor;
+  if (styles.fontFamily) textStyle.fontFamily = styles.fontFamily;
+  if (styles.fontSize) textStyle.fontSize = styles.fontSize;
+  if (Object.keys(textStyle).length) marks.push({ type: "textStyle", attrs: textStyle });
+  return marks;
 }
 
 function marksToStyles(marks: PmMark[] | undefined): InlineStyles {
   const styles: InlineStyles = {};
   for (const mark of marks ?? []) {
     for (const [style, name] of Object.entries(STYLE_MARKS)) {
-      if (mark.type === name) styles[style as keyof InlineStyles] = true;
+      if (mark.type === name) styles[style as keyof typeof STYLE_MARKS] = true;
+    }
+    if (mark.type === "highlight") {
+      const color = mark.attrs?.color;
+      if (color) styles.highlight = String(color);
+      continue;
+    }
+    if (mark.type === "textStyle") {
+      if (mark.attrs?.color) styles.textColor = String(mark.attrs.color);
+      if (mark.attrs?.fontFamily) styles.fontFamily = String(mark.attrs.fontFamily);
+      if (mark.attrs?.fontSize) styles.fontSize = String(mark.attrs.fontSize);
+      continue;
     }
   }
   return styles;

@@ -125,7 +125,7 @@ CREATE TABLE IF NOT EXISTS documents (
             word_count   BIGINT NOT NULL DEFAULT 0,
             created_at   TEXT    NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')),
             updated_at   TEXT    NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
-        , protected BIGINT NOT NULL DEFAULT 0, protection_salt BYTEA, wrapped_key BYTEA, folder TEXT NOT NULL DEFAULT '', task_total BIGINT NOT NULL DEFAULT 0, task_done  BIGINT NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT '');
+        , protected BIGINT NOT NULL DEFAULT 0, protection_salt BYTEA, wrapped_key BYTEA, folder TEXT NOT NULL DEFAULT '', task_total BIGINT NOT NULL DEFAULT 0, task_done  BIGINT NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL DEFAULT 'document', deleted_at TEXT);
 
 CREATE TABLE IF NOT EXISTS document_assets (
             id          TEXT PRIMARY KEY,
@@ -142,6 +142,32 @@ CREATE TABLE IF NOT EXISTS document_folders (
                 path       TEXT PRIMARY KEY,
                 created_at TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))
             , locked BIGINT NOT NULL DEFAULT 0);
+
+-- Stickies (floating sticky notes; content lives in `documents`). See the
+-- SQLite schema section 5b and `db/stickies.rs` for the design split:
+-- `stickies` is the shared identity, `sticky_windows` is machine-bound.
+CREATE TABLE IF NOT EXISTS stickies (
+  document_id   BIGINT NOT NULL PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+  color         TEXT    NOT NULL DEFAULT 'yellow',
+  corner        TEXT    NOT NULL DEFAULT 'rounded',
+  opacity       BIGINT  NOT NULL DEFAULT 80,
+  always_on_top BIGINT  NOT NULL DEFAULT 1,
+  font_family   TEXT,
+  font_size     BIGINT
+);
+
+CREATE TABLE IF NOT EXISTS sticky_windows (
+  document_id  BIGINT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  device_id    TEXT NOT NULL,
+  x BIGINT,
+  y BIGINT,
+  w            BIGINT NOT NULL DEFAULT 260,
+  h            BIGINT NOT NULL DEFAULT 480,
+  collapsed    BIGINT NOT NULL DEFAULT 0,
+  is_open      BIGINT NOT NULL DEFAULT 0,
+  updated_at   TEXT NOT NULL DEFAULT (to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')),
+  PRIMARY KEY (document_id, device_id)
+);
 
 CREATE TABLE IF NOT EXISTS feed_bookmarks (
                 id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -596,6 +622,10 @@ CREATE INDEX IF NOT EXISTS idx_document_assets_document
             ON document_assets(document_id);
 
 CREATE INDEX IF NOT EXISTS idx_documents_folder ON documents(folder);
+
+CREATE INDEX IF NOT EXISTS idx_documents_kind ON documents(kind);
+
+CREATE INDEX IF NOT EXISTS idx_sticky_windows_device ON sticky_windows(device_id);
 
 CREATE INDEX IF NOT EXISTS idx_feed_bookmarks_created
                 ON feed_bookmarks(created_at DESC);

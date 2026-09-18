@@ -15,6 +15,11 @@ import { TaskItem, TaskList } from "@tiptap/extension-list";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import TextAlign from "@tiptap/extension-text-align";
 import UniqueID from "@tiptap/extension-unique-id";
+// Text-run styling marks (Stickies plan §4.5): TextStyle carries
+// color/fontFamily/fontSize as one mark; Highlight is multicolor. The block
+// adapter (`inlineAdapter.ts`) maps these to/from `InlineStyles`.
+import { Color, FontFamily, FontSize, TextStyle } from "@tiptap/extension-text-style";
+import { Highlight } from "@tiptap/extension-highlight";
 import { MEDIA_NODES } from "./nodes/mediaNodes";
 import { MermaidNode, YouTubeNode } from "./nodes/customNodes";
 import { CodeBlockShiki } from "./nodes/codeBlockShiki";
@@ -102,6 +107,15 @@ export function buildExtensions(options: EditorExtensionOptions = {}) {
     TableHeader,
     TableCell,
     TextAlign.configure({ types: ALIGNABLE_NODES }),
+    // Text-run marks beyond StarterKit's bold/italic/underline/strike/code:
+    // the sticky toolbar's color/highlight/font-size buttons and tanNotes
+    // bundle imports both produce these. Additive to Documents — old content
+    // simply never carries them.
+    TextStyle,
+    Color,
+    FontFamily,
+    FontSize,
+    Highlight.configure({ multicolor: true }),
     UniqueID.configure({ types: ID_BEARING_NODES, attributeName: "id" }),
     ...MEDIA_NODES,
     MermaidNode,

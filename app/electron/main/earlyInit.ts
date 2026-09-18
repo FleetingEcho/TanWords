@@ -6,7 +6,7 @@ import path from "node:path";
 // Pin the app name before anything reads a path from it. `requestSingleInstance
 // Lock()` is keyed on `userData`, which Electron derives from `app.getName()` —
 // and that resolves from package.json's `productName` (absent here) falling back
-// to `name`, while electron-builder.yml carries its own `productName: TanWords`
+// to `name`, while electron-builder.yml carries its own `productName: TanNotes`
 // for the bundle. If those ever disagree between a dev run and a packaged build,
 // the two get *different* userData dirs, therefore different locks, and both can
 // run at once against the one SQLite file the sidecar always opens at
@@ -30,7 +30,7 @@ if (process.platform === "win32") app.setAppUserModelId("com.tanner.tanwords");
 // On affected Windows GPU/driver combinations Chromium can lose its shared
 // image mailbox while the renderer itself keeps running. The result is a live
 // app (backend calls and accessibility tree included) whose window presents
-// only its dark background. TanWords is predominantly text UI, so reliable
+// only its dark background. TanNotes is predominantly text UI, so reliable
 // software compositing is preferable to a faster but intermittently black
 // launch. Electron requires this call before app readiness/window creation.
 if (process.platform === "win32") app.disableHardwareAcceleration();
@@ -47,7 +47,7 @@ if (process.platform === "linux" && !app.isPackaged) {
     const desktopDir = path.join(os.homedir(), ".local", "share", "applications");
     const contents = [
       "[Desktop Entry]",
-      "Name=TanWords (dev)",
+      "Name=TanNotes (dev)",
       `Exec=${process.execPath} ${app.getAppPath()}`,
       "Terminal=false",
       "Type=Application",

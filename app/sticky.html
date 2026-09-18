@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <script>
+      // Same last-known-theme flash prevention as index.html — the sticky's
+      // BubbleToolbar and scrollbars pick up the app's theme tokens. The
+      // pastel surface itself always renders light text-on-dark-ink.
+      (function () {
+        // Sticky notes are always pastel surfaces — never theme them dark.
+        // (The app's auto-dark script used to run here too; dark mode's
+        // near-white --foreground made note text unreadable on the yellow.)
+        document.documentElement.style.colorScheme = "light";
+      })();
+    </script>
+    <style>
+      /* The OS window is transparent — only the pastel surface inside paints.
+         overflow:hidden for the same sub-pixel-scrollbar reason as
+         floating-browser.html (a scrollbar here would shrink the visible
+         surface and show the desktop through the gap). */
+      html, body, #root { min-height: 100%; margin: 0; background: transparent; overflow: hidden; }
+      /* Default ink on the pastel surface is always dark. #root gives this
+         specificity over the shared .tanwords-tiptap .ProseMirror rule
+         (var(--foreground)), whatever order the bundles load in. */
+      #root .tanwords-tiptap .ProseMirror { color: #1f2937; }
+    </style>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>TanNotes Sticky</title>
+  </head>
+  <body class="antialiased">
+    <div id="root"></div>
+    <script type="module" src="/src/stickyWindowMain.tsx"></script>
+  </body>
+</html>

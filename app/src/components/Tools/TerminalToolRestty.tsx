@@ -26,7 +26,7 @@
  *  no modified-Enter CSI-u key encoding (xterm 6 collapses that to plain CR;
  *  whether restty already handles it correctly is unverified), and
  *  "Select all" has no restty API to call, so it isn't offered. Restty handles
- *  ordinary clipboard text itself; TanWords intercepts non-text paste events
+ *  ordinary clipboard text itself; TanNotes intercepts non-text paste events
  *  so its desktop clipboard bridge can materialize images as temporary files.
  *
  *  No background blur/transparency: restty's canvas is created with
@@ -204,7 +204,7 @@ export function TerminalToolRestty({
     const term = new ResttyTerminal({
       cols: 80,
       rows: 24,
-      // TanWords is a single-pane terminal host. Restty's default menu adds
+      // TanNotes is a single-pane terminal host. Restty's default menu adds
       // its own split/close/PTY controls and consumes right-clicks that the
       // foreground TUI (for example Herdr) needs to receive.
       surface: { defaultContextMenu: false },

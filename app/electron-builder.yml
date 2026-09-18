@@ -1,4 +1,5 @@
-# electron-builder config for TanWords (Electron migration, Task 5).
+# electron-builder config for TanNotes (Electron migration, Task 5; renamed
+# from TanWords 2026-09 — see the "identity notes" comment near publish below).
 # Reference: docs/electron-migration-plan.md §6, docs/electron-migration-handoff.md
 # Task 5, and electron_app/task1-csp-and-icons.md (values extracted from the old
 # app/core/tauri.conf.json before it was deleted in Task 1).
@@ -7,8 +8,8 @@
 # readability given how much platform-specific config this needs; `bun run package`
 # (package.json) invokes plain `electron-builder`, which auto-discovers this file.
 
-appId: com.tanner.tanwords
-productName: TanWords
+appId: com.tanner.tannotes
+productName: TanNotes
 
 # Keep only the UI languages the app actually ships. Electron's default
 # framework ships ~220 locale packs (~47MB unpacked) for Chromium's built-in
@@ -41,6 +42,19 @@ electronLanguages:
 # The `mac.identity` / notarization setup must be in place for this to do
 # anything on a real user's machine; an unsigned local build will download and
 # then fail to apply.
+# IDENTITY NOTES (rename TanWords → TanNotes, 2026-09):
+# - appId/productName above carry the new identity. Existing installs keep
+#   working; they will NOT auto-upgrade into a TanNotes-named build (different
+#   appId/bundle name) — a one-time manual reinstall per machine, and the macOS
+#   swap-updater fails cleanly (zip entry name no longer matches the old
+#   TanWords.app bundle) so nothing is damaged mid-swap.
+# - `repo` below and macUpdater.ts's FEED_URL track the GITHUB REPO NAME, not
+#   the product brand. They stay "TanWords" until the repo itself is renamed
+#   (GitHub redirects renamed repos, so old installs keep updating either way).
+# - The userData dir, window WM_CLASS, sidecar binary names (tanwords-core),
+#   `tanwords-asset://` protocol and TANWORDS_* env vars are intentionally
+#   UNCHANGED technical identifiers (earlyInit.ts app.setName, package.json
+#   desktopName) — renaming those would orphan data and break saved content.
 publish:
   provider: github
   owner: FleetingEcho

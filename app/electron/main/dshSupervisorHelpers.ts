@@ -91,7 +91,7 @@ function executableSearchDirs(extra: string[] = []): string[] {
   ].filter(Boolean))];
 }
 
-/** Locate the `dsh` launcher. Packaged TanWords builds do not bundle the DSH
+/** Locate the `dsh` launcher. Packaged TanNotes builds do not bundle the DSH
  *  CLI, so this is best-effort: an explicit `DSH_BIN` override wins, otherwise
  *  we search PATH plus well-known package-manager prefixes. A miss returns null
  *  and the supervisor reports a "failed" status the renderer can surface. */

@@ -12,7 +12,7 @@
  *
  *  The host is a long-lived HTTP/WS server bound to a loopback port. We pass
  *  `--port <n>`. The default is DSH's standard port (3080), which also acts as
- *  a single-writer rendezvous: if `dsh web` is already there, TanWords embeds
+ *  a single-writer rendezvous: if `dsh web` is already there, TanNotes embeds
  *  that host instead of starting a second process against the same `~/.dsh`
  *  session logs. A non-zero value pins DSH to a custom fixed port. */
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
@@ -116,7 +116,7 @@ export class DshSupervisor {
     // A settled-but-failed promise should be retryable on the next user
     // action, so drop the cache if it rejected (a fresh `start()` then
     // re-attempts). Discovered hosts are re-probed on every later show because
-    // TanWords does not own their lifetime; a resolved child stays cached.
+    // TanNotes does not own their lifetime; a resolved child stays cached.
     attempt.then(() => {
       if (this.attachedExternal && this.startPromise === attempt) this.startPromise = null;
     }).catch(() => {
@@ -452,7 +452,7 @@ export class DshSupervisor {
    *  emitting `failed` — harmless since the page is hidden (that's the
    *  precondition to get here), and a later `start()` respawns fresh exactly
    *  like any other post-crash reopen. An externally-attached host (no owned
-   *  child) is never touched — TanWords doesn't own its lifetime. */
+   *  child) is never touched — TanNotes doesn't own its lifetime. */
   private async idleStop(): Promise<void> {
     const child = this.child;
     if (!child || child.exitCode !== null || child.signalCode !== null) return;

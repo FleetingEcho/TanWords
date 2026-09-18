@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <script>
+      // Same last-known-theme flash prevention as index.html — the manager is
+      // a normal app-chrome window and follows the app theme.
+      (function () {
+        try {
+          var theme = localStorage.getItem("tanwords_theme_cache") || "system";
+          var isDark =
+            theme === "dark" || theme === "catppuccin-mocha" || theme === "dracula" ||
+            theme === "tokyo-night" || theme === "tokyo-night-storm" || theme === "dim" ||
+            (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          if (isDark) document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = isDark ? "dark" : "light";
+        } catch (e) {}
+      })();
+    </script>
+    <style>
+      html, body, #root { min-height: 100%; margin: 0; background: transparent; overflow: hidden; }
+    </style>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>TanNotes Stickies</title>
+  </head>
+  <body class="antialiased">
+    <div id="root"></div>
+    <script type="module" src="/src/stickyManagerMain.tsx"></script>
+  </body>
+</html>

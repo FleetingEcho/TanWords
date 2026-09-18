@@ -1,6 +1,6 @@
-# TanWords test-server deployment
+# TanNotes test-server deployment
 
-This document records the deployment currently running on the TanWords test
+This document records the deployment currently running on the TanNotes test
 server so another agent can maintain or reproduce it without rediscovering the
 setup.
 
@@ -15,7 +15,7 @@ setup.
 | Public URL | `https://<TANWORDS_PUBLIC_HOST>/` |
 | Application source revision used for the initial image | `13a8fb70b4377ab97c2a385d196140e1d799e051` |
 
-Do not put the public host, SSH password, or TanWords secrets in this repository.
+Do not put the public host, SSH password, or TanNotes secrets in this repository.
 Obtain them from the server owner. Before running manual examples locally, load
 the ignored deployment environment:
 
@@ -298,7 +298,7 @@ curl -I http://$TANWORDS_PUBLIC_HOST/
 
 # HTTPS must be publicly trusted and return the app.
 curl -fI https://$TANWORDS_PUBLIC_HOST/
-curl -fsS https://$TANWORDS_PUBLIC_HOST/ | grep '<title>TanWords'
+curl -fsS https://$TANWORDS_PUBLIC_HOST/ | grep '<title>TanNotes'
 
 # Inspect the active certificate.
 echo | openssl s_client \

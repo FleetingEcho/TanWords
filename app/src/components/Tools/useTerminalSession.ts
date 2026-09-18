@@ -252,7 +252,7 @@ export function useTerminalSession(params: UseTerminalSessionParams) {
     // Do not assign application shortcuts while xterm has focus: every key
     // belongs to the foreground terminal program. xterm 6 collapses all
     // modified Enter keys to plain CR, however, so preserve that browser input
-    // as a CSI-u key event. This is transport encoding, not a TanWords action;
+    // as a CSI-u key event. This is transport encoding, not a TanNotes action;
     // Herdr (or any other foreground TUI) remains responsible for its meaning.
     term.attachCustomKeyEventHandler((event) => {
       const key = event.key.toLowerCase();

@@ -26,11 +26,11 @@ export const dsh: Dict = {
     // 安装指引而非报错：用户尚未安装 DSH，所以我们指向官方源及安装/升级命令。
     "dsh.notInstalledTitle": "尚未安装 DeepSeek Harness",
     "dsh.notInstalledLead":
-        "本页面运行 DeepSeek Harness（DSH）智能体工作台。TanWords 嵌入的是 DSH 的官方 Web UI，但需要本机已安装 `dsh` 命令——TanWords 并不内置它。",
+        "本页面运行 DeepSeek Harness（DSH）智能体工作台。TanNotes 嵌入的是 DSH 的官方 Web UI，但需要本机已安装 `dsh` 命令——TanNotes 并不内置它。",
     "dsh.notInstalledSteps": "安装",
     "dsh.notInstalledStep1": "打开终端，安装官方 DSH 命令行：",
     "dsh.notInstalledStep2": "验证安装：",
-    "dsh.notInstalledStep3": "重新打开本页面——TanWords 会自动找到 `dsh`。",
+    "dsh.notInstalledStep3": "重新打开本页面——TanNotes 会自动找到 `dsh`。",
     "dsh.notInstalledUpgrade": "升级",
     "dsh.notInstalledUpgradeText": "已经装过？更新到最新版以匹配本界面：",
     "dsh.notInstalledPrereq": "前置条件",
@@ -44,7 +44,7 @@ export const dsh: Dict = {
     "dsh.notInstalledCopied": "已复制",
     "dsh.notInstalledRetry": "我已安装 — 重试",
     "dsh.notInstalledPathHint":
-        "装完还是不行？如果你用 nvm 等版本管理工具，请确认 `dsh` 装在终端默认使用的 Node 版本下——TanWords 查找 `dsh` 用的是你终端的同一个 PATH。",
+        "装完还是不行？如果你用 nvm 等版本管理工具，请确认 `dsh` 装在终端默认使用的 Node 版本下——TanNotes 查找 `dsh` 用的是你终端的同一个 PATH。",
 
     "settings.dshPort": "DeepSeek Harness 端口",
     "settings.dshPortSub":
@@ -55,7 +55,7 @@ export const dsh: Dict = {
         "调整 DSH 主画布和侧边栏的背景。0% 完全透明，100% 保留 DSH 原始背景。",
     "settings.dshBackgroundBlur": "DSH 背景模糊",
     "settings.dshBackgroundBlurSub":
-        "模糊透过 DSH 显示的 TanWords 壁纸，调节范围为 0 到 100。",
+        "模糊透过 DSH 显示的 TanNotes 壁纸，调节范围为 0 到 100。",
     "settings.dshToolbar": "显示 DSH 工具栏",
     "settings.dshToolbarSub":
         "显示 DSH 页面自带的工具栏（DeepSeek Harness 标签、重启、重新加载、在浏览器中打开）。默认隐藏，让嵌入的智能体界面占据完整高度。",
@@ -65,7 +65,7 @@ export const dsh: Dict = {
     "settings.dshIdleStopNever": "从不",
     "settings.dshIdleStopAfter": "{minutes} 分钟后",
     "settings.dshGlobalShortcut": "全局快捷键",
-    "settings.dshGlobalShortcutSub": "无论在哪个页面，甚至 TanWords 在后台，按下快捷键直接跳到 DSH 页面。",
+    "settings.dshGlobalShortcutSub": "无论在哪个页面，甚至 TanNotes 在后台，按下快捷键直接跳到 DSH 页面。",
     "settings.dshGlobalShortcutNotSet": "未设置",
     "settings.dshGlobalShortcutRecording": "请按下按键组合…",
     "settings.dshGlobalShortcutClear": "清除",
@@ -74,7 +74,7 @@ export const dsh: Dict = {
         "停止并重新启动受监管的 DSH Web 服务。用于恢复卡住的服务，或应用更改后的端口。",
     "dsh.restartConfirmTitle": "要重启 DSH 服务吗？",
     "dsh.restartConfirmHint":
-        "当前服务将被停止并启动新的实例。DSH 上的进行中任务由外部服务承载时不受影响；仅 TanWords 启动的服务受影响。",
+        "当前服务将被停止并启动新的实例。DSH 上的进行中任务由外部服务承载时不受影响；仅 TanNotes 启动的服务受影响。",
     "dsh.restarting": "正在重启…",
     "dsh.restarted": "DSH 服务已重启。",
     "dsh.restartFailed": "重启 DSH 服务失败。",

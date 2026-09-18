@@ -1,4 +1,4 @@
-/** RPC client for the TanWords web server.
+/** RPC client for the TanNotes web server.
  *
  * Same endpoint and envelope as the desktop sidecar: `POST /invoke/{command}`
  * with a JSON body and bare JSON result, or `{"error": string}` on failure.

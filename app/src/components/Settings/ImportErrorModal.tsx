@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import type { useT } from "@/hooks/useT";
 
 /** A single-button alert for a failed import/export — shows the backend's
- *  actual error text (e.g. "This is not a TanWords database file") instead
+ *  actual error text (e.g. "This is not a TanNotes database file") instead
  *  of leaving the reason to a transient toast the user may have missed. */
 export function ImportErrorModal({
   open,

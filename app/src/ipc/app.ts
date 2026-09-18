@@ -9,7 +9,7 @@ export function getVersion(): Promise<string> {
 }
 
 export function getName(): Promise<string> {
-  if (!isDesktopHost) return Promise.resolve("TanWords");
+  if (!isDesktopHost) return Promise.resolve("TanNotes");
   return callMain<string>("app:name");
 }
 

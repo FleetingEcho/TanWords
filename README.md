@@ -1,8 +1,8 @@
-# TanWords
+# TanNotes
 
 **English** | [简体中文](README.zh-CN.md)
 
-TanWords is a desktop app for content-driven English learning, built with Electron and a Rust sidecar. It is designed for advanced learners (CEFR C1/C2) around one loop:
+TanNotes is a desktop app for content-driven English learning, built with Electron and a Rust sidecar. It is designed for advanced learners (CEFR C1/C2) around one loop:
 
 > Read a real article -> AI extracts vocabulary and sentence patterns -> save the useful parts to a personal library -> review words with FSRS.
 
@@ -179,7 +179,7 @@ file for your platform from the latest release that has it.
 Download the `.dmg`. Choose the `-arm64` file on Apple Silicon and the
 unsuffixed file on Intel.
 
-#### "TanWords is damaged and can't be opened"
+#### "TanNotes is damaged and can't be opened"
 
 This is expected on first install, and the app is not damaged. The build
 carries an ad-hoc signature rather than a paid Developer ID signature, so macOS
@@ -187,8 +187,8 @@ quarantines a browser-downloaded bundle and refuses to launch it. Two commands
 fix it permanently:
 
 ```bash
-xattr -cr /Applications/TanWords.app
-codesign --force --deep --sign - /Applications/TanWords.app
+xattr -cr /Applications/TanNotes.app
+codesign --force --deep --sign - /Applications/TanNotes.app
 ```
 
 The second command prints `replacing existing signature`, which is normal. Run
@@ -201,17 +201,17 @@ repeating these steps.
 
 ### Windows
 
-Download `TanWords-Setup-x.y.z.exe` and run it. The installer is not signed
+Download `TanNotes-Setup-x.y.z.exe` and run it. The installer is not signed
 with a paid certificate, so SmartScreen may warn "Windows protected your PC";
 click **More info → Run anyway** to continue.
 
 ### Linux
 
-Download `TanWords-x.y.z.AppImage`, make it executable, and run it:
+Download `TanNotes-x.y.z.AppImage`, make it executable, and run it:
 
 ```bash
-chmod +x TanWords-*.AppImage
-./TanWords-*.AppImage
+chmod +x TanNotes-*.AppImage
+./TanNotes-*.AppImage
 ```
 
 AppImages need FUSE to mount. On a minimal install, install `libfuse2`
@@ -308,7 +308,7 @@ The bucket belongs to your own Cloudflare account; this project hosts nothing.
 
 ## AI Providers
 
-Bring your own API key. TanWords includes OpenAI and Claude presets, a DeepSeek preset, and custom OpenAI-compatible endpoints such as Ollama or LM Studio.
+Bring your own API key. TanNotes includes OpenAI and Claude presets, a DeepSeek preset, and custom OpenAI-compatible endpoints such as Ollama or LM Studio.
 
 Provider configuration lives in the database:
 
@@ -317,7 +317,7 @@ Provider configuration lives in the database:
 
 ## One codebase, two products
 
-TanWords ships as a desktop app and as a self-hosted web app. They are not two
+TanNotes ships as a desktop app and as a self-hosted web app. They are not two
 implementations that happen to agree — they are the same code, compiled twice.
 
 `app/core` is built as both a binary and a library:
@@ -393,7 +393,7 @@ users, not a public service, so a large pool would buy nothing.
 
 ## Architecture
 
-TanWords uses a thin Electron shell and a statically linked Rust sidecar:
+TanNotes uses a thin Electron shell and a statically linked Rust sidecar:
 
 - **Renderer** (`app/src/`): React, TypeScript, Tailwind CSS, Zustand, Vite, and BlockNote.
 - **Shell** (`app/electron/`): Electron main process and preload, handling windows, tray, the embedded browser panel, the updater, and sidecar lifecycle. It deliberately stays out of the data path.

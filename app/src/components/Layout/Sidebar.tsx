@@ -245,7 +245,7 @@ export function MainLayout({
           {!collapsed && (
             <p className="flex items-baseline gap-1.5 leading-none">
               <span className="font-serif text-[15px] font-bold tracking-tight text-[hsl(var(--sidebar-foreground))]">
-                TanWords
+                TanNotes
               </span>
               <span className="font-serif text-[11px] italic text-primary/70">n.</span>
             </p>

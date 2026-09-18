@@ -15,7 +15,9 @@ pub async fn db_get_document_link_context(
     let key = document_privacy::require_key(&database, &conn.document_privacy, document_id).await?;
     let candidates = db::fetch_all(
         &database,
-        "SELECT id, title FROM documents WHERE id != ?1 ORDER BY LOWER(title)",
+        "SELECT id, title FROM documents WHERE id != ?1 \
+         AND COALESCE(kind,'document')='document' AND deleted_at IS NULL \
+         ORDER BY LOWER(title)",
         params![document_id],
         |row| {
             Ok(DocumentLinkItem {
@@ -48,6 +50,7 @@ pub async fn db_get_document_link_context(
         &database,
         "SELECT id, title FROM documents
          WHERE id != ?1 AND protected=0 AND instr(content, 'tanwords-doc://' || ?1) > 0
+           AND COALESCE(kind,'document')='document' AND deleted_at IS NULL
          ORDER BY LOWER(title)",
         params![document_id],
         |row| {

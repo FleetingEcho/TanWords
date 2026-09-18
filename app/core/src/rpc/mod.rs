@@ -108,6 +108,16 @@ mod tests {
     }
 
     #[test]
+    fn device_scoped_setting_commands_are_exposed_to_the_renderer() {
+        // Regression 2026-09: these two shipped in db/device_paths.rs but were
+        // never added to scripts/commands.txt — every settings-page call 400'd
+        // with "unknown command" and per-device provider selection never
+        // worked.
+        assert!(dispatch::COMMAND_NAMES.contains(&"db_get_device_setting"));
+        assert!(dispatch::COMMAND_NAMES.contains(&"db_set_device_setting"));
+    }
+
+    #[test]
     fn split_document_save_commands_are_exposed_to_the_renderer() {
         assert!(dispatch::COMMAND_NAMES.contains(&"db_update_document_content"));
         assert!(dispatch::COMMAND_NAMES.contains(&"db_update_document_metadata"));

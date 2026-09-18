@@ -1,4 +1,5 @@
 use crate::db::connection::DbKind;
+use crate::db::params;
 use crate::db::Conn;
 
 use crate::db;
@@ -41,6 +42,22 @@ pub(super) async fn has_table(conn: &Conn, table: &str) -> bool {
         conn,
         "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
         [table],
+    )
+    .await
+    .unwrap_or(0)
+        > 0
+}
+
+/// `true` when the source has this column at all. Documents gained
+/// `kind`/`deleted_at` with the Stickies feature (db/stickies.rs), and
+/// pre-Stickies export bundles legitimately lack both — probe before
+/// filtering so old exports still import while new ones never leak stickies
+/// or trash into the Documents importer.
+pub(super) async fn has_column(conn: &Conn, table: &str, column: &str) -> bool {
+    db::scalar_i64(
+        conn,
+        "SELECT COUNT(*) FROM pragma_table_info(?1) WHERE name=?2",
+        params![table, column],
     )
     .await
     .unwrap_or(0)

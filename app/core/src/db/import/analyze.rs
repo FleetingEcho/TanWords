@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use crate::shim::State;
 
 use super::source::{
-    article_key, has_table, incoming_word_summary, open_source, read_words, truncate,
+    article_key, has_column, has_table, incoming_word_summary, open_source, read_words, truncate,
     word_summary,
 };
 use super::types::{ImportConflict, ImportGroup, ImportPlan};
@@ -137,16 +137,28 @@ pub async fn db_import_analyze(
     // ── Documents (identity is the title; duplicate titles are legal in the
     //    app, so this is the weakest key of the five and is presented as such).
     if has_table(&source, "documents").await {
+        // Pre-Stickies bundles lack the `kind`/`deleted_at` columns entirely —
+        // probe, then only filter when the columns exist (see has_column).
+        let doc_filter = if has_column(&source, "documents", "kind").await
+            && has_column(&source, "documents", "deleted_at").await
+        {
+            " WHERE COALESCE(kind,'document')='document' AND deleted_at IS NULL"
+        } else {
+            ""
+        };
         let incoming: Vec<(String, i64)> = db::fetch_all(
             &source,
-            "SELECT title, COALESCE(word_count,0) FROM documents ORDER BY id",
+            &format!("SELECT title, COALESCE(word_count,0) FROM documents{doc_filter} ORDER BY id"),
             (),
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .await?;
+        // The live database always has both columns (init_db ensures them),
+        // and its stickies/trash are not Documents-import targets.
         let existing: HashMap<String, i64> = db::fetch_all(
             &target,
-            "SELECT title, COALESCE(word_count,0) FROM documents",
+            "SELECT title, COALESCE(word_count,0) FROM documents \
+             WHERE COALESCE(kind,'document')='document' AND deleted_at IS NULL",
             (),
             |r| Ok((r.get::<String>(0)?, r.get::<i64>(1)?)),
         )

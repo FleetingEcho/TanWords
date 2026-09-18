@@ -18,7 +18,7 @@ describe("SplashScreen", () => {
 
   it("renders its wordmark in the first frame", () => {
     render(<SplashScreen />);
-    expect(screen.getByText("TanWords")).toBeInTheDocument();
+    expect(screen.getByText("TanNotes")).toBeInTheDocument();
   });
 
   it("never fades before the real app shell has committed", async () => {

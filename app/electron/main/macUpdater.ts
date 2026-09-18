@@ -30,6 +30,8 @@ import type { UpdateInfoPayload } from "./updater";
  *  fetched: a key the updater downloads is a key an attacker can substitute. */
 const PUBLIC_KEY_SPKI_B64 = "MCowBQYDK2VwAyEAKi04gRThKsletKe5L2qDn+q/gpB0bGVsqpReG7AE5rc=";
 
+// Tracks the GitHub repo name (not the product brand) — see the identity
+// notes in electron-builder.yml. GitHub redirects renamed repos.
 const FEED_URL = "https://github.com/FleetingEcho/TanWords/releases/latest/download/update.json";
 
 interface PlatformEntry {
@@ -67,7 +69,7 @@ function entryForThisMac(manifest: Manifest): PlatformEntry | null {
 /** The `.app` the running process lives in. `app.getAppPath()` points inside
  *  the bundle (Resources/app.asar), so walk up to the bundle root instead. */
 function bundlePath(): string {
-  // …/TanWords.app/Contents/MacOS/TanWords
+  // …/TanNotes.app/Contents/MacOS/TanNotes
   return path.resolve(path.dirname(app.getPath("exe")), "..", "..");
 }
 

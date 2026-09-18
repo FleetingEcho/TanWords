@@ -58,7 +58,7 @@ export const toolsPage: Dict = {
     "toolsPage.terminal.restart": "重启终端",
     "toolsPage.terminal.outputTruncated": "为保持终端响应，部分输出已截断。",
     "toolsPage.terminal.crashedTitle": "终端界面已停止",
-    "toolsPage.terminal.crashedMessage": "终端界面遇到意外错误，TanWords 的其他功能仍可正常使用。",
+    "toolsPage.terminal.crashedMessage": "终端界面遇到意外错误，TanNotes 的其他功能仍可正常使用。",
     "toolsPage.terminal.restartAfterCrash": "重启终端",
     "toolsPage.terminal.backToApp": "返回应用",
     "toolsPage.terminal.maximize": "终端最大化",

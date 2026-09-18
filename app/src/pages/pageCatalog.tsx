@@ -72,6 +72,19 @@ export const PAGE_CATALOG: PageDefinition[] = [
     load: () => import("@/components/Dashboard/DashboardPage").then((m) => reshaped(m, "DashboardPage")),
   },
   {
+    // Web-only board (S5): desktop stickies live in OS windows + the floating
+    // manager, so this page is capability-gated off there.
+    id: "stickies",
+    titleKey: "nav.stickies",
+    icon: GridIcon,
+    host: "react",
+    multiplicity: "singleton",
+    minWidth: DEFAULT_MIN_WIDTH,
+    minHeight: DEFAULT_MIN_HEIGHT,
+    capability: "stickyBoard",
+    load: () => import("@/components/Sticky/StickiesPage").then((m) => reshaped(m, "StickiesPage")),
+  },
+  {
     id: "calendar",
     titleKey: "nav.calendar",
     icon: CalendarIcon,

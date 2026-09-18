@@ -73,15 +73,20 @@ describe("pageCatalog", () => {
   });
 
   it("host capability flags are consistent between desktop and web for the gated pages", () => {
-    // The four gated pages must be desktop-only, matching the platform types
-    // the sidebar and PageHost rely on. If this ever changes, the catalog's
-    // capability entries and the fallback logic in PageHost must change too.
+    // Capability gating runs in both directions: browser/terminal/dsh are
+    // desktop-only, and the stickies board (S5) is web-only — desktop uses
+    // OS windows + the floating manager instead. Both host tables must
+    // declare a boolean for every capability a catalog entry names.
     const gated: PageDefinition[] = PAGE_CATALOG.filter((d) => d.capability);
     for (const def of gated) {
       const cap = def.capability!;
-      expect(DESKTOP_CAPABILITIES[cap], `desktop should expose ${def.id}`).toBe(true);
-      expect(WEB_CAPABILITIES[cap], `web should hide ${def.id}`).toBe(false);
+      expect(typeof DESKTOP_CAPABILITIES[cap], `desktop must declare ${def.id}'s capability`).toBe("boolean");
+      expect(typeof WEB_CAPABILITIES[cap], `web must declare ${def.id}'s capability`).toBe("boolean");
     }
+    expect(DESKTOP_CAPABILITIES.stickyBoard).toBe(false);
+    expect(WEB_CAPABILITIES.stickyBoard).toBe(true);
+    expect(DESKTOP_CAPABILITIES.browser).toBe(true);
+    expect(WEB_CAPABILITIES.browser).toBe(false);
   });
 
   it("retained pages are tools, terminal, and dsh", () => {

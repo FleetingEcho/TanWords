@@ -30,11 +30,11 @@ export const dsh: Dict = {
     // install/upgrade commands.
     "dsh.notInstalledTitle": "DeepSeek Harness isn't installed",
     "dsh.notInstalledLead":
-        "This page runs the DeepSeek Harness (DSH) agent workspace. TanWords embeds DSH's official Web UI, but it needs the `dsh` command on this machine — TanWords does not bundle it.",
+        "This page runs the DeepSeek Harness (DSH) agent workspace. TanNotes embeds DSH's official Web UI, but it needs the `dsh` command on this machine — TanNotes does not bundle it.",
     "dsh.notInstalledSteps": "Install",
     "dsh.notInstalledStep1": "Open a terminal and install the official DSH CLI:",
     "dsh.notInstalledStep2": "Verify the install:",
-    "dsh.notInstalledStep3": "Reopen this page — TanWords will find `dsh` automatically.",
+    "dsh.notInstalledStep3": "Reopen this page — TanNotes will find `dsh` automatically.",
     "dsh.notInstalledUpgrade": "Upgrade",
     "dsh.notInstalledUpgradeText":
         "Already installed? Update to the latest release to match this UI:",
@@ -49,7 +49,7 @@ export const dsh: Dict = {
     "dsh.notInstalledCopied": "Copied",
     "dsh.notInstalledRetry": "I've installed it — retry",
     "dsh.notInstalledPathHint":
-        "Still failing after install? If you use nvm or another version manager, make sure `dsh` was installed under the Node version your terminal defaults to — TanWords looks for it on the same PATH your shell uses.",
+        "Still failing after install? If you use nvm or another version manager, make sure `dsh` was installed under the Node version your terminal defaults to — TanNotes looks for it on the same PATH your shell uses.",
 
     "settings.dshPort": "DeepSeek Harness port",
     "settings.dshPortSub":
@@ -60,7 +60,7 @@ export const dsh: Dict = {
         "Adjust the background of both the DSH canvas and sidebar. 0% is fully transparent; 100% preserves DSH's original background.",
     "settings.dshBackgroundBlur": "DSH background blur",
     "settings.dshBackgroundBlurSub":
-        "Blur the TanWords wallpaper visible behind DSH. The scale runs from 0 to 100.",
+        "Blur the TanNotes wallpaper visible behind DSH. The scale runs from 0 to 100.",
     "settings.dshToolbar": "Show DSH toolbar",
     "settings.dshToolbarSub":
         "Show the DSH page's own toolbar (DeepSeek Harness label, Restart, Reload, Open in browser). Hidden by default so the embedded agent UI gets the full height.",
@@ -71,7 +71,7 @@ export const dsh: Dict = {
     "settings.dshIdleStopAfter": "After {minutes} min",
     "settings.dshGlobalShortcut": "Global shortcut",
     "settings.dshGlobalShortcutSub":
-        "Jump straight to the DSH page from anywhere, even with TanWords in the background.",
+        "Jump straight to the DSH page from anywhere, even with TanNotes in the background.",
     "settings.dshGlobalShortcutNotSet": "Not set",
     "settings.dshGlobalShortcutRecording": "Press a key combo…",
     "settings.dshGlobalShortcutClear": "Clear",
@@ -80,7 +80,7 @@ export const dsh: Dict = {
         "Stop and relaunch the supervised DSH Web host. Use this to recover a stuck host, or to apply a changed port.",
     "dsh.restartConfirmTitle": "Restart the DSH host?",
     "dsh.restartConfirmHint":
-        "The current host will be stopped and a fresh one started. Any in-flight DSH task keeps running on the external host; only a TanWords-spawned host is affected.",
+        "The current host will be stopped and a fresh one started. Any in-flight DSH task keeps running on the external host; only a TanNotes-spawned host is affected.",
     "dsh.restarting": "Restarting…",
     "dsh.restarted": "DSH host restarted.",
     "dsh.restartFailed": "Failed to restart the DSH host.",
