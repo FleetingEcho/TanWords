@@ -77,12 +77,24 @@ const ALLOWED: &[&str] = &[
     "db_prune_document_assets",
     "db_remove_document_protection",
     "db_rename_document_folder",
+    "db_restore_document",
+    "db_purge_document",
     "db_set_documents_folder",
     "db_set_folder_locked",
     "db_unlock_document",
     "db_update_document",
     "db_update_document_content",
     "db_update_document_metadata",
+    // ── web Stickies board ────────────────────────────────────────────────
+    // These operate only on the caller's per-user documents/stickies rows.
+    // Desktop-only window state, bundle migration, and filesystem import
+    // commands remain outside this web surface and are classified below.
+    "sticky_create",
+    "sticky_list",
+    "sticky_get",
+    "sticky_save_content",
+    "sticky_delete",
+    "sticky_search",
     // ── reading / RSS / feeds ─────────────────────────────────────────────
     "db_add_reading_comment",
     "db_add_rss_feed",
@@ -126,10 +138,12 @@ const ALLOWED: &[&str] = &[
     "db_dashboard_stats",
     "db_get_db_size",
     "db_get_device_path",
+    "db_get_device_setting",
     "db_get_setting",
     "db_get_settings",
     "db_get_startup_warning",
     "db_set_device_path",
+    "db_set_device_setting",
     "db_set_setting",
     // ── AI provider config (keys stay server-side; see BLOCKED) ───────────
     "ai_provider_delete",
@@ -238,6 +252,20 @@ pub async fn validate_model_path(command: &str, args: &serde_json::Value) -> Res
 /// Refused, with the reason attached. Kept as pairs rather than a bare list so
 /// that whoever revisits one of these can see what it would cost to allow it.
 const BLOCKED: &[(&str, &str)] = &[
+    // Sticky commands that belong only to the Electron manager/window or to
+    // desktop import/export flows. The web board intentionally exposes only
+    // the six per-user data operations listed in ALLOWED above.
+    ("sticky_update_meta", "desktop sticky-window controls are not exposed by the web board"),
+    ("sticky_update_window_state", "stores Electron window geometry and state"),
+    ("sticky_restore", "desktop manager trash operation is not exposed by the web board"),
+    ("sticky_purge", "desktop manager trash operation is not exposed by the web board"),
+    ("sticky_trash_list", "desktop manager trash operation is not exposed by the web board"),
+    ("sticky_bundle_export", "desktop bundle export flow is not exposed by the web board"),
+    ("sticky_bundle_import", "desktop bundle import flow is not exposed by the web board"),
+    ("sticky_set_title", "desktop sticky-window rename is not exposed by the web board"),
+    ("sticky_tannotes_preview", "reads an arbitrary server filesystem path; desktop import only"),
+    ("sticky_tannotes_raw", "reads an arbitrary server filesystem path; desktop import only"),
+    ("sticky_tannotes_apply", "desktop TanNotes import pipeline is not exposed by the web board"),
     // Global desktop state: one process-wide database connection. Reimplemented
     // per-user by the /api/db/* routes.
     ("db_switch_path", "would repoint the process-wide database"),
@@ -295,8 +323,26 @@ pub fn block_reason(command: &str) -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ALLOWED, BLOCKED};
+    use super::{is_allowed, ALLOWED, BLOCKED};
     use tanwords_lib::rpc::dispatch::COMMAND_NAMES;
+
+    /// The web navigation exposes the Stickies board, so every data action
+    /// that surface performs must cross the same public command gate as its
+    /// `/invoke/{command}` requests. A missing entry makes the board look
+    /// interactive while every click is rejected by the server.
+    #[test]
+    fn web_stickies_board_commands_are_available() {
+        for command in [
+            "sticky_create",
+            "sticky_list",
+            "sticky_get",
+            "sticky_save_content",
+            "sticky_delete",
+            "sticky_search",
+        ] {
+            assert!(is_allowed(command), "{command} must be available to the web Stickies board");
+        }
+    }
 
     /// The guard rail. A command added to the core lands in `COMMAND_NAMES`
     /// automatically; until somebody puts it in one of the two lists above,

@@ -30,10 +30,13 @@ export default defineConfig({
     ...(WEB_DEV ? [] : [electron([
       {
         entry: path.resolve(import.meta.dirname, "electron/main/index.ts"),
-        // Default argv is ['.', '--no-sandbox']; drop the flag so a dev run
-        // keeps the same Chromium sandbox the packaged app runs under
-        // (the main window sets `sandbox: true`).
-        onstart: ({ startup }) => void startup(["."]),
+        // The npm Electron binary's chrome-sandbox helper is user-owned 0755,
+        // not the root-owned 4755 helper a packaged Linux install can provide.
+        // Keep --no-sandbox limited to the Vite development launch so `bun
+        // run dev` works on AppArmor-restricted Linux hosts; packaged builds
+        // do not execute this callback and retain Chromium's OS sandbox.
+        // BrowserWindow `sandbox: true` still keeps Node out of renderers.
+        onstart: ({ startup }) => void startup([".", "--no-sandbox"]),
         vite: {
           build: {
             outDir: "out/main",

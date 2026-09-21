@@ -516,7 +516,7 @@ export function StickyWindowApp() {
               />
             ) : (
               <span
-                className="block cursor-text truncate text-[13px] font-medium leading-none"
+                className="app-region-no-drag block cursor-text truncate text-[13px] font-medium leading-none"
                 title={displayTitle || undefined}
                 onDoubleClick={() => {
                   setRenameDraft(displayTitle);

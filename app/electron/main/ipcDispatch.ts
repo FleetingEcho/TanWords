@@ -718,31 +718,75 @@ export async function dispatch(
     }
     case "stickywin_capture_image": {
       // tanNotes F41: snapshot the note as it looks onto the clipboard.
-      // The note usually scrolls (long text), and capturePage only
-      // rasterises the viewport — so grow the frameless window to the full
-      // page height for the shot, then restore. The renderer measures
-      // `fullHeight` (chrome + scrolled content); programmatic setBounds
-      // works on these resizable:false windows (the 8-way resize handles
-      // already drive them).
+      // The note usually scrolls (long text), while capturePage only
+      // rasterises the visible viewport. Do not grow the native window for
+      // the shot: Linux window managers commonly clamp it to the work area,
+      // silently truncating long notes. Chromium viewport emulation lays out
+      // the complete note independently of OS window limits.
       const win = BrowserWindow.fromWebContents(sender);
       if (!win || win.isDestroyed()) return null;
       const args_ = (args ?? {}) as { fullHeight?: number | null };
       const old = win.getBounds();
-      // Chromium's texture ceiling; beyond this a single PNG is impractical.
-      const MAX_CAPTURE_HEIGHT = 16384;
-      const wanted = Math.min(Math.max(Math.ceil(args_.fullHeight ?? 0), old.height), MAX_CAPTURE_HEIGHT);
+      const wanted = Math.max(Math.ceil(args_.fullHeight ?? 0), old.height);
+      let png: Uint8Array | null = null;
+      let debuggerAttachedHere = false;
+      let metricsOverridden = false;
+
       try {
-        if (wanted > old.height) {
-          win.setBounds({ ...old, height: wanted });
-          // Give the compositor a frame to lay out + paint the taller page.
-          await new Promise((resolve) => setTimeout(resolve, 300));
-        }
-        const image = await win.webContents.capturePage();
-        const blob = new Blob([new Uint8Array(image.toPNG())], { type: "image/png" });
-        await clipboard.write([new ClipboardItem({ "image/png": blob })]);
+        if (win.webContents.debugger.isAttached()) throw new Error("debugger already attached");
+        win.webContents.debugger.attach("1.3");
+        debuggerAttachedHere = true;
+        await win.webContents.debugger.sendCommand("Emulation.setDeviceMetricsOverride", {
+          width: Math.max(1, Math.ceil(old.width)),
+          height: wanted,
+          deviceScaleFactor: 1,
+          mobile: false,
+        });
+        metricsOverridden = true;
+        // Two frames cover React's menu-close update and Chromium's relayout
+        // of the now-full-height editor before pixels are requested.
+        await win.webContents.debugger.sendCommand("Runtime.evaluate", {
+          expression: "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
+          awaitPromise: true,
+        });
+        // Keep every line for extremely tall notes while respecting the
+        // practical maximum output texture height by scaling, not cropping.
+        const MAX_CAPTURE_HEIGHT = 16384;
+        const scale = Math.min(1, MAX_CAPTURE_HEIGHT / wanted);
+        const result = await win.webContents.debugger.sendCommand("Page.captureScreenshot", {
+          format: "png",
+          fromSurface: true,
+          captureBeyondViewport: true,
+          clip: { x: 0, y: 0, width: Math.max(1, Math.ceil(old.width)), height: wanted, scale },
+        }) as { data: string };
+        png = Buffer.from(result.data, "base64");
+      } catch {
+        // Fallback for a page already owned by DevTools or a Chromium build
+        // without viewport emulation. This can still capture full notes on
+        // window managers that permit oversized windows.
       } finally {
-        if (wanted > old.height) win.setBounds(old);
+        if (metricsOverridden) {
+          await win.webContents.debugger.sendCommand("Emulation.clearDeviceMetricsOverride").catch(() => {});
+        }
+        if (debuggerAttachedHere) win.webContents.debugger.detach();
       }
+
+      if (!png) {
+        // Chromium's texture ceiling; beyond this a single PNG is impractical.
+        const fallbackHeight = Math.min(wanted, 16384);
+        try {
+          if (fallbackHeight > old.height) {
+            win.setBounds({ ...old, height: fallbackHeight });
+            await new Promise((resolve) => setTimeout(resolve, 300));
+          }
+          png = (await win.webContents.capturePage()).toPNG();
+        } finally {
+          if (fallbackHeight > old.height) win.setBounds(old);
+        }
+      }
+
+      const blob = new Blob([new Uint8Array(png)], { type: "image/png" });
+      await clipboard.write([new ClipboardItem({ "image/png": blob })]);
       return null;
     }
     case "stickywin_read_tannotes_asset": {
