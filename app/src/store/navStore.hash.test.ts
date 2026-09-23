@@ -33,6 +33,8 @@ describe("navStore URL hash sync", () => {
   it("pageFromHash reads the page back and rejects unknown values", () => {
     window.location.hash = "#/vocabulary";
     expect(pageFromHash()).toBe("vocabulary");
+    window.location.hash = "#/stickies";
+    expect(pageFromHash()).toBe("stickies");
     window.location.hash = "#/not-a-page";
     expect(pageFromHash()).toBeNull();
     window.location.hash = "";

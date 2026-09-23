@@ -28,7 +28,7 @@ WORKDIR /src/web/server
 # Source changes still rerun Cargo, but registry downloads and compiled
 # dependencies survive that invalidation in Podman/Docker BuildKit caches. Copy
 # the finished binary outside the target cache so it becomes part of the stage.
-RUN --mount=type=cache,id=tanwords-cargo-registry,target=/usr/local/cargo/registry \
+RUN --mount=type=cache,id=tanwords-cargo-registry-v2,target=/usr/local/cargo/registry \
     --mount=type=cache,id=tanwords-cargo-git,target=/usr/local/cargo/git \
     --mount=type=cache,id=tanwords-web-target,target=/src/web/server/target \
     cargo build --release --locked \

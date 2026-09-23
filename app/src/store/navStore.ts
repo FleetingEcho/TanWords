@@ -51,7 +51,7 @@ export type NavDestination =
  * ---------------------------------------------------------------------- */
 
 const HASHABLE_PAGES: readonly NavPage[] = [
-  "dashboard", "calendar", "feeds", "reading", "music", "vocabulary",
+  "dashboard", "stickies", "calendar", "feeds", "reading", "music", "vocabulary",
   "documents", "chat", "browser", "terminal", "tools", "dsh",
 ];
 
