@@ -41,6 +41,17 @@ find_user_state() {
 
 check_app() {
   local app="$1" found asar
+
+  # An absent signing identity used to leave only Electron's linker signature
+  # on the main executable. The resulting bundle looked packaged correctly but
+  # failed Gatekeeper's integrity check after a browser download. Developer ID
+  # signing is optional for local/community builds, but the bundle's ad-hoc or
+  # Developer ID signature must always have a valid resource seal.
+  if ! codesign --verify --deep --strict --verbose=2 "$app"; then
+    echo "Release blocked: invalid macOS code signature in $app" >&2
+    exit 1
+  fi
+
   found="$(find_user_state "$app")"
   if [[ -n "$found" ]]; then
     echo "Release blocked: developer state was found inside $app:" >&2

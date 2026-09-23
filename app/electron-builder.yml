@@ -140,14 +140,24 @@ extraResources:
     to: tray-template-white@2x.png
 
 mac:
+  # No Apple Developer identity is available for this project. Explicitly
+  # ad-hoc sign the complete bundle instead of leaving Electron's executable
+  # with only its linker signature; the latter produces an invalid resource
+  # seal and macOS reports browser-downloaded copies as "damaged".
+  identity: "-"
   target:
     - target: dmg
-      arch: [x64, arm64]
+      # The bundled Rust sidecars are arm64. Do not emit an x64 shell around
+      # arm64-only executables; restore x64 only with per-arch sidecar staging.
+      arch: [arm64]
     - target: zip
-      arch: [x64, arm64]
+      arch: [arm64]
   icon: core/icons/icon.icns
   category: public.app-category.education
-  hardenedRuntime: true
+  # Hardened Runtime is for Developer ID/notarized builds. Electron Builder
+  # warns against combining it with ad-hoc signing because library validation
+  # can reject nested Electron frameworks that have a different identity.
+  hardenedRuntime: false
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
@@ -160,15 +170,12 @@ mac:
   # extraResources is NOT reliably picked up by that pass with the right
   # entitlements/hardened-runtime flags — list it explicitly so it gets signed
   # with the same identity + entitlements as the app itself. electron-builder
-  # docs describe `mac.binaries` paths as relative to the built app's
-  # Contents/Resources/ directory (see extraResources above: the binary lands
-  # at Contents/Resources/core/tanwords-core, so "core/tanwords-core" here).
-  # UNVERIFIED: no macOS signing environment available in this sandbox to
-  # confirm electron-builder actually resolves/signs this path as expected —
-  # see the packaging report for what still needs a real Mac to check.
+  # electron-builder resolves `mac.binaries` from the .app root, so include
+  # Contents/Resources explicitly (the old paths were never exercised because
+  # signing was skipped when no identity was available).
   binaries:
-    - core/tanwords-core
-    - core/tanwords-pty
+    - Contents/Resources/core/tanwords-core
+    - Contents/Resources/core/tanwords-pty
 
 linux:
   target:
