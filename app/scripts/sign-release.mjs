@@ -45,18 +45,35 @@ const privateKey = createPrivateKey(readFileSync(KEY_PATH));
 
 /** What electron-builder may have called this arch's zip.
  *
- *  x64 is listed twice on purpose. electron-builder omits the arch suffix for
- *  whichever arch it treats as the default, so the Intel zip has shipped as
- *  both `TanWords-<v>-x64-mac.zip` (1.1.1) and `TanWords-<v>-mac.zip` (1.5.0).
- *  This script only knew the first spelling, so v1.5.0's update.json went out
- *  with a `darwin-arm64` entry and nothing else — every Intel install has been
- *  silently unable to update since. Checking both names is the fix; the
+ *  The product-name prefix is deliberately NOT hardcoded. The TanWords →
+ *  TanNotes rename (2026-09) changed every artifact name (`TanNotes-2.4.0-
+ *  arm64-mac.zip`), and a script matching the old prefix finds nothing, hits
+ *  the emptiness check below, and blocks the release for a reason that looks
+ *  like a build failure. Match on version + arch instead — those are the parts
+ *  that actually identify what we are signing.
+ *
+ *  x64 is matched two ways on purpose. electron-builder omits the arch suffix
+ *  for whichever arch it treats as the default, so the Intel zip has shipped as
+ *  both `<product>-<v>-x64-mac.zip` (1.1.1) and `<product>-<v>-mac.zip`
+ *  (1.5.0). This script only knew the first spelling, so v1.5.0's update.json
+ *  went out with a `darwin-arm64` entry and nothing else — every Intel install
+ *  has been silently unable to update since. Matching both is the fix; the
  *  emptiness check below is what would have caught it.
  */
 function candidates(arch) {
+  const v = version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const suffix = arch === "x64" ? "(?:-x64)?-mac\\.zip$" : `-${arch}-mac\\.zip$`;
+  const pattern = new RegExp(`-${v}${suffix}`);
+  return readdirSync(DIST)
+    .filter((name) => pattern.test(name))
+    .sort();
+}
+
+/** The name we expect to find, for messages that name a missing artifact. */
+function describeExpected(arch) {
   return arch === "x64"
-    ? [`TanWords-${version}-x64-mac.zip`, `TanWords-${version}-mac.zip`]
-    : [`TanWords-${version}-${arch}-mac.zip`];
+    ? `*-${version}-x64-mac.zip or *-${version}-mac.zip`
+    : `*-${version}-${arch}-mac.zip`;
 }
 
 // One entry per arch actually built, so a partial build (arm64 only) produces a
@@ -83,7 +100,7 @@ for (const arch of ["arm64", "x64"]) {
 
 if (Object.keys(platforms).length === 0) {
   const built = readdirSync(DIST).filter((f) => f.endsWith(".zip")).join(", ") || "(none)";
-  die(`no TanWords-${version}-<arch>-mac.zip in ${DIST}. Found: ${built}`);
+  die(`no *-${version}-<arch>-mac.zip in ${DIST}. Found: ${built}`);
 }
 
 // Loud, not fatal: an arm64-only release is a legitimate thing to publish
@@ -93,7 +110,7 @@ for (const arch of ["arm64", "x64"]) {
   if (!platforms[`darwin-${arch}`]) {
     console.warn(
       `WARNING: no ${arch} build found — clients on that architecture will be ` +
-        `offered no update by this feed. Expected one of: ${candidates(arch).join(", ")}`,
+        `offered no update by this feed. Expected: ${describeExpected(arch)}`,
     );
   }
 }
