@@ -29,14 +29,16 @@ export function useSelectionActions(text: string, source: string) {
 
   const word = canAddAsWord(text) ? cleanWord(text) : "";
 
-  // One local SQLite query per selection, so the toolbar can say "in vocab"
-  // rather than offer to add a word that is already there.
+  // One exact-match probe per selection, so the toolbar can say "in vocab"
+  // rather than offer to add a word that is already there. db_word_exists,
+  // not getWords(search): the old LIKE query scanned the whole table and
+  // shipped every prefix match just to answer a boolean.
   useEffect(() => {
     setCollected(false);
     if (!word) return;
     let cancelled = false;
-    void db.getWords({ search: word }).then((rows) => {
-      if (!cancelled) setCollected(rows.some((w) => w.word.toLowerCase() === word.toLowerCase()));
+    void db.wordExists(word).then((exists) => {
+      if (!cancelled) setCollected(exists);
     });
     return () => { cancelled = true; };
   }, [word, db]);

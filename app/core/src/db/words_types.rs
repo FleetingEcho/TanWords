@@ -1,5 +1,12 @@
 use serde::{Deserialize, Serialize};
 
+/// Per-word learning state stored in `words.status`. "learning" is the schema
+/// default every word is born with; "familiar" is the manual checkbox
+/// (db_set_word_status); "mastered" is promoted automatically by FSRS reviews
+/// (see db_review_card). The three values are validated at every write — the
+/// column itself is plain TEXT, so nothing else enforces the vocabulary.
+pub const WORD_STATUSES: [&str; 3] = ["learning", "familiar", "mastered"];
+
 // ── Query result structs ─────────────────────────────────────────────────────
 
 #[derive(Serialize)]
@@ -20,6 +27,25 @@ pub struct WordListItem {
     /// per-word detail fetch.
     pub enriched: bool,
     pub starred: bool,
+    /// Learning state — see WORD_STATUSES.
+    pub status: String,
+}
+
+/// One page of the words list plus the total after filtering — lets the pager
+/// show real page counts without shipping the whole library per keystroke.
+#[derive(Serialize)]
+pub struct WordPage {
+    pub items: Vec<WordListItem>,
+    pub total: i64,
+}
+
+/// Minimal (id, word) pair for bulk flows that only need to know WHICH words
+/// to process (bulk enrich), not how they render.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WordIdName {
+    pub id: i64,
+    pub word: String,
 }
 
 #[derive(Serialize)]

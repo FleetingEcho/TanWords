@@ -20,6 +20,15 @@ export interface ChatSessionDetail extends ChatSessionItem {
   system_prompt: string;
 }
 
+/** Learning state of a vocabulary word. "learning" is the default; "familiar"
+ *  is the manual checkbox on the list; "mastered" is set automatically by FSRS
+ *  reviews (or manually in select mode). Mirrors words.rs WORD_STATUSES. */
+export type WordStatus = "learning" | "familiar" | "mastered";
+/** Words list ordering — matches db_get_words_page's sort_by values. */
+export type WordSortBy = "recent" | "alpha" | "freq" | "due";
+/** Enrichment filter: has an AI analysis, has none, or no constraint. */
+export type EnrichFilter = "all" | "enriched" | "raw";
+
 export interface WordListItem {
   id: number;
   word: string;
@@ -35,6 +44,36 @@ export interface WordListItem {
   /** Whether this word already has an AI-generated enrichment. */
   enriched: boolean;
   starred: boolean;
+  status: WordStatus;
+}
+
+/** One server-side page of the words list plus the post-filter total. */
+export interface WordPage {
+  items: WordListItem[];
+  total: number;
+}
+
+/** Aggregate word counts for the Words page header/confirm dialogs. */
+export interface WordStats {
+  total: number;
+  unEnriched: number;
+  learning: number;
+  familiar: number;
+  mastered: number;
+}
+
+/** One row of the words-only export (CSV keeps one row per word; glosses are
+ *  joined with "; " in `zh`). */
+export interface ExportedWord {
+  word: string;
+  wordType: string | null;
+  level: string | null;
+  zh: string;
+  status: WordStatus;
+  starred: boolean;
+  source: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface WordDetail {

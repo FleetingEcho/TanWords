@@ -398,6 +398,107 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     .unwrap();
     assert!(words.iter().any(|w| w.word == "hello"));
 
+    // word status + paged listing — db_set_word_status/_batch write the
+    // status column and mirror familiar/mastered into user_known_words
+    // (source 'vocab' — the DELETE on revert may only remove THAT row's
+    // source); db_get_words_page exercises the multi-filter WHERE builder
+    // and its paired COUNT(*) on both backends; db_word_exists does the
+    // case-insensitive exact match (LOWER() = portable, unlike NOCASE).
+    use tanwords_lib::db::{
+        db_get_words_page, db_set_word_status, db_set_words_status_batch, db_word_exists,
+    };
+    db_set_word_status(added.id, "familiar".into(), state.clone())
+        .await
+        .unwrap();
+    let page = db_get_words_page(
+        None, None, Some(vec!["familiar".into()]), None, None, None, None, None, None, None, None,
+        50, 0, state.clone(),
+    )
+    .await
+    .unwrap();
+    assert!(page
+        .items
+        .iter()
+        .any(|w| w.id == added.id && w.status == "familiar"));
+    // the list's status column must be populated by BOTH word queries
+    assert!(words.iter().all(|w| !w.status.is_empty()));
+    {
+        let conn = tanwords_lib::db::conn(&state).unwrap();
+        let known = tanwords_lib::db::scalar_i64(
+            &conn,
+            "SELECT COUNT(*) FROM user_known_words WHERE word = 'hello' AND source = 'vocab'",
+            (),
+        )
+        .await
+        .unwrap();
+        assert_eq!(known, 1, "familiar syncs into user_known_words");
+    }
+    // batch back to "learning": the page's status filter must now exclude it,
+    // and the vocab-sourced known-word row must be removed.
+    db_set_words_status_batch(vec![added.id], "learning".into(), state.clone())
+        .await
+        .unwrap();
+    let page = db_get_words_page(
+        None, None, Some(vec!["familiar".into()]), None, None, None, None, None, None, None, None,
+        50, 0, state.clone(),
+    )
+    .await
+    .unwrap();
+    assert!(!page.items.iter().any(|w| w.id == added.id));
+    {
+        let conn = tanwords_lib::db::conn(&state).unwrap();
+        let known = tanwords_lib::db::scalar_i64(
+            &conn,
+            "SELECT COUNT(*) FROM user_known_words WHERE word = 'hello' AND source = 'vocab'",
+            (),
+        )
+        .await
+        .unwrap();
+        assert_eq!(known, 0, "reverting removes only the vocab-synced row");
+    }
+    assert!(db_set_word_status(added.id, "bogus".into(), state.clone())
+        .await
+        .is_err());
+    assert!(db_word_exists("HELLO".into(), state.clone()).await.unwrap());
+    assert!(!db_word_exists("zzz-not-a-word".into(), state.clone())
+        .await
+        .unwrap());
+    // light projections + aggregate stats + words-only export — the 10k-scale
+    // replacements for full-list dumps. GROUP_CONCAT-based zh aggregation must
+    // at least execute on both backends (Postgres string_agg parity).
+    use tanwords_lib::db::{db_export_words_csv, db_get_word_stats, db_list_word_ids};
+    let ids = db_list_word_ids(false, state.clone()).await.unwrap();
+    assert!(ids.iter().any(|w| w.id == added.id));
+    // hello was only given a definition, never an enrichment_text, so the
+    // un-enriched projection must include it.
+    let un_ids = db_list_word_ids(true, state.clone()).await.unwrap();
+    assert!(un_ids.iter().any(|w| w.id == added.id));
+    let stats = db_get_word_stats(state.clone()).await.unwrap();
+    assert_eq!(stats.total, 1);
+    assert_eq!(stats.un_enriched, 1);
+    assert_eq!(stats.learning, 1);
+    let csv = db_export_words_csv(state.clone()).await.unwrap();
+    assert!(csv.contains("word,type,level,zh,status,starred,source,created,updated"));
+    assert!(csv.contains("hello"));
+    // paging contract: limit 1 returns one row but total reflects the whole
+    // set; "due" sort must at least run (exercises the dual-format predicate's
+    // parameter plumbing on both backends).
+    let one = db_get_words_page(
+        None, None, None, None, None, None, None, Some("alpha".into()), None, None, None,
+        1, 0, state.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(one.items.len(), 1);
+    assert!(one.total >= 1);
+    let due_sorted = db_get_words_page(
+        None, None, None, None, None, None, Some(true), Some("due".into()), None, None, None,
+        50, 0, state.clone(),
+    )
+    .await
+    .unwrap();
+    assert!(due_sorted.items.len() as i64 <= due_sorted.total);
+
     // ai provider list — exercises the `api_key_enc <> ''` comparison read
     // (BOOL on Postgres, 0/1 on SQLite) as bool, plus the ON CONFLICT upsert
     // in ai_provider_upsert. Upsert a provider with a key, list, confirm

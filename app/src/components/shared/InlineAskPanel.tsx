@@ -68,9 +68,9 @@ export function InlineAskPanel({ anchor, mode: initialMode, onClose, layout = "f
     let cancelled = false;
     const controller = new AbortController();
     void (async () => {
-      const rows = await db.getWords({ search: word });
+      const exists = await db.wordExists(word);
       if (cancelled) return;
-      if (rows.some((w) => w.word.toLowerCase() === word.toLowerCase())) { setCollected(true); return; }
+      if (exists) { setCollected(true); return; }
       const provider = findBestProvider();
       if (!provider) return;
       const info = await fetchBasicInfo(provider, word, targetLevel, controller.signal);

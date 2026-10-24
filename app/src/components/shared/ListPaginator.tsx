@@ -23,9 +23,14 @@ export function ListPaginator({
   page, pageSize, total, onPageChange, onPageSizeChange, className = "",
 }: Props) {
   const t = useT();
-  const totalPages = Math.ceil(total / pageSize);
-  const first = page * pageSize + 1;
-  const last = Math.min((page + 1) * pageSize, total);
+  // Guard against a caller handing in `undefined` (mixed HMR module state,
+  // future refactors): Math.min(cutoff, undefined) made `last` NaN and the
+  // range label rendered "1–NaN / <nothing>". A bad total degrades to an
+  // honest 0 rather than a corrupted pill.
+  const safeTotal = Number.isFinite(total) ? total : 0;
+  const totalPages = Math.ceil(safeTotal / pageSize);
+  const first = safeTotal === 0 ? 0 : page * pageSize + 1;
+  const last = Math.min((page + 1) * pageSize, safeTotal);
 
   return (
     <div className={`px-3 py-1.5 flex items-center justify-between gap-2 ${className}`}>
@@ -57,12 +62,12 @@ export function ListPaginator({
           <ChevronLeft className="w-3.5 h-3.5" />
         </button>
         <span className="px-1 text-[11px] tabular-nums text-muted-foreground whitespace-nowrap">
-          {first}–{last} / {total}
+          {first}–{last} / {safeTotal}
         </span>
         <button
           type="button"
           onClick={() => onPageChange(Math.min(totalPages - 1, page + 1))}
-          disabled={last >= total}
+          disabled={last >= safeTotal}
           aria-label={t("common.nextPage")}
           className="h-7 w-8 flex items-center justify-center rounded-r-full text-muted-foreground hover:bg-muted disabled:opacity-30 transition-colors"
         >

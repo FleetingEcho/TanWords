@@ -2,11 +2,13 @@ import React, { useState, useEffect, useRef } from "react";
 import { useDB } from "@/hooks/useDB";
 import { useSettingsStore } from "@/store/settingsStore";
 import { useT } from "@/hooks/useT";
+import { toast } from "sonner";
 import { useSelectedWordStore } from "@/store/selectedWordStore";
 import { WordListPanel } from "./WordListPanel";
 import { WordDetailPanel } from "./WordDetailPanel";
 import { SentenceLibrary } from "./SentenceLibrary";
 import { VocabViewTabs, type VocabView } from "./VocabViewTabs";
+import { ReviewPanel } from "./ReviewPanel";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useVocabWordList } from "./hooks/useVocabWordList";
 import { useVocabWordDetail } from "./hooks/useVocabWordDetail";
@@ -16,6 +18,8 @@ import { useVocabLookup } from "./hooks/useVocabLookup";
 import { SentenceModal } from "./SentenceModal";
 import { useIsNarrow } from "./hooks/useMediaQuery";
 import { ChevronLeft } from "lucide-react";
+import { saveDialog, writeBinaryFile, downloadText } from "@/ipc/dialog";
+import { isDesktopHost } from "@/platform";
 
 export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWordId?: number; initialSentenceId?: number }) {
   const db = useDB();
@@ -38,13 +42,45 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
   const bulkEnrich = useVocabBulkEnrich({
     db, targetLevel, setWords: list.setWords,
     selectedRef: detail.selectedRef, setSelected: detail.setSelected, setEnriching: detail.setEnriching,
-    loadWords: list.loadWords, loadAllWordsSet: list.loadAllWordsSet,
+    loadWords: list.loadWords, loadAllWordsStats: list.loadAllWordsStats,
   });
 
-  // Was `| "review"` as well, but nothing ever set it and nothing rendered it
-  // — ReviewPanel is not imported anywhere. A third state the switcher would
-  // have had to account for, that could not occur.
+  // Words-only export: CSV via save dialog on desktop (the write goes through
+  // writeBinaryFile after the user picks a path), browser download on web.
+  const [exportingWords, setExportingWords] = useState(false);
+  const exportWords = async () => {
+    if (exportingWords) return;
+    setExportingWords(true);
+    try {
+      const csv = await db.exportWordsCsv();
+      if (csv == null) return;
+      const name = `tanwords-words-${new Date().toISOString().slice(0, 10)}.csv`;
+      if (isDesktopHost) {
+        const dest = await saveDialog({ defaultPath: name, filters: [{ name: "CSV", extensions: ["csv"] }] });
+        if (!dest) return;
+        await writeBinaryFile(dest, new TextEncoder().encode(csv));
+      } else {
+        downloadText(name, csv, "text/csv");
+      }
+      toast.success(t("vocab.exportWordsOk"));
+    } finally {
+      setExportingWords(false);
+    }
+  };
+
+  // Review is wired again: the switcher's third tab renders ReviewPanel
+  // full-area (FSRS cards), with the due-count pill in VocabViewTabs.
   const [view, setView] = useState<VocabView>("words");
+  // FSRS review backlog shown as the Review tab's count pill; refreshed on
+  // mount, on vocab changes, and after each finished review round.
+  const [reviewCount, setReviewCount] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    const loadCount = () => void db.getReviewCount().then((n) => { if (!cancelled) setReviewCount(n); });
+    loadCount();
+    window.addEventListener("vocab-updated", loadCount);
+    return () => { cancelled = true; window.removeEventListener("vocab-updated", loadCount); };
+  }, [db]);
   // Below lg the list+detail split collapses into list-with-overlay; the same
   // flag gates the desktop-only auto-select below.
   const narrow = useIsNarrow();
@@ -95,23 +131,35 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
 
   // ── Initial selection ───────────────────────────────────────────────────
 
-  // One-shot for the deep-linked word: without the guard this effect re-ran
-  // on every list-length change (a `vocab-updated` event reloading words
-  // mid-browsing yanked the user back to the deep-linked word and reset
-  // their filters). The auto-select branch re-running is harmless (guarded
-  // by !detail.selected).
-  const didInitialJumpRef = useRef(false);
+  // One-shot for the deep-linked word. The list is server-paged now, so the
+  // jump is two-phase: clear all filters, then watch each arriving page for
+  // the target; if the first unfiltered page lacks it, probe its rank once
+  // (findWordPage) and move the pager there. The pendingJump guard also keeps
+  // the auto-select branch from flashing word #1 while the jump resolves.
+  const [pendingJumpId, setPendingJumpId] = useState<number | null>(null);
+  const jumpProbedRef = useRef(false);
+  useEffect(() => {
+    if (initialWordId === undefined) return;
+    jumpProbedRef.current = false;
+    setPendingJumpId(initialWordId);
+    list.clearAllFilters();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per incoming deep-link id
+  }, [initialWordId]);
+
   useEffect(() => {
     if (detail.lookup) return;
-    if (initialWordId && !didInitialJumpRef.current && list.words.length > 0) {
-      const w = list.words.find((x) => x.id === initialWordId);
+    if (pendingJumpId !== null) {
+      const w = list.words.find((x) => x.id === pendingJumpId);
       if (w) {
-        didInitialJumpRef.current = true;
-        list.setLevelFilters([]);
-        list.setStarredOnly(false);
         setListCollapsed(false);
-        list.setPage(Math.floor(list.words.findIndex((x) => x.id === initialWordId) / list.pageSize));
         detail.selectWord(w);
+        setPendingJumpId(null);
+      } else if (list.loaded && !jumpProbedRef.current) {
+        jumpProbedRef.current = true;
+        void list.findWordPage(pendingJumpId).then((p) => {
+          if (p !== null && p !== list.page) list.setPage(p);
+          else setPendingJumpId(null); // word gone, or rank mismatched this sort
+        });
       }
     } else if (!narrow && wordsLayout === "split" && list.words.length > 0 && !detail.selected) {
       // Desktop split layout auto-selects the first word. On mobile the
@@ -119,7 +167,8 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
       // cover the list before the user has even seen it — don't.
       detail.selectWord(list.words[0]);
     }
-  }, [list.words.length, initialWordId, list.pageSize]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- guards cover the stale-closure surface
+  }, [list.words, list.loaded, pendingJumpId, narrow, wordsLayout]);
 
   // ── Render ──────────────────────────────────────────────────────────────
 
@@ -165,7 +214,7 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
       />
   );
 
-  const viewTabs = <VocabViewTabs view={view} onSelect={setView} />;
+  const viewTabs = <VocabViewTabs view={view} onSelect={setView} reviewCount={reviewCount} />;
 
   return (
     <div className="flex h-full flex-col">
@@ -174,13 +223,24 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
         * full-width bordered strip for two words, sitting directly above a
         * heading that repeated the selected one, was a row of chrome the page
         * paid for twice. */}
-      {view === "sentences" ? (
+      {view === "review" ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="px-4 pt-5 pb-2">{viewTabs}</div>
+          <ReviewPanel
+            onExit={() => setView("words")}
+            // A finished round can promote words to "mastered" and drains the
+            // due queue — let the list and the tab pill both refresh.
+            onFinished={() => window.dispatchEvent(new CustomEvent("vocab-updated"))}
+          />
+        </div>
+      ) : view === "sentences" ? (
         <SentenceLibrary initialSentenceId={initialSentenceId} viewTabs={viewTabs} />
       ) : (<>
       <div className="flex min-h-0 flex-1">
       <WordListPanel
         viewTabs={viewTabs}
         words={list.visibleWords}
+        total={list.total}
         selectedId={selected?.word.id ?? null}
         highlightId={initialWordId}
         search={list.search}
@@ -195,9 +255,21 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
         onFilterChange={(v) => { list.setLevelFilters(v); list.setPage(0); }}
         starredOnly={list.starredOnly}
         onStarredOnlyChange={(v) => { list.setStarredOnly(v); list.setPage(0); }}
+        statuses={list.statusFilters}
+        onStatusesChange={(v) => { list.setStatusFilters(v); list.setPage(0); }}
+        enrichFilter={list.enrichFilter}
+        onEnrichFilterChange={(v) => { list.setEnrichFilter(v); list.setPage(0); }}
+        dueOnly={list.dueOnly}
+        onDueOnlyChange={(v) => { list.setDueOnly(v); list.setPage(0); }}
+        sourceFilter={list.sourceFilter}
+        onSourceChange={(v) => { list.setSourceFilter(v); list.setPage(0); }}
+        sortBy={list.sortBy}
+        onSortChange={list.changeSortBy}
         onDateFromChange={list.setDateFrom}
         onDateToChange={list.setDateTo}
         onRefresh={list.refreshList}
+        onExport={exportWords}
+        exportingWords={exportingWords}
         onSelect={(w) => {
           // In the full-width list, clicking the expanded word collapses it.
           if (wordsLayout === "full" && !lookup && selected?.word.id === w.id) detail.setSelected(null);
@@ -221,6 +293,8 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
         onReanalyzeSelected={reanalyzeSelected}
         onDeleteSelected={() => list.setDeleteSelectedOpen(true)}
         onToggleStar={list.toggleWordStar}
+        onToggleStatus={list.toggleWordStatus}
+        onMarkSelectedStatus={list.markSelectedStatus}
         selectMode={list.selectMode}
         onToggleSelectMode={list.toggleWordSelectMode}
         fullWidth={wordsLayout === "full" || narrow}
@@ -258,7 +332,7 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
       <ConfirmModal
         open={bulkEnrich.reanalyzeConfirmOpen}
         title={t("vocab.reanalyzeConfirmTitle")}
-        message={t("vocab.reanalyzeConfirmMessage", { n: list.allWordsSet.size })}
+        message={t("vocab.reanalyzeConfirmMessage", { n: list.wordStats?.total ?? 0 })}
         confirmLabel={t("vocab.reanalyzeConfirmConfirm")}
         danger
         onConfirm={bulkEnrich.reanalyzeAll}

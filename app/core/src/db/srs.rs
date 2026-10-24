@@ -12,6 +12,12 @@ use crate::AppState;
 /// hundreds of "new" cards into one session.
 const DEFAULT_NEW_LIMIT: i64 = 20;
 
+/// FSRS milestone for auto-mastery: once a successful grade schedules the
+/// next review three or more weeks out, the knowledge is demonstrably stable
+/// and the word's learning `status` promotes to "mastered" (the familiar
+/// checkbox's automatic counterpart — see words_write::set_word_status_row).
+const MASTERY_SCHEDULED_DAYS: i64 = 21;
+
 #[derive(Serialize)]
 pub struct DueCard {
     pub word_id: i64,
@@ -246,6 +252,9 @@ pub async fn db_review_card(
     };
 
     let fsrs = FSRS::default();
+    // matches! moves nothing — rating is consumed by fsrs.next below, and
+    // rs_fsrs's Rating predates a Copy derive in the pinned version.
+    let is_again = matches!(rating, Rating::Again);
     let scheduling = fsrs.next(card, now, rating);
     let new_card = scheduling.card;
 
@@ -286,6 +295,33 @@ pub async fn db_review_card(
     )
     .await
     .map_err(|e| e.to_string())?;
+
+    // Folds review outcomes back into the list's learning status: a stable
+    // card graduates to "mastered" on its own; a mastered card that lapses
+    // drops back to "learning" so it re-enters the review pipeline. Only
+    // single-step moves — a human "familiar" is never auto-demoted.
+    let current_status: Option<String> = db::fetch_optional(
+        &db,
+        "SELECT status FROM words WHERE id = ?1",
+        params![word_id],
+        |row| row.get::<Option<String>>(0),
+    )
+    .await?
+    .flatten();
+    let next_status = if is_again && current_status.as_deref() == Some("mastered") {
+        Some("learning")
+    } else if !is_again
+        && new_card.state == State::Review
+        && new_card.scheduled_days >= MASTERY_SCHEDULED_DAYS
+        && matches!(current_status.as_deref(), Some("learning") | Some("familiar"))
+    {
+        Some("mastered")
+    } else {
+        None
+    };
+    if let Some(status) = next_status {
+        crate::db::words_write::set_word_status_row(&db, word_id, status).await?;
+    }
 
     Ok(ReviewResult {
         next_review_at,

@@ -24,6 +24,7 @@ vi.mock("@/hooks/useT", () => ({
 vi.mock("@/hooks/useDB", () => ({
   useDB: () => ({
     getWords: vi.fn().mockResolvedValue([]),
+    wordExists: vi.fn().mockResolvedValue(false),
   }),
 }));
 

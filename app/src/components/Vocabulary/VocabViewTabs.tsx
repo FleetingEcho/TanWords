@@ -1,10 +1,16 @@
 import { Button } from "@/components/ui/button";
 import { useT } from "@/hooks/useT";
 
-export type VocabView = "words" | "sentences";
+export type VocabView = "words" | "sentences" | "review";
 
-/** Words / Sentences, rendered as the list's own heading rather than as a bar
- *  above it.
+const VIEWS: { value: VocabView; labelKey: string }[] = [
+  { value: "words", labelKey: "vocab.tabWords" },
+  { value: "sentences", labelKey: "vocab.tabSentences" },
+  { value: "review", labelKey: "vocab.tabReview" },
+];
+
+/** Words / Sentences / Review, rendered as the list's own heading rather than
+ *  as a bar above it.
  *
  *  These used to sit in a full-width bordered strip of their own, directly
  *  above a heading that read "Words" — the same word the selected tab already
@@ -13,16 +19,18 @@ export type VocabView = "words" | "sentences";
  *  other one is the way out of it.
  */
 export function VocabViewTabs({
-  view, onSelect,
+  view, onSelect, reviewCount = 0,
 }: {
   view: VocabView;
   onSelect: (view: VocabView) => void;
+  /** FSRS cards waiting right now — a pill on the Review tab. */
+  reviewCount?: number;
 }) {
   const t = useT();
 
   return (
     <div className="flex min-w-0 items-center gap-3">
-      {(["words", "sentences"] as const).map((value) => (
+      {VIEWS.map(({ value, labelKey }) => (
         <Button
           key={value}
           type="button"
@@ -38,7 +46,12 @@ export function VocabViewTabs({
               : "text-muted-foreground after:bg-transparent hover:text-foreground"
           }`}
         >
-          {t(value === "words" ? "vocab.tabWords" : "vocab.tabSentences")}
+          {t(labelKey)}
+          {value === "review" && reviewCount > 0 && (
+            <span className="ml-1.5 rounded-full bg-rose-500/15 px-1.5 py-px align-middle text-[10px] font-bold text-rose-500">
+              {reviewCount}
+            </span>
+          )}
         </Button>
       ))}
     </div>

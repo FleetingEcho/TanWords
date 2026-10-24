@@ -1,5 +1,5 @@
 import React from "react";
-import { WordListItem } from "@/hooks/useDB";
+import { WordListItem, WordStatus, WordSortBy, EnrichFilter } from "@/hooks/useDB";
 import { useT } from "@/hooks/useT";
 import { LevelBadge } from "@/components/shared/LevelBadge";
 import { SpeakButton } from "@/components/ui/SpeakButton";
@@ -10,12 +10,56 @@ import { ListPaginator } from "@/components/shared/ListPaginator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { LevelDateFilter, LevelValue } from "@/components/shared/LevelDateFilter";
 import { LIST_PANEL_WIDTH, LIST_PANEL_COLLAPSED_WIDTH, LIST_PANEL_TOGGLE_CLASS } from "@/components/shared/listPanel";
-import { Wand2, RefreshCw, Sparkles, Loader2, ChevronsLeft, ChevronsRight, Trash2, X, Star, ListChecks, Columns2, Rows3 } from "lucide-react";
+import { Wand2, RefreshCw, Sparkles, Loader2, ChevronsLeft, ChevronsRight, Trash2, X, Star, ListChecks, Columns2, Rows3, Circle, CircleDot, CheckCheck, Eye, Download } from "lucide-react";
 import { hostCapabilities } from "@/platform";
 import { useSettingsStore } from "@/store/settingsStore";
 
+/** One-click preset cycle on the status axis: everything → hide the words you
+ *  already know (familiar/mastered) → show ONLY the known ones → back to all.
+ *  It writes the same `statuses` state the filter panel's status chips edit,
+ *  so both controls stay in sync (a hand-picked mix renders as "custom"). */
+function StatusQuickFilter({ statuses, onChange }: { statuses: WordStatus[]; onChange: (v: WordStatus[]) => void }) {
+  const t = useT();
+  const mode: "all" | "learning" | "known" | "custom" =
+    statuses.length === 0 ? "all"
+    : statuses.length === 1 && statuses[0] === "learning" ? "learning"
+    : statuses.length === 2 && !statuses.includes("learning") ? "known"
+    : "custom";
+  const next: WordStatus[] =
+    mode === "learning" ? ["familiar", "mastered"]
+    : mode === "known" ? []
+    : ["learning"];
+  return (
+    <Button
+      variant="ghost"
+      onClick={() => onChange(next)}
+      title={
+        mode === "all" ? t("vocab.quickStatus.all")
+        : mode === "learning" ? t("vocab.quickStatus.learningOnly")
+        : mode === "known" ? t("vocab.quickStatus.knownOnly")
+        : t("vocab.quickStatus.custom")}
+      className={`shrink-0 h-auto px-2 py-0.5 rounded-full text-[10px] font-semibold border transition-colors flex items-center gap-1 ${
+        mode === "all"
+          ? "border-border text-muted-foreground hover:border-primary/40 hover:bg-transparent"
+          : mode === "custom"
+            ? "border-border text-muted-foreground hover:bg-transparent"
+            : "bg-primary text-primary-foreground border-primary hover:bg-primary/90"
+      }`}
+    >
+      {mode === "known" ? <CheckCheck className="w-2.5 h-2.5" /> : <Eye className="w-2.5 h-2.5" />}
+      {mode === "all" ? t("vocab.quickStatus.all")
+        : mode === "learning" ? t("vocab.quickStatus.learningOnly")
+        : mode === "known" ? t("vocab.quickStatus.knownOnly")
+        : t("vocab.quickStatus.custom")}
+    </Button>
+  );
+}
+
 interface Props {
+  /** The current page's rows (server-paged) — NOT the whole library. */
   words: WordListItem[];
+  /** Total row count after filtering — drives the paginator. */
+  total: number;
   selectedId: number | null;
   highlightId?: number;
   search: string;
@@ -23,6 +67,16 @@ interface Props {
   levelFilter: LevelValue[];
   starredOnly: boolean;
   onStarredOnlyChange: (v: boolean) => void;
+  statuses: WordStatus[];
+  onStatusesChange: (v: WordStatus[]) => void;
+  enrichFilter: EnrichFilter;
+  onEnrichFilterChange: (v: EnrichFilter) => void;
+  dueOnly: boolean;
+  onDueOnlyChange: (v: boolean) => void;
+  sourceFilter: string;
+  onSourceChange: (v: string) => void;
+  sortBy: WordSortBy;
+  onSortChange: (v: WordSortBy) => void;
   page: number;
   pageSize: number;
   /** The searched term isn't in the vocabulary — offer an AI dictionary lookup */
@@ -35,6 +89,10 @@ interface Props {
   onDateFromChange: (v: string) => void;
   onDateToChange: (v: string) => void;
   onRefresh: () => void;
+  /** One-click words-only export (CSV on desktop with a save dialog, browser
+   *  download on web). */
+  onExport: () => void;
+  exportingWords: boolean;
   onSelect: (w: WordListItem) => void;
   onPageChange: (p: number) => void;
   onPageSizeChange: (size: number) => void;
@@ -56,6 +114,9 @@ interface Props {
   onReanalyzeSelected: () => void;
   onDeleteSelected: () => void;
   onToggleStar: (id: number) => void;
+  /** Familiar checkbox on each row (learning ↔ familiar, mastered → reset). */
+  onToggleStatus: (id: number) => void;
+  onMarkSelectedStatus: (status: WordStatus) => void;
   selectMode: boolean;
   onToggleSelectMode: () => void;
   /** Full-width feed layout (like the Sentences tab): rows span the page and
@@ -72,19 +133,22 @@ interface Props {
 }
 
 export function WordListPanel({
-  words, selectedId, highlightId, search, levelFilter, starredOnly, onStarredOnlyChange, page, pageSize,
+  words, total, selectedId, highlightId, search, levelFilter, starredOnly, onStarredOnlyChange, page, pageSize,
+  statuses, onStatusesChange, enrichFilter, onEnrichFilterChange, dueOnly, onDueOnlyChange,
+  sourceFilter, onSourceChange, sortBy, onSortChange,
   showAiLookup, lookupActive, dateFrom, dateTo,
   onSearchChange, onFilterChange,
-  onDateFromChange, onDateToChange, onRefresh,
+  onDateFromChange, onDateToChange, onRefresh, onExport, exportingWords,
   onSelect, onPageChange, onPageSizeChange, onDoubleClick, onAiLookup,
   bulkRunning, bulkProgress, onEnrichUnanalyzed, onReanalyzeAll, onStopBulkEnrich,
   collapsed, onToggleCollapsed, selectedIds, onToggleSelect, onSelectAll, onClearSelection,
-  onReanalyzeSelected, onDeleteSelected, onToggleStar, selectMode, onToggleSelectMode,
+  onReanalyzeSelected, onDeleteSelected, onToggleStar, onToggleStatus, onMarkSelectedStatus,
+  selectMode, onToggleSelectMode,
   fullWidth, inlineDetail = true, onToggleLayout, renderDetail, viewTabs,
 }: Props) {
   const t = useT();
   const hasCustomAppBackground = useSettingsStore((state) => !!state.appBackgroundImage && state.appBackgroundVisible);
-  const paged = words.slice(page * pageSize, (page + 1) * pageSize);
+  // No client slice: props arrive already paged + filtered by the server.
   const measure = fullWidth ? "mx-auto w-full max-w-4xl" : "";
   const [jumpHighlightId, setJumpHighlightId] = React.useState<number | null>(highlightId ?? null);
   React.useEffect(() => {
@@ -152,6 +216,15 @@ export function WordListPanel({
               <>
                 <Button
                   variant="ghost"
+                  onClick={onExport}
+                  disabled={exportingWords}
+                  title={exportingWords ? t("vocab.exporting") : t("vocab.exportWords")}
+                  className="w-10 h-10 lg:w-6 lg:h-6 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
+                >
+                  {exportingWords ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                </Button>
+                <Button
+                  variant="ghost"
                   onClick={onRefresh}
                   title={t("vocab.refreshList")}
                   className="w-10 h-10 lg:w-6 lg:h-6 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
@@ -208,6 +281,24 @@ export function WordListPanel({
             <div className="ml-auto flex items-center gap-1">
               <Button
                 variant="ghost"
+                onClick={() => onMarkSelectedStatus("familiar")}
+                disabled={selectedIds.size === 0}
+                title={t("vocab.markFamiliar")}
+                className="w-10 h-10 lg:w-6 lg:h-6 p-0 rounded-md flex items-center justify-center text-emerald-600 hover:bg-emerald-500/10 disabled:opacity-30 transition-colors shrink-0"
+              >
+                <CircleDot className="w-3.5 h-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => onMarkSelectedStatus("learning")}
+                disabled={selectedIds.size === 0}
+                title={t("vocab.markLearning")}
+                className="w-10 h-10 lg:w-6 lg:h-6 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:bg-muted disabled:opacity-30 transition-colors shrink-0"
+              >
+                <Circle className="w-3.5 h-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
                 onClick={onReanalyzeSelected}
                 disabled={selectedIds.size === 0}
                 title={t("vocab.reanalyzeSelected")}
@@ -257,16 +348,31 @@ export function WordListPanel({
           </svg>
         </div>
 
-        <LevelDateFilter
-          levels={levelFilter}
-          onLevelsChange={onFilterChange}
-          starredOnly={starredOnly}
-          onStarredOnlyChange={onStarredOnlyChange}
-          dateFrom={dateFrom}
-          dateTo={dateTo}
-          onDateFromChange={onDateFromChange}
-          onDateToChange={onDateToChange}
-        />
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <LevelDateFilter
+              levels={levelFilter}
+              onLevelsChange={onFilterChange}
+              starredOnly={starredOnly}
+              onStarredOnlyChange={onStarredOnlyChange}
+              statuses={statuses}
+              onStatusesChange={onStatusesChange}
+              enrichFilter={enrichFilter}
+              onEnrichFilterChange={onEnrichFilterChange}
+              dueOnly={dueOnly}
+              onDueOnlyChange={onDueOnlyChange}
+              source={sourceFilter}
+              onSourceChange={onSourceChange}
+              sortBy={sortBy}
+              onSortChange={onSortChange}
+              dateFrom={dateFrom}
+              dateTo={dateTo}
+              onDateFromChange={onDateFromChange}
+              onDateToChange={onDateToChange}
+            />
+          </div>
+          <StatusQuickFilter statuses={statuses} onChange={onStatusesChange} />
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -293,10 +399,10 @@ export function WordListPanel({
           </>
         )}
 
-        {paged.length === 0 && !showAiLookup && (
+        {words.length === 0 && !showAiLookup && (
           <div className="p-4 text-center text-sm text-muted-foreground">{t("vocab.empty")}</div>
         )}
-        {paged.map((w) => {
+        {words.map((w) => {
           const expanded = fullWidth && inlineDetail && !selectMode && !lookupActive && selectedId === w.id;
           return (
           <div
@@ -340,9 +446,31 @@ export function WordListPanel({
               )}
               <Button
                 variant="ghost"
+                onClick={(e) => { e.stopPropagation(); onToggleStatus(w.id); }}
+                title={
+                  w.status === "learning"
+                    ? t("vocab.markFamiliar")
+                    : w.status === "familiar"
+                      ? t("vocab.markedFamiliarUndo")
+                      : t("vocab.masteredReset")
+                }
+                className={`ml-auto w-9 h-9 lg:w-5 lg:h-5 p-0 rounded flex items-center justify-center shrink-0 hover:bg-transparent ${
+                  w.status === "mastered" ? "opacity-100" : ""
+                }`}
+              >
+                {w.status === "mastered" ? (
+                  <CheckCheck className="w-3.5 h-3.5 text-emerald-500" />
+                ) : w.status === "familiar" ? (
+                  <CircleDot className="w-3.5 h-3.5 text-primary" />
+                ) : (
+                  <Circle className="w-3.5 h-3.5 text-muted-foreground/50" />
+                )}
+              </Button>
+              <Button
+                variant="ghost"
                 onClick={(e) => { e.stopPropagation(); onToggleStar(w.id); }}
                 title={w.starred ? t("vocab.unstar") : t("vocab.star")}
-                className="ml-auto w-9 h-9 lg:w-5 lg:h-5 p-0 rounded flex items-center justify-center shrink-0 hover:bg-transparent"
+                className="w-9 h-9 lg:w-5 lg:h-5 p-0 rounded flex items-center justify-center shrink-0 hover:bg-transparent"
               >
                 <Star className={`w-3.5 h-3.5 ${w.starred ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground/50"}`} />
               </Button>
@@ -373,7 +501,7 @@ export function WordListPanel({
             className={measure}
             page={page}
             pageSize={pageSize}
-            total={words.length}
+            total={total}
             onPageChange={onPageChange}
             onPageSizeChange={onPageSizeChange}
           />

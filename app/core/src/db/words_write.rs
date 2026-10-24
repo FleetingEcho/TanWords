@@ -3,7 +3,7 @@ use crate::shim::State;
 
 use crate::db;
 use crate::db::words_types::{
-    AddWordResult, BatchAddResult, NewVocabWord, WordEnrichmentInput, WordExtras,
+    AddWordResult, BatchAddResult, NewVocabWord, WordEnrichmentInput, WordExtras, WORD_STATUSES,
 };
 use crate::AppState;
 
@@ -138,6 +138,91 @@ pub async fn db_set_word_starred(
     .await
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+// ── Learning status (the list's familiar checkbox) ──────────────────────────
+
+/// Applies a status to one word and keeps `user_known_words` in agreement:
+/// familiar/mastered words are known, so the reading module stops
+/// highlighting them; reverting to "learning" removes only the row this
+/// sync wrote (source 'vocab' — a word the user marked directly while
+/// reading, source 'marked'/'import', must survive a vocab-side uncheck).
+///
+/// `updated_at` is deliberately NOT bumped — like `db_set_word_starred`, a
+/// familiarity click is a quiet annotation, and under the list's default
+/// "recently updated" sort a bump would yank the row to the top.
+pub(crate) async fn set_word_status_row(conn: &db::Conn, word_id: i64, status: &str) -> Result<(), String> {
+    conn.execute(
+        "UPDATE words SET status = ?1 WHERE id = ?2",
+        params![status, word_id],
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let word: Option<String> = db::fetch_optional(
+        conn,
+        "SELECT word FROM words WHERE id = ?1",
+        params![word_id],
+        |row| row.get(0),
+    )
+    .await?;
+    let Some(word) = word else { return Ok(()) };
+
+    if status == "familiar" || status == "mastered" {
+        // user_known_words.word is lowercase by convention (reading matches
+        // lowercased lemma candidates against it).
+        conn.execute(
+            "INSERT INTO user_known_words (word, source) VALUES (?1, 'vocab') ON CONFLICT(word) DO NOTHING",
+            params![word.to_lowercase()],
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    } else {
+        conn.execute(
+            "DELETE FROM user_known_words WHERE word = ?1 AND source = 'vocab'",
+            params![word.to_lowercase()],
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+fn validate_status(status: &str) -> Result<&str, String> {
+    if WORD_STATUSES.contains(&status) {
+        Ok(status)
+    } else {
+        Err(format!(
+            "invalid status: {status} (expected one of {})",
+            WORD_STATUSES.join("/")
+        ))
+    }
+}
+
+#[crate::shim::command]
+pub async fn db_set_word_status(
+    word_id: i64,
+    status: String,
+    conn: State<'_, AppState>,
+) -> Result<(), String> {
+    let status = validate_status(&status)?;
+    let db = db::conn(&conn)?;
+    set_word_status_row(&db, word_id, status).await
+}
+
+#[crate::shim::command]
+pub async fn db_set_words_status_batch(
+    word_ids: Vec<i64>,
+    status: String,
+    conn: State<'_, AppState>,
+) -> Result<(), String> {
+    let status = validate_status(&status)?;
+    let db = db::txn_conn(&conn).await?;
+    let tx = db.transaction().await.map_err(|e| e.to_string())?;
+    for word_id in word_ids {
+        set_word_status_row(&tx, word_id, status).await?;
+    }
+    tx.commit().await.map_err(|e| e.to_string())
 }
 
 #[crate::shim::command]
@@ -318,6 +403,81 @@ pub async fn db_save_word_chat(
     .await
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+// ── Words-only export (CSV / JSON payload for one-click export) ────────────
+
+/// One exported word row: list-visible fields plus the per-definition glosses
+/// aggregated as a single string (CSV keeps one row per word; the multi-sense
+/// JSON shape below preserves the details).
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportedWord {
+    pub word: String,
+    pub word_type: Option<String>,
+    pub level: Option<String>,
+    pub zh: String,
+    pub status: String,
+    pub starred: bool,
+    pub source: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[crate::shim::command]
+pub async fn db_export_words_json(conn: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let db = db::conn(&conn)?;
+    let rows: Vec<ExportedWord> = db::fetch_all(
+        &db,
+        "SELECT w.word, w.word_type, w.level,
+                COALESCE((SELECT GROUP_CONCAT(d.zh, '; ') FROM
+                    (SELECT zh FROM word_definitions WHERE word_id = w.id AND zh IS NOT NULL AND TRIM(zh) != '' ORDER BY sort_order) d),
+                 '') as zh,
+                COALESCE(w.status, 'learning'), w.starred != 0, COALESCE(w.source, 'manual'), w.created_at, w.updated_at
+         FROM words w
+         ORDER BY LOWER(w.word)",
+        (),
+        |row| {
+            Ok(ExportedWord {
+                word: row.get(0)?,
+                word_type: row.get(1)?,
+                level: row.get(2)?,
+                zh: row.get(3)?,
+                status: row.get(4)?,
+                starred: row.get(5)?,
+                source: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
+            })
+        },
+    )
+    .await?;
+    serde_json::to_value(&rows).map_err(|e| e.to_string())
+}
+
+/// CSV with a header row; every field is wrapped in double quotes with inner
+/// quotes doubled, so commas/newlines inside glosses can't break a column.
+#[crate::shim::command]
+pub async fn db_export_words_csv(conn: State<'_, AppState>) -> Result<String, String> {
+    let words = db_export_words_json(conn).await?;
+    let rows: Vec<ExportedWord> = serde_json::from_value(words).map_err(|e| e.to_string())?;
+    let mut out = String::from("word,type,level,zh,status,starred,source,created,updated\n");
+    for w in &rows {
+        let esc = |s: &str| format!("\"{}\"", s.replace('"', "\"\""));
+        out.push_str(&format!(
+            "{},{},{},{},{},{},{},{},{}\n",
+            esc(&w.word),
+            esc(w.word_type.as_deref().unwrap_or("")),
+            esc(w.level.as_deref().unwrap_or("")),
+            esc(&w.zh),
+            esc(&w.status),
+            if w.starred { "1" } else { "0" },
+            esc(&w.source),
+            esc(&w.created_at),
+            esc(&w.updated_at),
+        ));
+    }
+    Ok(out)
 }
 
 // ── Batch add (used by AI Chat vocabulary tools + future batch import) ──────

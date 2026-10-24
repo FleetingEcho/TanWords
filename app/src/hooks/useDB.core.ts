@@ -7,6 +7,7 @@ import { logError, reportWriteError } from "./useDB.errors";
 import {
   WordListItem, WordDetail, TranslationItem, EnrichmentInput,
   DocumentDetail, DocumentListResult, DocumentFolder, DocStatus,
+  WordStatus, WordPage, WordSortBy, EnrichFilter, WordStats, ExportedWord,
 } from "./useDB.types";
 
 export function useDBCore() {
@@ -140,6 +141,119 @@ export function useDBCore() {
       return false;
     }
   }, []);
+
+  const setWordStatus = useCallback(async (wordId: number, status: WordStatus): Promise<boolean> => {
+    try {
+      await invoke("db_set_word_status", { wordId, status });
+      return true;
+    } catch (e) {
+      reportWriteError("setWordStatus", e, "更新掌握状态失败");
+      return false;
+    }
+  }, []);
+
+  const setWordsStatusBatch = useCallback(async (wordIds: number[], status: WordStatus): Promise<boolean> => {
+    try {
+      await invoke("db_set_words_status_batch", { wordIds, status });
+      return true;
+    } catch (e) {
+      reportWriteError("setWordsStatusBatch", e, "批量更新掌握状态失败");
+      return false;
+    }
+  }, []);
+
+  const wordExists = useCallback(async (word: string): Promise<boolean> => {
+    try {
+      return await invoke<boolean>("db_word_exists", { word });
+    } catch (e) {
+      logError("wordExists", e);
+      return true; // fail closed: never offer a duplicate AI lookup
+    }
+  }, []);
+
+  /** (id, word) pairs for bulk flows — one light projection instead of a
+   *  full-list dump when only "which words to process" is needed. */
+  const listWordIds = useCallback(async (unEnrichedOnly: boolean): Promise<{ id: number; word: string }[]> => {
+    try {
+      return await invoke<{ id: number; word: string }[]>("db_list_word_ids", { unEnrichedOnly });
+    } catch (e) {
+      logError("listWordIds", e);
+      return [];
+    }
+  }, []);
+
+  /** Aggregate word counts (total / un-enriched / per-status) — drives the
+   *  re-analyze-all confirm without shipping the word rows themselves. */
+  const getWordStats = useCallback(async (): Promise<WordStats | null> => {
+    try {
+      return await invoke<WordStats>("db_get_word_stats", {});
+    } catch (e) {
+      logError("getWordStats", e);
+      return null;
+    }
+  }, []);
+
+  /** Words-only export payload (JSON rows) — the caller saves it to a file. */
+  const exportWordsJson = useCallback(async (): Promise<ExportedWord[] | null> => {
+    try {
+      return await invoke<ExportedWord[]>("db_export_words_json", {});
+    } catch (e) {
+      reportWriteError("exportWordsJson", e, "导出单词失败");
+      return null;
+    }
+  }, []);
+
+  /** Words-only export payload (CSV text incl. header) — the caller saves it. */
+  const exportWordsCsv = useCallback(async (): Promise<string | null> => {
+    try {
+      return await invoke<string>("db_export_words_csv", {});
+    } catch (e) {
+      reportWriteError("exportWordsCsv", e, "导出单词失败");
+      return null;
+    }
+  }, []);
+
+  /** Server-side filtered + paginated words list (the 10k-scale path). */
+  const getWordsPage = useCallback(
+    async (opts: {
+      search?: string;
+      levels?: string[];
+      statuses?: WordStatus[];
+      starred?: boolean;
+      enrichFilter?: EnrichFilter;
+      source?: string;
+      dueOnly?: boolean;
+      sortBy?: WordSortBy;
+      dateField?: "created" | "updated";
+      dateFrom?: string;
+      dateTo?: string;
+      page?: number;
+      pageSize?: number;
+    }): Promise<WordPage> => {
+      const pageSize = opts.pageSize ?? 20;
+      try {
+        return await invoke<WordPage>("db_get_words_page", {
+          search: opts.search || null,
+          levels: opts.levels?.length ? opts.levels : null,
+          statuses: opts.statuses?.length ? opts.statuses : null,
+          starred: opts.starred ? true : null,
+          enriched: opts.enrichFilter === "enriched" ? true : opts.enrichFilter === "raw" ? false : null,
+          source: opts.source && opts.source !== "all" ? opts.source : null,
+          dueOnly: opts.dueOnly ? true : null,
+          sortBy: opts.sortBy ?? "recent",
+          dateField: opts.dateField ?? "created",
+          dateFrom: opts.dateFrom || null,
+          dateTo: opts.dateTo || null,
+          limit: pageSize,
+          offset: (opts.page ?? 0) * pageSize,
+        });
+      } catch (e) {
+        logError("getWordsPage", e);
+        return { items: [], total: 0 };
+      }
+    },
+    []
+  );
 
   const saveTranslation = useCallback(
     async (opts: {
@@ -450,8 +564,8 @@ export function useDBCore() {
 
   return useMemo(() => ({
     getWordCount, getTranslationCount, getReviewCount,
-    getWords, getWordDetail, getWordDetailByWord,
-    addWord, deleteWord, deleteWordsBatch, setWordStarred,
+    getWords, getWordsPage, wordExists, listWordIds, getWordStats, exportWordsJson, exportWordsCsv, getWordDetail, getWordDetailByWord,
+    addWord, deleteWord, deleteWordsBatch, setWordStarred, setWordStatus, setWordsStatusBatch,
     saveTranslation, getTranslations,
     addWordEnriched, getWordExtras,
     saveWordNotes, saveWordChat,
@@ -464,8 +578,8 @@ export function useDBCore() {
     getAllTags, addWordsBatch,
   }), [
     getWordCount, getTranslationCount, getReviewCount,
-    getWords, getWordDetail, getWordDetailByWord,
-    addWord, deleteWord, deleteWordsBatch, setWordStarred,
+    getWords, getWordsPage, wordExists, listWordIds, getWordStats, exportWordsJson, exportWordsCsv, getWordDetail, getWordDetailByWord,
+    addWord, deleteWord, deleteWordsBatch, setWordStarred, setWordStatus, setWordsStatusBatch,
     saveTranslation, getTranslations,
     addWordEnriched, getWordExtras,
     saveWordNotes, saveWordChat,

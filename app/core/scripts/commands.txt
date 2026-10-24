@@ -7,6 +7,14 @@ db::db_add_word
 db::db_delete_word
 db::db_delete_words_batch
 db::db_set_word_starred
+db::db_set_word_status
+db::db_set_words_status_batch
+db::db_get_words_page
+db::db_word_exists
+db::db_list_word_ids
+db::db_get_word_stats
+db::db_export_words_json
+db::db_export_words_csv
 db::db_get_setting
 db::db_get_settings
 db::db_set_setting

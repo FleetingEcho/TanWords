@@ -122,10 +122,10 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
     void (async () => {
       const words = candidateWords.split("|");
       const found = await Promise.all(
-        words.map(async (en) => {
-          const rows = await db.getWords({ search: en });
-          return rows.some((w) => w.word.toLowerCase() === en.toLowerCase()) ? en.toLowerCase() : null;
-        })
+        // One exact-match COUNT per candidate, not a whole-table LIKE scan
+        // per candidate — with a big vocabulary the old shape multiplied the
+        // dump cost by the number of AI candidates on screen.
+        words.map(async (en) => ((await db.wordExists(en)) ? en.toLowerCase() : null))
       );
       if (!cancelled) setCollectedEn(found.filter((w): w is string => w !== null));
     })();
@@ -136,8 +136,10 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
     if (!q) return;
     setOpen(true);
     quickAbortRef.current?.abort();
-    const rows = await db.getWords({ search: q });
-    setMatches(rows.slice(0, 4));
+    // Paged search capped at the 4 matches the dropdown shows: the old
+    // getWords() full-LIKE dump shipped the whole table per Enter press.
+    const res = await db.getWordsPage({ search: q, sortBy: "alpha", page: 0, pageSize: 4 });
+    setMatches(res.items.slice(0, 4));
     setSearched(true);
     // A single Chinese character is already a searchable word; a single
     // Latin letter isn't worth an AI call.

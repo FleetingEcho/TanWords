@@ -54,7 +54,16 @@ fn generate_dispatch_table() {
     println!("cargo:rerun-if-changed=src");
     println!("cargo:rerun-if-changed=scripts/commands.txt");
 
-    let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    // CARGO_MANIFEST_DIR is read from the *process environment* at build-script
+    // runtime, not via env!() at build-script compile time: env!() bakes the
+    // absolute path into the build-script binary, and cargo will happily reuse
+    // a cached build-script binary after the repo directory is renamed (no
+    // fingerprinted input changes), leaving the script panic-reading a path
+    // that no longer exists. The runtime env var always points at the crate
+    // being built right now.
+    let crate_dir = PathBuf::from(
+        std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set"),
+    );
     let src_dir = crate_dir.join("src");
 
     let cmd_attr = Regex::new(r"#\[(?:tauri|shim|crate::shim)::command(?:\(([^)]*)\))?\]").unwrap();

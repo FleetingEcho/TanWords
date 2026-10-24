@@ -10,6 +10,7 @@ vi.mock("@/hooks/useT", () => ({ useT: () => (key: string) => key }));
 vi.mock("@/hooks/useDB", () => ({
   useDB: () => ({
     getWords: vi.fn().mockResolvedValue([]),
+    wordExists: vi.fn().mockResolvedValue(false),
     saveSentence,
     addWord,
   }),

@@ -25,9 +25,9 @@ export function useVocabBulkEnrich(params: {
   setSelected: React.Dispatch<React.SetStateAction<SelectedWordData | null>>;
   setEnriching: React.Dispatch<React.SetStateAction<boolean>>;
   loadWords: () => Promise<void>;
-  loadAllWordsSet: () => Promise<void>;
+  loadAllWordsStats: () => Promise<void>;
 }) {
-  const { db, targetLevel, setWords, selectedRef, setSelected, setEnriching, loadWords, loadAllWordsSet } = params;
+  const { db, targetLevel, setWords, selectedRef, setSelected, setEnriching, loadWords, loadAllWordsStats } = params;
   const t = useT();
 
   const bulk = useVocabEnrichStore((s) => s.bulk);
@@ -35,7 +35,7 @@ export function useVocabBulkEnrich(params: {
   const bulkProgress = { done: bulk.done, total: bulk.total };
   const [reanalyzeConfirmOpen, setReanalyzeConfirmOpen] = useState(false);
 
-  const runBulkEnrich = async (targets: WordListItem[]) => {
+  const runBulkEnrich = async (targets: { id: number; word: string }[]) => {
     const provider = findBestProvider();
     if (!provider) {
       toast.error(t("vocab.noApiKey"));
@@ -53,7 +53,7 @@ export function useVocabBulkEnrich(params: {
     let done = 0;
     let nextIndex = 0;
 
-    const processWord = async (w: WordListItem) => {
+    const processWord = async (w: { id: number; word: string }) => {
       // If this word's detail panel happens to be open, clear its stale
       // explanation and show the loading state while its turn runs. Only
       // the open word streams into the panel — the other in-flight words
@@ -123,7 +123,7 @@ export function useVocabBulkEnrich(params: {
     const aborted = controller.signal.aborted;
     useVocabEnrichStore.getState().finishBulk();
     loadWords();
-    loadAllWordsSet();
+    loadAllWordsStats();
     if (succeeded > 0) window.dispatchEvent(new CustomEvent("vocab-updated"));
     if (!aborted) {
       toast.success(
@@ -133,17 +133,20 @@ export function useVocabBulkEnrich(params: {
     }
   };
 
+  // Bulk targets need only (id, word) — the light projection keeps a 10k
+  // library from paying the full-list dump (216ms + a ~1.5MB IPC payload at
+  // that size) every time these buttons are clicked.
   const enrichUnanalyzed = async () => {
     if (bulkRunning) return;
-    const all = await db.getWords();
-    runBulkEnrich(all.filter((w) => !w.enriched));
+    const ids = await db.listWordIds(true);
+    runBulkEnrich(ids);
   };
 
   const reanalyzeAll = async () => {
     setReanalyzeConfirmOpen(false);
     if (bulkRunning) return;
-    const all = await db.getWords();
-    runBulkEnrich(all);
+    const ids = await db.listWordIds(false);
+    runBulkEnrich(ids);
   };
 
   const stopBulkEnrich = () => useVocabEnrichStore.getState().bulk.controller?.abort();
