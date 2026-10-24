@@ -24,6 +24,14 @@ name = "tanwords-pty"
 path = "src/bin/tanwords-pty.rs"
 required-features = ["pty"]
 
+# One-shot CSV importer (the 1000-words vocabulary injection). Not part of
+# the shipped app — a maintenance tool for bulk-loading word lists into the
+# active profile (local SQLite or remote Postgres alike, via
+# db::connection::open). Kept for the next bulk import.
+[[bin]]
+name = "inject_1000_words"
+path = "src/bin/inject_1000_words.rs"
+
 [build-dependencies]
 # Used by generate_dispatch_table() in build.rs to scan src/ for
 # `#[crate::shim::command]`-annotated functions and generate dispatch.rs.
@@ -129,3 +137,7 @@ portable-pty = { version = "0.9", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[[bin]]
+name = "backup_remote_db"
+path = "src/bin/backup_remote_db.rs"
