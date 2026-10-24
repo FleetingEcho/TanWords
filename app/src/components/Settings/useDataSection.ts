@@ -65,6 +65,14 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
 
   useEffect(() => subscribe<OverwriteProgress>("overwrite-progress", setOverwriteProgress), []);
 
+  // Backup reminder gate for the overwrite flow: after the user picks a
+  // replacement file, a "download a backup before you erase everything"
+  // dialog must be acknowledged first. "Back up first" opens the export
+  // flow and cancels the overwrite; only the explicit "skip" path reaches
+  // the destructive confirm. Erasing the database must never be one
+  // unguarded click away from the file picker.
+  const [overwriteBackupReminder, setOverwriteBackupReminder] = useState<string | null>(null);
+
   // Postgres → local SQLite backup export (table-by-table copy, since
   // Postgres has no local replica file for VACUUM INTO to clone).
   const [postgresExportProgress, setPostgresExportProgress] = useState<PostgresExportProgress | null>(null);
@@ -229,7 +237,8 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
 
   /** Full-overwrite import: picks a plain .db file (no encrypted-zip support
    *  here — this is a blunt power-user tool, not the guided merge flow) and
-   *  stages it for a destructive-action confirmation. */
+   *  stages it behind the backup reminder. The destructive confirm only
+   *  appears after the user acknowledges the backup dialog. */
   const handleChooseOverwriteFile = async () => {
     if (!isDesktopHost) {
       toast.error(t("settings.importOverwriteDesktopOnly"));
@@ -239,7 +248,7 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
       multiple: false,
       filters: [{ name: "SQLite Database", extensions: ["db"] }],
     });
-    if (typeof picked === "string") setPendingOverwritePath(picked);
+    if (typeof picked === "string") setOverwriteBackupReminder(picked);
   };
 
   const confirmOverwrite = async () => {
@@ -265,6 +274,20 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
       setOverwriting(false);
       setOverwriteProgress(null);
     }
+  };
+
+  /** Backup-reminder dialog: "back up first" cancels the overwrite and opens
+   *  the export flow (the user can come back and re-pick the file after);
+   *  "skip" advances to the destructive confirm with the picked path. */
+  const handleOverwriteBackupNow = () => {
+    setOverwriteBackupReminder(null);
+    handleExport(isRemote ? "postgres" : "local");
+  };
+
+  const handleOverwriteBackupSkip = () => {
+    if (!overwriteBackupReminder) return;
+    setOverwriteBackupReminder(null);
+    setPendingOverwritePath(overwriteBackupReminder);
   };
 
   const analyzeImport = async (path: string, password: string | null) => {
@@ -411,5 +434,5 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
       setVacuuming(false);
     }
   };
-  return { dbPath, defaultLocalPath, dbSize, connection, exporting, confirmClear, pendingSwitchPath, switching, activeTab, postgresOpen, postgresUrl, connectingPostgres, confirmDisconnect, showExportPassword, pendingExportSource, showImportPassword, pendingImportPath, importPassword, importPlan, analyzing, importing, importProgress, importError, pendingOverwritePath, overwriting, overwriteProgress, postgresExportProgress, vacuuming, postgresRemote, postgresRemoteBusy, postgresRemoteAuthAction, postgresRemoteUrlVisible, isRemote, isOffline, canExport, canSwitchPath, canImport, canVacuum, formattedDbSize, setDbPath, setDefaultLocalPath, setDbSize, setConnection, setExporting, setConfirmClear, setPendingSwitchPath, setSwitching, setActiveTab, setPostgresOpen, setPostgresUrl, setConfirmDisconnect, setShowExportPassword, setPendingExportSource, setShowImportPassword, setPendingImportPath, setImportPassword, setImportPlan, setAnalyzing, setImporting, setImportError, setPendingOverwritePath, setPostgresRemoteAuthAction, setPostgresRemoteUrlVisible, handleOpenExisting, handleNewLocation, confirmSwitch, handleConnectPostgres, handleDisablePostgresRemote, handleDisconnect, handleChooseImportFile, analyzeImport, handleImport, handleChooseOverwriteFile, confirmOverwrite, handleVacuum, handleEnablePostgresRemote, handleConfirmPostgresRemoteAuth, startExport, handleExport, handleClearTranslations };
+  return { dbPath, defaultLocalPath, dbSize, connection, exporting, confirmClear, pendingSwitchPath, switching, activeTab, postgresOpen, postgresUrl, connectingPostgres, confirmDisconnect, showExportPassword, pendingExportSource, showImportPassword, pendingImportPath, importPassword, importPlan, analyzing, importing, importProgress, importError, pendingOverwritePath, overwriting, overwriteProgress, overwriteBackupReminder, postgresExportProgress, vacuuming, postgresRemote, postgresRemoteBusy, postgresRemoteAuthAction, postgresRemoteUrlVisible, isRemote, isOffline, canExport, canSwitchPath, canImport, canVacuum, formattedDbSize, setDbPath, setDefaultLocalPath, setDbSize, setConnection, setExporting, setConfirmClear, setPendingSwitchPath, setSwitching, setActiveTab, setPostgresOpen, setPostgresUrl, setConfirmDisconnect, setShowExportPassword, setPendingExportSource, setShowImportPassword, setPendingImportPath, setImportPassword, setImportPlan, setAnalyzing, setImporting, setImportError, setPendingOverwritePath, setOverwriteBackupReminder, setPostgresRemoteAuthAction, setPostgresRemoteUrlVisible, handleOpenExisting, handleNewLocation, confirmSwitch, handleConnectPostgres, handleDisablePostgresRemote, handleDisconnect, handleChooseImportFile, analyzeImport, handleImport, handleChooseOverwriteFile, handleOverwriteBackupNow, handleOverwriteBackupSkip, confirmOverwrite, handleVacuum, handleEnablePostgresRemote, handleConfirmPostgresRemoteAuth, startExport, handleExport, handleClearTranslations };
 }

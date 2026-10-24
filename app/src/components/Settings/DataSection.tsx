@@ -14,7 +14,7 @@ import { PostgresAccountPasswordDialog } from "./PostgresAccountPasswordDialog";
 
 export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: ReturnType<typeof useT> }) {
   const data = useDataSection(db, t);
-  const { confirmClear, pendingSwitchPath, switching, isRemote, setConfirmClear, setPendingSwitchPath, showExportPassword, pendingExportSource, showImportPassword, pendingImportPath, importPassword, importPlan, analyzing, importing, importProgress, importError, pendingOverwritePath, overwriting, overwriteProgress, postgresRemoteBusy, postgresRemoteAuthAction, setPostgresRemoteAuthAction, confirmDisconnect, setConfirmDisconnect, handleDisconnect, confirmSwitch, analyzeImport, handleImport, confirmOverwrite, handleConfirmPostgresRemoteAuth, startExport, setImportPlan, setImportPassword, setImportError, setShowExportPassword, setShowImportPassword, setPendingImportPath, setPendingOverwritePath, handleClearTranslations } = data;
+  const { confirmClear, pendingSwitchPath, switching, isRemote, setConfirmClear, setPendingSwitchPath, showExportPassword, pendingExportSource, showImportPassword, pendingImportPath, importPassword, importPlan, analyzing, importing, importProgress, importError, pendingOverwritePath, overwriting, overwriteProgress, overwriteBackupReminder, postgresRemoteBusy, postgresRemoteAuthAction, setPostgresRemoteAuthAction, confirmDisconnect, setConfirmDisconnect, handleDisconnect, confirmSwitch, analyzeImport, handleImport, confirmOverwrite, handleOverwriteBackupNow, handleOverwriteBackupSkip, handleConfirmPostgresRemoteAuth, startExport, setImportPlan, setImportPassword, setImportError, setShowExportPassword, setShowImportPassword, setPendingImportPath, setPendingOverwritePath, setOverwriteBackupReminder, handleClearTranslations } = data;
 
   return (
     <div className="space-y-3">
@@ -62,6 +62,22 @@ export function DataSection({ db, t }: { db: ReturnType<typeof useDB>; t: Return
           </SettingRow>
         </div>
       )}
+
+      {/* Backup reminder BEFORE the destructive overwrite confirm: the user
+          picked a replacement file, but nothing has been erased yet. They
+          get one clear chance to save the current database first — backing
+          up cancels the overwrite entirely (they re-pick the file after);
+          only the explicit skip advances to the destructive confirm. */}
+      <ConfirmModal
+        open={overwriteBackupReminder !== null}
+        title={t("settings.overwriteBackupReminderTitle")}
+        message={t("settings.overwriteBackupReminderMessage")}
+        confirmLabel={t("settings.overwriteBackupReminderSkip")}
+        cancelLabel={t("settings.overwriteBackupReminderBackup")}
+        danger={false}
+        onCancel={handleOverwriteBackupNow}
+        onConfirm={handleOverwriteBackupSkip}
+      />
 
       <ConfirmModal
         open={pendingOverwritePath !== null}

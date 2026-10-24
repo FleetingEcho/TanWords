@@ -57,8 +57,18 @@ export function useVocabBulkEnrich(params: {
       // If this word's detail panel happens to be open, clear its stale
       // explanation and show the loading state while its turn runs. Only
       // the open word streams into the panel — the other in-flight words
-      // just persist quietly.
+      // just persist quietly. The old explanation is captured first so a
+      // refused write (or a thrown stream) can restore it — the panel must
+      // never end up blank while the database still holds good content.
       const isOpen = selectedRef.current?.word.id === w.id;
+      const prevEnriched = isOpen ? selectedRef.current?.enriched ?? null : null;
+      const restorePanel = () => {
+        if (isOpen) {
+          setSelected((prev) => prev && prev.word.id === w.id
+            ? { ...prev, enriched: prevEnriched, legacy: prevEnriched ? false : prev.legacy }
+            : prev);
+        }
+      };
       if (isOpen) {
         setEnriching(true);
         setSelected((prev) => prev ? { ...prev, enriched: null, legacy: false } : prev);
@@ -83,11 +93,25 @@ export function useVocabBulkEnrich(params: {
         const final = parseEnrichmentStream(raw);
         const zhShort = basicInfo.zh || final.zhShort;
         const level = basicInfo.level || final.level;
-        await db.addWordEnriched(w.word, zhShort || w.word, basicInfo.wordType || null, {
+        // `zh` is only a fallback for words that have no gloss at all — the
+        // Rust layer keeps any existing gloss, so passing the English word
+        // itself here can never overwrite a good Chinese gloss. The wrapper
+        // never throws: a failed write (e.g. the Rust guard refusing an
+        // empty-over-good overwrite) comes back as { id: 0 }.
+        const saved = await db.addWordEnriched(w.word, zhShort || w.word, basicInfo.wordType || null, {
           text: final.text,
           zhShort,
           level,
         });
+        if (!saved || saved.id === 0) {
+          // Write refused (e.g. empty explanation over an existing good
+          // one) — keep the word's old analysis, count as failed, keep
+          // processing the rest. Restore the panel to its old content: the
+          // DB still holds it, so showing blank would be a lie.
+          failed++;
+          restorePanel();
+          return;
+        }
         setWords((prev) => prev.map((x) => x.id === w.id
           ? { ...x, zh: zhShort || x.zh, level: level || x.level, word_type: basicInfo.wordType || x.word_type }
           : x));
@@ -100,6 +124,9 @@ export function useVocabBulkEnrich(params: {
       } catch (e: any) {
         if (e?.name === "AbortError") return;
         failed++;
+        // stream threw mid-flight: the DB still holds the old analysis, so
+        // put it back in the panel instead of leaving it blank
+        restorePanel();
       } finally {
         done++;
         useVocabEnrichStore.getState().setBulkProgress(done);
