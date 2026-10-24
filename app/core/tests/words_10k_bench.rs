@@ -39,9 +39,12 @@ async fn words_10k_bench() {
         let level = ["C2", "C1", "B2", "B1", "A2"][i % 5];
         let source = ["manual", "ai", "chat"][i % 3];
         let enriched = if i % 2 == 0 { "NULL" } else { "'x'" };
+        // A rotating category tag so the tag filter + category sort have
+        // realistic data to chew on.
+        let tag = ["科学技术", "政治法律", "日常生活", "自然环境"][i % 4];
         conn.execute(
             &format!(
-                "INSERT INTO words (word, level, source, enrichment_text, status, starred, word_freq) VALUES ('{word}', '{level}', '{source}', {enriched}, 'learning', 0, {i})"
+                "INSERT INTO words (word, level, source, enrichment_text, status, starred, word_freq, tags) VALUES ('{word}', '{level}', '{source}', {enriched}, 'learning', 0, {i}, '[\"{tag}\"]')"
             ),
             (),
         )
@@ -66,13 +69,13 @@ async fn words_10k_bench() {
 
     // Paged empty search (open list).
     let t2 = Instant::now();
-    let p0 = db::db_get_words_page(None, None, None, None, None, None, None, None, None, None, None, 20, 0, state.clone()).await.unwrap();
+    let p0 = db::db_get_words_page(None, None, None, None, None, None, None, None, None, None, None, None, None, 20, 0, state.clone()).await.unwrap();
     println!("page open list (no search): {:?} -> {} items / total {}", t2.elapsed(), p0.items.len(), p0.total);
 
     // Paged prefix search — worst realistic keystroke case.
     for q in ["w", "word1", "word12", "word123", "zzz"] {
         let t = Instant::now();
-        let p = db::db_get_words_page(Some(q.to_string()), None, None, None, None, None, None, Some("alpha".into()), None, None, None, 20, 0, state.clone()).await.unwrap();
+        let p = db::db_get_words_page(Some(q.to_string()), None, None, None, None, None, None, None, Some("alpha".into()), None, None, None, None, 20, 0, state.clone()).await.unwrap();
         println!("page search '{q}': {:?} -> {} items / total {}", t.elapsed(), p.items.len(), p.total);
     }
 
@@ -80,7 +83,7 @@ async fn words_10k_bench() {
     let t3 = Instant::now();
     let pf = db::db_get_words_page(
         Some("word".into()), Some(vec!["C2".into()]), Some(vec!["learning".into()]),
-        Some(true), Some(true), Some("ai".into()), Some(true), Some("due".into()),
+        Some(true), Some(true), Some("ai".into()), None, Some(true), Some("due".into()), None,
         Some("updated".into()), Some("2000-01-01".into()), Some("2099-01-01".into()),
         20, 0, state.clone(),
     ).await.unwrap();
@@ -90,6 +93,9 @@ async fn words_10k_bench() {
     let t4 = Instant::now();
     let ids = db::db_list_word_ids(false, state.clone()).await.unwrap();
     println!("list_word_ids (10k): {:?} -> {} ids", t4.elapsed(), ids.len());
+    let t4b = Instant::now();
+    let tag_counts = db::db_list_word_tags(state.clone()).await.unwrap();
+    println!("list_word_tags: {:?} -> {} tags", t4b.elapsed(), tag_counts.len());
     let t5 = Instant::now();
     let stats = db::db_get_word_stats(state.clone()).await.unwrap();
     println!("get_word_stats: {:?} -> total {} un_enriched {}", t5.elapsed(), stats.total, stats.un_enriched);
@@ -100,10 +106,33 @@ async fn words_10k_bench() {
     let csv = db::db_export_words_csv(state.clone()).await.unwrap();
     println!("export_words_csv (10k): {:?} -> {} bytes", t7.elapsed(), csv.len());
 
+    // New sorts at 10k scale: difficulty (CEFR CASE) and category (tags).
+    let t8 = Instant::now();
+    let by_diff = db::db_get_words_page(
+        None, None, None, None, None, None, None, None, Some("difficulty".into()), Some(true), None, None, None,
+        20, 0, state.clone(),
+    ).await.unwrap();
+    println!("page difficulty-desc: {:?} -> first {:?}", t8.elapsed(), by_diff.items.first().map(|w| (w.word.clone(), w.level.clone())));
+    let t9 = Instant::now();
+    let by_cat = db::db_get_words_page(
+        None, None, None, None, None, None, None, None, Some("category".into()), None, None, None, None,
+        20, 0, state.clone(),
+    ).await.unwrap();
+    println!("page category-asc: {:?} -> first {:?}", t9.elapsed(), by_cat.items.first().map(|w| (w.word.clone(), w.tags.clone())));
+    // tag filter at 10k (LIKE against the JSON column)
+    if let Some(first_tag) = tag_counts.first().map(|c| c.tag.clone()) {
+        let t10 = Instant::now();
+        let by_tag = db::db_get_words_page(
+            None, None, None, None, None, None, Some(vec![first_tag.clone()]), None, None, None, None, None, None,
+            20, 0, state.clone(),
+        ).await.unwrap();
+        println!("page tag-filter '{first_tag}': {:?} -> {} / total {}", t10.elapsed(), by_tag.items.len(), by_tag.total);
+    }
+
     // Repeat runs to see steady-state (cache warm).
     for _ in 0..2 {
         let t = Instant::now();
-        let _ = db::db_get_words_page(Some("word1".to_string()), None, None, None, None, None, None, Some("alpha".into()), None, None, None, 20, 0, state.clone()).await.unwrap();
+        let _ = db::db_get_words_page(Some("word1".to_string()), None, None, None, None, None, None, None, Some("alpha".into()), None, None, None, None, 20, 0, state.clone()).await.unwrap();
         println!("page search 'word1' (warm): {:?}", t.elapsed());
     }
 }

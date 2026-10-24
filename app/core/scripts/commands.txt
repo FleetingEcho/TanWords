@@ -241,3 +241,5 @@ db::calendar::db_create_calendar_calendar
 db::calendar::db_update_calendar_calendar
 db::calendar::db_delete_calendar_calendar
 db::sticky_set_title
+db::db_list_word_tags
+db::db_set_word_tags

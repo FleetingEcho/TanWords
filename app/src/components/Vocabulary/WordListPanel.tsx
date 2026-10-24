@@ -75,8 +75,14 @@ interface Props {
   onDueOnlyChange: (v: boolean) => void;
   sourceFilter: string;
   onSourceChange: (v: string) => void;
+  /** Category tag chips — options + toggle, wired to the list hook. */
+  tagOptions: { tag: string; count: number }[];
+  selectedTags: string[];
+  onTagToggle: (tag: string) => void;
   sortBy: WordSortBy;
   onSortChange: (v: WordSortBy) => void;
+  sortDesc: boolean;
+  onSortDescToggle: () => void;
   page: number;
   pageSize: number;
   /** The searched term isn't in the vocabulary — offer an AI dictionary lookup */
@@ -135,7 +141,7 @@ interface Props {
 export function WordListPanel({
   words, total, selectedId, highlightId, search, levelFilter, starredOnly, onStarredOnlyChange, page, pageSize,
   statuses, onStatusesChange, enrichFilter, onEnrichFilterChange, dueOnly, onDueOnlyChange,
-  sourceFilter, onSourceChange, sortBy, onSortChange,
+  sourceFilter, onSourceChange, tagOptions, selectedTags, onTagToggle, sortBy, onSortChange, sortDesc, onSortDescToggle,
   showAiLookup, lookupActive, dateFrom, dateTo,
   onSearchChange, onFilterChange,
   onDateFromChange, onDateToChange, onRefresh, onExport, exportingWords,
@@ -363,8 +369,13 @@ export function WordListPanel({
               onDueOnlyChange={onDueOnlyChange}
               source={sourceFilter}
               onSourceChange={onSourceChange}
+              tagOptions={tagOptions}
+              selectedTags={selectedTags}
+              onTagToggle={onTagToggle}
               sortBy={sortBy}
               onSortChange={onSortChange}
+              sortDesc={sortDesc}
+              onSortDescToggle={onSortDescToggle}
               dateFrom={dateFrom}
               dateTo={dateTo}
               onDateFromChange={onDateFromChange}
@@ -479,6 +490,11 @@ export function WordListPanel({
               <p className="text-xs text-muted-foreground mt-0.5 truncate">
                 {w.word_type && <span className="mr-1">{w.word_type}.</span>}
                 {w.zh}
+                {w.tags.length > 0 && (
+                  <span className="ml-1.5 px-1 py-px rounded bg-muted text-[9px] align-middle">
+                    {w.tags[0]}
+                  </span>
+                )}
               </p>
             )}
           </div>

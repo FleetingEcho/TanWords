@@ -4,7 +4,7 @@ use chrono::Utc;
 use serde::Serialize;
 
 use crate::db;
-use crate::db::words_types::{WordDefItem, WordDetail, WordIdName, WordListItem, WordPage};
+use crate::db::words_types::{WordDefItem, WordDetail, WordIdName, WordListItem, WordPage, WordTagCount};
 use crate::AppState;
 
 /// The SELECT list + FROM/JOIN shared by db_get_words and db_get_words_page —
@@ -19,7 +19,8 @@ const WORD_LIST_SELECT: &str =
             COALESCE(w.source, 'manual') as source,
             (w.enrichment_text IS NOT NULL) as enriched,
             w.starred,
-            w.status
+            w.status,
+            COALESCE(w.tags, '[]') as tags
      FROM words w
      LEFT JOIN srs_records sr ON sr.entity_id = w.id AND sr.entity_type = 'word'";
 
@@ -43,6 +44,14 @@ fn map_word_list_item(row: &crate::db::Row) -> crate::db::DbResult<WordListItem>
         enriched: row.get::<bool>(11)?,
         starred: row.get::<i64>(12)? != 0,
         status: row.get::<Option<String>>(13)?.unwrap_or_else(|| "learning".to_string()),
+        // tags is a JSON-array TEXT column ('[]' default). Parse to the Vec
+        // the frontend wants; a malformed value (shouldn't happen — every
+        // writer serializes) reads as no tags rather than failing the page.
+        tags: row
+            .get::<String>(14)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default(),
     })
 }
 
@@ -120,8 +129,14 @@ struct WordFilters {
     starred: bool,
     enriched: Option<bool>,
     source: Option<String>,
+    /// Category tags (words.tags JSON array) — a word matches when it carries
+    /// ANY of the selected tags. Empty = no constraint.
+    tags: Vec<String>,
     due_only: bool,
     sort_by: String,
+    /// Direction suffix for the sorts that support both ways ("ASC"/"DESC");
+    /// alpha and category default ASC, the rest DESC.
+    sort_desc: bool,
     date_field: Option<String>,
     date_from: Option<String>,
     date_to: Option<String>,
@@ -183,6 +198,23 @@ impl WordFilters {
             sql.push_str(&format!(" AND COALESCE(w.source, 'manual') = ?{idx}"));
         }
 
+        // Category filter: a JSON array column, so membership is a LIKE probe
+        // on the quoted token (`"政治法律"` appears verbatim in
+        // `["政治法律"]`). Multiple selected tags OR together — a word
+        // carrying any of them shows up, consistent with the level filter's
+        // arms. Tags are user-visible category names; a quote inside one
+        // would break the probe, so quotes are stripped on the write side
+        // (db_set_word_tags) rather than escaped here.
+        if !self.tags.is_empty() {
+            let mut arms: Vec<String> = Vec::with_capacity(self.tags.len());
+            for tag in &self.tags {
+                let idx = params.len() + 1;
+                arms.push(format!("w.tags LIKE ?{idx}"));
+                params.push(Value::from(format!("%\"{}\"%", tag)));
+            }
+            sql.push_str(&format!(" AND ({})", arms.join(" OR ")));
+        }
+
         if self.due_only {
             if let Some(expr) = due_expr {
                 sql.push_str(&format!(" AND {expr}"));
@@ -234,8 +266,10 @@ pub async fn db_get_words_page(
     starred: Option<bool>,
     enriched: Option<bool>,
     source: Option<String>,
+    tags: Option<Vec<String>>,
     due_only: Option<bool>,
     sort_by: Option<String>,
+    sort_desc: Option<bool>,
     date_field: Option<String>,
     date_from: Option<String>,
     date_to: Option<String>,
@@ -252,8 +286,10 @@ pub async fn db_get_words_page(
         starred: starred.unwrap_or(false),
         enriched,
         source: source.filter(|s| !s.trim().is_empty() && s != "all"),
+        tags: tags.unwrap_or_default(),
         due_only: due_only.unwrap_or(false),
         sort_by: sort_by.unwrap_or_else(|| "recent".to_string()),
+        sort_desc: sort_desc.unwrap_or(false),
         date_field,
         date_from,
         date_to,
@@ -277,9 +313,27 @@ pub async fn db_get_words_page(
     let mut where_sql = String::new();
     filters.push_where(&mut where_sql, &mut params, due_expr.as_deref());
 
+    // Direction suffix: the sorts that support both ways take it from the
+    // caller (alpha/category default ascending, everything else descending).
+    // "due" keeps its own shape — the CASE already IS the sort.
+    let dir = if filters.sort_desc { "DESC" } else { "ASC" };
     let order_by = match filters.sort_by.as_str() {
-        "alpha" => " ORDER BY LOWER(w.word) ASC".to_string(),
-        "freq" => " ORDER BY w.word_freq DESC, w.created_at DESC".to_string(),
+        "alpha" => format!(" ORDER BY LOWER(w.word) {dir}, w.word {dir}"),
+        "alpha-desc" => " ORDER BY LOWER(w.word) DESC, w.word DESC".to_string(),
+        "freq" => format!(" ORDER BY w.word_freq {}, w.created_at DESC", if filters.sort_desc { "ASC" } else { "DESC" }),
+        // Difficulty: CEFR tier A1→C2, unknown-level words last. A CASE maps
+        // the stored level strings onto comparable integers; sorting DESC
+        // puts the hardest (C2) first — "difficulty descending".
+        "difficulty" => format!(
+            " ORDER BY (CASE w.level WHEN 'A1' THEN 1 WHEN 'A2' THEN 2 WHEN 'B1' THEN 3 WHEN 'B2' THEN 4 WHEN 'C1' THEN 5 WHEN 'C2' THEN 6 ELSE 7 END) {dir}, LOWER(w.word) ASC"
+        ),
+        // Category: sort by the tags JSON text (most words carry exactly one
+        // tag — the 1000-words import wrote its 分类 there, and `["X"]`
+        // sorts by X). Tag-less words ('[]') sink to the end regardless of
+        // direction. Plain TEXT on both backends, so no translation needed.
+        "category" => format!(
+            " ORDER BY (CASE WHEN COALESCE(w.tags, '[]') = '[]' THEN 1 ELSE 0 END), w.tags {dir}, LOWER(w.word) ASC"
+        ),
         // Due-first: review-ready words bubble to the top, the rest fall
         // back to alphabetical — the list doubles as a "what should I
         // review next" view.
@@ -411,7 +465,8 @@ pub async fn db_get_word_detail(
     let word = db::fetch_one(
         &db,
         "SELECT w.id, w.word, w.word_type, w.level, w.word_freq, w.mnemonic, w.notes, w.source, w.created_at,
-                    COALESCE(sr.srs_level, 0), sr.next_review_at, w.enrichment_text, w.enrichment_json
+                    COALESCE(sr.srs_level, 0), sr.next_review_at, w.enrichment_text, w.enrichment_json,
+                    COALESCE(w.tags, '[]')
              FROM words w
              LEFT JOIN srs_records sr ON sr.entity_id = w.id AND sr.entity_type = 'word'
          WHERE w.id = ?1",
@@ -431,6 +486,11 @@ pub async fn db_get_word_detail(
                 next_review_at: row.get(10)?,
                 enrichment_text: row.get(11)?,
                 enrichment_json: row.get(12)?,
+                tags: row
+                    .get::<String>(13)
+                    .ok()
+                    .and_then(|s| serde_json::from_str(&s).ok())
+                    .unwrap_or_default(),
                 definitions: vec![],
             })
         },
@@ -456,4 +516,34 @@ pub async fn db_get_word_detail(
     .await?;
 
     Ok(WordDetail { definitions, ..word })
+}
+
+/// Every distinct category tag in use, with its word count — drives the
+/// Words list's tag filter chips. Aggregated in Rust (not GROUP BY json_each)
+/// because the Postgres SQL translator rewrites `json_each` in FROM position
+/// only, and a 10k-row tags column is ~400KB of raw text — trivial to scan
+/// once and fold.
+#[crate::shim::command]
+pub async fn db_list_word_tags(conn: State<'_, AppState>) -> Result<Vec<WordTagCount>, String> {
+    let db = db::conn(&conn)?;
+    let tag_rows: Vec<String> = db::fetch_all(
+        &db,
+        "SELECT tags FROM words WHERE COALESCE(tags, '[]') != '[]'",
+        (),
+        |r| r.get::<String>(0),
+    )
+    .await?;
+    let mut counts = std::collections::BTreeMap::new();
+    for tags_json in &tag_rows {
+        if let Ok(arr) = serde_json::from_str::<Vec<String>>(tags_json) {
+            for t in arr {
+                *counts.entry(t).or_insert(0i64) += 1;
+            }
+        }
+    }
+    // Most-used first, tag name as the stable tiebreaker.
+    let mut out: Vec<WordTagCount> =
+        counts.into_iter().map(|(tag, count)| WordTagCount { tag, count }).collect();
+    out.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.tag.cmp(&b.tag)));
+    Ok(out)
 }

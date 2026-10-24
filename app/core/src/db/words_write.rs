@@ -199,6 +199,35 @@ fn validate_status(status: &str) -> Result<&str, String> {
     }
 }
 
+/// Replace a word's category tags wholesale (the detail panel's tag editor —
+/// a small multi-select, not an incremental add/remove). Empty vec clears
+/// the category. Quotes are stripped per tag: the list filter probes
+/// `tags LIKE '%"tag"%'` on the serialized JSON, so a `"` inside a tag would
+/// break the probe's boundaries. Like the status/star toggles this is a quiet
+/// annotation — `updated_at` is deliberately NOT bumped, keeping the
+/// recent-sort stable.
+#[crate::shim::command]
+pub async fn db_set_word_tags(
+    word_id: i64,
+    tags: Vec<String>,
+    conn: State<'_, AppState>,
+) -> Result<(), String> {
+    let db = db::conn(&conn)?;
+    let cleaned: Vec<String> = tags
+        .into_iter()
+        .map(|t| t.trim().replace('"', "").to_string())
+        .filter(|t| !t.is_empty())
+        .collect();
+    let tags_json = serde_json::to_string(&cleaned).map_err(|e| e.to_string())?;
+    db.execute(
+        "UPDATE words SET tags = ?1 WHERE id = ?2",
+        params![tags_json, word_id],
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[crate::shim::command]
 pub async fn db_set_word_status(
     word_id: i64,
@@ -239,6 +268,23 @@ pub async fn db_add_word_enriched(
     // this used to issue: the older form left the connection stuck inside an
     // open transaction whenever an intermediate `?` bailed out early.
     let tx = db.transaction().await.map_err(|e| e.to_string())?;
+
+    // Guard: a garbage/empty explanation must never clobber an existing one.
+    // AI explanations are expensive to regenerate — a truncated stream, an
+    // aborted bulk run, or a future caller bug must not be able to wipe them
+    // by writing near-empty text over a good analysis. New words still
+    // accept short text (their first enrichment may legitimately be brief);
+    // only the overwrite of an existing explanation is refused.
+    let has_existing = db::fetch_optional(
+        &tx,
+        "SELECT LENGTH(enrichment_text) FROM words WHERE word = ?1",
+        params![word.clone()],
+        |r| r.get::<Option<i64>>(0),
+    )
+    .await?;
+    if has_existing.flatten().unwrap_or(0) > 0 && enrichment.is_empty_explanation() {
+        return Err("refusing to overwrite an existing analysis with an empty explanation".into());
+    }
 
     let inserted_id = db::fetch_optional(
         &tx,

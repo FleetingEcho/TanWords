@@ -211,6 +211,18 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
         }}
         onReenrich={() => selected && enrichSelected(selected.word.word)}
         onGeneratePatterns={chatWord ? () => setGenWord(chatWord) : undefined}
+        tags={lookup ? undefined : selected?.word.tags}
+        tagOptions={list.tagOptions}
+        onSetTags={lookup ? undefined : (next) => {
+          if (!selected) return;
+          const id = selected.word.id;
+          // Optimistic row update; the tag chip row + category sort read it.
+          list.setWords((prev) => prev.map((w) => (w.id === id ? { ...w, tags: next } : w)));
+          detail.setSelected((prev) => (prev ? { ...prev, word: { ...prev.word, tags: next } } : prev));
+          void db.setWordTags(id, next).then((ok) => {
+            if (ok) void list.loadTagOptions();
+          });
+        }}
       />
   );
 
@@ -263,8 +275,13 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
         onDueOnlyChange={(v) => { list.setDueOnly(v); list.setPage(0); }}
         sourceFilter={list.sourceFilter}
         onSourceChange={(v) => { list.setSourceFilter(v); list.setPage(0); }}
+        tagOptions={list.tagOptions}
+        selectedTags={list.tagFilters}
+        onTagToggle={list.toggleTagFilter}
         sortBy={list.sortBy}
         onSortChange={list.changeSortBy}
+        sortDesc={list.sortDesc}
+        onSortDescToggle={list.toggleSortDesc}
         onDateFromChange={list.setDateFrom}
         onDateToChange={list.setDateTo}
         onRefresh={list.refreshList}

@@ -29,6 +29,10 @@ pub struct WordListItem {
     pub starred: bool,
     /// Learning state — see WORD_STATUSES.
     pub status: String,
+    /// Category tags from the JSON-array `words.tags` column (e.g. the
+    /// 1000-words import's 分类). Empty vec = uncategorized.
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 /// One page of the words list plus the total after filtering — lets the pager
@@ -46,6 +50,15 @@ pub struct WordPage {
 pub struct WordIdName {
     pub id: i64,
     pub word: String,
+}
+
+/// A category tag in use, with how many words carry it — the tag filter's
+/// chip list.
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct WordTagCount {
+    pub tag: String,
+    pub count: i64,
 }
 
 #[derive(Serialize)]
@@ -67,6 +80,9 @@ pub struct WordDetail {
     /// "legacy explanation, click to regenerate" for words enriched before
     /// the freeform-text rewrite. Never written to going forward.
     pub enrichment_json: Option<String>,
+    /// Category tags — see WordListItem::tags.
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -93,7 +109,7 @@ pub struct WordExtras {
 
 // ── Enrichment input struct (db_add_word_enriched payload) ──────────────────
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct WordEnrichmentInput {
     /// The freeform AI-generated markdown explanation.
@@ -105,6 +121,29 @@ pub struct WordEnrichmentInput {
     /// CEFR level from the "basic info" call. Only written if the word
     /// doesn't already have one (e.g. Reading already supplied it).
     pub level: Option<String>,
+}
+
+impl WordEnrichmentInput {
+    /// True when `text` carries no real explanation — whitespace, bare
+    /// punctuation, or a think-tag skeleton the stream parser didn't catch.
+    /// `db_add_word_enriched` refuses to overwrite an existing
+    /// `enrichment_text` with such content: AI explanations are expensive to
+    /// regenerate, so a failed/garbage stream must never clobber a good one.
+    pub fn is_empty_explanation(&self) -> bool {
+        let stripped = strip_to_content(&self.text);
+        stripped.len() < 30
+    }
+}
+
+/// Removes markdown emphasis, blockquote markers, whitespace and common
+/// punctuation so "content length" measures actual explanation prose.
+fn strip_to_content(s: &str) -> String {
+    s.chars()
+        .filter(|c| {
+            !c.is_whitespace()
+                && !matches!(c, '#' | '*' | '>' | '-' | '=' | '|' | '`' | '~' | '_' | '.' | ',' | '!' | '?' | ':' | ';' | '"' | '\'' | '(' | ')' | '[' | ']' | '{' | '}' | '<' | '/')
+        })
+        .collect()
 }
 
 // ── Batch add payload (db_add_words_batch) ───────────────────────────────────

@@ -7,7 +7,8 @@ import { useT } from "@/hooks/useT";
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
 const WORD_PAGE_SIZE_KEY = "vocab-words-page-size";
 const WORD_SORT_KEY = "vocab-words-sort";
-const SORT_VALUES: WordSortBy[] = ["recent", "alpha", "freq", "due"];
+const WORD_SORT_DESC_KEY = "vocab-words-sort-desc";
+const SORT_VALUES: WordSortBy[] = ["recent", "alpha", "freq", "due", "difficulty", "category"];
 
 /** Word list data, filters/pagination, multi-select, star and status toggling
  * for the Vocabulary page's word list. Kept separate from selection/enrichment
@@ -31,6 +32,9 @@ export function useVocabWordList(db: ReturnType<typeof useDB>) {
   const [enrichFilter, setEnrichFilter] = useState<EnrichFilter>("all");
   const [dueOnly, setDueOnly] = useState(false);
   const [sourceFilter, setSourceFilter] = useState("all");
+  // Category tags — multi-select, OR'd in SQL. tagOptions drives the chip row.
+  const [tagFilters, setTagFilters] = useState<string[]>([]);
+  const [tagOptions, setTagOptions] = useState<{ tag: string; count: number }[]>([]);
   const [sortBy, setSortBy] = useState<WordSortBy>(() => {
     const saved = localStorage.getItem(WORD_SORT_KEY) as WordSortBy | null;
     return saved && SORT_VALUES.includes(saved) ? saved : "recent";
@@ -39,6 +43,16 @@ export function useVocabWordList(db: ReturnType<typeof useDB>) {
     setSortBy(next);
     setPage(0);
     localStorage.setItem(WORD_SORT_KEY, next);
+  };
+  // Ascending/descending for the sorts that support both (alpha, category,
+  // difficulty; freq and recent keep their own shape). Persisted like sortBy.
+  const [sortDesc, setSortDesc] = useState(() => localStorage.getItem(WORD_SORT_DESC_KEY) === "1");
+  const toggleSortDesc = () => {
+    setSortDesc((prev) => {
+      localStorage.setItem(WORD_SORT_DESC_KEY, prev ? "0" : "1");
+      return !prev;
+    });
+    setPage(0);
   };
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -65,11 +79,26 @@ export function useVocabWordList(db: ReturnType<typeof useDB>) {
     setEnrichFilter("all");
     setDueOnly(false);
     setSourceFilter("all");
+    setTagFilters([]);
     setSearch("");
     setDateFrom("");
     setDateTo("");
     setPage(0);
   }, []);
+
+  /** Tag filter chip toggle — OR-semantics multi-select like the levels. */
+  const toggleTagFilter = useCallback((tag: string) => {
+    setTagFilters((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
+    setPage(0);
+  }, []);
+
+  // The tag chip row's options — every category in use with counts, loaded
+  // once per mount (plus on vocab-updated, when a bulk edit may have added
+  // categories). ~19 tags at 10k words, so no paging needed.
+  const loadTagOptions = useCallback(async () => {
+    setTagOptions(await db.listWordTags());
+  }, [db]);
+  useEffect(() => { void loadTagOptions(); }, [loadTagOptions]);
 
   // ── Multi-select (header actions: reanalyze / delete / mark status) ───
   const [selectMode, setSelectMode] = useState(false);
@@ -168,8 +197,10 @@ export function useVocabWordList(db: ReturnType<typeof useDB>) {
       starred: starredOnly,
       enrichFilter,
       source: sourceFilter,
+      tags: tagFilters,
       dueOnly,
       sortBy,
+      sortDesc,
       dateField: "updated",
       dateFrom: dateFrom || undefined,
       dateTo: dateTo || undefined,
@@ -187,12 +218,12 @@ export function useVocabWordList(db: ReturnType<typeof useDB>) {
     setWords(res.items);
     setTotal(res.total);
     setLoaded(true);
-  }, [db, debouncedSearch, levelFilters, statusFilters, starredOnly, enrichFilter, sourceFilter, dueOnly, sortBy, dateFrom, dateTo, page, pageSize]);
+  }, [db, debouncedSearch, levelFilters, statusFilters, starredOnly, enrichFilter, sourceFilter, tagFilters, dueOnly, sortBy, sortDesc, dateFrom, dateTo, page, pageSize]);
 
   useEffect(() => { void loadWords(); }, [loadWords]);
 
   const refreshList = async () => {
-    await Promise.all([loadWords(), loadAllWordsStats()]);
+    await Promise.all([loadWords(), loadAllWordsStats(), loadTagOptions()]);
     toast.success(t("vocab.refreshed"));
   };
 
@@ -269,7 +300,8 @@ export function useVocabWordList(db: ReturnType<typeof useDB>) {
     enrichFilter, setEnrichFilter,
     dueOnly, setDueOnly,
     sourceFilter, setSourceFilter,
-    sortBy, changeSortBy,
+    tagFilters, toggleTagFilter, tagOptions, loadTagOptions,
+    sortBy, changeSortBy, sortDesc, toggleSortDesc,
     search, setSearch,
     debouncedSearch,
     dateFrom, setDateFrom,

@@ -25,9 +25,16 @@ export interface ChatSessionDetail extends ChatSessionItem {
  *  reviews (or manually in select mode). Mirrors words.rs WORD_STATUSES. */
 export type WordStatus = "learning" | "familiar" | "mastered";
 /** Words list ordering — matches db_get_words_page's sort_by values. */
-export type WordSortBy = "recent" | "alpha" | "freq" | "due";
+/** Words list ordering — matches db_get_words_page's sort_by values.
+ *  difficulty = CEFR tier (A1 easy → C2 hard); category = the tags column. */
+export type WordSortBy = "recent" | "alpha" | "freq" | "due" | "difficulty" | "category";
 /** Enrichment filter: has an AI analysis, has none, or no constraint. */
 export type EnrichFilter = "all" | "enriched" | "raw";
+/** A category tag in use + how many words carry it (tag filter chips). */
+export interface WordTagCount {
+  tag: string;
+  count: number;
+}
 
 export interface WordListItem {
   id: number;
@@ -45,6 +52,8 @@ export interface WordListItem {
   enriched: boolean;
   starred: boolean;
   status: WordStatus;
+  /** Category tags (words.tags JSON array); empty = uncategorized. */
+  tags: string[];
 }
 
 /** One server-side page of the words list plus the post-filter total. */

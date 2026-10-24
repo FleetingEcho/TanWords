@@ -46,17 +46,24 @@ interface Props {
   /** Shown as a header action when provided — jumps to the pattern library
    * and generates example sentences for this word. */
   onGeneratePatterns?: () => void;
+  /** ── Category tags (vocab words only) ── current tags + the editor.
+   *  `tagOptions` are the existing categories; `onSetTags` persists. */
+  tags?: string[];
+  tagOptions?: { tag: string; count: number }[];
+  onSetTags?: (tags: string[]) => void;
 }
 
 export function WordDetailPanel({
   selected, wordId, enriched, enriching, enrichError, legacy, notes,
   lookupMode = false, lookupAdded = false, onAddToVocab,
   onNotesChange, onClearNotes, onRetry, onReenrich, onGeneratePatterns,
+  tags, tagOptions, onSetTags,
 }: Props) {
   const t = useT();
   const hasCustomAppBackground = useSettingsStore((state) => !!state.appBackgroundImage && state.appBackgroundVisible);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [tagsOpen, setTagsOpen] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   // Condensing the header on scroll keeps the word, its reading and the actions
@@ -171,6 +178,65 @@ export function WordDetailPanel({
               </div>
               {!condensed && selected.zh && (
                 <p className="truncate font-serif text-[1.05rem] leading-relaxed text-foreground/80">{selected.zh}</p>
+              )}
+              {/* Category tags — click to edit. Lookup-mode words (not yet in
+               * the vocabulary) have nothing to tag, so the row is hidden. */}
+              {!condensed && onSetTags && (
+                <div className="relative mt-1 flex flex-wrap items-center gap-1.5">
+                  {(tags ?? []).length === 0 ? (
+                    <button
+                      onClick={() => setTagsOpen((v) => !v)}
+                      className="text-[11px] text-muted-foreground/70 underline decoration-dotted underline-offset-2 hover:text-foreground"
+                    >
+                      {t("vocab.addCategory")}
+                    </button>
+                  ) : (
+                    (tags ?? []).map((tag) => (
+                      <button
+                        key={tag}
+                        onClick={() => setTagsOpen((v) => !v)}
+                        className="rounded bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground hover:bg-muted/70"
+                      >
+                        {tag}
+                      </button>
+                    ))
+                  )}
+                  {tagsOpen && (
+                    <>
+                      <div className="fixed inset-0 z-30" onClick={() => setTagsOpen(false)} />
+                      <div className="absolute left-0 top-full z-40 mt-1 w-56 rounded-lg border border-border bg-popover p-1.5 shadow-md">
+                        <div className="flex flex-wrap gap-1">
+                          {(tagOptions ?? []).map(({ tag }) => {
+                            const on = (tags ?? []).includes(tag);
+                            return (
+                              <button
+                                key={tag}
+                                onClick={() =>
+                                  onSetTags(on ? (tags ?? []).filter((t) => t !== tag) : [...(tags ?? []), tag])
+                                }
+                                className={`rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors ${
+                                  on ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/70"
+                                }`}
+                              >
+                                {tag}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <input
+                          placeholder={t("vocab.newCategory")}
+                          className="mt-1.5 w-full rounded border border-border bg-background px-2 py-1 text-[11px] outline-none focus:border-primary/50"
+                          onKeyDown={(e) => {
+                            if (e.key !== "Enter") return;
+                            const v = e.currentTarget.value.trim();
+                            if (v && !(tags ?? []).includes(v)) onSetTags([...(tags ?? []), v]);
+                            e.currentTarget.value = "";
+                          }}
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
             </div>
 

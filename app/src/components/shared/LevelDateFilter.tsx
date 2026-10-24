@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { WordSortBy, EnrichFilter, WordStatus } from "@/hooks/useDB";
-import { Filter, Star, CheckCheck, Circle, CircleDot, Sparkles, CalendarClock } from "lucide-react";
+import { Filter, Star, CheckCheck, Circle, CircleDot, Sparkles, CalendarClock, ArrowDownAZ, ArrowUpAZ } from "lucide-react";
 
 export type LevelValue = "C2" | "C1" | "B2" | "B1-";
 export type LevelFilter = "all" | LevelValue;
@@ -48,8 +48,15 @@ interface Props {
   onDueOnlyChange?: (v: boolean) => void;
   source?: string;
   onSourceChange?: (v: string) => void;
+  /** Category tag chips — shown when options are provided (Vocabulary). */
+  tagOptions?: { tag: string; count: number }[];
+  selectedTags?: string[];
+  onTagToggle?: (tag: string) => void;
   sortBy?: WordSortBy;
   onSortChange?: (v: WordSortBy) => void;
+  /** Ascending/descending toggle for the sorts that support both. */
+  sortDesc?: boolean;
+  onSortDescToggle?: () => void;
 }
 
 /** Filter + sort panel shared by the Vocabulary and Sentences list panels so
@@ -64,17 +71,19 @@ export function LevelDateFilter({
   enrichFilter, onEnrichFilterChange,
   dueOnly, onDueOnlyChange,
   source, onSourceChange,
-  sortBy, onSortChange,
+  tagOptions, selectedTags, onTagToggle,
+  sortBy, onSortChange, sortDesc, onSortDescToggle,
 }: Props) {
   const t = useT();
   const [open, setOpen] = React.useState(false);
   const multi = !!onLevelsChange;
   const selected = levels ?? [];
   const statusSelected = statuses ?? [];
+  const tagSelected = selectedTags ?? [];
   const levelCount = multi ? selected.length : levelFilter !== "all" ? 1 : 0;
   const activeCount = levelCount + (dateFrom || dateTo ? 1 : 0) + (starredOnly ? 1 : 0)
     + statusSelected.length + (enrichFilter && enrichFilter !== "all" ? 1 : 0)
-    + (dueOnly ? 1 : 0) + (source && source !== "all" ? 1 : 0);
+    + (dueOnly ? 1 : 0) + (source && source !== "all" ? 1 : 0) + tagSelected.length;
 
   const chipActive = (lv: LevelFilter) => {
     if (multi) return lv === "all" ? selected.length === 0 : selected.includes(lv as LevelValue);
@@ -198,6 +207,32 @@ export function LevelDateFilter({
             </div>
           )}
 
+          {/* Category chips — the 1000-words import's 分类. Capped at 12 in
+              the row with a "+N" overflow label to keep the panel sane if a
+              tag vocabulary ever grows big. */}
+          {onTagToggle && tagOptions && tagOptions.length > 0 && (
+            <div className="flex gap-1.5 flex-wrap">
+              {tagOptions.slice(0, 12).map(({ tag, count }) => (
+                <Button
+                  key={tag}
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onTagToggle(tag)}
+                  className={chipClass(tagSelected.includes(tag))}
+                  title={`${tag} · ${count}`}
+                >
+                  {tag}
+                  <span className="ml-0.5 opacity-50">{count}</span>
+                </Button>
+              ))}
+              {tagOptions.length > 12 && (
+                <span className="text-[10px] text-muted-foreground self-center">
+                  +{tagOptions.length - 12}
+                </span>
+              )}
+            </div>
+          )}
+
           {(onSourceChange || onSortChange) && (
             <div className="flex gap-1.5 flex-wrap">
               {onSortChange && (
@@ -213,8 +248,21 @@ export function LevelDateFilter({
                     <SelectItem value="alpha">{t("vocab.sort.alpha")}</SelectItem>
                     <SelectItem value="freq">{t("vocab.sort.freq")}</SelectItem>
                     <SelectItem value="due">{t("vocab.sort.due")}</SelectItem>
+                    <SelectItem value="difficulty">{t("vocab.sort.difficulty")}</SelectItem>
+                    <SelectItem value="category">{t("vocab.sort.category")}</SelectItem>
                   </SelectContent>
                 </Select>
+              )}
+              {onSortChange && onSortDescToggle && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onSortDescToggle}
+                  className={chipClass(!!sortDesc)}
+                  title={sortDesc ? t("vocab.sort.desc") : t("vocab.sort.asc")}
+                >
+                  {sortDesc ? <ArrowDownAZ className="w-2.5 h-2.5" /> : <ArrowUpAZ className="w-2.5 h-2.5" />}
+                </Button>
               )}
               {onSourceChange && (
                 <Select value={source ?? "all"} onValueChange={onSourceChange}>

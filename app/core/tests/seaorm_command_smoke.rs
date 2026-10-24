@@ -398,6 +398,121 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     .unwrap();
     assert!(words.iter().any(|w| w.word == "hello"));
 
+    // word enrichment write guard — AI explanations are expensive, so an
+    // empty/garbage explanation stream must never be able to clobber an
+    // existing good one (a truncated stream, an aborted bulk run, or a
+    // future caller bug). The guard refuses empty-over-good overwrites but
+    // still allows the first (brief) enrichment of a fresh word.
+    use tanwords_lib::db::{db_add_word_enriched, words_types::WordEnrichmentInput};
+    let good = WordEnrichmentInput {
+        text: "# hello 的讲解\n\n> Hello, world.\n> 你好，世界。这是一个足够长的讲解文本，用于通过空内容守卫的长度检查，确保正常的 enrichment 内容能够顺利写入数据库。".into(),
+        zh_short: Some("你好".into()),
+        level: Some("A1".into()),
+    };
+    let first = db_add_word_enriched(
+        "hello".into(),
+        "你好".into(),
+        Some("intj".into()),
+        good.clone(),
+        state.clone(),
+    )
+    .await
+    .unwrap();
+    assert!(!first.is_new, "second add of hello is not a new word");
+    // a real (long) re-enrichment replaces the old one fine
+    let replaced = db_add_word_enriched(
+        "hello".into(),
+        "你好".into(),
+        None,
+        WordEnrichmentInput {
+            text: "another full-length explanation that is definitely long enough to pass the guard because it contains plenty of real prose characters here".into(),
+            zh_short: None,
+            level: None,
+        },
+        state.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(replaced.id, first.id);
+    // an EMPTY explanation must be refused while a good one exists
+    for garbage in [
+        "",                                        // truly empty
+        "   \n\n  ",                               // whitespace only
+        "> - * # ---",                             // markdown skeleton
+        "短",                                      // too little real content
+    ] {
+        let refused = db_add_word_enriched(
+            "hello".into(),
+            "你好".into(),
+            None,
+            WordEnrichmentInput { text: garbage.into(), zh_short: None, level: None },
+            state.clone(),
+        )
+        .await;
+        assert!(
+            refused.is_err(),
+            "empty explanation must not overwrite the existing one: {garbage:?}"
+        );
+    }
+    // the good explanation survived all the refused writes
+    let survived: Option<String> = {
+        let conn = tanwords_lib::db::conn(&state).unwrap();
+        tanwords_lib::db::fetch_optional(
+            &conn,
+            "SELECT enrichment_text FROM words WHERE word = 'hello'",
+            (),
+            |r| r.get(0),
+        )
+        .await
+        .unwrap()
+    };
+    let survived = survived.unwrap_or_default();
+    assert!(
+        survived.contains("another full-length explanation"),
+        "the good explanation must survive refused empty writes: {survived}"
+    );
+    // a fresh word with brief text is still allowed (first enrichment may
+    // legitimately be short — the guard only protects overwrites)
+    let fresh = db_add_word_enriched(
+        "zzz-brand-new-guard-word".into(),
+        "新词".into(),
+        None,
+        WordEnrichmentInput { text: "short but fine for a new word".into(), zh_short: None, level: None },
+        state.clone(),
+    )
+    .await
+    .unwrap();
+    assert!(fresh.is_new);
+    {
+        let conn = tanwords_lib::db::conn(&state).unwrap();
+        let short: Option<String> = tanwords_lib::db::fetch_optional(
+            &conn,
+            "SELECT enrichment_text FROM words WHERE word = 'zzz-brand-new-guard-word'",
+            (),
+            |r| r.get(0),
+        )
+        .await
+        .unwrap();
+        assert_eq!(short.unwrap_or_default(), "short but fine for a new word");
+        // cleanup so later count assertions stay stable
+        tanwords_lib::db::scalar_i64(
+            &conn,
+            "DELETE FROM words WHERE word = 'zzz-brand-new-guard-word'",
+            (),
+        )
+        .await
+        .unwrap();
+        // restore hello to its pre-guard "never enriched" state so the
+        // un-enriched projections below keep their original meaning
+        tanwords_lib::db::scalar_i64(
+            &conn,
+            "UPDATE words SET enrichment_text = NULL WHERE word = 'hello'",
+            (),
+        )
+        .await
+        .unwrap();
+    }
+
     // word status + paged listing — db_set_word_status/_batch write the
     // status column and mirror familiar/mastered into user_known_words
     // (source 'vocab' — the DELETE on revert may only remove THAT row's
@@ -411,7 +526,7 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
         .await
         .unwrap();
     let page = db_get_words_page(
-        None, None, Some(vec!["familiar".into()]), None, None, None, None, None, None, None, None,
+        None, None, Some(vec!["familiar".into()]), None, None, None, None, None, None, None, None, None, None,
         50, 0, state.clone(),
     )
     .await
@@ -439,7 +554,7 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
         .await
         .unwrap();
     let page = db_get_words_page(
-        None, None, Some(vec!["familiar".into()]), None, None, None, None, None, None, None, None,
+        None, None, Some(vec!["familiar".into()]), None, None, None, None, None, None, None, None, None, None,
         50, 0, state.clone(),
     )
     .await
@@ -480,11 +595,65 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     let csv = db_export_words_csv(state.clone()).await.unwrap();
     assert!(csv.contains("word,type,level,zh,status,starred,source,created,updated"));
     assert!(csv.contains("hello"));
+    // ── Category tags: set, list, filter, and the category/difficulty sorts.
+    use tanwords_lib::db::{db_list_word_tags, db_set_word_tags};
+    db_set_word_tags(added.id, vec!["科学技术".into()], state.clone())
+        .await
+        .unwrap();
+    let tag_counts = db_list_word_tags(state.clone()).await.unwrap();
+    let sci = tag_counts.iter().find(|c| c.tag == "科学技术");
+    assert!(sci.is_some(), "科学技术 listed: {tag_counts:?}");
+    assert_eq!(sci.unwrap().count, 1);
+    // the tag filter matches (LIKE on the serialized JSON array)
+    let tagged = db_get_words_page(
+        None, None, None, None, None, None, Some(vec!["科学技术".into()]), None, None, None, None, None, None,
+        50, 0, state.clone(),
+    )
+    .await
+    .unwrap();
+    assert!(tagged.items.iter().any(|w| w.id == added.id && w.tags == vec!["科学技术".to_string()]));
+    // tags surface on page rows under the category sort too
+    let all = db_get_words_page(
+        None, None, None, None, None, None, None, None, Some("category".into()), None, None, None, None,
+        50, 0, state.clone(),
+    )
+    .await
+    .unwrap();
+    assert!(all.items.iter().any(|w| w.id == added.id && w.tags == vec!["科学技术".to_string()]));
+    // difficulty sort: hello has no level → sorts last but still present
+    let diff = db_get_words_page(
+        None, None, None, None, None, None, None, None, Some("difficulty".into()), None, None, None, None,
+        50, 0, state.clone(),
+    )
+    .await
+    .unwrap();
+    assert!(diff.items.iter().any(|w| w.id == added.id));
+    // quotes inside a tag are stripped at write time (they'd break the LIKE
+    // probe's JSON boundaries)
+    db_set_word_tags(added.id, vec!["bad\"tag".into()], state.clone())
+        .await
+        .unwrap();
+    let stripped = db_get_words_page(
+        None, None, None, None, None, None, None, None, None, None, None, None, None,
+        50, 0, state.clone(),
+    )
+    .await
+    .unwrap();
+    assert!(stripped.items.iter().any(|w| w.id == added.id && w.tags == vec!["badtag".to_string()]));
+    // clearing tags returns the word to uncategorized
+    db_set_word_tags(added.id, vec![], state.clone()).await.unwrap();
+    let cleared = db_get_words_page(
+        None, None, None, None, None, None, None, None, None, None, None, None, None,
+        50, 0, state.clone(),
+    )
+    .await
+    .unwrap();
+    assert!(cleared.items.iter().any(|w| w.id == added.id && w.tags.is_empty()));
     // paging contract: limit 1 returns one row but total reflects the whole
     // set; "due" sort must at least run (exercises the dual-format predicate's
     // parameter plumbing on both backends).
     let one = db_get_words_page(
-        None, None, None, None, None, None, None, Some("alpha".into()), None, None, None,
+        None, None, None, None, None, None, None, None, Some("alpha".into()), None, None, None, None,
         1, 0, state.clone(),
     )
     .await
@@ -492,7 +661,7 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     assert_eq!(one.items.len(), 1);
     assert!(one.total >= 1);
     let due_sorted = db_get_words_page(
-        None, None, None, None, None, None, Some(true), Some("due".into()), None, None, None,
+        None, None, None, None, None, None, None, Some(true), Some("due".into()), None, None, None, None,
         50, 0, state.clone(),
     )
     .await

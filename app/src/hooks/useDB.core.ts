@@ -7,7 +7,7 @@ import { logError, reportWriteError } from "./useDB.errors";
 import {
   WordListItem, WordDetail, TranslationItem, EnrichmentInput,
   DocumentDetail, DocumentListResult, DocumentFolder, DocStatus,
-  WordStatus, WordPage, WordSortBy, EnrichFilter, WordStats, ExportedWord,
+  WordStatus, WordPage, WordSortBy, EnrichFilter, WordStats, ExportedWord, WordTagCount,
 } from "./useDB.types";
 
 export function useDBCore() {
@@ -222,8 +222,10 @@ export function useDBCore() {
       starred?: boolean;
       enrichFilter?: EnrichFilter;
       source?: string;
+      tags?: string[];
       dueOnly?: boolean;
       sortBy?: WordSortBy;
+      sortDesc?: boolean;
       dateField?: "created" | "updated";
       dateFrom?: string;
       dateTo?: string;
@@ -239,8 +241,10 @@ export function useDBCore() {
           starred: opts.starred ? true : null,
           enriched: opts.enrichFilter === "enriched" ? true : opts.enrichFilter === "raw" ? false : null,
           source: opts.source && opts.source !== "all" ? opts.source : null,
+          tags: opts.tags?.length ? opts.tags : null,
           dueOnly: opts.dueOnly ? true : null,
           sortBy: opts.sortBy ?? "recent",
+          sortDesc: opts.sortDesc ? true : null,
           dateField: opts.dateField ?? "created",
           dateFrom: opts.dateFrom || null,
           dateTo: opts.dateTo || null,
@@ -250,6 +254,30 @@ export function useDBCore() {
       } catch (e) {
         logError("getWordsPage", e);
         return { items: [], total: 0 };
+      }
+    },
+    []
+  );
+
+  /** Every category tag in use with its word count — the tag filter chips. */
+  const listWordTags = useCallback(async (): Promise<WordTagCount[]> => {
+    try {
+      return await invoke<WordTagCount[]>("db_list_word_tags", {});
+    } catch (e) {
+      logError("listWordTags", e);
+      return [];
+    }
+  }, []);
+
+  /** Replace one word's category tags (detail panel editor). */
+  const setWordTags = useCallback(
+    async (wordId: number, tags: string[]): Promise<boolean> => {
+      try {
+        await invoke("db_set_word_tags", { wordId, tags });
+        return true;
+      } catch (e) {
+        reportWriteError("setWordTags", e, "保存分类失败");
+        return false;
       }
     },
     []
@@ -564,7 +592,7 @@ export function useDBCore() {
 
   return useMemo(() => ({
     getWordCount, getTranslationCount, getReviewCount,
-    getWords, getWordsPage, wordExists, listWordIds, getWordStats, exportWordsJson, exportWordsCsv, getWordDetail, getWordDetailByWord,
+    getWords, getWordsPage, wordExists, listWordIds, listWordTags, setWordTags, getWordStats, exportWordsJson, exportWordsCsv, getWordDetail, getWordDetailByWord,
     addWord, deleteWord, deleteWordsBatch, setWordStarred, setWordStatus, setWordsStatusBatch,
     saveTranslation, getTranslations,
     addWordEnriched, getWordExtras,
@@ -578,7 +606,7 @@ export function useDBCore() {
     getAllTags, addWordsBatch,
   }), [
     getWordCount, getTranslationCount, getReviewCount,
-    getWords, getWordsPage, wordExists, listWordIds, getWordStats, exportWordsJson, exportWordsCsv, getWordDetail, getWordDetailByWord,
+    getWords, getWordsPage, wordExists, listWordIds, listWordTags, setWordTags, getWordStats, exportWordsJson, exportWordsCsv, getWordDetail, getWordDetailByWord,
     addWord, deleteWord, deleteWordsBatch, setWordStarred, setWordStatus, setWordsStatusBatch,
     saveTranslation, getTranslations,
     addWordEnriched, getWordExtras,
