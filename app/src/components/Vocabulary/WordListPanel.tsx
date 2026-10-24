@@ -83,6 +83,8 @@ interface Props {
   onSortChange: (v: WordSortBy) => void;
   sortDesc: boolean;
   onSortDescToggle: () => void;
+  /** Resets every filter/sort dimension at once (the panel's clear-all). */
+  onClearAllFilters: () => void;
   page: number;
   pageSize: number;
   /** The searched term isn't in the vocabulary — offer an AI dictionary lookup */
@@ -141,7 +143,7 @@ interface Props {
 export function WordListPanel({
   words, total, selectedId, highlightId, search, levelFilter, starredOnly, onStarredOnlyChange, page, pageSize,
   statuses, onStatusesChange, enrichFilter, onEnrichFilterChange, dueOnly, onDueOnlyChange,
-  sourceFilter, onSourceChange, tagOptions, selectedTags, onTagToggle, sortBy, onSortChange, sortDesc, onSortDescToggle,
+  sourceFilter, onSourceChange, tagOptions, selectedTags, onTagToggle, sortBy, onSortChange, sortDesc, onSortDescToggle, onClearAllFilters,
   showAiLookup, lookupActive, dateFrom, dateTo,
   onSearchChange, onFilterChange,
   onDateFromChange, onDateToChange, onRefresh, onExport, exportingWords,
@@ -376,6 +378,7 @@ export function WordListPanel({
               onSortChange={onSortChange}
               sortDesc={sortDesc}
               onSortDescToggle={onSortDescToggle}
+              onClearAll={onClearAllFilters}
               dateFrom={dateFrom}
               dateTo={dateTo}
               onDateFromChange={onDateFromChange}

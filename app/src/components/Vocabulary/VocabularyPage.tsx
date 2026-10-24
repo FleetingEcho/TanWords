@@ -282,6 +282,7 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
         onSortChange={list.changeSortBy}
         sortDesc={list.sortDesc}
         onSortDescToggle={list.toggleSortDesc}
+        onClearAllFilters={list.clearAllFilters}
         onDateFromChange={list.setDateFrom}
         onDateToChange={list.setDateTo}
         onRefresh={list.refreshList}
