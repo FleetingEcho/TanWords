@@ -32,6 +32,12 @@ async function createThemeAwareHighlighter() {
   const highlighter = await createHighlighter();
   highlighter.getLoadedThemes = () => {
     const root = document.documentElement;
+    // Force-light surfaces (the sticky window) paint a light pastel page AND
+    // a light `pre` background no matter the app theme — github-dark token
+    // colours then render as pale text on a pale block ("invisible code").
+    // The marked root claims github-light even when <html> still carries the
+    // app's dark class (settings bootstrap may add it after load).
+    if (root.classList.contains("force-light")) return ["github-light"];
     if (root.classList.contains("theme-tokyo-night")) return ["tokyo-night"];
     return root.classList.contains("dark") ? ["github-dark"] : ["github-light"];
   };

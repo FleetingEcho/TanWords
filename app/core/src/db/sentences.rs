@@ -1,8 +1,10 @@
 use crate::shim::State;
 use crate::db::params;
+use crate::db::Value;
 use serde::Serialize;
 
 use crate::{db, AppState};
+use sea_orm::DbErr;
 
 #[derive(Serialize)]
 pub struct SaveSentenceResult {
@@ -14,16 +16,16 @@ pub struct SaveSentenceResult {
 /// patterns + pattern_examples duo with a single flat table.
 #[derive(Serialize)]
 pub struct SentenceItem {
-    id: i64,
-    sentence: String,
-    zh: String,
-    level: Option<String>,
-    note: String,
-    source: String,
-    article_id: Option<i64>,
-    starred: bool,
-    created_at: String,
-    updated_at: String,
+    pub id: i64,
+    pub sentence: String,
+    pub zh: String,
+    pub level: Option<String>,
+    pub note: String,
+    pub source: String,
+    pub article_id: Option<i64>,
+    pub starred: bool,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[crate::shim::command]
@@ -54,6 +56,272 @@ pub async fn db_list_sentences(conn: State<'_, AppState>) -> Result<Vec<Sentence
     )
     .await
     .map_err(|e| e.to_string())
+}
+
+// ── Server-paged listing (filter bar + 10k-scale browsing) ────────────────
+
+/// Facet counts for the sentence filter bar. Each axis skips its own
+/// constraint (same self-exclusion contract as the words facets): a chip can
+/// never zero itself, but counts respect every OTHER active filter including
+/// search. NULL/unknown levels count in no bucket.
+#[derive(Serialize, Default, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SentenceFacets {
+    pub level_c2: i64,
+    pub level_c1: i64,
+    pub level_b2: i64,
+    pub level_b1_below: i64, // B1 + A2 + A1
+    pub starred: i64,
+    /// Source is a free-form column ('chat', 'generate', …) — no static enum
+    /// exists to chip against, so the bar gets the observed values with
+    /// counts, newest piles first.
+    pub sources: Vec<SentenceSourceCount>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SentenceSourceCount {
+    pub source: String,
+    pub count: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SentencePage {
+    pub items: Vec<SentenceItem>,
+    pub total: i64,
+    pub facets: SentenceFacets,
+}
+
+#[derive(Default)]
+struct SentenceFilters {
+    search: Option<String>,
+    levels: Vec<String>,
+    starred: bool,
+    source: Option<String>,
+    date_from: Option<String>,
+    date_to: Option<String>,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum FacetSkip {
+    None,
+    Levels,
+    Starred,
+    Sources,
+}
+
+const SENT_COLS: &str = "id, sentence, zh, level, note, source, article_id, starred, created_at, updated_at";
+
+fn read_sentence(row: &crate::db::Row) -> Result<SentenceItem, DbErr> {
+    Ok(SentenceItem {
+        id: row.get(0)?,
+        sentence: row.get(1)?,
+        zh: row.get(2)?,
+        level: row.get(3)?,
+        note: row.get(4)?,
+        source: row.get(5)?,
+        article_id: row.get(6)?,
+        // BIGINT 0/1 — read as i64 and compare (Postgres won't decode INT8 as
+        // bool); same convention as the legacy list above.
+        starred: row.get::<i64>(7)? != 0,
+        created_at: row.get(8)?,
+        updated_at: row.get(9)?,
+    })
+}
+
+impl SentenceFilters {
+    /// Appends the active filters as ` AND ...` fragments, pushing params in
+    /// placeholder order. Everything is dialect-safe on both SQLite and
+    /// Postgres (LIKE/ESCAPE, IN lists, string compares — the words facets on
+    /// Postgres failing with "group_concat does not exist" via a lone
+    /// SQLite-ism is why every clause here is portable). `skip` drops exactly
+    /// one axis so a facet never zeroes itself.
+    fn push_where(&self, sql: &mut String, params: &mut Vec<Value>, skip: FacetSkip) {
+        // Multi-token AND search across the fields the collapsed row or its
+        // expansion can show — the frontend splits the query the same way,
+        // and \-escaping keeps literal %/_ searchable.
+        if let Some(ref s) = self.search {
+            for token in s.split_whitespace() {
+                let idx = params.len() + 1;
+                params.push(Value::from(format!("%{}%", db::escape_like(token))));
+                sql.push_str(&format!(
+                    " AND (LOWER(s.sentence) LIKE ?{idx} ESCAPE '\\' OR LOWER(s.zh) LIKE ?{idx} ESCAPE '\\' OR LOWER(s.note) LIKE ?{idx} ESCAPE '\\' OR LOWER(s.source) LIKE ?{idx} ESCAPE '\\')"
+                ));
+            }
+        }
+
+        if skip != FacetSkip::Levels && !self.levels.is_empty() {
+            let mut arms: Vec<String> = Vec::with_capacity(self.levels.len());
+            for lv in &self.levels {
+                if lv == "B1-" {
+                    arms.push("s.level IN ('B1', 'A2', 'A1')".to_string());
+                } else {
+                    let idx = params.len() + 1;
+                    params.push(Value::from(lv.clone()));
+                    arms.push(format!("s.level = ?{idx}"));
+                }
+            }
+            sql.push_str(&format!(" AND ({})", arms.join(" OR ")));
+        }
+
+        if skip != FacetSkip::Starred && self.starred {
+            sql.push_str(" AND s.starred = 1");
+        }
+
+        if skip != FacetSkip::Sources {
+            if let Some(ref s) = self.source {
+                let idx = params.len() + 1;
+                params.push(Value::from(s.clone()));
+                sql.push_str(&format!(" AND COALESCE(s.source, 'manual') = ?{idx}"));
+            }
+        }
+
+        // Inclusive local-day range on updated_at, expressed as lexicographic
+        // text compares (timestamps are ISO text on both backends).
+        if let Some(ref from) = self.date_from {
+            if !from.is_empty() {
+                let idx = params.len() + 1;
+                params.push(Value::from(from.clone()));
+                sql.push_str(&format!(" AND s.updated_at >= ?{idx}"));
+            }
+        }
+        if let Some(ref to) = self.date_to {
+            if !to.is_empty() {
+                let idx = params.len() + 1;
+                params.push(Value::from(format!("{to} 23:59:59")));
+                sql.push_str(&format!(" AND s.updated_at <= ?{idx}"));
+            }
+        }
+    }
+}
+
+async fn sentence_facets(db: &crate::db::Conn, filters: &SentenceFilters) -> Result<SentenceFacets, String> {
+    let mut facets = SentenceFacets::default();
+
+    // Level GROUP BY, skipping the level axis only.
+    {
+        let mut w = String::from(" WHERE 1=1");
+        let mut params: Vec<Value> = Vec::new();
+        filters.push_where(&mut w, &mut params, FacetSkip::Levels);
+        let rows = db::fetch_all(
+            db,
+            &format!("SELECT CASE WHEN s.level IN ('B1','A2','A1') THEN 'b1_below' ELSE s.level END AS bucket, COUNT(*) FROM sentences s{w} GROUP BY bucket"),
+            params,
+            |r| Ok((r.get::<Option<String>>(0)?, r.get::<i64>(1)?)),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+        for (bucket, n) in rows {
+            match bucket.as_deref() {
+                Some("C2") => facets.level_c2 = n,
+                Some("C1") => facets.level_c1 = n,
+                Some("B2") => facets.level_b2 = n,
+                Some("b1_below") => facets.level_b1_below = n,
+                _ => {} // NULL / unknown levels count nowhere
+            }
+        }
+    }
+
+    // Starred count, skipping the starred axis only.
+    {
+        let mut w = String::from(" WHERE 1=1");
+        let mut params: Vec<Value> = Vec::new();
+        filters.push_where(&mut w, &mut params, FacetSkip::Starred);
+        facets.starred = db::fetch_one(
+            db,
+            &format!("SELECT COUNT(*) FROM sentences s{w} AND s.starred = 1"),
+            params,
+            |r| r.get::<i64>(0),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+
+    // Observed sources with counts, skipping the source axis only. The
+    // COALESCE mirrors push_where's so a filtered 'manual' finds rows whose
+    // source column is '' or NULL.
+    {
+        let mut w = String::from(" WHERE 1=1");
+        let mut params: Vec<Value> = Vec::new();
+        filters.push_where(&mut w, &mut params, FacetSkip::Sources);
+        facets.sources = db::fetch_all(
+            db,
+            &format!("SELECT COALESCE(NULLIF(s.source, ''), 'manual') AS src, COUNT(*) FROM sentences s{w} GROUP BY src ORDER BY 2 DESC"),
+            params,
+            |r| Ok(SentenceSourceCount { source: r.get(0)?, count: r.get(1)? }),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(facets)
+}
+
+/// Filtered + paginated sentence list with facet counts riding along (one
+/// round trip, snapshot-consistent — same shape as db_get_words_page).
+#[crate::shim::command]
+pub async fn db_get_sentences_page(
+    search: Option<String>,
+    levels: Option<Vec<String>>,
+    starred: Option<bool>,
+    source: Option<String>,
+    date_from: Option<String>,
+    date_to: Option<String>,
+    sort_by: Option<String>,
+    sort_desc: Option<bool>,
+    limit: i64,
+    offset: i64,
+    conn: State<'_, AppState>,
+) -> Result<SentencePage, String> {
+    let db = db::conn(&conn)?;
+    let filters = SentenceFilters {
+        search: search.filter(|s| !s.trim().is_empty()).map(|s| s.trim().to_lowercase()),
+        levels: levels.unwrap_or_default(),
+        starred: starred.unwrap_or(false),
+        source: source.filter(|s| !s.trim().is_empty()),
+        date_from: date_from.filter(|s| !s.is_empty()),
+        date_to: date_to.filter(|s| !s.is_empty()),
+    };
+
+    let mut w = String::from(" WHERE 1=1");
+    let mut params: Vec<Value> = Vec::new();
+    filters.push_where(&mut w, &mut params, FacetSkip::None);
+
+    let total = db::fetch_one(
+        &db,
+        &format!("SELECT COUNT(*) FROM sentences s{w}"),
+        params.clone(),
+        |r| r.get::<i64>(0),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // "recent" = created order (the stable feed readers scroll), "alpha" for
+    // dictionary-style scans. Tiebreak on id so paging can't shuffle rows.
+    let order = match sort_by.as_deref() {
+        Some("alpha") => {
+            if sort_desc.unwrap_or(false) {
+                " ORDER BY LOWER(s.sentence) DESC, s.id DESC"
+            } else {
+                " ORDER BY LOWER(s.sentence) ASC, s.id ASC"
+            }
+        }
+        _ => " ORDER BY s.created_at DESC, s.id DESC",
+    };
+
+    let mut page_sql = format!("SELECT {SENT_COLS} FROM sentences s{w}{order}");
+    let mut page_params = params;
+    let limit_idx = page_params.len() + 1;
+    let offset_idx = page_params.len() + 2;
+    page_sql.push_str(&format!(" LIMIT ?{limit_idx} OFFSET ?{offset_idx}"));
+    page_params.push(Value::from(limit.clamp(1, 200)));
+    page_params.push(Value::from(offset.max(0)));
+    let items = db::fetch_all(&db, &page_sql, page_params, |r| read_sentence(r))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let facets = sentence_facets(&db, &filters).await?;
+    Ok(SentencePage { items, total, facets })
 }
 
 #[crate::shim::command]

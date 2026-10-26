@@ -8,7 +8,6 @@ import { WordListPanel } from "./WordListPanel";
 import { WordDetailPanel } from "./WordDetailPanel";
 import { SentenceLibrary } from "./SentenceLibrary";
 import { VocabViewTabs, type VocabView } from "./VocabViewTabs";
-import { ReviewPanel } from "./ReviewPanel";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { useVocabWordList } from "./hooks/useVocabWordList";
 import { useVocabWordDetail } from "./hooks/useVocabWordDetail";
@@ -68,19 +67,7 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
     }
   };
 
-  // Review is wired again: the switcher's third tab renders ReviewPanel
-  // full-area (FSRS cards), with the due-count pill in VocabViewTabs.
   const [view, setView] = useState<VocabView>("words");
-  // FSRS review backlog shown as the Review tab's count pill; refreshed on
-  // mount, on vocab changes, and after each finished review round.
-  const [reviewCount, setReviewCount] = useState(0);
-  useEffect(() => {
-    let cancelled = false;
-    const loadCount = () => void db.getReviewCount().then((n) => { if (!cancelled) setReviewCount(n); });
-    loadCount();
-    window.addEventListener("vocab-updated", loadCount);
-    return () => { cancelled = true; window.removeEventListener("vocab-updated", loadCount); };
-  }, [db]);
   // Below lg the list+detail split collapses into list-with-overlay; the same
   // flag gates the desktop-only auto-select below.
   const narrow = useIsNarrow();
@@ -170,6 +157,46 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
     // eslint-disable-next-line react-hooks/exhaustive-deps -- guards cover the stale-closure surface
   }, [list.words, list.loaded, pendingJumpId, narrow, wordsLayout]);
 
+  // ── Selection movement (keyboard ↑/↓/j/k in the list, ‹/› in the detail
+  // header) — one mover shared by both. The delta is in absolute rows of the
+  // filtered list (±1, or ±pageSize for PgUp/PgDn); crossing the current
+  // page's edge flips the page and lands on its first/last row, which the
+  // effect below performs once the new page's rows arrive.
+  const pendingRowRef = useRef<"first" | "last" | null>(null);
+  const moveSelection = (delta: number) => {
+    const words = list.visibleWords;
+    if (list.total === 0 || words.length === 0) return;
+    const idx = detail.selected ? words.findIndex((w) => w.id === detail.selected!.word.id) : -1;
+    const absBase = idx === -1 ? list.page * list.pageSize + (delta > 0 ? -1 : 0) : list.page * list.pageSize + idx;
+    const clamped = Math.min(Math.max(0, absBase + delta), list.total - 1);
+    const targetPage = Math.floor(clamped / list.pageSize);
+    if (targetPage !== list.page) {
+      pendingRowRef.current = clamped - targetPage * list.pageSize === 0 ? "first" : "last";
+      list.setPage(targetPage);
+    } else {
+      const w = words[clamped - list.page * list.pageSize];
+      if (w) void detail.selectWord(w);
+    }
+  };
+  useEffect(() => {
+    const edge = pendingRowRef.current;
+    if (!edge || !list.loaded) return;
+    pendingRowRef.current = null;
+    const words = list.words;
+    if (words.length === 0) return;
+    void detail.selectWord(edge === "first" ? words[0] : words[words.length - 1]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fires when a page flip lands its rows
+  }, [list.loaded]);
+
+  // ‹/› affordance in the detail header: enabled flags track the selected
+  // word's absolute index in the filtered list (words page only — the
+  // dictionary lookup has no list position).
+  const selectedAbsIdx = (() => {
+    if (!detail.selected || detail.lookup) return null;
+    const i = list.visibleWords.findIndex((w) => w.id === detail.selected!.word.id);
+    return i === -1 ? null : list.page * list.pageSize + i;
+  })();
+
   // ── Render ──────────────────────────────────────────────────────────────
 
   const { selected, lookup, notes, enriching, enrichError, effectiveEnriching, selectedWordJobRunning, streamingEnriched } = detail;
@@ -213,6 +240,10 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
         onGeneratePatterns={chatWord ? () => setGenWord(chatWord) : undefined}
         tags={lookup ? undefined : selected?.word.tags}
         tagOptions={list.tagOptions}
+        onPrevWord={lookup ? undefined : () => moveSelection(-1)}
+        onNextWord={lookup ? undefined : () => moveSelection(1)}
+        hasPrevWord={selectedAbsIdx !== null && selectedAbsIdx > 0}
+        hasNextWord={selectedAbsIdx !== null && selectedAbsIdx < list.total - 1}
         onSetTags={lookup ? undefined : (next) => {
           if (!selected) return;
           const id = selected.word.id;
@@ -226,7 +257,7 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
       />
   );
 
-  const viewTabs = <VocabViewTabs view={view} onSelect={setView} reviewCount={reviewCount} />;
+  const viewTabs = <VocabViewTabs view={view} onSelect={setView} />;
 
   return (
     <div className="flex h-full flex-col">
@@ -235,17 +266,7 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
         * full-width bordered strip for two words, sitting directly above a
         * heading that repeated the selected one, was a row of chrome the page
         * paid for twice. */}
-      {view === "review" ? (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="px-4 pt-5 pb-2">{viewTabs}</div>
-          <ReviewPanel
-            onExit={() => setView("words")}
-            // A finished round can promote words to "mastered" and drains the
-            // due queue — let the list and the tab pill both refresh.
-            onFinished={() => window.dispatchEvent(new CustomEvent("vocab-updated"))}
-          />
-        </div>
-      ) : view === "sentences" ? (
+      {view === "sentences" ? (
         <SentenceLibrary initialSentenceId={initialSentenceId} viewTabs={viewTabs} />
       ) : (<>
       <div className="flex min-h-0 flex-1">
@@ -283,6 +304,7 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
         sortDesc={list.sortDesc}
         onSortDescToggle={list.toggleSortDesc}
         onClearAllFilters={list.clearAllFilters}
+        facets={list.facets}
         onDateFromChange={list.setDateFrom}
         onDateToChange={list.setDateTo}
         onRefresh={list.refreshList}
@@ -306,6 +328,7 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
         onToggleCollapsed={toggleListCollapsed}
         selectedIds={list.selectedIds}
         onToggleSelect={list.toggleWordSelect}
+        onMoveSelection={moveSelection}
         onSelectAll={list.selectAllWords}
         onClearSelection={list.clearWordSelection}
         onReanalyzeSelected={reanalyzeSelected}

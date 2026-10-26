@@ -10,6 +10,10 @@
         // (The app's auto-dark script used to run here too; dark mode's
         // near-white --foreground made note text unreadable on the yellow.)
         document.documentElement.style.colorScheme = "light";
+        // Marker for codeBlockShiki's theme pick: this surface is pastel-
+        // light even when the app runs dark, so shiki must use github-light
+        // here regardless of any "dark" class the settings bootstrap adds.
+        document.documentElement.classList.add("force-light");
       })();
     </script>
     <style>

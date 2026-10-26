@@ -10,6 +10,24 @@ import { ReactNodeViewRenderer } from "@tiptap/react";
 import { CodeBlockView } from "./CodeBlockView";
 
 export const CodeBlockWithLanguage = CodeBlock.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      // User-tintable paint (2026-10): marks are disabled inside code blocks
+      // (Shiki owns per-token colours), so these BLOCK-LEVEL attrs are the
+      // sticky toolbar's way to recolour a block. `null` = "default" so
+      // attrsToProps drops unset blocks instead of writing attr noise into
+      // every save; the adapter round-trips unset attrs as absent both ways.
+      backgroundColor: {
+        default: null as string | null,
+        parseHTML: (el) => el.getAttribute("data-background-color"),
+      },
+      textColor: {
+        default: null as string | null,
+        parseHTML: (el) => el.getAttribute("data-text-color"),
+      },
+    };
+  },
   renderHTML({ node, HTMLAttributes }) {
     // The stock shape — `<pre><code class="language-x">` — plus
     // `data-language` on BOTH elements: `documentExport` finds mermaid
@@ -18,10 +36,25 @@ export const CodeBlockWithLanguage = CodeBlock.extend({
     // shape; without it both export steps silently match nothing. The class
     // stays, so paste/import still parses. Only serialization is affected —
     // the live editor renders through the node view below, not this.
+    // Custom tints fold into the serialized <pre>'s inline style so exported
+    // HTML keeps the user's colours even outside the app.
+    const tinted: Record<string, string> = {};
+    const style: string[] = [];
+    if (node.attrs.backgroundColor) {
+      tinted["data-background-color"] = node.attrs.backgroundColor;
+      style.push(`background-color: ${node.attrs.backgroundColor}`);
+    }
+    if (node.attrs.textColor) {
+      tinted["data-text-color"] = node.attrs.textColor;
+      tinted["data-toned"] = "true";
+      style.push(`color: ${node.attrs.textColor}`);
+    }
     return [
       "pre",
       mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
         "data-language": node.attrs.language || null,
+        ...tinted,
+        ...(style.length ? { style: style.join("; ") } : {}),
       }),
       [
         "code",

@@ -1,33 +1,50 @@
 import React from "react";
-import { SentenceItem } from "@/hooks/useDB.sentences";
+import { SentenceFacets, SentenceItem, SentenceSortBy } from "@/hooks/useDB.sentences";
 import { useT } from "@/hooks/useT";
 import { LevelBadge } from "@/components/shared/LevelBadge";
 import { SpeakButton } from "@/components/ui/SpeakButton";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ListPaginator } from "@/components/shared/ListPaginator";
-import { LevelDateFilter, LevelFilter } from "@/components/shared/LevelDateFilter";
+import type { LevelValue } from "@/components/shared/LevelDateFilter";
+import { SentenceFilterBar } from "./filters/SentenceFilterBar";
 import { Plus, Sparkles, ListChecks, Trash2, X, RefreshCw, Star } from "lucide-react";
 import { hostCapabilities } from "@/platform";
 import { useSettingsStore } from "@/store/settingsStore";
 
 interface Props {
+  /** The current page's rows (server-paged) — NOT the whole library. */
   items: SentenceItem[];
+  total: number;
+  /** Filter-bar chip counts from the page query; null = stale core. */
+  facets: SentenceFacets | null;
+  /** Nothing on the page AND a filter is active → show the no-match copy. */
+  filteredToEmpty: boolean;
   expandedId: number | null;
   highlightId?: number;
   search: string;
   searchTokens: string[];
-  levelFilter: LevelFilter;
+  levels: LevelValue[];
   starredOnly: boolean;
+  source: string;
   dateFrom: string;
   dateTo: string;
+  sortBy: SentenceSortBy;
+  sortDesc: boolean;
   page: number;
   pageSize: number;
   onSearchChange: (v: string) => void;
-  onLevelFilterChange: (v: LevelFilter) => void;
+  onLevelsChange: (v: LevelValue[]) => void;
   onStarredOnlyChange: (v: boolean) => void;
+  onSourceChange: (v: string) => void;
   onDateFromChange: (v: string) => void;
   onDateToChange: (v: string) => void;
+  onSortChange: (v: SentenceSortBy) => void;
+  onSortDescToggle: () => void;
+  /** Resets every filter/sort dimension at once (the bar's clear-all). */
+  onClearAllFilters: () => void;
+  /** Reloads the current page (same button affordance as the Words list). */
+  onRefresh: () => void;
   onToggleExpand: (item: SentenceItem) => void;
   /** Double-click enters select mode (pre-selecting the sentence) or exits it */
   onDoubleClick: (item: SentenceItem) => void;
@@ -42,7 +59,8 @@ interface Props {
   selectMode: boolean;
   onToggleSelectMode: () => void;
   selectedIds: Set<number>;
-  onToggleSelect: (id: number) => void;
+  /** range = shift+click span select (anchor lives in the hook). */
+  onToggleSelect: (id: number, range?: boolean) => void;
   onSelectAll: () => void;
   onClearSelection: () => void;
   onDeleteSelected: () => void;
@@ -110,17 +128,23 @@ function findHiddenMatch(item: SentenceItem, sentence: string, tokens: string[])
  *  row per sentence, and clicking a row expands its translation / note /
  *  source inline right below it — no separate detail pane, so the sentence
  *  itself always gets the full width. Each row is its own first-class
- *  sentence (the old pattern template + child examples duo is gone). */
+ *  sentence (the old pattern template + child examples duo is gone).
+ *
+ *  Rows come server-paged and pre-filtered; the header's filter bar is the
+ *  same two-tier component family as the Words tab (SentenceFilterBar). `/`
+ *  focuses search from anywhere on the list. */
 export function SentenceList({
-  items, expandedId, highlightId, search, searchTokens, levelFilter, starredOnly, dateFrom, dateTo, page, pageSize,
-  onSearchChange, onLevelFilterChange, onStarredOnlyChange, onDateFromChange, onDateToChange,
+  items, total, facets, filteredToEmpty,
+  expandedId, highlightId, search, searchTokens,
+  levels, starredOnly, source, dateFrom, dateTo, sortBy, sortDesc, page, pageSize,
+  onSearchChange, onLevelsChange, onStarredOnlyChange, onSourceChange, onDateFromChange, onDateToChange, onSortChange, onSortDescToggle, onClearAllFilters, onRefresh,
   onToggleExpand, onDoubleClick, onPageChange, onPageSizeChange, onOpenAdd, onOpenGenerate, onRequestDelete, onReanalyze, reanalyzingId, onToggleStar,
   selectMode, onToggleSelectMode, selectedIds, onToggleSelect, onSelectAll, onClearSelection, onDeleteSelected, onReanalyzeSelected,
   viewTabs,
 }: Props) {
   const t = useT();
   const hasCustomAppBackground = useSettingsStore((state) => !!state.appBackgroundImage && state.appBackgroundVisible);
-  const paged = items.slice(page * pageSize, (page + 1) * pageSize);
+  const searchRef = React.useRef<HTMLInputElement>(null);
   const [jumpHighlightId, setJumpHighlightId] = React.useState<number | null>(highlightId ?? null);
   React.useEffect(() => {
     if (!highlightId) return;
@@ -128,6 +152,26 @@ export function SentenceList({
     const timer = window.setTimeout(() => setJumpHighlightId(null), 3000);
     return () => window.clearTimeout(timer);
   }, [highlightId]);
+
+  // "/" focuses search from anywhere on the feed (same affordance as the
+  // words list); Esc while typing gives the focus back to the list.
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("input, textarea, [contenteditable=true]")) {
+        if (e.key === "Escape" && target === searchRef.current) searchRef.current.blur();
+        return;
+      }
+      if (document.querySelector('[role="dialog"]')) return;
+      if (e.key === "/") {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
@@ -139,11 +183,27 @@ export function SentenceList({
           <div className="ml-auto flex items-center gap-1">
             <Button
               variant="ghost"
+              onClick={onRefresh}
+              title={t("vocab.refreshList")}
+              className="w-10 h-10 lg:w-6 lg:h-6 p-0 rounded-md flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
               onClick={onOpenAdd}
               title={t("vocab.sentences.addTooltip")}
               className="w-10 h-10 lg:w-6 lg:h-6 p-0 rounded-md flex items-center justify-center text-primary hover:bg-primary/10 transition-colors shrink-0"
             >
               <Plus className="w-3.5 h-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={onOpenGenerate}
+              title={t("vocab.sentences.generateSentence")}
+              className="w-10 h-10 lg:w-6 lg:h-6 p-0 rounded-md flex items-center justify-center text-primary hover:bg-primary/10 transition-colors shrink-0"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
             </Button>
             <Button
               variant="ghost"
@@ -202,6 +262,7 @@ export function SentenceList({
           * the container's edges on its own. */}
         <div className="relative">
           <input
+            ref={searchRef}
             type="text"
             value={search}
             onChange={(e) => onSearchChange(e.target.value.toLowerCase())}
@@ -213,15 +274,23 @@ export function SentenceList({
           </svg>
         </div>
 
-        <LevelDateFilter
-          levelFilter={levelFilter}
-          onLevelFilterChange={onLevelFilterChange}
+        <SentenceFilterBar
+          levels={levels}
+          onLevelsChange={onLevelsChange}
           starredOnly={starredOnly}
           onStarredOnlyChange={onStarredOnlyChange}
+          source={source}
+          onSourceChange={onSourceChange}
           dateFrom={dateFrom}
           dateTo={dateTo}
           onDateFromChange={onDateFromChange}
           onDateToChange={onDateToChange}
+          sortBy={sortBy}
+          onSortChange={onSortChange}
+          sortDesc={sortDesc}
+          onSortDescToggle={onSortDescToggle}
+          onClearAll={onClearAllFilters}
+          facets={facets}
         />
       </div>
 
@@ -230,12 +299,12 @@ export function SentenceList({
             (Add word / Translate / Look up) — these rows are library management, not
             reading material to look words up from. */}
         <div className="mx-auto w-full max-w-4xl divide-y divide-border" data-no-selection>
-          {paged.length === 0 && (
+          {items.length === 0 && (
             <div className="p-4 text-center text-sm text-muted-foreground">
-              {items.length === 0 && !search ? t("vocab.sentences.empty") : t("vocab.sentences.noMatch")}
+              {filteredToEmpty ? t("vocab.sentences.noMatch") : t("vocab.sentences.empty")}
             </div>
           )}
-          {paged.map((item) => {
+          {items.map((item) => {
             const sentence = item.sentence;
             const expanded = !selectMode && item.id === expandedId;
             const hiddenMatch = expanded ? null : findHiddenMatch(item, sentence, searchTokens);
@@ -254,7 +323,7 @@ export function SentenceList({
                     the first if it shares an element with it. */}
                 <div className={`border-l-2 ${item.starred ? "border-l-yellow-400" : "border-l-transparent"}`}>
                 <div
-                  onClick={() => (selectMode ? onToggleSelect(item.id) : onToggleExpand(item))}
+                  onClick={(e) => (selectMode ? onToggleSelect(item.id, e.shiftKey) : onToggleExpand(item))}
                   onDoubleClick={() => onDoubleClick(item)}
                   className={`flex items-center gap-2 px-4 py-2.5 lg:px-5 cursor-pointer hover:bg-muted/50 transition-colors ${
                     expanded ? `sticky top-0 z-10 ${hasCustomAppBackground ? "bg-background/70 backdrop-blur-xl" : "bg-background"}` : ""
@@ -344,15 +413,16 @@ export function SentenceList({
         </div>
       </div>
 
-      {items.length > 0 && (
+      {total > 0 && (
         <div className="shrink-0 border-y border-border lg:border-b-0">
           <ListPaginator
             className="mx-auto w-full max-w-4xl"
             page={page}
             pageSize={pageSize}
-            total={items.length}
+            total={total}
             onPageChange={onPageChange}
             onPageSizeChange={onPageSizeChange}
+            pageSizeOptions={[10, 20, 50, 100, 200, 500, 1000]}
           />
         </div>
       )}

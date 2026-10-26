@@ -56,10 +56,35 @@ export interface WordListItem {
   tags: string[];
 }
 
+/** Facet counts riding every words page — per-status / per-level-bucket /
+ *  starred pile sizes under the current filter set (each axis skips its own
+ *  constraint, so a chip never reports zero for itself). Mirrors the Rust
+ *  WordFilterFacets struct. */
+export interface WordFilterFacets {
+  learning: number;
+  familiar: number;
+  mastered: number;
+  levelC2: number;
+  levelC1: number;
+  levelB2: number;
+  /** The "B1−" starter bucket = B1 + A2 + A1. */
+  levelB1Below: number;
+  starred: number;
+}
+
+/** All-zero facets — what a failed/empty query reports (and the initial
+ *  state before the first page lands). */
+export const EMPTY_WORD_FACETS: WordFilterFacets = {
+  learning: 0, familiar: 0, mastered: 0,
+  levelC2: 0, levelC1: 0, levelB2: 0, levelB1Below: 0,
+  starred: 0,
+};
+
 /** One server-side page of the words list plus the post-filter total. */
 export interface WordPage {
   items: WordListItem[];
   total: number;
+  facets: WordFilterFacets;
 }
 
 /** Aggregate word counts for the Words page header/confirm dialogs. */
@@ -194,24 +219,6 @@ export interface DashboardStats {
   doc_count: number;
   recent_words: { id: number; word: string; zh: string; level: string; updated_at: string }[];
   recent_docs: { id: number; title: string; updated_at: string }[];
-}
-
-export type SrsState = "new" | "learning" | "review" | "relearning";
-export type SrsRating = "again" | "hard" | "good";
-
-export interface DueCard {
-  word_id: number;
-  word: string;
-  zh: string;
-  level: string | null;
-  context_sentence: string;
-  state: SrsState;
-}
-
-export interface ReviewResult {
-  next_review_at: string;
-  scheduled_days: number;
-  state: SrsState;
 }
 
 export interface SearchHistoryItem {

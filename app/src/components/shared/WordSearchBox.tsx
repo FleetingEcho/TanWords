@@ -25,15 +25,17 @@ import { LevelBadge } from "@/components/shared/LevelBadge";
 /** Placeholder shaped like a real candidate card (title row, usage note,
  * example, action row) so the dropdown doesn't jump when results land. */
 function CandidateSkeleton() {
+  /* Bars read off `foreground`, not the host `muted`: on light mobile
+   * surfaces muted-on-muted nearly blends to nothing (2026-10 report). */
   return (
     <div className="space-y-1.5 rounded-lg border border-border/50 bg-background/60 px-2 py-1.5">
       <div className="flex items-center gap-2">
-        <Skeleton className="h-3.5 w-20" />
-        <Skeleton className="h-3 w-10 rounded-full" />
-        <Skeleton className="h-3 w-12" />
+        <Skeleton className="h-3.5 w-20 bg-foreground/10" />
+        <Skeleton className="h-3 w-10 rounded-full bg-foreground/10" />
+        <Skeleton className="h-3 w-12 bg-foreground/10" />
       </div>
-      <Skeleton className="h-2.5 w-3/5" />
-      <Skeleton className="h-6 w-full" />
+      <Skeleton className="h-2.5 w-3/5 bg-foreground/10" />
+      <Skeleton className="h-6 w-full bg-foreground/10" />
     </div>
   );
 }
@@ -367,17 +369,17 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
                 Array.from({ length: Math.max(1, 3 - candidates.length) }, (_, i) => <CandidateSkeleton key={`sk-${i}`} />)}
             </div>
           ) : (
-          <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-2">
+          <div className="space-y-2 rounded-lg border border-border/60 bg-muted/50 p-2">
             {quickLoading && !quick && (
               <div className="space-y-1.5 px-1 py-0.5">
                 <div className="flex items-center gap-2">
-                  <Skeleton className="h-3.5 w-20" />
-                  <Skeleton className="h-3 w-14" />
-                  <Skeleton className="ml-auto h-3 w-8 rounded-full" />
+                  <Skeleton className="h-3.5 w-20 bg-foreground/10" />
+                  <Skeleton className="h-3 w-14 bg-foreground/10" />
+                  <Skeleton className="ml-auto h-3 w-8 rounded-full bg-foreground/10" />
                 </div>
-                <Skeleton className="h-2.5 w-full" />
-                <Skeleton className="h-2.5 w-4/5" />
-                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-2.5 w-full bg-foreground/10" />
+                <Skeleton className="h-2.5 w-4/5 bg-foreground/10" />
+                <Skeleton className="h-8 w-full bg-foreground/10" />
               </div>
             )}
             {quickError && <p className="px-1 text-xs text-destructive">{quickError}</p>}

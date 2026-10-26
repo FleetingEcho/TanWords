@@ -1,8 +1,10 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
-import { useDB, WordListItem, WordStatus, WordSortBy, EnrichFilter } from "@/hooks/useDB";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useDB, WordListItem, WordStatus, WordSortBy, EnrichFilter, WordFilterFacets } from "@/hooks/useDB";
 import { toast } from "sonner";
 import { LevelValue } from "../WordListPanel";
+import { loadWordFilters, persistWordFilters } from "../filters/wordFilterDefs";
 import { useT } from "@/hooks/useT";
+import { useRefreshOnFocus } from "@/hooks/useRefreshOnFocus";
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
 const WORD_PAGE_SIZE_KEY = "vocab-words-page-size";
@@ -23,18 +25,43 @@ export function useVocabWordList(db: ReturnType<typeof useDB>) {
   const [words, setWords] = useState<WordListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loaded, setLoaded] = useState(false);
+  /** Filter-bar chip counts, delivered with each page (self-excluded per
+   *  axis — the bar never shows a chip zeroing itself out). `null` until the
+   *  first faceted response lands — and permanently null against a stale
+   *  pre-facets core binary, in which case the bar hides counts entirely
+   *  instead of displaying zeros that lie. */
+  const [facets, setFacets] = useState<WordFilterFacets | null>(null);
 
   // ── Filters & sort — every state here feeds the SQL WHERE/ORDER BY
   // directly, so chips/sorts/search all take the same one-page round-trip.
-  const [levelFilters, setLevelFilters] = useState<LevelValue[]>([]);
-  const [statusFilters, setStatusFilters] = useState<WordStatus[]>([]);
-  const [starredOnly, setStarredOnly] = useState(false);
-  const [enrichFilter, setEnrichFilter] = useState<EnrichFilter>("all");
-  const [dueOnly, setDueOnly] = useState(false);
-  const [sourceFilter, setSourceFilter] = useState("all");
+  //
+  // The working set (everything except search/dates) persists across sessions
+  // — see filters/wordFilterDefs.ts for why and how it's sanitized.
+  const [initialFilters] = useState(loadWordFilters);
+  const [levelFilters, setLevelFilters] = useState<LevelValue[]>(initialFilters.levels);
+  const [statusFilters, setStatusFilters] = useState<WordStatus[]>(initialFilters.statuses);
+  const [starredOnly, setStarredOnly] = useState(initialFilters.starred);
+  const [enrichFilter, setEnrichFilter] = useState<EnrichFilter>(initialFilters.enrichFilter);
+  const [dueOnly, setDueOnly] = useState(initialFilters.dueOnly);
+  const [sourceFilter, setSourceFilter] = useState(initialFilters.source);
   // Category tags — multi-select, OR'd in SQL. tagOptions drives the chip row.
-  const [tagFilters, setTagFilters] = useState<string[]>([]);
+  const [tagFilters, setTagFilters] = useState<string[]>(initialFilters.tags);
   const [tagOptions, setTagOptions] = useState<{ tag: string; count: number }[]>([]);
+
+  // Snapshot the working set on every change. Search and the date range stay
+  // session-only on purpose (a stale "hidden by search" reopen is the classic
+  // "my words vanished" scare).
+  useEffect(() => {
+    persistWordFilters({
+      levels: levelFilters,
+      statuses: statusFilters,
+      starred: starredOnly,
+      enrichFilter,
+      dueOnly,
+      source: sourceFilter,
+      tags: tagFilters,
+    });
+  }, [levelFilters, statusFilters, starredOnly, enrichFilter, dueOnly, sourceFilter, tagFilters]);
   const [sortBy, setSortBy] = useState<WordSortBy>(() => {
     const saved = localStorage.getItem(WORD_SORT_KEY) as WordSortBy | null;
     return saved && SORT_VALUES.includes(saved) ? saved : "recent";
@@ -103,12 +130,41 @@ export function useVocabWordList(db: ReturnType<typeof useDB>) {
   // ── Multi-select (header actions: reanalyze / delete / mark status) ───
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const toggleWordSelect = (id: number) => setSelectedIds((prev) => {
-    const next = new Set(prev);
-    next.has(id) ? next.delete(id) : next.add(id);
-    return next;
-  });
-  const clearWordSelection = () => setSelectedIds(new Set());
+  /** Shift+click anchor (last plainly-toggled row) for range selection. */
+  const rangeAnchorRef = useRef<number | null>(null);
+  // Shift+click selects the whole span from the anchor to the clicked row —
+  // file-manager semantics; triage over a page is click, shift-click, done.
+  // The span is resolved on the CURRENT page's row order only: an anchor that
+  // scrolled off belongs to a different filtered set and must not reach
+  // across pages (a range is visually verifiable, a cross-page blast isn't).
+  const toggleWordSelect = (id: number, range = false) => {
+    const anchor = rangeAnchorRef.current;
+    if (range && anchor !== null && anchor !== id) {
+      const pageIds = words.map((w) => w.id);
+      const a = pageIds.indexOf(anchor);
+      const b = pageIds.indexOf(id);
+      if (a !== -1 && b !== -1) {
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          for (let i = lo; i <= hi; i++) next.add(pageIds[i]);
+          return next;
+        });
+        rangeAnchorRef.current = id;
+        return;
+      }
+    }
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+    rangeAnchorRef.current = id;
+  };
+  const clearWordSelection = () => {
+    setSelectedIds(new Set());
+    rangeAnchorRef.current = null;
+  };
   // "Select all" means the current page — the rest of the library stays
   // out of reach of bulk actions on purpose (10k accidental deletes, etc.).
   const selectAllWords = () => setSelectedIds(new Set(words.map((w) => w.id)));
@@ -127,6 +183,8 @@ export function useVocabWordList(db: ReturnType<typeof useDB>) {
     } else {
       setSelectMode(true);
       setSelectedIds(new Set([w.id]));
+      // Entering select mode on a word makes it the shift+click anchor.
+      rangeAnchorRef.current = w.id;
     }
   };
   const [deleteSelectedOpen, setDeleteSelectedOpen] = useState(false);
@@ -217,6 +275,11 @@ export function useVocabWordList(db: ReturnType<typeof useDB>) {
     }
     setWords(res.items);
     setTotal(res.total);
+    // `?? null`, not an all-zero stand-in: a stale pre-facets core binary
+    // must read as "counts unavailable" (hidden), never as "every pile is
+    // empty" (zeros). This also keeps the bar useful during web/core version
+    // skew across the four platforms.
+    setFacets(res.facets ?? null);
     setLoaded(true);
   }, [db, debouncedSearch, levelFilters, statusFilters, starredOnly, enrichFilter, sourceFilter, tagFilters, dueOnly, sortBy, sortDesc, dateFrom, dateTo, page, pageSize]);
 
@@ -242,6 +305,11 @@ export function useVocabWordList(db: ReturnType<typeof useDB>) {
     window.addEventListener("vocab-updated", handler);
     return () => window.removeEventListener("vocab-updated", handler);
   }, [loadWords]);
+
+  // Adds from sibling windows / other surfaces never dispatch into this
+  // document — the focus resync covers those paths (see useRefreshOnFocus).
+  // Stats tag along so the header totals/agents count catch up too.
+  useRefreshOnFocus(() => { loadWords(); loadAllWordsStats(); });
 
   // Server filter/paging means `words` IS the visible page — the alias keeps
   // the panel's prop name ("the rows to show", not "the whole library").
@@ -293,7 +361,7 @@ export function useVocabWordList(db: ReturnType<typeof useDB>) {
   };
 
   return {
-    words, setWords, total, loaded,
+    words, setWords, total, loaded, facets,
     levelFilters, setLevelFilters,
     statusFilters, setStatusFilters,
     starredOnly, setStarredOnly,

@@ -114,7 +114,43 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     // list sentences — exercises the `starred` BIGINT 0/1 -> bool READ on
     // Postgres. The fields are Serialize-only, so we assert the call succeeds.
     use tanwords_lib::db::db_list_sentences;
-    let _sentences = db_list_sentences(state.clone()).await.unwrap();
+    let sentences = db_list_sentences(state.clone()).await.unwrap();
+    assert!(
+        sentences.iter().any(|s| s.sentence == "I love Rust"),
+        "saved sentence must be visible in the list (user report: save → refresh showed empty)"
+    );
+
+    // Server-paged listing + facet counts (the sentence filter-bar path).
+    // Must run on BOTH backends — a lone SQLite-ism in here is exactly what
+    // broke word exports on the user's Postgres.
+    use tanwords_lib::db::{db_get_sentences_page, db_set_sentence_starred};
+    let page = db_get_sentences_page(None, None, None, None, None, None, None, None, 50, 0, state.clone())
+        .await
+        .unwrap();
+    assert!(page.total >= 1 && page.items.len() >= 1);
+    // A2 folds into the "B1 and below" bucket.
+    assert!(page.facets.level_b1_below >= 1, "A2 → b1_below facet: {:?}", page.facets);
+    let page = db_get_sentences_page(None, Some(vec!["B1-".into()]), None, None, None, None, None, None, 50, 0, state.clone())
+        .await
+        .unwrap();
+    assert!(page.total >= 1, "B1- bucket filters to the A2 sentence");
+    let empty = db_get_sentences_page(None, Some(vec!["C2".into()]), None, None, None, None, None, None, 50, 0, state.clone())
+        .await
+        .unwrap();
+    assert_eq!(empty.total, 0, "C2 matches nothing here");
+    // Multi-token search ("love rust" = two tokens) still matches one row.
+    let searched = db_get_sentences_page(Some("love rust".into()), None, None, None, None, None, None, None, 50, 0, state.clone())
+        .await
+        .unwrap();
+    assert_eq!(searched.total, 1);
+    // Starred facet vs starred-only page (skip-own-axis: the starred facet
+    // stays visible while the starred chip is active).
+    db_set_sentence_starred(page.items[0].id, true, state.clone()).await.unwrap();
+    let starred_page = db_get_sentences_page(None, None, Some(true), None, None, None, None, None, 50, 0, state.clone())
+        .await
+        .unwrap();
+    assert_eq!(starred_page.total, 1);
+    assert_eq!(starred_page.facets.starred, 1);
 
     // create a document and list it
     let doc_id = db_create_document(state.clone()).await.unwrap();
@@ -593,7 +629,9 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     assert_eq!(stats.un_enriched, 1);
     assert_eq!(stats.learning, 1);
     let csv = db_export_words_csv(state.clone()).await.unwrap();
-    assert!(csv.contains("word,type,level,zh,status,starred,source,created,updated"));
+    // tags/analysis are appended columns (Postgres-safe dialect SQL); a
+    // regression must not shrink the header back to the 9-column shape.
+    assert!(csv.contains("word,type,level,zh,status,starred,source,created,updated,tags,analysis"));
     assert!(csv.contains("hello"));
     // ── Category tags: set, list, filter, and the category/difficulty sorts.
     use tanwords_lib::db::{db_list_word_tags, db_set_word_tags};
@@ -649,6 +687,67 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     .await
     .unwrap();
     assert!(cleared.items.iter().any(|w| w.id == added.id && w.tags.is_empty()));
+    // ── Filter-bar facets (ride every page fetch). Known state here: hello
+    // alone, level A1, status learning, unstarred, untagged.
+    assert_eq!(cleared.facets.learning, 1);
+    assert_eq!(cleared.facets.familiar, 0);
+    assert_eq!(cleared.facets.mastered, 0);
+    // hello is A1 → folds into the "B1−" chip bucket (B1+A2+A1)
+    assert_eq!(cleared.facets.level_b1_below, 1);
+    assert_eq!(cleared.facets.level_c2, 0);
+    assert_eq!(cleared.facets.starred, 0);
+    // Facet self-exclusion: a statuses filter narrows the page but never
+    // zeroes the status counts themselves (and vice versa for levels) —
+    // otherwise the bar's chips would lie about the piles not being viewed.
+    let only_mastered = db_get_words_page(
+        None, None, Some(vec!["mastered".into()]), None, None, None, None, None, None, None, None, None, None,
+        50, 0, state.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(only_mastered.total, 0);
+    assert_eq!(only_mastered.facets.mastered, 0);
+    assert_eq!(only_mastered.facets.learning, 1, "status facet skips the status axis itself");
+    let only_c2 = db_get_words_page(
+        None, Some(vec!["C2".into()]), None, None, None, None, None, None, None, None, None, None, None,
+        50, 0, state.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(only_c2.total, 0);
+    assert_eq!(only_c2.facets.level_b1_below, 1, "level facet skips the level axis itself");
+    assert_eq!(only_c2.facets.level_c2, 0);
+    // …but the OTHER axes still constrain a facet: a non-matching search
+    // zeroes every count.
+    let no_match = db_get_words_page(
+        Some("zzz-definitely-not-present".into()), None, None, None, None, None, None, None, None, None, None, None, None,
+        50, 0, state.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(no_match.facets.learning, 0);
+    // starred facet: same self-exclusion (star hello, filter starred → the
+    // star count of the unstarred-filtered world is still 1).
+    {
+        let conn = tanwords_lib::db::conn(&state).unwrap();
+        tanwords_lib::db::scalar_i64(&conn, "UPDATE words SET starred = 1 WHERE word = 'hello'", ())
+            .await
+            .unwrap();
+    }
+    let starred_page = db_get_words_page(
+        None, None, None, Some(true), None, None, None, None, None, None, None, None, None,
+        50, 0, state.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(starred_page.total, 1);
+    assert_eq!(starred_page.facets.starred, 1, "starred facet skips the starred axis itself");
+    {
+        let conn = tanwords_lib::db::conn(&state).unwrap();
+        tanwords_lib::db::scalar_i64(&conn, "UPDATE words SET starred = 0 WHERE word = 'hello'", ())
+            .await
+            .unwrap();
+    }
     // paging contract: limit 1 returns one row but total reflects the whole
     // set; "due" sort must at least run (exercises the dual-format predicate's
     // parameter plumbing on both backends).
@@ -660,6 +759,8 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     .unwrap();
     assert_eq!(one.items.len(), 1);
     assert!(one.total >= 1);
+    // facets describe the whole filtered set, not the shipped page
+    assert_eq!(one.facets.learning, 1);
     let due_sorted = db_get_words_page(
         None, None, None, None, None, None, None, Some(true), Some("due".into()), None, None, None, None,
         50, 0, state.clone(),

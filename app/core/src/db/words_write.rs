@@ -277,7 +277,7 @@ pub async fn db_add_word_enriched(
     // only the overwrite of an existing explanation is refused.
     let has_existing = db::fetch_optional(
         &tx,
-        "SELECT LENGTH(enrichment_text) FROM words WHERE word = ?1",
+        "SELECT CAST(LENGTH(enrichment_text) AS BIGINT) FROM words WHERE word = ?1",
         params![word.clone()],
         |r| r.get::<Option<i64>>(0),
     )
@@ -454,8 +454,10 @@ pub async fn db_save_word_chat(
 // ── Words-only export (CSV / JSON payload for one-click export) ────────────
 
 /// One exported word row: list-visible fields plus the per-definition glosses
-/// aggregated as a single string (CSV keeps one row per word; the multi-sense
-/// JSON shape below preserves the details).
+/// aggregated as a single string, the category tags, and the AI analysis
+/// (enrichment_text). Tags/analysis land LAST both here and in the CSV header
+/// so consumers parsing by column position keep working. The analysis is
+/// free-form markdown full of newlines — the CSV writer quotes it.
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportedWord {
@@ -468,20 +470,36 @@ pub struct ExportedWord {
     pub source: String,
     pub created_at: String,
     pub updated_at: String,
+    /// Comma-joined category tags (raw column is a JSON array; flattened so a
+    /// spreadsheet row stays a string).
+    pub tags: String,
+    pub analysis: Option<String>,
 }
 
 #[crate::shim::command]
 pub async fn db_export_words_json(conn: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let db = db::conn(&conn)?;
+    // The zh-gloss aggregate is dialect SQL: SQLite GROUP_CONCAT (order via an
+    // ordered subquery) vs Postgres string_agg (ORDER BY inside the aggregate).
+    // Picking one literal broke exports on the remote backend with
+    // "function group_concat(text, unknown) does not exist".
+    let zh_agg = if db.backend() == sea_orm::DbBackend::Postgres {
+        "SELECT string_agg(zh, '; ' ORDER BY sort_order) FROM word_definitions d \
+         WHERE d.word_id = w.id AND zh IS NOT NULL AND TRIM(zh) != ''"
+    } else {
+        "SELECT GROUP_CONCAT(d.zh, '; ') FROM \
+         (SELECT zh FROM word_definitions WHERE word_id = w.id AND zh IS NOT NULL AND TRIM(zh) != '' ORDER BY sort_order) d"
+    };
     let rows: Vec<ExportedWord> = db::fetch_all(
         &db,
-        "SELECT w.word, w.word_type, w.level,
-                COALESCE((SELECT GROUP_CONCAT(d.zh, '; ') FROM
-                    (SELECT zh FROM word_definitions WHERE word_id = w.id AND zh IS NOT NULL AND TRIM(zh) != '' ORDER BY sort_order) d),
-                 '') as zh,
-                COALESCE(w.status, 'learning'), w.starred != 0, COALESCE(w.source, 'manual'), w.created_at, w.updated_at
-         FROM words w
-         ORDER BY LOWER(w.word)",
+        &format!(
+            "SELECT w.word, w.word_type, w.level,
+                    COALESCE(({zh_agg}), '') as zh,
+                    COALESCE(w.status, 'learning'), w.starred != 0, COALESCE(w.source, 'manual'), w.created_at, w.updated_at,
+                    w.tags, w.enrichment_text
+             FROM words w
+             ORDER BY LOWER(w.word)"
+        ),
         (),
         |row| {
             Ok(ExportedWord {
@@ -494,6 +512,8 @@ pub async fn db_export_words_json(conn: State<'_, AppState>) -> Result<serde_jso
                 source: row.get(6)?,
                 created_at: row.get(7)?,
                 updated_at: row.get(8)?,
+                tags: flatten_tags(row.get::<Option<String>>(9)?),
+                analysis: row.get(10)?,
             })
         },
     )
@@ -501,17 +521,32 @@ pub async fn db_export_words_json(conn: State<'_, AppState>) -> Result<serde_jso
     serde_json::to_value(&rows).map_err(|e| e.to_string())
 }
 
+/// The `tags` column stores a JSON array; for export/CSV it is flattened to
+/// "a, b". Anything that isn't a JSON array (legacy rows) passes through as-is.
+fn flatten_tags(raw: Option<String>) -> String {
+    match raw.as_deref().map(str::trim) {
+        None | Some("") => String::new(),
+        Some(s) if s.starts_with('[') => serde_json::from_str::<Vec<String>>(s)
+            .map(|v| v.join(", "))
+            .unwrap_or_else(|_| s.to_string()),
+        Some(s) => s.to_string(),
+    }
+}
+
 /// CSV with a header row; every field is wrapped in double quotes with inner
-/// quotes doubled, so commas/newlines inside glosses can't break a column.
+/// quotes doubled, so commas/newlines inside glosses or the AI analysis can't
+/// break a column. tags/analysis are appended last: consumers parsing by
+/// position keep working, and markdown newlines in the analysis stay inside
+/// one quoted field.
 #[crate::shim::command]
 pub async fn db_export_words_csv(conn: State<'_, AppState>) -> Result<String, String> {
     let words = db_export_words_json(conn).await?;
     let rows: Vec<ExportedWord> = serde_json::from_value(words).map_err(|e| e.to_string())?;
-    let mut out = String::from("word,type,level,zh,status,starred,source,created,updated\n");
+    let mut out = String::from("word,type,level,zh,status,starred,source,created,updated,tags,analysis\n");
     for w in &rows {
         let esc = |s: &str| format!("\"{}\"", s.replace('"', "\"\""));
         out.push_str(&format!(
-            "{},{},{},{},{},{},{},{},{}\n",
+            "{},{},{},{},{},{},{},{},{},{},{}\n",
             esc(&w.word),
             esc(w.word_type.as_deref().unwrap_or("")),
             esc(w.level.as_deref().unwrap_or("")),
@@ -521,6 +556,8 @@ pub async fn db_export_words_csv(conn: State<'_, AppState>) -> Result<String, St
             esc(&w.source),
             esc(&w.created_at),
             esc(&w.updated_at),
+            esc(&w.tags),
+            esc(w.analysis.as_deref().unwrap_or("")),
         ));
     }
     Ok(out)

@@ -1,16 +1,23 @@
-/** Web Stickies board (plan §4.4, S5).
+/** Web Stickies board (plan §4.4, S5) — "桌面便签墙": a desktop-style sticky
+ *  wall for the browser.
  *
  *  Desktop runs stickies as OS windows + the floating manager; this page is
  *  the WEB surface for the same data (`stickyBoard` capability gates it off
- *  on desktop). A responsive grid of colored cards, FTS search, click to edit
- *  in place through the SAME block editor the desktop notes use, autosave via
- *  `sticky_save_content` — so a note edited here shows up in the desktop
- *  stickies and vice versa (S5's cross-device acceptance).
- */
+ *  on desktop at the pageCatalog level — this file never renders there).
+ *  A CSS-columns masonry wall of pastel cards with a dashed quick-capture
+ *  composer in the first slot, pill search, and a right-side slide-over
+ *  editor sheet driven by the SAME block editor the desktop notes use,
+ *  autosaving via `sticky_save_content` — so a note edited here shows up in
+ *  the desktop stickies and vice versa (S5's cross-device acceptance).
+ *
+ *  Deliberately NOT on web: alwaysOnTop, opacity, window geometry, and the
+ *  translucent toggle are desktop-window concerns, as are the stickywin:*
+ *  events (web has no note windows); the note's `is_open` desktop flag is
+ *  never surfaced here. No isDesktopHost guards remain — this page is
+ *  web-only by construction. */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Plus, Search, StickyNote, Trash2, X } from "lucide-react";
+import { Loader2, Plus, StickyNote, X } from "lucide-react";
 import { invoke } from "@/ipc/backend";
-import { subscribe } from "@/ipc/events";
 import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
 import { blocksToStorage } from "@/lib/docFormat";
@@ -19,12 +26,20 @@ import { uploadDocumentImage } from "@/lib/documentAssets";
 import { LazyTiptapDocumentEditor } from "@/components/Documents/tiptap/LazyTiptapDocumentEditor";
 import type { DocEditorApi } from "@/components/Documents/tiptap/DocEditorApi";
 import type { Block } from "@/components/Documents/tiptap/blocks";
+import type { Editor as TiptapEditor } from "@tiptap/core";
+import { StickyToolbar } from "./StickyToolbar";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
-import { stickyColorHex, type StickyDetail, type StickyListItem } from "./stickyShared";
-import { isDesktopHost } from "@/platform";
+import {
+  STICKY_COLORS,
+  stickyColorHex,
+  stickyDerivedTitle,
+  type StickyDetail,
+  type StickyListItem,
+} from "./stickyShared";
+import { StickyWallCard } from "./StickyWallCard";
 
-/** Snake_case mirror of the core's `StickyListItem` (no serde rename). */
 const SAVE_DEBOUNCE_MS = 400;
+const SEARCH_DEBOUNCE_MS = 150;
 
 function parseBlocks(content: string): Block[] {
   try {
@@ -35,6 +50,43 @@ function parseBlocks(content: string): Block[] {
   }
 }
 
+/** Quick-capture composer — the wall's first masonry cell. One line in,
+ *  Enter creates the note (block shape mirrors stickyTemplates.ts exactly:
+ *  Block[] → blocksToStorage → sticky_create), Esc clears the draft. */
+function QuickComposer({
+  value,
+  busy,
+  placeholder,
+  onChange,
+  onSubmit,
+}: {
+  value: string;
+  busy: boolean;
+  placeholder: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <div className="mb-3 break-inside-avoid rounded-2xl border-2 border-dashed border-border/60 bg-transparent p-3">
+      <input
+        value={value}
+        disabled={busy}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            onSubmit();
+          } else if (e.key === "Escape") {
+            onChange("");
+          }
+        }}
+        placeholder={placeholder}
+        className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+      />
+    </div>
+  );
+}
+
 export function StickiesPage() {
   const t = useT();
   // Theme subscription so the editor chrome follows live changes.
@@ -42,11 +94,16 @@ export function StickiesPage() {
 
   const [items, setItems] = useState<StickyListItem[] | null>(null);
   const [query, setQuery] = useState("");
+  const [quickText, setQuickText] = useState("");
   const [editing, setEditing] = useState<StickyDetail | null>(null);
   const [editorBlocks, setEditorBlocks] = useState<Block[] | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<StickyListItem | null>(null);
   const [createBusy, setCreateBusy] = useState(false);
   const [saved, setSaved] = useState(true);
+  const [liveWords, setLiveWords] = useState(0);
+  /** Live tiptap instance, captured from the drawer's toolbarExtras render
+   *  prop so the fixed StickyToolbar row can drive it. */
+  const [drawerEditor, setDrawerEditor] = useState<TiptapEditor | null>(null);
   const editorApi = useRef<DocEditorApi | null>(null);
   const dirty = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -68,20 +125,14 @@ export function StickiesPage() {
     void useSettingsStore.getState().loadFromDB();
   }, []);
 
+  // Search is debounced 150ms; clearing the box snaps back to the full wall.
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => void reload(), query ? 150 : 0);
+    searchTimer.current = setTimeout(() => void reload(), query ? SEARCH_DEBOUNCE_MS : 0);
     return () => {
       if (searchTimer.current) clearTimeout(searchTimer.current);
     };
   }, [query, reload]);
-
-  // Desktop windows/manager change the shared data — keep the board honest.
-  useEffect(() => {
-    if (!isDesktopHost) return;
-    const stop = subscribe("stickywin:closed", () => void reload());
-    return stop;
-  }, [reload]);
 
   const scheduleSave = useCallback(() => {
     if (!editorApi.current || editingId.current === null) return;
@@ -94,42 +145,90 @@ export function StickiesPage() {
       const { content, contentText, wordCount } = blocksToStorage(editorApi.current.document);
       void invoke("sticky_save_content", {
         id: editingId.current, content, contentText, wordCount,
-      }).then(() => setSaved(true)).catch(() => { dirty.current = true; });
+      })
+        .then(() => {
+          setSaved(true);
+          setLiveWords(wordCount);
+        })
+        .catch(() => { dirty.current = true; });
     }, SAVE_DEBOUNCE_MS);
+  }, []);
+
+  const beginEdit = useCallback((detail: StickyDetail) => {
+    editingId.current = detail.id;
+    dirty.current = false;
+    setSaved(true);
+    setLiveWords(detail.word_count);
+    setEditorBlocks(parseBlocks(detail.content));
+    setEditing(detail);
   }, []);
 
   const openEditor = useCallback(async (item: StickyListItem) => {
     try {
       const detail = await invoke<StickyDetail | null>("sticky_get", { id: item.id });
       if (!detail) return;
-      editingId.current = item.id;
-      dirty.current = false;
-      setSaved(true);
-      setEditorBlocks(parseBlocks(detail.content));
-      setEditing(detail);
+      beginEdit(detail);
     } catch {
       // Locked/protected note: leave the board; toast-free for now.
     }
-  }, []);
+  }, [beginEdit]);
 
   const closeEditor = useCallback(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     editingId.current = null;
     editorApi.current = null;
+    setDrawerEditor(null);
     setEditing(null);
     setEditorBlocks(null);
     void reload();
   }, [reload]);
 
-  const createNote = useCallback(async () => {
+  /** New-button flow: blank note, then straight into the editor sheet. */
+  const createAndEdit = useCallback(async () => {
     setCreateBusy(true);
     try {
-      await invoke("sticky_create", {});
-      void reload();
+      // Flat wire shape — sticky_create returns the detail with top-level id.
+      const created = await invoke<StickyDetail>("sticky_create", {});
+      // A note created mid-search wouldn't match; drop the filter so the wall
+      // makes sense when the sheet closes.
+      if (query) setQuery("");
+      else void reload();
+      beginEdit(created);
     } finally {
       setCreateBusy(false);
     }
-  }, [reload]);
+  }, [beginEdit, query, reload]);
+
+  /** Quick capture: one line → one paragraph block (stickyTemplates.ts shape:
+   *  non-empty text blocks carry content as a styled inline array). */
+  const quickCreate = useCallback(async () => {
+    const line = quickText.trim();
+    if (!line || createBusy) return;
+    setCreateBusy(true);
+    try {
+      const blocks: Block[] = [
+        { type: "paragraph", props: {}, content: [{ type: "text", text: line, styles: {} }] },
+      ];
+      const payload = blocksToStorage(blocks);
+      await invoke("sticky_create", {
+        content: payload.content, contentText: payload.contentText, wordCount: payload.wordCount,
+      });
+      setQuickText("");
+      if (query) setQuery("");
+      else void reload();
+    } finally {
+      setCreateBusy(false);
+    }
+  }, [createBusy, query, quickText, reload]);
+
+  const changeColor = useCallback((color: string) => {
+    const current = editing;
+    if (!current || stickyColorHex(current.color) === stickyColorHex(color)) return;
+    // Optimistic — the sheet's chrome follows immediately, like the desktop
+    // note windows do; the IPC failure path is intentionally silent there too.
+    setEditing({ ...current, color });
+    void invoke("sticky_update_meta", { id: current.id, color }).catch(() => {});
+  }, [editing]);
 
   const trashNote = useCallback(async (item: StickyListItem) => {
     await invoke("sticky_delete", { id: item.id }).catch(() => {});
@@ -150,110 +249,109 @@ export function StickiesPage() {
     }
   }, []);
 
-  const editingTitle = editing?.title || "";
+  const editingTitle =
+    (editing && (editing.title || stickyDerivedTitle(editing.preview) || t("sticky.untitled"))) || "";
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
-      {/* Header: search + new */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2.5">
-        <div className="relative max-w-md flex-1">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t("sticky.searchPlaceholder")}
-            className="w-full rounded-md border border-border bg-background py-1.5 pr-2 pl-8 text-sm outline-none focus:ring-1 focus:ring-ring"
-          />
+    <div className="h-full overflow-y-auto">
+      <div className="mx-auto w-full max-w-5xl px-4 py-5 sm:px-6">
+        {/* Wall header: title + count stacked, pill search + new on the right */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div>
+            <h1 className="text-lg font-bold">{t("nav.stickies")}</h1>
+            <p className="text-xs text-muted-foreground">
+              {items !== null ? t("sticky.noteCount", { n: items.length }) : " "}
+            </p>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t("sticky.searchPlaceholder")}
+              className="h-8 w-52 rounded-full border border-transparent bg-muted/40 px-3 text-sm outline-none focus:border-input focus:bg-background"
+            />
+            <button
+              type="button"
+              className="flex h-8 items-center gap-1 rounded-full bg-primary px-3 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              disabled={createBusy}
+              onClick={() => void createAndEdit()}
+            >
+              {createBusy ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+              {t("sticky.newNote")}
+            </button>
+          </div>
         </div>
-        <button
-          type="button"
-          className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-          disabled={createBusy}
-          onClick={() => void createNote()}
-        >
-          {createBusy ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-          {t("sticky.newNote")}
-        </button>
-      </div>
 
-      {/* Board */}
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        {/* Wall */}
         {items === null ? (
-          <div className="flex justify-center py-12"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+          <div className="flex justify-center py-16"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
         ) : items.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 py-16 text-muted-foreground">
-            <StickyNote className="size-8" />
-            <p className="text-sm">{query ? t("sticky.emptySearch") : t("sticky.empty")}</p>
+          <div className="py-16 text-center">
+            <StickyNote className="mx-auto size-8 text-muted-foreground" />
+            <p className="mt-2 text-sm text-muted-foreground">
+              {query ? t("sticky.emptySearch") : t("sticky.empty")}
+            </p>
           </div>
         ) : (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
+          /* Backend order is authoritative (open first, updated desc). */
+          <div className="mt-4 columns-1 gap-3 sm:columns-2 xl:columns-3">
+            <QuickComposer
+              value={quickText}
+              busy={createBusy}
+              placeholder={t("sticky.quickAddPlaceholder")}
+              onChange={setQuickText}
+              onSubmit={() => void quickCreate()}
+            />
             {items.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className="group relative flex h-44 flex-col rounded-xl border border-black/10 p-3 text-left shadow-sm transition-transform hover:scale-[1.02] dark:border-black/30"
-                style={{ backgroundColor: stickyColorHex(item.color) }}
-                onClick={() => void openEditor(item)}
-              >
-                <span className="line-clamp-2 text-sm font-medium text-neutral-800">
-                  {item.title || t("sticky.newNote")}
-                </span>
-                <span className="mt-1 line-clamp-4 text-xs text-neutral-700/80">{item.preview}</span>
-                <span className="mt-auto flex items-center justify-between text-[10px] text-neutral-700/70">
-                  {t("sticky.words", { n: item.word_count })}
-                  {item.is_open ? <span title="open on a device">●</span> : null}
-                </span>
-                <span
-                  role="button"
-                  tabIndex={0}
-                  title={t("sticky.delete")}
-                  className="absolute top-2 right-2 rounded-md p-1 text-neutral-700 opacity-0 transition-opacity hover:bg-black/10 group-hover:opacity-100"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDeleteTarget(item);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.stopPropagation();
-                      setDeleteTarget(item);
-                    }
-                  }}
-                >
-                  <Trash2 className="size-3.5" />
-                </span>
-              </button>
+              <StickyWallCard key={item.id} item={item} onOpen={(it) => void openEditor(it)} />
             ))}
           </div>
         )}
       </div>
 
-      {/* In-place editor (drawer) */}
+      {/* Editor slide-over — the wall stays visible/usable at sm and up; only
+          small screens get a dimmed backdrop (click closes). */}
       {editing && (
-        <div className="absolute inset-0 z-40 flex justify-end bg-black/40" onClick={closeEditor}>
-          <div
-            className="flex h-full w-full max-w-2xl flex-col border-l border-border bg-background"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3">
-              <span
-                className="size-3.5 shrink-0 rounded-full border border-black/10"
-                style={{ backgroundColor: stickyColorHex(editing.color) }}
-              />
-              <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{editingTitle || t("sticky.newNote")}</h2>
-              <span className="text-[10px] text-muted-foreground">{saved ? "" : "…"}</span>
-              <button
-                type="button"
-                title={t("sticky.delete")}
-                className="rounded-md p-1.5 text-destructive hover:bg-muted"
-                onClick={() => setDeleteTarget(editing)}
-              >
-                <Trash2 className="size-4" />
-              </button>
-              <button type="button" title={t("sticky.close")} className="rounded-md p-1.5 hover:bg-muted" onClick={closeEditor}>
-                <X className="size-4" />
-              </button>
+        <>
+          <div className="fixed inset-0 z-40 bg-black/40 sm:hidden" onClick={closeEditor} />
+          <div className="fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-border bg-background shadow-2xl sm:w-[560px] xl:w-[640px]">
+            {/* Header: color dots … close; the title line is display-only
+                (rename is a desktop-window feature — derived title only). */}
+            <div className="shrink-0 border-b border-border/60 p-3">
+              <div className="flex items-center gap-2" role="group" aria-label={t("sticky.color")}>
+                {STICKY_COLORS.map((c) => {
+                  const active = stickyColorHex(editing.color) === c.hex;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      title={c.id}
+                      onClick={() => changeColor(c.id)}
+                      className={`h-4 w-4 rounded-full transition ${
+                        active ? "ring-2 ring-primary/50 ring-offset-1" : "hover:scale-110"
+                      }`}
+                      style={{ backgroundColor: c.hex }}
+                    />
+                  );
+                })}
+                <div className="flex-1" />
+                <button
+                  type="button"
+                  title={t("sticky.close")}
+                  className="rounded-md p-1.5 hover:bg-muted"
+                  onClick={closeEditor}
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+              <div className="mt-2 truncate text-base font-semibold">{editingTitle}</div>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-2">
+            {/* Same fixed format row the floating note has — the web drawer
+                previously had no toolbar at all, which read as highlight /
+                text colour "not working". No per-note font size on web, so
+                the picker stays hidden there. */}
+            <StickyToolbar editor={drawerEditor} />
+            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
               {editorBlocks && (
                 <LazyTiptapDocumentEditor
                   initialBlocks={editorBlocks}
@@ -263,11 +361,30 @@ export function StickiesPage() {
                   readNativeImage={readNativeImage}
                   onChange={scheduleSave}
                   onReady={(api) => { editorApi.current = api; }}
+                  toolbarExtras={(editor) => {
+                    // Mirror the live editor for the fixed row (same capture
+                    // plumbing as StickyWindowApp).
+                    queueMicrotask(() => setDrawerEditor(editor));
+                    return null;
+                  }}
                 />
               )}
             </div>
+            <div className="flex shrink-0 items-center justify-between border-t border-border/60 px-3 py-2 text-[11px] text-muted-foreground">
+              <span>{saved ? t("sticky.saved") : t("sticky.saving")}</span>
+              <span className="flex items-center gap-3">
+                <span>{t("sticky.words", { n: liveWords })}</span>
+                <button
+                  type="button"
+                  className="rounded-md px-2 py-1 font-medium text-destructive hover:bg-destructive/10"
+                  onClick={() => setDeleteTarget(editing)}
+                >
+                  {t("sticky.delete")}
+                </button>
+              </span>
+            </div>
           </div>
-        </div>
+        </>
       )}
 
       <ConfirmModal

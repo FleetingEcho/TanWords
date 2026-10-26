@@ -4,7 +4,7 @@ use chrono::Utc;
 use serde::Serialize;
 
 use crate::db;
-use crate::db::words_types::{WordDefItem, WordDetail, WordIdName, WordListItem, WordPage, WordTagCount};
+use crate::db::words_types::{WordDefItem, WordDetail, WordFilterFacets, WordIdName, WordListItem, WordPage, WordTagCount};
 use crate::AppState;
 
 /// The SELECT list + FROM/JOIN shared by db_get_words and db_get_words_page —
@@ -73,7 +73,7 @@ pub async fn db_get_words(
     let mut param_values: Vec<Value> = vec![];
 
     if let Some(ref s) = search {
-        sql.push_str(" AND (w.word LIKE ?1 ESCAPE '\\' OR EXISTS (SELECT 1 FROM word_definitions wd2 WHERE wd2.word_id = w.id AND wd2.zh LIKE ?1 ESCAPE '\\'))");
+        sql.push_str(" AND (LOWER(w.word) LIKE ?1 ESCAPE '\\' OR EXISTS (SELECT 1 FROM word_definitions wd2 WHERE wd2.word_id = w.id AND LOWER(wd2.zh) LIKE ?1 ESCAPE '\\'))");
         param_values.push(Value::from(format!("%{}%", db::escape_like(s))));
     }
 
@@ -142,22 +142,34 @@ struct WordFilters {
     date_to: Option<String>,
 }
 
+/// The one filter axis a facet aggregate may skip. Facet counts must respect
+/// every OTHER active constraint but never their own — otherwise toggling a
+/// chip would zero out its own count display, and the whole point of facets
+/// (seeing the sizes of the piles you're NOT looking at) is lost.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FacetSkip {
+    None,
+    Statuses,
+    Levels,
+    Starred,
+}
+
 impl WordFilters {
     /// Appends each active filter as ` AND ...` fragments, pushing params in
     /// placeholder order (?1, ?2, …). Used by both the page query and its
     /// paired COUNT(*) so the list and the pager's total can never disagree.
-    /// Returns the due-predicate param indices when the duo of "now" values
-    /// was allocated (due filter or due-first sort consulted the clock).
-    fn push_where(&self, sql: &mut String, params: &mut Vec<Value>, due_expr: Option<&str>) {
+    /// `skip` drops exactly one axis (facet queries only; the page itself
+    /// always passes FacetSkip::None).
+    fn push_where(&self, sql: &mut String, params: &mut Vec<Value>, due_expr: Option<&str>, skip: FacetSkip) {
         if let Some(ref s) = self.search {
             let idx = params.len() + 1;
             sql.push_str(&format!(
-                " AND (w.word LIKE ?{idx} ESCAPE '\\' OR EXISTS (SELECT 1 FROM word_definitions wd2 WHERE wd2.word_id = w.id AND wd2.zh LIKE ?{idx} ESCAPE '\\'))"
+                " AND (LOWER(w.word) LIKE ?{idx} ESCAPE '\\' OR EXISTS (SELECT 1 FROM word_definitions wd2 WHERE wd2.word_id = w.id AND LOWER(wd2.zh) LIKE ?{idx} ESCAPE '\\'))"
             ));
             params.push(Value::from(format!("%{}%", db::escape_like(s))));
         }
 
-        if !self.levels.is_empty() {
+        if skip != FacetSkip::Levels && !self.levels.is_empty() {
             let mut arms: Vec<String> = Vec::with_capacity(self.levels.len());
             for lv in &self.levels {
                 if lv == "B1-" {
@@ -172,7 +184,7 @@ impl WordFilters {
             sql.push_str(&format!(" AND ({})", arms.join(" OR ")));
         }
 
-        if !self.statuses.is_empty() {
+        if skip != FacetSkip::Statuses && !self.statuses.is_empty() {
             let mut placeholders: Vec<String> = Vec::with_capacity(self.statuses.len());
             for st in &self.statuses {
                 let idx = params.len() + 1;
@@ -182,7 +194,7 @@ impl WordFilters {
             sql.push_str(&format!(" AND w.status IN ({})", placeholders.join(", ")));
         }
 
-        if self.starred {
+        if skip != FacetSkip::Starred && self.starred {
             sql.push_str(" AND w.starred = 1");
         }
 
@@ -258,6 +270,90 @@ fn due_predicate(now_rfc_idx: usize, now_sql_idx: usize) -> String {
     )
 }
 
+/// Allocates the due-clock params (when any due-aware clause runs) and then
+/// appends every active filter, yielding one self-consistent (WHERE, params)
+/// pair per query. Positional params are matched by number, not textual
+/// order, so each of the page/total/facet queries must rebuild its own Vec —
+/// the two "now" values always land at ?1/?2 within each pair.
+fn build_where(filters: &WordFilters, skip: FacetSkip) -> (String, Vec<Value>, Option<String>) {
+    let mut params: Vec<Value> = vec![];
+    let due_expr = if filters.due_only || filters.sort_by == "due" {
+        let now = Utc::now();
+        params.push(Value::from(now.to_rfc3339()));
+        params.push(Value::from(now.format("%Y-%m-%d %H:%M:%S").to_string()));
+        Some(due_predicate(params.len() - 1, params.len()))
+    } else {
+        None
+    };
+    let mut where_sql = String::new();
+    filters.push_where(&mut where_sql, &mut params, due_expr.as_deref(), skip);
+    (where_sql, params, due_expr)
+}
+
+/// The filter bar's facet counts: per-status, per-level-bucket and starred
+/// totals under the CURRENT filter set with that axis's own constraint
+/// skipped (see FacetSkip). Three aggregate scans per page fetch — GROUP BY /
+/// COUNT over the words table is millisecond-cheap at the planned ~10k scale,
+/// and riding the page query keeps the chip counts in perfect sync with the
+/// list (no second round-trip that could race a fast typist).
+async fn word_filter_facets(
+    db: &crate::db::Conn,
+    filters: &WordFilters,
+) -> Result<WordFilterFacets, String> {
+    let (status_where, status_params, _) = build_where(filters, FacetSkip::Statuses);
+    let status_rows: Vec<(String, i64)> = db::fetch_all(
+        db,
+        &format!(
+            "SELECT COALESCE(w.status, 'learning'), COUNT(*) FROM words w WHERE 1=1{status_where} GROUP BY COALESCE(w.status, 'learning')"
+        ),
+        status_params,
+        |row| Ok((row.get::<String>(0)?, row.get::<i64>(1)?)),
+    )
+    .await?;
+    let mut facets = WordFilterFacets::default();
+    for (status, count) in status_rows {
+        match status.as_str() {
+            "familiar" => facets.familiar += count,
+            "mastered" => facets.mastered += count,
+            // Same fold as db_get_word_stats: NULL and any legacy value all
+            // land in "learning" (the schema default).
+            _ => facets.learning += count,
+        }
+    }
+
+    // Levels come back as raw CEFR strings and fold into the chip buckets;
+    // "B1−" = B1+A2+A1 like the filter arms. NULL/unknown levels belong to no
+    // chip and count nowhere (matching the chips' own filtering behavior).
+    let (level_where, level_params, _) = build_where(filters, FacetSkip::Levels);
+    let level_rows: Vec<(String, i64)> = db::fetch_all(
+        db,
+        &format!(
+            "SELECT COALESCE(w.level, ''), COUNT(*) FROM words w WHERE 1=1{level_where} GROUP BY COALESCE(w.level, '')"
+        ),
+        level_params,
+        |row| Ok((row.get::<String>(0)?, row.get::<i64>(1)?)),
+    )
+    .await?;
+    for (level, count) in level_rows {
+        match level.as_str() {
+            "C2" => facets.level_c2 += count,
+            "C1" => facets.level_c1 += count,
+            "B2" => facets.level_b2 += count,
+            "B1" | "A2" | "A1" => facets.level_b1_below += count,
+            _ => {}
+        }
+    }
+
+    let (star_where, star_params, _) = build_where(filters, FacetSkip::Starred);
+    facets.starred = db::scalar_i64(
+        db,
+        &format!("SELECT COUNT(*) FROM words w WHERE 1=1{star_where} AND w.starred = 1"),
+        star_params,
+    )
+    .await?;
+    Ok(facets)
+}
+
 #[crate::shim::command]
 pub async fn db_get_words_page(
     search: Option<String>,
@@ -295,23 +391,10 @@ pub async fn db_get_words_page(
         date_to,
     };
 
-    let mut params: Vec<Value> = vec![];
-
-    // Allocate the two "now" representations up front when any due-aware
-    // clause runs, so both the WHERE and ORDER BY can reuse the same
-    // placeholder indices (positional params are matched by number, not by
-    // textual order).
-    let due_expr = if filters.due_only || filters.sort_by == "due" {
-        let now = Utc::now();
-        params.push(Value::from(now.to_rfc3339()));
-        params.push(Value::from(now.format("%Y-%m-%d %H:%M:%S").to_string()));
-        Some(due_predicate(params.len() - 1, params.len()))
-    } else {
-        None
-    };
-
-    let mut where_sql = String::new();
-    filters.push_where(&mut where_sql, &mut params, due_expr.as_deref());
+    // One (WHERE, params) pair for this query — see build_where: the due
+    // clock params are allocated first (?1/?2) so both the WHERE and the
+    // due-first ORDER BY can reuse the same placeholder indices.
+    let (where_sql, mut params, due_expr) = build_where(&filters, FacetSkip::None);
 
     // Direction suffix: the sorts that support both ways take it from the
     // caller (alpha/category default ascending, everything else descending).
@@ -361,7 +444,8 @@ pub async fn db_get_words_page(
     );
 
     let items = db::fetch_all(&db, &sql, params, |row| map_word_list_item(row)).await?;
-    Ok(WordPage { items, total })
+    let facets = word_filter_facets(&db, &filters).await?;
+    Ok(WordPage { items, total, facets })
 }
 
 /// The COUNT(*) query joins words alone (the srs LEFT JOIN only decorates

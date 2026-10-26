@@ -1,4 +1,4 @@
-/** AI Chat sessions, article-analysis persistence, dashboard, SRS review,
+/** AI Chat sessions, article-analysis persistence, dashboard stats,
  *  search history, RSS, and data management — see useDB.ts for the composed
  *  public hook. This file composes the domain sub-hooks (useDBChat,
  *  useDBReview, useDBRss, useDBData) to stay under the per-file line-count

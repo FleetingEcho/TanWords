@@ -8,7 +8,7 @@
  * button is an action, so it reveals on hover (the Mermaid block's controls
  * do the same) while the picker stays visible.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { NodeViewContent, NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import { Check, Copy } from "lucide-react";
 import { useT } from "@/hooks/useT";
@@ -35,6 +35,16 @@ export function CodeBlockView({ node, updateAttributes, editor }: NodeViewProps)
       })
       .catch(() => {});
   };
+
+  // User-applied block tint (the sticky toolbar's code swatches). The inline
+  // style on <pre> beats the theme class; `data-toned` turns shiki's
+  // per-token colours off (see tiptap-editor.css) so the chosen text colour
+  // paints the whole block, which is what the picker promises.
+  const backgroundColor = (node.attrs.backgroundColor as string | null) ?? null;
+  const textColor = (node.attrs.textColor as string | null) ?? null;
+  const preStyle: CSSProperties = {};
+  if (backgroundColor) preStyle.backgroundColor = backgroundColor;
+  if (textColor) preStyle.color = textColor;
 
   return (
     <NodeViewWrapper className="group/code relative" data-block-type="codeBlock">
@@ -70,7 +80,10 @@ export function CodeBlockView({ node, updateAttributes, editor }: NodeViewProps)
           ))}
         </select>
       </div>
-      <pre>
+      <pre
+        style={Object.keys(preStyle).length ? preStyle : undefined}
+        data-toned={textColor ? "true" : undefined}
+      >
         {/* `as="code"` keeps the <pre><code> shape the export pipeline and the
             shiki decorations both assume. */}
         <NodeViewContent as={"code" as "div"} className={`language-${language}`} />

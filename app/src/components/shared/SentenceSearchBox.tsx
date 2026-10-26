@@ -207,12 +207,14 @@ export function SentenceSearchBox({ variant = "popover" }: { variant?: "popover"
         * but only ever inside `handleAdd` — so the reading existed and was
         * saved without the learner being shown it once. */}
       {!dismissed && (analyzing || analysis || analyzeFailed || noProvider) && (
-        <div className="mt-1 rounded-lg border border-border bg-muted/30 p-2.5">
+        <div className="mt-1 rounded-lg border border-border bg-muted/60 p-2.5">
           {analyzing && (
             <div className="space-y-2 animate-pulse" aria-label={t("common.loading")}>
-              <div className="h-3 w-5/6 rounded-full bg-muted" />
-              <div className="h-2.5 w-2/3 rounded-full bg-muted" />
-              <div className="h-2.5 w-1/2 rounded-full bg-muted" />
+              {/* Bars read off `foreground`, not the host `muted`: on light
+                * mobile surfaces muted-on-muted nearly blends to nothing. */}
+              <div className="h-3 w-5/6 rounded-full bg-foreground/10" />
+              <div className="h-2.5 w-2/3 rounded-full bg-foreground/10" />
+              <div className="h-2.5 w-1/2 rounded-full bg-foreground/10" />
             </div>
           )}
 

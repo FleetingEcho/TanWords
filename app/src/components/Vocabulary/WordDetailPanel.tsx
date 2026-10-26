@@ -8,7 +8,7 @@ import { SpeakButton } from "@/components/ui/SpeakButton";
 import { LazyWordNotesEditor } from "@/components/LazyWordNotesEditor";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { SparkIcon, RefreshIcon, NotesIcon, ChevronDownIcon } from "@/components/ui/icons";
-import { TriangleAlert } from "lucide-react";
+import { TriangleAlert, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { hostCapabilities } from "@/platform";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -51,6 +51,13 @@ interface Props {
   tags?: string[];
   tagOptions?: { tag: string; count: number }[];
   onSetTags?: (tags: string[]) => void;
+  /** Previous/next word navigation in the header — the mouse-side version of
+   *  the list's ↑/↓ hotkeys (they share the page's moveSelection). Absent in
+   *  dictionary-lookup mode, which has no list position. */
+  onPrevWord?: () => void;
+  onNextWord?: () => void;
+  hasPrevWord?: boolean;
+  hasNextWord?: boolean;
 }
 
 export function WordDetailPanel({
@@ -58,6 +65,7 @@ export function WordDetailPanel({
   lookupMode = false, lookupAdded = false, onAddToVocab,
   onNotesChange, onClearNotes, onRetry, onReenrich, onGeneratePatterns,
   tags, tagOptions, onSetTags,
+  onPrevWord, onNextWord, hasPrevWord = false, hasNextWord = false,
 }: Props) {
   const t = useT();
   const hasCustomAppBackground = useSettingsStore((state) => !!state.appBackgroundImage && state.appBackgroundVisible);
@@ -241,6 +249,31 @@ export function WordDetailPanel({
             </div>
 
             <div className="flex shrink-0 items-center gap-1.5">
+              {/* Prev/next word through the FILTERED list — same mover the
+                  ↑/↓ hotkeys use, so mouse-first readers get one-hand word
+                  triage too. */}
+              {onPrevWord && onNextWord && (
+                <div className={`mr-0.5 flex items-center rounded-lg border ${hasCustomAppBackground ? "border-border/60 bg-background/70" : "border-border/60 bg-background"}`}>
+                  <button
+                    onClick={onPrevWord}
+                    disabled={!hasPrevWord}
+                    title={t("vocab.prevWord")}
+                    aria-label={t("vocab.prevWord")}
+                    className="flex h-8 w-8 items-center justify-center rounded-l-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={onNextWord}
+                    disabled={!hasNextWord}
+                    title={t("vocab.nextWord")}
+                    aria-label={t("vocab.nextWord")}
+                    className="flex h-8 w-8 items-center justify-center rounded-r-lg border-l border-border/60 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
               {lookupMode ? (
                 lookupAdded ? (
                   <span className="inline-flex items-center rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-4 py-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">{t("search.added")}</span>

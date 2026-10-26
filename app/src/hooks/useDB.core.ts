@@ -8,6 +8,7 @@ import {
   WordListItem, WordDetail, TranslationItem, EnrichmentInput,
   DocumentDetail, DocumentListResult, DocumentFolder, DocStatus,
   WordStatus, WordPage, WordSortBy, EnrichFilter, WordStats, ExportedWord, WordTagCount,
+  EMPTY_WORD_FACETS,
 } from "./useDB.types";
 
 export function useDBCore() {
@@ -25,15 +26,6 @@ export function useDBCore() {
       return await invoke<number>("db_get_translation_count");
     } catch (e) {
       logError("getTranslationCount", e);
-      return 0;
-    }
-  }, []);
-
-  const getReviewCount = useCallback(async (): Promise<number> => {
-    try {
-      return await invoke<number>("db_get_review_count");
-    } catch (e) {
-      logError("getReviewCount", e);
       return 0;
     }
   }, []);
@@ -253,7 +245,7 @@ export function useDBCore() {
         });
       } catch (e) {
         logError("getWordsPage", e);
-        return { items: [], total: 0 };
+        return { items: [], total: 0, facets: { ...EMPTY_WORD_FACETS } };
       }
     },
     []
@@ -591,7 +583,7 @@ export function useDBCore() {
   );
 
   return useMemo(() => ({
-    getWordCount, getTranslationCount, getReviewCount,
+    getWordCount, getTranslationCount,
     getWords, getWordsPage, wordExists, listWordIds, listWordTags, setWordTags, getWordStats, exportWordsJson, exportWordsCsv, getWordDetail, getWordDetailByWord,
     addWord, deleteWord, deleteWordsBatch, setWordStarred, setWordStatus, setWordsStatusBatch,
     saveTranslation, getTranslations,
@@ -605,7 +597,7 @@ export function useDBCore() {
     protectDocument, unlockDocument, lockDocument, removeDocumentProtection, changeDocumentPassword,
     getAllTags, addWordsBatch,
   }), [
-    getWordCount, getTranslationCount, getReviewCount,
+    getWordCount, getTranslationCount,
     getWords, getWordsPage, wordExists, listWordIds, listWordTags, setWordTags, getWordStats, exportWordsJson, exportWordsCsv, getWordDetail, getWordDetailByWord,
     addWord, deleteWord, deleteWordsBatch, setWordStarred, setWordStatus, setWordsStatusBatch,
     saveTranslation, getTranslations,

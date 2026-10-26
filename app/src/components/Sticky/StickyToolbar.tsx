@@ -10,9 +10,10 @@
  *  Active states re-render on the editor's own transaction events — cheap,
  *  and the toolbar is the only subscriber on this window.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/core";
-import { useDismissOnOutsideClick } from "./stickyShared";
+import { useT } from "@/hooks/useT";
 import {
   Bold, ChevronDown, Code, Italic, List, ListOrdered, ListTodo,
   Strikethrough, Underline as UnderlineIcon,
@@ -40,6 +41,32 @@ const TEXT_COLORS: ReadonlyArray<{ id: string; hex: string }> = [
 
 const FONT_SIZES = [12, 13, 14, 16, 18, 20, 24, 32] as const;
 
+/** Block-level paint for code blocks (marks are schema-disabled inside them —
+ *  shiki owns per-token colours — so highlight/textColour buttons silently
+ *  no-op there; these two palettes are the code block's own surface/paint.
+ *  Stored as codeBlock node attrs, see codeBlockLanguage.ts). Empty hex = the
+ *  theme default. */
+const CODE_BACKGROUNDS: ReadonlyArray<{ id: string; hex: string }> = [
+  { id: "default", hex: "" },
+  { id: "paper", hex: "#f6f5f1" },
+  { id: "blue", hex: "#dbeafe" },
+  { id: "green", hex: "#d1fae5" },
+  { id: "pink", hex: "#fce7f3" },
+  { id: "purple", hex: "#ede9fe" },
+  { id: "orange", hex: "#ffedd5" },
+  { id: "dark", hex: "#1f2937" },
+];
+const CODE_TEXT: ReadonlyArray<{ id: string; hex: string }> = [
+  { id: "default", hex: "" },
+  { id: "ink", hex: "#1f2937" },
+  { id: "red", hex: "#dc2626" },
+  { id: "blue", hex: "#2563eb" },
+  { id: "green", hex: "#16a34a" },
+  { id: "purple", hex: "#9333ea" },
+  { id: "gray", hex: "#6b7280" },
+  { id: "paper", hex: "#f9fafb" },
+];
+
 function ToolButton({
   active, title, onClick, children,
 }: {
@@ -49,7 +76,7 @@ function ToolButton({
     <button
       type="button"
       title={title}
-      className={`rounded-md p-1.5 hover:bg-black/10 ${active ? "bg-black/15" : ""}`}
+      className={`flex size-6 items-center justify-center rounded-md transition-colors hover:bg-black/10 ${active ? "bg-black/15" : ""}`}
       onMouseDown={(e) => e.preventDefault()} // keep the text selection alive
       onClick={onClick}
     >
@@ -58,29 +85,84 @@ function ToolButton({
   );
 }
 
+/** Portaled, fixed-position dropdown anchored to its trigger.
+ *
+ *  NOT an in-flow `absolute` child: the toolbar strip scrolls horizontally
+ *  (`overflow-x-auto`), which clips absolutely-positioned children — an
+ *  invisible palette that looks like "the colour buttons do nothing" and
+ *  whose swatch clicks are then eaten by outside-click dismissal. The portal
+ *  drops out of the strip's clip context entirely; dismissal is handled here
+ *  as pointer-down outside popover AND outside the trigger. */
+function PopoverPortal({
+  anchorRef,
+  onClose,
+  children,
+  className,
+  width,
+}: {
+  anchorRef: { current: HTMLElement | null };
+  onClose: () => void;
+  children: ReactNode;
+  className?: string;
+  /** px width used to keep the panel inside the window when the trigger sits
+   *  near the right edge (default 170 ≈ swatch row). */
+  width?: number;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handler = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (ref.current?.contains(target)) return;
+      if (anchorRef.current?.contains(target)) return;
+      onClose();
+    };
+    document.addEventListener("pointerdown", handler, true);
+    return () => document.removeEventListener("pointerdown", handler, true);
+  }, [anchorRef, onClose]);
+
+  const r = anchorRef.current?.getBoundingClientRect();
+  const style: CSSProperties = r
+    ? {
+        position: "fixed",
+        top: r.bottom + 4,
+        left: Math.max(8, Math.min(r.left, window.innerWidth - (width ?? 170) - 8)),
+        zIndex: 60,
+      }
+    : {};
+  return createPortal(
+    <div ref={ref} className={`rounded-lg border border-black/10 bg-white/95 p-1.5 shadow-lg ${className ?? ""}`} style={style}>
+      {children}
+    </div>,
+    document.body
+  );
+}
+
 function SwatchPopover({
-  open, swatches, current, onPick,
+  open, swatches, current, onPick, anchorRef, onClose,
 }: {
   open: boolean;
   swatches: ReadonlyArray<{ id: string; hex: string }>;
   current: string | undefined;
   onPick: (hex: string) => void;
+  anchorRef: { current: HTMLElement | null };
+  onClose: () => void;
 }) {
   if (!open) return null;
   return (
-    <div className="absolute top-full left-0 z-50 mt-1 flex gap-1 rounded-lg border border-black/10 bg-white/95 p-1.5 shadow-lg">
+    <PopoverPortal anchorRef={anchorRef} onClose={onClose} className="flex gap-1">
       {swatches.map((s) => (
         <button
           key={s.id}
           type="button"
           title={s.id}
-          className={`size-5 rounded-full border ${current && s.hex && current === s.hex ? "border-neutral-800 ring-1 ring-neutral-500" : "border-black/15"}`}
+          className={`size-5 shrink-0 rounded-full border ${current && s.hex && current === s.hex ? "border-neutral-800 ring-1 ring-neutral-500" : "border-black/15"}`}
           style={{ backgroundColor: s.hex || "transparent", backgroundImage: s.hex ? undefined : "linear-gradient(135deg, transparent 45%, #dc2626 45%, #dc2626 55%, transparent 55%)" }}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => onPick(s.hex)}
         />
       ))}
-    </div>
+    </PopoverPortal>
   );
 }
 
@@ -92,17 +174,22 @@ export function StickyToolbar({
   editor: Editor | null;
   /** The note-wide font size (sticky_windows/font_size on the DB row) — the
    *  sticky applies it on the editor container, so list markers, spacing and
-   *  every block scale together. */
-  noteFontSize: number | null;
-  onNoteFontSize: (size: number | null) => void;
+   *  every block scale together. Optional: surfaces without a per-note size
+   *  (the web editor drawer) omit the control by not passing handlers. */
+  noteFontSize?: number | null;
+  onNoteFontSize?: (size: number | null) => void;
 }) {
+  const t = useT();
   // Bumped on editor transactions so active states stay honest.
   const [, setTick] = useState(0);
-  const [palette, setPalette] = useState<"highlight" | "color" | "size" | null>(null);
-  // Any press outside the open palette closes it; the wrapper includes the
-  // trigger, so toggling via the trigger still works naturally.
-  const paletteWrapRef = useRef<HTMLDivElement | null>(null);
-  useDismissOnOutsideClick(paletteWrapRef, palette !== null, () => setPalette(null));
+  const [palette, setPalette] = useState<"highlight" | "color" | "size" | "codeBg" | "codeText" | null>(null);
+  // One anchor ref per palette trigger; PopoverPortal measures off these and
+  // swallows outside-click dismissal itself (trigger clicks stay toggles).
+  const hlAnchorRef = useRef<HTMLDivElement | null>(null);
+  const colorAnchorRef = useRef<HTMLDivElement | null>(null);
+  const sizeAnchorRef = useRef<HTMLDivElement | null>(null);
+  const codeBgAnchorRef = useRef<HTMLDivElement | null>(null);
+  const codeTextAnchorRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!editor) return;
@@ -113,7 +200,7 @@ export function StickyToolbar({
     };
   }, [editor]);
 
-  if (!editor) return <div className="h-8" />;
+  if (!editor) return <div className="h-[30px] shrink-0 bg-black/[0.05] backdrop-blur" />;
 
   const run = (fn: () => void) => {
     fn();
@@ -123,30 +210,33 @@ export function StickyToolbar({
   const currentHighlight = (editor.getAttributes("highlight").color as string | undefined) ?? undefined;
   const currentColor = (editor.getAttributes("textStyle").color as string | undefined) ?? undefined;
   const currentSize = noteFontSize ? `${noteFontSize}px` : "";
+  const inCodeBlock = editor.isActive("codeBlock");
+  const currentCodeBg = (editor.getAttributes("codeBlock").backgroundColor as string | null | undefined) ?? null;
+  const currentCodeText = (editor.getAttributes("codeBlock").textColor as string | null | undefined) ?? null;
 
   return (
-    <div className="relative flex shrink-0 flex-wrap items-center gap-0.5 border-b border-black/10 px-1.5 py-0.5">
-      <ToolButton title="Bold" active={editor.isActive("bold")} onClick={() => run(() => editor.chain().focus().toggleBold().run())}>
+    <div className="relative flex h-[30px] shrink-0 items-center gap-0.5 overflow-x-auto bg-black/[0.05] px-1.5 backdrop-blur [scrollbar-width:none]">
+      <ToolButton title={t("sticky.tb.bold")} active={editor.isActive("bold")} onClick={() => run(() => editor.chain().focus().toggleBold().run())}>
         <Bold className="size-3.5" />
       </ToolButton>
-      <ToolButton title="Italic" active={editor.isActive("italic")} onClick={() => run(() => editor.chain().focus().toggleItalic().run())}>
+      <ToolButton title={t("sticky.tb.italic")} active={editor.isActive("italic")} onClick={() => run(() => editor.chain().focus().toggleItalic().run())}>
         <Italic className="size-3.5" />
       </ToolButton>
-      <ToolButton title="Underline" active={editor.isActive("underline")} onClick={() => run(() => editor.chain().focus().toggleUnderline().run())}>
+      <ToolButton title={t("sticky.tb.underline")} active={editor.isActive("underline")} onClick={() => run(() => editor.chain().focus().toggleUnderline().run())}>
         <UnderlineIcon className="size-3.5" />
       </ToolButton>
-      <ToolButton title="Strikethrough" active={editor.isActive("strike")} onClick={() => run(() => editor.chain().focus().toggleStrike().run())}>
+      <ToolButton title={t("sticky.tb.strikethrough")} active={editor.isActive("strike")} onClick={() => run(() => editor.chain().focus().toggleStrike().run())}>
         <Strikethrough className="size-3.5" />
       </ToolButton>
-      <ToolButton title="Code" active={editor.isActive("code")} onClick={() => run(() => editor.chain().focus().toggleCode().run())}>
+      <ToolButton title={t("sticky.tb.code")} active={editor.isActive("code")} onClick={() => run(() => editor.chain().focus().toggleCode().run())}>
         <Code className="size-3.5" />
       </ToolButton>
 
       <span className="mx-0.5 h-4 w-px bg-black/15" />
 
-      <div className="relative" ref={palette === "highlight" ? paletteWrapRef : undefined}>
+      <div ref={hlAnchorRef}>
         <ToolButton
-          title="Highlight"
+          title={t("sticky.tb.highlight")}
           active={!!currentHighlight}
           onClick={() => setPalette((p) => (p === "highlight" ? null : "highlight"))}
         >
@@ -159,6 +249,8 @@ export function StickyToolbar({
           open={palette === "highlight"}
           swatches={HIGHLIGHTS}
           current={currentHighlight}
+          anchorRef={hlAnchorRef}
+          onClose={() => setPalette(null)}
           onPick={(hex) => run(() => {
             if (hex) editor.chain().focus().setHighlight({ color: hex }).run();
             else editor.chain().focus().unsetHighlight().run();
@@ -166,9 +258,9 @@ export function StickyToolbar({
           })}
         />
       </div>
-      <div className="relative" ref={palette === "color" ? paletteWrapRef : undefined}>
+      <div ref={colorAnchorRef}>
         <ToolButton
-          title="Text color"
+          title={t("sticky.tb.textColor")}
           active={!!currentColor}
           onClick={() => setPalette((p) => (p === "color" ? null : "color"))}
         >
@@ -178,6 +270,8 @@ export function StickyToolbar({
           open={palette === "color"}
           swatches={TEXT_COLORS}
           current={currentColor}
+          anchorRef={colorAnchorRef}
+          onClose={() => setPalette(null)}
           onPick={(hex) => run(() => {
             if (hex) editor.chain().focus().setColor(hex).run();
             else editor.chain().focus().unsetColor().run();
@@ -186,11 +280,12 @@ export function StickyToolbar({
         />
       </div>
 
-      <div className="relative" ref={palette === "size" ? paletteWrapRef : undefined}>
+      {onNoteFontSize && (
+      <div ref={sizeAnchorRef}>
         <button
           type="button"
-          title="Font size"
-          className="flex items-center gap-0.5 rounded-md px-1.5 py-1 text-[11px] hover:bg-black/10"
+          title={t("sticky.tb.fontSize")}
+          className="flex h-6 items-center gap-0.5 rounded-md px-1.5 text-[11px] transition-colors hover:bg-black/10"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => setPalette((p) => (p === "size" ? null : "size"))}
         >
@@ -198,7 +293,7 @@ export function StickyToolbar({
           <ChevronDown className="size-3" />
         </button>
         {palette === "size" && (
-          <div className="absolute top-full left-0 z-50 mt-1 rounded-lg border border-black/10 bg-white/95 p-1 shadow-lg">
+          <PopoverPortal anchorRef={sizeAnchorRef} onClose={() => setPalette(null)} className="w-20" width={90}>
             {FONT_SIZES.map((size) => (
               <button
                 key={size}
@@ -222,19 +317,80 @@ export function StickyToolbar({
             >
               default
             </button>
-          </div>
+          </PopoverPortal>
         )}
       </div>
+      )}
 
       <span className="mx-0.5 h-4 w-px bg-black/15" />
 
-      <ToolButton title="Bullet list" active={editor.isActive("bulletList")} onClick={() => run(() => editor.chain().focus().toggleBulletList().run())}>
+      <ToolButton title={t("sticky.tb.bulletList")} active={editor.isActive("bulletList")} onClick={() => run(() => editor.chain().focus().toggleBulletList().run())}>
         <List className="size-3.5" />
       </ToolButton>
-      <ToolButton title="Numbered list" active={editor.isActive("orderedList")} onClick={() => run(() => editor.chain().focus().toggleOrderedList().run())}>
+      <ToolButton title={t("sticky.tb.numberedList")} active={editor.isActive("orderedList")} onClick={() => run(() => editor.chain().focus().toggleOrderedList().run())}>
         <ListOrdered className="size-3.5" />
       </ToolButton>
-      <ToolButton title="Task list" active={editor.isActive("taskList")} onClick={() => run(() => editor.chain().focus().toggleTaskList().run())}>
+      {/* Code-block paint: only when the caret sits inside one. (Highlight/
+          textColor swatches silently no-op inside code — marks are off there
+          — so the code section is the code block's own styling affordance.) */}
+      {inCodeBlock && (
+        <>
+          <span className="mx-0.5 h-4 w-px bg-black/15" />
+          <div ref={codeBgAnchorRef}>
+            <ToolButton
+              title={t("sticky.tb.codeBg")}
+              active={!!currentCodeBg}
+              onClick={() => setPalette((p) => (p === "codeBg" ? null : "codeBg"))}
+            >
+              <span
+                className="block size-3.5 rounded-sm border border-black/25"
+                style={{
+                  backgroundColor: currentCodeBg ?? "#f3f4f6",
+                  backgroundImage: "linear-gradient(135deg, #f3f4f6 0%, #f3f4f6 40%, #9ca3af 40%, #9ca3af 60%, #f3f4f6 60%)",
+                }}
+              />
+            </ToolButton>
+            <SwatchPopover
+              open={palette === "codeBg"}
+              swatches={CODE_BACKGROUNDS}
+              current={currentCodeBg ?? undefined}
+              anchorRef={codeBgAnchorRef}
+              onClose={() => setPalette(null)}
+              onPick={(hex) => run(() => {
+                editor.chain().focus().updateAttributes("codeBlock", { backgroundColor: hex || null }).run();
+                setPalette(null);
+              })}
+            />
+          </div>
+          <div ref={codeTextAnchorRef}>
+            <ToolButton
+              title={t("sticky.tb.codeText")}
+              active={!!currentCodeText}
+              onClick={() => setPalette((p) => (p === "codeText" ? null : "codeText"))}
+            >
+              <span
+                className="flex size-3.5 items-center justify-center rounded-sm border border-black/20 text-[9px] font-bold leading-none"
+                style={{ color: currentCodeText ?? "#1f2937", backgroundColor: currentCodeBg ?? undefined }}
+              >
+                A
+              </span>
+            </ToolButton>
+            <SwatchPopover
+              open={palette === "codeText"}
+              swatches={CODE_TEXT}
+              current={currentCodeText ?? undefined}
+              anchorRef={codeTextAnchorRef}
+              onClose={() => setPalette(null)}
+              onPick={(hex) => run(() => {
+                editor.chain().focus().updateAttributes("codeBlock", { textColor: hex || null }).run();
+                setPalette(null);
+              })}
+            />
+          </div>
+        </>
+      )}
+
+      <ToolButton title={t("sticky.tb.taskList")} active={editor.isActive("taskList")} onClick={() => run(() => editor.chain().focus().toggleTaskList().run())}>
         <ListTodo className="size-3.5" />
       </ToolButton>
     </div>

@@ -1,30 +1,30 @@
 import { Button } from "@/components/ui/button";
 import { useT } from "@/hooks/useT";
 
-export type VocabView = "words" | "sentences" | "review";
+export type VocabView = "words" | "sentences";
 
 const VIEWS: { value: VocabView; labelKey: string }[] = [
   { value: "words", labelKey: "vocab.tabWords" },
   { value: "sentences", labelKey: "vocab.tabSentences" },
-  { value: "review", labelKey: "vocab.tabReview" },
 ];
 
-/** Words / Sentences / Review, rendered as the list's own heading rather than
- *  as a bar above it.
+/** Words / Sentences, rendered as the list's own heading rather than as a
+ *  bar above it.
  *
  *  These used to sit in a full-width bordered strip of their own, directly
  *  above a heading that read "Words" — the same word the selected tab already
  *  said, one row apart. A whole row of page chrome to repeat the next row.
  *  Made the heading, they cost nothing: the live tab *is* the title, and the
  *  other one is the way out of it.
+ *
+ *  (There was a third tab — FSRS card Review. The user cut the feature
+ *  2026-10-24; the Rust SRS commands remain in the core, dormant.)
  */
 export function VocabViewTabs({
-  view, onSelect, reviewCount = 0,
+  view, onSelect,
 }: {
   view: VocabView;
   onSelect: (view: VocabView) => void;
-  /** FSRS cards waiting right now — a pill on the Review tab. */
-  reviewCount?: number;
 }) {
   const t = useT();
 
@@ -47,11 +47,6 @@ export function VocabViewTabs({
           }`}
         >
           {t(labelKey)}
-          {value === "review" && reviewCount > 0 && (
-            <span className="ml-1.5 rounded-full bg-rose-500/15 px-1.5 py-px align-middle text-[10px] font-bold text-rose-500">
-              {reviewCount}
-            </span>
-          )}
         </Button>
       ))}
     </div>

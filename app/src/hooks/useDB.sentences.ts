@@ -19,7 +19,74 @@ export interface SentenceItem {
 }
 export interface SaveSentenceResult { id: number; created: boolean }
 
+/** Facet counts for the sentence filter bar — each axis skips its own
+ *  constraint (same self-exclusion contract as WordFilterFacets), so a chip
+ *  never zeroes itself but reflects every other active filter incl. search. */
+export interface SentenceSourceCount {
+  source: string;
+  count: number;
+}
+
+export interface SentenceFacets {
+  levelC2: number;
+  levelC1: number;
+  levelB2: number;
+  /** B1 + A2 + A1 folded. */
+  levelB1Below: number;
+  starred: number;
+  /** Observed sources with counts, biggest pile first — the source column is
+   *  free-form, so the bar can't hard-code an enum. */
+  sources: SentenceSourceCount[];
+}
+
+export type SentenceSortBy = "recent" | "alpha";
+
+export interface SentencePage {
+  items: SentenceItem[];
+  total: number;
+  /** Absent when the core predates facets — callers render null-faced bars
+   *  (no counts) rather than fake zeros. */
+  facets?: SentenceFacets;
+}
+
 export function useDBSentences() {
+  /** Server-side filtered + paginated sentence list (the filter-bar path).
+   *  Multi-token AND search, level buckets, starred, source, updated_at day
+   *  range, sort recent/alpha. */
+  const getSentencesPage = useCallback(
+    async (opts: {
+      search?: string;
+      levels?: string[];
+      starred?: boolean;
+      source?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      sortBy?: SentenceSortBy;
+      sortDesc?: boolean;
+      page?: number;
+      pageSize?: number;
+    }): Promise<SentencePage> => {
+      const pageSize = opts.pageSize ?? 20;
+      try {
+        return await invoke<SentencePage>("db_get_sentences_page", {
+          search: opts.search || null,
+          levels: opts.levels?.length ? opts.levels : null,
+          starred: opts.starred ? true : null,
+          source: opts.source && opts.source !== "all" ? opts.source : null,
+          dateFrom: opts.dateFrom || null,
+          dateTo: opts.dateTo || null,
+          sortBy: opts.sortBy ?? "recent",
+          sortDesc: opts.sortDesc ? true : null,
+          limit: pageSize,
+          offset: (opts.page ?? 0) * pageSize,
+        });
+      } catch (e) {
+        logError("getSentencesPage", e);
+        return { items: [], total: 0 };
+      }
+    },
+    []
+  );
   const listSentences = useCallback(async (): Promise<SentenceItem[]> => {
     try { return await invoke("db_list_sentences"); }
     catch (e) { logError("listSentences", e); return []; }
@@ -49,7 +116,7 @@ export function useDBSentences() {
     catch (e) { reportWriteError("setSentenceStarred", e, "标星失败"); return false; }
   }, []);
   return useMemo(
-    () => ({ listSentences, deleteSentence, deleteSentencesBatch, saveSentence, updateSentence, setSentenceStarred }),
-    [listSentences, deleteSentence, deleteSentencesBatch, saveSentence, updateSentence, setSentenceStarred]
+    () => ({ listSentences, getSentencesPage, deleteSentence, deleteSentencesBatch, saveSentence, updateSentence, setSentenceStarred }),
+    [listSentences, getSentencesPage, deleteSentence, deleteSentencesBatch, saveSentence, updateSentence, setSentenceStarred]
   );
 }

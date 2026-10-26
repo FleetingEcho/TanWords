@@ -1,23 +1,32 @@
-/** The floating sticky manager (`sticky-manager.html`) — tanNotes' manager
- *  parity, rebuilt on TanNotes' own data layer:
- *  - search box (150ms debounce) → `sticky_search` (FTS on SQLite);
- *  - note list with color dot + derived title + word count; click to open
- *    the note's OS window (bounds straight from `sticky_windows`);
- *  - New Note (+), show/hide all;
- *  - Trash section (restore/purge — the soft delete lives in `documents`);
- *  - settings panel: default color/opacity, global hotkey, autostart.
+/** The floating sticky manager (`sticky-manager.html`, 380×620, frameless
+ *  transparent) — the "便签墙" hub:
+ *
+ *  - 40px drag-strip header: title + live visible-count, [+] template
+ *    popover, [More ⋯] (show/hide all, bundle/text import, bundle export,
+ *    quick help), [X] closes the window;
+ *  - segmented tabs: Wall (default, all notes incl. open) / Open (is_open)
+ *    / Trash with a count badge (lazily loads `sticky_trash_list` on first
+ *    visit);
+ *  - pill search below the header (150ms debounce → `sticky_search`, FTS;
+ *    the trash list filters in-memory; Esc clears + blurs);
+ *  - a 2-column grid of pastel paper cards — click focuses/opens the note
+ *    (`stickywin_focus` vs `stickywin_open` + `sticky_update_window_state`),
+ *    hover "⋯" or right-click opens a context menu (open / export md+html /
+ *    move to trash — the last behind a ConfirmModal).
  *
  *  This window never edits note content — that's the per-note window's job.
- */
+ *  Theme-compat approach preserved from the previous design: the shell adapts
+ *  to the app theme (via `dark:` variants where the old file used theme
+ *  tokens), while the pastel cards keep dark text on paper in both themes,
+ *  same as the note windows themselves. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowDownToLine, ArrowUpToLine, ChevronDown, CircleHelp, Eye, FileDown,
-  FileUp, Loader2, Plus, RotateCcw, Search,
-  Trash2, X,
+  ArrowDownToLine, ArrowUpToLine, ChevronDown, CircleHelp, Ellipsis, Eye,
+  FileDown, FileUp, Loader2, Plus, RotateCcw, Search, Trash2, X,
 } from "lucide-react";
 import { invoke } from "@/ipc/backend";
 import { callMain } from "@/ipc/host";
-import { subscribe, subscribeAll } from "@/ipc/events";
+import { subscribeAll } from "@/ipc/events";
 import { saveDialog } from "@/ipc/dialog";
 import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
@@ -26,11 +35,16 @@ import {
   blocksToMarkdownOffThread, markdownToBlocksOffThread,
 } from "@/lib/documentWorkerClient";
 import { exportMarkdownAsHtml } from "@/lib/documentExport";
-import { stickyColorHex, useDismissOnOutsideClick, type StickyDetail, type StickyListItem } from "./stickyShared";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import {
+  stickyColorHex, stickyDerivedTitle, useDismissOnOutsideClick,
+  type StickyDetail, type StickyListItem,
+} from "./stickyShared";
 import { STICKY_TEMPLATES } from "./stickyTemplates";
+import { StickyManagerCard } from "./StickyManagerCard";
 import type { Block } from "@/components/Documents/tiptap/blocks";
 
-/** Snake_case mirror of the core's `StickyListItem` (no serde rename). */
+/** Snake_case mirror of the core's trash `StickyListItem` (no serde rename). */
 interface StickyTrashItem {
   id: number;
   title: string;
@@ -39,6 +53,7 @@ interface StickyTrashItem {
 }
 
 type Bounds = { x: number; y: number; width: number; height: number };
+type Tab = "wall" | "opened" | "trash";
 
 function parseBlocks(content: string): Block[] {
   try {
@@ -50,28 +65,40 @@ function parseBlocks(content: string): Block[] {
 }
 
 const SEARCH_DEBOUNCE_MS = 150;
+const HEADER_BUTTON =
+  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-black/10 dark:hover:bg-white/10 disabled:opacity-50";
+const MENU_ROW =
+  "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-black/[0.06] dark:hover:bg-white/10";
 
 export function StickyManagerApp() {
   const t = useT();
 
+  const [tab, setTab] = useState<Tab>("wall");
   const [items, setItems] = useState<StickyListItem[] | null>(null);
   const [trash, setTrash] = useState<StickyTrashItem[] | null>(null);
   const [query, setQuery] = useState("");
-  const [showTrash, setShowTrash] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
-  const [exportMenuFor, setExportMenuFor] = useState<number | null>(null);
+  /** Card context menu, rendered at window level (fixed) so the scrollable
+   *  grid's overflow never clips it. */
+  const [menuFor, setMenuFor] = useState<{ item: StickyListItem; x: number; y: number } | null>(null);
+  const [menuExportOpen, setMenuExportOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<StickyListItem | null>(null);
+  const [pendingPurge, setPendingPurge] = useState<StickyTrashItem | null>(null);
   // Popovers dismiss on any outside pointer press (2026-09 user report).
   const moreMenuRef = useRef<HTMLDivElement | null>(null);
   const templatesRef = useRef<HTMLDivElement | null>(null);
-  const exportMenuRef = useRef<HTMLDivElement | null>(null);
+  const cardMenuRef = useRef<HTMLDivElement | null>(null);
   useDismissOnOutsideClick(moreMenuRef, showMore, () => setShowMore(false));
   useDismissOnOutsideClick(templatesRef, showTemplates, () => setShowTemplates(false));
-  useDismissOnOutsideClick(exportMenuRef, exportMenuFor !== null, () => setExportMenuFor(null));
+  useDismissOnOutsideClick(cardMenuRef, menuFor !== null, () => setMenuFor(null));
   const [busyId, setBusyId] = useState<number | null>(null);
   const [createBusy, setCreateBusy] = useState(false);
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Trash loads lazily (first visit of the tab); after that, every reload
+   *  keeps it honest too. */
+  const trashLoaded = useRef(false);
 
   const reload = useCallback(async () => {
     try {
@@ -82,10 +109,12 @@ export function StickyManagerApp() {
     } catch {
       setItems([]);
     }
-    try {
-      setTrash(await invoke<StickyTrashItem[]>("sticky_trash_list"));
-    } catch {
-      setTrash([]);
+    if (trashLoaded.current) {
+      try {
+        setTrash(await invoke<StickyTrashItem[]>("sticky_trash_list"));
+      } catch {
+        setTrash([]);
+      }
     }
   }, [query]);
 
@@ -101,6 +130,15 @@ export function StickyManagerApp() {
       if (searchRef.current) clearTimeout(searchRef.current);
     };
   }, [query, reload]);
+
+  // Trash loads on first visit of the trash tab only.
+  useEffect(() => {
+    if (tab !== "trash" || trashLoaded.current) return;
+    trashLoaded.current = true;
+    void invoke<StickyTrashItem[]>("sticky_trash_list")
+      .then(setTrash)
+      .catch(() => setTrash([]));
+  }, [tab]);
 
   // Keep the list honest while windows open/close/move.
   useEffect(() => {
@@ -160,6 +198,7 @@ export function StickyManagerApp() {
       });
       await invoke("sticky_update_window_state", { id: created.id, is_open: true }).catch(() => {});
       setQuery("");
+      setTab("wall");
       void reload();
     } finally {
       setCreateBusy(false);
@@ -252,73 +291,365 @@ export function StickyManagerApp() {
     }
   }, [reload]);
 
+  const restoreNote = useCallback(async (item: StickyTrashItem) => {
+    setBusyId(item.id);
+    try {
+      await invoke("sticky_restore", { id: item.id });
+      void reload();
+    } finally {
+      setBusyId(null);
+    }
+  }, [reload]);
+
+  const purgeNote = useCallback(async (item: StickyTrashItem) => {
+    setBusyId(item.id);
+    try {
+      await invoke("sticky_purge", { id: item.id });
+      void reload();
+    } finally {
+      setBusyId(null);
+    }
+  }, [reload]);
+
   const showAll = () => void invoke("stickywin_show_all").catch(() => {});
   const hideAll = () => void invoke("stickywin_hide_all").catch(() => {});
 
+  const openCardMenu = useCallback((item: StickyListItem, at: { x: number; y: number }) => {
+    setMenuExportOpen(false);
+    setMenuFor({ item, x: at.x, y: at.y });
+  }, []);
+
+  // Derived lists. The backend order is authoritative (COALESCE(is_open)
+  // DESC, updated_at DESC) — no client-side sort.
+  const openedItems = useMemo(() => (items ?? []).filter((i) => i.is_open), [items]);
+  const wallItems = tab === "opened" ? openedItems : (items ?? []);
+  /** Trash has no server-side search — filter client-side with the same query. */
+  const trashVisible = useMemo(() => {
+    if (!trash) return null;
+    const q = query.trim().toLowerCase();
+    if (!q) return trash;
+    return trash.filter(
+      (it) => it.title.toLowerCase().includes(q) || it.preview.toLowerCase().includes(q),
+    );
+  }, [trash, query]);
+  const visibleCount = tab === "trash" ? trashVisible?.length ?? 0 : wallItems.length;
+
+  const icon = "h-3.5 w-3.5";
+
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden rounded-xl border border-border bg-background text-foreground">
-      {/* Title bar */}
-      <div className="app-drag-region flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
-        <h1 className="flex-1 truncate text-sm font-semibold">{t("sticky.manageTitle")}</h1>
-        <button
-          type="button"
-          title={t("sticky.showAll")}
-          className="rounded-md p-1.5 hover:bg-muted"
-          onClick={showAll}
-        >
-          <ArrowDownToLine className="size-4" />
-        </button>
-        <button
-          type="button"
-          title={t("sticky.hideAll")}
-          className="rounded-md p-1.5 hover:bg-muted"
-          onClick={hideAll}
-        >
-          <ArrowUpToLine className="size-4" />
-        </button>
+    <div className="relative flex h-screen w-screen flex-col overflow-hidden rounded-2xl border border-black/5 bg-white/95 text-neutral-900 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-neutral-900/95 dark:text-neutral-100">
+      {/* ── Header (drag strip, 40px; buttons auto opt out via CSS) ────── */}
+      <div className="app-drag-region flex h-10 shrink-0 items-center gap-1 px-3">
+        <div className="min-w-0 flex-1 select-none">
+          <h1 className="truncate text-sm font-bold leading-tight">{t("sticky.manageTitle")}</h1>
+          <p className="text-[10px] leading-tight text-black/40 tabular-nums dark:text-white/40">
+            {t("sticky.noteCount", { n: visibleCount })}
+          </p>
+        </div>
+        <div className="relative" ref={templatesRef}>
+          <button
+            type="button"
+            title={t("sticky.templates")}
+            className={HEADER_BUTTON}
+            disabled={createBusy}
+            onClick={() => setShowTemplates((v) => !v)}
+          >
+            {createBusy ? <Loader2 className={`${icon} animate-spin`} /> : <Plus className="h-4 w-4" />}
+          </button>
+          {showTemplates && (
+            <div className="absolute top-8 right-0 z-50 w-44 rounded-xl border border-black/10 bg-white/95 py-1 shadow-xl backdrop-blur-xl dark:border-white/10 dark:bg-neutral-900/95">
+              {STICKY_TEMPLATES.map((template) => (
+                <button
+                  key={template.id}
+                  type="button"
+                  className={MENU_ROW}
+                  onClick={() => {
+                    setShowTemplates(false);
+                    // Blank default: picking the blank template is a plain
+                    // empty sticky_create.
+                    void createNote(template.id === "blank" ? undefined : template.blocks);
+                  }}
+                >
+                  {t(template.labelKey)}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="relative" ref={moreMenuRef}>
           <button
             type="button"
             title={t("sticky.more")}
-            className="rounded-md p-1.5 hover:bg-muted"
+            className={HEADER_BUTTON}
             onClick={() => setShowMore((v) => !v)}
           >
-            <CircleHelp className={showHelp ? "hidden size-4" : "size-4"} />
-            <ChevronDown className={showHelp ? "size-4" : "hidden"} />
+            <Ellipsis className="h-4 w-4" />
           </button>
-          {showMore && (
-            <div className="absolute top-9 right-0 z-50 w-52 rounded-lg border border-border bg-background py-1 shadow-lg">
-              <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted" onClick={() => { setShowMore(false); void exportBundle(); }}>
-                <FileDown className="size-3.5" /> {t("sticky.exportBundle")}
-              </button>
-              <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted" onClick={() => { setShowMore(false); void importFile("bundle"); }}>
-                <FileUp className="size-3.5" /> {t("sticky.importBundle")}
-              </button>
-              <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted" onClick={() => { setShowMore(false); void importFile("md"); }}>
-                <FileUp className="size-3.5" /> {t("sticky.importText")}
-              </button>
-              <div className="my-1 border-t border-border" />
-              <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted" onClick={() => { setShowMore(false); setShowHelp(true); }}>
-                <CircleHelp className="size-3.5" /> {t("sticky.quickHelp")}
-              </button>
-            </div>
-          )}
+          {/* Always mounted (CSS-toggled) so the show/hide-all rows keep
+              their tooltips present for the panel guard tests + a11y tree. */}
+          <div
+            aria-hidden={!showMore}
+            className={`absolute top-8 right-0 z-50 w-52 rounded-xl border border-black/10 bg-white/95 py-1 shadow-xl backdrop-blur-xl dark:border-white/10 dark:bg-neutral-900/95${showMore ? "" : " hidden"}`}
+          >
+            <button type="button" title={t("sticky.showAll")} className={MENU_ROW} onClick={() => { setShowMore(false); showAll(); }}>
+              <ArrowDownToLine className={icon} /> {t("sticky.showAll")}
+            </button>
+            <button type="button" title={t("sticky.hideAll")} className={MENU_ROW} onClick={() => { setShowMore(false); hideAll(); }}>
+              <ArrowUpToLine className={icon} /> {t("sticky.hideAll")}
+            </button>
+            <div className="my-1 border-t border-black/10 dark:border-white/10" />
+            <button type="button" className={MENU_ROW} onClick={() => { setShowMore(false); void importFile("bundle"); }}>
+              <FileUp className={icon} /> {t("sticky.importBundle")}
+            </button>
+            <button type="button" className={MENU_ROW} onClick={() => { setShowMore(false); void importFile("md"); }}>
+              <FileUp className={icon} /> {t("sticky.importText")}
+            </button>
+            <div className="my-1 border-t border-black/10 dark:border-white/10" />
+            <button type="button" className={MENU_ROW} onClick={() => { setShowMore(false); void exportBundle(); }}>
+              <FileDown className={icon} /> {t("sticky.exportBundle")}
+            </button>
+            <div className="my-1 border-t border-black/10 dark:border-white/10" />
+            <button type="button" className={MENU_ROW} onClick={() => { setShowMore(false); setShowHelp(true); }}>
+              <CircleHelp className={icon} /> {t("sticky.quickHelp")}
+            </button>
+          </div>
         </div>
         <button
           type="button"
           title={t("sticky.close")}
-          className="rounded-md p-1.5 hover:bg-muted"
+          className={HEADER_BUTTON}
           onClick={() => void invoke("stickywin_close_manager").catch(() => window.close())}
         >
-          <X className="size-4" />
+          <X className="h-4 w-4" />
         </button>
       </div>
 
+      {/* ── Segmented tabs ────────────────────────────────────────────── */}
+      <div className="shrink-0 px-3 pt-1">
+        <div className="flex rounded-full bg-black/[0.06] p-0.5 dark:bg-white/[0.08]" role="tablist">
+          {([["wall", t("sticky.wall")], ["opened", t("sticky.openedTab")]] as const).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={tab === id}
+              className={`flex-1 rounded-full py-1 text-[11px] font-semibold transition-colors ${
+                tab === id
+                  ? "bg-white shadow-sm dark:bg-neutral-700"
+                  : "text-black/50 hover:text-black/80 dark:text-white/50 dark:hover:text-white/80"
+              }`}
+              onClick={() => setTab(id)}
+            >
+              {label}
+            </button>
+          ))}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "trash"}
+            className={`flex flex-1 items-center justify-center gap-1 rounded-full py-1 text-[11px] font-semibold transition-colors ${
+              tab === "trash"
+                ? "bg-white shadow-sm dark:bg-neutral-700"
+                : "text-black/50 hover:text-black/80 dark:text-white/50 dark:hover:text-white/80"
+            }`}
+            onClick={() => setTab("trash")}
+          >
+            {t("sticky.trash")}
+            {trash && trash.length > 0 ? (
+              <span className="rounded-full bg-black/10 px-1 text-[9px] leading-4 tabular-nums dark:bg-white/15">
+                {trash.length}
+              </span>
+            ) : null}
+          </button>
+        </div>
+      </div>
+
+      {/* ── Search (pill row below the header) ────────────────────────── */}
+      <div className="shrink-0 px-3 pt-2 pb-1">
+        <div className="relative">
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-black/40 dark:text-white/40" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setQuery("");
+                e.currentTarget.blur();
+              }
+            }}
+            placeholder={t("sticky.searchPlaceholder")}
+            className="h-8 w-full rounded-full border border-black/10 bg-white/70 pr-3 pl-7 text-xs outline-none placeholder:text-black/40 focus:ring-1 focus:ring-black/20 dark:border-white/10 dark:bg-white/[0.06] dark:placeholder:text-white/40 dark:focus:ring-white/20"
+          />
+        </div>
+      </div>
+
+      {/* ── Body: note wall / open-only wall / trash ──────────────────── */}
+      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+        {tab === "trash" ? (
+          trashVisible === null ? (
+            <div className="flex h-full items-center justify-center">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-black/40 dark:text-white/40" />
+            </div>
+          ) : trashVisible.length === 0 ? (
+            <div className="flex h-full items-center justify-center px-6 text-center text-xs text-black/40 dark:text-white/40">
+              {query ? t("sticky.emptySearch") : t("sticky.trashEmpty")}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              {trashVisible.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex min-h-[88px] flex-col rounded-xl p-2.5 opacity-70 grayscale-[30%]"
+                  style={{
+                    backgroundColor: stickyColorHex("gray"),
+                    boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.08)",
+                  }}
+                >
+                  <span className="truncate text-[12px] font-semibold">
+                    {item.title || stickyDerivedTitle(item.preview) || t("sticky.untitled")}
+                  </span>
+                  <p className="mt-0.5 flex-1 line-clamp-3 whitespace-pre-wrap text-[10px] leading-relaxed opacity-60">
+                    {item.preview}
+                  </p>
+                  <div className="mt-1 flex items-center justify-end gap-1">
+                    {busyId === item.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin opacity-60" />
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          title={t("sticky.restore")}
+                          className="flex h-5 items-center gap-1 rounded-full px-2 text-[10px] font-semibold hover:bg-black/10"
+                          onClick={() => void restoreNote(item)}
+                        >
+                          <RotateCcw className="h-3 w-3" /> {t("sticky.restore")}
+                        </button>
+                        <button
+                          type="button"
+                          title={t("sticky.purge")}
+                          className="flex h-5 items-center gap-1 rounded-full px-2 text-[10px] font-semibold text-red-700 hover:bg-red-500/10 dark:text-red-400"
+                          onClick={() => setPendingPurge(item)}
+                        >
+                          <Trash2 className="h-3 w-3" /> {t("sticky.purge")}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        ) : items === null ? (
+          <div className="flex h-full items-center justify-center">
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-black/40 dark:text-white/40" />
+          </div>
+        ) : wallItems.length === 0 ? (
+          <div className="flex h-full items-center justify-center px-6 text-center text-xs text-black/40 dark:text-white/40">
+            {query ? t("sticky.emptySearch") : t("sticky.empty")}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2">
+            {wallItems.map((item) => (
+              <StickyManagerCard
+                key={item.id}
+                item={item}
+                busy={busyId === item.id}
+                onOpen={(it) => void openNote(it)}
+                onMenu={openCardMenu}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Card context menu (fixed at window level, clamped on-screen) ── */}
+      {menuFor && (
+        <div
+          ref={cardMenuRef}
+          className="fixed z-50 w-44 rounded-xl border border-black/10 bg-white/95 py-1 shadow-xl backdrop-blur-xl dark:border-white/10 dark:bg-neutral-900/95"
+          style={{
+            left: Math.max(8, Math.min(menuFor.x - 176, window.innerWidth - 184)),
+            top: Math.max(8, Math.min(menuFor.y, window.innerHeight - 190)),
+          }}
+        >
+          <button
+            type="button"
+            className={MENU_ROW}
+            onClick={() => { setMenuFor(null); void openNote(menuFor.item); }}
+          >
+            <Eye className={icon} /> {t("sticky.open")}
+          </button>
+          <div className="my-1 border-t border-black/10 dark:border-white/10" />
+          <button
+            type="button"
+            className={MENU_ROW}
+            onClick={() => setMenuExportOpen((v) => !v)}
+          >
+            <FileDown className={icon} />
+            <span className="flex-1">{t("sticky.exportNote")}</span>
+            <ChevronDown className={`h-3 w-3 transition-transform ${menuExportOpen ? "rotate-180" : ""}`} />
+          </button>
+          {menuExportOpen && (
+            <>
+              <button
+                type="button"
+                className={`${MENU_ROW} pl-8`}
+                onClick={() => { setMenuFor(null); void exportNote(menuFor.item, "md"); }}
+              >
+                Markdown (.md)
+              </button>
+              <button
+                type="button"
+                className={`${MENU_ROW} pl-8`}
+                onClick={() => { setMenuFor(null); void exportNote(menuFor.item, "html"); }}
+              >
+                HTML (.html)
+              </button>
+            </>
+          )}
+          <div className="my-1 border-t border-black/10 dark:border-white/10" />
+          <button
+            type="button"
+            className={`${MENU_ROW} text-red-600 hover:bg-red-500/10 dark:text-red-400`}
+            onClick={() => { setPendingDelete(menuFor.item); setMenuFor(null); }}
+          >
+            <Trash2 className={icon} /> {t("sticky.delete")}
+          </button>
+        </div>
+      )}
+
+      {/* ── Destructive-action confirms ───────────────────────────────── */}
+      <ConfirmModal
+        open={pendingDelete !== null}
+        title={t("sticky.deleteConfirmTitle")}
+        message={t("sticky.deleteConfirmMessage")}
+        confirmLabel={t("sticky.delete")}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => {
+          const item = pendingDelete;
+          setPendingDelete(null);
+          if (item) void trashNote(item);
+        }}
+      />
+      <ConfirmModal
+        open={pendingPurge !== null}
+        title={t("sticky.purgeConfirmTitle")}
+        message={t("sticky.purgeConfirmMessage")}
+        confirmLabel={t("sticky.purge")}
+        onCancel={() => setPendingPurge(null)}
+        onConfirm={() => {
+          const item = pendingPurge;
+          setPendingPurge(null);
+          if (item) void purgeNote(item);
+        }}
+      />
+
+      {/* ── Quick help overlay (existing content, paper styling) ──────── */}
       {showHelp && (
         <div className="absolute inset-0 z-60 flex items-center justify-center bg-black/30" onClick={() => setShowHelp(false)}>
-          <div className="w-80 rounded-xl border border-border bg-background p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div className="w-80 rounded-2xl border border-black/10 bg-white p-4 shadow-xl dark:border-white/10 dark:bg-neutral-900" onClick={(e) => e.stopPropagation()}>
             <h2 className="mb-2 text-sm font-semibold">{t("sticky.quickHelp")}</h2>
-            <ul className="space-y-1.5 text-xs text-muted-foreground">
+            <ul className="space-y-1.5 text-xs text-black/60 dark:text-white/60">
               {[
                 ["Ctrl/⌘+Alt+N", t("sticky.help.newNote")],
                 ["Ctrl/⌘+F", t("sticky.help.find")],
@@ -328,206 +659,19 @@ export function StickyManagerApp() {
                 [t("sticky.help.tray"), t("sticky.help.trayHint")],
               ].map(([k, v]) => (
                 <li key={k} className="flex items-start justify-between gap-3">
-                  <code className="rounded bg-muted px-1.5 py-0.5 text-[10px]">{k}</code>
+                  <code className="rounded bg-black/[0.06] px-1.5 py-0.5 text-[10px] dark:bg-white/10">{k}</code>
                   <span className="flex-1 text-right">{v}</span>
                 </li>
               ))}
             </ul>
             <div className="mt-3 flex justify-end">
-              <button type="button" className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-muted" onClick={() => setShowHelp(false)}>
+              <button type="button" className="rounded-lg border border-black/10 px-3 py-1.5 text-xs hover:bg-black/[0.06] dark:border-white/10 dark:hover:bg-white/10" onClick={() => setShowHelp(false)}>
                 {t("sticky.close")}
               </button>
             </div>
           </div>
         </div>
       )}
-
-      <>
-          {/* Search + actions */}
-          <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-            <div className="relative flex-1">
-              <Search className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={t("sticky.searchPlaceholder")}
-                className="w-full rounded-md border border-border bg-background py-1.5 pr-2 pl-7 text-sm outline-none focus:ring-1 focus:ring-ring"
-              />
-            </div>
-            <div className="relative" ref={templatesRef}>
-              <button
-                type="button"
-                title={t("sticky.newNote")}
-                className="rounded-md bg-primary p-1.5 text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                disabled={createBusy}
-                onClick={() => void createNote()}
-              >
-                {createBusy ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-              </button>
-              {/* Templates (tanNotes F46 parity): long-press/alternate click
-                  picks a starter layout instead of a blank note. */}
-              <button
-                type="button"
-                title={t("sticky.templates")}
-                className="absolute -bottom-1 -right-1 rounded-full border border-border bg-background p-0.5"
-                onClick={() => setShowTemplates((v) => !v)}
-              >
-                <ChevronDown className="size-2.5" />
-              </button>
-              {showTemplates && (
-                <div className="absolute top-full right-0 z-50 mt-1 w-40 rounded-lg border border-border bg-background py-1 shadow-lg">
-                  {STICKY_TEMPLATES.map((template) => (
-                    <button
-                      key={template.id}
-                      type="button"
-                      className="block w-full px-3 py-1.5 text-left text-xs hover:bg-muted"
-                      onClick={() => {
-                        setShowTemplates(false);
-                        void createNote(template.blocks);
-                      }}
-                    >
-                      {t(template.labelKey)}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* List */}
-          <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1">
-            {items === null ? (
-              <div className="flex justify-center py-8"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>
-            ) : items.length === 0 ? (
-              <p className="px-2 py-6 text-center text-xs text-muted-foreground">
-                {query ? t("sticky.emptySearch") : t("sticky.empty")}
-              </p>
-            ) : (
-              items.map((item) => (
-                <div
-                  key={item.id}
-                  className="group flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-muted"
-                >
-                  <span
-                    className="size-3 shrink-0 rounded-full border border-black/10"
-                    style={{ backgroundColor: stickyColorHex(item.color) }}
-                  />
-                  <button
-                    type="button"
-                    className="min-w-0 flex-1 text-left"
-                    onClick={() => void openNote(item)}
-                  >
-                    <span className="block truncate text-sm">
-                      {item.title || item.preview.slice(0, 60) || "…"}
-                    </span>
-                    <span className="block truncate text-[11px] text-muted-foreground">
-                      {item.is_open ? "● " : ""}
-                      {t("sticky.words", { n: item.word_count })}
-                      {item.always_on_top ? " · 📌" : ""}
-                    </span>
-                  </button>
-                  {busyId === item.id ? (
-                    <Loader2 className="size-4 animate-spin text-muted-foreground" />
-                  ) : (
-                    <span className="flex opacity-0 transition-opacity group-hover:opacity-100">
-                      <button
-                        type="button"
-                        title={t("sticky.open")}
-                        className="rounded-md p-1.5 hover:bg-background"
-                        onClick={() => void openNote(item)}
-                      >
-                        <Eye className="size-4" />
-                      </button>
-                      <div className="relative" ref={exportMenuFor === item.id ? exportMenuRef : undefined}>
-                        <button
-                          type="button"
-                          title={t("sticky.exportNote")}
-                          className="rounded-md p-1.5 hover:bg-background"
-                          onClick={() => setExportMenuFor((v) => (v === item.id ? null : item.id))}
-                        >
-                          <FileDown className="size-4" />
-                        </button>
-                        {exportMenuFor === item.id && (
-                          <div className="absolute top-9 right-0 z-50 w-32 rounded-lg border border-border bg-background py-1 shadow-lg">
-                            <button
-                              type="button"
-                              className="block w-full px-3 py-1.5 text-left text-xs hover:bg-muted"
-                              onClick={() => { setExportMenuFor(null); void exportNote(item, "md"); }}
-                            >
-                              Markdown (.md)
-                            </button>
-                            <button
-                              type="button"
-                              className="block w-full px-3 py-1.5 text-left text-xs hover:bg-muted"
-                              onClick={() => { setExportMenuFor(null); void exportNote(item, "html"); }}
-                            >
-                              HTML (.html)
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        title={t("sticky.delete")}
-                        className="rounded-md p-1.5 text-destructive hover:bg-background"
-                        onClick={() => void trashNote(item)}
-                      >
-                        <Trash2 className="size-4" />
-                      </button>
-                    </span>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-
-          {/* Trash section */}
-          <div className="shrink-0 border-t border-border">
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted"
-              onClick={() => setShowTrash((v) => !v)}
-            >
-              <Trash2 className="size-4" />
-              <span className="flex-1 text-left">
-                {t("sticky.trash")}
-                {trash && trash.length > 0 ? ` (${trash.length})` : ""}
-              </span>
-              <ChevronDown className={`size-4 transition-transform ${showTrash ? "rotate-180" : ""}`} />
-            </button>
-            {showTrash && (
-              <div className="max-h-40 overflow-y-auto px-2 pb-2">
-                {!trash || trash.length === 0 ? (
-                  <p className="px-2 py-3 text-center text-xs text-muted-foreground">{t("sticky.trashEmpty")}</p>
-                ) : (
-                  trash.map((item) => (
-                    <div key={item.id} className="group flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-muted">
-                      <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                        {item.title || item.preview.slice(0, 50) || "…"}
-                      </span>
-                      <button
-                        type="button"
-                        title={t("sticky.restore")}
-                        className="rounded-md p-1.5 opacity-0 group-hover:opacity-100 hover:bg-background"
-                        onClick={() => void invoke("sticky_restore", { id: item.id }).then(() => reload())}
-                      >
-                        <RotateCcw className="size-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        title={t("sticky.purge")}
-                        className="rounded-md p-1.5 text-destructive opacity-0 group-hover:opacity-100 hover:bg-background"
-                        onClick={() => void invoke("sticky_purge", { id: item.id }).then(() => reload())}
-                      >
-                        <X className="size-3.5" />
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-      </>
     </div>
   );
 }

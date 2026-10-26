@@ -58,7 +58,13 @@ export function useVocabWordDetail(db: ReturnType<typeof useDB>) {
 
   // ── Select word (from the vocabulary list) ───────────────────────────────
 
+  // Stale-response guard: keyboard navigation / rapid clicks can stack several
+  // selectWord fetches in flight, and a slow earlier one must never overwrite
+  // the word the user has already moved on to. Last call wins.
+  const selectSeq = useRef(0);
+
   const selectWord = async (w: WordListItem) => {
+    const seq = ++selectSeq.current;
     // Only the throwaway lookup stream is cancelled here. A saved word's enrichment keeps
     // running in the background (vocabEnrichStore tracks it, CommandBar shows it) so that
     // switching words mid-analysis doesn't discard work — coming back re-attaches to it.
@@ -72,6 +78,7 @@ export function useVocabWordDetail(db: ReturnType<typeof useDB>) {
         db.getWordDetail(w.id),
         db.getWordExtras(w.id),
       ]);
+      if (seq !== selectSeq.current) return; // superseded mid-flight
 
       let enriched: ParsedEnrichment | null = null;
       let legacy = false;
@@ -85,6 +92,7 @@ export function useVocabWordDetail(db: ReturnType<typeof useDB>) {
       setNotes(wordNotes);
       setSelected({ word: w, enriched, legacy, notes: wordNotes });
     } catch {
+      if (seq !== selectSeq.current) return;
       setSelected({ word: w, enriched: null, legacy: false, notes: "" });
     }
   };

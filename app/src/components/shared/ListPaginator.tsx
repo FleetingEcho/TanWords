@@ -12,6 +12,9 @@ interface Props {
   onPageChange: (page: number) => void;
   onPageSizeChange: (size: number) => void;
   className?: string;
+  /** Optional custom per-page choices (the Sentences feed offers up to 1000
+   *  for scanning long piles). Defaults to the compact [10..100] set. */
+  pageSizeOptions?: readonly number[];
 }
 
 /** Slim list footer: page size on the left, range + arrows as one pill on the
@@ -20,7 +23,7 @@ interface Props {
  * second navigation strip. The "per page" label is dropped below `sm`; the
  * select itself already says what the number means. */
 export function ListPaginator({
-  page, pageSize, total, onPageChange, onPageSizeChange, className = "",
+  page, pageSize, total, onPageChange, onPageSizeChange, className = "", pageSizeOptions,
 }: Props) {
   const t = useT();
   // Guard against a caller handing in `undefined` (mixed HMR module state,
@@ -44,9 +47,16 @@ export function ListPaginator({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {PAGE_SIZE_OPTIONS.map((size) => (
-              <SelectItem key={size} value={String(size)}>{size}</SelectItem>
-            ))}
+            {/* A persisted choice outside the offered set (e.g. an old "10"
+              * after the list moved to 20-based tiers) must still render —
+              * without a matching item the trigger paints a blank width. */}
+            {(() => {
+              const base = pageSizeOptions ?? PAGE_SIZE_OPTIONS;
+              const options = base.includes(pageSize) ? base : [pageSize, ...base].sort((a, b) => a - b);
+              return options.map((size) => (
+                <SelectItem key={size} value={String(size)}>{size}</SelectItem>
+              ));
+            })()}
           </SelectContent>
         </Select>
       </label>

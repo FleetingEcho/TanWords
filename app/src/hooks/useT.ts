@@ -26,3 +26,8 @@ export function useT() {
     [lang]
   );
 }
+
+/** The translator function type — stable identity per language, selects the
+ *  builtin `translations` dict. Components receive it via props so the render
+ *  tree doesn't re-subscribe to the settings store for every string. */
+export type TFunction = ReturnType<typeof useT>;

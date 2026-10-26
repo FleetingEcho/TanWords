@@ -1,9 +1,11 @@
-/** Dashboard stats, SRS (spaced-repetition) review, and search history — one
- *  of the domain hooks composed by useDB.extra.ts (see useDB.ts). */
+/** Dashboard stats and search history — one of the domain hooks composed by
+ *  useDB.extra.ts (see useDB.ts). (The SRS due-cards/review-card wrappers
+ *  lived here too; they left with the Review tab, 2026-10-24. The Rust
+ *  commands remain in the core, dormant.) */
 import { useCallback, useMemo } from "react";
 import { invoke } from "@/ipc/backend";
 import { logError, reportWriteError } from "./useDB.errors";
-import type { DashboardStats, DueCard, ReviewResult, SrsRating, SearchHistoryItem } from "./useDB.types";
+import type { DashboardStats, SearchHistoryItem } from "./useDB.types";
 
 export function useDBReview() {
   const getDashboardStats = useCallback(async (): Promise<DashboardStats | null> => {
@@ -11,26 +13,6 @@ export function useDBReview() {
       return await invoke<DashboardStats>("db_dashboard_stats");
     } catch (e) {
       logError("getDashboardStats", e);
-      return null;
-    }
-  }, []);
-
-  // ── SRS review (spaced repetition) ─────────────────────────────────────
-
-  const getDueCards = useCallback(async (newLimit?: number): Promise<DueCard[]> => {
-    try {
-      return await invoke<DueCard[]>("db_get_due_cards", { newLimit: newLimit ?? null });
-    } catch (e) {
-      logError("getDueCards", e);
-      return [];
-    }
-  }, []);
-
-  const reviewCard = useCallback(async (wordId: number, rating: SrsRating): Promise<ReviewResult | null> => {
-    try {
-      return await invoke<ReviewResult>("db_review_card", { wordId, rating });
-    } catch (e) {
-      reportWriteError("reviewCard", e, "记录复习结果失败");
       return null;
     }
   }, []);
@@ -64,11 +46,9 @@ export function useDBReview() {
 
   return useMemo(() => ({
     getDashboardStats,
-    getDueCards, reviewCard,
     addSearchHistory, getSearchHistory, clearSearchHistory,
   }), [
     getDashboardStats,
-    getDueCards, reviewCard,
     addSearchHistory, getSearchHistory, clearSearchHistory,
   ]);
 }

@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/core";
 import { CaseSensitive, ChevronDown, ChevronUp, X } from "lucide-react";
+import { useT } from "@/hooks/useT";
 
 interface Match {
   from: number;
@@ -39,6 +40,7 @@ export function StickyFindBar({
   editor: Editor | null;
   onClose: () => void;
 }) {
+  const t = useT();
   const [query, setQuery] = useState("");
   const [replacement, setReplacement] = useState("");
   const [caseSensitive, setCaseSensitive] = useState(false);
@@ -119,12 +121,12 @@ export function StickyFindBar({
             }
             if (e.key === "Escape") onClose();
           }}
-          placeholder="Find"
+          placeholder={t("sticky.find.placeholder")}
           className="min-w-0 flex-1 rounded-md border border-black/15 bg-white px-2 py-1 text-sm outline-none"
         />
         <button
           type="button"
-          title="Match case"
+          title={t("sticky.find.matchCase")}
           className={`rounded-md p-1 hover:bg-black/10 ${caseSensitive ? "bg-black/15" : ""}`}
           onClick={() => setCaseSensitive((v) => !v)}
         >
@@ -133,13 +135,13 @@ export function StickyFindBar({
         <span className="min-w-10 text-center text-[11px] text-neutral-500">
           {matches.length ? `${cursor + 1}/${matches.length}` : query ? "0/0" : ""}
         </span>
-        <button type="button" title="Previous" className="rounded-md p-1 hover:bg-black/10" onClick={() => selectMatch(cursorRef.current - 1)}>
+        <button type="button" title={t("sticky.find.prev")} className="rounded-md p-1 hover:bg-black/10" onClick={() => selectMatch(cursorRef.current - 1)}>
           <ChevronUp className="size-3.5" />
         </button>
-        <button type="button" title="Next" className="rounded-md p-1 hover:bg-black/10" onClick={() => selectMatch(cursorRef.current + 1)}>
+        <button type="button" title={t("sticky.find.next")} className="rounded-md p-1 hover:bg-black/10" onClick={() => selectMatch(cursorRef.current + 1)}>
           <ChevronDown className="size-3.5" />
         </button>
-        <button type="button" title="Close" className="rounded-md p-1 hover:bg-black/10" onClick={onClose}>
+        <button type="button" title={t("sticky.close")} className="rounded-md p-1 hover:bg-black/10" onClick={onClose}>
           <X className="size-3.5" />
         </button>
       </div>
@@ -147,7 +149,7 @@ export function StickyFindBar({
         <input
           value={replacement}
           onChange={(e) => setReplacement(e.target.value)}
-          placeholder="Replace with"
+          placeholder={t("sticky.find.replaceWith")}
           className="min-w-0 flex-1 rounded-md border border-black/15 bg-white px-2 py-1 text-sm outline-none"
         />
         <button

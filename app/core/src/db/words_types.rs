@@ -35,12 +35,34 @@ pub struct WordListItem {
     pub tags: Vec<String>,
 }
 
+/// Facet counts for the Words filter bar: how many words sit in each status,
+/// each CEFR level bucket, and the starred pile — each computed with every
+/// OTHER active filter applied but its own axis skipped. That's the
+/// Linear/Notion convention: toggling a chip must never zero out its own
+/// count, and the numbers still respect search/the other filters.
+#[derive(Serialize, Default, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct WordFilterFacets {
+    pub learning: i64,
+    pub familiar: i64,
+    pub mastered: i64,
+    pub level_c2: i64,
+    pub level_c1: i64,
+    pub level_b2: i64,
+    /// The "B1−" starter bucket = B1 + A2 + A1, matching the filter arms.
+    pub level_b1_below: i64,
+    pub starred: i64,
+}
+
 /// One page of the words list plus the total after filtering — lets the pager
 /// show real page counts without shipping the whole library per keystroke.
+/// `facets` rides along so the filter bar's chip counts always agree with the
+/// list (one round-trip, one snapshot) instead of drifting a query behind.
 #[derive(Serialize)]
 pub struct WordPage {
     pub items: Vec<WordListItem>,
     pub total: i64,
+    pub facets: WordFilterFacets,
 }
 
 /// Minimal (id, word) pair for bulk flows that only need to know WHICH words
