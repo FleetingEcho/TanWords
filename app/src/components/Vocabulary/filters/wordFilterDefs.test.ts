@@ -21,6 +21,7 @@ describe("word filter persistence", () => {
       dueOnly: true,
       source: "chat",
       tags: ["科学技术", "economics"],
+      scenes: ["dining.cafe", "travel.airport"],
     };
     persistWordFilters(f);
     expect(loadWordFilters()).toEqual(f);
@@ -65,6 +66,45 @@ describe("word filter persistence", () => {
       JSON.stringify({ tags: ['politics', 'bad"tag', "  spaced  ", "", "politics", 7] })
     );
     expect(loadWordFilters().tags).toEqual(["politics", "badtag", "spaced"]);
+  });
+
+  it("keeps valid scene keys, drops junk and duplicates, and caps the payload", () => {
+    localStorage.setItem(
+      WORD_FILTER_STORAGE_KEY,
+      JSON.stringify({
+        scenes: [
+          "dining.cafe", "dining.cafe", "Dining.Cafe", "not a key!", "UPPER",
+          "", 42, "x".repeat(200), "meta.repair",
+        ],
+      })
+    );
+    // "Dining.Cafe" lowercases nowhere (sanitizer keeps case), "not a key!"
+    // and "UPPER" fail the dotted-key charset, "" and 42 drop as usual, and
+    // the 200-char key truncates to the 100-char cap rather than dropping.
+    expect(loadWordFilters().scenes).toEqual([
+      "dining.cafe",
+      "x".repeat(100),
+      "meta.repair",
+    ]);
+  });
+
+  it("caps oversized scene-key payloads", () => {
+    localStorage.setItem(
+      WORD_FILTER_STORAGE_KEY,
+      JSON.stringify({
+        scenes: Array.from({ length: 60 }, (_, i) => `dining.scene-${i}`),
+      })
+    );
+    expect(loadWordFilters().scenes).toHaveLength(30);
+  });
+
+  it("a v1 snapshot (no scenes field) loads with an empty scene set", () => {
+    // Hand-write a v1-shaped payload under the v2 key: everything except scenes.
+    localStorage.setItem(
+      WORD_FILTER_STORAGE_KEY,
+      JSON.stringify({ levels: ["C1"], tags: ["old"] })
+    );
+    expect(loadWordFilters()).toEqual({ ...DEFAULT_WORD_FILTERS, levels: ["C1"], tags: ["old"] });
   });
 
   it("caps oversized tag payloads", () => {

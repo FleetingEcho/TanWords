@@ -2,7 +2,7 @@ import React from "react";
 import { ClipboardPaste, Globe, Settings, TerminalSquare, Wrench } from "lucide-react";
 import {
   GridIcon, BookIcon, DocIcon, ChatIcon,
-  FeedIcon, MusicIcon, DshIcon, CalendarIcon,
+  FeedIcon, MusicIcon, DshIcon, CalendarIcon, ScenesIcon,
 } from "@/components/ui/icons";
 import type { NavPage } from "@/store/navStore";
 import type { HostCapabilities } from "@/platform/types";
@@ -123,6 +123,16 @@ export const PAGE_CATALOG: PageDefinition[] = [
     minWidth: DEFAULT_MIN_WIDTH,
     minHeight: DEFAULT_MIN_HEIGHT,
     load: () => import("@/components/Vocabulary/VocabularyPage").then((m) => reshaped(m, "VocabularyPage")),
+  },
+  {
+    id: "scenes",
+    titleKey: "nav.scenes",
+    icon: ScenesIcon,
+    host: "react",
+    multiplicity: "singleton",
+    minWidth: DEFAULT_MIN_WIDTH,
+    minHeight: DEFAULT_MIN_HEIGHT,
+    load: () => import("@/components/Scenes/ScenesPage").then((m) => reshaped(m, "ScenesPage")),
   },
   {
     id: "documents",

@@ -102,7 +102,7 @@ export function useVocabBulkEnrich(params: {
           text: final.text,
           zhShort,
           level,
-        });
+        }, basicInfo.scenes);
         if (!saved || saved.id === 0) {
           // Write refused (e.g. empty explanation over an existing good
           // one) — keep the word's old analysis, count as failed, keep

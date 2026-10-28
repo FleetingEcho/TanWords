@@ -87,7 +87,7 @@ export function useVocabEnrichSelected(params: {
         text: final.text,
         zhShort,
         level,
-      }).catch(() => {});
+      }, basicInfo.scenes).catch(() => {});
 
       // The earlier optimistic update (right after basicInfoPromise resolves) only applied
       // info.zh — if that came back empty but the full enrichment stream's zhShort didn't,

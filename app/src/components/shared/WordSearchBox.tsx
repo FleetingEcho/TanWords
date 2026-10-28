@@ -190,7 +190,7 @@ export function WordSearchBox({ variant = "popover" }: { variant?: "popover" | "
     try {
       const zhShort = quickBasicInfo.zh || quick?.zhShort;
       const result = quick?.text
-        ? await db.addWordEnriched(q, zhShort || q, quickBasicInfo.wordType || null, { text: quick.text, zhShort, level: quickBasicInfo.level || quick.level })
+        ? await db.addWordEnriched(q, zhShort || q, quickBasicInfo.wordType || null, { text: quick.text, zhShort, level: quickBasicInfo.level || quick.level }, quickBasicInfo.scenes)
         : await db.addWord(q, zhShort || "");
       if (result.id > 0) {
         window.dispatchEvent(new CustomEvent("vocab-updated"));

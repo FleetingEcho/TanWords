@@ -65,11 +65,11 @@ async fn reanalyze_crash_drill_never_empties() {
         if i >= 10 { break; } // "crash" after 10 words
         let input = if i % 4 == 3 {
             // every 4th word receives a garbage/truncated stream
-            WordEnrichmentInput { text: "   \n > * # ".into(), zh_short: None, level: None }
+            WordEnrichmentInput { text: "   \n > * # ".into(), zh_short: None, level: None, scenes: None }
         } else {
             WordEnrichmentInput {
                 text: format!("drill replacement #{i} for {word} — long enough to pass the guard with plenty of real prose content"),
-                zh_short: None, level: None,
+                zh_short: None, level: None, scenes: None,
             }
         };
         // the exact command the GUI's bulk enrich calls

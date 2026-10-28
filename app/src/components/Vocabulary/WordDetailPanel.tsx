@@ -51,6 +51,12 @@ interface Props {
   tags?: string[];
   tagOptions?: { tag: string; count: number }[];
   onSetTags?: (tags: string[]) => void;
+  /** ── Scenes (vocab words only) ── the scenario registry chips.
+   *  `scenes` is the current key set; `onSetScenes` persists through
+   *  db_set_word_scenarios (manual links only — other sources untouched). */
+  scenes?: string[];
+  sceneOptions?: { scenario_key: string; name_en: string; name_zh: string; word_count: number }[];
+  onSetScenes?: (scenarioKeys: string[]) => void;
   /** Previous/next word navigation in the header — the mouse-side version of
    *  the list's ↑/↓ hotkeys (they share the page's moveSelection). Absent in
    *  dictionary-lookup mode, which has no list position. */
@@ -65,6 +71,7 @@ export function WordDetailPanel({
   lookupMode = false, lookupAdded = false, onAddToVocab,
   onNotesChange, onClearNotes, onRetry, onReenrich, onGeneratePatterns,
   tags, tagOptions, onSetTags,
+  scenes, sceneOptions, onSetScenes,
   onPrevWord, onNextWord, hasPrevWord = false, hasNextWord = false,
 }: Props) {
   const t = useT();
@@ -72,6 +79,8 @@ export function WordDetailPanel({
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
   const [tagsOpen, setTagsOpen] = useState(false);
+  const [scenesOpen, setScenesOpen] = useState(false);
+  const [sceneQuery, setSceneQuery] = useState("");
 
   const scrollRef = useRef<HTMLDivElement>(null);
   // Condensing the header on scroll keeps the word, its reading and the actions
@@ -241,6 +250,72 @@ export function WordDetailPanel({
                             e.currentTarget.value = "";
                           }}
                         />
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+              {/* Scenes — the same chip-row pattern over the scenario
+               *  registry. Manual links only: the toggle set replaces
+               *  manual membership and never disturbs non-manual rows. */}
+              {!condensed && onSetScenes && (
+                <div className="relative mt-1 flex flex-wrap items-center gap-1.5">
+                  {(scenes ?? []).length === 0 ? (
+                    <button
+                      onClick={() => setScenesOpen((v) => !v)}
+                      className="text-[11px] text-muted-foreground/70 underline decoration-dotted underline-offset-2 hover:text-foreground"
+                    >
+                      {t("scenes.addToScene")}
+                    </button>
+                  ) : (
+                    (scenes ?? []).map((key) => {
+                      const opt = (sceneOptions ?? []).find((o) => o.scenario_key === key);
+                      return (
+                        <button
+                          key={key}
+                          onClick={() => setScenesOpen((v) => !v)}
+                          className="rounded bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground hover:bg-muted/70"
+                        >
+                          {opt ? opt.name_en : key}
+                        </button>
+                      );
+                    })
+                  )}
+                  {scenesOpen && (
+                    <>
+                      <div className="fixed inset-0 z-30" onClick={() => setScenesOpen(false)} />
+                      <div className="absolute left-0 top-full z-40 mt-1 w-64 rounded-lg border border-border bg-popover p-1.5 shadow-md">
+                        <input
+                          value={sceneQuery}
+                          onChange={(e) => setSceneQuery(e.target.value)}
+                          placeholder={t("scenes.searchPlaceholder")}
+                          className="w-full rounded border border-border bg-background px-2 py-1 text-[11px] outline-none focus:border-primary/50"
+                        />
+                        <div className="mt-1 max-h-52 overflow-y-auto">
+                          {(sceneOptions ?? [])
+                            .filter((o) => {
+                              const q = sceneQuery.trim().toLowerCase();
+                              if (!q) return true;
+                              return o.name_en.toLowerCase().includes(q) || o.name_zh.includes(sceneQuery.trim()) || o.scenario_key.includes(q);
+                            })
+                            .map((o) => {
+                              const on = (scenes ?? []).includes(o.scenario_key);
+                              return (
+                                <button
+                                  key={o.scenario_key}
+                                  onClick={() =>
+                                    onSetScenes(on ? (scenes ?? []).filter((k) => k !== o.scenario_key) : [...(scenes ?? []), o.scenario_key])
+                                  }
+                                  className={`flex w-full items-center justify-between gap-2 rounded px-1.5 py-1 text-left text-[11px] transition-colors ${
+                                    on ? "bg-primary/15 font-semibold text-primary" : "text-muted-foreground hover:bg-muted"
+                                  }`}
+                                >
+                                  <span className="truncate">{o.name_en}<span className="text-muted-foreground/60"> · {o.name_zh}</span></span>
+                                  <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/70">{o.word_count}</span>
+                                </button>
+                              );
+                            })}
+                        </div>
                       </div>
                     </>
                   )}

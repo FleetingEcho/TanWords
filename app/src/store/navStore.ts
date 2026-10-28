@@ -9,6 +9,7 @@ export type NavPage =
   | "reading"
   | "music"
   | "vocabulary"
+  | "scenes"
   | "documents"
   | "chat"
   | "browser"
@@ -52,7 +53,7 @@ export type NavDestination =
 
 const HASHABLE_PAGES: readonly NavPage[] = [
   "dashboard", "stickies", "calendar", "feeds", "reading", "music", "vocabulary",
-  "documents", "chat", "browser", "terminal", "tools", "dsh",
+  "scenes", "documents", "chat", "browser", "terminal", "tools", "dsh",
 ];
 
 /** Pages a host cannot render fall back to Dashboard instead of restoring

@@ -38,6 +38,14 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
   // no keychain token — the connection string carries its own credentials.
   const [postgresOpen, setPostgresOpen] = useState(false);
   const [postgresUrl, setPostgresUrl] = useState("");
+  /** One-click reconnect: a masked label of the last cloud connection that
+   *  opened successfully on this installation (kept in app_config.json even
+   *  after disconnecting). null = never connected here. */
+  const [savedPostgresSummary, setSavedPostgresSummary] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isDesktopHost) return;
+    void db.getSavedPostgresSummary().then(setSavedPostgresSummary);
+  }, [db, isDesktopHost]);
   const [connectingPostgres, setConnectingPostgres] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [showExportPassword, setShowExportPassword] = useState(false);
@@ -152,6 +160,18 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
       // useDB already toasts the failure
       setSwitching(false);
       setPendingSwitchPath(null);
+    }
+  };
+
+  const handleReconnectPostgres = async () => {
+    setConnectingPostgres(true);
+    try {
+      await db.reconnectPostgres();
+      toast.success(t("settings.remoteDBConnectOk"));
+      setTimeout(() => window.location.reload(), 600);
+    } catch {
+      // useDB already toasts; keep the section interactive on a stale string.
+      setConnectingPostgres(false);
     }
   };
 
@@ -434,5 +454,5 @@ export function useDataSection(db: ReturnType<typeof useDB>, t: ReturnType<typeo
       setVacuuming(false);
     }
   };
-  return { dbPath, defaultLocalPath, dbSize, connection, exporting, confirmClear, pendingSwitchPath, switching, activeTab, postgresOpen, postgresUrl, connectingPostgres, confirmDisconnect, showExportPassword, pendingExportSource, showImportPassword, pendingImportPath, importPassword, importPlan, analyzing, importing, importProgress, importError, pendingOverwritePath, overwriting, overwriteProgress, overwriteBackupReminder, postgresExportProgress, vacuuming, postgresRemote, postgresRemoteBusy, postgresRemoteAuthAction, postgresRemoteUrlVisible, isRemote, isOffline, canExport, canSwitchPath, canImport, canVacuum, formattedDbSize, setDbPath, setDefaultLocalPath, setDbSize, setConnection, setExporting, setConfirmClear, setPendingSwitchPath, setSwitching, setActiveTab, setPostgresOpen, setPostgresUrl, setConfirmDisconnect, setShowExportPassword, setPendingExportSource, setShowImportPassword, setPendingImportPath, setImportPassword, setImportPlan, setAnalyzing, setImporting, setImportError, setPendingOverwritePath, setOverwriteBackupReminder, setPostgresRemoteAuthAction, setPostgresRemoteUrlVisible, handleOpenExisting, handleNewLocation, confirmSwitch, handleConnectPostgres, handleDisablePostgresRemote, handleDisconnect, handleChooseImportFile, analyzeImport, handleImport, handleChooseOverwriteFile, handleOverwriteBackupNow, handleOverwriteBackupSkip, confirmOverwrite, handleVacuum, handleEnablePostgresRemote, handleConfirmPostgresRemoteAuth, startExport, handleExport, handleClearTranslations };
+  return { dbPath, defaultLocalPath, dbSize, connection, exporting, confirmClear, pendingSwitchPath, switching, activeTab, postgresOpen, postgresUrl, connectingPostgres, confirmDisconnect, showExportPassword, pendingExportSource, showImportPassword, pendingImportPath, importPassword, importPlan, analyzing, importing, importProgress, importError, pendingOverwritePath, overwriting, overwriteProgress, overwriteBackupReminder, postgresExportProgress, vacuuming, postgresRemote, postgresRemoteBusy, postgresRemoteAuthAction, postgresRemoteUrlVisible, isRemote, isOffline, canExport, canSwitchPath, canImport, canVacuum, formattedDbSize, setDbPath, setDefaultLocalPath, setDbSize, setConnection, setExporting, setConfirmClear, setPendingSwitchPath, setSwitching, setActiveTab, setPostgresOpen, setPostgresUrl, setConfirmDisconnect, setShowExportPassword, setPendingExportSource, setShowImportPassword, setPendingImportPath, setImportPassword, setImportPlan, setAnalyzing, setImporting, setImportError, setPendingOverwritePath, setOverwriteBackupReminder, setPostgresRemoteAuthAction, setPostgresRemoteUrlVisible, handleOpenExisting, handleNewLocation, confirmSwitch, handleConnectPostgres, handleReconnectPostgres, savedPostgresSummary, handleDisablePostgresRemote, handleDisconnect, handleChooseImportFile, analyzeImport, handleImport, handleChooseOverwriteFile, handleOverwriteBackupNow, handleOverwriteBackupSkip, confirmOverwrite, handleVacuum, handleEnablePostgresRemote, handleConfirmPostgresRemoteAuth, startExport, handleExport, handleClearTranslations };
 }

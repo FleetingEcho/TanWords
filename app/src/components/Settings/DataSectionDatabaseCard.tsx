@@ -8,7 +8,7 @@ import { DownloadIcon } from "@/components/ui/icons";
 import { SettingRow, ToggleGroup } from "./SettingsShared";
 
 export function DataSectionDatabaseCard({ data, t }: { data: ReturnType<typeof useDataSection>; t: ReturnType<typeof useT> }) {
-  const { dbPath, defaultLocalPath, connection, exporting, activeTab, postgresOpen, postgresUrl, connectingPostgres, analyzing, overwriting, postgresExportProgress, vacuuming, postgresRemote, postgresRemoteBusy, postgresRemoteUrlVisible, isRemote, isOffline, canExport, canSwitchPath, canImport, canVacuum, formattedDbSize, setActiveTab, setPostgresOpen, setPostgresUrl, setConfirmDisconnect, setPostgresRemoteAuthAction, setPostgresRemoteUrlVisible, handleOpenExisting, handleNewLocation, handleConnectPostgres, handleDisablePostgresRemote, handleChooseImportFile, handleChooseOverwriteFile, handleVacuum, handleEnablePostgresRemote, handleExport } = data;
+  const { dbPath, defaultLocalPath, connection, exporting, activeTab, postgresOpen, postgresUrl, connectingPostgres, analyzing, overwriting, postgresExportProgress, vacuuming, postgresRemote, postgresRemoteBusy, postgresRemoteUrlVisible, isRemote, isOffline, canExport, canSwitchPath, canImport, canVacuum, formattedDbSize, setActiveTab, setPostgresOpen, setPostgresUrl, setConfirmDisconnect, setPostgresRemoteAuthAction, setPostgresRemoteUrlVisible, handleOpenExisting, handleNewLocation, handleConnectPostgres, handleReconnectPostgres, savedPostgresSummary, handleDisablePostgresRemote, handleChooseImportFile, handleChooseOverwriteFile, handleVacuum, handleEnablePostgresRemote, handleExport } = data;
 
   const [urlCopied, setUrlCopied] = useState(false);
   const [connectionUrlVisible, setConnectionUrlVisible] = useState(false);
@@ -374,6 +374,25 @@ export function DataSectionDatabaseCard({ data, t }: { data: ReturnType<typeof u
 
             {postgresOpen && !isRemote && isDesktopHost && (
               <div className="space-y-3">
+                {/* One-click reconnect: the URL that last opened successfully
+                    stays in app_config.json after disconnect, so coming back
+                    never means retyping host/user/password. The masked label
+                    is all the renderer ever sees of it. */}
+                {savedPostgresSummary && (
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-foreground">{t("settings.remoteDBReconnectSaved")}</p>
+                      <p className="truncate font-mono text-[11px] text-muted-foreground">{savedPostgresSummary}</p>
+                    </div>
+                    <Button
+                      onClick={handleReconnectPostgres}
+                      disabled={connectingPostgres}
+                      className="h-8 shrink-0 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                    >
+                      {connectingPostgres ? t("settings.remoteDBConnecting") : t("settings.remoteDBReconnect")}
+                    </Button>
+                  </div>
+                )}
                 {/* Appearance settings live in user_settings, i.e. in the database
                     itself, so connecting to an empty one reads as "everything was
                     reset". Say so before they click, not after. */}

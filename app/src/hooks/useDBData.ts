@@ -188,6 +188,24 @@ export function useDBData() {
 
   /** Desktop-only: switches back to the default local file. On web, use
    *  `disablePostgresRemote` instead — it also revokes remote access. */
+  const getSavedPostgresSummary = useCallback(async (): Promise<string | null> => {
+    try {
+      return await invoke<string | null>("db_saved_postgres_summary");
+    } catch (e) {
+      logError("getSavedPostgresSummary", e);
+      return null;
+    }
+  }, []);
+
+  const reconnectPostgres = useCallback(async (): Promise<DbConnection> => {
+    try {
+      return await invoke<DbConnection>("db_reconnect_postgres");
+    } catch (e) {
+      reportWriteError("reconnectPostgres", e, "重连 Postgres 失败");
+      throw e;
+    }
+  }, []);
+
   const disconnectRemote = useCallback(async (): Promise<DbConnection> => {
     if (!isDesktopHost) throw new Error("Use disablePostgresRemote on web");
     try {
@@ -291,12 +309,12 @@ export function useDBData() {
 
   return useMemo(() => ({
     getDbPath, getDefaultLocalPath, getDbSize, exportBackup, exportPostgresBackup, switchDbPath, clearTranslations,
-    getConnection, connectPostgres, disconnectRemote, getStartupWarning,
+    getConnection, connectPostgres, disconnectRemote, reconnectPostgres, getSavedPostgresSummary, getStartupWarning,
     importAnalyze, importApply, importOverwrite, vacuumDatabase,
     getPostgresRemote, enablePostgresRemote, revealPostgresRemote, rotatePostgresRemote, disablePostgresRemote,
   }), [
     getDbPath, getDefaultLocalPath, getDbSize, exportBackup, exportPostgresBackup, switchDbPath, clearTranslations,
-    getConnection, connectPostgres, disconnectRemote, getStartupWarning,
+    getConnection, connectPostgres, disconnectRemote, reconnectPostgres, getSavedPostgresSummary, getStartupWarning,
     importAnalyze, importApply, importOverwrite, vacuumDatabase,
     getPostgresRemote, enablePostgresRemote, revealPostgresRemote, rotatePostgresRemote, disablePostgresRemote,
   ]);

@@ -5,6 +5,7 @@ export const nav: Dict = {
     "nav.dashboard": "仪表盘",
     "nav.search": "搜索",
     "nav.vocabulary": "词库",
+    "nav.scenes": "场景",
     "nav.stickies": "便签",
     "nav.documents": "文档",
     "nav.chat": "对话",

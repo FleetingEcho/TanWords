@@ -8,7 +8,6 @@ export interface ChatSessionItem {
   message_count: number;
   created_at: string;
   updated_at: string;
-  content_text: string;
   /** Folded out of the main list into the archive section. */
   archived: boolean;
   /** Sorts above the rest of its shelf. */

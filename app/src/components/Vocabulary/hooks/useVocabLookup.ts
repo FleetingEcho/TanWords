@@ -74,8 +74,7 @@ export function useVocabLookup(params: {
       const result = await db.addWordEnriched(lookup.word, zhShort || lookup.word, lookup.basicInfo.wordType || null, {
         text: lookup.enriched.text,
         zhShort,
-        level: lookup.basicInfo.level || lookup.enriched.level,
-      });
+        level: lookup.basicInfo.level || lookup.enriched.level, }, lookup.basicInfo.scenes);
       setLookup((prev) => prev ? { ...prev, added: true, wordId: result.id } : prev);
       window.dispatchEvent(new CustomEvent("vocab-updated"));
       toast.success(`「${lookup.word}」已加入词库`);

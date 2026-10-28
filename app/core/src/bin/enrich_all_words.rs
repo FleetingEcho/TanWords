@@ -58,12 +58,23 @@ const ENRICH_SYSTEM_PROMPT: &str = "你是一位资深词汇讲解者，面向 C
 
 直接从讲解正文开始，不要有任何与词义无关的内容：不要开场白（如\"当然可以\"\"我们来深度拆解一下\"之类的寒暄或过渡句），不要结尾互动语（如反问学习者最近的经历、邀请学习者造句、\"轮到你了\"之类的话术）。整段内容从头到尾都必须是词汇讲解本身。";
 
-const BASIC_INFO_SYSTEM_PROMPT: &str = "你是一个词典数据生成器。给定一个英文单词或短语，输出它最常用、最权威的基本信息，用于学习卡片列表的摘要行。
+const BASIC_INFO_SYSTEM_PROMPT_TEMPLATE: &str = "你是一个词典数据生成器。给定一个英文单词或短语，输出它最常用、最权威的基本信息，用于学习卡片列表的摘要行。
 
 只返回一个 JSON 对象，不要任何其他文字、不要代码块标记、不要解释：
-{\"word_type\":\"<词性缩写，如 n/v/adj/adv/prep/conj/pron/phrase，多个词性用 / 分隔，如 n/v>\",\"level\":\"<CEFR等级，仅限 A1|A2|B1|B2|C1|C2>\",\"zh\":\"<10字以内、这个词最常用义项的中文短释义>\"}
+{\"word_type\":\"<词性缩写，如 n/v/adj/adv/prep/conj/pron/phrase，多个词性用 / 分隔，如 n/v>\",\"level\":\"<CEFR等级，仅限 A1|A2|B1|B2|C1|C2>\",\"zh\":\"<10字以内、这个词最常用义项的中文短释义>\",\"scenes\":[\"<场景key>\"]}
 
-只给这个词最常见、最核心的那个义项，不要罗列多个义项，不要输出别的字段。";
+只给这个词最常见、最核心的那个义项，不要罗列多个义项，不要输出别的字段。
+\"scenes\" 是这个词最常出现的 0–4 个交际场景，只能从下面的场景列表里选，key 必须完全一致，没有合适的就给空数组：
+{SCENE_KEYS}";
+
+/// The instantiated prompt — the registry (answer key) baked in. Mirrors
+/// buildBasicInfoSystemPrompt() in app/src/providers/base.ts.
+fn basic_info_system_prompt() -> String {
+    BASIC_INFO_SYSTEM_PROMPT_TEMPLATE.replace(
+        "{SCENE_KEYS}",
+        &tanwords_lib::db::scenarios::scenario_seed_keys().join("、"),
+    )
+}
 
 #[derive(Deserialize, Default, Clone)]
 struct BasicInfo {
@@ -73,6 +84,10 @@ struct BasicInfo {
     level: Option<String>,
     #[serde(default)]
     zh: Option<String>,
+    /// Scenario keys from the model's "scenes" — validated against the
+    /// registry in persist() (unknown keys dropped there, same as TS).
+    #[serde(default)]
+    scenes: Option<Vec<String>>,
 }
 
 /// Same parsing rules as the app's basicInfo.ts: find the first '{', take to
@@ -214,7 +229,7 @@ impl Ctx {
         let user = format!("单词或短语：\"{word}\"（学习者目标水平：{}）", self.target_level);
         // This call is best-effort like in the app: failures just yield an
         // empty struct, the explanation is what must succeed.
-        match self.chat(BASIC_INFO_SYSTEM_PROMPT, &user).await {
+        match self.chat(&basic_info_system_prompt(), &user).await {
             Ok(raw) => parse_basic_info(&raw),
             Err(e) => {
                 eprintln!("  [basic-info] {word}: {e}");
@@ -287,6 +302,26 @@ impl Ctx {
         )
         .await
         .map_err(|e| e.to_string())?;
+        // Scene links — same contract as db_add_word_enriched: validate
+        // against the registry, INSERT OR IGNORE (never over existing rows,
+        // so tombstones and manual links survive), source='enrichment'.
+        if let Some(scenes) = &info.scenes {
+            for key in scenes {
+                let sid: Option<i64> = db::fetch_optional(
+                    &tx,
+                    "SELECT id FROM scenarios WHERE scenario_key = ?1",
+                    vec![Value::from(key.clone())],
+                    |r| r.get(0),
+                )
+                .await?;
+                if let Some(sid) = sid {
+                    tanwords_lib::db::scenarios::link_word_scenario(
+                        &tx, word_id, sid, "enrichment", 0.85,
+                    )
+                    .await?;
+                }
+            }
+        }
         tx.commit().await.map_err(|e| e.to_string())
     }
 }

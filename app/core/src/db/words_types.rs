@@ -143,6 +143,13 @@ pub struct WordEnrichmentInput {
     /// CEFR level from the "basic info" call. Only written if the word
     /// doesn't already have one (e.g. Reading already supplied it).
     pub level: Option<String>,
+    /// Scenario keys ("dining.cafe") from the same structured call — the
+    /// registry is the answer key, so anything not matching a seeded key
+    /// is dropped here (the TS layer already filters, this is the second
+    /// gate). Linked with source='enrichment' and never over an existing
+    /// or rejected link (INSERT OR IGNORE semantics).
+    #[serde(default)]
+    pub scenes: Option<Vec<String>>,
 }
 
 impl WordEnrichmentInput {

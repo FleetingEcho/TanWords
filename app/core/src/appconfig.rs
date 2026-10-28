@@ -34,6 +34,14 @@ struct AppConfig {
     /// machine's lock to another.
     #[serde(skip_serializing_if = "Option::is_none")]
     app_lock: Option<crate::app_lock::AppLock>,
+    /// The last Postgres connection string that opened successfully, kept
+    /// after disconnecting so "reconnect" is one click. Plaintext — the same
+    /// posture this file already takes toward the *active* Postgres profile
+    /// while connected (only R2's secret key is keychain material here).
+    /// Clearing a connection never clears this; the user manually re-types or
+    /// rotates to replace it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_postgres_url: Option<String>,
 }
 
 pub fn load_app_lock() -> Option<crate::app_lock::AppLock> {
@@ -85,6 +93,20 @@ pub fn load_db_profile() -> Option<DbProfile> {
 fn save(cfg: &AppConfig) -> std::io::Result<()> {
     let json = serde_json::to_string_pretty(cfg).unwrap_or_default();
     std::fs::write(config_file_path(), json)
+}
+
+pub fn load_last_postgres_url() -> Option<String> {
+    load().last_postgres_url.filter(|u| !u.trim().is_empty())
+}
+
+/// Read-modify-write companion to the url the profile can no longer hold
+/// after a disconnect — the active profile slot gets overwritten by the Local
+/// switch, so the "click back any time" copy of the connection string lives
+/// in its own field that nothing but a new successful connect overwrites.
+pub fn save_last_postgres_url(url: &str) -> std::io::Result<()> {
+    let mut cfg = load();
+    cfg.last_postgres_url = Some(url.to_string());
+    save(&cfg)
 }
 
 pub fn save_db_profile(profile: &DbProfile) -> std::io::Result<()> {

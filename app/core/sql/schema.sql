@@ -784,3 +784,83 @@ CREATE TABLE IF NOT EXISTS writing_summaries (
   created_at     TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_writing_summaries_created ON writing_summaries(created_at DESC);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 15. Scenarios — communicative-situation packs (NOT scene-lab)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- The scenario module is a different concept from the dormant scene-lab
+-- experiment above (3D kitchen object-labeling): scenarios are dialogue
+-- packs for real-life communicative situations (ordering coffee, airport
+-- check-in, a doctor's visit), grouped by intent with THEM/MY role variants,
+-- plus a many-to-many word membership so the Words list can filter by
+-- "which of my words show up in this situation". Naming is deliberately
+-- `scenarios*` in code/SQL while the UI label is "Scenes" — see
+-- plan-scene-learning.md §3.1.
+
+-- Registry: one row per scenario. scenario_key is the STABLE external id
+-- ('dining.cafe') used by prompts, filters, imports; the integer id is
+-- internal only (an overwrite import may renumber ids — never reference
+-- them in exports). Seeded idempotently by init_db (INSERT OR IGNORE, so
+-- user edits to the seed rows' names survive re-runs).
+CREATE TABLE IF NOT EXISTS scenarios (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  scenario_key  TEXT NOT NULL UNIQUE,
+  name_en       TEXT NOT NULL,
+  name_zh       TEXT NOT NULL DEFAULT '',
+  domain        TEXT NOT NULL DEFAULT '',  -- top-level grouping: 'dining', 'travel', ...
+  icon          TEXT NOT NULL DEFAULT '',  -- lucide icon name, UI-side lookup
+  description   TEXT NOT NULL DEFAULT '',
+  origin        TEXT NOT NULL DEFAULT 'prebuilt'
+                CHECK (origin IN ('prebuilt','ai-proposed','user')),
+  archived      INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0,1)),
+  sort_order    INTEGER NOT NULL DEFAULT 0,
+  created_at    TEXT DEFAULT (datetime('now')),
+  updated_at    TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_scenarios_domain ON scenarios(domain, sort_order);
+
+-- Word ↔ scenario membership. Composite PK gives the (word_id, scenario_id)
+-- lookup for free; only the reverse direction needs an explicit index.
+-- `source` is why the link exists (provenance — what makes coverage
+-- measurable and re-runnable); `confidence` gates the review queue.
+-- `rejected` is the tombstone (plan §3.2): rejecting a review item or
+-- deleting a manual link flips the flag instead of dropping the row —
+-- coverage passes are INSERT OR IGNORE on the PK, so without the tombstone
+-- a re-run would resurrect exactly what the user removed. Every read path
+-- filters `rejected = 0`.
+CREATE TABLE IF NOT EXISTS word_scenarios (
+  word_id      INTEGER NOT NULL REFERENCES words(id) ON DELETE CASCADE,
+  scenario_id  INTEGER NOT NULL REFERENCES scenarios(id) ON DELETE CASCADE,
+  source       TEXT NOT NULL DEFAULT 'manual'
+               CHECK (source IN ('manual','enrichment','backfill','jit',
+                                 'scenario-pack','scene-lab','knowledge-map','tag-import')),
+  confidence   REAL NOT NULL DEFAULT 1.0,
+  rejected     INTEGER NOT NULL DEFAULT 0 CHECK (rejected IN (0,1)),
+  created_at   TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (word_id, scenario_id)
+);
+CREATE INDEX IF NOT EXISTS idx_word_scenarios_scenario
+  ON word_scenarios(scenario_id, word_id);
+
+-- Pack content: dialogue lines grouped by intent. Multi-line intents carry
+-- the variant phrasings; role distinguishes what THEY say from what I say.
+-- The cross-scenario repair toolkit is simply the seeded scenario
+-- 'meta.repair', rendered inside every scenario's practice view.
+CREATE TABLE IF NOT EXISTS scenario_lines (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  scenario_id  INTEGER NOT NULL REFERENCES scenarios(id) ON DELETE CASCADE,
+  intent_key   TEXT NOT NULL DEFAULT '',   -- 'ask-size', 'pay', groups variants
+  role         TEXT NOT NULL DEFAULT 'them' CHECK (role IN ('them','me')),
+  text_en      TEXT NOT NULL,
+  text_zh      TEXT NOT NULL DEFAULT '',
+  note         TEXT NOT NULL DEFAULT '',   -- register notes, why-this-answer
+  importance   INTEGER NOT NULL DEFAULT 3 CHECK (importance BETWEEN 1 AND 5),
+  sentence_id  INTEGER REFERENCES sentences(id) ON DELETE SET NULL,  -- lazy promotion
+  sort_order   INTEGER NOT NULL DEFAULT 0,
+  created_at   TEXT DEFAULT (datetime('now')),
+  updated_at   TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_scenario_lines_scenario
+  ON scenario_lines(scenario_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_scenario_lines_intent
+  ON scenario_lines(scenario_id, intent_key);

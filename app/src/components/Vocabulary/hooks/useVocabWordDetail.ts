@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { useDB, WordListItem } from "@/hooks/useDB";
+import { useDB, WordListItem, ScenarioWordItem } from "@/hooks/useDB";
 import { toast } from "sonner";
 import { parseEnrichmentStream, ParsedEnrichment } from "@/lib/enrichMeta";
 import { BasicInfo } from "@/lib/basicInfo";
@@ -32,6 +32,9 @@ export function useVocabWordDetail(db: ReturnType<typeof useDB>) {
   useEffect(() => { selectedRef.current = selected; }, [selected]);
   const [lookup, setLookup] = useState<LookupData | null>(null);
   const [notes, setNotes] = useState("");
+  /** The selected word's scenario links (chips row in the detail panel).
+   *  Loaded on select; the parent's onSetScenes updates it optimistically. */
+  const [selectedScenes, setSelectedScenes] = useState<string[]>([]);
 
   const [enriching, setEnriching] = useState(false);
   const [enrichError, setEnrichError] = useState("");
@@ -73,10 +76,12 @@ export function useVocabWordDetail(db: ReturnType<typeof useDB>) {
     setEnrichError("");
     setLookup(null);
     setNotes("");
+    setSelectedScenes([]);
     try {
-      const [detail, extras] = await Promise.all([
+      const [detail, extras, scenes] = await Promise.all([
         db.getWordDetail(w.id),
         db.getWordExtras(w.id),
+        db.getWordScenarios(w.id),
       ]);
       if (seq !== selectSeq.current) return; // superseded mid-flight
 
@@ -90,10 +95,14 @@ export function useVocabWordDetail(db: ReturnType<typeof useDB>) {
 
       const wordNotes = extras?.notes || "";
       setNotes(wordNotes);
+      // Scene membership rides along the selection load — one row per link,
+      // key-only (never the internal integer id).
+      setSelectedScenes(scenes.map((sc) => sc.scenario_key));
       setSelected({ word: w, enriched, legacy, notes: wordNotes });
     } catch {
       if (seq !== selectSeq.current) return;
       setSelected({ word: w, enriched: null, legacy: false, notes: "" });
+      setSelectedScenes([]);
     }
   };
 
@@ -123,6 +132,7 @@ export function useVocabWordDetail(db: ReturnType<typeof useDB>) {
     selected, setSelected, selectedRef,
     lookup, setLookup,
     notes, setNotes,
+    selectedScenes, setSelectedScenes,
     enriching, setEnriching,
     enrichError, setEnrichError,
     lookupControllerRef,

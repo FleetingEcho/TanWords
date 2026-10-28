@@ -244,6 +244,32 @@ pub(super) async fn apply_words(
             }
         };
 
+        // Scene links ride along by KEY (integer ids never survive a merge):
+        // resolve each source key against the target registry and INSERT OR
+        // IGNORE — existing links and rejected tombstones both win over the
+        // incoming link. The user's own curated set from another device is
+        // manual-grade evidence: source='manual', confidence 1.0.
+        if !word.scenes.is_empty() {
+            for key in &word.scenes {
+                let sid: Option<i64> = db::fetch_optional(
+                    &tx,
+                    "SELECT id FROM scenarios WHERE scenario_key = ?1",
+                    params![key.clone()],
+                    |r| r.get(0),
+                )
+                .await?;
+                if let Some(sid) = sid {
+                    tx.execute(
+                        "INSERT OR IGNORE INTO word_scenarios (word_id, scenario_id, source, confidence)
+                         VALUES (?1, ?2, 'manual', 1.0)",
+                        params![word_id, sid],
+                    )
+                    .await
+                    .map_err(|e| e.to_string())?;
+                }
+            }
+        }
+
         // All of a word's definitions in one INSERT (one multi-row VALUES list,
         // still fully parameterized — no hand-built SQL text) rather than one
         // round trip per definition. A word can have several senses, so this

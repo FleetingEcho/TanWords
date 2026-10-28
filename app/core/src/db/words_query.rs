@@ -132,6 +132,10 @@ struct WordFilters {
     /// Category tags (words.tags JSON array) — a word matches when it carries
     /// ANY of the selected tags. Empty = no constraint.
     tags: Vec<String>,
+    /// Scenario keys (scenarios.scenario_key, e.g. "dining.cafe") — a word
+    /// matches when it links to ANY of the selected scenarios through
+    /// word_scenarios. Keys, not integer ids: ids don't survive re-imports.
+    scenarios: Vec<String>,
     due_only: bool,
     sort_by: String,
     /// Direction suffix for the sorts that support both ways ("ASC"/"DESC");
@@ -225,6 +229,27 @@ impl WordFilters {
                 params.push(Value::from(format!("%\"{}\"%", tag)));
             }
             sql.push_str(&format!(" AND ({})", arms.join(" OR ")));
+        }
+
+        // Scenario membership: EXISTS + a join onto the registry by its
+        // stable key, riding the (scenario_id, word_id) index — sub-ms at
+        // 10k words on both backends. Multiple selected scenes OR together,
+        // the same ANY-match semantics as the tags axis. `FacetSkip` gains
+        // no variant in v1: per-scene counts are skip-free globals served by
+        // db_list_word_scenario_counts (mirroring db_list_word_tags).
+        if !self.scenarios.is_empty() {
+            let mut placeholders: Vec<String> = Vec::with_capacity(self.scenarios.len());
+            for key in &self.scenarios {
+                let idx = params.len() + 1;
+                params.push(Value::from(key.clone()));
+                placeholders.push(format!("?{idx}"));
+            }
+            sql.push_str(&format!(
+                " AND EXISTS (SELECT 1 FROM word_scenarios ws
+                              JOIN scenarios sc ON sc.id = ws.scenario_id
+                              WHERE ws.word_id = w.id AND ws.rejected = 0 AND sc.scenario_key IN ({}))",
+                placeholders.join(", ")
+            ));
         }
 
         if self.due_only {
@@ -363,6 +388,7 @@ pub async fn db_get_words_page(
     enriched: Option<bool>,
     source: Option<String>,
     tags: Option<Vec<String>>,
+    scenarios: Option<Vec<String>>,
     due_only: Option<bool>,
     sort_by: Option<String>,
     sort_desc: Option<bool>,
@@ -383,6 +409,7 @@ pub async fn db_get_words_page(
         enriched,
         source: source.filter(|s| !s.trim().is_empty() && s != "all"),
         tags: tags.unwrap_or_default(),
+        scenarios: scenarios.unwrap_or_default(),
         due_only: due_only.unwrap_or(false),
         sort_by: sort_by.unwrap_or_else(|| "recent".to_string()),
         sort_desc: sort_desc.unwrap_or(false),

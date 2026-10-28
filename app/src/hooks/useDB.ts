@@ -12,20 +12,23 @@ import { useMemo } from "react";
 import { useDBCore } from "./useDB.core";
 import { useDBExtra } from "./useDB.extra";
 import { useDBSceneLab } from "./useDB.sceneLab";
+import { useDBScenarios } from "./useDB.scenarios";
 import { useDBSentences } from "./useDB.sentences";
 import { useDBReading } from "./useDB.reading";
 import { useDBCalendar } from "./useDB.calendar";
 
 export * from "./useDB.types";
 export * from "./useDB.calendar";
+export * from "./useDB.scenarios";
 
 export function useDB() {
   const core = useDBCore();
   const extra = useDBExtra();
   const sceneLab = useDBSceneLab();
+  const scenarios = useDBScenarios();
   const sentences = useDBSentences();
   const reading = useDBReading();
   const calendar = useDBCalendar();
 
-  return useMemo(() => ({ ...core, ...extra, ...sceneLab, ...sentences, ...reading, ...calendar }), [core, extra, sceneLab, sentences, reading, calendar]);
+  return useMemo(() => ({ ...core, ...extra, ...sceneLab, ...scenarios, ...sentences, ...reading, ...calendar }), [core, extra, sceneLab, scenarios, sentences, reading, calendar]);
 }

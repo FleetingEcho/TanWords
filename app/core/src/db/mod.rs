@@ -108,6 +108,7 @@ pub mod devices;
 pub mod srs;
 pub mod search_history;
 pub mod scene_lab;
+pub mod scenarios;
 pub mod sentences;
 pub mod ai_providers;
 pub mod calendar;
@@ -129,6 +130,7 @@ pub use devices::*;
 pub use srs::*;
 pub use search_history::*;
 pub use scene_lab::*;
+pub use scenarios::*;
 pub use sentences::*;
 pub use calendar::*;
 
@@ -265,6 +267,10 @@ async fn init_db_sqlite(conn: &Conn) -> Result<(), DbErr> {
         .await?;
     }
 
+    // Seed the prebuilt scenario taxonomy (Scenes module). Idempotent —
+    // user renames/archives survive because the insert never overwrites.
+    scenarios::seed_scenarios(conn).await?;
+
     // Insert default settings.
     let settings = vec![
         ("theme", r#""system""#),
@@ -351,6 +357,10 @@ async fn init_db_postgres(conn: &Conn) -> Result<(), DbErr> {
         )
         .await?;
     }
+
+    // Same scenario seeding as the SQLite path (ON CONFLICT DO NOTHING is
+    // the Postgres-native spelling of INSERT OR IGNORE).
+    scenarios::seed_scenarios(conn).await?;
 
     let settings = vec![
         ("theme", r#""system""#),
@@ -590,5 +600,61 @@ mod init_db_tests {
             stored_fingerprint(&conn).await.as_deref(),
             Some(schema_fingerprint(connection::DbKind::Local).as_str())
         );
+    }
+
+    /// The scenario module's three tables are new (2026-10): a database
+    /// built from the pre-scene schema must gain them — plus the seeded
+    /// taxonomy — on the next `init_db` pass, the same upgrade-in-place
+    /// guarantee the stickies tables have (plan-scene-learning.md §4.1).
+    #[tokio::test]
+    async fn init_upgrades_a_pre_scenario_database_in_place() {
+        let conn = memory_conn().await;
+        // Shape the database the way the PRE-scenario build left it: full
+        // current DDL, then strip the scenario tables.
+        conn.execute_batch(include_str!("../../sql/schema.sql")).await.unwrap();
+        conn.execute_batch(
+            "DROP TABLE IF EXISTS scenario_lines;
+             DROP TABLE IF EXISTS word_scenarios;
+             DROP TABLE IF EXISTS scenarios;",
+        )
+        .await
+        .unwrap();
+
+        init_db(&conn).await.expect("init_db must upgrade pre-scenario databases");
+
+        for table in ["scenarios", "word_scenarios", "scenario_lines"] {
+            assert!(table_exists(&conn, table).await, "missing table {table}");
+        }
+        // The seed taxonomy landed and is non-empty (the repair toolkit is
+        // the one row every later assertion keys off).
+        let seeded = scalar_i64(&conn, "SELECT COUNT(*) FROM scenarios", ()).await.unwrap();
+        assert!(seeded >= 40, "expected the ~50-scenario seed, got {seeded}");
+        let repair = scalar_i64(
+            &conn,
+            "SELECT COUNT(*) FROM scenarios WHERE scenario_key = 'meta.repair'",
+            (),
+        )
+        .await
+        .unwrap();
+        assert_eq!(repair, 1, "the repair toolkit must be seeded exactly once");
+        // Indexes landed with the batch.
+        let idx = scalar_i64(
+            &conn,
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name IN
+              ('idx_scenarios_domain','idx_word_scenarios_scenario','idx_scenario_lines_scenario','idx_scenario_lines_intent')",
+            (),
+        )
+        .await
+        .unwrap();
+        assert_eq!(idx, 4, "all four scenario indexes must exist");
+        // User data from before the upgrade survives.
+        conn.execute(
+            "INSERT INTO words (word, word_freq, source) VALUES ('survivor', 1, 'manual')",
+            (),
+        )
+        .await
+        .unwrap();
+        let n = scalar_i64(&conn, "SELECT COUNT(*) FROM words WHERE word = 'survivor'", ()).await.unwrap();
+        assert_eq!(n, 1);
     }
 }

@@ -215,6 +215,8 @@ export function useDBCore() {
       enrichFilter?: EnrichFilter;
       source?: string;
       tags?: string[];
+      /** Scenario keys (e.g. "dining.cafe") — ANY-match, server-side EXISTS. */
+      scenarios?: string[];
       dueOnly?: boolean;
       sortBy?: WordSortBy;
       sortDesc?: boolean;
@@ -234,6 +236,7 @@ export function useDBCore() {
           enriched: opts.enrichFilter === "enriched" ? true : opts.enrichFilter === "raw" ? false : null,
           source: opts.source && opts.source !== "all" ? opts.source : null,
           tags: opts.tags?.length ? opts.tags : null,
+          scenarios: opts.scenarios?.length ? opts.scenarios : null,
           dueOnly: opts.dueOnly ? true : null,
           sortBy: opts.sortBy ?? "recent",
           sortDesc: opts.sortDesc ? true : null,
@@ -320,9 +323,9 @@ export function useDBCore() {
   );
 
   const addWordEnriched = useCallback(
-    async (word: string, zh: string, wordType: string | null, enrichment: EnrichmentInput): Promise<{ id: number; isNew: boolean }> => {
+    async (word: string, zh: string, wordType: string | null, enrichment: EnrichmentInput, scenes?: string[]): Promise<{ id: number; isNew: boolean }> => {
       try {
-        return await invoke<{ id: number; isNew: boolean }>("db_add_word_enriched", { word, zh, wordType, enrichment });
+        return await invoke<{ id: number; isNew: boolean }>("db_add_word_enriched", { word, zh, wordType, enrichment, scenes: scenes ?? null });
       } catch (e) {
         reportWriteError("addWordEnriched", e, `保存单词 "${word}" 失败`);
         return { id: 0, isNew: false };

@@ -109,6 +109,10 @@ export function BookIcon({ className }: IconProps) {
   return <TypeOutline className={className} />;
 }
 
+export function ScenesIcon({ className }: IconProps) {
+  return <MapPin className={className} />;
+}
+
 export function CalendarIcon({ className }: IconProps) {
   return <Calendar className={className} />;
 }

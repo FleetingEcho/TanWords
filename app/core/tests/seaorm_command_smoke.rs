@@ -443,8 +443,7 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     let good = WordEnrichmentInput {
         text: "# hello 的讲解\n\n> Hello, world.\n> 你好，世界。这是一个足够长的讲解文本，用于通过空内容守卫的长度检查，确保正常的 enrichment 内容能够顺利写入数据库。".into(),
         zh_short: Some("你好".into()),
-        level: Some("A1".into()),
-    };
+        level: Some("A1".into()), scenes: None, };
     let first = db_add_word_enriched(
         "hello".into(),
         "你好".into(),
@@ -463,8 +462,7 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
         WordEnrichmentInput {
             text: "another full-length explanation that is definitely long enough to pass the guard because it contains plenty of real prose characters here".into(),
             zh_short: None,
-            level: None,
-        },
+            level: None, scenes: None, },
         state.clone(),
     )
     .await
@@ -481,7 +479,7 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
             "hello".into(),
             "你好".into(),
             None,
-            WordEnrichmentInput { text: garbage.into(), zh_short: None, level: None },
+            WordEnrichmentInput { text: garbage.into(), zh_short: None, level: None, scenes: None, },
             state.clone(),
         )
         .await;
@@ -513,7 +511,7 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
         "zzz-brand-new-guard-word".into(),
         "新词".into(),
         None,
-        WordEnrichmentInput { text: "short but fine for a new word".into(), zh_short: None, level: None },
+        WordEnrichmentInput { text: "short but fine for a new word".into(), zh_short: None, level: None, scenes: None, },
         state.clone(),
     )
     .await
@@ -562,7 +560,8 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
         .await
         .unwrap();
     let page = db_get_words_page(
-        None, None, Some(vec!["familiar".into()]), None, None, None, None, None, None, None, None, None, None,
+        None, None, Some(vec!["familiar".into()]), None, None, None,
+        None, None, None, None, None, None, None, None,
         50, 0, state.clone(),
     )
     .await
@@ -579,7 +578,7 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
             &conn,
             "SELECT COUNT(*) FROM user_known_words WHERE word = 'hello' AND source = 'vocab'",
             (),
-        )
+    )
         .await
         .unwrap();
         assert_eq!(known, 1, "familiar syncs into user_known_words");
@@ -590,7 +589,8 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
         .await
         .unwrap();
     let page = db_get_words_page(
-        None, None, Some(vec!["familiar".into()]), None, None, None, None, None, None, None, None, None, None,
+        None, None, Some(vec!["familiar".into()]), None, None, None,
+        None, None, None, None, None, None, None, None,
         50, 0, state.clone(),
     )
     .await
@@ -602,7 +602,7 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
             &conn,
             "SELECT COUNT(*) FROM user_known_words WHERE word = 'hello' AND source = 'vocab'",
             (),
-        )
+    )
         .await
         .unwrap();
         assert_eq!(known, 0, "reverting removes only the vocab-synced row");
@@ -644,7 +644,8 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     assert_eq!(sci.unwrap().count, 1);
     // the tag filter matches (LIKE on the serialized JSON array)
     let tagged = db_get_words_page(
-        None, None, None, None, None, None, Some(vec!["科学技术".into()]), None, None, None, None, None, None,
+        None, None, None, None, None, None,
+        Some(vec!["科学技术".into()]), None, None, None, None, None, None, None,
         50, 0, state.clone(),
     )
     .await
@@ -652,7 +653,8 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     assert!(tagged.items.iter().any(|w| w.id == added.id && w.tags == vec!["科学技术".to_string()]));
     // tags surface on page rows under the category sort too
     let all = db_get_words_page(
-        None, None, None, None, None, None, None, None, Some("category".into()), None, None, None, None,
+        None, None, None, None, None, None,
+        None, None, None, Some("category".into()), None, None, None, None,
         50, 0, state.clone(),
     )
     .await
@@ -660,7 +662,8 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     assert!(all.items.iter().any(|w| w.id == added.id && w.tags == vec!["科学技术".to_string()]));
     // difficulty sort: hello has no level → sorts last but still present
     let diff = db_get_words_page(
-        None, None, None, None, None, None, None, None, Some("difficulty".into()), None, None, None, None,
+        None, None, None, None, None, None,
+        None, None, None, Some("difficulty".into()), None, None, None, None,
         50, 0, state.clone(),
     )
     .await
@@ -672,7 +675,8 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
         .await
         .unwrap();
     let stripped = db_get_words_page(
-        None, None, None, None, None, None, None, None, None, None, None, None, None,
+        None, None, None, None, None, None,
+        None, None, None, None, None, None, None, None,
         50, 0, state.clone(),
     )
     .await
@@ -681,7 +685,8 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     // clearing tags returns the word to uncategorized
     db_set_word_tags(added.id, vec![], state.clone()).await.unwrap();
     let cleared = db_get_words_page(
-        None, None, None, None, None, None, None, None, None, None, None, None, None,
+        None, None, None, None, None, None,
+        None, None, None, None, None, None, None, None,
         50, 0, state.clone(),
     )
     .await
@@ -700,7 +705,8 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     // zeroes the status counts themselves (and vice versa for levels) —
     // otherwise the bar's chips would lie about the piles not being viewed.
     let only_mastered = db_get_words_page(
-        None, None, Some(vec!["mastered".into()]), None, None, None, None, None, None, None, None, None, None,
+        None, None, Some(vec!["mastered".into()]), None, None, None,
+        None, None, None, None, None, None, None, None,
         50, 0, state.clone(),
     )
     .await
@@ -709,7 +715,8 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     assert_eq!(only_mastered.facets.mastered, 0);
     assert_eq!(only_mastered.facets.learning, 1, "status facet skips the status axis itself");
     let only_c2 = db_get_words_page(
-        None, Some(vec!["C2".into()]), None, None, None, None, None, None, None, None, None, None, None,
+        None, Some(vec!["C2".into()]), None, None, None, None,
+        None, None, None, None, None, None, None, None,
         50, 0, state.clone(),
     )
     .await
@@ -720,7 +727,8 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     // …but the OTHER axes still constrain a facet: a non-matching search
     // zeroes every count.
     let no_match = db_get_words_page(
-        Some("zzz-definitely-not-present".into()), None, None, None, None, None, None, None, None, None, None, None, None,
+        Some("zzz-definitely-not-present".into()), None, None, None, None, None,
+        None, None, None, None, None, None, None, None,
         50, 0, state.clone(),
     )
     .await
@@ -735,7 +743,8 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
             .unwrap();
     }
     let starred_page = db_get_words_page(
-        None, None, None, Some(true), None, None, None, None, None, None, None, None, None,
+        None, None, None, Some(true), None, None,
+        None, None, None, None, None, None, None, None,
         50, 0, state.clone(),
     )
     .await
@@ -752,7 +761,8 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     // set; "due" sort must at least run (exercises the dual-format predicate's
     // parameter plumbing on both backends).
     let one = db_get_words_page(
-        None, None, None, None, None, None, None, None, Some("alpha".into()), None, None, None, None,
+        None, None, None, None, None, None,
+        None, None, None, Some("alpha".into()), None, None, None, None,
         1, 0, state.clone(),
     )
     .await
@@ -762,12 +772,296 @@ async fn shared_command_cycle(state: State<'_, AppState>) {
     // facets describe the whole filtered set, not the shipped page
     assert_eq!(one.facets.learning, 1);
     let due_sorted = db_get_words_page(
-        None, None, None, None, None, None, None, Some(true), Some("due".into()), None, None, None, None,
+        None, None, None, None, None, None,
+        None, None, Some(true), Some("due".into()), None, None, None, None,
         50, 0, state.clone(),
     )
     .await
     .unwrap();
     assert!(due_sorted.items.len() as i64 <= due_sorted.total);
+
+    // ── Scenarios: manual links, the words-page scene filter arm (EXISTS +
+    // JOIN inside the WHERE — the known Postgres-placeholder risk), counts,
+    // pack save idempotency, promotion, review queue, tombstone semantics.
+    use tanwords_lib::db::{
+        db_get_scenario_detail, db_get_word_scenarios, db_list_scenarios,
+        db_list_word_scenario_counts, db_promote_scenario_line, db_reject_word_scenario,
+        db_save_scenario_pack, db_set_word_scenarios,
+    };
+    // link hello to the seeded cafe scenario through the manual-set command
+    db_set_word_scenarios(added.id, vec!["dining.cafe".into()], state.clone())
+        .await
+        .unwrap();
+    let word_scenes = db_get_word_scenarios(added.id, state.clone()).await.unwrap();
+    assert_eq!(word_scenes.len(), 1, "one manual link");
+    assert_eq!(word_scenes[0].source, "manual");
+    let scene_list = db_list_scenarios(state.clone()).await.unwrap();
+    let cafe = scene_list
+        .scenarios
+        .iter()
+        .find(|s| s.scenario_key == "dining.cafe")
+        .expect("seeded cafe scenario");
+    assert_eq!(cafe.word_count, 1, "gallery counts the link");
+    assert_eq!(scene_list.untagged_words, 0, "hello is the only word and is linked");
+    // the words-page scene filter matches through the EXISTS arm
+    let scene_page = db_get_words_page(
+        None, None, None, None, None, None, None,
+        Some(vec!["dining.cafe".into()]), None, None, None, None, None, None,
+        50, 0, state.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(scene_page.total, 1, "scene filter matches the linked word");
+    assert!(scene_page.items.iter().any(|w| w.id == added.id));
+    // …and a non-selected scene excludes it (ANY-match over the union)
+    let other_scene = db_get_words_page(
+        None, None, None, None, None, None, None,
+        Some(vec!["travel.airport".into()]), None, None, None, None, None, None,
+        50, 0, state.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(other_scene.total, 0);
+    // combined with another axis (levels): param numbering stays consistent
+    let combined = db_get_words_page(
+        None, Some(vec!["A1".into()]), None, None, None, None, None,
+        Some(vec!["dining.cafe".into()]), None, None, None, None, None, None,
+        50, 0, state.clone(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(combined.total, 1, "scene + level filter combine");
+    // counts query for the popover
+    let counts = db_list_word_scenario_counts(state.clone()).await.unwrap();
+    let cafe_count = counts.iter().find(|s| s.scenario_key == "dining.cafe").unwrap();
+    assert_eq!(cafe_count.word_count, 1);
+    // manual replace never touches non-manual rows: promote an
+    // enrichment-source link, clear the manual set, the link must survive
+    {
+        let conn = tanwords_lib::db::conn(&state).unwrap();
+        tanwords_lib::db::scalar_i64(
+            &conn,
+            "INSERT OR IGNORE INTO word_scenarios (word_id, scenario_id, source, confidence)
+             VALUES (?1, (SELECT id FROM scenarios WHERE scenario_key='travel.airport'), 'enrichment', 0.85)",
+            vec![tanwords_lib::db::Value::from(added.id)],
+    )
+        .await
+        .unwrap();
+    }
+    db_set_word_scenarios(added.id, vec![], state.clone()).await.unwrap();
+    let after_clear = db_get_word_scenarios(added.id, state.clone()).await.unwrap();
+    assert_eq!(after_clear.len(), 1, "clearing manual links keeps the enrichment link");
+    assert_eq!(after_clear[0].source, "enrichment");
+    // save a pack: lines + suggested words, then re-save with the same
+    // generation_key (idempotent duplicate)
+    let pack_input = |gk: &str| tanwords_lib::db::scenarios::SaveScenarioPackInput {
+        scenario_key: "dining.cafe".into(),
+        name_en: "Café / Coffee shop".into(),
+        name_zh: "咖啡店".into(),
+        domain: "dining".into(),
+        icon: "coffee".into(),
+        description: "Ordering drinks and food at a coffee counter.".into(),
+        generation_key: Some(gk.into()),
+        replace_lines: true,
+        lines: vec![
+            tanwords_lib::db::scenarios::ScenarioLineInput {
+                intent_key: "greet".into(),
+                role: "them".into(),
+                text_en: "Hi there! What can I get for you?".into(),
+                text_zh: "你好！想喝点什么？".into(),
+                note: "".into(),
+                importance: 4,
+                sort_order: 0,
+            },
+            tanwords_lib::db::scenarios::ScenarioLineInput {
+                intent_key: "greet".into(),
+                role: "me".into(),
+                text_en: "Could I get a large latte, please?".into(),
+                text_zh: "请给我一杯大杯拿铁。".into(),
+                note: "".into(),
+                importance: 4,
+                sort_order: 1,
+            },
+        ],
+        suggested_words: vec!["hello".into(), "zzz-not-a-word".into()],
+    };
+    let saved = db_save_scenario_pack(pack_input("gen-cafe-1"), state.clone())
+        .await
+        .unwrap();
+    assert!(!saved.duplicate);
+    assert_eq!(saved.lines_saved, 2);
+    // "hello" exists but its dining.cafe pair is tombstoned (INSERT OR
+    // IGNORE no-ops — the rejection stands), and "zzz-not-a-word" is
+    // absent → added with source='scenario' and linked. Both count as
+    // processed: words_linked=2, words_added=1.
+    assert_eq!(saved.words_linked, 2, "both suggested words are processed");
+    assert_eq!(saved.words_added, 1, "the absent word is added with source='scenario'");
+    let dup = db_save_scenario_pack(pack_input("gen-cafe-1"), state.clone())
+        .await
+        .unwrap();
+    assert!(dup.duplicate, "generation_key short-circuits the repeat save");
+    let detail = db_get_scenario_detail("dining.cafe".into(), state.clone())
+        .await
+        .unwrap()
+        .expect("cafe detail");
+    assert_eq!(detail.lines.len(), 2);
+    assert_eq!(detail.lines.iter().filter(|l| l.intent_key == "greet").count(), 2);
+    // The pack suggested "hello" for dining.cafe — but that exact pair was
+    // tombstoned when the manual link was cleared. A scenario-pack
+    // suggestion must NOT resurrect a tombstoned pair (§3.2): the row's PK
+    // already exists, so link_word_scenario's INSERT OR IGNORE no-ops and
+    // the rejection stands. words_linked reported 1 because the enrichment
+    // link exists… no — the suggested word matched a tombstoned pair, so
+    // the effective link set stays without it.
+    assert!(
+        !detail.words.iter().any(|w| w.word == "hello"),
+        "a pack suggestion must not resurrect a tombstoned pair"
+    );
+    assert!(
+        detail.words.iter().any(|w| w.word == "zzz-not-a-word" && w.source == "scenario-pack"),
+        "the added suggested word is linked with source='scenario-pack'"
+    );
+    // and the scene filter agrees: hello is not in dining.cafe anymore
+    let after_pack = db_get_words_page(
+        None, None, None, None, None, None, None,
+        Some(vec!["dining.cafe".into()]), None, None, None, None, None, None,
+        50, 0, state.clone(),
+    )
+    .await
+    .unwrap();
+    assert!(!after_pack.items.iter().any(|w| w.id == added.id));
+    // promote a line into the sentence bank (dedups + back-references)
+    let line_id = detail.lines[0].id;
+    let sentence_id = db_promote_scenario_line(line_id, state.clone())
+        .await
+        .unwrap();
+    assert!(sentence_id > 0);
+    let promoted_again = db_promote_scenario_line(line_id, state.clone())
+        .await
+        .unwrap();
+    assert_eq!(promoted_again, sentence_id, "re-promotion is a no-op");
+    {
+        let conn = tanwords_lib::db::conn(&state).unwrap();
+        let src = tanwords_lib::db::scalar_i64(
+            &conn,
+            "SELECT COUNT(*) FROM sentences WHERE id = ?1 AND source = 'scenario'",
+            vec![tanwords_lib::db::Value::from(sentence_id)],
+    )
+        .await
+        .unwrap();
+        assert_eq!(src, 1, "promoted sentence carries source='scenario'");
+        let srs = tanwords_lib::db::scalar_i64(
+            &conn,
+            "SELECT COUNT(*) FROM srs_records WHERE entity_id = ?1 AND entity_type = 'sentence'",
+            vec![tanwords_lib::db::Value::from(sentence_id)],
+        )
+        .await
+        .unwrap();
+        assert_eq!(srs, 1, "promotion seeds the SRS row");
+    }
+    // review queue: the enrichment link (0.85) is above the 0.7 threshold;
+    // insert a low-confidence one and reject it (tombstone)
+    let doctor_id: i64 = {
+        let conn = tanwords_lib::db::conn(&state).unwrap();
+        tanwords_lib::db::scalar_i64(
+            &conn,
+            "SELECT id FROM scenarios WHERE scenario_key = 'health.doctor'",
+            (),
+        )
+        .await
+        .unwrap()
+    };
+    {
+        let conn = tanwords_lib::db::conn(&state).unwrap();
+        conn.execute(
+            "INSERT OR IGNORE INTO word_scenarios (word_id, scenario_id, source, confidence)
+             VALUES (?1, ?2, 'backfill', 0.5)",
+            vec![
+                tanwords_lib::db::Value::from(added.id),
+                tanwords_lib::db::Value::from(doctor_id),
+            ],
+        )
+        .await
+        .unwrap();
+    }
+    let queue = tanwords_lib::db::db_list_scenario_review_queue(10, state.clone())
+        .await
+        .unwrap();
+    assert_eq!(queue.len(), 1, "only the sub-0.7 link is queued");
+    assert_eq!(queue[0].source, "backfill");
+    db_reject_word_scenario(added.id, doctor_id, state.clone())
+        .await
+        .unwrap();
+    let queue_after = tanwords_lib::db::db_list_scenario_review_queue(10, state.clone())
+        .await
+        .unwrap();
+    assert!(queue_after.is_empty(), "rejected link is gone from the queue");
+    // tombstone: re-running a pass (INSERT OR IGNORE) never resurrects it
+    {
+        let conn = tanwords_lib::db::conn(&state).unwrap();
+        conn.execute(
+            "INSERT OR IGNORE INTO word_scenarios (word_id, scenario_id, source, confidence)
+             VALUES (?1, ?2, 'backfill', 0.5)",
+            vec![
+                tanwords_lib::db::Value::from(added.id),
+                tanwords_lib::db::Value::from(doctor_id),
+            ],
+        )
+        .await
+        .unwrap();
+    }
+    let word_scenes_final = db_get_word_scenarios(added.id, state.clone()).await.unwrap();
+    assert!(
+        !word_scenes_final.iter().any(|ws| ws.source == "backfill"),
+        "a rejected link stays deleted (no row for a re-run to skip over)"
+    );
+    // JIT: link an untagged word by key, INSERT OR IGNORE over the
+    // enrichment link (confidence stays, source stays).
+    {
+        use tanwords_lib::db::db_link_words_to_scenario;
+        let linked = db_link_words_to_scenario(
+            "travel.airport".into(),
+            vec![added.id],
+            state.clone(),
+        )
+        .await
+        .unwrap();
+        // the enrichment link already exists for this pair → INSERT OR
+        // IGNORE no-ops, so linked counts 0 NEW rows.
+        assert_eq!(linked, 0, "an existing pair is not double-linked");
+        // health.doctor's row is a rejected tombstone at this point — a JIT
+        // suggestion must NOT resurrect it (the §3.2 rule spans every
+        // source), so linked stays 0 for that pair too.
+        let linked_tombstone = db_link_words_to_scenario(
+            "health.doctor".into(),
+            vec![added.id],
+            state.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(linked_tombstone, 0, "a rejected pair stays rejected under JIT");
+        let linked2 = db_link_words_to_scenario(
+            "shopping.supermarket".into(),
+            vec![added.id],
+            state.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(linked2, 1, "a fresh pair links via JIT");
+        let jit_src = {
+            let conn = tanwords_lib::db::conn(&state).unwrap();
+            tanwords_lib::db::scalar_i64(
+                &conn,
+                "SELECT COUNT(*) FROM word_scenarios ws JOIN scenarios sc ON sc.id = ws.scenario_id
+                 WHERE ws.word_id = ?1 AND sc.scenario_key = 'shopping.supermarket' AND ws.source = 'jit'",
+                vec![tanwords_lib::db::Value::from(added.id)],
+            )
+            .await
+            .unwrap()
+        };
+        assert_eq!(jit_src, 1, "JIT links carry source='jit'");
+    }
+
 
     // ai provider list — exercises the `api_key_enc <> ''` comparison read
     // (BOOL on Postgres, 0/1 on SQLite) as bool, plus the ON CONFLICT upsert

@@ -1,3 +1,5 @@
+import { SCENARIO_SEED_KEYS } from "@/lib/scenarioSeeds";
+
 export interface TranslateParams {
   text: string;
   targetLang: string;
@@ -151,9 +153,11 @@ export function buildReverseLookupUserPrompt(text: string, targetLevel: string):
 export const BASIC_INFO_SYSTEM_PROMPT = `你是一个词典数据生成器。给定一个英文单词或短语，输出它最常用、最权威的基本信息，用于学习卡片列表的摘要行。
 
 只返回一个 JSON 对象，不要任何其他文字、不要代码块标记、不要解释：
-{"word_type":"<词性缩写，如 n/v/adj/adv/prep/conj/pron/phrase，多个词性用 / 分隔，如 n/v>","level":"<CEFR等级，仅限 A1|A2|B1|B2|C1|C2>","zh":"<10字以内、这个词最常用义项的中文短释义>"}
+{"word_type":"<词性缩写，如 n/v/adj/adv/prep/conj/pron/phrase，多个词性用 / 分隔，如 n/v>","level":"<CEFR等级，仅限 A1|A2|B1|B2|C1|C2>","zh":"<10字以内、这个词最常用义项的中文短释义>","scenes":["<场景key>"]}
 
-只给这个词最常见、最核心的那个义项，不要罗列多个义项，不要输出别的字段。`;
+只给这个词最常见、最核心的那个义项，不要罗列多个义项，不要输出别的字段。
+"scenes" 是这个词最常出现的 0–4 个交际场景，只能从下面的场景列表里选，key 必须完全一致，没有合适的就给空数组：
+{SCENE_KEYS}`;
 
 /** Explains whatever the learner selected — a word, a phrase, or a whole
  *  sentence — in place, with the surrounding text as context. One prompt for
@@ -182,6 +186,13 @@ export function buildInlineAskUserPrompt(selection: string, context: string, tar
 
 export function buildBasicInfoUserPrompt(word: string, targetLevel: string): string {
   return `单词或短语："${word}"（学习者目标水平：${targetLevel}）`;
+}
+
+/** Instantiates BASIC_INFO_SYSTEM_PROMPT with the current scenario registry
+ *  (the answer key for the "scenes" field). Kept separate from the const so
+ *  the prompt literal stays diffable while the registry evolves. */
+export function buildBasicInfoSystemPrompt(): string {
+  return BASIC_INFO_SYSTEM_PROMPT.replace("{SCENE_KEYS}", SCENARIO_SEED_KEYS.join("、"));
 }
 
 export function buildSystemPrompt(mode: TranslateParams["mode"], opts?: { preserveMarkers?: boolean }): string {

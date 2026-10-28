@@ -74,7 +74,7 @@ pub async fn db_connect_postgres(
     if url.is_empty() {
         return Err("Please fill in the database connection string".into());
     }
-    let profile = crate::db::connection::DbProfile::Postgres { url };
+    let profile = crate::db::connection::DbProfile::Postgres { url: url.clone() };
 
     // Open (and run schema init) before persisting anything: a bad connection
     // string or unreachable host should leave the current working connection
@@ -84,6 +84,51 @@ pub async fn db_connect_postgres(
 
     state.replace_db(database)?;
     // First contact with this database's device registry — same as startup.
+    if let Err(e) = db::devices::register_current(&db::conn(&state)?).await {
+        eprintln!("[db-switch] device registration failed: {e}");
+    }
+    crate::appconfig::save_db_profile(&profile).map_err(|e| e.to_string())?;
+    // Success also refreshes the reconnect slot: a rotated password or a new
+    // host must be what "click back" lands on, not last year's string.
+    let _ = crate::appconfig::save_last_postgres_url(&url);
+    Ok(descriptor)
+}
+
+/// Display-safe, one-line form of the remembered Postgres connection (the
+/// URL typing you in would be — password masked, query string dropped, since
+/// it can carry more secrets like ssl keys). Drives the reconnect button's
+/// label; the actual URL never crosses to the renderer for this.
+fn mask_postgres_url(raw: &str) -> String {
+    let Ok(mut u) = url::Url::parse(raw) else {
+        return "(saved cloud connection)".into();
+    };
+    let _ = u.set_password(None);
+    u.set_query(None);
+    u.set_fragment(None);
+    u.to_string()
+}
+
+/// The label payload for the reconnect affordance — Some only when a Postgres
+/// connection string has ever validated on this installation.
+#[crate::shim::command]
+pub async fn db_saved_postgres_summary() -> Result<Option<String>, String> {
+    Ok(crate::appconfig::load_last_postgres_url().map(|u| mask_postgres_url(&u)))
+}
+
+/// Reconnects to the remembered Postgres database without the renderer ever
+/// touching the URL — identical discipline to `db_connect_postgres`: open
+/// first, persist only on success, so a stale stored string leaves the local
+/// session running instead of half-switching.
+#[crate::shim::command]
+pub async fn db_reconnect_postgres(
+    state: State<'_, AppState>,
+) -> std::result::Result<DbDescriptor, String> {
+    let url = crate::appconfig::load_last_postgres_url()
+        .ok_or_else(|| "No saved cloud connection on this device".to_string())?;
+    let profile = crate::db::connection::DbProfile::Postgres { url };
+    let database = db::connection::open(&profile, None).await?;
+    let descriptor = database.descriptor();
+    state.replace_db(database)?;
     if let Err(e) = db::devices::register_current(&db::conn(&state)?).await {
         eprintln!("[db-switch] device registration failed: {e}");
     }
@@ -250,22 +295,137 @@ pub async fn db_export_postgres_backup(
     }
 }
 
-/// Disconnects from a Postgres database and switches back to the default
-/// local file. Postgres has no local replica file to snapshot — the remote
-/// database itself is untouched, this only stops the app from talking to it.
+/// Disconnects from a Postgres database and switches back to local.
+///
+/// "Back" needs care because Postgres has no local replica file: everything
+/// the user wrote while connected lives only on the server. Switching the
+/// profile to the old default local file (this command's previous behavior)
+/// does not delete anything on the remote, but it *does* silently drop sight
+/// of everything written since connecting to the cloud — to the user the
+/// words just vanished. So disconnect first snapshots the whole remote
+/// database into its own timestamped local file (the same machinery as
+/// `db_export_postgres_backup`, which copies every table in FK-safe order)
+/// and points the app at that file. Both sides survive: the remote database
+/// is never modified, and the previous default local file is left untouched
+/// (its pre-cloud rows are not overwritten — it stays openable via
+/// "switch database file").
+///
+/// Failure order matters: the snapshot happens BEFORE the profile change, so
+/// an unreachable server or disk error leaves the app exactly where it was —
+/// still connected, nothing half-copied into the live path.
 #[crate::shim::command]
 pub async fn db_disconnect_remote(
+    app: crate::shim::AppHandle,
     state: State<'_, AppState>,
 ) -> std::result::Result<DbDescriptor, String> {
-    let profile = DbProfile::Local { path: crate::default_db_path() };
+    let source = db::conn(&state)?;
+    let profile = if source.kind() == db::DbKind::Postgres {
+        let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+        let path = crate::app_data_dir().join(format!("tanwords-cloud-copy-{stamp}.db"));
+        let path = path.to_string_lossy().to_string();
+        export_postgres_snapshot(&app, &source, &path).await?;
+        DbProfile::Local { path }
+    } else {
+        // Not actually connected to Postgres (web build routes this through
+        // its own endpoint; only reachable here from an inconsistent client)
+        // — plain switch to the default local file, same as before.
+        DbProfile::Local { path: crate::default_db_path() }
+    };
     let database = db::connection::open(&profile, None).await?;
     let descriptor = database.descriptor();
     state.replace_db(database)?;
-    // Back on the local file — its registry knows this machine, but refresh
-    // last_seen anyway after the stretch connected to Postgres.
+    // The new active file's registry may not know this machine (a freshly
+    // snapshotted copy of a DB this device never touched) — same
+    // first-contact rule as any other switch.
     if let Err(e) = db::devices::register_current(&db::conn(&state)?).await {
         eprintln!("[db-switch] device registration failed: {e}");
     }
     crate::appconfig::save_db_profile(&profile).map_err(|e| e.to_string())?;
     Ok(descriptor)
+}
+
+#[cfg(test)]
+mod tests {
+    //! `db_disconnect_remote` now *depends* on this snapshot: it is the thing
+    //! that guarantees "switch to local" never strands cloud-written data.
+    //! SQLite→SQLite runs the identical row-by-row machinery a Postgres
+    //! source uses (the copy helpers branch on the DESTINATION kind only).
+    use super::*;
+    use crate::db::params;
+
+    #[test]
+    fn mask_postgres_url_hides_every_secret_shape() {
+        // Common forms: full URL, URL with query secrets, URL without a
+        // password at all, and a malformed string that must not panic or
+        // leak.
+        assert_eq!(
+            mask_postgres_url("postgres://alice:s3cr3t@db.example.com:5432/notes"),
+            "postgres://alice@db.example.com:5432/notes"
+        );
+        assert_eq!(
+            mask_postgres_url("postgresql://alice:s3cr3t@h.local/db?sslmode=require&sslrootcert=/path/key.pem"),
+            "postgresql://alice@h.local/db"
+        );
+        assert_eq!(
+            mask_postgres_url("postgres://bob@10.0.0.2/db"),
+            "postgres://bob@10.0.0.2/db"
+        );
+        assert_eq!(mask_postgres_url("not a url"), "(saved cloud connection)");
+    }
+
+    #[tokio::test]
+    async fn snapshot_copies_every_row_and_leaves_the_source_untouched() {
+        let source_db = db::connection::open_memory().await.unwrap();
+        let source = source_db.conn();
+        // Real content plus a *departure from the default seeds*: the
+        // snapshot must reproduce both (a new file comes pre-seeded — the
+        // copy has to REPLACE, not merge).
+        source
+            .execute(
+                "INSERT INTO words (word, status, created_at, updated_at)
+                 VALUES ('serendipity', 'learning', '2026-01-01 00:00:00', '2026-01-01 00:00:00')",
+                (),
+            )
+            .await
+            .unwrap();
+        source
+            .execute("DELETE FROM user_settings WHERE key = 'scenarios.pack.custom.test'", ())
+            .await
+            .unwrap();
+        let source_words_before =
+            db::scalar_i64(&source, "SELECT COUNT(*) FROM words", ()).await.unwrap();
+
+        let dest = std::env::temp_dir()
+            .join(format!("tanwords-snapshot-test-{}.db", uuid::Uuid::new_v4()));
+        let dest_str = dest.to_string_lossy().to_string();
+        let (events_tx, _events_rx) = tokio::sync::broadcast::channel(1);
+        let app = crate::shim::AppHandle::new(std::sync::Arc::new(crate::shim::Registry::default()), events_tx);
+        export_postgres_snapshot(&app, &source, &dest_str).await.unwrap();
+
+        let dest_db = db::connection::open(
+            &crate::db::connection::DbProfile::Local { path: dest_str.clone() },
+            None,
+        )
+        .await
+        .unwrap();
+        let dest_db = dest_db.conn();
+        assert_eq!(
+            db::scalar_i64(&dest_db, "SELECT COUNT(*) FROM words WHERE word = 'serendipity'", ())
+                .await
+                .unwrap(),
+            1,
+            "the source's user content must be in the snapshot"
+        );
+        assert_eq!(
+            db::scalar_i64(&dest_db, "SELECT COUNT(*) FROM words", ()).await.unwrap(),
+            source_words_before,
+            "the snapshot mirrors the source's tables, seed leftovers included"
+        );
+        assert_eq!(
+            db::scalar_i64(&source, "SELECT COUNT(*) FROM words", ()).await.unwrap(),
+            source_words_before,
+            "the source is read-only material — its rows must be untouched"
+        );
+        let _ = std::fs::remove_file(&dest);
+    }
 }

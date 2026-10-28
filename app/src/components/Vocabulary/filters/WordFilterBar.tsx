@@ -31,7 +31,7 @@ import { WORD_LEVEL_VALUES, WORD_SOURCE_VALUES, WORD_STATUS_VALUES } from "./wor
 import { chipClass, ChipCount, FilterToken, FILTER_SECTION_LABEL } from "./filterBarShared";
 import {
   ArrowDownAZ, ArrowUpAZ, CalendarClock, CheckCheck, ChevronDown,
-  Circle, CircleDot, SlidersHorizontal, Sparkles, Star, Tag,
+  Circle, CircleDot, MapPin, SlidersHorizontal, Sparkles, Star, Tag,
 } from "lucide-react";
 
 interface Props {
@@ -50,6 +50,10 @@ interface Props {
   tagOptions: WordTagCount[];
   selectedTags: string[];
   onTagToggle: (tag: string) => void;
+  /** Scene (scenario) axis — registry options with counts, multi-select. */
+  sceneOptions: { scenario_key: string; name_en: string; name_zh: string; word_count: number }[];
+  selectedScenes: string[];
+  onSceneToggle: (key: string) => void;
   dateFrom: string;
   dateTo: string;
   onDateFromChange: (v: string) => void;
@@ -129,6 +133,7 @@ function MoreControl(props: Props & { activeCount: number }) {
   const {
     enrichFilter, onEnrichFilterChange,
     source, onSourceChange, tagOptions, selectedTags, onTagToggle,
+    sceneOptions, selectedScenes, onSceneToggle,
     dateFrom, dateTo, onDateFromChange, onDateToChange, activeCount,
   } = props;
   const [tagQuery, setTagQuery] = React.useState("");
@@ -136,6 +141,13 @@ function MoreControl(props: Props & { activeCount: number }) {
     const q = tagQuery.trim().toLowerCase();
     return q ? tagOptions.filter((o) => o.tag.toLowerCase().includes(q)) : tagOptions;
   }, [tagOptions, tagQuery]);
+  const [sceneQuery, setSceneQuery] = React.useState("");
+  const visibleScenes = React.useMemo(() => {
+    const q = sceneQuery.trim().toLowerCase();
+    if (!q) return sceneOptions;
+    return sceneOptions.filter((o) =>
+      o.name_en.toLowerCase().includes(q) || o.name_zh.includes(sceneQuery.trim()) || o.scenario_key.includes(q));
+  }, [sceneOptions, sceneQuery]);
 
   const section = FILTER_SECTION_LABEL;
   return (
@@ -231,6 +243,41 @@ function MoreControl(props: Props & { activeCount: number }) {
           </div>
         )}
 
+        {/* Scenes — same searchable list pattern as tags, over the scenario
+            registry. A scene here means "which communicative situations do
+            my words belong to" — the filter the Scenes module feeds. */}
+        {sceneOptions.length > 0 && (
+          <div className="space-y-1">
+            <span className={section}>{t("scenes.filterLabel")}</span>
+            <input
+              value={sceneQuery}
+              onChange={(e) => setSceneQuery(e.target.value)}
+              placeholder={t("scenes.searchPlaceholder")}
+              className="w-full h-8 lg:h-7 rounded-md border border-input bg-background px-2 text-xs placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-primary/30"
+            />
+            <div className="max-h-48 overflow-y-auto space-y-0.5">
+              {visibleScenes.length === 0 && (
+                <p className="px-2 py-3 text-center text-[11px] text-muted-foreground">{t("scenes.noMatches")}</p>
+              )}
+              {visibleScenes.map((sc) => {
+                const active = selectedScenes.includes(sc.scenario_key);
+                return (
+                  <button
+                    key={sc.scenario_key}
+                    onClick={() => onSceneToggle(sc.scenario_key)}
+                    className={`w-full flex items-center justify-between gap-2 rounded-md px-2 py-2 lg:py-1.5 text-xs text-left transition-colors ${
+                      active ? "bg-primary/15 text-primary font-semibold" : "hover:bg-muted"
+                    }`}
+                  >
+                    <span className="truncate">{sc.name_en}<span className="text-muted-foreground/60"> · {sc.name_zh}</span></span>
+                    <span className={`shrink-0 text-[10px] tabular-nums ${active ? "text-primary" : "text-muted-foreground/70"}`}>{sc.word_count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Updated-range */}
         <div className="space-y-1">
           <span className={section}>{t("vocab.dateLabel")}</span>
@@ -256,6 +303,7 @@ export function WordFilterBar(props: Props) {
     starredOnly, onStarredOnlyChange,
     enrichFilter, onEnrichFilterChange, dueOnly, onDueOnlyChange,
     source, onSourceChange, selectedTags, onTagToggle,
+    sceneOptions, selectedScenes, onSceneToggle,
     dateFrom, dateTo, onDateFromChange, onDateToChange,
     sortBy, onSortChange, sortDesc, onSortDescToggle,
     onClearAll, facets,
@@ -269,6 +317,7 @@ export function WordFilterBar(props: Props) {
     (dueOnly ? 1 : 0) +
     (source !== "all" ? 1 : 0) +
     selectedTags.length +
+    selectedScenes.length +
     (dateFrom || dateTo ? 1 : 0);
   const anyActive = tier2Count > 0 || levels.length > 0 || statuses.length > 0 || starredOnly;
 
@@ -368,6 +417,17 @@ export function WordFilterBar(props: Props) {
               onRemove={() => onTagToggle(tag)}
             />
           ))}
+          {selectedScenes.map((key) => {
+            const opt = sceneOptions.find((o) => o.scenario_key === key);
+            return (
+              <FilterToken
+                key={key}
+                icon={<MapPin className="w-2.5 h-2.5 shrink-0" />}
+                label={opt ? opt.name_en : key}
+                onRemove={() => onSceneToggle(key)}
+              />
+            );
+          })}
           {(dateFrom || dateTo) && (
             <FilterToken
               label={`${dateFrom || "…"} → ${dateTo || "…"}`}

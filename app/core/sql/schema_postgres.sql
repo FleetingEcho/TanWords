@@ -585,6 +585,56 @@ CREATE TABLE IF NOT EXISTS writing_vocabulary (
                 vocabulary_id BIGINT REFERENCES words(id) ON DELETE SET NULL
             );
 
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Scenarios — communicative-situation packs (NOT scene-lab)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Mirror of the SQLite section 15 (see schema.sql for the design notes).
+-- scenario_lines references sentences, which is declared further up, so the
+-- file's topological FK order is preserved.
+
+CREATE TABLE IF NOT EXISTS scenarios (
+  id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  scenario_key  TEXT NOT NULL UNIQUE,
+  name_en       TEXT NOT NULL,
+  name_zh       TEXT NOT NULL DEFAULT '',
+  domain        TEXT NOT NULL DEFAULT '',
+  icon          TEXT NOT NULL DEFAULT '',
+  description   TEXT NOT NULL DEFAULT '',
+  origin        TEXT NOT NULL DEFAULT 'prebuilt'
+                CHECK (origin IN ('prebuilt','ai-proposed','user')),
+  archived      BIGINT NOT NULL DEFAULT 0 CHECK (archived IN (0,1)),
+  sort_order    BIGINT NOT NULL DEFAULT 0,
+  created_at    TEXT DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+  updated_at    TEXT DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+);
+
+CREATE TABLE IF NOT EXISTS word_scenarios (
+  word_id      BIGINT NOT NULL REFERENCES words(id) ON DELETE CASCADE,
+  scenario_id  BIGINT NOT NULL REFERENCES scenarios(id) ON DELETE CASCADE,
+  source       TEXT NOT NULL DEFAULT 'manual'
+               CHECK (source IN ('manual','enrichment','backfill','jit',
+                                 'scenario-pack','scene-lab','knowledge-map','tag-import')),
+  confidence   DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+  rejected     BIGINT NOT NULL DEFAULT 0 CHECK (rejected IN (0,1)),
+  created_at   TEXT DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+  PRIMARY KEY (word_id, scenario_id)
+);
+
+CREATE TABLE IF NOT EXISTS scenario_lines (
+  id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  scenario_id  BIGINT NOT NULL REFERENCES scenarios(id) ON DELETE CASCADE,
+  intent_key   TEXT NOT NULL DEFAULT '',
+  role         TEXT NOT NULL DEFAULT 'them' CHECK (role IN ('them','me')),
+  text_en      TEXT NOT NULL,
+  text_zh      TEXT NOT NULL DEFAULT '',
+  note         TEXT NOT NULL DEFAULT '',
+  importance   BIGINT NOT NULL DEFAULT 3 CHECK (importance BETWEEN 1 AND 5),
+  sentence_id  BIGINT REFERENCES sentences(id) ON DELETE SET NULL,
+  sort_order   BIGINT NOT NULL DEFAULT 0,
+  created_at   TEXT DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+  updated_at   TEXT DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+);
+
 -- Views (created by init_db_sqlite via execute_batch, not in schema.sql, so
 -- added here manually: the auto-generation dump only captured tables/indexes).
 -- all_document_assets: UNION of document_assets + standalone_assets so the
@@ -661,6 +711,14 @@ CREATE INDEX IF NOT EXISTS idx_scene_tasks_lesson ON scene_tasks(lesson_id, sort
 CREATE INDEX IF NOT EXISTS idx_scene_vocab_lesson_object ON scene_vocabulary(lesson_id, object_id);
 
 CREATE INDEX IF NOT EXISTS idx_scene_vocab_word ON scene_vocabulary(word_id);
+
+CREATE INDEX IF NOT EXISTS idx_scenario_lines_intent ON scenario_lines(scenario_id, intent_key);
+
+CREATE INDEX IF NOT EXISTS idx_scenario_lines_scenario ON scenario_lines(scenario_id, sort_order);
+
+CREATE INDEX IF NOT EXISTS idx_scenarios_domain ON scenarios(domain, sort_order);
+
+CREATE INDEX IF NOT EXISTS idx_word_scenarios_scenario ON word_scenarios(scenario_id, word_id);
 
 CREATE INDEX IF NOT EXISTS idx_search_history_searched_at ON search_history(searched_at DESC);
 

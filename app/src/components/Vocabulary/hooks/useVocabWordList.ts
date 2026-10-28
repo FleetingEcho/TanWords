@@ -47,6 +47,10 @@ export function useVocabWordList(db: ReturnType<typeof useDB>) {
   // Category tags — multi-select, OR'd in SQL. tagOptions drives the chip row.
   const [tagFilters, setTagFilters] = useState<string[]>(initialFilters.tags);
   const [tagOptions, setTagOptions] = useState<{ tag: string; count: number }[]>([]);
+  // Scenes — scenario keys, multi-select OR'd in SQL through the EXISTS arm.
+  // sceneOptions drives the filter bar's scene popover (registry + counts).
+  const [sceneFilters, setSceneFilters] = useState<string[]>(initialFilters.scenes);
+  const [sceneOptions, setSceneOptions] = useState<{ scenario_key: string; name_en: string; name_zh: string; word_count: number }[]>([]);
 
   // Snapshot the working set on every change. Search and the date range stay
   // session-only on purpose (a stale "hidden by search" reopen is the classic
@@ -60,8 +64,9 @@ export function useVocabWordList(db: ReturnType<typeof useDB>) {
       dueOnly,
       source: sourceFilter,
       tags: tagFilters,
+      scenes: sceneFilters,
     });
-  }, [levelFilters, statusFilters, starredOnly, enrichFilter, dueOnly, sourceFilter, tagFilters]);
+  }, [levelFilters, statusFilters, starredOnly, enrichFilter, dueOnly, sourceFilter, tagFilters, sceneFilters]);
   const [sortBy, setSortBy] = useState<WordSortBy>(() => {
     const saved = localStorage.getItem(WORD_SORT_KEY) as WordSortBy | null;
     return saved && SORT_VALUES.includes(saved) ? saved : "recent";
@@ -107,6 +112,7 @@ export function useVocabWordList(db: ReturnType<typeof useDB>) {
     setDueOnly(false);
     setSourceFilter("all");
     setTagFilters([]);
+    setSceneFilters([]);
     setSearch("");
     setDateFrom("");
     setDateTo("");
@@ -119,6 +125,12 @@ export function useVocabWordList(db: ReturnType<typeof useDB>) {
     setPage(0);
   }, []);
 
+  /** Scene filter toggle — same OR-semantics over scenario keys. */
+  const toggleSceneFilter = useCallback((key: string) => {
+    setSceneFilters((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+    setPage(0);
+  }, []);
+
   // The tag chip row's options — every category in use with counts, loaded
   // once per mount (plus on vocab-updated, when a bulk edit may have added
   // categories). ~19 tags at 10k words, so no paging needed.
@@ -126,6 +138,18 @@ export function useVocabWordList(db: ReturnType<typeof useDB>) {
     setTagOptions(await db.listWordTags());
   }, [db]);
   useEffect(() => { void loadTagOptions(); }, [loadTagOptions]);
+  // Scene options: the registry with per-scene word counts (~50 rows; the
+  // same shape the Scenes gallery reads, served by db_list_word_scenario_counts).
+  const loadSceneOptions = useCallback(async () => {
+    const list = await db.listWordScenarioCounts();
+    setSceneOptions(list.map((sc) => ({
+      scenario_key: sc.scenario_key,
+      name_en: sc.name_en,
+      name_zh: sc.name_zh,
+      word_count: sc.word_count,
+    })));
+  }, [db]);
+  useEffect(() => { void loadSceneOptions(); }, [loadSceneOptions]);
 
   // ── Multi-select (header actions: reanalyze / delete / mark status) ───
   const [selectMode, setSelectMode] = useState(false);
@@ -256,6 +280,7 @@ export function useVocabWordList(db: ReturnType<typeof useDB>) {
       enrichFilter,
       source: sourceFilter,
       tags: tagFilters,
+      scenarios: sceneFilters,
       dueOnly,
       sortBy,
       sortDesc,
@@ -281,12 +306,12 @@ export function useVocabWordList(db: ReturnType<typeof useDB>) {
     // skew across the four platforms.
     setFacets(res.facets ?? null);
     setLoaded(true);
-  }, [db, debouncedSearch, levelFilters, statusFilters, starredOnly, enrichFilter, sourceFilter, tagFilters, dueOnly, sortBy, sortDesc, dateFrom, dateTo, page, pageSize]);
+  }, [db, debouncedSearch, levelFilters, statusFilters, starredOnly, enrichFilter, sourceFilter, tagFilters, sceneFilters, dueOnly, sortBy, sortDesc, dateFrom, dateTo, page, pageSize]);
 
   useEffect(() => { void loadWords(); }, [loadWords]);
 
   const refreshList = async () => {
-    await Promise.all([loadWords(), loadAllWordsStats(), loadTagOptions()]);
+    await Promise.all([loadWords(), loadAllWordsStats(), loadTagOptions(), loadSceneOptions()]);
     toast.success(t("vocab.refreshed"));
   };
 
@@ -369,6 +394,7 @@ export function useVocabWordList(db: ReturnType<typeof useDB>) {
     dueOnly, setDueOnly,
     sourceFilter, setSourceFilter,
     tagFilters, toggleTagFilter, tagOptions, loadTagOptions,
+    sceneFilters, toggleSceneFilter, sceneOptions, loadSceneOptions,
     sortBy, changeSortBy, sortDesc, toggleSortDesc,
     search, setSearch,
     debouncedSearch,

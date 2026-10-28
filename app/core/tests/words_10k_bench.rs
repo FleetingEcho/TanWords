@@ -69,13 +69,13 @@ async fn words_10k_bench() {
 
     // Paged empty search (open list).
     let t2 = Instant::now();
-    let p0 = db::db_get_words_page(None, None, None, None, None, None, None, None, None, None, None, None, None, 20, 0, state.clone()).await.unwrap();
+    let p0 = db::db_get_words_page(None, None, None, None, None, None, None, None, None, None, None, None, None, None, 20, 0, state.clone()).await.unwrap();
     println!("page open list (no search): {:?} -> {} items / total {}", t2.elapsed(), p0.items.len(), p0.total);
 
     // Paged prefix search — worst realistic keystroke case.
     for q in ["w", "word1", "word12", "word123", "zzz"] {
         let t = Instant::now();
-        let p = db::db_get_words_page(Some(q.to_string()), None, None, None, None, None, None, None, Some("alpha".into()), None, None, None, None, 20, 0, state.clone()).await.unwrap();
+        let p = db::db_get_words_page(Some(q.to_string()), None, None, None, None, None, None, None, None, Some("alpha".into()), None, None, None, None, 20, 0, state.clone()).await.unwrap();
         println!("page search '{q}': {:?} -> {} items / total {}", t.elapsed(), p.items.len(), p.total);
     }
 
@@ -83,7 +83,7 @@ async fn words_10k_bench() {
     let t3 = Instant::now();
     let pf = db::db_get_words_page(
         Some("word".into()), Some(vec!["C2".into()]), Some(vec!["learning".into()]),
-        Some(true), Some(true), Some("ai".into()), None, Some(true), Some("due".into()), None,
+        Some(true), Some(true), Some("ai".into()), None, None, Some(true), Some("due".into()), None,
         Some("updated".into()), Some("2000-01-01".into()), Some("2099-01-01".into()),
         20, 0, state.clone(),
     ).await.unwrap();
@@ -109,13 +109,13 @@ async fn words_10k_bench() {
     // New sorts at 10k scale: difficulty (CEFR CASE) and category (tags).
     let t8 = Instant::now();
     let by_diff = db::db_get_words_page(
-        None, None, None, None, None, None, None, None, Some("difficulty".into()), Some(true), None, None, None,
+        None, None, None, None, None, None, None, None, None, Some("difficulty".into()), Some(true), None, None, None,
         20, 0, state.clone(),
     ).await.unwrap();
     println!("page difficulty-desc: {:?} -> first {:?}", t8.elapsed(), by_diff.items.first().map(|w| (w.word.clone(), w.level.clone())));
     let t9 = Instant::now();
     let by_cat = db::db_get_words_page(
-        None, None, None, None, None, None, None, None, Some("category".into()), None, None, None, None,
+        None, None, None, None, None, None, None, None, None, Some("category".into()), None, None, None, None,
         20, 0, state.clone(),
     ).await.unwrap();
     println!("page category-asc: {:?} -> first {:?}", t9.elapsed(), by_cat.items.first().map(|w| (w.word.clone(), w.tags.clone())));
@@ -123,7 +123,7 @@ async fn words_10k_bench() {
     if let Some(first_tag) = tag_counts.first().map(|c| c.tag.clone()) {
         let t10 = Instant::now();
         let by_tag = db::db_get_words_page(
-            None, None, None, None, None, None, Some(vec![first_tag.clone()]), None, None, None, None, None, None,
+            None, None, None, None, None, None, None, Some(vec![first_tag.clone()]), None, None, None, None, None, None,
             20, 0, state.clone(),
         ).await.unwrap();
         println!("page tag-filter '{first_tag}': {:?} -> {} / total {}", t10.elapsed(), by_tag.items.len(), by_tag.total);
@@ -132,7 +132,7 @@ async fn words_10k_bench() {
     // Repeat runs to see steady-state (cache warm).
     for _ in 0..2 {
         let t = Instant::now();
-        let _ = db::db_get_words_page(Some("word1".to_string()), None, None, None, None, None, None, None, Some("alpha".into()), None, None, None, None, 20, 0, state.clone()).await.unwrap();
+        let _ = db::db_get_words_page(Some("word1".to_string()), None, None, None, None, None, None, None, None, Some("alpha".into()), None, None, None, None, 20, 0, state.clone()).await.unwrap();
         println!("page search 'word1' (warm): {:?}", t.elapsed());
     }
 }

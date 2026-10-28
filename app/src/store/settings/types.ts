@@ -41,7 +41,7 @@ export interface TerminalCustomAppearance {
 export type RssTabSelection = number | "all" | "hackernews";
 
 export const DEFAULT_SIDEBAR_TABS: SidebarTabId[] = [
-  "dashboard", "stickies", "calendar", "feeds", "reading", "documents", "vocabulary", "chat", "music", "browser", "terminal", "dsh", "tools",
+  "dashboard", "stickies", "calendar", "feeds", "reading", "documents", "vocabulary", "scenes", "chat", "music", "browser", "terminal", "dsh", "tools",
 ];
 /** What's visible in the navigator for a fresh profile. The complete list
  *  above remains the Settings order/catalog, so every hidden page can still

@@ -372,6 +372,28 @@ pub async fn db_add_word_enriched(
     .await
     .map_err(|e| e.to_string())?;
 
+    // Scene links from the structured basic-info call: validate against the
+    // registry (the answer key), then INSERT OR IGNORE — never over an
+    // existing row, so manual/reviewed links and tombstones survive. The
+    // enrichment source rides on the join row for the review queue.
+    if let Some(scenes) = enrichment.scenes.as_ref() {
+        if !scenes.is_empty() {
+            for key in scenes {
+                let scenario_id: Option<i64> = db::fetch_optional(
+                    &tx,
+                    "SELECT id FROM scenarios WHERE scenario_key = ?1",
+                    params![key],
+                    |r| r.get(0),
+                )
+                .await?;
+                if let Some(sid) = scenario_id {
+                    crate::db::scenarios::link_word_scenario(&tx, word_id, sid, "enrichment", 0.85)
+                        .await?;
+                }
+            }
+        }
+    }
+
     if is_new {
         tx.execute(
             "INSERT INTO daily_streaks (\"date\", words_added) VALUES (date('now'), 1) ON CONFLICT(\"date\") DO UPDATE SET words_added = daily_streaks.words_added + 1",

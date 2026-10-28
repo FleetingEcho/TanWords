@@ -118,6 +118,8 @@ db::db_get_connection
 db::db_connect_postgres
 db::db_export_postgres_backup
 db::db_disconnect_remote
+db::db_reconnect_postgres
+db::db_saved_postgres_summary
 db::db_import_analyze
 db::db_import_apply
 db::db_import_overwrite
@@ -140,6 +142,17 @@ db::db_finish_scene_session
 db::db_save_scene_attempt
 db::db_get_scene_progress
 db::db_add_scene_words_to_vocabulary
+db::db_list_scenarios
+db::db_get_scenario_detail
+db::db_save_scenario_pack
+db::db_set_word_scenarios
+db::db_get_word_scenarios
+db::db_promote_scenario_line
+db::db_propose_scenario
+db::db_list_scenario_review_queue
+db::db_reject_word_scenario
+db::db_list_word_scenario_counts
+db::db_link_words_to_scenario
 db::db_save_sentence
 db::db_list_sentences
 db::db_delete_sentence

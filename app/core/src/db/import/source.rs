@@ -89,6 +89,10 @@ pub(super) struct SourceWord {
     pub enrichment_text: Option<String>,
     pub definitions: Vec<(String, String, String, String, String, i64)>,
     pub srs: Option<(i64, f64, String)>,
+    /// Scenario keys this word is linked to in the source DB. Merge import
+    /// can't carry integer ids across databases (they collide/shift), so
+    /// links re-resolve by key on the target side; unknown keys drop.
+    pub scenes: Vec<String>,
 }
 
 pub(super) async fn read_words(conn: &Conn) -> Result<Vec<SourceWord>, String> {
@@ -131,6 +135,16 @@ pub(super) async fn read_words(conn: &Conn) -> Result<Vec<SourceWord>, String> {
         )
         .await
         .unwrap_or(None);
+        let scenes: Vec<String> = db::fetch_all(
+            conn,
+            "SELECT sc.scenario_key FROM word_scenarios ws
+             JOIN scenarios sc ON sc.id = ws.scenario_id
+             WHERE ws.word_id = ?1 AND ws.rejected = 0",
+            [id],
+            |r| r.get(0),
+        )
+        .await
+        .unwrap_or_default();
 
         out.push(SourceWord {
             key: word.trim().to_lowercase(),
@@ -141,6 +155,7 @@ pub(super) async fn read_words(conn: &Conn) -> Result<Vec<SourceWord>, String> {
             enrichment_text,
             definitions,
             srs,
+            scenes,
         });
     }
     Ok(out)

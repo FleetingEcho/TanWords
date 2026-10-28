@@ -39,6 +39,10 @@ interface Props {
   tagOptions: { tag: string; count: number }[];
   selectedTags: string[];
   onTagToggle: (tag: string) => void;
+  /** Scene (scenario) chips — options + toggle, wired to the list hook. */
+  sceneOptions: { scenario_key: string; name_en: string; name_zh: string; word_count: number }[];
+  selectedScenes: string[];
+  onSceneToggle: (key: string) => void;
   sortBy: WordSortBy;
   onSortChange: (v: WordSortBy) => void;
   sortDesc: boolean;
@@ -112,7 +116,9 @@ interface Props {
 export function WordListPanel({
   words, total, selectedId, highlightId, search, levelFilter, starredOnly, onStarredOnlyChange, page, pageSize,
   statuses, onStatusesChange, enrichFilter, onEnrichFilterChange, dueOnly, onDueOnlyChange,
-  sourceFilter, onSourceChange, tagOptions, selectedTags, onTagToggle, sortBy, onSortChange, sortDesc, onSortDescToggle, onClearAllFilters, facets,
+  sourceFilter, onSourceChange, tagOptions, selectedTags, onTagToggle,
+  sceneOptions, selectedScenes, onSceneToggle,
+  sortBy, onSortChange, sortDesc, onSortDescToggle, onClearAllFilters, facets,
   showAiLookup, lookupActive, dateFrom, dateTo,
   onSearchChange, onFilterChange,
   onDateFromChange, onDateToChange, onRefresh, onExport, exportingWords,
@@ -395,6 +401,9 @@ export function WordListPanel({
           tagOptions={tagOptions}
           selectedTags={selectedTags}
           onTagToggle={onTagToggle}
+          sceneOptions={sceneOptions}
+          selectedScenes={selectedScenes}
+          onSceneToggle={onSceneToggle}
           dateFrom={dateFrom}
           dateTo={dateTo}
           onDateFromChange={onDateFromChange}

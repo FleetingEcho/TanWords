@@ -240,6 +240,14 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
         onGeneratePatterns={chatWord ? () => setGenWord(chatWord) : undefined}
         tags={lookup ? undefined : selected?.word.tags}
         tagOptions={list.tagOptions}
+        scenes={lookup ? undefined : detail.selectedScenes}
+        sceneOptions={list.sceneOptions}
+        onSetScenes={lookup ? undefined : (next) => {
+          if (!selected) return;
+          const id = selected.word.id;
+          detail.setSelectedScenes(next);
+          void db.setWordScenarios(id, next);
+        }}
         onPrevWord={lookup ? undefined : () => moveSelection(-1)}
         onNextWord={lookup ? undefined : () => moveSelection(1)}
         hasPrevWord={selectedAbsIdx !== null && selectedAbsIdx > 0}
@@ -297,6 +305,9 @@ export function VocabularyPage({ initialWordId, initialSentenceId }: { initialWo
         sourceFilter={list.sourceFilter}
         onSourceChange={(v) => { list.setSourceFilter(v); list.setPage(0); }}
         tagOptions={list.tagOptions}
+        sceneOptions={list.sceneOptions}
+        selectedScenes={list.sceneFilters}
+        onSceneToggle={list.toggleSceneFilter}
         selectedTags={list.tagFilters}
         onTagToggle={list.toggleTagFilter}
         sortBy={list.sortBy}

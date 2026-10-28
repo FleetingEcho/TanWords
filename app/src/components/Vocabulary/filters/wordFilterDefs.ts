@@ -11,7 +11,9 @@
 import type { EnrichFilter, WordStatus } from "@/hooks/useDB";
 import type { LevelValue } from "@/components/shared/LevelDateFilter";
 
-export const WORD_FILTER_STORAGE_KEY = "vocab-words-filters-v1";
+/** v2: adds `scenes` (scenario keys). A v1 snapshot loads clean — unknown
+ *  fields drop to defaults, so no migration step is needed. */
+export const WORD_FILTER_STORAGE_KEY = "vocab-words-filters-v2";
 
 /** Multi-select level chip buckets — the same four LevelDateFilter offers. */
 export const WORD_LEVEL_VALUES: LevelValue[] = ["C2", "C1", "B2", "B1-"];
@@ -24,6 +26,7 @@ export const WORD_STATUS_VALUES: WordStatus[] = ["learning", "familiar", "master
  *  vocabulary-only filter dimensions.) */
 export const WORD_SOURCE_VALUES = [
   "manual", "ai", "chat", "batch", "discover", "seed", "knowledge-map", "scene-lab",
+  "scenario",
 ] as const;
 
 /** The persisted working set. Every field is sanitized on load, so a stale
@@ -37,6 +40,8 @@ export interface PersistedWordFilters {
   dueOnly: boolean;
   source: string;
   tags: string[];
+  /** Selected scenarios (scenario_key values) — ANY-match, same as tags. */
+  scenes: string[];
 }
 
 export const DEFAULT_WORD_FILTERS: PersistedWordFilters = {
@@ -47,6 +52,7 @@ export const DEFAULT_WORD_FILTERS: PersistedWordFilters = {
   dueOnly: false,
   source: "all",
   tags: [],
+  scenes: [],
 };
 
 /** Deduplicated, order-preserving filter of an unknown value down to the
@@ -68,16 +74,31 @@ function cleanEnumArray<T extends string>(value: unknown, allowed: readonly T[])
  *  db_set_word_tags), cap pathological payloads — this came from disk, not
  *  from a chip, so it can contain anything. */
 function cleanTags(value: unknown): string[] {
+  return cleanKeys(value, 80, 50);
+}
+
+/** Scenario keys are registry-controlled ("dining.cafe") but still arrive
+ *  from localStorage, which can hold anything: sanitize to non-empty
+ *  lowercase dotted strings, dedupe, cap. Same shape as cleanTags with a
+ *  tighter charset — keys must match the registry exactly, so anything
+ *  else would silently filter the list to nothing (the "my words
+ *  vanished" scare). */
+function cleanSceneKeys(value: unknown): string[] {
+  return cleanKeys(value, 100, 30).filter((k) => /^[a-z0-9][a-z0-9.-]*$/.test(k));
+}
+
+/** Shared sanitizer for free-form key arrays (tags, scene keys). */
+function cleanKeys(value: unknown, maxLen: number, maxItems: number): string[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
   const out: string[] = [];
   for (const v of value) {
     if (typeof v !== "string") continue;
-    const tag = v.replace(/"/g, "").trim().slice(0, 80);
+    const tag = v.replace(/"/g, "").trim().slice(0, maxLen);
     if (!tag || seen.has(tag)) continue;
     seen.add(tag);
     out.push(tag);
-    if (out.length >= 50) break;
+    if (out.length >= maxItems) break;
   }
   return out;
 }
@@ -103,6 +124,7 @@ export function loadWordFilters(): PersistedWordFilters {
       ? obj.source
       : "all",
     tags: cleanTags(obj.tags),
+    scenes: cleanSceneKeys(obj.scenes),
   };
 }
 
