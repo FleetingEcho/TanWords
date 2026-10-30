@@ -15,7 +15,7 @@ import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/core";
 import { useT } from "@/hooks/useT";
 import {
-  Bold, ChevronDown, Code, Italic, List, ListOrdered, ListTodo,
+  Bold, ChevronDown, ClipboardPaste, Code, Italic, List, ListOrdered, ListTodo,
   Strikethrough, Underline as UnderlineIcon,
 } from "lucide-react";
 
@@ -99,6 +99,7 @@ function PopoverPortal({
   children,
   className,
   width,
+  height,
 }: {
   anchorRef: { current: HTMLElement | null };
   onClose: () => void;
@@ -107,6 +108,7 @@ function PopoverPortal({
   /** px width used to keep the panel inside the window when the trigger sits
    *  near the right edge (default 170 ≈ swatch row). */
   width?: number;
+  height?: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -125,7 +127,7 @@ function PopoverPortal({
   const style: CSSProperties = r
     ? {
         position: "fixed",
-        top: r.bottom + 4,
+        top: height ? Math.max(8, Math.min(r.bottom + 4, window.innerHeight - height - 8)) : r.bottom + 4,
         left: Math.max(8, Math.min(r.left, window.innerWidth - (width ?? 170) - 8)),
         zIndex: 60,
       }
@@ -170,6 +172,7 @@ export function StickyToolbar({
   editor,
   noteFontSize,
   onNoteFontSize,
+  onPasteMarkdown,
 }: {
   editor: Editor | null;
   /** The note-wide font size (sticky_windows/font_size on the DB row) — the
@@ -178,11 +181,17 @@ export function StickyToolbar({
    *  (the web editor drawer) omit the control by not passing handlers. */
   noteFontSize?: number | null;
   onNoteFontSize?: (size: number | null) => void;
+  /** Converts Markdown from the paste field into rendered editor blocks. */
+  onPasteMarkdown?: (markdown: string) => Promise<boolean>;
 }) {
   const t = useT();
   // Bumped on editor transactions so active states stay honest.
   const [, setTick] = useState(0);
   const [palette, setPalette] = useState<"highlight" | "color" | "size" | "codeBg" | "codeText" | null>(null);
+  const [markdownOpen, setMarkdownOpen] = useState(false);
+  const [markdownDraft, setMarkdownDraft] = useState("");
+  const [markdownBusy, setMarkdownBusy] = useState(false);
+  const [markdownError, setMarkdownError] = useState(false);
   // One anchor ref per palette trigger; PopoverPortal measures off these and
   // swallows outside-click dismissal itself (trigger clicks stay toggles).
   const hlAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -190,6 +199,25 @@ export function StickyToolbar({
   const sizeAnchorRef = useRef<HTMLDivElement | null>(null);
   const codeBgAnchorRef = useRef<HTMLDivElement | null>(null);
   const codeTextAnchorRef = useRef<HTMLDivElement | null>(null);
+  const markdownAnchorRef = useRef<HTMLDivElement | null>(null);
+
+  const submitMarkdown = async () => {
+    if (!onPasteMarkdown || !markdownDraft.trim() || markdownBusy) return;
+    setMarkdownBusy(true);
+    setMarkdownError(false);
+    try {
+      if (!await onPasteMarkdown(markdownDraft)) {
+        setMarkdownError(true);
+        return;
+      }
+      setMarkdownDraft("");
+      setMarkdownOpen(false);
+    } catch {
+      setMarkdownError(true);
+    } finally {
+      setMarkdownBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!editor) return;
@@ -393,6 +421,55 @@ export function StickyToolbar({
       <ToolButton title={t("sticky.tb.taskList")} active={editor.isActive("taskList")} onClick={() => run(() => editor.chain().focus().toggleTaskList().run())}>
         <ListTodo className="size-3.5" />
       </ToolButton>
+      {onPasteMarkdown && (
+        <>
+          <span className="mx-0.5 h-4 w-px bg-black/15" />
+          <div ref={markdownAnchorRef}>
+            <ToolButton title={t("sticky.pasteMarkdown")} active={markdownOpen} onClick={() => setMarkdownOpen((open) => !open)}>
+              <ClipboardPaste className="size-3.5" />
+            </ToolButton>
+            {markdownOpen && (
+              <PopoverPortal
+                anchorRef={markdownAnchorRef}
+                onClose={() => setMarkdownOpen(false)}
+                width={320}
+                height={220}
+                className="max-h-[calc(100vh-16px)] w-[min(320px,calc(100vw-16px))] overflow-y-auto text-neutral-800"
+              >
+                <label className="block px-1 pb-1 text-xs font-semibold">{t("sticky.pasteMarkdown")}</label>
+                <textarea
+                  autoFocus
+                  value={markdownDraft}
+                  onChange={(event) => { setMarkdownDraft(event.target.value); setMarkdownError(false); }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") setMarkdownOpen(false);
+                    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                      event.preventDefault();
+                      void submitMarkdown();
+                    }
+                  }}
+                  placeholder={t("sticky.markdownPlaceholder")}
+                  className="min-h-24 max-h-[40vh] w-full resize-y rounded-md border border-black/15 bg-white p-2 font-mono text-xs outline-none focus:border-black/40"
+                />
+                {markdownError && <p role="alert" className="px-1 text-xs text-red-700">{t("sticky.markdownInsertFailed")}</p>}
+                <div className="flex justify-end gap-2 pt-1">
+                  <button type="button" className="rounded-md px-2 py-1 text-xs hover:bg-black/5" onClick={() => setMarkdownOpen(false)}>
+                    {t("sticky.cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!markdownDraft.trim() || markdownBusy}
+                    className="rounded-md bg-neutral-900 px-2 py-1 text-xs text-white disabled:opacity-50"
+                    onClick={() => void submitMarkdown()}
+                  >
+                    {markdownBusy ? t("sticky.saving") : t("sticky.insertMarkdown")}
+                  </button>
+                </div>
+              </PopoverPortal>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

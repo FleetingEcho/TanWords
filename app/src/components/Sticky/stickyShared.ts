@@ -8,7 +8,7 @@ import { useEffect, type CSSProperties, type RefObject } from "react";
 /** The sticky window is just its header row when collapsed (must match
  *  STICKY_HEADER_HEIGHT in electron/main/stickyWindows.ts). */
 export const STICKY_HEADER_HEIGHT = 44;
-export const STICKY_MIN_W = 180;
+export const STICKY_MIN_W = 280;
 export const STICKY_MIN_H = 140;
 
 /** tanNotes' pastel set. The hex IS the stored value ("yellow" is the id and

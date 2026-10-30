@@ -5,8 +5,8 @@ import { StickyWindowApp } from "./StickyWindowApp";
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 
 vi.mock("@/ipc/backend", () => ({
-  backendOrigin: "http://127.0.0.1:1",
-  backendToken: "test-token",
+  backendOrigin: async () => "http://127.0.0.1:1",
+  backendToken: async () => "test-token",
   invoke,
 }));
 vi.mock("@/ipc/events", () => ({ subscribe: () => () => {} }));
@@ -54,9 +54,10 @@ describe("StickyWindowApp title editing", () => {
     render(<StickyWindowApp />);
     const title = await screen.findByTitle("Original title");
 
-    expect(title).toHaveClass("app-region-no-drag");
+    expect(title.closest(".app-drag-region")).toBeNull();
+    expect(title.parentElement).toHaveClass("app-region-no-drag");
 
-    fireEvent.doubleClick(title);
+    fireEvent.click(title);
     const input = screen.getByPlaceholderText("sticky.renameTitle");
     fireEvent.change(input, { target: { value: "Renamed title" } });
     fireEvent.keyDown(input, { key: "Enter" });

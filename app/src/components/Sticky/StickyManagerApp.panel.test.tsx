@@ -55,3 +55,18 @@ describe("StickyManagerApp popovers dismiss on outside press", () => {
     expect(screen.queryByText("Blank note")).toBeNull();
   });
 });
+
+describe("StickyManagerApp view mode", () => {
+  it("switches between card and list layouts and remembers the choice", () => {
+    localStorage.removeItem("sticky-manager-view-mode");
+    const first = render(<StickyManagerApp />);
+    fireEvent.click(screen.getByRole("button", { name: "List view" }));
+    expect(screen.getByRole("button", { name: "Card view" })).toBeInTheDocument();
+    expect(localStorage.getItem("sticky-manager-view-mode")).toBe("list");
+
+    first.unmount();
+    render(<StickyManagerApp />);
+    expect(screen.getByRole("button", { name: "Card view" })).toBeInTheDocument();
+    localStorage.removeItem("sticky-manager-view-mode");
+  });
+});

@@ -23,10 +23,11 @@
 import { BrowserWindow, screen } from "electron";
 import path from "node:path";
 import { rendererEntryUrl } from "./protocol";
+import { wireDevToolsShortcut } from "./devtools";
 
 /** The collapsed sticky is just its header row. */
 export const STICKY_HEADER_HEIGHT = 44;
-const MIN_W = 180;
+const MIN_W = 280;
 const MIN_H = 140;
 const DEFAULT_W = 500;
 const DEFAULT_H = 480;
@@ -164,6 +165,15 @@ export function openStickyWindow(opts: {
   }
   const entry: StickyEntry = { win, id: opts.id, closingByRequest: false };
   windows.set(opts.id, entry);
+  wireDevToolsShortcut(win.webContents, "detach");
+
+  // Route the OS close button/shortcut through the renderer's ordered save
+  // flow. Programmatic closes set closingByRequest and pass straight through.
+  win.on("close", (event) => {
+    if (entry.closingByRequest || win.webContents.isLoading?.()) return;
+    event.preventDefault();
+    broadcastEvent("stickywin:requestClose", { id: opts.id });
+  });
 
   // Native moves/resizes (header drag) — tell the renderer so it persists
   // through the normal sidecar command. Debounced per window: 'moved' fires
@@ -281,6 +291,29 @@ export function flushStickiesForQuit(): void {
       // ignore
     }
   }
+}
+
+/** Flush one live note before an external action (such as manager Trash).
+ *  A failed or stalled save reports false so that action can leave the note
+ *  untouched. */
+export async function flushStickyContent(id: number): Promise<boolean> {
+  const entry = entryFor(id);
+  if (!entry) return true;
+  const { webContents } = entry.win;
+  if (webContents.isDestroyed()) return false;
+  return new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => resolve(false), 3000);
+    void webContents.executeJavaScript("window.__tanwordsFlushSticky?.() ?? true")
+      .then((saved: unknown) => { clearTimeout(timer); resolve(saved !== false); })
+      .catch(() => { clearTimeout(timer); resolve(false); });
+  });
+}
+
+/** Give each live renderer a chance to save while the sidecar is still up.
+ *  A failed or stalled save prevents normal quit so the note stays editable. */
+export async function flushStickyContentForQuit(): Promise<boolean> {
+  const results = await Promise.all([...windows.keys()].map((id) => flushStickyContent(id)));
+  return results.every(Boolean);
 }
 
 /** Destroys every sticky window without persistence — used after the flush

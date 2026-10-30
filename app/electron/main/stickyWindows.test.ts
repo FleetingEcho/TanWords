@@ -9,6 +9,8 @@ type FakeWin = {
   isDestroyed: () => boolean;
   show: ReturnType<typeof vi.fn>;
   hide: ReturnType<typeof vi.fn>;
+  on: ReturnType<typeof vi.fn>;
+  webContents: { executeJavaScript: ReturnType<typeof vi.fn> };
 };
 
 const fakeWins: FakeWin[] = [];
@@ -32,6 +34,11 @@ vi.mock("electron", () => ({
     webContents = {
       setWindowOpenHandler: vi.fn(),
       on: vi.fn(),
+      isDestroyed: () => false,
+      isDevToolsOpened: vi.fn().mockReturnValue(false),
+      openDevTools: vi.fn(),
+      closeDevTools: vi.fn(),
+      executeJavaScript: vi.fn().mockResolvedValue(true),
     };
     constructor() {
       this.readyToShow = () => this.show();
@@ -48,7 +55,11 @@ vi.mock("./protocol", () => ({ rendererEntryUrl: () => "file:///app/index.html" 
 
 import {
   destroyAllStickyWindows,
+  closeStickyWindow,
+  flushStickyContent,
+  flushStickyContentForQuit,
   hideAllStickies,
+  initStickyWindows,
   openStickyWindow,
   setStickyReopener,
   showAllStickies,
@@ -114,5 +125,60 @@ describe("show all / hide all stickies", () => {
     expect(() => hideAllStickies()).not.toThrow();
     expect(fakeWins[0]!.show).not.toHaveBeenCalled();
     expect(fakeWins[0]!.hide).not.toHaveBeenCalled();
+  });
+
+  it("asks the renderer to save before a native close", () => {
+    const broadcastEvent = vi.fn();
+    initStickyWindows({ persistGeometry: vi.fn(), broadcastEvent });
+    openStickyWindow({ id: 3, bounds: null });
+    const win = fakeWins[0]!;
+    const closeHandler = win.on.mock.calls.find(([name]) => name === "close")?.[1] as (event: { preventDefault: () => void }) => void;
+    const preventDefault = vi.fn();
+
+    closeHandler({ preventDefault });
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(broadcastEvent).toHaveBeenCalledWith("stickywin:requestClose", { id: 3 });
+
+    closeStickyWindow(3);
+    preventDefault.mockClear();
+    closeHandler({ preventDefault });
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+
+  it("opens sticky DevTools in a separate window and toggles them closed", () => {
+    openStickyWindow({ id: 6, bounds: null });
+    const contents = fakeWins[0]!.webContents as FakeWin["webContents"] & {
+      on: ReturnType<typeof vi.fn>;
+      isDevToolsOpened: ReturnType<typeof vi.fn>;
+      openDevTools: ReturnType<typeof vi.fn>;
+      closeDevTools: ReturnType<typeof vi.fn>;
+    };
+    const inputHandler = contents.on.mock.calls.find(([name]) => name === "before-input-event")?.[1] as
+      | ((event: { preventDefault: () => void }, input: object) => void)
+      | undefined;
+    expect(inputHandler).toBeTypeOf("function");
+    const preventDefault = vi.fn();
+    const shortcut = { type: "keyDown", key: "i", control: true, shift: true, meta: false, alt: false };
+    inputHandler!({ preventDefault }, shortcut);
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(contents.openDevTools).toHaveBeenCalledWith({ mode: "detach" });
+
+    contents.isDevToolsOpened.mockReturnValue(true);
+    inputHandler!({ preventDefault }, shortcut);
+    expect(contents.closeDevTools).toHaveBeenCalledOnce();
+  });
+
+  it("flushes note content before quit destroys the windows", async () => {
+    openStickyWindow({ id: 4, bounds: null });
+    expect(await flushStickyContentForQuit()).toBe(true);
+    expect(fakeWins[0]!.webContents.executeJavaScript)
+      .toHaveBeenCalledWith("window.__tanwordsFlushSticky?.() ?? true");
+  });
+
+  it("reports a failed renderer save to the manager", async () => {
+    openStickyWindow({ id: 5, bounds: null });
+    fakeWins[0]!.webContents.executeJavaScript.mockResolvedValue(false);
+    expect(await flushStickyContent(5)).toBe(false);
+    expect(await flushStickyContentForQuit()).toBe(false);
   });
 });

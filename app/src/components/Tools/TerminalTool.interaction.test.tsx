@@ -460,7 +460,7 @@ describe("TerminalTool interaction: context menu, search, and transparency", () 
     const second = renderTerminal();
     expect(useSettingsStore.getState().terminalTransparent).toBe(false);
     expect(screen.getByRole("button", { name: "Terminal appearance" })).toHaveAttribute("aria-pressed", "false");
-    expect(second.shell).toHaveStyle({ background: "#1a1b26" });
+    expect((second.shell as HTMLElement).style.background).toBe("rgb(26, 27, 38)");
   });
 
   it("keeps the transparent background's blur when its appearance controls are closed", () => {
@@ -473,7 +473,7 @@ describe("TerminalTool interaction: context menu, search, and transparency", () 
     fireEvent.click(appearanceButton);
 
     expect(useSettingsStore.getState().terminalTransparent).toBe(true);
-    expect(shell).toHaveStyle({ background: "rgba(26,27,38,0.16)" });
+    expect((shell as HTMLElement).style.background).toBe("rgba(26, 27, 38, 0.16)");
     // jsdom's CSSOM doesn't recognize the vendor-prefixed property, so only
     // the standard one is checked here; TerminalTool still sets both inline.
     expect((shell as HTMLElement).style.backdropFilter).toBe("blur(12px)");
@@ -538,7 +538,7 @@ describe("TerminalTool interaction: context menu, search, and transparency", () 
     fireEvent.keyDown(screen.getByRole("combobox", { name: "Theme" }), { key: "ArrowDown" });
     fireEvent.click(screen.getByRole("option", { name: "Custom" }));
 
-    expect(shell).toHaveStyle({ background: "rgba(0,0,0,0)" });
+    expect((shell as HTMLElement).style.background).toBe("rgba(0, 0, 0, 0)");
     expect((mocks.terminal.options.theme as Record<string, string>).background)
       .toBe("rgba(0, 0, 0, 0)");
   });

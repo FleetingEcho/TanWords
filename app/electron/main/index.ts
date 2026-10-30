@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, Menu, Notification, session, shell } from "electron";
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, Notification, session, shell } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -12,7 +12,9 @@ import { DshPanel } from "./dshPanel";
 import { resetFloatingBrowserWindow } from "./floatingBrowserWindow";
 import {
   initStickyWindows, openStickyWindow, openStickyManagerWindow,
-  showAllStickies, hideAllStickies, flushStickiesForQuit, destroyAllStickyWindows, setStickyReopener, hasStickyWindow,
+  showAllStickies, hideAllStickies, flushStickyContentForQuit, flushStickiesForQuit,
+  destroyAllStickyWindows, setStickyReopener, hasStickyWindow,
+  STICKY_HEADER_HEIGHT,
 } from "./stickyWindows";
 import { TrayManager, trayIconPath } from "./tray";
 import {
@@ -641,7 +643,10 @@ if (gotLock) {
       broadcastEvent,
       persistGeometry: (id, g, isOpen) => {
         void sidecarInvoke("sticky_update_window_state", {
-          id, x: g.x, y: g.y, w: g.width, h: g.height,
+          id, x: g.x, y: g.y, w: g.width,
+          // A collapsed window is only its header. Keep the last expanded
+          // height in the DB so Expand restores the user's chosen size.
+          ...(g.height > STICKY_HEADER_HEIGHT ? { h: g.height } : {}),
           ...(isOpen ? {} : { is_open: false }),
         }).catch(() => {});
       },
@@ -702,24 +707,32 @@ if (gotLock) {
     if (quitting) return;
     event.preventDefault();
     quitting = true;
-    // Close outstanding DSH notifications before exit: Linux notification
-    // daemons keep notifications from exited processes, so without this the
-    // launcher badge would survive a restart. Reminder notifications
-    // (appNotification.ts) get the same treatment.
-    closeAllDshNotifications();
-    closeAllAppNotifications();
-    terminalShutdownAll();
-    // Last-chance geometry flush for open stickies, then tear the windows
-    // down so nothing redraws during sidecar shutdown.
-    flushStickiesForQuit();
-    destroyAllStickyWindows();
-    void sidecar.shutdown().finally(() => {
-      // The DSH host has no stdin-EOF shutdown path; the supervisor SIGTERMs
-      // it (then SIGKILLs after a timeout) so an ungraceful app exit can't
-      // orphan the loopback `dsh --profile web` process.
-      void dshSupervisor.shutdown().finally(() => {
-        app.exit();
+    void flushStickyContentForQuit().then((saved) => {
+      if (!saved) {
+        quitting = false;
+        dialog.showErrorBox("Sticky note not saved", "TanNotes stayed open because a sticky note could not be saved. Retry from its red save indicator, then quit again.");
+        return;
+      }
+      // Close outstanding DSH and reminder notifications only once quit is
+      // committed; Linux notification daemons otherwise keep them around.
+      closeAllDshNotifications();
+      closeAllAppNotifications();
+      terminalShutdownAll();
+      // Keep the sidecar alive until sticky content and geometry have flushed.
+      flushStickiesForQuit();
+      destroyAllStickyWindows();
+      void sidecar.shutdown().finally(() => {
+        // The DSH host has no stdin-EOF shutdown path; the supervisor SIGTERMs
+        // it (then SIGKILLs after a timeout) so an ungraceful app exit can't
+        // orphan the loopback `dsh --profile web` process.
+        void dshSupervisor.shutdown().finally(() => {
+          app.exit();
+        });
       });
+    }).catch((error) => {
+      quitting = false;
+      console.error("[sticky] quit save failed", error);
+      dialog.showErrorBox("Sticky note not saved", "TanNotes stayed open because a sticky note could not be saved. Retry the save, then quit again.");
     });
   });
 }

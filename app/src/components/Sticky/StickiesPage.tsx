@@ -28,6 +28,7 @@ import type { DocEditorApi } from "@/components/Documents/tiptap/DocEditorApi";
 import type { Block } from "@/components/Documents/tiptap/blocks";
 import type { Editor as TiptapEditor } from "@tiptap/core";
 import { StickyToolbar } from "./StickyToolbar";
+import { insertRenderedMarkdown } from "./insertRenderedMarkdown";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import {
   STICKY_COLORS,
@@ -100,12 +101,14 @@ export function StickiesPage() {
   const [deleteTarget, setDeleteTarget] = useState<StickyListItem | null>(null);
   const [createBusy, setCreateBusy] = useState(false);
   const [saved, setSaved] = useState(true);
+  const [saveFailed, setSaveFailed] = useState(false);
   const [liveWords, setLiveWords] = useState(0);
   /** Live tiptap instance, captured from the drawer's toolbarExtras render
    *  prop so the fixed StickyToolbar row can drive it. */
   const [drawerEditor, setDrawerEditor] = useState<TiptapEditor | null>(null);
   const editorApi = useRef<DocEditorApi | null>(null);
   const dirty = useRef(false);
+  const saveInFlight = useRef<Promise<boolean> | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editingId = useRef<number | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -134,30 +137,56 @@ export function StickiesPage() {
     };
   }, [query, reload]);
 
+  const flushSave = useCallback((): Promise<boolean> => {
+    if (saveInFlight.current) return saveInFlight.current;
+    if (!dirty.current) return Promise.resolve(true);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = null;
+    const run = async () => {
+      while (dirty.current) {
+        const api = editorApi.current;
+        const id = editingId.current;
+        if (!api || id === null) return false;
+        dirty.current = false;
+        const { content, contentText, wordCount } = blocksToStorage(api.document);
+        try {
+          await invoke("sticky_save_content", { id, content, contentText, wordCount });
+        } catch {
+          dirty.current = true;
+          setSaveFailed(true);
+          setSaved(false);
+          return false;
+        }
+        if (!dirty.current && editingId.current === id) {
+          setSaved(true);
+          setSaveFailed(false);
+          setLiveWords(wordCount);
+        }
+      }
+      return true;
+    };
+    const pending = run();
+    saveInFlight.current = pending;
+    void pending.finally(() => {
+      if (saveInFlight.current === pending) saveInFlight.current = null;
+    });
+    return pending;
+  }, []);
+
   const scheduleSave = useCallback(() => {
     if (!editorApi.current || editingId.current === null) return;
     dirty.current = true;
     setSaved(false);
+    setSaveFailed(false);
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      if (!dirty.current || !editorApi.current) return;
-      dirty.current = false;
-      const { content, contentText, wordCount } = blocksToStorage(editorApi.current.document);
-      void invoke("sticky_save_content", {
-        id: editingId.current, content, contentText, wordCount,
-      })
-        .then(() => {
-          setSaved(true);
-          setLiveWords(wordCount);
-        })
-        .catch(() => { dirty.current = true; });
-    }, SAVE_DEBOUNCE_MS);
-  }, []);
+    saveTimer.current = setTimeout(() => { void flushSave(); }, SAVE_DEBOUNCE_MS);
+  }, [flushSave]);
 
   const beginEdit = useCallback((detail: StickyDetail) => {
     editingId.current = detail.id;
     dirty.current = false;
     setSaved(true);
+    setSaveFailed(false);
     setLiveWords(detail.word_count);
     setEditorBlocks(parseBlocks(detail.content));
     setEditing(detail);
@@ -165,28 +194,31 @@ export function StickiesPage() {
 
   const openEditor = useCallback(async (item: StickyListItem) => {
     try {
+      if (editingId.current !== null && !await flushSave()) return;
       const detail = await invoke<StickyDetail | null>("sticky_get", { id: item.id });
       if (!detail) return;
       beginEdit(detail);
     } catch {
       // Locked/protected note: leave the board; toast-free for now.
     }
-  }, [beginEdit]);
+  }, [beginEdit, flushSave]);
 
-  const closeEditor = useCallback(() => {
+  const closeEditor = useCallback(async () => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
+    if (!await flushSave()) return;
     editingId.current = null;
     editorApi.current = null;
     setDrawerEditor(null);
     setEditing(null);
     setEditorBlocks(null);
     void reload();
-  }, [reload]);
+  }, [flushSave, reload]);
 
   /** New-button flow: blank note, then straight into the editor sheet. */
   const createAndEdit = useCallback(async () => {
     setCreateBusy(true);
     try {
+      if (editingId.current !== null && !await flushSave()) return;
       // Flat wire shape — sticky_create returns the detail with top-level id.
       const created = await invoke<StickyDetail>("sticky_create", {});
       // A note created mid-search wouldn't match; drop the filter so the wall
@@ -197,7 +229,7 @@ export function StickiesPage() {
     } finally {
       setCreateBusy(false);
     }
-  }, [beginEdit, query, reload]);
+  }, [beginEdit, flushSave, query, reload]);
 
   /** Quick capture: one line → one paragraph block (stickyTemplates.ts shape:
    *  non-empty text blocks carry content as a styled inline array). */
@@ -231,11 +263,12 @@ export function StickiesPage() {
   }, [editing]);
 
   const trashNote = useCallback(async (item: StickyListItem) => {
+    if (editingId.current === item.id && !await flushSave()) return;
     await invoke("sticky_delete", { id: item.id }).catch(() => {});
     setDeleteTarget(null);
-    if (editing?.id === item.id) closeEditor();
+    if (editing?.id === item.id) void closeEditor();
     void reload();
-  }, [closeEditor, editing, reload]);
+  }, [closeEditor, editing, flushSave, reload]);
 
   const uploadFile = useCallback(
     (file: File) => (editingId.current === null ? Promise.reject("no note") : uploadDocumentImage(editingId.current, file)),
@@ -248,6 +281,10 @@ export function StickiesPage() {
       return null;
     }
   }, []);
+
+  const pasteMarkdown = useCallback(async (markdown: string) => {
+    return drawerEditor ? insertRenderedMarkdown(drawerEditor, markdown) : false;
+  }, [drawerEditor]);
 
   const editingTitle =
     (editing && (editing.title || stickyDerivedTitle(editing.preview) || t("sticky.untitled"))) || "";
@@ -285,27 +322,31 @@ export function StickiesPage() {
         {/* Wall */}
         {items === null ? (
           <div className="flex justify-center py-16"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
-        ) : items.length === 0 ? (
-          <div className="py-16 text-center">
-            <StickyNote className="mx-auto size-8 text-muted-foreground" />
-            <p className="mt-2 text-sm text-muted-foreground">
-              {query ? t("sticky.emptySearch") : t("sticky.empty")}
-            </p>
-          </div>
         ) : (
-          /* Backend order is authoritative (open first, updated desc). */
-          <div className="mt-4 columns-1 gap-3 sm:columns-2 xl:columns-3">
-            <QuickComposer
-              value={quickText}
-              busy={createBusy}
-              placeholder={t("sticky.quickAddPlaceholder")}
-              onChange={setQuickText}
-              onSubmit={() => void quickCreate()}
-            />
-            {items.map((item) => (
-              <StickyWallCard key={item.id} item={item} onOpen={(it) => void openEditor(it)} />
-            ))}
-          </div>
+          <>
+            {/* Keep quick capture available on an empty wall and during a
+                search with no matches. */}
+            <div className="mt-4 columns-1 gap-3 sm:columns-2 xl:columns-3">
+              <QuickComposer
+                value={quickText}
+                busy={createBusy}
+                placeholder={t("sticky.quickAddPlaceholder")}
+                onChange={setQuickText}
+                onSubmit={() => void quickCreate()}
+              />
+              {items.map((item) => (
+                <StickyWallCard key={item.id} item={item} onOpen={(it) => void openEditor(it)} />
+              ))}
+            </div>
+            {items.length === 0 && (
+              <div className="py-12 text-center">
+                <StickyNote className="mx-auto size-8 text-muted-foreground" />
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {query ? t("sticky.emptySearch") : t("sticky.empty")}
+                </p>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -313,7 +354,7 @@ export function StickiesPage() {
           small screens get a dimmed backdrop (click closes). */}
       {editing && (
         <>
-          <div className="fixed inset-0 z-40 bg-black/40 sm:hidden" onClick={closeEditor} />
+          <div className="fixed inset-0 z-40 bg-black/40 sm:hidden" onClick={() => void closeEditor()} />
           <div className="fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l border-border bg-background shadow-2xl sm:w-[560px] xl:w-[640px]">
             {/* Header: color dots … close; the title line is display-only
                 (rename is a desktop-window feature — derived title only). */}
@@ -339,7 +380,7 @@ export function StickiesPage() {
                   type="button"
                   title={t("sticky.close")}
                   className="rounded-md p-1.5 hover:bg-muted"
-                  onClick={closeEditor}
+                  onClick={() => void closeEditor()}
                 >
                   <X className="size-4" />
                 </button>
@@ -350,7 +391,7 @@ export function StickiesPage() {
                 previously had no toolbar at all, which read as highlight /
                 text colour "not working". No per-note font size on web, so
                 the picker stays hidden there. */}
-            <StickyToolbar editor={drawerEditor} />
+            <StickyToolbar editor={drawerEditor} onPasteMarkdown={pasteMarkdown} />
             <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
               {editorBlocks && (
                 <LazyTiptapDocumentEditor
@@ -371,7 +412,11 @@ export function StickiesPage() {
               )}
             </div>
             <div className="flex shrink-0 items-center justify-between border-t border-border/60 px-3 py-2 text-[11px] text-muted-foreground">
-              <span>{saved ? t("sticky.saved") : t("sticky.saving")}</span>
+              {saveFailed ? (
+                <button type="button" className="font-medium text-destructive" onClick={() => void flushSave()}>
+                  {t("sticky.retrySave")}
+                </button>
+              ) : <span>{saved ? t("sticky.saved") : t("sticky.saving")}</span>}
               <span className="flex items-center gap-3">
                 <span>{t("sticky.words", { n: liveWords })}</span>
                 <button

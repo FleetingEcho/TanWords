@@ -39,11 +39,17 @@ export function isDevToolsShortcut(input: KeyInput): boolean {
  *  for a browser-panel view alike — each webContents opens its own inspector,
  *  which is what you want: F12 over the embedded page should inspect that
  *  page, not the app shell hosting it. */
-export function wireDevToolsShortcut(contents: WebContents) {
+export function wireDevToolsShortcut(contents: WebContents, mode?: "detach") {
   contents.on("before-input-event", (event, input) => {
     if (!isDevToolsShortcut(input as unknown as KeyInput)) return;
     event.preventDefault();
-    contents.toggleDevTools();
+    if (mode === "detach") {
+      // Keep DevTools out of the transparent frameless sticky surface.
+      if (contents.isDevToolsOpened()) contents.closeDevTools();
+      else contents.openDevTools({ mode: "detach" });
+    } else {
+      contents.toggleDevTools();
+    }
   });
 }
 

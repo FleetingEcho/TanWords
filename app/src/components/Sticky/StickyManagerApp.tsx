@@ -9,7 +9,7 @@
  *    visit);
  *  - pill search below the header (150ms debounce → `sticky_search`, FTS;
  *    the trash list filters in-memory; Esc clears + blurs);
- *  - a 2-column grid of pastel paper cards — click focuses/opens the note
+ *  - switchable card grid / compact list of pastel notes — click focuses/opens the note
  *    (`stickywin_focus` vs `stickywin_open` + `sticky_update_window_state`),
  *    hover "⋯" or right-click opens a context menu (open / export md+html /
  *    move to trash — the last behind a ConfirmModal).
@@ -22,7 +22,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownToLine, ArrowUpToLine, ChevronDown, CircleHelp, Ellipsis, Eye,
-  FileDown, FileUp, Loader2, Plus, RotateCcw, Search, Trash2, X,
+  FileDown, FileUp, LayoutGrid, List, Loader2, Plus, RotateCcw, Search, Trash2, X,
 } from "lucide-react";
 import { invoke } from "@/ipc/backend";
 import { callMain } from "@/ipc/host";
@@ -35,6 +35,8 @@ import {
   blocksToMarkdownOffThread, markdownToBlocksOffThread,
 } from "@/lib/documentWorkerClient";
 import { exportMarkdownAsHtml } from "@/lib/documentExport";
+import { lowerMermaid } from "@/components/Documents/mermaidTransforms";
+import { lowerMedia, lowerYouTube } from "@/components/Documents/mediaTransforms";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import {
   stickyColorHex, stickyDerivedTitle, useDismissOnOutsideClick,
@@ -54,6 +56,16 @@ interface StickyTrashItem {
 
 type Bounds = { x: number; y: number; width: number; height: number };
 type Tab = "wall" | "opened" | "trash";
+type ViewMode = "card" | "list";
+const VIEW_MODE_KEY = "sticky-manager-view-mode";
+
+function savedViewMode(): ViewMode {
+  try {
+    return localStorage.getItem(VIEW_MODE_KEY) === "list" ? "list" : "card";
+  } catch {
+    return "card";
+  }
+}
 
 function parseBlocks(content: string): Block[] {
   try {
@@ -74,6 +86,7 @@ export function StickyManagerApp() {
   const t = useT();
 
   const [tab, setTab] = useState<Tab>("wall");
+  const [viewMode, setViewMode] = useState<ViewMode>(savedViewMode);
   const [items, setItems] = useState<StickyListItem[] | null>(null);
   const [trash, setTrash] = useState<StickyTrashItem[] | null>(null);
   const [query, setQuery] = useState("");
@@ -209,7 +222,8 @@ export function StickyManagerApp() {
   const exportNote = useCallback(async (item: StickyListItem, format: "md" | "html") => {
     try {
       const detail = await invoke<StickyDetail>("sticky_get", { id: item.id });
-      const markdown = await blocksToMarkdownOffThread(parseBlocks(detail.content));
+      const portable = lowerYouTube(lowerMedia(lowerMermaid(parseBlocks(detail.content)))) as Block[];
+      const markdown = await blocksToMarkdownOffThread(portable);
       if (format === "html") {
         // Reuses the Documents HTML pipeline: assets inlined, mermaid
         // rendered, Shiki highlighted, save dialog + write handled inside.
@@ -283,6 +297,7 @@ export function StickyManagerApp() {
   const trashNote = useCallback(async (item: StickyListItem) => {
     setBusyId(item.id);
     try {
+      if (!await invoke<boolean>("stickywin_flush", { id: item.id })) return;
       await invoke("sticky_delete", { id: item.id });
       await invoke("stickywin_close", { id: item.id }).catch(() => {});
       void reload();
@@ -319,8 +334,8 @@ export function StickyManagerApp() {
     setMenuFor({ item, x: at.x, y: at.y });
   }, []);
 
-  // Derived lists. The backend order is authoritative (COALESCE(is_open)
-  // DESC, updated_at DESC) — no client-side sort.
+  // The backend's update-time order is authoritative — opening a note does
+  // not move it. The Open tab filters that same ordered sequence.
   const openedItems = useMemo(() => (items ?? []).filter((i) => i.is_open), [items]);
   const wallItems = tab === "opened" ? openedItems : (items ?? []);
   /** Trash has no server-side search — filter client-side with the same query. */
@@ -346,6 +361,19 @@ export function StickyManagerApp() {
             {t("sticky.noteCount", { n: visibleCount })}
           </p>
         </div>
+        <button
+          type="button"
+          title={viewMode === "card" ? t("sticky.listView") : t("sticky.cardView")}
+          aria-label={viewMode === "card" ? t("sticky.listView") : t("sticky.cardView")}
+          className={HEADER_BUTTON}
+          onClick={() => {
+            const next = viewMode === "card" ? "list" : "card";
+            setViewMode(next);
+            try { localStorage.setItem(VIEW_MODE_KEY, next); } catch { /* Storage may be unavailable. */ }
+          }}
+        >
+          {viewMode === "card" ? <List className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
+        </button>
         <div className="relative" ref={templatesRef}>
           <button
             type="button"
@@ -495,11 +523,11 @@ export function StickyManagerApp() {
               {query ? t("sticky.emptySearch") : t("sticky.trashEmpty")}
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-2">
+            <div className={viewMode === "card" ? "grid grid-cols-2 gap-2" : "flex flex-col gap-2"}>
               {trashVisible.map((item) => (
                 <div
                   key={item.id}
-                  className="flex min-h-[88px] flex-col rounded-xl p-2.5 opacity-70 grayscale-[30%]"
+                  className={`flex min-w-0 flex-col rounded-xl p-2.5 opacity-70 grayscale-[30%] ${viewMode === "card" ? "min-h-[88px]" : "min-h-[68px]"}`}
                   style={{
                     backgroundColor: stickyColorHex("gray"),
                     boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.08)",
@@ -511,7 +539,7 @@ export function StickyManagerApp() {
                   <p className="mt-0.5 flex-1 line-clamp-3 whitespace-pre-wrap text-[10px] leading-relaxed opacity-60">
                     {item.preview}
                   </p>
-                  <div className="mt-1 flex items-center justify-end gap-1">
+                  <div className="mt-1 flex flex-col items-stretch gap-0.5">
                     {busyId === item.id ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin opacity-60" />
                     ) : (
@@ -519,18 +547,18 @@ export function StickyManagerApp() {
                         <button
                           type="button"
                           title={t("sticky.restore")}
-                          className="flex h-5 items-center gap-1 rounded-full px-2 text-[10px] font-semibold hover:bg-black/10"
+                          className="flex min-h-6 min-w-0 items-center gap-1 rounded-md px-2 py-1 text-left text-[10px] leading-tight font-semibold whitespace-normal hover:bg-black/10"
                           onClick={() => void restoreNote(item)}
                         >
-                          <RotateCcw className="h-3 w-3" /> {t("sticky.restore")}
+                          <RotateCcw className="h-3 w-3 shrink-0" /> {t("sticky.restore")}
                         </button>
                         <button
                           type="button"
                           title={t("sticky.purge")}
-                          className="flex h-5 items-center gap-1 rounded-full px-2 text-[10px] font-semibold text-red-700 hover:bg-red-500/10 dark:text-red-400"
+                          className="flex min-h-6 min-w-0 items-center gap-1 rounded-md px-2 py-1 text-left text-[10px] leading-tight font-semibold whitespace-normal text-red-700 hover:bg-red-500/10 dark:text-red-400"
                           onClick={() => setPendingPurge(item)}
                         >
-                          <Trash2 className="h-3 w-3" /> {t("sticky.purge")}
+                          <Trash2 className="h-3 w-3 shrink-0" /> {t("sticky.purge")}
                         </button>
                       </>
                     )}
@@ -548,11 +576,12 @@ export function StickyManagerApp() {
             {query ? t("sticky.emptySearch") : t("sticky.empty")}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-2">
+          <div className={viewMode === "card" ? "grid grid-cols-2 gap-2" : "flex flex-col gap-2"}>
             {wallItems.map((item) => (
               <StickyManagerCard
                 key={item.id}
                 item={item}
+                viewMode={viewMode}
                 busy={busyId === item.id}
                 onOpen={(it) => void openNote(it)}
                 onMenu={openCardMenu}

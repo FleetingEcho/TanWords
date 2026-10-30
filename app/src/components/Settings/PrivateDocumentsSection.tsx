@@ -23,7 +23,7 @@ export function PrivateDocumentsSection() {
   const [saving, setSaving] = useState(false);
 
   const load = () => invoke<Status>("db_private_password_status").then(setStatus);
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load().catch(() => {}); }, []);
 
   const close = () => {
     setOpen(false);

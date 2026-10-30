@@ -1,8 +1,9 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { render, cleanup, fireEvent, act } from "@testing-library/react";
+import { render, cleanup, fireEvent, act, waitFor } from "@testing-library/react";
 import { Editor } from "@tiptap/react";
 import { buildExtensions } from "../Documents/tiptap/schema";
 import { StickyToolbar } from "./StickyToolbar";
+import { insertRenderedMarkdown } from "./insertRenderedMarkdown";
 
 function makeEditor(json: object, holder: HTMLElement) {
   const editor = new Editor({ extensions: buildExtensions(), content: json });
@@ -77,6 +78,27 @@ describe("StickyToolbar portal palette flow", () => {
     const cb2 = (back.content as never[]).find((n) => (n as {type:string}).type === "codeBlock") as unknown as { attrs?: Record<string, unknown> };
     expect(cb2.attrs?.backgroundColor).toBe("#1f2937");
 
+    editor.destroy();
+    holder.remove();
+  });
+
+  it("renders pasted Markdown in the live Tiptap editor", async () => {
+    const holder = document.createElement("div");
+    const editor = makeEditor({ type: "doc", content: [{ type: "paragraph" }] }, holder);
+    const utils = render(
+      <StickyToolbar editor={editor} onPasteMarkdown={(markdown) => insertRenderedMarkdown(editor, markdown)} />,
+    );
+
+    fireEvent.click(utils.getByTitle("Paste Markdown as formatted note"));
+    fireEvent.change(utils.getByPlaceholderText("Paste Markdown here…"), {
+      target: { value: "## Plan\n\n- first\n- second" },
+    });
+    fireEvent.click(utils.getByText("Insert formatted"));
+
+    await waitFor(() => {
+      expect(holder.querySelector("h2")?.textContent).toBe("Plan");
+      expect(holder.querySelectorAll("ul li")).toHaveLength(2);
+    });
     editor.destroy();
     holder.remove();
   });

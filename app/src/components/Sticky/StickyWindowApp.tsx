@@ -21,16 +21,19 @@
  *  rgba()/black-alpha utilities — never theme tokens. */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
-  Check, ChevronDown, ChevronUp, ClipboardCopy, Copy, EllipsisVertical, Layers,
+  Check, ChevronDown, ChevronUp, ClipboardCopy, ClipboardPaste, Copy, EllipsisVertical, Layers,
   Loader2, Lock, Pin, Printer, Search, Trash2, Unlock, X,
 } from "lucide-react";
 import { backendOrigin, backendToken, invoke } from "@/ipc/backend";
+import { callMain } from "@/ipc/host";
 import { subscribe } from "@/ipc/events";
 import { readClipboardImage } from "@/ipc/clipboard";
 import { useT } from "@/hooks/useT";
 import { useSettingsStore } from "@/store/settingsStore";
 import { blocksToStorage } from "@/lib/docFormat";
 import { blocksToMarkdownOffThread } from "@/lib/documentWorkerClient";
+import { lowerMermaid } from "@/components/Documents/mermaidTransforms";
+import { lowerMedia, lowerYouTube } from "@/components/Documents/mediaTransforms";
 import { uploadDocumentImage } from "@/lib/documentAssets";
 import { LazyTiptapDocumentEditor } from "@/components/Documents/tiptap/LazyTiptapDocumentEditor";
 import type { DocEditorApi } from "@/components/Documents/tiptap/DocEditorApi";
@@ -41,6 +44,7 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { StickyToolbar } from "./StickyToolbar";
 import { StickyResizeOverlay } from "./StickyResizeOverlay";
 import { StickyFindBar } from "./StickyFindBar";
+import { insertRenderedMarkdown } from "./insertRenderedMarkdown";
 import {
   STICKY_HEADER_HEIGHT, STICKY_MIN_H, STICKY_MIN_W,
   STICKY_COLORS, stickyColorHex, stickyCornerClass, stickyDerivedTitle, stickySurfaceStyle,
@@ -144,26 +148,33 @@ function ColorDotMenu({
   );
 }
 
-/** The 6px save-status dot pinned to the header's far right edge: amber and
+/** The 6px save-status dot beside the header's close button: amber and
  *  pulsing while a save is pending/in flight, emerald briefly after a save
  *  lands, then fading out completely. */
 function SaveDot({
-  saved, flash,
+  saved, flash, failed, onRetry,
 }: {
-  saved: boolean; flash: boolean;
+  saved: boolean; flash: boolean; failed: boolean; onRetry: () => void;
 }) {
   const t = useT();
   return (
-    <span
-      title={saved ? t("sticky.saved") : t("sticky.saving")}
-      className={`mr-0.5 size-1.5 shrink-0 rounded-full transition-opacity duration-700 ${
-        !saved
-          ? "animate-pulse bg-amber-500"
+    <button
+      type="button"
+      title={failed ? t("sticky.retrySave") : saved ? t("sticky.saved") : t("sticky.saving")}
+      disabled={!failed}
+      onClick={onRetry}
+      className="app-region-no-drag mr-0.5 flex size-4 shrink-0 items-center justify-center"
+    >
+      <span className={`size-1.5 rounded-full transition-opacity duration-700 ${
+        failed
+          ? "bg-red-600"
+          : !saved
+            ? "animate-pulse bg-amber-500"
           : flash
             ? "bg-emerald-500 opacity-100"
             : "bg-emerald-500 opacity-0"
-      }`}
-    />
+      }`} />
+    </button>
   );
 }
 
@@ -204,6 +215,7 @@ export function StickyWindowApp() {
   const moreMenuRef = useRef<HTMLDivElement | null>(null);
   useDismissOnOutsideClick(moreMenuRef, showMore, () => setShowMore(false));
   const [saved, setSaved] = useState(true);
+  const [saveFailed, setSaveFailed] = useState(false);
   const [savedWordCount, setSavedWordCount] = useState<number | null>(null);
   /** Briefly true after a save lands — drives the emerald dot's fade-out. */
   const [saveFlash, setSaveFlash] = useState(false);
@@ -214,10 +226,20 @@ export function StickyWindowApp() {
    *  render prop that receives the instance) for the fixed toolbar row. */
   const [toolbarEditor, setToolbarEditor] = useState<TiptapEditor | null>(null);
   const dirty = useRef(false);
+  const saveInFlight = useRef<Promise<boolean> | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const maxSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const collapsedH = useRef<number | null>(null); // expanded height while collapsed
+  const collapsedRef = useRef(false);
+  const closingRef = useRef(false);
+  const backendCredentials = useRef<{ origin: string; token: string } | null>(null);
+
+  useEffect(() => {
+    void Promise.all([backendOrigin(), backendToken()])
+      .then(([origin, token]) => { backendCredentials.current = { origin, token }; })
+      .catch(() => {});
+  }, []);
 
   // ── Load ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -263,6 +285,7 @@ export function StickyWindowApp() {
     setOpacity(detail.opacity);
     setAlwaysOnTop(detail.always_on_top);
     setCollapsed(detail.collapsed);
+    collapsedRef.current = detail.collapsed;
     setFontFamily(detail.font_family ?? null);
     setFontSize(detail.font_size ?? null);
     setSavedWordCount(detail.word_count);
@@ -293,31 +316,57 @@ export function StickyWindowApp() {
   }, [id, unlockPassword]);
 
   // ── Saving ──────────────────────────────────────────────────────────────
-  const flushSave = useCallback(async () => {
-    if (!dirty.current || !editorApi.current) return;
-    dirty.current = false;
+  const flushSave = useCallback((): Promise<boolean> => {
+    if (saveInFlight.current) return saveInFlight.current;
+    if (!dirty.current) return Promise.resolve(true);
     if (saveTimer.current) clearTimeout(saveTimer.current);
     if (maxSaveTimer.current) clearTimeout(maxSaveTimer.current);
     saveTimer.current = null;
     maxSaveTimer.current = null;
-    try {
-      const { content, contentText, wordCount } = blocksToStorage(editorApi.current.document);
-      await invoke("sticky_save_content", { id, content, contentText, wordCount });
-      setSaved(true);
-      setSavedWordCount(wordCount);
-      setTitle(stickyDerivedTitle(contentText));
-      // Emerald flash, then fade.
-      setSaveFlash(true);
-      if (flashTimer.current) clearTimeout(flashTimer.current);
-      flashTimer.current = setTimeout(() => setSaveFlash(false), SAVE_FLASH_MS);
-    } catch {
-      dirty.current = true; // retried by the next keystroke/close
-    }
+    const run = async () => {
+      while (dirty.current) {
+        const api = editorApi.current;
+        if (!api) return false;
+        dirty.current = false;
+        const { content, contentText, wordCount } = blocksToStorage(api.document);
+        try {
+          await invoke("sticky_save_content", { id, content, contentText, wordCount });
+        } catch {
+          dirty.current = true;
+          setSaved(false);
+          setSaveFailed(true);
+          return false;
+        }
+        if (!dirty.current) {
+          setSaved(true);
+          setSaveFailed(false);
+          setSavedWordCount(wordCount);
+          setTitle(stickyDerivedTitle(contentText));
+          setSaveFlash(true);
+          if (flashTimer.current) clearTimeout(flashTimer.current);
+          flashTimer.current = setTimeout(() => setSaveFlash(false), SAVE_FLASH_MS);
+        }
+      }
+      return true;
+    };
+    const pending = run();
+    saveInFlight.current = pending;
+    void pending.finally(() => {
+      if (saveInFlight.current === pending) saveInFlight.current = null;
+    });
+    return pending;
   }, [id]);
+
+  useEffect(() => {
+    const host = window as Window & { __tanwordsFlushSticky?: () => Promise<boolean> };
+    host.__tanwordsFlushSticky = flushSave;
+    return () => { delete host.__tanwordsFlushSticky; };
+  }, [flushSave]);
 
   const scheduleSave = useCallback(() => {
     dirty.current = true;
     setSaved(false);
+    setSaveFailed(false);
     setSaveFlash(false);
     if (flashTimer.current) {
       clearTimeout(flashTimer.current);
@@ -331,34 +380,27 @@ export function StickyWindowApp() {
     }
   }, [flushSave]);
 
-  // Persist before unload as a final net (the close button has its own
-  // ordered flow; this covers native window destruction and reloads). The
-  // async flush usually loses the race with window destruction, so a
-  // synchronous XHR rides along — deprecated for general use, but exactly
-  // right for one last tiny write during unload.
+  // A normal close awaits flushSave. This is a last net for an unexpected
+  // window teardown: credentials are already cached because unload cannot
+  // wait for the async sidecar handshake.
   useEffect(() => {
     const handler = () => {
-      void flushSave();
       try {
-        if (!dirty.current || !editorApi.current) return;
+        if ((!dirty.current && !saveInFlight.current) || !editorApi.current || !backendCredentials.current) return;
         const { content, contentText, wordCount } = blocksToStorage(editorApi.current.document);
-        dirty.current = false;
-        void (async () => {
-          const origin = await backendOrigin();
-          const token = await backendToken();
-          const xhr = new XMLHttpRequest();
-          xhr.open("POST", `${origin}/invoke/sticky_save_content`, false);
-          xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-          xhr.setRequestHeader("Content-Type", "application/json");
-          xhr.send(JSON.stringify({ id, content, contentText, wordCount }));
-        })();
+        const { origin, token } = backendCredentials.current;
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", `${origin}/invoke/sticky_save_content`, false);
+        xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+        xhr.setRequestHeader("Content-Type", "application/json");
+        xhr.send(JSON.stringify({ id, content, contentText, wordCount }));
       } catch {
         // Best-effort by design — the debounced saves are the real net.
       }
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, [flushSave, id]);
+  }, [id]);
 
   // Switching away from the note is a natural checkpoint — flush immediately
   // rather than waiting out the debounce.
@@ -374,7 +416,8 @@ export function StickyWindowApp() {
     if (!bounds) return;
     await invoke("sticky_update_window_state", {
       id,
-      x: bounds.x, y: bounds.y, w: bounds.width, h: bounds.height,
+      x: bounds.x, y: bounds.y, w: bounds.width,
+      h: collapsedRef.current ? (collapsedH.current ?? 480) : bounds.height,
       ...(patch.collapsed === undefined ? {} : { collapsed: patch.collapsed }),
     }).catch(() => {});
   }, [id]);
@@ -394,30 +437,33 @@ export function StickyWindowApp() {
     };
   }, [id, persistGeometry]);
 
-  const setWindowBounds = useCallback((next: Partial<Bounds>) => {
-    void (async () => {
-      const bounds = await windowBounds();
-      if (!bounds) return;
-      await invoke("stickywin_set_bounds", { ...bounds, ...next }).catch(() => {});
-    })();
-  }, []);
-
+  const collapseBusy = useRef(false);
   const toggleCollapse = useCallback(() => {
-    setCollapsed((prevCollapsed) => {
-      const nextCollapsed = !prevCollapsed;
-      if (nextCollapsed) {
-        // Remember the expanded height so expand restores it exactly.
-        void windowBounds().then((b) => {
-          if (b) collapsedH.current = b.height;
-          setWindowBounds({ height: STICKY_HEADER_HEIGHT });
+    if (collapseBusy.current) return;
+    collapseBusy.current = true;
+    void (async () => {
+      try {
+        const bounds = await windowBounds();
+        if (!bounds) return;
+        const nextCollapsed = !collapsedRef.current;
+        const expandedHeight = nextCollapsed ? bounds.height : (collapsedH.current ?? 480);
+        if (nextCollapsed) collapsedH.current = expandedHeight;
+        await invoke("stickywin_set_bounds", {
+          ...bounds, height: nextCollapsed ? STICKY_HEADER_HEIGHT : expandedHeight,
         });
-      } else {
-        setWindowBounds({ height: collapsedH.current ?? 480 });
+        collapsedRef.current = nextCollapsed;
+        setCollapsed(nextCollapsed);
+        await invoke("sticky_update_window_state", {
+          id, x: bounds.x, y: bounds.y, w: bounds.width,
+          h: expandedHeight, collapsed: nextCollapsed,
+        });
+      } catch {
+        // Keep the current UI state when the window could not be resized.
+      } finally {
+        collapseBusy.current = false;
       }
-      void persistGeometry({ collapsed: nextCollapsed });
-      return nextCollapsed;
-    });
-  }, [persistGeometry, setWindowBounds]);
+    })();
+  }, [id]);
 
   // ── Meta changes ────────────────────────────────────────────────────────
   const updateMeta = useCallback(async (patch: {
@@ -489,31 +535,39 @@ export function StickyWindowApp() {
     setRenaming(false);
     if (next === (customTitle ?? "")) return; // unchanged (incl. empty draft)
     setCustomTitle(next || null);
-    if (next) setTitle(next);
+    setTitle(next || stickyDerivedTitle(blocksToStorage(editorApi.current?.document ?? blocks ?? []).contentText));
     // Blank clears the rename: core re-derives from the body and flags it off.
     void invoke("sticky_set_title", { id, title: next }).catch(() => {});
-  }, [customTitle, id, renameDraft]);
+  }, [blocks, customTitle, id, renameDraft]);
 
   const displayTitle = customTitle ?? title;
 
   // ── Close ───────────────────────────────────────────────────────────────
   const closeNote = useCallback(() => {
+    if (closingRef.current) return;
+    closingRef.current = true;
     void (async () => {
-      dirty.current = true; // force the flush even if nothing changed
-      await flushSave();
-      await persistGeometry({ collapsed }).catch(() => {});
-      await invoke("sticky_update_window_state", { id, is_open: false }).catch(() => {});
-      await invoke("stickywin_close", { id }).catch(() => {});
+      try {
+        if (!await flushSave()) return;
+        await persistGeometry({ collapsed }).catch(() => {});
+        await invoke("sticky_update_window_state", { id, is_open: false }).catch(() => {});
+        await invoke("stickywin_close", { id }).catch(() => {});
+      } finally {
+        closingRef.current = false;
+      }
     })();
   }, [collapsed, flushSave, id, persistGeometry]);
+
+  useEffect(() => subscribe<{ id: number }>("stickywin:requestClose", ({ id: target }) => {
+    if (target === id) closeNote();
+  }), [closeNote, id]);
 
   // Move to Trash (manager parity): flush first so the trashed note keeps
   // the latest content for a faithful restore, then run the same ordered
   // close sequence as the X button.
   const deleteNote = useCallback(() => {
     void (async () => {
-      dirty.current = true;
-      await flushSave();
+      if (!await flushSave()) return;
       await invoke("sticky_delete", { id }).catch(() => {});
       await persistGeometry({ collapsed }).catch(() => {});
       await invoke("sticky_update_window_state", { id, is_open: false }).catch(() => {});
@@ -549,13 +603,26 @@ export function StickyWindowApp() {
   const copyAsMarkdown = useCallback(async () => {
     if (!editorApi.current) return;
     try {
-      const markdown = await blocksToMarkdownOffThread(editorApi.current.document);
+      const portable = lowerYouTube(lowerMedia(lowerMermaid(editorApi.current.document))) as Block[];
+      const markdown = await blocksToMarkdownOffThread(portable);
       await navigator.clipboard.writeText(markdown);
       setShowMore(false);
     } catch {
       // Clipboard denied — nothing to report into a sticky.
     }
   }, []);
+
+  const pasteMarkdown = useCallback(async (markdown: string) => {
+    return toolbarEditor ? insertRenderedMarkdown(toolbarEditor, markdown) : false;
+  }, [toolbarEditor]);
+
+  const pasteMarkdownFromClipboard = useCallback(async () => {
+    try {
+      await pasteMarkdown(await callMain<string>("clipboard:readText"));
+    } catch {
+      // A denied or empty clipboard leaves the editor untouched.
+    }
+  }, [pasteMarkdown]);
 
   const copyAsImage = useCallback(async () => {
     setShowMore(false);
@@ -611,9 +678,9 @@ export function StickyWindowApp() {
           color: "#1f2937",
         }}
       >
-        {/* Header: 44px drag bar — color dot · title · controls · save dot */}
+        {/* Header: 44px drag bar with room to grab between the controls. */}
         <div
-          className="app-drag-region flex shrink-0 items-center gap-0.5 px-1.5"
+          className="app-drag-region flex shrink-0 items-center gap-0.5 pl-1.5"
           style={{ height: STICKY_HEADER_HEIGHT }}
         >
           <ColorDotMenu
@@ -623,34 +690,8 @@ export function StickyWindowApp() {
               void updateMeta({ color: nextColor });
             }}
           />
-          {/* Title stays clickable (dblclick renames); it must never join the
-              drag region — the title test guards that contract. */}
-          <div className="flex min-w-0 flex-1 items-center justify-center px-1">
-            {renaming ? (
-              <input
-                autoFocus
-                value={renameDraft}
-                placeholder={t("sticky.renameTitle")}
-                className="app-region-no-drag w-full min-w-0 rounded-md border border-neutral-300 bg-white px-1.5 py-0.5 text-[12px] text-neutral-900 outline-none focus:border-neutral-500"
-                onChange={(e) => setRenameDraft(e.target.value)}
-                onBlur={commitRename}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") commitRename();
-                  if (e.key === "Escape") setRenaming(false);
-                }}
-              />
-            ) : (
-              <span
-                className="app-region-no-drag block max-w-full cursor-text truncate text-[13px] font-semibold leading-none"
-                title={displayTitle || undefined}
-                onDoubleClick={() => {
-                  setRenameDraft(displayTitle);
-                  setRenaming(true);
-                }}
-              >
-                {displayTitle || t("sticky.untitled")}
-              </span>
-            )}
+          <div className="min-w-0 flex-1 px-2">
+            {collapsed && <span className="pointer-events-none block truncate text-center text-[13px] font-semibold">{displayTitle || t("sticky.untitled")}</span>}
           </div>
           <HeaderIconButton title={t("sticky.alwaysOnTop")} onClick={togglePin}>
             <Pin className={`size-4 ${alwaysOnTop ? "fill-amber-500 text-amber-500" : ""}`} />
@@ -715,6 +756,14 @@ export function StickyWindowApp() {
                 <button
                   type="button"
                   className={MENU_ITEM_CLASS}
+                  onClick={() => { setShowMore(false); void pasteMarkdownFromClipboard(); }}
+                >
+                  <ClipboardPaste className="size-3.5" />
+                  <span className="flex-1 text-left">{t("sticky.pasteMarkdown")}</span>
+                </button>
+                <button
+                  type="button"
+                  className={MENU_ITEM_CLASS}
                   onClick={() => void copyAsImage()}
                 >
                   <Copy className="size-3.5" />
@@ -751,11 +800,48 @@ export function StickyWindowApp() {
               </div>
             )}
           </div>
-          <HeaderIconButton title={t("sticky.close")} onClick={closeNote}>
+          <SaveDot saved={saved} flash={saveFlash} failed={saveFailed} onRetry={() => void flushSave()} />
+          <button
+            type="button"
+            title={t("sticky.close")}
+            className="app-region-no-drag flex size-11 shrink-0 items-center justify-center self-stretch transition-colors hover:bg-black/10"
+            onClick={closeNote}
+          >
             <X className="size-4" />
-          </HeaderIconButton>
-          <SaveDot saved={saved} flash={saveFlash} />
+          </button>
         </div>
+
+        {!collapsed && (
+          <div className="app-region-no-drag flex h-8 shrink-0 items-center px-3 pb-1">
+            {renaming ? (
+              <input
+                autoFocus
+                value={renameDraft}
+                placeholder={t("sticky.renameTitle")}
+                className="w-full min-w-0 rounded-md border border-neutral-300 bg-white px-1.5 py-0.5 text-[12px] text-neutral-900 outline-none focus:border-neutral-500"
+                onChange={(e) => setRenameDraft(e.target.value)}
+                onBlur={commitRename}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitRename();
+                  if (e.key === "Escape") setRenaming(false);
+                }}
+              />
+            ) : (
+              <button
+                type="button"
+                className="w-full min-w-0 cursor-text truncate rounded-sm text-left text-[13px] font-semibold leading-none focus-visible:outline-2 focus-visible:outline-neutral-700"
+                title={displayTitle || undefined}
+                aria-label={t("sticky.renameTitle")}
+                onClick={() => {
+                  setRenameDraft(displayTitle);
+                  setRenaming(true);
+                }}
+              >
+                {displayTitle || t("sticky.untitled")}
+              </button>
+            )}
+          </div>
+        )}
 
         {showFind && !collapsed && (
           <StickyFindBar editor={toolbarEditor} onClose={() => setShowFind(false)} />
@@ -772,6 +858,7 @@ export function StickyWindowApp() {
                   setFontSize(size);
                   void updateMeta({ font_size: size });
                 }}
+                onPasteMarkdown={pasteMarkdown}
               />
             )}
             <div

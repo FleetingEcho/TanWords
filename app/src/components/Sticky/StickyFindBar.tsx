@@ -105,7 +105,7 @@ export function StickyFindBar({
   };
 
   return (
-    <div className="app-region-no-drag absolute top-12 right-2 z-50 w-72 rounded-xl border border-black/10 bg-white/95 p-2 shadow-lg">
+    <div className="app-region-no-drag absolute top-20 right-2 z-50 w-72 rounded-xl border border-black/10 bg-white/95 p-2 shadow-lg">
       <div className="flex items-center gap-1">
         <input
           ref={inputRef}

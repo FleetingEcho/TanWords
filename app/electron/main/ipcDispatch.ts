@@ -12,7 +12,7 @@ import {
 } from "./floatingBrowserWindow";
 import {
   closeAllStickyWindows, closeStickyManagerWindow,
-  closeStickyWindow, focusStickyWindow, openStickyManagerWindow, openStickyWindow,
+  closeStickyWindow, flushStickyContent, focusStickyWindow, openStickyManagerWindow, openStickyWindow,
   setStickyAlwaysOnTop, showAllStickies, hideAllStickies,
 } from "./stickyWindows";
 import { abortFetch, startFetch } from "./http";
@@ -652,6 +652,9 @@ export async function dispatch(
     case "stickywin_close": {
       closeStickyWindow(Number((args as { id?: number } | null)?.id));
       return null;
+    }
+    case "stickywin_flush": {
+      return flushStickyContent(Number((args as { id?: number } | null)?.id));
     }
     case "stickywin_close_all": {
       closeAllStickyWindows();

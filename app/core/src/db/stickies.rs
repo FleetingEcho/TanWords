@@ -222,7 +222,7 @@ pub(crate) async fn list_for_device(conn: &Conn, device_id: &str) -> Result<Vec<
         conn,
         &format!(
             "SELECT {LIST_COLUMNS} {LIST_FROM}
-             ORDER BY COALESCE(w.is_open, 0) DESC, d.updated_at DESC, d.id DESC"
+             ORDER BY d.updated_at DESC, d.id DESC"
         ),
         [device_id],
         list_item,
@@ -1066,6 +1066,42 @@ mod tests {
         assert_eq!(other.len(), 1);
         assert!(!other[0].is_open);
         assert_eq!(other[0].w, DEFAULT_W);
+    }
+
+    #[tokio::test]
+    async fn opening_a_note_does_not_reorder_the_list() {
+        let db = memory_db().await;
+        let older = create(&db, DEV_A, "{}", "older", 1, None).await.unwrap();
+        let newer = create(&db, DEV_A, "{}", "newer", 1, None).await.unwrap();
+        for id in [older, newer] {
+            set_window_state(
+                &db,
+                id,
+                DEV_A,
+                &WindowPatch { is_open: Some(false), ..Default::default() },
+            )
+            .await
+            .unwrap();
+        }
+
+        let ids = || async {
+            list_for_device(&db, DEV_A)
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|item| item.id)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids().await, vec![newer, older]);
+        set_window_state(
+            &db,
+            older,
+            DEV_A,
+            &WindowPatch { is_open: Some(true), ..Default::default() },
+        )
+        .await
+        .unwrap();
+        assert_eq!(ids().await, vec![newer, older]);
     }
 
     #[tokio::test]
