@@ -14,6 +14,12 @@ describe("normalizeUpdateNotes", () => {
     )).toBe("Highlights\nFixed & improved");
   });
 
+  it("decodes entity-escaped feed HTML before removing its tags", () => {
+    expect(normalizeUpdateNotes(
+      "&lt;h2&gt;Better notes&lt;/h2&gt;&lt;ul&gt;&lt;li&gt;First fix&lt;/li&gt;&lt;/ul&gt;",
+    )).toBe("Better notes\n• First fix");
+  });
+
   it("preserves list structure and line breaks", () => {
     expect(normalizeUpdateNotes("<h2>Fixes</h2><ul><li>One</li><li>Two<br>continued</li></ul>"))
       .toBe("Fixes\n• One\n• Two\ncontinued");
