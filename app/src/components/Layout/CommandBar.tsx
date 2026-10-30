@@ -4,7 +4,7 @@ import { openExternal as openUrl } from "@/ipc/shell";
 import { callMain } from "@/ipc/host";
 import {
   BrainCircuit, Check, ChevronsLeft, ChevronsRight, ClipboardPaste, Cloud, CloudOff, Database, Lock,
-  FilePlus2, Languages, Mic, MessageSquarePlus, Monitor, Moon, Palette, PanelLeft, Quote, Search, Server, Settings, Sun,
+  FilePlus2, Languages, Mic, MessageSquarePlus, Palette, PanelLeft, Quote, Search, Server, Settings,
   Grid2x2Plus, Smartphone, SquareTerminal, StickyNote, Type, Unplug, User, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { WordSearchBox } from "@/components/shared/WordSearchBox";
 import { UserAvatarImage } from "@/components/shared/UserAvatarImage";
+import { AppThemeMenu, THEME_CHOICES, ThemeIcon } from "@/components/shared/AppThemeMenu";
 import { TtsControl } from "@/components/ui/TtsControl";
 import { SentenceSearchBox } from "@/components/shared/SentenceSearchBox";
 import { WindowControls } from "@/components/Layout/WindowControls";
@@ -22,7 +23,6 @@ import { useT } from "@/hooks/useT";
 import { useFullscreenDragExit } from "@/hooks/useFullscreenDragExit";
 import { useDB } from "@/hooks/useDB";
 import type { DbConnection } from "@/hooks/useDB.types";
-import type { Theme } from "@/store/settings/types";
 import { useProviderStatus } from "@/hooks/useProviderStatus";
 import { NavPage, useNavStore } from "@/store/navStore";
 import { UpdateButton } from "@/components/Layout/UpdateButton";
@@ -57,35 +57,6 @@ const PAGE_IDS: NavPage[] = (["feeds", "vocabulary", "documents", "chat", "dashb
     if (id === "dsh") return hostCapabilities.dsh;
     return true;
   });
-
-/** Every selectable theme, for the command palette entries. Keys match the
- *  `Theme` union in store/settings/types.ts; labels reuse Settings' own keys. */
-const THEME_CHOICES: { id: Theme; labelKey: string }[] = [
-  { id: "light", labelKey: "settings.light" },
-  { id: "dark", labelKey: "settings.dark" },
-  { id: "catppuccin-latte", labelKey: "settings.catppuccinLatte" },
-  { id: "catppuccin-mocha", labelKey: "settings.catppuccinMocha" },
-  { id: "dracula", labelKey: "settings.dracula" },
-  { id: "tokyo-night", labelKey: "settings.tokyoNight" },
-  { id: "tokyo-night-day", labelKey: "settings.tokyoNightDay" },
-  { id: "tokyo-night-storm", labelKey: "settings.tokyoNightStorm" },
-  { id: "dim", labelKey: "settings.dim" },
-  { id: "system", labelKey: "settings.system" },
-];
-
-/** The icon standing in for the active theme. One definition: the top bar
- *  renders a wide and a narrow copy of this menu, and keeping two `theme ===`
- *  ladders in sync failed exactly the way you would expect — the narrow one
- *  had no branch for the custom palettes, so Catppuccin showed the
- *  follow-the-system monitor. */
-function ThemeIcon({ theme }: { theme: string }) {
-  if (theme === "light" || theme === "catppuccin-latte" || theme === "tokyo-night-day") {
-    return <Sun className="h-4 w-4" />;
-  }
-  if (theme === "dark") return <Moon className="h-4 w-4" />;
-  if (theme === "system") return <Monitor className="h-4 w-4" />;
-  return <Palette className="h-4 w-4" />;
-}
 
 export function CommandBar({ activePage }: { activePage: NavPage }) {
   const t = useT();
@@ -402,21 +373,13 @@ export function CommandBar({ activePage }: { activePage: NavPage }) {
       </DropdownMenu>
     ),
     theme: visible("theme") && (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" title={t("settings.theme")} className="h-8 w-8 rounded-lg text-muted-foreground"><ThemeIcon theme={theme} /></Button></DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-64">
-          <DropdownMenuItem onClick={() => setTheme("light")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.light")}</span>{theme === "light" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setTheme("dark")}><Moon className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.dark")}</span>{theme === "dark" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setTheme("catppuccin-latte")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.catppuccinLatte")}</span>{theme === "catppuccin-latte" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setTheme("catppuccin-mocha")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.catppuccinMocha")}</span>{theme === "catppuccin-mocha" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setTheme("dracula")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.dracula")}</span>{theme === "dracula" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setTheme("tokyo-night")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.tokyoNight")}</span>{theme === "tokyo-night" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setTheme("tokyo-night-day")}><Sun className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.tokyoNightDay")}</span>{theme === "tokyo-night-day" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setTheme("tokyo-night-storm")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.tokyoNightStorm")}</span>{theme === "tokyo-night-storm" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setTheme("dim")}><Palette className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.dim")}</span>{theme === "dim" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setTheme("system")}><Monitor className="h-4 w-4" /><span className="flex-1 whitespace-nowrap">{t("settings.system")}</span>{theme === "system" && <Check className="h-4 w-4 text-primary" />}</DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <AppThemeMenu
+        trigger={
+          <Button variant="ghost" size="icon" title={t("settings.theme")} className="h-8 w-8 rounded-lg text-muted-foreground">
+            <ThemeIcon theme={theme} />
+          </Button>
+        }
+      />
     ),
     updates: hostCapabilities.updater && visible("updates") && <UpdateButton placement="toolbar" />,
     github: visible("github") && (

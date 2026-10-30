@@ -20,8 +20,8 @@ import { createHighlighter } from "./highlighter";
  * a dark code block.
  *
  * There is no supported way to pass a theme through that call site, so report
- * only the theme matching the app's current state, read live off the `dark`
- * class on <html>. Evaluated fresh on every parse, so newly opened documents
+ * only the theme matching the app's current state, read live from the theme
+ * classes on <html>. Evaluated fresh on every parse, so newly opened documents
  * and freshly edited blocks pick up the current theme; blocks already on
  * screen are refreshed explicitly by `refreshCodeBlockTheme`.
  *
@@ -32,13 +32,18 @@ async function createThemeAwareHighlighter() {
   const highlighter = await createHighlighter();
   highlighter.getLoadedThemes = () => {
     const root = document.documentElement;
-    // Force-light surfaces (the sticky window) paint a light pastel page AND
-    // a light `pre` background no matter the app theme — github-dark token
-    // colours then render as pale text on a pale block ("invisible code").
-    // The marked root claims github-light even when <html> still carries the
-    // app's dark class (settings bootstrap may add it after load).
-    if (root.classList.contains("force-light")) return ["github-light"];
-    if (root.classList.contains("theme-tokyo-night")) return ["tokyo-night"];
+    // Keep the code palette aligned with named app themes, not merely their
+    // light/dark polarity. Otherwise Dark -> Dracula (or Light -> Latte)
+    // invalidates and re-parses the block but produces identical token styles,
+    // making the code block look stuck on the previous theme.
+    if (root.classList.contains("theme-catppuccin-latte")) return ["catppuccin-latte"];
+    if (root.classList.contains("theme-catppuccin-mocha")) return ["catppuccin-mocha"];
+    if (root.classList.contains("theme-dracula")) return ["dracula"];
+    if (
+      root.classList.contains("theme-tokyo-night")
+      || root.classList.contains("theme-tokyo-night-storm")
+    ) return ["tokyo-night"];
+    if (root.classList.contains("theme-dim")) return ["github-dark-dimmed"];
     return root.classList.contains("dark") ? ["github-dark"] : ["github-light"];
   };
   return highlighter;

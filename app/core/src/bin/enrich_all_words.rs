@@ -33,7 +33,7 @@
 //
 // Resumable: re-running skips everything that already has enrichment_text.
 
-use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::io::Write;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -157,7 +157,6 @@ struct Ctx {
     ok: AtomicI64,
     fail: AtomicI64,
     done: AtomicI64,
-    retries_done: AtomicU64,
     rate_limited: AtomicBool,
 }
 
@@ -384,7 +383,6 @@ async fn main() -> Result<(), String> {
         ok: AtomicI64::new(0),
         fail: AtomicI64::new(0),
         done: AtomicI64::new(0),
-        retries_done: AtomicU64::new(0),
         rate_limited: AtomicBool::new(false),
     });
 

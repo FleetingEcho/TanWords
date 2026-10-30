@@ -59,6 +59,21 @@ function propsToAttrs(props: Record<string, unknown> = {}): Record<string, unkno
   return { ...rest, ...(textAlignment ? { textAlign: textAlignment } : {}) };
 }
 
+/** BlockNote-era documents can carry the sentinel string `"default"` for
+ * code-block paint. Tiptap's code block uses null for an unset paint value;
+ * allowing the old sentinel through makes the node view think the user chose
+ * a custom foreground and disables every Shiki token colour. */
+function withoutLegacyDefaultCodePaint(
+  type: string,
+  props: Record<string, unknown>,
+): Record<string, unknown> {
+  if (type !== "codeBlock") return props;
+  const out = { ...props };
+  if (out.backgroundColor === "default") delete out.backgroundColor;
+  if (out.textColor === "default") delete out.textColor;
+  return out;
+}
+
 /**
  * Attrs back to props — dropping `id`.
  *
@@ -149,7 +164,10 @@ function blockInline(block: Block): InlineContent[] | string | undefined {
 function blockToPm(block: Block): PmNode {
   // The stored id rides back into the node so a save/load cycle does not
   // renumber every block — DocumentOutline scrolls to headings by id.
-  const attrs = { ...propsToAttrs(block.props), ...idAttr(block) };
+  const attrs = {
+    ...propsToAttrs(withoutLegacyDefaultCodePaint(block.type, block.props ?? {})),
+    ...idAttr(block),
+  };
   const type = block.type;
 
   if (type === "table" && block.content && !Array.isArray(block.content)) {
@@ -308,7 +326,10 @@ function pmToBlock(node: PmNode): Block {
   return {
     ...id,
     type: node.type,
-    props: withStyleDefaults(node.type, attrsToProps(node.attrs)),
+    props: withStyleDefaults(
+      node.type,
+      withoutLegacyDefaultCodePaint(node.type, attrsToProps(node.attrs)),
+    ),
     content: pmToInline((node.content ?? []) as PmInline[]),
   };
 }

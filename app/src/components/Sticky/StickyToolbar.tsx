@@ -15,7 +15,7 @@ import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/core";
 import { useT } from "@/hooks/useT";
 import {
-  Bold, ChevronDown, ClipboardPaste, Code, Italic, List, ListOrdered, ListTodo,
+  Bold, ChevronDown, ClipboardPaste, Code, FileCode2, Italic, List, ListOrdered, ListTodo,
   Strikethrough, Underline as UnderlineIcon,
 } from "lucide-react";
 
@@ -76,7 +76,7 @@ function ToolButton({
     <button
       type="button"
       title={title}
-      className={`flex size-6 items-center justify-center rounded-md transition-colors hover:bg-black/10 ${active ? "bg-black/15" : ""}`}
+      className={`flex size-6 items-center justify-center rounded-md transition-colors hover:bg-foreground/10 ${active ? "bg-foreground/15" : ""}`}
       onMouseDown={(e) => e.preventDefault()} // keep the text selection alive
       onClick={onClick}
     >
@@ -133,7 +133,7 @@ function PopoverPortal({
       }
     : {};
   return createPortal(
-    <div ref={ref} className={`rounded-lg border border-black/10 bg-white/95 p-1.5 shadow-lg ${className ?? ""}`} style={style}>
+    <div ref={ref} className={`rounded-lg border border-border bg-popover/95 p-1.5 text-popover-foreground shadow-lg ${className ?? ""}`} style={style}>
       {children}
     </div>,
     document.body
@@ -158,7 +158,7 @@ function SwatchPopover({
           key={s.id}
           type="button"
           title={s.id}
-          className={`size-5 shrink-0 rounded-full border ${current && s.hex && current === s.hex ? "border-neutral-800 ring-1 ring-neutral-500" : "border-black/15"}`}
+          className={`size-5 shrink-0 rounded-full border ${current && s.hex && current === s.hex ? "border-foreground ring-1 ring-foreground/40" : "border-foreground/15"}`}
           style={{ backgroundColor: s.hex || "transparent", backgroundImage: s.hex ? undefined : "linear-gradient(135deg, transparent 45%, #dc2626 45%, #dc2626 55%, transparent 55%)" }}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => onPick(s.hex)}
@@ -228,7 +228,7 @@ export function StickyToolbar({
     };
   }, [editor]);
 
-  if (!editor) return <div className="h-[30px] shrink-0 bg-black/[0.05] backdrop-blur" />;
+  if (!editor) return <div className="h-[30px] shrink-0 bg-foreground/[0.06] backdrop-blur" />;
 
   const run = (fn: () => void) => {
     fn();
@@ -243,7 +243,7 @@ export function StickyToolbar({
   const currentCodeText = (editor.getAttributes("codeBlock").textColor as string | null | undefined) ?? null;
 
   return (
-    <div className="relative flex h-[30px] shrink-0 items-center gap-0.5 overflow-x-auto bg-black/[0.05] px-1.5 backdrop-blur [scrollbar-width:none]">
+    <div className="relative flex h-[30px] mx-0.5 shrink-0 items-center gap-0.5 overflow-x-auto bg-foreground/[0.06] px-1.5 backdrop-blur [scrollbar-width:none]">
       <ToolButton title={t("sticky.tb.bold")} active={editor.isActive("bold")} onClick={() => run(() => editor.chain().focus().toggleBold().run())}>
         <Bold className="size-3.5" />
       </ToolButton>
@@ -259,8 +259,11 @@ export function StickyToolbar({
       <ToolButton title={t("sticky.tb.code")} active={editor.isActive("code")} onClick={() => run(() => editor.chain().focus().toggleCode().run())}>
         <Code className="size-3.5" />
       </ToolButton>
+      <ToolButton title={t("sticky.tb.codeBlock")} active={inCodeBlock} onClick={() => run(() => editor.chain().focus().toggleCodeBlock().run())}>
+        <FileCode2 className="size-3.5" />
+      </ToolButton>
 
-      <span className="mx-0.5 h-4 w-px bg-black/15" />
+      <span className="mx-0.5 h-4 w-px bg-foreground/15" />
 
       <div ref={hlAnchorRef}>
         <ToolButton
@@ -269,7 +272,7 @@ export function StickyToolbar({
           onClick={() => setPalette((p) => (p === "highlight" ? null : "highlight"))}
         >
           <span
-            className="block size-3.5 rounded-sm border border-black/20"
+            className="block size-3.5 rounded-sm border border-foreground/20"
             style={{ backgroundColor: currentHighlight ?? "#fef08a" }}
           />
         </ToolButton>
@@ -292,7 +295,7 @@ export function StickyToolbar({
           active={!!currentColor}
           onClick={() => setPalette((p) => (p === "color" ? null : "color"))}
         >
-          <span className="block size-3.5 rounded-sm border border-black/20" style={{ backgroundColor: currentColor ?? "#1f2937" }} />
+          <span className="block size-3.5 rounded-sm border border-foreground/20" style={{ backgroundColor: currentColor ?? "var(--sticky-ink, #1f2937)" }} />
         </ToolButton>
         <SwatchPopover
           open={palette === "color"}
@@ -313,7 +316,7 @@ export function StickyToolbar({
         <button
           type="button"
           title={t("sticky.tb.fontSize")}
-          className="flex h-6 items-center gap-0.5 rounded-md px-1.5 text-[11px] transition-colors hover:bg-black/10"
+          className="flex h-6 items-center gap-0.5 rounded-md px-1.5 text-[11px] transition-colors hover:bg-foreground/10"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => setPalette((p) => (p === "size" ? null : "size"))}
         >
@@ -326,7 +329,7 @@ export function StickyToolbar({
               <button
                 key={size}
                 type="button"
-                className={`block w-full rounded-md px-2 py-1 text-left text-xs hover:bg-neutral-100 ${currentSize === `${size}px` ? "bg-neutral-200" : ""}`}
+                className={`block w-full rounded-md px-2 py-1 text-left text-xs hover:bg-foreground/10 ${currentSize === `${size}px` ? "bg-foreground/15" : ""}`}
                 onClick={() => {
                   onNoteFontSize(size);
                   setPalette(null);
@@ -337,7 +340,7 @@ export function StickyToolbar({
             ))}
             <button
               type="button"
-              className="block w-full rounded-md px-2 py-1 text-left text-xs text-neutral-500 hover:bg-neutral-100"
+              className="block w-full rounded-md px-2 py-1 text-left text-xs text-muted-foreground hover:bg-foreground/10"
               onClick={() => {
                 onNoteFontSize(null);
                 setPalette(null);
@@ -350,7 +353,7 @@ export function StickyToolbar({
       </div>
       )}
 
-      <span className="mx-0.5 h-4 w-px bg-black/15" />
+      <span className="mx-0.5 h-4 w-px bg-foreground/15" />
 
       <ToolButton title={t("sticky.tb.bulletList")} active={editor.isActive("bulletList")} onClick={() => run(() => editor.chain().focus().toggleBulletList().run())}>
         <List className="size-3.5" />
@@ -363,7 +366,7 @@ export function StickyToolbar({
           — so the code section is the code block's own styling affordance.) */}
       {inCodeBlock && (
         <>
-          <span className="mx-0.5 h-4 w-px bg-black/15" />
+          <span className="mx-0.5 h-4 w-px bg-foreground/15" />
           <div ref={codeBgAnchorRef}>
             <ToolButton
               title={t("sticky.tb.codeBg")}
@@ -371,7 +374,7 @@ export function StickyToolbar({
               onClick={() => setPalette((p) => (p === "codeBg" ? null : "codeBg"))}
             >
               <span
-                className="block size-3.5 rounded-sm border border-black/25"
+                className="block size-3.5 rounded-sm border border-foreground/25"
                 style={{
                   backgroundColor: currentCodeBg ?? "#f3f4f6",
                   backgroundImage: "linear-gradient(135deg, #f3f4f6 0%, #f3f4f6 40%, #9ca3af 40%, #9ca3af 60%, #f3f4f6 60%)",
@@ -397,8 +400,8 @@ export function StickyToolbar({
               onClick={() => setPalette((p) => (p === "codeText" ? null : "codeText"))}
             >
               <span
-                className="flex size-3.5 items-center justify-center rounded-sm border border-black/20 text-[9px] font-bold leading-none"
-                style={{ color: currentCodeText ?? "#1f2937", backgroundColor: currentCodeBg ?? undefined }}
+                className="flex size-3.5 items-center justify-center rounded-sm border border-foreground/20 text-[9px] font-bold leading-none"
+                style={{ color: currentCodeText ?? "var(--sticky-ink, #1f2937)", backgroundColor: currentCodeBg ?? undefined }}
               >
                 A
               </span>
@@ -423,7 +426,7 @@ export function StickyToolbar({
       </ToolButton>
       {onPasteMarkdown && (
         <>
-          <span className="mx-0.5 h-4 w-px bg-black/15" />
+          <span className="mx-0.5 h-4 w-px bg-foreground/15" />
           <div ref={markdownAnchorRef}>
             <ToolButton title={t("sticky.pasteMarkdown")} active={markdownOpen} onClick={() => setMarkdownOpen((open) => !open)}>
               <ClipboardPaste className="size-3.5" />
@@ -434,7 +437,7 @@ export function StickyToolbar({
                 onClose={() => setMarkdownOpen(false)}
                 width={320}
                 height={220}
-                className="max-h-[calc(100vh-16px)] w-[min(320px,calc(100vw-16px))] overflow-y-auto text-neutral-800"
+                className="max-h-[calc(100vh-16px)] w-[min(320px,calc(100vw-16px))] overflow-y-auto"
               >
                 <label className="block px-1 pb-1 text-xs font-semibold">{t("sticky.pasteMarkdown")}</label>
                 <textarea
@@ -449,17 +452,17 @@ export function StickyToolbar({
                     }
                   }}
                   placeholder={t("sticky.markdownPlaceholder")}
-                  className="min-h-24 max-h-[40vh] w-full resize-y rounded-md border border-black/15 bg-white p-2 font-mono text-xs outline-none focus:border-black/40"
+                  className="min-h-24 max-h-[40vh] w-full resize-y rounded-md border border-input bg-background p-2 font-mono text-xs text-foreground outline-none focus:border-ring"
                 />
-                {markdownError && <p role="alert" className="px-1 text-xs text-red-700">{t("sticky.markdownInsertFailed")}</p>}
+                {markdownError && <p role="alert" className="px-1 text-xs text-red-600 dark:text-red-400">{t("sticky.markdownInsertFailed")}</p>}
                 <div className="flex justify-end gap-2 pt-1">
-                  <button type="button" className="rounded-md px-2 py-1 text-xs hover:bg-black/5" onClick={() => setMarkdownOpen(false)}>
+                  <button type="button" className="rounded-md px-2 py-1 text-xs hover:bg-foreground/10" onClick={() => setMarkdownOpen(false)}>
                     {t("sticky.cancel")}
                   </button>
                   <button
                     type="button"
                     disabled={!markdownDraft.trim() || markdownBusy}
-                    className="rounded-md bg-neutral-900 px-2 py-1 text-xs text-white disabled:opacity-50"
+                    className="rounded-md bg-foreground px-2 py-1 text-xs text-background transition-colors hover:bg-foreground/85 disabled:opacity-50"
                     onClick={() => void submitMarkdown()}
                   >
                     {markdownBusy ? t("sticky.saving") : t("sticky.insertMarkdown")}

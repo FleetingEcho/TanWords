@@ -16,9 +16,11 @@
  *    by main's `closed` handler if the window dies out from under us.
  *
  *  Visual system: one rounded-2xl surface paints the note (stickySurfaceStyle
- *  gives the translucent color fill + same-hue hairline ring). The window is
- *  force-light with a transparent body, so all chrome uses explicit
- *  rgba()/black-alpha utilities — never theme tokens. */
+ *  gives the colour fill + same-hue hairline ring). The window follows the
+ *  app theme: light themes paint full pastel with near-black ink, dark
+ *  themes tint the themed canvas toward the note's hue with light ink
+ *  (--sticky-tint/--sticky-ink in theme-vars.css). Chrome therefore uses
+ *  theme tokens, never hard-coded whites/blacks. */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   Check, ChevronDown, ChevronUp, ClipboardCopy, ClipboardPaste, Copy, EllipsisVertical, Layers,
@@ -29,6 +31,7 @@ import { callMain } from "@/ipc/host";
 import { subscribe } from "@/ipc/events";
 import { readClipboardImage } from "@/ipc/clipboard";
 import { useT } from "@/hooks/useT";
+import { useIsDark } from "@/hooks/useIsDark";
 import { useSettingsStore } from "@/store/settingsStore";
 import { blocksToStorage } from "@/lib/docFormat";
 import { blocksToMarkdownOffThread } from "@/lib/documentWorkerClient";
@@ -41,9 +44,11 @@ import type { Block } from "@/components/Documents/tiptap/blocks";
 import type { Editor as TiptapEditor } from "@tiptap/core";
 import { FloatingBrowserResizeHandles, type ResizeEdges } from "@/components/FloatingBrowser/FloatingBrowserResizeHandle";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { AppThemeMenu, ThemeIcon } from "@/components/shared/AppThemeMenu";
 import { StickyToolbar } from "./StickyToolbar";
 import { StickyResizeOverlay } from "./StickyResizeOverlay";
 import { StickyFindBar } from "./StickyFindBar";
+import { StickyOpacityControl } from "./StickyOpacityControl";
 import { insertRenderedMarkdown } from "./insertRenderedMarkdown";
 import {
   STICKY_HEADER_HEIGHT, STICKY_MIN_H, STICKY_MIN_W,
@@ -59,20 +64,26 @@ const SAVE_MAX_INTERVAL_MS = 2_000;
 /** How long the emerald "saved" dot lingers before fading out. */
 const SAVE_FLASH_MS = 1_400;
 
-/** 26px header icon buttons (right cluster + color-dot trigger). */
+/** 26px header icon buttons (right cluster + color-dot trigger). The note
+ *  follows the app theme, so hovers ride the theme's foreground alpha
+ *  (readable ink-on-tint in light AND dark). */
 const HEADER_BUTTON_CLASS =
-  "app-region-no-drag flex size-[26px] items-center justify-center rounded-md transition-colors hover:bg-black/10";
+  "app-region-no-drag flex size-[26px] items-center justify-center rounded-md transition-colors hover:bg-foreground/10";
 /** Shared row styling for the More menu. */
 const MENU_ITEM_CLASS =
-  "flex w-full items-center gap-2 px-3 py-1.5 text-xs text-neutral-800 hover:bg-neutral-100";
+  "flex w-full items-center gap-2 px-3 py-1.5 text-xs text-foreground hover:bg-foreground/10";
 
 /** Note-wide font sizes offered by the More-menu segment (sticky_update_meta
- *  font_size). Medium is the editor's built-in 16px default. */
+ *  font_size). A fresh note (font_size null/0) renders at Medium 14px. */
 const FONT_CHOICES: ReadonlyArray<{ key: string; size: number }> = [
-  { key: "sticky.font.small", size: 14 },
-  { key: "sticky.font.medium", size: 16 },
-  { key: "sticky.font.large", size: 18 },
+  { key: "sticky.font.small", size: 12 },
+  { key: "sticky.font.medium", size: 14 },
+  { key: "sticky.font.large", size: 16 },
+  { key: "sticky.font.xlarge", size: 18 },
 ];
+/** The default note body size — Medium. Everything that "falls back to the
+ *  natural size" (unset font_size) resolves here, not to a magic number. */
+const DEFAULT_FONT_SIZE = 14;
 
 const IS_MAC = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
 
@@ -98,8 +109,8 @@ function HeaderIconButton({
   );
 }
 
-/** Header-left color dot: a 16px swatch of the note's color that opens a
- *  popover with the full seven-color palette (active = dark ring). */
+/** Header-left color dot: a 16px swatch of the note's color that opens the
+ *  complete shared palette (active = dark ring). */
 function ColorDotMenu({
   color, onPick,
 }: {
@@ -126,14 +137,14 @@ function ColorDotMenu({
         />
       </button>
       {open && (
-        <div className="app-region-no-drag absolute top-full left-0 z-50 mt-1.5 rounded-xl border border-black/10 bg-white/95 p-2 shadow-lg">
-          <div className="flex gap-1.5">
+        <div className="app-region-no-drag absolute top-full left-0 z-50 mt-1.5 rounded-xl border border-border bg-popover/95 p-2 shadow-lg">
+          <div className="grid grid-cols-[repeat(6,1rem)] gap-1.5">
             {STICKY_COLORS.map((c) => (
               <button
                 key={c.id}
                 type="button"
                 title={c.id}
-                className={`size-4 rounded-full ${color === c.id ? "ring-2 ring-black/50" : "ring-1 ring-black/10"}`}
+                className={`size-4 rounded-full ${stickyColorHex(color) === c.hex ? "ring-2 ring-foreground/50" : "ring-1 ring-foreground/15"}`}
                 style={{ backgroundColor: c.hex }}
                 onClick={() => {
                   setOpen(false);
@@ -180,6 +191,10 @@ function SaveDot({
 
 export function StickyWindowApp() {
   const t = useT();
+  const theme = useSettingsStore((state) => state.theme);
+  /** Live theme flag (reacts to the settings bootstrap) — forwarded to the
+   *  shared editor so code-block themes repaint with the app theme. */
+  const isDark = useIsDark();
   const id = useMemo(() => {
     const raw = Number(new URLSearchParams(window.location.search).get("id"));
     return Number.isFinite(raw) ? raw : 0;
@@ -437,6 +452,17 @@ export function StickyWindowApp() {
     };
   }, [id, persistGeometry]);
 
+  useEffect(() => subscribe<{ id: number; opacity?: number; color?: string }>(
+    "sticky:metaChanged",
+    (patch) => {
+      if (patch.id !== id) return;
+      if (typeof patch.opacity === "number") {
+        setOpacity(Math.min(100, Math.max(10, Math.round(patch.opacity))));
+      }
+      if (typeof patch.color === "string") setColor(patch.color);
+    },
+  ), [id]);
+
   const collapseBusy = useRef(false);
   const toggleCollapse = useCallback(() => {
     if (collapseBusy.current) return;
@@ -479,6 +505,10 @@ export function StickyWindowApp() {
         ...(patch.always_on_top === undefined ? {} : { always_on_top: patch.always_on_top }),
         ...(patch.font_family === undefined ? {} : { font_family: patch.font_family ?? "" }),
         ...(patch.font_size === undefined ? {} : { font_size: patch.font_size ?? 0 }),
+      });
+      await callMain("event:emit", {
+        name: "sticky:metaChanged",
+        payload: { id, ...patch },
       });
     } catch {
       // Non-fatal — the visual state already applied locally.
@@ -643,7 +673,7 @@ export function StickyWindowApp() {
   if (loading) {
     return (
       <div className="flex h-screen w-screen items-center justify-center">
-        <Loader2 className="size-5 animate-spin text-neutral-600" />
+        <Loader2 className="size-5 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -651,11 +681,11 @@ export function StickyWindowApp() {
   if (missing) {
     return (
       <div className="flex h-screen w-screen items-center justify-center p-4">
-        <div className="app-region-no-drag rounded-2xl border border-black/10 bg-white/95 p-6 text-center shadow-xl">
-          <p className="text-sm text-neutral-700">{t("sticky.gone")}</p>
+        <div className="app-region-no-drag rounded-2xl border border-border bg-popover/95 p-6 text-center shadow-xl">
+          <p className="text-sm text-muted-foreground">{t("sticky.gone")}</p>
           <button
             type="button"
-            className="mt-4 rounded-full bg-neutral-900 px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-neutral-700"
+            className="mt-4 rounded-full bg-foreground px-4 py-1.5 text-xs font-medium text-background transition-colors hover:bg-foreground/85"
             onClick={() => window.close()}
           >
             {t("sticky.goneClose")}
@@ -674,8 +704,10 @@ export function StickyWindowApp() {
         style={{
           // Translucent composes over the shared surface style: same color
           // and hairline ring, backgroundColor overridden to 60% alpha.
-          ...stickySurfaceStyle(color, translucent ? 60 : opacity),
-          color: "#1f2937",
+          ...stickySurfaceStyle(color, Math.round(opacity * (translucent ? 0.6 : 1))),
+          // --sticky-ink flips in theme-vars.css: near-black on pastel in
+          // light themes, the theme's foreground in dark ones.
+          color: "var(--sticky-ink, #1f2937)",
         }}
       >
         {/* Header: 44px drag bar with room to grab between the controls. */}
@@ -693,6 +725,13 @@ export function StickyWindowApp() {
           <div className="min-w-0 flex-1 px-2">
             {collapsed && <span className="pointer-events-none block truncate text-center text-[13px] font-semibold">{displayTitle || t("sticky.untitled")}</span>}
           </div>
+          <AppThemeMenu
+            trigger={
+              <button type="button" title={t("settings.theme")} className={HEADER_BUTTON_CLASS}>
+                <ThemeIcon theme={theme} className="size-4" />
+              </button>
+            }
+          />
           <HeaderIconButton title={t("sticky.alwaysOnTop")} onClick={togglePin}>
             <Pin className={`size-4 ${alwaysOnTop ? "fill-amber-500 text-amber-500" : ""}`} />
           </HeaderIconButton>
@@ -709,7 +748,7 @@ export function StickyWindowApp() {
               <EllipsisVertical className="size-4" />
             </button>
             {showMore && (
-              <div className="app-region-no-drag absolute top-full right-0 z-50 mt-1.5 w-48 rounded-xl border border-black/10 bg-white/95 py-1 shadow-lg">
+              <div className="app-region-no-drag absolute top-full right-0 z-50 mt-1.5 w-48 rounded-xl border border-border bg-popover/95 py-1 shadow-lg">
                 <button
                   type="button"
                   className={MENU_ITEM_CLASS}
@@ -717,7 +756,7 @@ export function StickyWindowApp() {
                 >
                   <Search className="size-3.5" />
                   <span className="flex-1 text-left">{t("sticky.menuFind")}</span>
-                  <span className="text-[10px] text-neutral-400">{IS_MAC ? "⌘F" : "Ctrl+F"}</span>
+                  <span className="text-[10px] text-muted-foreground">{IS_MAC ? "⌘F" : "Ctrl+F"}</span>
                 </button>
                 {/* Translucent-paper toggle — the only writer of the
                  * "sticky_translucent" setting; the menu stays open on flip so
@@ -733,10 +772,16 @@ export function StickyWindowApp() {
                 >
                   <Layers className="size-3.5" />
                   <span className="flex-1 text-left">{t("sticky.translucent")}</span>
-                  <span className={`h-3.5 w-6 rounded-full p-0.5 transition-colors ${translucent ? "bg-amber-500" : "bg-black/20"}`}>
+                  <span className={`h-3.5 w-6 rounded-full p-0.5 transition-colors ${translucent ? "bg-amber-500" : "bg-foreground/20"}`}>
                     <span className={`block size-2.5 rounded-full bg-white transition-transform ${translucent ? "translate-x-2.5" : ""}`} />
                   </span>
                 </button>
+                <StickyOpacityControl
+                  label={t("sticky.opacity")}
+                  value={opacity}
+                  onChange={setOpacity}
+                  onCommit={(next) => void updateMeta({ opacity: next })}
+                />
                 <button
                   type="button"
                   className={MENU_ITEM_CLASS}
@@ -769,8 +814,8 @@ export function StickyWindowApp() {
                   <Copy className="size-3.5" />
                   <span className="flex-1 text-left">{t("sticky.copyImage")}</span>
                 </button>
-                <div className="my-1 h-px bg-black/10" />
-                <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium tracking-wide text-neutral-400 uppercase">
+                <div className="my-1 h-px bg-foreground/10" />
+                <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
                   {t("sticky.font")}
                 </div>
                 {FONT_CHOICES.map((choice) => (
@@ -785,13 +830,13 @@ export function StickyWindowApp() {
                     }}
                   >
                     <span className="flex-1 text-left">{t(choice.key)}</span>
-                    {(fontSize ?? 16) === choice.size && <Check className="size-3.5 text-neutral-700" />}
+                    {(fontSize ?? DEFAULT_FONT_SIZE) === choice.size && <Check className="size-3.5 text-foreground" />}
                   </button>
                 ))}
-                <div className="my-1 h-px bg-black/10" />
+                <div className="my-1 h-px bg-foreground/10" />
                 <button
                   type="button"
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50"
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-xs text-red-600 hover:bg-red-500/10 dark:text-red-400"
                   onClick={() => { setShowMore(false); setConfirmingDelete(true); }}
                 >
                   <Trash2 className="size-3.5" />
@@ -804,7 +849,7 @@ export function StickyWindowApp() {
           <button
             type="button"
             title={t("sticky.close")}
-            className="app-region-no-drag flex size-11 shrink-0 items-center justify-center self-stretch transition-colors hover:bg-black/10"
+            className="app-region-no-drag flex size-11 shrink-0 items-center justify-center self-stretch transition-colors hover:bg-foreground/10"
             onClick={closeNote}
           >
             <X className="size-4" />
@@ -818,7 +863,7 @@ export function StickyWindowApp() {
                 autoFocus
                 value={renameDraft}
                 placeholder={t("sticky.renameTitle")}
-                className="w-full min-w-0 rounded-md border border-neutral-300 bg-white px-1.5 py-0.5 text-[12px] text-neutral-900 outline-none focus:border-neutral-500"
+                className="w-full min-w-0 rounded-md border border-input bg-background/80 px-1.5 py-0.5 text-[12px] text-foreground outline-none focus:border-ring"
                 onChange={(e) => setRenameDraft(e.target.value)}
                 onBlur={commitRename}
                 onKeyDown={(e) => {
@@ -829,7 +874,7 @@ export function StickyWindowApp() {
             ) : (
               <button
                 type="button"
-                className="w-full min-w-0 cursor-text truncate rounded-sm text-left text-[13px] font-semibold leading-none focus-visible:outline-2 focus-visible:outline-neutral-700"
+                className="w-full min-w-0 cursor-text truncate rounded-sm text-center text-[18px] font-semibold leading-none focus-visible:outline-2 focus-visible:outline-ring"
                 title={displayTitle || undefined}
                 aria-label={t("sticky.renameTitle")}
                 onClick={() => {
@@ -869,29 +914,29 @@ export function StickyWindowApp() {
                 // .ProseMirror re-asserts font-size via this var, overriding
                 // plain inheritance — so the sticky's own font_size must ride
                 // the variable. Scoped here, it also pins the default to the
-                // sticky's 16px instead of leaking the app's Documents slider.
-                "--document-font-size": `${fontSize ?? 16}px`,
+                // sticky's 14px instead of leaking the app's Documents slider.
+                "--document-font-size": `${fontSize ?? DEFAULT_FONT_SIZE}px`,
               } as CSSProperties}
             >
               {locked ? (
                 <div className="flex min-h-full items-center justify-center py-4">
-                  <div className="w-full max-w-60 rounded-2xl border border-black/10 bg-white/95 p-4 text-center shadow-lg">
-                    <Lock className="mx-auto size-5 text-neutral-500" />
-                    <p className="mt-2 text-xs text-neutral-600">{t("sticky.locked")}</p>
+                  <div className="w-full max-w-60 rounded-2xl border border-border bg-popover/95 p-4 text-center shadow-lg">
+                    <Lock className="mx-auto size-5 text-muted-foreground" />
+                    <p className="mt-2 text-xs text-muted-foreground">{t("sticky.locked")}</p>
                     <div className="mt-3 flex items-center gap-1.5">
                       <input
                         type="password"
                         value={unlockPassword}
                         onChange={(e) => setUnlockPassword(e.target.value)}
                         onKeyDown={(e) => { if (e.key === "Enter") void unlock(); }}
-                        className="app-region-no-drag min-w-0 flex-1 rounded-full border border-black/15 bg-white px-3 py-1.5 text-sm outline-none focus:border-black/40"
+                        className="app-region-no-drag min-w-0 flex-1 rounded-full border border-input bg-background px-3 py-1.5 text-sm text-foreground outline-none focus:border-ring"
                         placeholder="••••••"
                         autoFocus
                       />
                       <button
                         type="button"
                         title={t("sticky.open")}
-                        className="app-region-no-drag shrink-0 rounded-full bg-neutral-900 p-2 text-white transition-colors hover:bg-neutral-700"
+                        className="app-region-no-drag shrink-0 rounded-full bg-foreground p-2 text-background transition-colors hover:bg-foreground/85"
                         onClick={() => void unlock()}
                       >
                         <Unlock className="size-3.5" />
@@ -902,7 +947,7 @@ export function StickyWindowApp() {
               ) : blocks ? (
                 <LazyTiptapDocumentEditor
                   initialBlocks={blocks}
-                  isDark={false}
+                  isDark={isDark}
                   editable
                   onUploadFile={uploadFile}
                   readNativeImage={readNativeImage}
@@ -924,7 +969,7 @@ export function StickyWindowApp() {
         {/* Word count: tiny corner pill (the save state lives in the header
             dot — there is no footer bar). */}
         {!collapsed && saved && savedWordCount !== null && savedWordCount > 0 && (
-          <div className="pointer-events-none absolute right-3 bottom-1.5 text-[10px] text-neutral-700 opacity-50">
+          <div className="pointer-events-none absolute right-3 bottom-1.5 text-[10px] text-foreground opacity-50">
             {t("sticky.words", { n: savedWordCount })}
           </div>
         )}

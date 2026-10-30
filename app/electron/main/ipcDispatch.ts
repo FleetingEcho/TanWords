@@ -439,6 +439,19 @@ export async function dispatch(
       showAppNotification(deps, { title, body, openEvent });
       return null;
     }
+    // One window changed the app theme (Settings) — mirror it into every
+    // other window (sticky notes, sticky manager, floating browser) so all
+    // surfaces re-theme immediately. The sender already applied the theme to
+    // itself; each renderer compares the payload with its current theme and
+    // no-ops on echoes. The DB row is the sender's responsibility (saved via
+    // `theme` before this call), so newly opened windows stay correct too.
+    case "window_broadcast_theme": {
+      const { theme } = (args ?? {}) as { theme?: string };
+      if (typeof theme === "string" && theme) {
+        deps.broadcastEvent("settings:theme-changed", { theme });
+      }
+      return null;
+    }
     case "floating_browser_window_set_bounds": {
       const win = BrowserWindow.fromWebContents(sender);
       const bounds = (args ?? {}) as { x: number; y: number; width: number; height: number };

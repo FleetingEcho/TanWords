@@ -444,7 +444,6 @@ mod init_db_tests {
     /// sidecar). The migration ALTERs must land BEFORE the schema batch.
     #[tokio::test]
     async fn init_upgrades_a_pre_stickies_database_in_place() {
-        use sea_orm::ConnectionTrait;
         let conn = memory_conn().await;
 
         // Shape a database the way the PRE-stickies build left it: full

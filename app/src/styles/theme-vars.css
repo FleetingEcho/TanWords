@@ -48,6 +48,10 @@
     --ink: 211 65% 40%;
     --tag-chip-l: 38%;
     --manuscript-font: "Georgia", "Iowan Old Style", "Times New Roman", "Songti SC", "STSong", serif;
+    /* Sticky notes (theme-following since 2026-10): on light themes the note
+       paints its full pastel colour; the ink is the legacy near-black. */
+    --sticky-tint: 100;
+    --sticky-ink: #1f2937;
   }
 
   .dark {
@@ -91,6 +95,10 @@
     --document-list-icon-fg: hsl(var(--primary));
     --ink: 213 76% 74%;
     --tag-chip-l: 72%;
+    /* Dark themes: the note colour becomes a tint over the themed canvas
+       (hue identity survives at 20%), ink follows the theme's foreground. */
+    --sticky-tint: 20;
+    --sticky-ink: hsl(var(--foreground));
   }
 
   /* Catppuccin Latte */

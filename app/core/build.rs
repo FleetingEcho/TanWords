@@ -143,7 +143,6 @@ fn generate_dispatch_table() {
 
     let mut names: Vec<String> = Vec::new();
     let mut unparsed: Vec<String> = Vec::new();
-    let mut skipped: Vec<String> = Vec::new();
 
     // Feature-aware command filtering. The heavy modules are compiled out
     // when their feature is off, so their commands cannot appear in the
@@ -173,7 +172,6 @@ fn generate_dispatch_table() {
             || (!has_audio && (top == "native_audio" || top == "music"))
             || (is_server_build && top == "localdocs")
         {
-            skipped.push(entry.clone());
             continue;
         }
 
@@ -263,12 +261,6 @@ use crate::mcp::McpController;\n",
     let contents = format!("{header}{}{footer}{names_const}", arms.join(",\n"));
     std::fs::write(&out_path, contents).expect("failed to write dispatch.rs");
 
-    println!("cargo:warning=dispatch: generated {} commands -> {}", arms.len(), out_path.display());
-    println!(
-        "cargo:warning=dispatch: skipped {} (Electron-main or feature-gated modules): {}",
-        skipped.len(),
-        skipped.join(", ")
-    );
     if !unparsed.is_empty() {
         println!("cargo:warning=dispatch: UNPARSED — port these by hand into src/rpc/manual.rs:");
         for u in &unparsed {

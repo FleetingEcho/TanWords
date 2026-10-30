@@ -15,10 +15,11 @@
  *    move to trash — the last behind a ConfirmModal).
  *
  *  This window never edits note content — that's the per-note window's job.
- *  Theme-compat approach preserved from the previous design: the shell adapts
- *  to the app theme (via `dark:` variants where the old file used theme
- *  tokens), while the pastel cards keep dark text on paper in both themes,
- *  same as the note windows themselves. */
+ *  Theme: the window follows the app theme — chrome uses theme tokens
+ *  (popover/border/foreground/muted) and note tiles tint their pastel hue
+ *  over the themed canvas in dark themes (see stickyShared.ts), exactly like
+ *  the note windows. Theme changes apply live via the settingsStore's
+ *  `settings:theme-changed` broadcast subscription. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownToLine, ArrowUpToLine, ChevronDown, CircleHelp, Ellipsis, Eye,
@@ -38,12 +39,16 @@ import { exportMarkdownAsHtml } from "@/lib/documentExport";
 import { lowerMermaid } from "@/components/Documents/mermaidTransforms";
 import { lowerMedia, lowerYouTube } from "@/components/Documents/mediaTransforms";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
+import { AppThemeMenu, ThemeIcon } from "@/components/shared/AppThemeMenu";
 import {
-  stickyColorHex, stickyDerivedTitle, useDismissOnOutsideClick,
+  loadStickyPanelOpacity, saveStickyPanelOpacity, sortStickyItems,
+  stickyDerivedTitle, stickySurfaceStyle, useDismissOnOutsideClick,
   type StickyDetail, type StickyListItem,
 } from "./stickyShared";
 import { STICKY_TEMPLATES } from "./stickyTemplates";
 import { StickyManagerCard } from "./StickyManagerCard";
+import { StickySortSelect, useStickySort } from "./StickySortSelect";
+import { StickyOpacityControl } from "./StickyOpacityControl";
 import type { Block } from "@/components/Documents/tiptap/blocks";
 
 /** Snake_case mirror of the core's trash `StickyListItem` (no serde rename). */
@@ -78,15 +83,18 @@ function parseBlocks(content: string): Block[] {
 
 const SEARCH_DEBOUNCE_MS = 150;
 const HEADER_BUTTON =
-  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-black/10 dark:hover:bg-white/10 disabled:opacity-50";
+  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-foreground/10 disabled:opacity-50";
 const MENU_ROW =
-  "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-black/[0.06] dark:hover:bg-white/10";
+  "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-foreground/10";
 
 export function StickyManagerApp() {
   const t = useT();
+  const theme = useSettingsStore((state) => state.theme);
 
   const [tab, setTab] = useState<Tab>("wall");
   const [viewMode, setViewMode] = useState<ViewMode>(savedViewMode);
+  const [sortMode, setSortMode] = useStickySort();
+  const [panelOpacity, setPanelOpacity] = useState(loadStickyPanelOpacity);
   const [items, setItems] = useState<StickyListItem[] | null>(null);
   const [trash, setTrash] = useState<StickyTrashItem[] | null>(null);
   const [query, setQuery] = useState("");
@@ -163,6 +171,7 @@ export function StickyManagerApp() {
     const stop = subscribeAll({
       "stickywin:closed": refresh,
       "stickywin:geometryChanged": refresh,
+      "sticky:metaChanged": refresh,
     });
     return () => {
       stop();
@@ -192,6 +201,25 @@ export function StickyManagerApp() {
     } finally {
       setBusyId(null);
     }
+  }, [reload]);
+
+  const previewNoteOpacity = useCallback((id: number, value: number) => {
+    const opacity = Math.min(100, Math.max(10, Math.round(value)));
+    setItems((current) => current?.map((item) => (
+      item.id === id ? { ...item, opacity } : item
+    )) ?? null);
+    setMenuFor((current) => current?.item.id === id
+      ? { ...current, item: { ...current.item, opacity } }
+      : current);
+  }, []);
+
+  const commitNoteOpacity = useCallback((id: number, opacity: number) => {
+    void invoke("sticky_update_meta", { id, opacity })
+      .then(() => callMain("event:emit", {
+        name: "sticky:metaChanged",
+        payload: { id, opacity },
+      }))
+      .catch(() => void reload());
   }, [reload]);
 
   const createNote = useCallback(async (blocks?: Block[]) => {
@@ -334,10 +362,10 @@ export function StickyManagerApp() {
     setMenuFor({ item, x: at.x, y: at.y });
   }, []);
 
-  // The backend's update-time order is authoritative — opening a note does
-  // not move it. The Open tab filters that same ordered sequence.
-  const openedItems = useMemo(() => (items ?? []).filter((i) => i.is_open), [items]);
-  const wallItems = tab === "opened" ? openedItems : (items ?? []);
+  const sortedItems = useMemo(() => sortStickyItems(items ?? [], sortMode), [items, sortMode]);
+  // The Open tab filters the same user-selected sequence as the full wall.
+  const openedItems = useMemo(() => sortedItems.filter((i) => i.is_open), [sortedItems]);
+  const wallItems = tab === "opened" ? openedItems : sortedItems;
   /** Trash has no server-side search — filter client-side with the same query. */
   const trashVisible = useMemo(() => {
     if (!trash) return null;
@@ -352,15 +380,25 @@ export function StickyManagerApp() {
   const icon = "h-3.5 w-3.5";
 
   return (
-    <div className="relative flex h-screen w-screen flex-col overflow-hidden rounded-2xl border border-black/5 bg-white/95 text-neutral-900 shadow-2xl backdrop-blur-xl dark:border-white/10 dark:bg-neutral-900/95 dark:text-neutral-100">
+    <div
+      className="relative flex h-screen w-screen flex-col overflow-hidden rounded-2xl border border-border text-popover-foreground shadow-2xl backdrop-blur-xl"
+      style={{ backgroundColor: `hsl(var(--popover) / ${panelOpacity / 100})` }}
+    >
       {/* ── Header (drag strip, 40px; buttons auto opt out via CSS) ────── */}
       <div className="app-drag-region flex h-10 shrink-0 items-center gap-1 px-3">
         <div className="min-w-0 flex-1 select-none">
           <h1 className="truncate text-sm font-bold leading-tight">{t("sticky.manageTitle")}</h1>
-          <p className="text-[10px] leading-tight text-black/40 tabular-nums dark:text-white/40">
+          <p className="text-[10px] leading-tight text-muted-foreground tabular-nums">
             {t("sticky.noteCount", { n: visibleCount })}
           </p>
         </div>
+        <AppThemeMenu
+          trigger={
+            <button type="button" title={t("settings.theme")} aria-label={t("settings.theme")} className={HEADER_BUTTON}>
+              <ThemeIcon theme={theme} />
+            </button>
+          }
+        />
         <button
           type="button"
           title={viewMode === "card" ? t("sticky.listView") : t("sticky.cardView")}
@@ -385,7 +423,7 @@ export function StickyManagerApp() {
             {createBusy ? <Loader2 className={`${icon} animate-spin`} /> : <Plus className="h-4 w-4" />}
           </button>
           {showTemplates && (
-            <div className="absolute top-8 right-0 z-50 w-44 rounded-xl border border-black/10 bg-white/95 py-1 shadow-xl backdrop-blur-xl dark:border-white/10 dark:bg-neutral-900/95">
+            <div className="absolute top-8 right-0 z-50 w-44 rounded-xl border border-border bg-popover/95 py-1 shadow-xl backdrop-blur-xl">
               {STICKY_TEMPLATES.map((template) => (
                 <button
                   key={template.id}
@@ -417,7 +455,7 @@ export function StickyManagerApp() {
               their tooltips present for the panel guard tests + a11y tree. */}
           <div
             aria-hidden={!showMore}
-            className={`absolute top-8 right-0 z-50 w-52 rounded-xl border border-black/10 bg-white/95 py-1 shadow-xl backdrop-blur-xl dark:border-white/10 dark:bg-neutral-900/95${showMore ? "" : " hidden"}`}
+            className={`absolute top-8 right-0 z-50 w-52 rounded-xl border border-border bg-popover/95 py-1 shadow-xl backdrop-blur-xl${showMore ? "" : " hidden"}`}
           >
             <button type="button" title={t("sticky.showAll")} className={MENU_ROW} onClick={() => { setShowMore(false); showAll(); }}>
               <ArrowDownToLine className={icon} /> {t("sticky.showAll")}
@@ -425,18 +463,25 @@ export function StickyManagerApp() {
             <button type="button" title={t("sticky.hideAll")} className={MENU_ROW} onClick={() => { setShowMore(false); hideAll(); }}>
               <ArrowUpToLine className={icon} /> {t("sticky.hideAll")}
             </button>
-            <div className="my-1 border-t border-black/10 dark:border-white/10" />
+            <StickyOpacityControl
+              label={t("sticky.panelOpacity")}
+              value={panelOpacity}
+              min={20}
+              onChange={setPanelOpacity}
+              onCommit={saveStickyPanelOpacity}
+            />
+            <div className="my-1 border-t border-border" />
             <button type="button" className={MENU_ROW} onClick={() => { setShowMore(false); void importFile("bundle"); }}>
               <FileUp className={icon} /> {t("sticky.importBundle")}
             </button>
             <button type="button" className={MENU_ROW} onClick={() => { setShowMore(false); void importFile("md"); }}>
               <FileUp className={icon} /> {t("sticky.importText")}
             </button>
-            <div className="my-1 border-t border-black/10 dark:border-white/10" />
+            <div className="my-1 border-t border-border" />
             <button type="button" className={MENU_ROW} onClick={() => { setShowMore(false); void exportBundle(); }}>
               <FileDown className={icon} /> {t("sticky.exportBundle")}
             </button>
-            <div className="my-1 border-t border-black/10 dark:border-white/10" />
+            <div className="my-1 border-t border-border" />
             <button type="button" className={MENU_ROW} onClick={() => { setShowMore(false); setShowHelp(true); }}>
               <CircleHelp className={icon} /> {t("sticky.quickHelp")}
             </button>
@@ -454,7 +499,7 @@ export function StickyManagerApp() {
 
       {/* ── Segmented tabs ────────────────────────────────────────────── */}
       <div className="shrink-0 px-3 pt-1">
-        <div className="flex rounded-full bg-black/[0.06] p-0.5 dark:bg-white/[0.08]" role="tablist">
+        <div className="flex rounded-full bg-foreground/[0.07] p-0.5" role="tablist">
           {([["wall", t("sticky.wall")], ["opened", t("sticky.openedTab")]] as const).map(([id, label]) => (
             <button
               key={id}
@@ -463,8 +508,8 @@ export function StickyManagerApp() {
               aria-selected={tab === id}
               className={`flex-1 rounded-full py-1 text-[11px] font-semibold transition-colors ${
                 tab === id
-                  ? "bg-white shadow-sm dark:bg-neutral-700"
-                  : "text-black/50 hover:text-black/80 dark:text-white/50 dark:hover:text-white/80"
+                  ? "bg-background shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
               onClick={() => setTab(id)}
             >
@@ -477,14 +522,14 @@ export function StickyManagerApp() {
             aria-selected={tab === "trash"}
             className={`flex flex-1 items-center justify-center gap-1 rounded-full py-1 text-[11px] font-semibold transition-colors ${
               tab === "trash"
-                ? "bg-white shadow-sm dark:bg-neutral-700"
-                : "text-black/50 hover:text-black/80 dark:text-white/50 dark:hover:text-white/80"
+                ? "bg-background shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
             }`}
             onClick={() => setTab("trash")}
           >
             {t("sticky.trash")}
             {trash && trash.length > 0 ? (
-              <span className="rounded-full bg-black/10 px-1 text-[9px] leading-4 tabular-nums dark:bg-white/15">
+              <span className="rounded-full bg-foreground/10 px-1 text-[9px] leading-4 tabular-nums">
                 {trash.length}
               </span>
             ) : null}
@@ -493,9 +538,9 @@ export function StickyManagerApp() {
       </div>
 
       {/* ── Search (pill row below the header) ────────────────────────── */}
-      <div className="shrink-0 px-3 pt-2 pb-1">
-        <div className="relative">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-black/40 dark:text-white/40" />
+      <div className="flex shrink-0 gap-1.5 px-3 pt-2 pb-1">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -506,9 +551,15 @@ export function StickyManagerApp() {
               }
             }}
             placeholder={t("sticky.searchPlaceholder")}
-            className="h-8 w-full rounded-full border border-black/10 bg-white/70 pr-3 pl-7 text-xs outline-none placeholder:text-black/40 focus:ring-1 focus:ring-black/20 dark:border-white/10 dark:bg-white/[0.06] dark:placeholder:text-white/40 dark:focus:ring-white/20"
+            className="h-8 w-full rounded-full border border-input bg-background/70 pr-3 pl-7 text-xs text-foreground outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-ring"
           />
         </div>
+        <StickySortSelect
+          compact
+          value={sortMode}
+          onChange={setSortMode}
+          disabled={tab === "trash"}
+        />
       </div>
 
       {/* ── Body: note wall / open-only wall / trash ──────────────────── */}
@@ -516,10 +567,10 @@ export function StickyManagerApp() {
         {tab === "trash" ? (
           trashVisible === null ? (
             <div className="flex h-full items-center justify-center">
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-black/40 dark:text-white/40" />
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
             </div>
           ) : trashVisible.length === 0 ? (
-            <div className="flex h-full items-center justify-center px-6 text-center text-xs text-black/40 dark:text-white/40">
+            <div className="flex h-full items-center justify-center px-6 text-center text-xs text-muted-foreground">
               {query ? t("sticky.emptySearch") : t("sticky.trashEmpty")}
             </div>
           ) : (
@@ -529,8 +580,8 @@ export function StickyManagerApp() {
                   key={item.id}
                   className={`flex min-w-0 flex-col rounded-xl p-2.5 opacity-70 grayscale-[30%] ${viewMode === "card" ? "min-h-[88px]" : "min-h-[68px]"}`}
                   style={{
-                    backgroundColor: stickyColorHex("gray"),
-                    boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.08)",
+                    ...stickySurfaceStyle("gray", 100),
+                    color: "var(--sticky-ink, #1f2937)",
                   }}
                 >
                   <span className="truncate text-[12px] font-semibold">
@@ -547,7 +598,7 @@ export function StickyManagerApp() {
                         <button
                           type="button"
                           title={t("sticky.restore")}
-                          className="flex min-h-6 min-w-0 items-center gap-1 rounded-md px-2 py-1 text-left text-[10px] leading-tight font-semibold whitespace-normal hover:bg-black/10"
+                          className="flex min-h-6 min-w-0 items-center gap-1 rounded-md px-2 py-1 text-left text-[10px] leading-tight font-semibold whitespace-normal hover:bg-foreground/10"
                           onClick={() => void restoreNote(item)}
                         >
                           <RotateCcw className="h-3 w-3 shrink-0" /> {t("sticky.restore")}
@@ -555,7 +606,7 @@ export function StickyManagerApp() {
                         <button
                           type="button"
                           title={t("sticky.purge")}
-                          className="flex min-h-6 min-w-0 items-center gap-1 rounded-md px-2 py-1 text-left text-[10px] leading-tight font-semibold whitespace-normal text-red-700 hover:bg-red-500/10 dark:text-red-400"
+                          className="flex min-h-6 min-w-0 items-center gap-1 rounded-md px-2 py-1 text-left text-[10px] leading-tight font-semibold whitespace-normal text-red-600 hover:bg-red-500/10 dark:text-red-400"
                           onClick={() => setPendingPurge(item)}
                         >
                           <Trash2 className="h-3 w-3 shrink-0" /> {t("sticky.purge")}
@@ -569,10 +620,10 @@ export function StickyManagerApp() {
           )
         ) : items === null ? (
           <div className="flex h-full items-center justify-center">
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-black/40 dark:text-white/40" />
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
           </div>
         ) : wallItems.length === 0 ? (
-          <div className="flex h-full items-center justify-center px-6 text-center text-xs text-black/40 dark:text-white/40">
+          <div className="flex h-full items-center justify-center px-6 text-center text-xs text-muted-foreground">
             {query ? t("sticky.emptySearch") : t("sticky.empty")}
           </div>
         ) : (
@@ -595,10 +646,10 @@ export function StickyManagerApp() {
       {menuFor && (
         <div
           ref={cardMenuRef}
-          className="fixed z-50 w-44 rounded-xl border border-black/10 bg-white/95 py-1 shadow-xl backdrop-blur-xl dark:border-white/10 dark:bg-neutral-900/95"
+          className="fixed z-50 w-44 rounded-xl border border-border bg-popover/95 py-1 shadow-xl backdrop-blur-xl"
           style={{
             left: Math.max(8, Math.min(menuFor.x - 176, window.innerWidth - 184)),
-            top: Math.max(8, Math.min(menuFor.y, window.innerHeight - 190)),
+            top: Math.max(8, Math.min(menuFor.y, window.innerHeight - 250)),
           }}
         >
           <button
@@ -608,7 +659,13 @@ export function StickyManagerApp() {
           >
             <Eye className={icon} /> {t("sticky.open")}
           </button>
-          <div className="my-1 border-t border-black/10 dark:border-white/10" />
+          <StickyOpacityControl
+            label={t("sticky.opacity")}
+            value={menuFor.item.opacity}
+            onChange={(opacity) => previewNoteOpacity(menuFor.item.id, opacity)}
+            onCommit={(opacity) => commitNoteOpacity(menuFor.item.id, opacity)}
+          />
+          <div className="my-1 border-t border-border" />
           <button
             type="button"
             className={MENU_ROW}
@@ -636,7 +693,7 @@ export function StickyManagerApp() {
               </button>
             </>
           )}
-          <div className="my-1 border-t border-black/10 dark:border-white/10" />
+          <div className="my-1 border-t border-border" />
           <button
             type="button"
             className={`${MENU_ROW} text-red-600 hover:bg-red-500/10 dark:text-red-400`}
@@ -676,9 +733,9 @@ export function StickyManagerApp() {
       {/* ── Quick help overlay (existing content, paper styling) ──────── */}
       {showHelp && (
         <div className="absolute inset-0 z-60 flex items-center justify-center bg-black/30" onClick={() => setShowHelp(false)}>
-          <div className="w-80 rounded-2xl border border-black/10 bg-white p-4 shadow-xl dark:border-white/10 dark:bg-neutral-900" onClick={(e) => e.stopPropagation()}>
+          <div className="w-80 rounded-2xl border border-border bg-popover p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h2 className="mb-2 text-sm font-semibold">{t("sticky.quickHelp")}</h2>
-            <ul className="space-y-1.5 text-xs text-black/60 dark:text-white/60">
+            <ul className="space-y-1.5 text-xs text-muted-foreground">
               {[
                 ["Ctrl/⌘+Alt+N", t("sticky.help.newNote")],
                 ["Ctrl/⌘+F", t("sticky.help.find")],
@@ -688,13 +745,13 @@ export function StickyManagerApp() {
                 [t("sticky.help.tray"), t("sticky.help.trayHint")],
               ].map(([k, v]) => (
                 <li key={k} className="flex items-start justify-between gap-3">
-                  <code className="rounded bg-black/[0.06] px-1.5 py-0.5 text-[10px] dark:bg-white/10">{k}</code>
+                  <code className="rounded bg-foreground/[0.07] px-1.5 py-0.5 text-[10px]">{k}</code>
                   <span className="flex-1 text-right">{v}</span>
                 </li>
               ))}
             </ul>
             <div className="mt-3 flex justify-end">
-              <button type="button" className="rounded-lg border border-black/10 px-3 py-1.5 text-xs hover:bg-black/[0.06] dark:border-white/10 dark:hover:bg-white/10" onClick={() => setShowHelp(false)}>
+              <button type="button" className="rounded-lg border border-input px-3 py-1.5 text-xs hover:bg-foreground/10" onClick={() => setShowHelp(false)}>
                 {t("sticky.close")}
               </button>
             </div>

@@ -8,6 +8,27 @@ import { render, fireEvent, screen } from "@testing-library/react";
 import { StickyManagerApp } from "./StickyManagerApp";
 
 describe("StickyManagerApp has no settings surface", () => {
+  it("exposes the shared app theme selector without restoring the settings panel", () => {
+    render(<StickyManagerApp />);
+    expect(screen.getByRole("button", { name: "Theme" })).toBeInTheDocument();
+  });
+
+  it("exposes the shared sticky sort selector", () => {
+    render(<StickyManagerApp />);
+    expect(screen.getByRole("combobox", { name: "Sort notes" })).toBeInTheDocument();
+  });
+
+  it("adjusts and remembers the manager panel opacity", () => {
+    localStorage.removeItem("sticky-panel-opacity");
+    render(<StickyManagerApp />);
+    fireEvent.click(screen.getByTitle("More"));
+    const slider = screen.getByRole("slider", { name: "Panel opacity" });
+    fireEvent.change(slider, { target: { value: "65" } });
+    fireEvent.blur(slider);
+    expect(localStorage.getItem("sticky-panel-opacity")).toBe("65");
+    localStorage.removeItem("sticky-panel-opacity");
+  });
+
   it("renders no settings gear and no panel content", () => {
     const { container } = render(<StickyManagerApp />);
     expect(container.querySelector('button[title="sticky.settings"]')).toBeNull();

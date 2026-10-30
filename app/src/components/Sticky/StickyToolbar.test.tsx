@@ -1,7 +1,9 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, beforeAll } from "vitest";
+import { useState } from "react";
 import { render, cleanup, fireEvent, act, waitFor } from "@testing-library/react";
 import { Editor } from "@tiptap/react";
 import { buildExtensions } from "../Documents/tiptap/schema";
+import { TiptapDocumentEditor } from "../Documents/tiptap/TiptapDocumentEditor";
 import { StickyToolbar } from "./StickyToolbar";
 import { insertRenderedMarkdown } from "./insertRenderedMarkdown";
 
@@ -12,8 +14,55 @@ function makeEditor(json: object, holder: HTMLElement) {
   return editor;
 }
 
+beforeAll(() => {
+  // jsdom has no layout: ProseMirror's focus() → scrollToSelection reads
+  // Range geometry and throws "getClientRects is not a function". Zero-size
+  // stubs keep the scroll a no-op; real geometry is irrelevant to these
+  // assertions.
+  Range.prototype.getClientRects = function () {
+    return { length: 0, item: () => null, [Symbol.iterator]: [][Symbol.iterator] } as unknown as DOMRectList;
+  };
+  Range.prototype.getBoundingClientRect = function () {
+    return new DOMRect(0, 0, 0, 0);
+  };
+});
+
+/** Mirrors the sticky window's real wiring: the toolbar is a FIXED row fed
+ *  the shared editor instance through the `toolbarExtras` render-prop
+ *  capture (StickyWindowApp.tsx). Rendering the toolbar AS the extras would
+ *  mount it inside the selection-only BubbleMenu instead — where it would
+ *  never appear without a text selection. */
+function ToolbarHarness() {
+  const [editor, setEditor] = useState<Editor | null>(null);
+  return (
+    <>
+      <StickyToolbar editor={editor} />
+      <TiptapDocumentEditor
+        initialBlocks={[{ type: "paragraph", content: [{ type: "text", text: "const x = 1", styles: {} }] }]}
+        isDark={false}
+        toolbarExtras={(instance) => {
+          queueMicrotask(() => setEditor((prev) => (prev === instance ? prev : instance)));
+          return null;
+        }}
+      />
+    </>
+  );
+}
+
 describe("StickyToolbar portal palette flow", () => {
   afterEach(cleanup);
+
+  it("offers a code block action with a language picker", async () => {
+    const utils = render(<ToolbarHarness />);
+
+    fireEvent.click(await utils.findByTitle("Code block"));
+
+    const holder = utils.container.querySelector(".ProseMirror");
+    await waitFor(() => expect(
+      utils.getByRole("combobox", { name: "Code language" }),
+    ).toBeTruthy());
+    expect(holder?.querySelector("pre")).toBeTruthy();
+  });
 
   it("highlight/text-color palettes open OUTSIDE the clipped strip and apply marks", () => {
     const holder = document.createElement("div");

@@ -69,4 +69,30 @@ describe("StickyWindowApp title editing", () => {
       });
     });
   });
+
+  it("exposes the shared app theme selector in the note header", async () => {
+    render(<StickyWindowApp />);
+    await screen.findByTestId("editor");
+    expect(screen.getByRole("button", { name: "settings.theme" })).toBeInTheDocument();
+  });
+
+  it("gives the color palette fixed-width tracks inside the narrow header trigger", async () => {
+    render(<StickyWindowApp />);
+    fireEvent.click(await screen.findByTitle("sticky.color"));
+
+    const yellow = screen.getByTitle("yellow");
+    expect(yellow.parentElement).toHaveClass("grid-cols-[repeat(6,1rem)]");
+  });
+
+  it("previews and persists note opacity from the More menu", async () => {
+    render(<StickyWindowApp />);
+    fireEvent.click(await screen.findByTitle("sticky.more"));
+    const slider = screen.getByRole("slider", { name: "sticky.opacity" });
+    fireEvent.change(slider, { target: { value: "45" } });
+    fireEvent.blur(slider);
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("sticky_update_meta", { id: 7, opacity: 45 });
+    });
+  });
 });

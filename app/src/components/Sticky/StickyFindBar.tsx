@@ -105,7 +105,7 @@ export function StickyFindBar({
   };
 
   return (
-    <div className="app-region-no-drag absolute top-20 right-2 z-50 w-72 rounded-xl border border-black/10 bg-white/95 p-2 shadow-lg">
+    <div className="app-region-no-drag absolute top-20 right-2 z-50 w-72 rounded-xl border border-border bg-popover/95 p-2 text-popover-foreground shadow-lg">
       <div className="flex items-center gap-1">
         <input
           ref={inputRef}
@@ -122,26 +122,26 @@ export function StickyFindBar({
             if (e.key === "Escape") onClose();
           }}
           placeholder={t("sticky.find.placeholder")}
-          className="min-w-0 flex-1 rounded-md border border-black/15 bg-white px-2 py-1 text-sm outline-none"
+          className="min-w-0 flex-1 rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground outline-none focus:border-ring"
         />
         <button
           type="button"
           title={t("sticky.find.matchCase")}
-          className={`rounded-md p-1 hover:bg-black/10 ${caseSensitive ? "bg-black/15" : ""}`}
+          className={`rounded-md p-1 hover:bg-foreground/10 ${caseSensitive ? "bg-foreground/15" : ""}`}
           onClick={() => setCaseSensitive((v) => !v)}
         >
           <CaseSensitive className="size-3.5" />
         </button>
-        <span className="min-w-10 text-center text-[11px] text-neutral-500">
+        <span className="min-w-10 text-center text-[11px] text-muted-foreground">
           {matches.length ? `${cursor + 1}/${matches.length}` : query ? "0/0" : ""}
         </span>
-        <button type="button" title={t("sticky.find.prev")} className="rounded-md p-1 hover:bg-black/10" onClick={() => selectMatch(cursorRef.current - 1)}>
+        <button type="button" title={t("sticky.find.prev")} className="rounded-md p-1 hover:bg-foreground/10" onClick={() => selectMatch(cursorRef.current - 1)}>
           <ChevronUp className="size-3.5" />
         </button>
-        <button type="button" title={t("sticky.find.next")} className="rounded-md p-1 hover:bg-black/10" onClick={() => selectMatch(cursorRef.current + 1)}>
+        <button type="button" title={t("sticky.find.next")} className="rounded-md p-1 hover:bg-foreground/10" onClick={() => selectMatch(cursorRef.current + 1)}>
           <ChevronDown className="size-3.5" />
         </button>
-        <button type="button" title={t("sticky.close")} className="rounded-md p-1 hover:bg-black/10" onClick={onClose}>
+        <button type="button" title={t("sticky.close")} className="rounded-md p-1 hover:bg-foreground/10" onClick={onClose}>
           <X className="size-3.5" />
         </button>
       </div>
@@ -150,18 +150,18 @@ export function StickyFindBar({
           value={replacement}
           onChange={(e) => setReplacement(e.target.value)}
           placeholder={t("sticky.find.replaceWith")}
-          className="min-w-0 flex-1 rounded-md border border-black/15 bg-white px-2 py-1 text-sm outline-none"
+          className="min-w-0 flex-1 rounded-md border border-input bg-background px-2 py-1 text-sm text-foreground outline-none focus:border-ring"
         />
         <button
           type="button"
-          className="rounded-md border border-black/15 px-2 py-1 text-xs hover:bg-neutral-100"
+          className="rounded-md border border-input px-2 py-1 text-xs hover:bg-foreground/10"
           onClick={replaceCurrent}
         >
           Replace
         </button>
         <button
           type="button"
-          className="rounded-md border border-black/15 px-2 py-1 text-xs hover:bg-neutral-100"
+          className="rounded-md border border-input px-2 py-1 text-xs hover:bg-foreground/10"
           onClick={replaceAll}
         >
           All

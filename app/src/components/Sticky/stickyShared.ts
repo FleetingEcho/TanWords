@@ -17,11 +17,16 @@ export const STICKY_MIN_H = 140;
  *  custom values). */
 export const STICKY_COLORS: ReadonlyArray<{ id: string; hex: string }> = [
   { id: "yellow", hex: "#FFE58A" },
-  { id: "blue", hex: "#A9D7FF" },
+  { id: "lime", hex: "#D8EEA3" },
   { id: "green", hex: "#B7E8B2" },
-  { id: "pink", hex: "#FFC4DA" },
+  { id: "teal", hex: "#A7E8D7" },
+  { id: "cyan", hex: "#A8E6F0" },
+  { id: "blue", hex: "#A9D7FF" },
   { id: "purple", hex: "#D9C2FF" },
+  { id: "pink", hex: "#FFC4DA" },
+  { id: "coral", hex: "#FFB4A2" },
   { id: "orange", hex: "#FFD3A3" },
+  { id: "brown", hex: "#D6B89C" },
   { id: "gray", hex: "#D9D9D9" },
 ];
 
@@ -29,20 +34,22 @@ export function stickyColorHex(color: string): string {
   return STICKY_COLORS.find((c) => c.id === color)?.hex ?? color;
 }
 
-/** Surface style: pastel at the note's opacity over a transparent window.
- *  Opacity is clamped 10–100 by the core; divide by 100 for CSS alpha.
- *  A solid fallback border keeps even a 10%-opacity note visible. */
+/** Surface style: the note's colour over a transparent window, theme-aware.
+ *  `--sticky-tint` (theme-vars.css) is 100 on light themes — the classic
+ *  full pastel — and ~20 on dark themes, where the note becomes a
+ *  hue-tinted wash over the themed canvas (`hsl(var(--background))`), so the
+ *  note follows EVERY app theme while keeping its colour identity. The
+ *  note's opacity then fades that mix toward transparent (core clamps
+ *  opacity to 10–100). The hairline ring keeps the full-hue edge in every
+ *  theme, so even a 10%-opacity note stays visible. */
 export function stickySurfaceStyle(color: string, opacity: number): CSSProperties {
   const hex = stickyColorHex(color);
   const alpha = Math.min(100, Math.max(10, opacity)) / 100;
-  const rgb = hex.replace("#", "");
-  const r = parseInt(rgb.slice(0, 2), 16);
-  const g = parseInt(rgb.slice(2, 4), 16);
-  const b = parseInt(rgb.slice(4, 6), 16);
+  const base = `color-mix(in srgb, ${hex} calc(var(--sticky-tint, 100) * 1%), hsl(var(--background)))`;
   return {
-    backgroundColor: `rgba(${r}, ${g}, ${b}, ${alpha})`,
-    // Hairline in the same hue, opaque, so low-opacity notes keep an edge.
-    boxShadow: `inset 0 0 0 1px rgba(${r}, ${g}, ${b}, 1)`,
+    backgroundColor:
+      alpha >= 1 ? base : `color-mix(in srgb, ${base} ${Math.round(alpha * 100)}%, transparent)`,
+    boxShadow: `inset 0 0 0 1px ${hex}`,
   };
 }
 
@@ -96,6 +103,79 @@ export interface StickyListItem {
   updated_at: string;
 }
 export type StickyDetail = StickyListItem & { content: string };
+
+export type StickySortMode = "created" | "updated" | "title-asc" | "title-desc";
+
+const STICKY_SORT_MODES: readonly StickySortMode[] = [
+  "created", "updated", "title-asc", "title-desc",
+];
+
+export const STICKY_SORT_STORAGE_KEY = "sticky-sort-mode";
+export const STICKY_PANEL_OPACITY_STORAGE_KEY = "sticky-panel-opacity";
+
+export function isStickySortMode(value: string | null): value is StickySortMode {
+  return STICKY_SORT_MODES.includes(value as StickySortMode);
+}
+
+export function loadStickySortMode(): StickySortMode {
+  try {
+    const saved = localStorage.getItem(STICKY_SORT_STORAGE_KEY);
+    return isStickySortMode(saved) ? saved : "created";
+  } catch {
+    return "created";
+  }
+}
+
+export function saveStickySortMode(mode: StickySortMode): void {
+  try {
+    localStorage.setItem(STICKY_SORT_STORAGE_KEY, mode);
+  } catch {
+    // Storage may be unavailable in a restricted renderer.
+  }
+}
+
+export function loadStickyPanelOpacity(): number {
+  try {
+    const value = Number(localStorage.getItem(STICKY_PANEL_OPACITY_STORAGE_KEY));
+    return Number.isFinite(value) && value >= 20 && value <= 100 ? value : 95;
+  } catch {
+    return 95;
+  }
+}
+
+export function saveStickyPanelOpacity(opacity: number): void {
+  try {
+    localStorage.setItem(
+      STICKY_PANEL_OPACITY_STORAGE_KEY,
+      String(Math.min(100, Math.max(20, Math.round(opacity)))),
+    );
+  } catch {
+    // Storage may be unavailable in a restricted renderer.
+  }
+}
+
+/** Return a sorted copy so backend results and React state are never mutated.
+ *  Time modes are newest-first; the id tie-break keeps equal-second database
+ *  timestamps deterministic. */
+export function sortStickyItems(
+  items: readonly StickyListItem[],
+  mode: StickySortMode,
+): StickyListItem[] {
+  return [...items].sort((a, b) => {
+    if (mode === "created" || mode === "updated") {
+      const key = mode === "created" ? "created_at" : "updated_at";
+      return b[key].localeCompare(a[key]) || b.id - a.id;
+    }
+
+    const aTitle = a.title.trim() || stickyDerivedTitle(a.preview);
+    const bTitle = b.title.trim() || stickyDerivedTitle(b.preview);
+    const byTitle = aTitle.localeCompare(bTitle, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
+    return (mode === "title-asc" ? byTitle : -byTitle) || b.id - a.id;
+  });
+}
 
 /** Dismiss a popover when a pointer lands outside it. Document-level
  *  `pointerdown` (capture) so the dismissal wins over the outside click's own

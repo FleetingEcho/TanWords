@@ -119,6 +119,15 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ theme });
     applyTheme(theme);
     saveSetting("theme", JSON.stringify(theme));
+    // Other windows (sticky notes, the sticky manager, popouts) re-theme
+    // immediately instead of waiting for their next loadFromDB. `window_*`
+    // routes to the main process, which broadcasts `settings:theme-changed`
+    // to every window — mirrored by the module-level subscription below.
+    if (isDesktopHost) {
+      void import("@/ipc/backend").then(({ invoke }) =>
+        invoke("window_broadcast_theme", { theme })
+      ).catch((e) => console.warn("[settings] theme broadcast failed:", e));
+    }
   },
 
   setDefaultAiProvider: (provider) => {
@@ -533,7 +542,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     saveSetting("asr_extra_dirs", JSON.stringify(dirs));
   },
 
-  loadFromDB: () => loadSettingsFromDB(set, get),
+  loadFromDB: () => {
+    registerCrossWindowThemeSync();
+    return loadSettingsFromDB(set, get);
+  },
 }));
 
 // Listen for system theme changes
@@ -543,3 +555,27 @@ window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () 
     applyTheme("system");
   }
 });
+
+// Cross-window theme sync (desktop): a theme change in ANY window is
+// broadcast by main as `settings:theme-changed` (see setTheme →
+// window_broadcast_theme). Every window registers on its startup
+// loadFromDB, so sticky notes and the manager re-apply the theme the moment
+// it changes. The equality check makes sender echoes and duplicate
+// deliveries no-ops, which is also what prevents a rebroadcast loop
+// (setTheme is NOT called here — that would re-broadcast).
+// Registered lazily, not at module load: several test suites mock
+// `@/platform` without isDesktopHost, and reading it during module
+// evaluation breaks their imports before any test runs.
+let themeSyncRegistered = false;
+function registerCrossWindowThemeSync(): void {
+  if (themeSyncRegistered || !isDesktopHost) return;
+  themeSyncRegistered = true;
+  void import("@/ipc/events").then(({ subscribe }) =>
+    subscribe("settings:theme-changed", (payload: unknown) => {
+      const theme = (payload as { theme?: Theme } | null)?.theme;
+      if (!theme || theme === useSettingsStore.getState().theme) return;
+      useSettingsStore.setState({ theme });
+      applyTheme(theme);
+    })
+  ).catch(() => {});
+}

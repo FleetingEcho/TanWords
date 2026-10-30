@@ -15,10 +15,11 @@
  *  events (web has no note windows); the note's `is_open` desktop flag is
  *  never surfaced here. No isDesktopHost guards remain — this page is
  *  web-only by construction. */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Plus, StickyNote, X } from "lucide-react";
 import { invoke } from "@/ipc/backend";
 import { useT } from "@/hooks/useT";
+import { useIsDark } from "@/hooks/useIsDark";
 import { useSettingsStore } from "@/store/settingsStore";
 import { blocksToStorage } from "@/lib/docFormat";
 import { readClipboardImage } from "@/ipc/clipboard";
@@ -32,12 +33,14 @@ import { insertRenderedMarkdown } from "./insertRenderedMarkdown";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import {
   STICKY_COLORS,
+  sortStickyItems,
   stickyColorHex,
   stickyDerivedTitle,
   type StickyDetail,
   type StickyListItem,
 } from "./stickyShared";
 import { StickyWallCard } from "./StickyWallCard";
+import { StickySortSelect, useStickySort } from "./StickySortSelect";
 
 const SAVE_DEBOUNCE_MS = 400;
 const SEARCH_DEBOUNCE_MS = 150;
@@ -90,10 +93,16 @@ function QuickComposer({
 
 export function StickiesPage() {
   const t = useT();
+  /** Theme flag for the drawer's shared editor — drives the code-block theme
+   *  refresh in TiptapDocumentEditor. Reactive (DOM-observed): the old
+   *  one-shot getState() read was stale whenever the theme flipped with the
+   *  drawer already open. */
+  const isDark = useIsDark();
   // Theme subscription so the editor chrome follows live changes.
   useSettingsStore((s) => s.theme);
 
   const [items, setItems] = useState<StickyListItem[] | null>(null);
+  const [sortMode, setSortMode] = useStickySort();
   const [query, setQuery] = useState("");
   const [quickText, setQuickText] = useState("");
   const [editing, setEditing] = useState<StickyDetail | null>(null);
@@ -288,6 +297,10 @@ export function StickiesPage() {
 
   const editingTitle =
     (editing && (editing.title || stickyDerivedTitle(editing.preview) || t("sticky.untitled"))) || "";
+  const sortedItems = useMemo(
+    () => sortStickyItems(items ?? [], sortMode),
+    [items, sortMode],
+  );
 
   return (
     <div className="h-full overflow-y-auto">
@@ -307,6 +320,7 @@ export function StickiesPage() {
               placeholder={t("sticky.searchPlaceholder")}
               className="h-8 w-52 rounded-full border border-transparent bg-muted/40 px-3 text-sm outline-none focus:border-input focus:bg-background"
             />
+            <StickySortSelect value={sortMode} onChange={setSortMode} />
             <button
               type="button"
               className="flex h-8 items-center gap-1 rounded-full bg-primary px-3 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
@@ -334,7 +348,7 @@ export function StickiesPage() {
                 onChange={setQuickText}
                 onSubmit={() => void quickCreate()}
               />
-              {items.map((item) => (
+              {sortedItems.map((item) => (
                 <StickyWallCard key={item.id} item={item} onOpen={(it) => void openEditor(it)} />
               ))}
             </div>
@@ -359,7 +373,7 @@ export function StickiesPage() {
             {/* Header: color dots … close; the title line is display-only
                 (rename is a desktop-window feature — derived title only). */}
             <div className="shrink-0 border-b border-border/60 p-3">
-              <div className="flex items-center gap-2" role="group" aria-label={t("sticky.color")}>
+              <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t("sticky.color")}>
                 {STICKY_COLORS.map((c) => {
                   const active = stickyColorHex(editing.color) === c.hex;
                   return (
@@ -396,7 +410,7 @@ export function StickiesPage() {
               {editorBlocks && (
                 <LazyTiptapDocumentEditor
                   initialBlocks={editorBlocks}
-                  isDark={useSettingsStore.getState().theme !== "light"}
+                  isDark={isDark}
                   editable
                   onUploadFile={uploadFile}
                   readNativeImage={readNativeImage}

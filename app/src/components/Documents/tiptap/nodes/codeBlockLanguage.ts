@@ -10,6 +10,25 @@ import { ReactNodeViewRenderer } from "@tiptap/react";
 import { CodeBlockView } from "./CodeBlockView";
 
 export const CodeBlockWithLanguage = CodeBlock.extend({
+  addKeyboardShortcuts() {
+    return {
+      ...this.parent?.(),
+      Enter: () => {
+        const { selection } = this.editor.state;
+        const { $from } = selection;
+        if (!selection.empty || $from.parent.type.name !== "paragraph" || $from.parentOffset !== $from.parent.content.size) return false;
+        const match = /^```([\w+-]+)?$/.exec($from.parent.textContent);
+        if (!match || !$from.node($from.depth - 1)?.type.name.endsWith("listItem")) return false;
+        return this.editor.chain()
+          .deleteRange({ from: $from.start(), to: $from.end() })
+          .liftListItem($from.node($from.depth - 1).type.name)
+          // setCodeBlock's typing wants a string; passing undefined keeps
+          // the extension's default (null = plain).
+          .setCodeBlock(match[1] ? { language: match[1] } : undefined)
+          .run();
+      },
+    };
+  },
   addAttributes() {
     return {
       ...this.parent?.(),

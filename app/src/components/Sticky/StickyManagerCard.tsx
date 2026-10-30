@@ -6,7 +6,7 @@
  *  Cards single-activate: there is deliberately no double-click handler. */
 import { Ellipsis, Loader2 } from "lucide-react";
 import { useT } from "@/hooks/useT";
-import { stickyColorHex, stickyDerivedTitle, type StickyListItem } from "./stickyShared";
+import { stickyDerivedTitle, stickySurfaceStyle, type StickyListItem } from "./stickyShared";
 
 export interface StickyManagerCardMenuPoint {
   /** Window-level coordinates (clientX/Y) for the menu's top-left corner. */
@@ -49,10 +49,13 @@ export function StickyManagerCard({
         e.preventDefault();
         onMenu(item, { x: e.clientX, y: e.clientY });
       }}
-      className={`group relative flex min-w-0 cursor-pointer flex-col rounded-xl p-2.5 text-neutral-900 transition-shadow hover:shadow-md ${viewMode === "card" ? "min-h-[88px]" : "min-h-[62px]"}`}
+      className={`group relative flex min-w-0 cursor-pointer flex-col rounded-xl p-2.5 transition-shadow hover:shadow-md ${viewMode === "card" ? "min-h-[88px]" : "min-h-[62px]"}`}
       style={{
-        backgroundColor: stickyColorHex(item.color),
-        boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.08)",
+        // Theme-aware surface: full pastel in light themes, a hue tint over
+        // the themed canvas in dark ones (see stickyShared.ts). Text below
+        // inherits --sticky-ink via this inline `color`.
+        ...stickySurfaceStyle(item.color, item.opacity),
+        color: "var(--sticky-ink, #1f2937)",
       }}
     >
       <div className="flex items-start gap-1">
@@ -63,7 +66,7 @@ export function StickyManagerCard({
           <button
             type="button"
             title={t("sticky.more")}
-            className="-mt-0.5 -mr-0.5 flex size-7 shrink-0 items-center justify-center rounded-full opacity-0 transition-opacity group-hover:opacity-80 group-focus-within:opacity-80 focus:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-neutral-700 hover:bg-black/10"
+            className="-mt-0.5 -mr-0.5 flex size-7 shrink-0 items-center justify-center rounded-full opacity-0 transition-opacity group-hover:opacity-80 group-focus-within:opacity-80 focus:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring hover:bg-foreground/10"
             onClick={(e) => {
               e.stopPropagation();
               const rect = e.currentTarget.getBoundingClientRect();

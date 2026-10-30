@@ -222,7 +222,7 @@ pub(crate) async fn list_for_device(conn: &Conn, device_id: &str) -> Result<Vec<
         conn,
         &format!(
             "SELECT {LIST_COLUMNS} {LIST_FROM}
-             ORDER BY d.updated_at DESC, d.id DESC"
+             ORDER BY d.created_at DESC, d.id DESC"
         ),
         [device_id],
         list_item,
@@ -435,7 +435,8 @@ pub(crate) async fn update_meta(
     .await
     .map(|_| ())
     .map_err(|e| e.to_string())?;
-    // Meta changes reorder the manager list the same way edits do.
+    // Keep last-modified metadata current without changing the manager's
+    // creation-time ordering.
     conn.execute(
         "UPDATE documents SET updated_at=datetime('now') WHERE id=?1",
         params![id],
@@ -587,7 +588,7 @@ pub(crate) async fn search(conn: &Conn, device_id: &str, query: &str) -> Result<
                      LEFT JOIN sticky_windows w ON w.document_id = d.id AND w.device_id = ?1
                      JOIN documents_fts f ON f.rowid = d.id
                      WHERE documents_fts MATCH ?2 AND d.kind='sticky' AND d.deleted_at IS NULL
-                     ORDER BY bm25(documents_fts), d.updated_at DESC, d.id DESC"
+                     ORDER BY d.created_at DESC, d.id DESC"
                 ),
                 params![device_id, terms],
                 list_item,
@@ -601,7 +602,7 @@ pub(crate) async fn search(conn: &Conn, device_id: &str, query: &str) -> Result<
         &format!(
             "SELECT {LIST_COLUMNS} {LIST_FROM}
              AND (d.title LIKE ?2 ESCAPE '\\' OR (d.protected=0 AND d.content_text LIKE ?2 ESCAPE '\\'))
-             ORDER BY d.updated_at DESC, d.id DESC"
+             ORDER BY d.created_at DESC, d.id DESC"
         ),
         params![device_id, pattern],
         list_item,
@@ -1102,6 +1103,45 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(ids().await, vec![newer, older]);
+    }
+
+    #[tokio::test]
+    async fn editing_a_note_does_not_reorder_creation_time_lists_or_searches() {
+        let db = memory_db().await;
+        let older = create(&db, DEV_A, "{}", "shared note older", 3, None).await.unwrap();
+        let newer = create(&db, DEV_A, "{}", "shared note newer", 3, None).await.unwrap();
+
+        // Make the creation/edit chronology deterministic: the older note was
+        // edited most recently, but the panel must retain newest-created-first
+        // order rather than promoting it.
+        db.execute(
+            "UPDATE documents SET created_at='2026-01-01 00:00:00', updated_at='2026-12-01 00:00:00' WHERE id=?1",
+            params![older],
+        )
+        .await
+        .unwrap();
+        db.execute(
+            "UPDATE documents SET created_at='2026-02-01 00:00:00', updated_at='2026-02-01 00:00:00' WHERE id=?1",
+            params![newer],
+        )
+        .await
+        .unwrap();
+
+        let ids = list_for_device(&db, DEV_A)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|item| item.id)
+            .collect::<Vec<_>>();
+        assert_eq!(ids, vec![newer, older]);
+
+        let search_ids = search(&db, DEV_A, "shared")
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|item| item.id)
+            .collect::<Vec<_>>();
+        assert_eq!(search_ids, vec![newer, older]);
     }
 
     #[tokio::test]

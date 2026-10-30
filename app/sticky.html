@@ -2,30 +2,37 @@
 <html lang="en">
   <head>
     <script>
-      // Same last-known-theme flash prevention as index.html — the sticky's
-      // BubbleToolbar and scrollbars pick up the app's theme tokens. The
-      // pastel surface itself always renders light text-on-dark-ink.
+      // Same last-known-theme flash prevention as index.html and
+      // sticky-manager.html — the sticky note follows the app theme: light
+      // themes keep the classic full-pastel note, dark themes tint the
+      // themed canvas toward the note's hue (see --sticky-tint/--sticky-ink
+      // in theme-vars.css). Shiki also keys off the "dark" class via
+      // codeBlockShiki, so code blocks pick the matching syntax theme.
       (function () {
-        // Sticky notes are always pastel surfaces — never theme them dark.
-        // (The app's auto-dark script used to run here too; dark mode's
-        // near-white --foreground made note text unreadable on the yellow.)
-        document.documentElement.style.colorScheme = "light";
-        // Marker for codeBlockShiki's theme pick: this surface is pastel-
-        // light even when the app runs dark, so shiki must use github-light
-        // here regardless of any "dark" class the settings bootstrap adds.
-        document.documentElement.classList.add("force-light");
+        try {
+          var theme = localStorage.getItem("tanwords_theme_cache") || "system";
+          var isDark =
+            theme === "dark" || theme === "catppuccin-mocha" || theme === "dracula" ||
+            theme === "tokyo-night" || theme === "tokyo-night-storm" || theme === "dim" ||
+            (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          if (isDark) document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = isDark ? "dark" : "light";
+        } catch (e) {}
       })();
     </script>
     <style>
-      /* The OS window is transparent — only the pastel surface inside paints.
+      /* The OS window is transparent — only the note surface inside paints.
          overflow:hidden for the same sub-pixel-scrollbar reason as
          floating-browser.html (a scrollbar here would shrink the visible
          surface and show the desktop through the gap). */
       html, body, #root { min-height: 100%; margin: 0; background: transparent; overflow: hidden; }
-      /* Default ink on the pastel surface is always dark. #root gives this
-         specificity over the shared .tanwords-tiptap .ProseMirror rule
-         (var(--foreground)), whatever order the bundles load in. */
-      #root .tanwords-tiptap .ProseMirror { color: #1f2937; }
+      /* Default ink on the note surface: near-black on pastel in light
+         themes, the theme's foreground in dark ones (--sticky-ink flips in
+         theme-vars.css). #root gives this specificity over the shared
+         .tanwords-tiptap .ProseMirror rule (var(--foreground)), whatever
+         order the bundles load in; user-chosen TextStyle marks are inline
+         styles and still win over this default. */
+      #root .tanwords-tiptap .ProseMirror { color: var(--sticky-ink, #1f2937); }
     </style>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />

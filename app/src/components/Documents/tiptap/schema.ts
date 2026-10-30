@@ -86,6 +86,10 @@ export function buildExtensions(options: EditorExtensionOptions = {}) {
       // editor match what the format can store.
       hardBreak: false,
       link: { openOnClick: false, autolink: true },
+      // Inline code is still editable prose, but browser spellchecking is
+      // noise for identifiers and commands. The marker also gives it styling
+      // independent from fenced code blocks.
+      code: { HTMLAttributes: { "data-inline-code": "true", spellcheck: "false" } },
     }),
     TaskList,
     TaskItem.configure({ nested: true }),

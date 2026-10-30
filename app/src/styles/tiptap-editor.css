@@ -174,29 +174,54 @@
   text-underline-offset: 2px;
 }
 
-.tanwords-tiptap .ProseMirror code {
+.tanwords-tiptap .ProseMirror code[data-inline-code="true"] {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.9em;
+  color: hsl(var(--foreground));
   background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border) / 0.7);
   border-radius: 4px;
-  padding: 0.1em 0.3em;
+  padding: 0.08em 0.32em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 
-/* The shiki decorations carry their own colours; the block only supplies the
-   frame. Background/foreground are pinned to what the highlighter used, which
-   is why the theme override in codeBlockShiki.ts has to be right. */
-.tanwords-tiptap .ProseMirror pre {
+/* A real shell keeps controls out of the editable code. This prevents the
+   language picker from covering a short block's first line and keeps the
+   controls visible while a huge block scrolls internally. */
+.tanwords-tiptap .ProseMirror .code-block-shell {
   background: hsl(var(--muted));
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
-  padding: 0.85em 1em;
-  overflow-x: auto;
+  overflow: hidden;
 }
-.tanwords-tiptap .ProseMirror pre code {
+.tanwords-tiptap .ProseMirror .code-block-toolbar {
+  min-height: 2rem;
+  background: hsl(var(--background) / 0.42);
+  border-bottom: 1px solid hsl(var(--border) / 0.75);
+}
+.tanwords-tiptap .ProseMirror .code-block-shell pre.code-block-body {
+  margin: 0;
+  max-width: 100%;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0.85em 1em;
+  overflow: auto;
+}
+.tanwords-tiptap .ProseMirror .code-block-shell[data-collapsible="true"][data-expanded="false"] pre.code-block-body {
+  max-height: min(24rem, 55vh);
+}
+.tanwords-tiptap .ProseMirror .code-block-shell pre code {
   background: none;
+  border: 0;
   padding: 0;
   font-size: 0.875em;
   line-height: 1.6;
+}
+.tanwords-tiptap .ProseMirror .code-block-shell[data-wrap="true"] pre code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* A code block the user tinted themselves (`pre[data-toned]`, set via the

@@ -16,18 +16,30 @@ vi.hoisted(() => {
   });
 });
 
-import { render, cleanup, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, cleanup, screen, waitFor } from "@testing-library/react";
 import { Editor } from "@tiptap/core";
 import { buildExtensions } from "../schema";
 import { blocksToPmDoc } from "../blockAdapter";
 import { TiptapDocumentEditor } from "../TiptapDocumentEditor";
 import { markdownToBlocks } from "@/lib/markdown";
+import { useSettingsStore } from "@/store/settingsStore";
 import type { Block } from "../blocks";
 
 const editors: Editor[] = [];
 afterEach(() => {
   for (const editor of editors.splice(0)) editor.destroy();
   document.body.innerHTML = "";
+  document.documentElement.classList.remove(
+    "dark",
+    "theme-catppuccin-latte",
+    "theme-catppuccin-mocha",
+    "theme-dracula",
+    "theme-tokyo-night",
+    "theme-tokyo-night-day",
+    "theme-tokyo-night-storm",
+    "theme-dim",
+  );
+  useSettingsStore.setState({ theme: "system" });
 });
 
 function mount(language: string, code: string) {
@@ -156,7 +168,55 @@ describe("through the React editor", () => {
 
   it("shows the language the block is set to", async () => {
     await mountReact("```rust\nlet x = 1;\n```");
-    expect(document.querySelector("select")?.value).toBe("rust");
+    expect(screen.getByRole("combobox", { name: "Code language" })).toHaveTextContent("rust");
+  }, 20000);
+
+  it("disables spellchecking on editable code", async () => {
+    await mountReact("```javascript\nconst unlockPassword = true;\n```");
+    expect(document.querySelector("pre code")).toHaveAttribute("spellcheck", "false");
+  }, 20000);
+
+  it("keeps controls above short code and can wrap long lines", async () => {
+    await mountReact("```javascript\nconst value = 'one line';\n```");
+    const shell = document.querySelector(".code-block-shell");
+    const toolbar = shell?.querySelector(".code-block-toolbar");
+    const body = shell?.querySelector("pre.code-block-body");
+    expect(toolbar).toBeTruthy();
+    expect(body).toBeTruthy();
+    expect(toolbar?.nextElementSibling).toBe(body);
+
+    fireEvent.click(screen.getByRole("button", { name: "Wrap code" }));
+    expect(shell).toHaveAttribute("data-wrap", "true");
+  }, 20000);
+
+  it("constrains huge code blocks until the user expands them", async () => {
+    const lines = Array.from({ length: 24 }, (_, index) => `const value${index} = ${index};`).join("\n");
+    await mountReact(`\`\`\`javascript\n${lines}\n\`\`\``);
+    const shell = document.querySelector(".code-block-shell");
+    expect(shell).toHaveAttribute("data-collapsible", "true");
+    expect(shell).toHaveAttribute("data-expanded", "false");
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand code block" }));
+    expect(shell).toHaveAttribute("data-expanded", "true");
+    expect(screen.getByRole("button", { name: "Collapse code block" })).toBeInTheDocument();
+  }, 20000);
+
+  it("styles inline code separately and disables spellchecking", async () => {
+    render(
+      <TiptapDocumentEditor
+        initialBlocks={[{
+          type: "paragraph",
+          content: [
+            { type: "text", text: "Run ", styles: {} },
+            { type: "text", text: "unlockPassword", styles: { code: true } },
+          ],
+        }]}
+        isDark={false}
+      />,
+    );
+    await waitFor(() => expect(document.querySelector("code[data-inline-code='true']")).toBeTruthy());
+    expect(document.querySelector("code[data-inline-code='true']"))
+      .toHaveAttribute("spellcheck", "false");
   }, 20000);
 });
 
@@ -196,6 +256,78 @@ describe("code block highlighting", () => {
       (token.getAttribute("style") ?? "").includes("color"),
     );
     expect(styled).toBe(true);
+  }, 15000);
+
+  it("keeps syntax colours for legacy blocks with default paint props", async () => {
+    const blocks: Block[] = [{
+      type: "codeBlock",
+      props: {
+        language: "javascript",
+        backgroundColor: "default",
+        textColor: "default",
+      },
+      content: [{
+        type: "text",
+        text: "const answer = async () => await Promise.resolve(42);",
+        styles: {},
+      }],
+    }];
+    render(<TiptapDocumentEditor initialBlocks={blocks} isDark />);
+
+    await waitFor(() => expect(document.querySelectorAll(".shiki").length).toBeGreaterThan(0));
+    expect(document.querySelector("pre")).not.toHaveAttribute("data-toned");
+    const colours = new Set(
+      Array.from(document.querySelectorAll(".shiki"))
+        .map((token) => token.getAttribute("style")),
+    );
+    expect(colours.size).toBeGreaterThan(1);
+  }, 15000);
+
+  it("re-highlights a mounted code block when the app theme changes", async () => {
+    document.documentElement.classList.add("dark");
+    const blocks = markdownToBlocks(
+      "```javascript\nconst answer = 42;\n```",
+    ) as Block[];
+    const view = render(
+      <TiptapDocumentEditor initialBlocks={blocks} isDark />,
+    );
+    await waitFor(() => expect(document.querySelectorAll(".shiki").length).toBeGreaterThan(0));
+    const darkStyles = Array.from(document.querySelectorAll(".shiki"))
+      .map((token) => token.getAttribute("style"));
+
+    document.documentElement.classList.remove("dark");
+    view.rerender(
+      <TiptapDocumentEditor initialBlocks={blocks} isDark={false} />,
+    );
+
+    await waitFor(() => {
+      const lightStyles = Array.from(document.querySelectorAll(".shiki"))
+        .map((token) => token.getAttribute("style"));
+      expect(lightStyles).not.toEqual(darkStyles);
+    });
+  }, 15000);
+
+  it("re-highlights when switching between two dark named themes", async () => {
+    document.documentElement.classList.add("dark");
+    useSettingsStore.setState({ theme: "dark" });
+    const blocks = markdownToBlocks(
+      "```javascript\nconst answer = 42;\n```",
+    ) as Block[];
+    render(<TiptapDocumentEditor initialBlocks={blocks} isDark />);
+    await waitFor(() => expect(document.querySelectorAll(".shiki").length).toBeGreaterThan(0));
+    const defaultDarkStyles = Array.from(document.querySelectorAll(".shiki"))
+      .map((token) => token.getAttribute("style"));
+
+    await act(async () => {
+      document.documentElement.classList.add("theme-dracula");
+      useSettingsStore.setState({ theme: "dracula" });
+    });
+
+    await waitFor(() => {
+      const draculaStyles = Array.from(document.querySelectorAll(".shiki"))
+        .map((token) => token.getAttribute("style"));
+      expect(draculaStyles).not.toEqual(defaultDarkStyles);
+    });
   }, 15000);
 
   it("falls back to plain text for an unknown language instead of livelocking", async () => {

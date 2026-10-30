@@ -35,23 +35,33 @@ const themeCss = readFileSync(join(STYLES_DIR, "theme-vars.css"), "utf8");
 const terminalCss = readFileSync(join(STYLES_DIR, "terminal-tool.css"), "utf8");
 
 describe("sticky window theming", () => {
-  // Sticky windows are always pastel surfaces; they must never run the app's
-  // dark theme. Regression 2026-09: sticky.html copied the auto-dark script,
-  // and the dark theme's --foreground is near-white — note text rendered
-  // unreadable white-on-yellow.
+  // Sticky windows FOLLOW the app theme (2026-10 product decision — the
+  // earlier force-light design predates the theme-aware surface): light
+  // themes paint the classic full pastel, dark themes tint the themed canvas
+  // toward the note's hue via --sticky-tint/--sticky-ink in theme-vars.css.
   const stickyHtml = readFileSync(join(STYLES_DIR, "..", "..", "sticky.html"), "utf8");
 
-  it("never adds the dark class in the sticky window", () => {
-    expect(stickyHtml).not.toContain('classList.add("dark")');
-    expect(stickyHtml).not.toContain('colorScheme = isDark');
+  it("bootstraps the cached app theme like the other windows", () => {
+    // Same pre-paint pattern as index.html / sticky-manager.html: resolve the
+    // cached theme (or the OS preference for "system") into the dark class.
+    expect(stickyHtml).toContain("tanwords_theme_cache");
+    expect(stickyHtml).toContain('classList.add("dark")');
+    expect(stickyHtml).toContain("colorScheme = isDark");
+    expect(stickyHtml).not.toContain("force-light");
   });
 
-  it("pins the editor ink to dark so the default is always black", () => {
+  it("pins the editor ink to the theme-aware sticky ink", () => {
     // Specificity above the shared rule (var(--foreground)); user-chosen
     // TextStyle marks are inline styles and still win over this default.
     const rule = stickyHtml.match(/#root \.tanwords-tiptap \.ProseMirror\s*\{([^}]*)\}/)?.[1];
     expect(rule).toBeTruthy();
-    expect(rule).toContain("color: #1f2937");
+    expect(rule).toContain("color: var(--sticky-ink, #1f2937)");
+  });
+
+  it("flips the sticky tint/ink in dark themes via theme-vars.css", () => {
+    expect(themeCss).toMatch(/:root\s*\{[^}]*--sticky-tint:\s*100/s);
+    expect(themeCss).toMatch(/\.dark\s*\{[^}]*--sticky-tint:\s*\d+/s);
+    expect(themeCss).toMatch(/\.dark\s*\{[^}]*--sticky-ink:\s*hsl\(var\(--foreground\)\)/s);
   });
 });
 

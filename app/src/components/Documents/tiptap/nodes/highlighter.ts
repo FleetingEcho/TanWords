@@ -90,7 +90,11 @@ const createHighlighterCore = createBundledHighlighter({
     "objc": () => import("@shikijs/langs-precompiled/objective-c"),
   },
   themes: {
+    "catppuccin-latte": () => import("@shikijs/themes/catppuccin-latte"),
+    "catppuccin-mocha": () => import("@shikijs/themes/catppuccin-mocha"),
+    "dracula": () => import("@shikijs/themes/dracula"),
     "github-dark": () => import("@shikijs/themes/github-dark"),
+    "github-dark-dimmed": () => import("@shikijs/themes/github-dark-dimmed"),
     "github-light": () => import("@shikijs/themes/github-light"),
     "tokyo-night": () => import("@shikijs/themes/tokyo-night"),
   },
@@ -99,14 +103,22 @@ const createHighlighterCore = createBundledHighlighter({
 
 export type AppHighlighter = Awaited<ReturnType<typeof createHighlighterCore>>;
 
-/** Both themes are loaded; which one is *used* is decided by the
+/** App syntax themes are loaded; which one is *used* is decided by the
  *  `getLoadedThemes` override in `codeBlockShiki.ts`. */
 export function createHighlighter(): Promise<AppHighlighter> {
   // No langs preloaded: grammars are fetched on first use by `codeBlockShiki`,
   // and `text` needs none. Asking for "text" here is a silent no-op — it never
   // appears in getLoadedLanguages().
   return createHighlighterCore({
-    themes: ["github-dark", "github-light", "tokyo-night"],
+    themes: [
+      "github-dark",
+      "github-dark-dimmed",
+      "github-light",
+      "catppuccin-latte",
+      "catppuccin-mocha",
+      "dracula",
+      "tokyo-night",
+    ],
     langs: [],
   });
 }

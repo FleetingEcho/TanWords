@@ -351,7 +351,6 @@ mod tests {
     //! SQLite→SQLite runs the identical row-by-row machinery a Postgres
     //! source uses (the copy helpers branch on the DESTINATION kind only).
     use super::*;
-    use crate::db::params;
 
     #[test]
     fn mask_postgres_url_hides_every_secret_shape() {

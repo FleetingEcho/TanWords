@@ -66,14 +66,6 @@ impl NtfyConfig {
     pub fn enabled(&self) -> bool {
         !self.server_url.trim().is_empty() && !self.topic.trim().is_empty()
     }
-
-    /// The parsed morning reminder time, or the default when the stored
-    /// setting is absent or malformed.
-    fn all_day_naive_time(&self) -> NaiveTime {
-        parse_hhmm(&self.all_day_time).unwrap_or_else(|| {
-            parse_hhmm(DEFAULT_ALL_DAY_TIME).expect("default parses")
-        })
-    }
 }
 
 /// Reads the ntfy settings from `user_settings`.
@@ -198,7 +190,7 @@ struct ReminderRow {
 }
 
 /// Every unsent reminder whose window is open at `now`, oldest first.
-pub async fn due_events(conn: &Conn, cfg: &NtfyConfig, now: NaiveDateTime) -> Result<Vec<DueEvent>, String> {
+pub(crate) async fn due_events(conn: &Conn, cfg: &NtfyConfig, now: NaiveDateTime) -> Result<Vec<DueEvent>, String> {
     // The table is a personal calendar — dozens of rows, not thousands — so
     // the window math is cheaper in Rust than it would ever be correct in
     // TEXT-arithmetic SQL.
@@ -605,8 +597,10 @@ mod tests {
 
     #[test]
     fn malformed_all_day_time_falls_back_to_the_default() {
-        let c = NtfyConfig { server_url: String::new(), topic: String::new(), all_day_time: "25:99".into() };
-        assert_eq!(c.all_day_naive_time(), parse_hhmm("09:00").unwrap());
+        assert_eq!(
+            reminder_due_at("2026-08-30", true, 0, "25:99"),
+            Some(at("2026-08-30 09:00"))
+        );
     }
 
     /// Serves one canned response on an ephemeral loopback listener, returning

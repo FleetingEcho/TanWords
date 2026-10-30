@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { getVersion } from "@/ipc/app";
 import { openExternal as openUrl } from "@/ipc/shell";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { UpgradeIcon } from "@/components/ui/icons";
 import { useUpdaterStore } from "@/store/updaterStore";
 import { useT } from "@/hooks/useT";
+import { normalizeUpdateNotes } from "@/lib/updateNotes";
 
 const RELEASES_URL = "https://github.com/FleetingEcho/TanWords/releases/latest";
 const IS_PORTABLE = import.meta.env.VITE_PORTABLE === "true";
@@ -23,6 +24,7 @@ export function UpdateButton({ collapsed = false, placement = "sidebar" }: { col
 
   const hasUpdate = status === "available" || status === "downloading" || status === "ready";
   const toolbar = placement === "toolbar";
+  const displayNotes = useMemo(() => normalizeUpdateNotes(notes), [notes]);
 
   const handleOpenChange = (next: boolean) => {
     setOpen(next);
@@ -75,9 +77,9 @@ export function UpdateButton({ collapsed = false, placement = "sidebar" }: { col
             </>
           )}
 
-          {hasUpdate && notes && (
+          {hasUpdate && displayNotes && (
             <div className="max-h-40 overflow-y-auto rounded-md bg-muted/50 p-2.5 text-xs whitespace-pre-wrap text-muted-foreground">
-              {notes}
+              {displayNotes}
             </div>
           )}
 
